@@ -4,5 +4,6 @@
   "summary": "S3-compatible browsing, bounded transfer queues, temporary URLs, object versions, and lifecycle controls.",
   "version": "0.3",
   "icon": "database",
-  "badge_tone": "neutral"
+  "badge_tone": "neutral",
+  "profile_lifecycle": "standard"
 }

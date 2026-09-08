@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRequestGuard } from "../connectors/templates/_shared/request-guard.js";
+import { createRequestGuard } from "./request-guard.js";
 
 test("request guard rejects older requests in the same channel", () => {
   const guard = createRequestGuard("target:1");
   const older = guard.begin("detail");
   const newer = guard.begin("detail");
 
+  assert.equal(older.signal.aborted, true);
+  assert.equal(newer.signal.aborted, false);
   assert.equal(older.isCurrent(), false);
   assert.equal(newer.isCurrent(), true);
 });
@@ -18,9 +20,11 @@ test("request guard rejects requests after target scope changes or disposal", ()
   guard.setScope("target:2");
   const currentTarget = guard.begin("list");
 
+  assert.equal(previousTarget.signal.aborted, true);
   assert.equal(previousTarget.isCurrent(), false);
   assert.equal(currentTarget.isCurrent(), true);
   guard.dispose();
+  assert.equal(currentTarget.signal.aborted, true);
   assert.equal(currentTarget.isCurrent(), false);
 });
 
@@ -44,4 +48,66 @@ test("request guard can reactivate without reviving disposed requests", () => {
 
   assert.equal(disposed.isCurrent(), false);
   assert.equal(current.isCurrent(), true);
+});
+
+test("request guard aborts only the invalidated channel", () => {
+  const guard = createRequestGuard("target:1");
+  const list = guard.begin("list");
+  const detail = guard.begin("detail");
+
+  guard.invalidate("list");
+
+  assert.equal(list.signal.aborted, true);
+  assert.equal(list.isCurrent(), false);
+  assert.equal(detail.signal.aborted, false);
+  assert.equal(detail.isCurrent(), true);
+});
+
+test("request guard gives visible state ownership to the newest channel", () => {
+  const guard = createRequestGuard("target:1");
+  const list = guard.begin("list");
+  const listVisibility = guard.claimVisibility();
+  const detail = guard.begin("detail");
+  const detailVisibility = guard.claimVisibility();
+
+  assert.equal(list.isCurrent(), true);
+  assert.equal(detail.isCurrent(), true);
+  assert.equal(listVisibility.isCurrent(), false);
+  assert.equal(detailVisibility.isCurrent(), true);
+});
+
+test("request guard invalidates visible state ownership across scope and disposal", () => {
+  const guard = createRequestGuard("target:1");
+  const previousScope = guard.claimVisibility();
+  guard.setScope("target:2");
+  const currentScope = guard.claimVisibility();
+
+  assert.equal(previousScope.isCurrent(), false);
+  assert.equal(currentScope.isCurrent(), true);
+  guard.dispose();
+  assert.equal(currentScope.isCurrent(), false);
+});
+
+test("request guard scope changes abort every in-flight channel", () => {
+  const guard = createRequestGuard("target:1");
+  const list = guard.begin("list");
+  const detail = guard.begin("detail");
+
+  guard.setScope("target:2");
+
+  assert.equal(list.signal.aborted, true);
+  assert.equal(detail.signal.aborted, true);
+  assert.equal(list.isCurrent(), false);
+  assert.equal(detail.isCurrent(), false);
+});
+
+test("completed requests release cancellation ownership without reviving stale work", () => {
+  const guard = createRequestGuard("target:1");
+  const completed = guard.begin("list");
+
+  completed.complete();
+  guard.setScope("target:2");
+
+  assert.equal(completed.signal.aborted, false);
+  assert.equal(completed.isCurrent(), false);
 });

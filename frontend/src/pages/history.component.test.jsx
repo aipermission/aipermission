@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../lib/api";
 import { HistoryPage } from "./history";
+
+// async-owner: src/pages/use-history-page-state.js
 
 vi.mock("../lib/api", () => ({
   apiDelete: vi.fn(),
@@ -84,6 +87,72 @@ describe("HistoryPage request ownership", () => {
     expect(within(screen.getByText("Total").parentElement).getByText("7")).toBeVisible();
   });
 
+  it("does not describe a failed history request as an empty history", async () => {
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.reject(new Error("history unavailable"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+
+    expect(await screen.findByText("history unavailable")).toBeVisible();
+    expect(screen.queryByText("No history yet.")).not.toBeInTheDocument();
+  });
+
+  it("clears stale forward pagination after the next page fails", async () => {
+    let historyCalls = 0;
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (typeof path !== "string" || !path.startsWith("/api/history?")) return Promise.resolve({});
+      historyCalls++;
+      if (historyCalls === 1) return Promise.resolve(historyResponse("page one", { nextCursor: "page-2" }));
+      return Promise.reject(new Error("next page unavailable"));
+    });
+    render(<HistoryPage />);
+
+    expect(await screen.findByText("page one")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("next page unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
+  });
+
+  it("keeps the history table horizontally recoverable", async () => {
+    installHistoryMock();
+    render(<HistoryPage />);
+    expect(await screen.findByText("initial")).toBeVisible();
+    expect(screen.getByTestId("history-table-scroll")).toHaveClass("overflow-x-auto");
+  });
+
+  it("updates and clears every connector-aware history filter", async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([{ id: 5, name: "Investigate" }]);
+      if (path === "/api/projects") return Promise.resolve({ items: [{ id: 3, name: "My Project" }] });
+      if (path === "/api/history/targets") {
+        return Promise.resolve({ items: [{ ref: "ssh:1:1", connector_kind: "ssh", target_name: "Host", project_id: 3 }] });
+      }
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("initial")).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText("Filter by project"), "3");
+    await user.selectOptions(screen.getByLabelText("Filter by connector type"), "ssh");
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "completed");
+    await user.selectOptions(screen.getByLabelText("Filter by source"), "mcp");
+    await user.selectOptions(screen.getByLabelText("Filter by connector"), "ssh:1:1");
+    await user.selectOptions(screen.getByLabelText("Filter by label"), "5");
+    await user.type(screen.getByLabelText("Search history"), "query");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByLabelText("Search history")).toHaveValue("");
+    expect(screen.getByLabelText("Filter by project")).toHaveValue("");
+  });
+
   it("invalidates an in-flight filter response before the debounced replacement starts", async () => {
     const older = deferred();
     const current = deferred();
@@ -142,6 +211,25 @@ describe("HistoryPage request ownership", () => {
     await act(async () => detail.resolve({ ...historyResponse("detail").items[0], id: "initial" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens history details from the keyboard", async () => {
+    const user = userEvent.setup();
+    installHistoryMock();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (path === "/api/history/initial") return Promise.resolve(historyResponse("initial").items[0]);
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+
+    const details = await screen.findByRole("button", { name: "Open history details for initial" });
+    details.focus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("dialog")).toBeVisible();
   });
 
   it("serializes slow polling and eventually commits its response", { timeout: 10000 }, async () => {

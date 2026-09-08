@@ -10,6 +10,12 @@ export function connectorActionPending(item) {
   return Boolean(item && nonTerminalStatuses.has(item.status));
 }
 
+export function connectorActionRequestID(item) {
+  const requestID = Number(item?.request_id);
+  if (!Number.isInteger(requestID) || requestID < 1) throw new Error("Pending connector action response is missing request_id.");
+  return requestID;
+}
+
 export function connectorActionCode(item) {
   return String(item?.output?.code || "");
 }

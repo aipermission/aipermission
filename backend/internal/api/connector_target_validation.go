@@ -34,13 +34,14 @@ func normalizeConnectorTargetUpdate(connector connectors.Connector, existing, su
 
 func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
 	mode, _ := config["connection_mode"].(string)
-	if strings.TrimSpace(mode) != "over_ssh" {
+	mode = strings.TrimSpace(mode)
+	if !connectors.UsesConnectorTransport(mode, "direct") {
 		return nil
 	}
 	transportTargetRef, _ := config["transport_target_ref"].(string)
 	transportTargetRef = strings.TrimSpace(transportTargetRef)
 	if transportTargetRef == "" {
-		return connectortargets.ValidationError("transport target ref is required for over_ssh")
+		return connectortargets.ValidationError(fmt.Sprintf("transport target ref is required for connection mode %q", mode))
 	}
 	if err := store.ValidateTransportProject(ctx, projectID, transportTargetRef); err != nil {
 		return err

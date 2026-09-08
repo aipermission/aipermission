@@ -1,0 +1,16 @@
+{
+  "path": ["src"],
+  "minLines": 10,
+  "minTokens": 80,
+  "mode": "strict",
+  "format": ["javascript", "jsx"],
+  "ignore": [
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/*.component.test.js",
+    "**/*.component.test.jsx",
+    "src/lib/release.generated.json",
+    "src/lib/mcp-client-catalog.js"
+  ],
+  "reporters": ["console"]
+}

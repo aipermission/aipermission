@@ -34,6 +34,12 @@ jobs:
         run: node scripts/go-toolchain-check.js
       - name: Maintenance budgets
         run: node scripts/maintenance-budget-check.js
+      - name: Maintenance budget ratchet
+        env:
+          MAINTENANCE_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --test scripts/maintenance-budget-ratchet.test.js
+          node scripts/maintenance-budget-ratchet.js
       - name: Package lock ownership
         run: node scripts/package-lock-check.js
       - name: Release version consistency
@@ -84,8 +90,12 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PLAYWRIGHT_GATE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24
@@ -108,15 +118,37 @@ jobs:
       - name: Format check
         working-directory: frontend
         run: npm run format:check
+      - name: Architecture boundaries
+        working-directory: frontend
+        run: npm run test:architecture
+      - name: Duplication budget
+        working-directory: frontend
+        env:
+          FRONTEND_DUPLICATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run test:duplication
       - name: Test
         working-directory: frontend
         run: npm test
+      - name: Async state ownership
+        working-directory: frontend
+        run: npm run test:async-race
       - name: Critical coverage floors
         working-directory: frontend
         run: npm run test:coverage
-      - name: End-to-end test
+      - name: Changed behavior-owner coverage
         working-directory: frontend
-        run: npm run test:e2e
+        env:
+          FRONTEND_COVERAGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: npm run test:coverage:changed
+      - name: Browser smoke
+        working-directory: frontend
+        run: npm run test:e2e:smoke
+      - name: Accessibility browser regression
+        working-directory: frontend
+        run: npm run test:e2e:accessibility
+      - name: High-risk browser regression
+        working-directory: frontend
+        run: npm run test:e2e:high-risk
       - name: Real-backend browser test
         working-directory: frontend
         run: npm run test:e2e:real

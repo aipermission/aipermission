@@ -63,4 +63,44 @@ describe("VaultActionApprovalDialog", () => {
     await user.click(screen.getByRole("button", { name: "OK" }));
     expect(handlers.onClose).toHaveBeenCalledOnce();
   });
+
+  it("renders failed environment approvals without inventing missing context", async () => {
+    const user = userEvent.setup();
+    const handlers = renderDialog({
+      approval: {
+        created_at: "",
+        expires_at: "",
+        reason: "",
+        approval_context: {
+          connector_kind: "ssh",
+          target_id: 4,
+          profile_id: 8,
+          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: false }],
+        },
+      },
+      action: { state: "failed", error: "Delivery failed." },
+    });
+
+    expect(screen.getByText("No reason supplied.")).toBeVisible();
+    expect(screen.getByText(/session new/i)).toBeVisible();
+    expect(screen.queryByText(/overwrites existing shell value/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "OK" }));
+    expect(handlers.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("does not render approval content after the request closes", () => {
+    render(
+      <VaultActionApprovalDialog
+        approval={null}
+        note=""
+        action={{ state: "idle", error: "" }}
+        onNoteChange={() => {}}
+        onRun={() => {}}
+        onDecline={() => {}}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText("Requested metadata")).not.toBeInTheDocument();
+  });
 });

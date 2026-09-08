@@ -63,6 +63,7 @@ export function MessagesDialog({ open, target, tokens, tokenID, state, text, onT
         </div>
         <form className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 border-t border-stone-200 pt-2" onSubmit={onSubmit}>
           <label className="grid gap-1 text-sm font-medium text-stone-800">
+            <span className="sr-only">Message to AI</span>
             <Textarea
               value={text}
               onChange={(event) => onTextChange(event.target.value)}

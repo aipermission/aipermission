@@ -75,7 +75,6 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
       <div
         ref={containerRef}
         className={`h-full min-h-0 overflow-hidden rounded-md ${theme === "light" ? "terminal-surface-light" : "terminal-surface-dark"}`}
-        onClick={() => terminalRef.current?.focus()}
       />
     </div>
   );

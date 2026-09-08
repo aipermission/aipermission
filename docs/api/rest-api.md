@@ -112,11 +112,18 @@ after its active connector targets have been moved elsewhere; `Ungrouped`
 cannot be archived.
 
 Token project scopes are an MCP visibility boundary above target/profile/action
-permissions. `GET` returns every active project with its enabled state. `PUT`
-accepts `{"enabled_project_ids":[1,2]}` and replaces the token's project scope.
+permissions. `GET` returns every active project with its enabled state plus a
+`revision`. `PUT` accepts
+`{"enabled_project_ids":[1,2],"expected_revision":"..."}` and replaces the
+token's project scope.
 Disabling a project hides all of its connector targets from MCP discovery and
 prevents connector actions for that project, while preserving the underlying
 per-action grants for later re-enablement.
+
+Project capability responses use the same `revision` / `expected_revision`
+contract. These three full-list authorization APIs reject a missing revision
+with `400 Bad Request` and a stale revision with `409 Conflict`; callers must
+reload instead of overwriting a newer authorization edit.
 
 Project capabilities are separate from connector action permissions. The
 capability response includes the supported definitions and the token's
@@ -612,6 +619,7 @@ recursive listing. Expansion is limited to 100 files and 1 GiB total size:
 runtime_id=3
 remote_path=/tmp/app.log
 overwrite=false
+idempotency_key=<caller-stable UUID>
 file=<browser selected file>
 ```
 
@@ -629,7 +637,8 @@ prefixes are rejected.
 ```json
 {
   "runtime_id": 3,
-  "remote_path": "/var/log/syslog"
+  "remote_path": "/var/log/syslog",
+  "idempotency_key": "caller-stable UUID"
 }
 ```
 
@@ -649,6 +658,7 @@ The local UI primarily uses the batch queue endpoints. `POST
 runtime_id=3
 remote_dir=/home/deploy
 overwrite=false
+idempotency_key=<caller-stable UUID>
 files=<browser selected file>
 files=<another browser selected file>
 relative_paths=["reports/2026/a.csv","reports/2026/b.csv"]
@@ -670,9 +680,20 @@ the same queue are rejected before the transfer starts.
 {
   "runtime_id": 3,
   "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
-  "archive_name": "logs.zip"
+  "archive_name": "logs.zip",
+  "idempotency_key": "caller-stable UUID"
 }
 ```
+
+Every local UI transfer-start request requires an `idempotency_key` of at most
+128 bytes. Reuse one key only when retrying the exact same logical start after
+an uncertain or lost response. The gateway atomically binds the key to the
+normalized request and returns the original transfer or batch on replay; using
+that key with different paths, files, content, or overwrite behavior returns
+`409 Conflict`. Completed keys remain reserved for 30 days even when normal
+history retention removes the transfer record; a replay whose result has
+expired returns `410 Gone` and must use a new key after the destination is
+inspected.
 
 Remote files are downloaded sequentially to private temporary files. A single
 download is served as the downloaded file. Multiple completed downloads are
@@ -977,6 +998,7 @@ deny state; omitted permissions and `blocked` both prevent execution.
 
 ```json
 {
+  "expected_revision": "current-revision-from-get",
   "permissions": [
     {
       "target_id": 7,
@@ -993,7 +1015,9 @@ deny state; omitted permissions and `blocked` both prevent execution.
 permission set for the token. Each grant binds one connector target, one
 credential profile, and one connector action. The response includes safe
 metadata such as target name, profile label, connector kind, and target ref; it
-never includes credential secrets.
+never includes credential secrets. `GET` and successful `PUT` responses include
+the current authorization `revision`; every `PUT` must carry that value as
+`expected_revision` so stale forms cannot erase a newer permission change.
 
 `expires_at` is optional and must be an RFC3339 timestamp in the future when
 present. It creates a temporary token action permission grant. Expired grants
@@ -1277,9 +1301,14 @@ explicit ledger reset from Settings. Reconciliation uses an exact idempotency-ke
 and revision CAS, and a carried identity survives pre-handler authentication,
 CSRF, or locked-database errors. Missing or corrupt IndexedDB/signing-key state
 fails closed. Storage is bounded to 128 entries per workspace, 512 entries per
-origin, and 64 signing scopes. A legacy localStorage retry ledger is not
-silently migrated because its signatures were not keyed; Settings requires an
-explicit reconciliation/reset first.
+origin, and 64 active signing scopes. Completed scopes are reclaimed
+automatically. Transactional short-lived signing reservations prevent another
+tab from deleting a scope key between signature creation and retry-entry
+reservation. When all scope slots protect unresolved work, Settings identifies
+the entries that must be inspected and explicitly reconciled before a new scope
+can be created. A legacy localStorage retry ledger is not silently migrated
+because its signatures were not keyed; Settings requires an explicit
+reconciliation/reset first.
 
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for

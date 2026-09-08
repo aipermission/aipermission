@@ -85,10 +85,21 @@ export function unknownSubmissionRetryDecision(submissionUnknown, fields) {
 }
 
 export function validateComposeFields(fields, { reply = false } = {}) {
+  const recipientError = validateRecipients(fields);
+  if (recipientError) return recipientError;
+  return validateMessageContent(fields, reply);
+}
+
+function validateRecipients(fields) {
   const recipients = [fields?.to, fields?.cc, fields?.bcc].flatMap((value) => (Array.isArray(value) ? value : recipientList(value)));
-  if ((Array.isArray(fields?.to) ? fields.to : recipientList(fields?.to)).length === 0) return "Add at least one To recipient.";
+  const to = Array.isArray(fields?.to) ? fields.to : recipientList(fields?.to);
+  if (to.length === 0) return "Add at least one To recipient.";
   if (recipients.length > 20) return "A message can contain at most 20 recipients.";
   if (recipients.some((value) => utf8Length(String(value).trim()) > 320)) return "Each recipient address must not exceed 320 bytes.";
+  return "";
+}
+
+function validateMessageContent(fields, reply) {
   const subject = String(fields?.subject || "").trim();
   if (!subject) return "Subject is required.";
   if (/[\r\n]/.test(subject)) return "Subject must stay on one line.";

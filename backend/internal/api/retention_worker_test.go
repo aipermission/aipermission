@@ -78,9 +78,16 @@ func TestPeriodicRetentionPrunesExpiredIdempotencyTombstonesWhenHistoryRetention
 		)`); err != nil {
 		t.Fatalf("insert expired tombstone: %v", err)
 	}
+	if _, err := fixture.db.Exec(`
+		INSERT INTO file_transfer_start_idempotency (
+			scope, idempotency_key, identity_hash, resource_kind, resource_id, created_at, expires_at
+		) VALUES ('ui', 'expired-transfer', 'h1:expired', 'batch', 1, '2000-01-01T00:00:00Z', '2000-01-02T00:00:00Z')`); err != nil {
+		t.Fatalf("insert expired file transfer idempotency record: %v", err)
+	}
 
 	fixture.server.runPeriodicRetention(t.Context(), fixture.server.activeRuntime())
 	assertTableCount(t, fixture.db, "connector_action_idempotency_tombstones", 0)
+	assertTableCount(t, fixture.db, "file_transfer_start_idempotency", 0)
 }
 
 func TestStopRetentionWorkerWaitsForShutdown(t *testing.T) {

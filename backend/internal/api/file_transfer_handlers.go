@@ -38,14 +38,16 @@ func formatFileTransferLimit(size int64) string {
 }
 
 type startDownloadRequest struct {
-	RuntimeID  int64  `json:"runtime_id"`
-	RemotePath string `json:"remote_path"`
+	RuntimeID      int64  `json:"runtime_id"`
+	RemotePath     string `json:"remote_path"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 type startDownloadBatchRequest struct {
-	RuntimeID   int64    `json:"runtime_id"`
-	RemotePaths []string `json:"remote_paths"`
-	ArchiveName string   `json:"archive_name"`
+	RuntimeID      int64    `json:"runtime_id"`
+	RemotePaths    []string `json:"remote_paths"`
+	ArchiveName    string   `json:"archive_name"`
+	IdempotencyKey string   `json:"idempotency_key"`
 }
 
 type updateFileTransferBatchQueueRequest struct {

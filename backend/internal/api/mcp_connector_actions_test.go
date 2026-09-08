@@ -252,7 +252,10 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get ungrouped project: %v", err)
 	}
-	scopeResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/project-scopes", "", updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{ungrouped.ID}})
+	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
+	scopeResponse := performJSON(fixture.server.Handler(), http.MethodPut, scopePath, "", withCurrentAuthorizationRevision(
+		t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{ungrouped.ID}},
+	))
 	if scopeResponse.Code != http.StatusOK {
 		t.Fatalf("disable project scope: %d %s", scopeResponse.Code, scopeResponse.Body.String())
 	}

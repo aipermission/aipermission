@@ -238,7 +238,6 @@ function RichTextEditor({ value, onChange }) {
                 if (event.key === "Enter") applyLink(event);
               }}
               aria-label="Link URL"
-              autoFocus
             />
             <Button type="button" className="h-8" onClick={applyLink}>
               Apply link

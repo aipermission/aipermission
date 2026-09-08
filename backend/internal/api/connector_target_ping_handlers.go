@@ -66,15 +66,13 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	switch request.Mode {
-	case "direct":
-	case "over_ssh":
+	if connectors.UsesConnectorTransport(request.Mode, "direct") {
 		if request.ProjectID < 1 {
-			writeError(w, http.StatusBadRequest, "project_id is required for over_ssh")
+			writeError(w, http.StatusBadRequest, "project_id is required for connector transport")
 			return
 		}
 		if request.TransportTargetRef == "" {
-			writeError(w, http.StatusBadRequest, "transport target ref is required for over_ssh")
+			writeError(w, http.StatusBadRequest, "transport target ref is required for connector transport")
 			return
 		}
 		if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, map[string]any{
@@ -84,9 +82,6 @@ func (s connectorTargetHandlers) pingConnectorTargetHost(w http.ResponseWriter, 
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-	default:
-		writeError(w, http.StatusBadRequest, "unsupported connection mode")
-		return
 	}
 	attemptCount := request.Attempts
 	if attemptCount <= 0 || attemptCount > connectorHostPingDefaultAttempts {

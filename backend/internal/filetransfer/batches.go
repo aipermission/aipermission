@@ -86,10 +86,59 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 		return BatchRecord{}, fmt.Errorf("begin file transfer batch: %w", err)
 	}
 	defer tx.Rollback()
+	batchID, err := insertBatch(ctx, tx, normalized, nowString())
+	if err != nil {
+		return BatchRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return BatchRecord{}, fmt.Errorf("commit file transfer batch: %w", err)
+	}
+	return s.createdBatch(ctx, batchID)
+}
 
-	now := nowString()
+func (s *Store) CreateBatchIdempotent(ctx context.Context, request CreateBatchRequest, claim IdempotencyClaim) (BatchRecord, bool, error) {
+	normalized, err := normalizeBatchCreateRequest(request)
+	if err != nil {
+		return BatchRecord{}, false, err
+	}
+	claim, err = normalizeIdempotencyClaim(claim, IdempotencyResourceBatch)
+	if err != nil {
+		return BatchRecord{}, false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return BatchRecord{}, false, fmt.Errorf("begin idempotent file transfer batch: %w", err)
+	}
+	defer tx.Rollback()
+	record, created, err := claimIdempotencyKey(ctx, tx, claim)
+	if err != nil {
+		return BatchRecord{}, false, err
+	}
+	if !created {
+		_ = tx.Rollback()
+		batch, getErr := s.createdBatch(ctx, record.ResourceID)
+		if errors.Is(getErr, ErrNotFound) {
+			return BatchRecord{}, false, ErrIdempotencyResultExpired
+		}
+		return batch, false, getErr
+	}
+	batchID, err := insertBatch(ctx, tx, normalized, nowString())
+	if err != nil {
+		return BatchRecord{}, false, err
+	}
+	if err := completeIdempotencyClaim(ctx, tx, claim, batchID); err != nil {
+		return BatchRecord{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return BatchRecord{}, false, fmt.Errorf("commit idempotent file transfer batch: %w", err)
+	}
+	batch, err := s.createdBatch(ctx, batchID)
+	return batch, true, err
+}
+
+func insertBatch(ctx context.Context, tx *sql.Tx, request CreateBatchRequest, now string) (int64, error) {
 	var totalSize int64
-	for _, item := range normalized.Items {
+	for _, item := range request.Items {
 		totalSize += item.SizeBytes
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -98,57 +147,38 @@ func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (Ba
 			size_bytes, eta_seconds, created_at, updated_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		normalized.RuntimeID,
-		normalized.Direction,
-		normalized.Source,
-		normalized.Status,
-		normalized.ArchiveName,
-		normalized.ApprovalNote,
-		boolInt(normalized.Overwrite),
-		len(normalized.Items),
+		request.RuntimeID,
+		request.Direction,
+		request.Source,
+		request.Status,
+		request.ArchiveName,
+		request.ApprovalNote,
+		boolInt(request.Overwrite),
+		len(request.Items),
 		totalSize,
 		-1,
 		now,
 		now,
 	)
 	if err != nil {
-		return BatchRecord{}, fmt.Errorf("create file transfer batch: %w", err)
+		return 0, fmt.Errorf("create file transfer batch: %w", err)
 	}
 	batchID, err := result.LastInsertId()
 	if err != nil {
-		return BatchRecord{}, fmt.Errorf("read file transfer batch id: %w", err)
+		return 0, fmt.Errorf("read file transfer batch id: %w", err)
 	}
-	for i, item := range normalized.Items {
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO file_transfers (
-				batch_id, queue_index, runtime_id, direction, source, status, local_path,
-				remote_path, file_name, size_bytes, transferred_bytes, temp_path, eta_seconds,
-				created_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			batchID,
-			i,
-			item.RuntimeID,
-			item.Direction,
-			item.Source,
-			normalized.Status,
-			item.LocalPath,
-			item.RemotePath,
-			item.FileName,
-			item.SizeBytes,
-			item.TransferredBytes,
-			item.TempPath,
-			-1,
-			now,
-			now,
-		)
+	for i, item := range request.Items {
+		item.BatchID = batchID
+		item.QueueIndex = i
+		_, err := insertTransfer(ctx, tx, item, request.Status, now)
 		if err != nil {
-			return BatchRecord{}, fmt.Errorf("create file transfer batch item: %w", err)
+			return 0, fmt.Errorf("create file transfer batch item: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return BatchRecord{}, fmt.Errorf("commit file transfer batch: %w", err)
-	}
+	return batchID, nil
+}
+
+func (s *Store) createdBatch(ctx context.Context, batchID int64) (BatchRecord, error) {
 	batch, err := s.GetBatch(ctx, batchID)
 	if err != nil {
 		return BatchRecord{}, err

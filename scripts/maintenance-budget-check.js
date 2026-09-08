@@ -4,12 +4,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
+const frontendArchitecturePolicy = require("../frontend/architecture-policy.json");
 const sourceBudgets = [
   { directory: "backend", extensions: new Set([".go"]), maxLines: 1400 },
   {
     directory: "frontend/src",
-    extensions: new Set([".js", ".jsx", ".ts", ".tsx"]),
-    maxLines: 800,
+    extensions: new Set(frontendArchitecturePolicy.sourceExtensions),
+    maxLines: frontendArchitecturePolicy.maxProductionModuleLines,
   },
   {
     directory: "packages/mcp/src",

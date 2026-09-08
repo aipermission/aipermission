@@ -1,7 +1,6 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { ConnectionModeFields } from "../_shared/network-transport-fields";
-import { HostPingButton } from "../host-ping-button";
+import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
 
 export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
@@ -19,44 +18,27 @@ export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets =
         form={form}
         targets={targets}
         onChange={onChange}
-        overSSHNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine; do not use the AMQP port."
+        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:15672 when RabbitMQ Management only listens on the remote machine; do not use the AMQP port."
         directNotice="For RabbitMQ Management running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
       />
-      <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_120px]">
-        <Field>
-          Scheme
-          <Select value={form.scheme || "http"} onChange={(event) => onChange("scheme", event.target.value)}>
-            <option value="auto">Auto</option>
-            <option value="http">HTTP</option>
-            <option value="https">HTTPS</option>
-          </Select>
-        </Field>
-        <Field>
-          <span className="flex items-center justify-between gap-2">
-            <span>Management host</span>
-            <HostPingButton
-              host={form.host}
-              port={form.port}
-              mode={form.connection_mode}
-              transportTargetRef={form.transport_target_ref}
-              projectID={form.project_id}
-            />
-          </span>
-          <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
-        </Field>
-        <Field>
-          Management API port
-          <Input
-            type="number"
-            min="1"
-            max="65535"
-            value={form.port}
-            onChange={(event) => onChange("port", event.target.value)}
-            placeholder="15672"
-            required
-          />
-        </Field>
-      </div>
+      <NetworkEndpointFields
+        form={form}
+        onChange={onChange}
+        hostLabel="Management host"
+        portLabel="Management API port"
+        portPlaceholder="15672"
+        className="sm:grid-cols-[120px_minmax(0,1fr)_120px]"
+        leading={
+          <Field>
+            Scheme
+            <Select value={form.scheme || "http"} onChange={(event) => onChange("scheme", event.target.value)}>
+              <option value="auto">Auto</option>
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+            </Select>
+          </Field>
+        }
+      />
       <Field>
         Default vhost
         <Input value={form.vhost} onChange={(event) => onChange("vhost", event.target.value)} placeholder="/" />

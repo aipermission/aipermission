@@ -3,6 +3,7 @@
   "label": "ClickHouse",
   "icon": "database",
   "badge_tone": "neutral",
+  "profile_lifecycle": "custom",
   "summary": "Metadata inspection and bounded read-only analytics SQL through ClickHouse credential profiles.",
   "version": "0.1"
 }

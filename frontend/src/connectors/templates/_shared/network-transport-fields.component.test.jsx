@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ConnectionModeFields, NetworkTransportFields } from "./network-transport-fields";
+import {
+  ConnectionModeFields,
+  NetworkEndpointFields,
+  networkTransportDescriptors,
+  TransportConnectorIdentityFields,
+  NetworkTransportFields,
+  sortNetworkTransportDescriptors,
+  transportProfileOptions,
+} from "./network-transport-fields";
 
 vi.mock("../host-ping-button", () => ({
   HostPingButton: (props) => <span data-testid="host-ping-props">{JSON.stringify(props)}</span>,
@@ -24,6 +32,56 @@ const targets = [
 ];
 
 describe("ConnectionModeFields", () => {
+  it("wires connector identity fields without requiring transport targets", () => {
+    const onChange = vi.fn();
+    render(
+      <TransportConnectorIdentityFields
+        form={{ name: "Docker host", connection_mode: "over_ssh", transport_target_ref: "" }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Connector name" }), { target: { value: "New host" } });
+    expect(onChange).toHaveBeenCalledWith("name", "New host");
+    expect(screen.getByRole("combobox", { name: "Transport profile" })).toHaveValue("");
+  });
+
+  it("discovers transport modes and profile defaults from connector metadata", () => {
+    expect(networkTransportDescriptors()).toEqual([
+      expect.objectContaining({ mode: "over_ssh", option_label: "Over an SSH connector profile" }),
+    ]);
+    expect(
+      transportProfileOptions(
+        [{ connector_kind: "ssh", id: 4, name: "Operations", config: { host: "ops.example" }, profiles: [{ id: 8, label: "root" }] }],
+        "over_ssh",
+      ),
+    ).toEqual([{ ref: "ssh:4:8", label: "Operations / root · ops.example:22" }]);
+    expect(transportProfileOptions(targets, "unsupported_transport")).toEqual([]);
+    expect(transportProfileOptions(targets)).toEqual([]);
+    expect(sortNetworkTransportDescriptors([{ option_label: "Zulu" }, { option_label: "Alpha" }])).toEqual([
+      { option_label: "Alpha" },
+      { option_label: "Zulu" },
+    ]);
+  });
+
+  it("renders composable endpoint fields without owning connector-specific siblings", () => {
+    const onChange = vi.fn();
+    render(
+      <NetworkEndpointFields
+        form={{ connection_mode: "direct", host: "queue.example", port: "15672" }}
+        onChange={onChange}
+        hostLabel="Management host"
+        leading={<span>Scheme field</span>}
+        trailing={<span>Vhost field</span>}
+      />,
+    );
+
+    expect(screen.getByText("Scheme field")).toBeVisible();
+    expect(screen.getByText("Vhost field")).toBeVisible();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Port" }), { target: { value: "15673" } });
+    expect(onChange).toHaveBeenCalledWith("port", "15673");
+  });
+
   it("wires host, port, mode, project, and transport profile through the shared fields", () => {
     const onChange = vi.fn();
     render(
@@ -57,7 +115,7 @@ describe("ConnectionModeFields", () => {
     expect(onChange).toHaveBeenCalledWith("port", "6380");
   });
 
-  it("keeps direct transport free of SSH profile controls", async () => {
+  it("keeps direct transport free of profile controls", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
@@ -66,17 +124,17 @@ describe("ConnectionModeFields", () => {
         targets={targets}
         onChange={onChange}
         directNotice="Direct transport guidance"
-        overSSHNotice="SSH transport guidance"
+        transportNotice="SSH transport guidance"
       />,
     );
 
     expect(screen.getByText("Direct transport guidance")).toBeVisible();
-    expect(screen.queryByRole("combobox", { name: "SSH transport profile" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "SSH connector profile" })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole("combobox", { name: "Connection mode" }), "over_ssh");
     expect(onChange).toHaveBeenCalledWith("connection_mode", "over_ssh");
   });
 
-  it("lists only SSH connector profiles for over-SSH transport", async () => {
+  it("lists only connectors that provide network transport", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
@@ -85,11 +143,11 @@ describe("ConnectionModeFields", () => {
         targets={targets}
         onChange={onChange}
         directNotice="Direct transport guidance"
-        overSSHNotice="SSH transport guidance"
+        transportNotice="SSH transport guidance"
       />,
     );
 
-    const profileSelect = screen.getByRole("combobox", { name: "SSH transport profile" });
+    const profileSelect = screen.getByRole("combobox", { name: "SSH connector profile" });
     expect(screen.getByText("SSH transport guidance")).toBeVisible();
     expect(screen.getByRole("option", { name: "Operations / root · ops.example:2222" })).toBeVisible();
     expect(screen.queryByRole("option", { name: /Database/ })).not.toBeInTheDocument();

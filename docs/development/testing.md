@@ -48,13 +48,30 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
+- Playwright policy validation that rejects skipped/fixed scenarios, requires
+  the complete smoke, accessibility, high-risk, real-backend, and responsive
+  viewport manifests to remain discoverable, and rejects removal of a
+  base-branch gate in the same change
+- frontend suite-manifest validation that discovers production owners using
+  request/generation guards, abort controllers, polling timers, or sockets and
+  requires each owner to map to a test that reaches it through the real import
+  graph; this is a discovery/ownership gate, while cancellation and stale-result
+  behavior remain explicit assertions in the mapped tests
+- frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
   page-state boundaries
 - frontend production build
-- frontend Playwright browser smoke for unlock, security settings, database import, settings retention, and token permission flows
+- frontend Playwright browser smoke plus explicit accessibility and high-risk
+  workflow gates for keyboard focus, responsive unlock/setup, database import,
+  token permissions, Prompt approval, structured session isolation, live-console
+  reconnect, transfer cancellation, mobile navigation, Console drawers, and
+  viewport-contained permission dialogs
 - frontend Playwright lifecycle coverage against a real encrypted backend for
   Prompt approval, completion, stale-context rejection, lock/unlock, and restart
+- explicit frontend async-state ownership coverage for stale completion,
+  scoped cancellation, target/profile changes, WebSocket closure,
+  reconciliation, and transfer ownership
 - frontend production npm audit
 - MCP package tests
 - MCP package build
@@ -77,7 +94,30 @@ coverage.
 
 The frontend coverage gate uses per-file V8 thresholds rather than one broad
 aggregate percentage. This keeps a well-covered utility from masking a weak
-authorization or session surface.
+authorization or session surface. Every production JavaScript module is a
+coverage owner unless it is an explicitly listed generated or test-support
+file. The checked baseline is compared with the base Git revision, so a change
+cannot weaken its baseline in the same pull request. New modules must meet the
+full floor; an existing module below the floor must improve by at least one
+percentage point whenever it changes, until it reaches the floor.
+Changed-coverage runs allocate an isolated temporary report directory, so
+parallel or interrupted checks cannot reuse stale coverage artifacts. The
+accepted bootstrap is pinned by both commit and Git tree, preserving the same
+boundary when a rebase merge rewrites commit identities. Missing or malformed
+base state fails closed, and untracked production owners are included before
+the first commit. Baseline updates preserve both stronger accepted metrics and
+the next required ratchet; the normal read-only gate must still pass afterward.
+The IndexedDB-backed local action retry ledger has a separate Node coverage
+gate that checks every retry module independently, so aggregate coverage or a
+well-tested sibling cannot hide an under-tested storage boundary.
+
+Playwright release gates run with retries disabled and reject committed
+`test.only` calls in CI. A flaky first attempt is therefore a failure, while
+failure traces remain available for diagnosis. High-risk route fixtures assert
+the HTTP method and request body, and responsive accessibility checks run after
+every tested unlock/setup tab transition. The checked manifest is ratcheted
+against the base Git revision, so deleting both a critical test and its current
+manifest entry cannot make the same pull request pass.
 
 The real-backend browser test runs the production API, SQLCipher database,
 UI-session authentication, CSRF, connector permission, approval, and history

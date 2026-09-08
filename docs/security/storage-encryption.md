@@ -125,7 +125,10 @@ the operator explicitly reconciles or resets it in Settings. Browser runtimes
 also fail closed when IndexedDB or its non-extractable signing key is missing or
 corrupt. Reconciliation compares the complete idempotency key and record
 revision so a stale tab cannot remove a newer in-flight identity. The ledger is
-bounded across both one workspace and the browser origin.
+bounded across both one workspace and the browser origin. Completed scopes
+release their signing keys automatically. Short-lived signing reservations keep
+a key alive while another tab prepares a request, so cleanup cannot invalidate
+an in-flight signature.
 
 Web REST calls use a local HttpOnly browser session cookie after unlock. If that cookie is missing or expired while the backend process still has the database open, the UI returns to the unlock form and asks for the same database password to issue a new cookie. The database password is not used as an API bearer token.
 

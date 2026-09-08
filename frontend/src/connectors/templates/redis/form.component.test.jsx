@@ -1,5 +1,5 @@
 import { it } from "vitest";
-import { verifyConnectionModeForm } from "../_shared/network-transport-form-test-support";
+import { verifyConnectionModeForm } from "../_shared/network-transport-form.test-support";
 import { RedisConnectorFormTemplate } from "./form";
 
 it("keeps Redis wired to the shared connection mode contract", async () => {

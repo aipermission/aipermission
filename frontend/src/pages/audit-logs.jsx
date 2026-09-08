@@ -1,6 +1,7 @@
 import { RefreshCcw, Search } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
+import { useRequestGuard } from "../lib/request-guard";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -31,27 +32,21 @@ export function AuditLogsPage() {
     error: null,
   });
   const [selected, setSelected] = useState(null);
+  const requests = useRequestGuard("audit-logs");
+  const loadProjectsForEffect = useEffectEvent(() => loadAuditProjects(requests, setProjects));
   const loadAuditLogsForEffect = useEffectEvent((offset) => loadAuditLogs(offset));
 
   useEffect(() => {
-    void loadProjects();
+    void loadProjectsForEffect();
   }, []);
 
   useEffect(() => {
+    requests.invalidate("list");
     const timer = window.setTimeout(() => {
       void loadAuditLogsForEffect(0);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID]);
-
-  async function loadProjects() {
-    try {
-      const data = await apiGet("/api/projects");
-      setProjects({ state: "ready", data: data.items || [], error: null });
-    } catch (error) {
-      setProjects({ state: "error", data: [], error: error.message });
-    }
-  }
+  }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID, requests]);
 
   const targetOptions = useMemo(() => {
     const options = new Map();
@@ -62,8 +57,10 @@ export function AuditLogsPage() {
     });
     state.data.forEach((item) => {
       if (filters.projectID && String(item.project_id) !== String(filters.projectID)) return;
-      if (item.target_id) options.set(String(item.target_id), item.target_name || `target ${item.target_id}`);
-      if (!item.target_id && item.runtime_id) options.set(`runtime:${item.runtime_id}`, item.target_name || `server ${item.runtime_id}`);
+      if (item.target_id) options.set(String(item.target_id), item.target_name || item.target_ref || `target ${item.target_id}`);
+      if (!item.target_id && item.runtime_id) {
+        options.set(`runtime:${item.runtime_id}`, item.target_name || item.target_ref || `runtime ${item.runtime_id}`);
+      }
     });
     return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
   }, [targets.data, state.data, filters.projectID]);
@@ -90,6 +87,7 @@ export function AuditLogsPage() {
   );
 
   async function loadAuditLogs(offset = state.offset) {
+    const request = requests.begin("list");
     setState((current) => ({ ...current, state: "loading", error: null }));
     const params = new URLSearchParams({
       limit: String(state.limit),
@@ -102,7 +100,8 @@ export function AuditLogsPage() {
     if (filters.targetID && !filters.targetID.startsWith("runtime:")) params.set("target_id", filters.targetID);
     if (filters.targetID?.startsWith("runtime:")) params.set("runtime_id", filters.targetID.slice("runtime:".length));
     try {
-      const data = await apiGet(`/api/audit-logs?${params.toString()}`);
+      const data = await apiGet(`/api/audit-logs?${params.toString()}`, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setState({
         state: "ready",
         data: data.items || [],
@@ -113,17 +112,25 @@ export function AuditLogsPage() {
         error: null,
       });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
   async function openAuditItem(item) {
+    const request = requests.begin("detail");
     setSelected(item);
     try {
-      const detail = await apiGet(`/api/audit-logs/${item.id}`);
+      const detail = await apiGet(`/api/audit-logs/${item.id}`, { signal: request.signal });
+      if (!request.isCurrent()) return;
       setSelected(detail);
     } catch {
+      if (!request.isCurrent()) return;
       setSelected(item);
+    } finally {
+      request.complete();
     }
   }
 
@@ -131,10 +138,10 @@ export function AuditLogsPage() {
   const pageEnd = Math.min(state.offset + state.data.length, state.total);
 
   return (
-    <section className="mx-auto grid w-full max-w-7xl gap-5">
+    <section className="mx-auto grid min-w-0 w-full max-w-7xl gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold">Audit Logs</h3>
+          <h1 className="text-lg font-semibold">Audit Logs</h1>
           <p className="text-sm text-stone-500">Security, token, permission, console, and MCP execution events.</p>
         </div>
         <Button type="button" variant="outline" onClick={() => loadAuditLogs(state.offset)} disabled={state.state === "loading"}>
@@ -150,60 +157,19 @@ export function AuditLogsPage() {
         <AuditStat label="User" value={stats.user} tone="good" />
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-5">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <Input
-            value={filters.query}
-            onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-            placeholder="Search actions, names, or payload"
-            className="pl-9"
-          />
-        </div>
-        <Select
-          value={filters.projectID}
-          onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetID: "" }))}
-        >
-          <option value="">All projects</option>
-          {projects.data.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.actor} onChange={(event) => setFilters((current) => ({ ...current, actor: event.target.value }))}>
-          {actorOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          value={filters.connectorKind}
-          onChange={(event) => setFilters((current) => ({ ...current, connectorKind: event.target.value }))}
-        >
-          <option value="">All types</option>
-          {connectorKindOptions.map((kind) => (
-            <option key={kind} value={kind}>
-              {kind}
-            </option>
-          ))}
-        </Select>
-        <Select value={filters.targetID} onChange={(event) => setFilters((current) => ({ ...current, targetID: event.target.value }))}>
-          <option value="">All connectors</option>
-          {targetOptions.map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <AuditFilters
+        filters={filters}
+        setFilters={setFilters}
+        projects={projects.data}
+        connectorKinds={connectorKindOptions}
+        targets={targetOptions}
+      />
 
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       {projects.state === "error" ? <Notice tone="bad">{projects.error}</Notice> : null}
 
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
+      <div data-testid="audit-table-scroll" className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+        <table className="w-full min-w-[860px] table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[10%] px-4 py-3 font-semibold">Actor</th>
@@ -222,21 +188,28 @@ export function AuditLogsPage() {
                 </td>
               </tr>
             ) : null}
-            {state.state !== "loading" && state.data.length === 0 ? (
+            {state.state === "ready" && state.data.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
                   No audit events match these filters.
                 </td>
               </tr>
             ) : null}
-            {state.state !== "loading"
+            {state.state === "ready"
               ? state.data.map((item) => (
-                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openAuditItem(item)}>
+                  <tr key={item.id} className="transition hover:bg-stone-50">
                     <td className="px-4 py-3">
                       <ActorBadge actor={item.actor_type} />
                     </td>
                     <td className="truncate px-4 py-3">
-                      <ActionBadge action={item.action} />
+                      <button
+                        type="button"
+                        className="max-w-full rounded outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                        aria-label={`Open audit details for ${item.action || "unknown action"}`}
+                        onClick={() => openAuditItem(item)}
+                      >
+                        <ActionBadge action={item.action} />
+                      </button>
                     </td>
                     <td className="truncate px-4 py-3">
                       <div className="truncate font-medium text-stone-900">{auditTargetLabel(item)}</div>
@@ -266,6 +239,81 @@ export function AuditLogsPage() {
       <AuditDialog item={selected} onClose={() => setSelected(null)} />
     </section>
   );
+}
+
+function AuditFilters({ filters, setFilters, projects, connectorKinds, targets }) {
+  const update = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-5">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+        <Input
+          aria-label="Search audit logs"
+          value={filters.query}
+          onChange={(event) => update("query", event.target.value)}
+          placeholder="Search actions, names, or payload"
+          className="pl-9"
+        />
+      </div>
+      <Select
+        aria-label="Filter audit logs by project"
+        value={filters.projectID}
+        onChange={(event) => setFilters((current) => ({ ...current, projectID: event.target.value, targetID: "" }))}
+      >
+        <option value="">All projects</option>
+        {projects.map((project) => (
+          <option key={project.id} value={project.id}>
+            {project.name}
+          </option>
+        ))}
+      </Select>
+      <Select aria-label="Filter audit logs by actor" value={filters.actor} onChange={(event) => update("actor", event.target.value)}>
+        {actorOptions.map((option) => (
+          <option key={option.value || "all"} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </Select>
+      <Select
+        aria-label="Filter audit logs by connector type"
+        value={filters.connectorKind}
+        onChange={(event) => update("connectorKind", event.target.value)}
+      >
+        <option value="">All types</option>
+        {connectorKinds.map((kind) => (
+          <option key={kind} value={kind}>
+            {kind}
+          </option>
+        ))}
+      </Select>
+      <Select
+        aria-label="Filter audit logs by connector"
+        value={filters.targetID}
+        onChange={(event) => update("targetID", event.target.value)}
+      >
+        <option value="">All connectors</option>
+        {targets.map(([id, name]) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+async function loadAuditProjects(requests, setProjects) {
+  const request = requests.begin("projects");
+  try {
+    const data = await apiGet("/api/projects", { signal: request.signal });
+    if (!request.isCurrent()) return;
+    setProjects({ state: "ready", data: data.items || [], error: null });
+  } catch (error) {
+    if (!request.isCurrent()) return;
+    setProjects({ state: "error", data: [], error: error.message });
+  } finally {
+    request.complete();
+  }
 }
 
 function AuditStat({ label, value, tone = "neutral" }) {
@@ -300,7 +348,6 @@ function AuditDialog({ item, onClose }) {
             <ActorBadge actor={item.actor_type} />
             {item.connector_kind ? <Badge tone="neutral">{item.connector_kind}</Badge> : null}
             {auditTargetLabel(item) !== "-" ? <Badge>{auditTargetLabel(item)}</Badge> : null}
-            {item.target_name ? <Badge>{item.target_name}</Badge> : null}
             {item.token_name ? <Badge>{item.token_name}</Badge> : null}
           </div>
         </div>
@@ -346,7 +393,7 @@ function payloadPreview(value) {
 }
 
 function auditTargetLabel(item) {
-  return item.target_name || item.target_name || (item.target_id ? `target ${item.target_id}` : "-");
+  return item.target_name || item.target_ref || (item.target_id ? `target ${item.target_id}` : "-");
 }
 
 function prettyPayload(value) {

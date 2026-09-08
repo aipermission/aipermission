@@ -30,9 +30,7 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
     >
       {approval ? (
         <div className="grid h-[calc(100vh-196px)] min-h-0 grid-rows-[minmax(0,1fr)_auto]">
-          <div
-            className={`grid min-h-0 gap-3 p-5 ${approvedItems.length > 0 ? "grid-rows-[auto_auto_auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_auto_minmax(0,1fr)]"}`}
-          >
+          <div className={`grid min-h-0 gap-3 p-5 ${vaultApprovalGridClass(approvedItems.length)}`}>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="warn">pending</Badge>
               <Badge>{approval.token_name}</Badge>
@@ -113,4 +111,8 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
       ) : null}
     </Dialog>
   );
+}
+
+function vaultApprovalGridClass(itemCount) {
+  return itemCount > 0 ? "grid-rows-[auto_auto_auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_auto_minmax(0,1fr)]";
 }

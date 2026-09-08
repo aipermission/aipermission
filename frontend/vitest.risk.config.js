@@ -1,23 +1,12 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import { riskCoverageTestIncludes } from "./test-suite-manifests.mjs";
 
 export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    include: [
-      "src/pages/unlock.component.test.jsx",
-      "src/components/app-shell-transfer-wiring.component.test.jsx",
-      "src/pages/remote-restore-panel.component.test.jsx",
-      "src/components/transfer-center.component.test.jsx",
-      "src/components/file-transfer/file-transfer-actions.component.test.jsx",
-      "src/components/file-transfer/file-transfer-list-state.component.test.jsx",
-      "src/components/settings/maintenance-console-panel.component.test.jsx",
-      "src/components/vault/vault-action-approval-dialog.component.test.jsx",
-      "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.jsx",
-      "src/connectors/templates/_shared/network-transport-fields.component.test.jsx",
-      "src/connectors/templates/{docker,kafka,kubernetes,mail,rabbitmq,redis,s3}/form.component.test.jsx",
-    ],
+    include: riskCoverageTestIncludes,
     setupFiles: ["./src/test/setup.js"],
     restoreMocks: true,
     unstubGlobals: true,
@@ -37,10 +26,10 @@ export default defineConfig({
       reporter: ["text"],
       thresholds: {
         perFile: true,
-        statements: 55,
-        branches: 50,
-        functions: 50,
-        lines: 55,
+        statements: 75,
+        branches: 60,
+        functions: 70,
+        lines: 75,
       },
     },
   },

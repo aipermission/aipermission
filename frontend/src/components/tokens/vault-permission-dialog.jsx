@@ -8,12 +8,15 @@ import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 import { expiresAtFromLifetime, permissionLifetimeLabel } from "../../lib/permissions";
 import { vaultCapabilitiesFromDraft, vaultCapabilityDraftFromItems, vaultCapabilityKey } from "../../lib/vault-capabilities";
+import { useRequestGuard } from "../../lib/request-guard";
 
 const emptyLoad = {
   state: "idle",
   projects: [],
   definitions: [],
   capabilities: [],
+  scopeRevision: "",
+  capabilityRevision: "",
   error: null,
 };
 
@@ -25,6 +28,7 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
   const [scopeSave, setScopeSave] = useState({ state: "idle", error: null });
   const [save, setSave] = useState({ state: "idle", error: null });
   const tokenID = token?.id;
+  const requests = useRequestGuard(`vault-permission-dialog:${tokenID || "closed"}`);
 
   useEffect(() => {
     if (!tokenID) {
@@ -36,8 +40,8 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
       setSave({ state: "idle", error: null });
       return;
     }
-    void loadVaultPermissions(tokenID);
-  }, [tokenID]);
+    void loadVaultPermissionData({ tokenID, requests, setLoad, setScopeDraft, setCapabilityDraft });
+  }, [tokenID, requests]);
 
   const selectedProject = useMemo(
     () => load.projects.find((project) => project.project_id === selectedProjectID) || null,
@@ -50,28 +54,10 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
     setSelectedProjectID(load.projects[0]?.project_id || 0);
   }, [load.state, load.projects, selectedProjectID]);
 
-  async function loadVaultPermissions(tokenID) {
-    setLoad((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const [projectScopes, projectCapabilities] = await Promise.all([
-        apiGet(`/api/tokens/${tokenID}/project-scopes`),
-        apiGet(`/api/tokens/${tokenID}/project-capabilities`),
-      ]);
-      const projects = projectScopes.items || [];
-      const definitions = projectCapabilities.definitions || [];
-      const capabilities = projectCapabilities.items || [];
-      setLoad({ state: "ready", projects, definitions, capabilities, error: null });
-      setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
-      setCapabilityDraft(vaultCapabilityDraftFromItems(capabilities, definitions));
-    } catch (error) {
-      setLoad({ ...emptyLoad, state: "error", error: error.message });
-      setScopeDraft({});
-      setCapabilityDraft({});
-    }
-  }
-
   async function toggleProjectScope(projectID, enabled) {
-    if (!token) return;
+    if (!tokenID || scopeSave.state === "saving") return;
+    requests.invalidate("load");
+    const request = requests.begin("scope-save");
     const previousDraft = scopeDraft;
     const nextDraft = { ...scopeDraft, [projectID]: enabled };
     setScopeDraft(nextDraft);
@@ -81,15 +67,22 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
         ...project,
         enabled: Boolean(nextDraft[project.project_id]),
       }));
-      const result = await updateTokenProjectVisibility(token.id, projectsWithDraft, projectID, enabled);
+      const result = await updateTokenProjectVisibility(tokenID, projectsWithDraft, projectID, enabled, {
+        expectedRevision: load.scopeRevision,
+        signal: request.signal,
+      });
+      if (!request.isCurrent()) return;
       const projects = result.items || [];
-      setLoad((current) => ({ ...current, projects }));
+      setLoad((current) => ({ ...current, projects, scopeRevision: result.revision || "" }));
       setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
       setScopeSave({ state: "ready", error: null });
       await onSaved?.();
     } catch (error) {
+      if (!request.isCurrent()) return;
       setScopeDraft(previousDraft);
       setScopeSave({ state: "error", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
@@ -116,23 +109,34 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
 
   async function saveCapabilities(event) {
     event.preventDefault();
-    if (!token) return;
+    if (!tokenID) return;
+    requests.invalidate("load");
+    const request = requests.begin("capability-save");
     setSave({ state: "saving", error: null });
     try {
       const capabilities = vaultCapabilitiesFromDraft(load.projects, load.definitions, capabilityDraft);
-      const result = await apiPut(`/api/tokens/${token.id}/project-capabilities`, { capabilities });
+      const result = await apiPut(
+        `/api/tokens/${tokenID}/project-capabilities`,
+        { capabilities, expected_revision: load.capabilityRevision },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
       const definitions = result.definitions || load.definitions;
       const items = result.items || [];
       setLoad((current) => ({
         ...current,
         definitions,
         capabilities: items,
+        capabilityRevision: result.revision || "",
       }));
       setCapabilityDraft(vaultCapabilityDraftFromItems(items, definitions));
       setSave({ state: "ready", error: null });
       await onSaved?.();
     } catch (error) {
+      if (!request.isCurrent()) return;
       setSave({ state: "error", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
@@ -144,71 +148,26 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
       title={token ? `${token.name} Vault permissions` : "Vault permissions"}
       description="Control project visibility and Vault capabilities for this token."
       onClose={onClose}
+      closeDisabled={scopeSave.state === "saving" || save.state === "saving"}
       size="wide"
       className="!max-w-[1120px]"
-      bodyClassName="max-h-[calc(100vh-180px)] overflow-hidden"
+      bodyClassName="max-h-[calc(100dvh-180px)] overflow-y-auto"
     >
-      <form className="grid gap-4" onSubmit={saveCapabilities}>
-        <Notice tone="warn">
-          Project visibility does not grant Vault access. Prompt asks before each action. Always permits autonomous secret generation or
-          delivery through the same validation, lease, and drift checks, without opening an approval dialog.
-        </Notice>
-        {load.state === "loading" ? <Notice>Loading project Vault permissions...</Notice> : null}
-        {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
-        {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
-        {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
-        {save.state === "ready" ? <Notice tone="good">Project Vault capabilities saved.</Notice> : null}
-        {load.state === "ready" && load.projects.length === 0 ? (
-          <Notice>Create a project before granting Vault capabilities.</Notice>
-        ) : null}
+      <form className="grid min-w-0 gap-4" onSubmit={saveCapabilities}>
+        <VaultDialogNotices load={load} scopeSave={scopeSave} save={save} />
 
         {load.state === "ready" && load.projects.length > 0 ? (
           <div className="grid h-[clamp(360px,calc(100vh-320px),560px)] overflow-hidden rounded-lg border border-stone-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-b border-stone-200 lg:border-b-0 lg:border-r">
-              <div className="border-b border-stone-200 bg-stone-50 px-3 py-2">
-                <p className="text-xs font-semibold uppercase text-stone-500">Projects</p>
-                <p className="mt-0.5 text-xs text-stone-500">Select a project and control whether this token can discover it.</p>
-              </div>
-              <div className="min-h-0 divide-y divide-stone-200 overflow-y-auto">
-                {load.projects.map((project) => {
-                  const selected = project.project_id === selectedProjectID;
-                  const visible = Boolean(scopeDraft[project.project_id]);
-                  const activeCount = load.definitions.filter((definition) =>
-                    Boolean(capabilityDraft[vaultCapabilityKey(project.project_id, definition.name)]?.execution_rule),
-                  ).length;
-                  return (
-                    <div
-                      key={project.project_id}
-                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center transition ${
-                        selected ? "bg-emerald-950 text-white" : "bg-white text-stone-950 hover:bg-stone-50"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="grid min-w-0 gap-1 px-3 py-3 text-left"
-                        onClick={() => setSelectedProjectID((current) => (current === project.project_id ? 0 : project.project_id))}
-                      >
-                        <span className="truncate text-sm font-semibold">{project.project_name}</span>
-                        <span className={`truncate text-xs ${selected ? "text-emerald-50" : "text-stone-500"}`}>
-                          {activeCount}/{load.definitions.length} Vault capabilities
-                        </span>
-                      </button>
-                      <label className="mr-3 inline-flex cursor-pointer items-center gap-2 text-xs font-semibold">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 accent-emerald-700"
-                          aria-label={`${project.project_name} project visibility`}
-                          checked={visible}
-                          disabled={scopeSave.state === "saving"}
-                          onChange={(event) => void toggleProjectScope(project.project_id, event.target.checked)}
-                        />
-                        <span>{visible ? "Visible" : "Hidden"}</span>
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <VaultProjectList
+              projects={load.projects}
+              definitions={load.definitions}
+              selectedProjectID={selectedProjectID}
+              setSelectedProjectID={setSelectedProjectID}
+              scopeDraft={scopeDraft}
+              scopeSaving={scopeSave.state === "saving"}
+              capabilityDraft={capabilityDraft}
+              onToggleScope={toggleProjectScope}
+            />
 
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
               <div className="border-b border-stone-200 bg-stone-50 px-3 py-2">
@@ -300,21 +259,141 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-stone-500">
-            {selectedCount} Vault capability grant{selectedCount === 1 ? "" : "s"} selected.
-          </p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Close
-            </Button>
-            <Button type="submit" disabled={!token || load.state !== "ready" || save.state === "saving"}>
-              {save.state === "saving" ? "Saving..." : "Save Vault capabilities"}
-            </Button>
-          </div>
-        </div>
+        <VaultDialogFooter selectedCount={selectedCount} token={token} loadState={load.state} saveState={save.state} onClose={onClose} />
       </form>
     </Dialog>
+  );
+}
+
+async function loadVaultPermissionData({ tokenID, requests, setLoad, setScopeDraft, setCapabilityDraft }) {
+  const request = requests.begin("load");
+  setLoad((current) => ({ ...current, state: "loading", error: null }));
+  try {
+    const [projectScopes, projectCapabilities] = await Promise.all([
+      apiGet(`/api/tokens/${tokenID}/project-scopes`, { signal: request.signal }),
+      apiGet(`/api/tokens/${tokenID}/project-capabilities`, { signal: request.signal }),
+    ]);
+    if (!request.isCurrent()) return;
+    const projects = projectScopes.items || [];
+    const definitions = projectCapabilities.definitions || [];
+    const capabilities = projectCapabilities.items || [];
+    setLoad({
+      state: "ready",
+      projects,
+      definitions,
+      capabilities,
+      scopeRevision: projectScopes.revision || "",
+      capabilityRevision: projectCapabilities.revision || "",
+      error: null,
+    });
+    setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
+    setCapabilityDraft(vaultCapabilityDraftFromItems(capabilities, definitions));
+  } catch (error) {
+    if (!request.isCurrent()) return;
+    setLoad({ ...emptyLoad, state: "error", error: error.message });
+    setScopeDraft({});
+    setCapabilityDraft({});
+  } finally {
+    request.complete();
+  }
+}
+
+function VaultDialogNotices({ load, scopeSave, save }) {
+  return (
+    <>
+      <Notice tone="warn">
+        Project visibility does not grant Vault access. Prompt asks before each action. Always permits autonomous secret generation or
+        delivery through the same validation, lease, and drift checks, without opening an approval dialog.
+      </Notice>
+      {load.state === "loading" ? <Notice>Loading project Vault permissions...</Notice> : null}
+      {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
+      {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
+      {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
+      {save.state === "ready" ? <Notice tone="good">Project Vault capabilities saved.</Notice> : null}
+      {load.state === "ready" && load.projects.length === 0 ? <Notice>Create a project before granting Vault capabilities.</Notice> : null}
+    </>
+  );
+}
+
+function VaultProjectList({
+  projects,
+  definitions,
+  selectedProjectID,
+  setSelectedProjectID,
+  scopeDraft,
+  scopeSaving,
+  capabilityDraft,
+  onToggleScope,
+}) {
+  return (
+    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-b border-stone-200 lg:border-b-0 lg:border-r">
+      <div className="border-b border-stone-200 bg-stone-50 px-3 py-2">
+        <p className="text-xs font-semibold uppercase text-stone-500">Projects</p>
+        <p className="mt-0.5 text-xs text-stone-500">Select a project and control whether this token can discover it.</p>
+      </div>
+      <div className="min-h-0 divide-y divide-stone-200 overflow-y-auto">
+        {projects.map((project) => (
+          <VaultProjectRow
+            key={project.project_id}
+            project={project}
+            definitions={definitions}
+            selected={project.project_id === selectedProjectID}
+            visible={Boolean(scopeDraft[project.project_id])}
+            scopeSaving={scopeSaving}
+            capabilityDraft={capabilityDraft}
+            onSelect={() => setSelectedProjectID((current) => (current === project.project_id ? 0 : project.project_id))}
+            onToggleScope={onToggleScope}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VaultProjectRow({ project, definitions, selected, visible, scopeSaving, capabilityDraft, onSelect, onToggleScope }) {
+  const activeCount = definitions.filter((definition) =>
+    Boolean(capabilityDraft[vaultCapabilityKey(project.project_id, definition.name)]?.execution_rule),
+  ).length;
+  return (
+    <div
+      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center transition ${selected ? "bg-emerald-950 text-white" : "bg-white text-stone-950 hover:bg-stone-50"}`}
+    >
+      <button type="button" className="grid min-w-0 gap-1 px-3 py-3 text-left" onClick={onSelect}>
+        <span className="truncate text-sm font-semibold">{project.project_name}</span>
+        <span className={`truncate text-xs ${selected ? "text-emerald-50" : "text-stone-500"}`}>
+          {activeCount}/{definitions.length} Vault capabilities
+        </span>
+      </button>
+      <label className="mr-3 inline-flex cursor-pointer items-center gap-2 text-xs font-semibold">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-emerald-700"
+          aria-label={`${project.project_name} project visibility`}
+          checked={visible}
+          disabled={scopeSaving}
+          onChange={(event) => void onToggleScope(project.project_id, event.target.checked)}
+        />
+        <span>{visible ? "Visible" : "Hidden"}</span>
+      </label>
+    </div>
+  );
+}
+
+function VaultDialogFooter({ selectedCount, token, loadState, saveState, onClose }) {
+  return (
+    <div className="grid items-center gap-3 sm:flex sm:flex-wrap sm:justify-between">
+      <p className="text-sm text-stone-500">
+        {selectedCount} Vault capability grant{selectedCount === 1 ? "" : "s"} selected.
+      </p>
+      <div className="grid w-full gap-2 min-[380px]:grid-cols-[auto_minmax(0,1fr)] sm:w-auto sm:flex">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        <Button type="submit" disabled={!token || loadState !== "ready" || saveState === "saving"}>
+          {saveState === "saving" ? "Saving..." : "Save Vault capabilities"}
+        </Button>
+      </div>
+    </div>
   );
 }
 

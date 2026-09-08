@@ -62,7 +62,11 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
         />
       ) : null}
       <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
-        <Checkbox checked={form.setup_later} onChange={(event) => onChange("setup_later", event.target.checked)} />
+        <Checkbox
+          aria-label="I will install the key later"
+          checked={form.setup_later}
+          onChange={(event) => onChange("setup_later", event.target.checked)}
+        />
         <span>
           <span className="block font-semibold text-stone-900">I will install the key later</span>
           <span className="mt-1 block text-xs text-stone-500">Create the connector without testing the SSH connection yet.</span>

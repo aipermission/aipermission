@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Copy, RefreshCcw, TerminalSquare } from "lucide-react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "untracked"]);
 
@@ -17,6 +18,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const [targetQuery, setTargetQuery] = useState("");
   const [runState, setRunState] = useState({ state: "idle", error: null, items: [], parallelism: 3 });
   const [selectedResultID, setSelectedResultID] = useState(null);
+  const delayedRefreshRef = useRef(null);
+  const requests = useRequestGuard(`ssh-bulk:${open ? "open" : "closed"}:${selectedTarget?.id || "none"}`);
 
   const visibleTargets = useMemo(() => {
     const query = targetQuery.trim().toLowerCase();
@@ -34,7 +37,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const refreshRequestsForEffect = useEffectEvent(() => refreshRequests());
 
   useEffect(() => {
-    if (!open) return;
+    invalidateBulkRequests(requests, delayedRefreshRef);
+    if (!open) return undefined;
     const initial = {};
     if (selectedTarget?.id) {
       initial[selectedTarget.id] = true;
@@ -46,7 +50,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     setTargetQuery("");
     setRunState({ state: "idle", error: null, items: [], parallelism: 3 });
     setSelectedResultID(null);
-  }, [open, selectedTarget?.id]);
+    return () => {
+      invalidateBulkRequests(requests, delayedRefreshRef);
+    };
+  }, [open, requests, selectedTarget?.id]);
 
   useEffect(() => {
     if (!open || !hasActiveItems) return undefined;
@@ -80,41 +87,56 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   async function startBulkCommand(event) {
     event.preventDefault();
     if (!canRun) return;
+    const request = requests.begin("run");
+    requests.invalidate("refresh");
+    window.clearTimeout(delayedRefreshRef.current);
     setRunState((current) => ({ ...current, state: "starting", error: null }));
     setSelectedResultID(null);
     try {
-      const data = await apiPost("/api/console/bulk-exec", {
-        target_ids: selectedIDs,
-        command: command.trim(),
-        reason: reason.trim(),
-        confirmation,
-      });
+      const data = await apiPost(
+        "/api/console/bulk-exec",
+        {
+          target_ids: selectedIDs,
+          command: command.trim(),
+          reason: reason.trim(),
+          confirmation,
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
+      const items = (data.items || []).map((item) => ({ ...item, status: item.status || "running" }));
       setRunState({
         state: "running",
         error: null,
-        items: (data.items || []).map((item) => ({ ...item, status: item.status || "running" })),
+        items,
         parallelism: data.parallelism || 3,
       });
       await onRefresh?.();
-      window.setTimeout(() => void refreshRequests(), 1000);
+      if (!request.isCurrent()) return;
+      delayedRefreshRef.current = window.setTimeout(() => void refreshRequests(items), 1000);
     } catch (error) {
+      if (!request.isCurrent()) return;
       setRunState((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
-  async function refreshRequests() {
-    if (runState.items.length === 0) return;
+  async function refreshRequests(items = runState.items) {
+    if (items.length === 0) return;
+    const request = requests.begin("refresh");
     try {
       const details = await Promise.all(
-        runState.items.map(async (item) => {
+        items.map(async (item) => {
           try {
-            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`);
+            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`, { signal: request.signal });
             return { ...item, ...detail, request_id: item.request_id };
           } catch (error) {
             return { ...item, status: "error", error: error.message };
           }
         }),
       );
+      if (!request.isCurrent()) return;
       setRunState((current) => ({
         ...current,
         state: details.some((item) => !terminalStatuses.has(item.status)) ? "running" : "done",
@@ -123,7 +145,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       }));
       await onRefresh?.();
     } catch (error) {
+      if (!request.isCurrent()) return;
       setRunState((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 
@@ -134,58 +159,24 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       description="Run one shell command across selected SSH connector targets."
       onClose={onClose}
       size="wide"
-      className="h-[calc(100vh-100px)] !w-[100vw] !min-w-[1024px] !max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]"
+      className="h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[1600px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-64px)] xl:w-[85vw]"
       closeOnOverlay={false}
       autoFocusClose={false}
       bodyClassName="grid min-h-0 gap-4 overflow-hidden"
     >
-      <form className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]" onSubmit={startBulkCommand}>
-        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-stone-950">Targets</p>
-                <p className="text-xs text-stone-500">{selectedIDs.length} selected</p>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(true)}>
-                  All
-                </Button>
-                <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(false)}>
-                  None
-                </Button>
-              </div>
-            </div>
-            <input
-              className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-emerald-700"
-              value={targetQuery}
-              onChange={(event) => setTargetQuery(event.target.value)}
-              placeholder="Search targets"
-            />
-          </div>
-          <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
-            {visibleTargets.map((server) => (
-              <label
-                key={server.id}
-                className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 accent-emerald-800"
-                  checked={Boolean(selected[server.id])}
-                  onChange={() => toggleTarget(server.id)}
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-stone-900">{server.name}</span>
-                  <span className="block truncate text-xs text-stone-500">
-                    {server.username}@{server.host}:{server.port}
-                  </span>
-                </span>
-              </label>
-            ))}
-            {visibleTargets.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching targets.</p> : null}
-          </div>
-        </section>
+      <form
+        className="grid h-full min-h-0 grid-rows-[minmax(180px,35%)_minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] lg:grid-rows-1"
+        onSubmit={startBulkCommand}
+      >
+        <BulkTargetPicker
+          visibleTargets={visibleTargets}
+          selected={selected}
+          selectedCount={selectedIDs.length}
+          targetQuery={targetQuery}
+          setTargetQuery={setTargetQuery}
+          setAllTargets={setAllTargets}
+          toggleTarget={toggleTarget}
+        />
 
         <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
           <div className="grid gap-3">
@@ -281,6 +272,68 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   );
 }
 
+function invalidateBulkRequests(requests, delayedRefreshRef) {
+  requests.invalidate("run");
+  requests.invalidate("refresh");
+  window.clearTimeout(delayedRefreshRef.current);
+  delayedRefreshRef.current = null;
+}
+
+function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery, setTargetQuery, setAllTargets, toggleTarget }) {
+  return (
+    <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-stone-950">Targets</p>
+            <p className="text-xs text-stone-500">{selectedCount} selected</p>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(true)}>
+              All
+            </Button>
+            <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={() => setAllTargets(false)}>
+              None
+            </Button>
+          </div>
+        </div>
+        <input
+          className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-emerald-700"
+          value={targetQuery}
+          onChange={(event) => setTargetQuery(event.target.value)}
+          placeholder="Search targets"
+        />
+      </div>
+      <div className="min-h-0 overflow-auto rounded-md border border-stone-200">
+        {visibleTargets.map((target) => (
+          <BulkTargetRow key={target.id} target={target} selected={Boolean(selected[target.id])} onToggle={toggleTarget} />
+        ))}
+        {visibleTargets.length === 0 ? <p className="px-3 py-6 text-center text-sm text-stone-500">No matching targets.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function BulkTargetRow({ target, selected, onToggle }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
+      <input
+        type="checkbox"
+        aria-label={`Select ${target.name}`}
+        className="mt-1 h-4 w-4 accent-emerald-800"
+        checked={selected}
+        onChange={() => onToggle(target.id)}
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-stone-900">{target.name}</span>
+        <span className="block truncate text-xs text-stone-500">
+          {target.username}@{target.host}:{target.port}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function BulkCommandResultRow({ item, selected, onSelect }) {
   return (
     <button
@@ -291,7 +344,7 @@ function BulkCommandResultRow({ item, selected, onSelect }) {
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</span>
+        <span className="truncate text-sm font-semibold text-stone-950">{item.target_name || `Target ${item.target_id || "unknown"}`}</span>
         <Badge tone={statusTone(item.status)} className="shrink-0 px-2 py-0.5 text-[11px]">
           {statusLabel(item.status)}
         </Badge>
@@ -317,7 +370,7 @@ function BulkCommandResultDetail({ item }) {
     <article className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 rounded-md border border-stone-200 p-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || item.target_name}</p>
+          <p className="truncate text-sm font-semibold text-stone-950">{item.target_name || `Target ${item.target_id || "unknown"}`}</p>
           <p className="text-xs text-stone-500">Request #{item.request_id}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

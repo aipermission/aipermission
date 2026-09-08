@@ -3,6 +3,20 @@
   "label": "SSH",
   "icon": "server",
   "badge_tone": "good",
+  "profile_lifecycle": "custom",
+  "network_transport": {
+    "mode": "over_ssh",
+    "label": "SSH",
+    "option_label": "Over an SSH connector profile",
+    "profile_label": "SSH connector profile",
+    "profile_endpoint": {
+      "fields": [
+        { "path": "target.config.host", "fallback": "host" },
+        { "path": "target.config.port", "fallback": 22 }
+      ],
+      "separator": ":"
+    }
+  },
   "summary": "Persistent shell, file transfer, remote browsing, and command execution.",
   "version": "0.2"
 }

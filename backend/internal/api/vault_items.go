@@ -13,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 type vaultUsageNoteRequest struct {
@@ -351,7 +352,7 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 		handleVaultItemError(w, err)
 		return
 	}
-	if s.vaultGenerateLimiter == nil || !s.vaultGenerateLimiter.allow(authRateLimitKey(r, fmt.Sprintf("vault-preview:%s:%d", runtime.id, id))) {
+	if s.vaultGenerateLimiter == nil || !s.vaultGenerateLimiter.Allow(runtimecontrol.Key(r, fmt.Sprintf("vault-preview:%s:%d", runtime.id, id))) {
 		writeError(w, http.StatusTooManyRequests, "too many generated previews; wait before trying again")
 		return
 	}
@@ -445,7 +446,7 @@ func (s vaultItemHandlers) revealVaultItem(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if s.vaultRevealLimiter == nil || !s.vaultRevealLimiter.allow(authRateLimitKey(r, fmt.Sprintf("vault-reveal:%s:%d", runtime.id, id))) {
+	if s.vaultRevealLimiter == nil || !s.vaultRevealLimiter.Allow(runtimecontrol.Key(r, fmt.Sprintf("vault-reveal:%s:%d", runtime.id, id))) {
 		writeError(w, http.StatusTooManyRequests, "too many reveal requests; wait before trying again")
 		return
 	}

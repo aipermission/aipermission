@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,17 +155,18 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("oversized recursive selection status=%d body=%s", oversizedExpand.Code, oversizedExpand.Body.String())
 	}
 	oversizedDownload := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{
-		RuntimeID:  payload.Items[0].TransferRuntimeID,
-		RemotePath: "/large/object.bin",
+		RuntimeID:      payload.Items[0].TransferRuntimeID,
+		RemotePath:     "/large/object.bin",
+		IdempotencyKey: "oversized-s3-download",
 	})
 	if oversizedDownload.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized download status=%d body=%s", oversizedDownload.Code, oversizedDownload.Body.String())
 	}
 	runtime := fixture.server.activeRuntime()
 	handlers := fileTransferHandlers{fixture.server}
-	pendingBatch, err := handlers.createDownloadBatch(context.Background(), runtime, payload.Items[0].TransferRuntimeID, []string{
+	pendingBatch, _, err := handlers.createDownloadBatch(context.Background(), runtime, payload.Items[0].TransferRuntimeID, []string{
 		"/batch/a.bin", "/batch/b.bin", "/batch/c.bin",
-	}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval)
+	}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval, "")
 	if err != nil {
 		t.Fatalf("create pending approval download batch: %v", err)
 	}
@@ -182,22 +184,13 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	handlers.cleanupBatchTemps(runtime, pendingBatch.ID)
 
 	body, contentType := multipartUploadBody(t, map[string]string{
-		"runtime_id":     strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
-		"remote_dir":     "/daily",
-		"overwrite":      "false",
-		"relative_paths": `["nested/report.txt"]`,
+		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"idempotency_key": "s3-upload-batch",
+		"remote_dir":      "/daily",
+		"overwrite":       "false",
+		"relative_paths":  `["nested/report.txt"]`,
 	}, map[string][]byte{"report.txt": []byte("report payload")})
-	uploadRequest := httptest.NewRequest(http.MethodPost, "/api/file-transfers/upload-batch", body)
-	uploadRequest.Host = "localhost:8080"
-	uploadRequest.RemoteAddr = "127.0.0.1:12345"
-	uploadRequest.Header.Set("Content-Type", contentType)
-	if cookie := currentTestUICookie(); cookie != nil {
-		uploadRequest.AddCookie(cookie)
-	}
-	uploadRequest.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-	uploadRequest.Header.Set(uiCSRFHeaderName, testUICSRFToken)
-	upload := httptest.NewRecorder()
-	fixture.server.Handler().ServeHTTP(upload, uploadRequest)
+	upload := performMultipartRequest(fixture.server.Handler(), "/api/file-transfers/upload-batch", body, contentType)
 	if upload.Code != http.StatusAccepted {
 		t.Fatalf("start S3 upload batch: %d %s", upload.Code, upload.Body.String())
 	}
@@ -229,6 +222,48 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+
+	replayBody, replayContentType := multipartUploadBody(t, map[string]string{
+		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"idempotency_key": "s3-upload-batch",
+		"remote_dir":      "/daily",
+		"overwrite":       "false",
+		"relative_paths":  `["nested/report.txt"]`,
+	}, map[string][]byte{"report.txt": []byte("report payload")})
+	replay := performMultipartRequest(fixture.server.Handler(), "/api/file-transfers/upload-batch", replayBody, replayContentType)
+	if replay.Code != http.StatusAccepted || !bytes.Contains(replay.Body.Bytes(), []byte(`"id":`+strconv.FormatInt(uploadBatch.ID, 10))) {
+		t.Fatalf("replay S3 upload batch: %d %s", replay.Code, replay.Body.String())
+	}
+	changedBody, changedContentType := multipartUploadBody(t, map[string]string{
+		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"idempotency_key": "s3-upload-batch",
+		"remote_dir":      "/daily",
+		"overwrite":       "false",
+		"relative_paths":  `["nested/report.txt"]`,
+	}, map[string][]byte{"report.txt": []byte("changed payload")})
+	changed := performMultipartRequest(fixture.server.Handler(), "/api/file-transfers/upload-batch", changedBody, changedContentType)
+	if changed.Code != http.StatusConflict || !strings.Contains(changed.Body.String(), "different request") {
+		t.Fatalf("changed S3 upload idempotency: %d %s", changed.Code, changed.Body.String())
+	}
+	var batchCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM file_transfer_batches WHERE direction = 'upload'`).Scan(&batchCount); err != nil || batchCount != 1 {
+		t.Fatalf("upload batch count=%d err=%v", batchCount, err)
+	}
+}
+
+func performMultipartRequest(handler http.Handler, path string, body *bytes.Buffer, contentType string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, path, body)
+	request.Host = "localhost:8080"
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("Content-Type", contentType)
+	if cookie := currentTestUICookie(); cookie != nil {
+		request.AddCookie(cookie)
+	}
+	request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
+	request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
 }
 
 func multipartUploadBody(t *testing.T, fields map[string]string, files map[string][]byte) (*bytes.Buffer, string) {

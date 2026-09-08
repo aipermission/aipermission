@@ -12,6 +12,10 @@ test("release source requires the Windows private-config security check", () => 
   assert.ok(requiredChecks.includes("MCP Windows Private Config"));
 });
 
+test("release source requires real-service connector conformance on the same commit", () => {
+  assert.ok(requiredChecks.includes("ClickHouse, Postgres, Valkey, RabbitMQ, and S3"));
+});
+
 test("releaseVersionFromTag accepts release and prerelease tags", () => {
   assert.equal(releaseVersionFromTag("v0.2.30"), "0.2.30");
   assert.equal(releaseVersionFromTag("v0.2.30-rc.1"), "0.2.30-rc.1");

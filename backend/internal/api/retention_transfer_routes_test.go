@@ -323,7 +323,7 @@ func TestFileTransferRoutes(t *testing.T) {
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers?direction=copy", "", nil); response.Code != http.StatusBadRequest {
 		t.Fatalf("invalid direction should fail, got %d %s", response.Code, response.Body.String())
 	}
-	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{RuntimeID: server.ID, RemotePath: "relative.txt"}); response.Code != http.StatusBadRequest {
+	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{RuntimeID: server.ID, RemotePath: "relative.txt", IdempotencyKey: "relative-path"}); response.Code != http.StatusBadRequest {
 		t.Fatalf("relative download path should fail, got %d %s", response.Code, response.Body.String())
 	}
 	if response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{RuntimeID: server.ID, Path: "relative"}); response.Code != http.StatusBadRequest {

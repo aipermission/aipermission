@@ -49,6 +49,7 @@ test("connector template registry evaluates at runtime", async () => {
         expected: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorTemplate(kind))])),
         models: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorModel(kind)?.emptyForm)])),
         metadata: Object.fromEntries(expectedKinds.map((kind) => [kind, registry.getConnectorTemplate(kind)?.metadata?.kind])),
+        networkTransport: registry.getConnectorTemplate("ssh")?.metadata?.network_transport,
         missing: registry.getConnectorTemplate("__missing_connector__") === null,
         redisValkey: {
           catalogLabel: redisTemplate.metadata.label,
@@ -85,6 +86,19 @@ test("connector template registry evaluates at runtime", async () => {
     assert.deepEqual(registryResult.expected, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
     assert.deepEqual(registryResult.models, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
     assert.deepEqual(registryResult.metadata, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, kind])));
+    assert.deepEqual(registryResult.networkTransport, {
+      mode: "over_ssh",
+      label: "SSH",
+      option_label: "Over an SSH connector profile",
+      profile_label: "SSH connector profile",
+      profile_endpoint: {
+        fields: [
+          { path: "target.config.host", fallback: "host" },
+          { path: "target.config.port", fallback: 22 },
+        ],
+        separator: ":",
+      },
+    });
     assert.equal(registryResult.missing, true);
     assert.deepEqual(registryResult.redisValkey, {
       catalogLabel: "Redis / Valkey",

@@ -109,7 +109,7 @@ func TestTransportConfigRejectsTargetsWithoutReviewedTCPAdapter(t *testing.T) {
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().vault, fixture.server.activeRuntime().workspaceUUID)
 	err := fixture.server.validateConnectorTransportConfig(context.Background(), store, target.ProjectID, map[string]any{
-		"connection_mode":      "over_ssh",
+		"connection_mode":      "over_fixture",
 		"transport_target_ref": connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID),
 	})
 	if err == nil || !strings.Contains(err.Error(), "does not expose reviewed TCP transport") {

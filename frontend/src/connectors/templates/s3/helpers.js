@@ -1,11 +1,26 @@
-export function fileToBase64(file) {
+export function fileToBase64(file, options = {}) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    const signal = options.signal;
+    const abort = () => {
+      if (reader.readyState === FileReader.LOADING) reader.abort();
+      reject(new DOMException("File read aborted.", "AbortError"));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    const finish = (callback) => {
+      signal?.removeEventListener("abort", abort);
+      callback();
+    };
     reader.onload = () => {
       const result = String(reader.result || "");
-      resolve(result.includes(",") ? result.split(",").pop() : result);
+      finish(() => resolve(result.includes(",") ? result.split(",").pop() : result));
     };
-    reader.onerror = () => reject(reader.error || new Error("Failed to read file."));
+    reader.onerror = () => finish(() => reject(reader.error || new Error("Failed to read file.")));
+    reader.onabort = () => finish(() => reject(new DOMException("File read aborted.", "AbortError")));
     reader.readAsDataURL(file);
   });
 }

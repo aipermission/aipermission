@@ -87,3 +87,49 @@ func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	runtime := fixture.server.activeRuntime()
+	if err := runtime.registry.Register(localActionTestConnector{}); err != nil {
+		t.Fatal(err)
+	}
+	store := connectortargets.NewStore(fixture.db)
+	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+		ConnectorKind: localActionTestConnectorKind,
+		Name:          "non-command console",
+		Config:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+		TargetID:      target.ID,
+		ConnectorKind: localActionTestConnectorKind,
+		Kind:          "default",
+		Label:         "main",
+		Public:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
+		ConnectorKind:  localActionTestConnectorKind,
+		TargetID:       target.ID,
+		ProfileID:      profile.ID,
+		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		Label:          "test console",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetRef := connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID)
+	if err := runtime.adapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{ref: targetRef}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = (consoleHandlers{fixture.server}).bulkConsoleTarget(t.Context(), runtime, surface.ID)
+	if !errors.Is(err, connectortargets.ErrInvalidTargetRef) {
+		t.Fatalf("bulk console target error = %v, want invalid target ref", err)
+	}
+}

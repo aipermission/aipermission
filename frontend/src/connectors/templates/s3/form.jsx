@@ -1,7 +1,6 @@
 import { Checkbox, Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { ConnectionModeFields } from "../_shared/network-transport-fields";
-import { HostPingButton } from "../host-ping-button";
+import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
 
 export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
   const editing = mode === "edit";
@@ -19,35 +18,24 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         form={form}
         targets={targets}
         onChange={onChange}
-        overSSHNotice="Host and port are resolved from the SSH server. Use 127.0.0.1 when a MinIO/S3-compatible endpoint is only reachable from that server."
+        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1 when a MinIO/S3-compatible endpoint is only reachable from that server."
         directNotice="For MinIO or S3-compatible storage running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
       />
-      <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)_120px]">
-        <Field>
-          Scheme
-          <Select value={form.scheme || "https"} onChange={(event) => onChange("scheme", event.target.value)}>
-            <option value="https">HTTPS</option>
-            <option value="http">HTTP</option>
-          </Select>
-        </Field>
-        <Field>
-          <span className="flex items-center justify-between gap-2">
-            <span>Endpoint host</span>
-            <HostPingButton
-              host={form.host}
-              port={form.port}
-              mode={form.connection_mode}
-              transportTargetRef={form.transport_target_ref}
-              projectID={form.project_id}
-            />
-          </span>
-          <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
-        </Field>
-        <Field>
-          Port
-          <Input type="number" min="1" max="65535" value={form.port} onChange={(event) => onChange("port", event.target.value)} required />
-        </Field>
-      </div>
+      <NetworkEndpointFields
+        form={form}
+        onChange={onChange}
+        hostLabel="Endpoint host"
+        className="sm:grid-cols-[120px_minmax(0,1fr)_120px]"
+        leading={
+          <Field>
+            Scheme
+            <Select value={form.scheme || "https"} onChange={(event) => onChange("scheme", event.target.value)}>
+              <option value="https">HTTPS</option>
+              <option value="http">HTTP</option>
+            </Select>
+          </Field>
+        }
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           Region
@@ -59,7 +47,11 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
         </Field>
       </div>
       <label className="flex items-start gap-3 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700 dark-notice-neutral">
-        <Checkbox checked={form.path_style !== false} onChange={(event) => onChange("path_style", event.target.checked)} />
+        <Checkbox
+          aria-label="Path-style addressing"
+          checked={form.path_style !== false}
+          onChange={(event) => onChange("path_style", event.target.checked)}
+        />
         <span>
           <span className="block font-semibold">Path-style addressing</span>
           <span className="text-xs">Use /bucket/key URLs. Keep this enabled for most S3-compatible providers such as MinIO.</span>
@@ -67,6 +59,7 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
       </label>
       <label className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark-notice-warn">
         <Checkbox
+          aria-label="Verified conditional requests"
           checked={form.trust_conditional_requests === true}
           onChange={(event) => onChange("trust_conditional_requests", event.target.checked)}
         />

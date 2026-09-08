@@ -1,8 +1,13 @@
 import eslint from "@eslint/js";
+import { createRequire } from "node:module";
+import jsxA11y from "eslint-plugin-jsx-a11y-x";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
-const sourceFiles = ["src/**/*.{js,jsx}"];
+const require = createRequire(import.meta.url);
+const architecturePolicy = require("./architecture-policy.json");
+const sourceExtensionGlob = architecturePolicy.sourceExtensions.map((extension) => extension.slice(1)).join(",");
+const sourceFiles = [`src/**/*.{${sourceExtensionGlob}}`];
 const nodeFiles = ["e2e/**/*.js", "scripts/**/*.mjs", "playwright.config.js", "vite.config.js", "vitest.config.js"];
 
 export default [
@@ -21,67 +26,29 @@ export default [
       globals: globals.browser,
     },
     plugins: {
+      "jsx-a11y-x": jsxA11y,
       "react-hooks": reactHooks,
+    },
+    settings: {
+      "jsx-a11y-x": {
+        components: {
+          Button: "button",
+          Checkbox: "input",
+          Field: "label",
+          Input: "input",
+          Select: "select",
+          Textarea: "textarea",
+        },
+      },
     },
     rules: {
       ...eslint.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
-      complexity: ["error", { max: 50 }],
-      "max-lines-per-function": ["error", { max: 500, skipBlankLines: true, skipComments: true, IIFEs: true }],
+      complexity: ["error", { max: 25 }],
+      "max-lines-per-function": ["error", { max: 250, skipBlankLines: true, skipComments: true, IIFEs: true }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
-    },
-  },
-  // Existing large functions are pinned to their current ceiling. New source
-  // uses the stricter defaults above, and each override must only move down.
-  {
-    files: ["src/components/app-shell.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 608, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/components/file-transfer/file-transfer-dialog.jsx"],
-    rules: {
-      complexity: ["error", { max: 52 }],
-      "max-lines-per-function": ["error", { max: 660, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/connectors/templates/docker/console.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 566, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/connectors/templates/s3/console.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 727, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/connectors/templates/mail/console.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 550, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/pages/console.jsx"],
-    rules: {
-      complexity: ["error", { max: 80 }],
-      "max-lines-per-function": ["error", { max: 702, skipBlankLines: true, skipComments: true, IIFEs: true }],
-    },
-  },
-  {
-    files: ["src/pages/unlock.jsx"],
-    rules: {
-      complexity: ["error", { max: 64 }],
-    },
-  },
-  {
-    files: ["src/pages/vault.jsx"],
-    rules: {
-      "max-lines-per-function": ["error", { max: 644, skipBlankLines: true, skipComments: true, IIFEs: true }],
     },
   },
   {

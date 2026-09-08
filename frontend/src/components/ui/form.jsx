@@ -1,7 +1,11 @@
 import { cn } from "../../lib/utils";
 
-export function Field({ className, ...props }) {
-  return <label className={cn("grid gap-2 text-sm font-medium text-stone-800", className)} {...props} />;
+export function Field({ className, children, ...props }) {
+  return (
+    <label className={cn("grid gap-2 text-sm font-medium text-stone-800", className)} {...props}>
+      {children}
+    </label>
+  );
 }
 
 export function Input({ className, ...props }) {
