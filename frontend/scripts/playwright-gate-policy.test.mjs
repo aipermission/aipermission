@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { requiredHighRiskTitles, responsiveViewportMatrix } from "./playwright-gate-manifest.mjs";
-import { assertPlaywrightListing, forbiddenPlaywrightAnnotations } from "./playwright-gate-policy.mjs";
+import { assertPlaywrightListing, assertPlaywrightManifestRatchet, forbiddenPlaywrightAnnotations } from "./playwright-gate-policy.mjs";
 
 test("rejects skipped, fixed, and conditionally annotated Playwright tests", () => {
   for (const source of [
@@ -38,7 +38,16 @@ test("locks the supported responsive matrix and its high-risk scenarios", () => 
   );
   for (const { width, height } of responsiveViewportMatrix) {
     assert.ok(requiredHighRiskTitles.includes(`@high-risk keeps Vault permission completion reachable at ${width}x${height}`));
+    assert.ok(
+      requiredHighRiskTitles.includes(`@high-risk keeps navigation, Console drawers, and permission dialogs usable at ${width}x${height}`),
+    );
   }
+});
+
+test("rejects removing a base-branch Playwright gate in the same change", () => {
+  const base = { highRisk: ["approval", "unlock"], smoke: ["settings"] };
+  assert.doesNotThrow(() => assertPlaywrightManifestRatchet(base, { highRisk: ["approval", "unlock", "new"], smoke: ["settings"] }));
+  assert.throws(() => assertPlaywrightManifestRatchet(base, { highRisk: ["approval"], smoke: ["settings"] }), /highRisk: unlock/);
 });
 
 function listing(titles) {

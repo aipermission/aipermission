@@ -326,6 +326,52 @@ for (const { width, height } of responsiveViewportMatrix) {
   });
 }
 
+for (const { width, height } of responsiveViewportMatrix) {
+  test(`@high-risk keeps navigation, Console drawers, and permission dialogs usable at ${width}x${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    await page.getByRole("textbox").fill("local-password");
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+
+    if (width < 1024) {
+      await page.getByRole("button", { name: "Open navigation" }).click();
+      const navigation = page.getByRole("dialog", { name: "Navigation" });
+      await expect(navigation).toBeVisible();
+      await navigation.getByRole("link", { name: "Console", exact: true }).click();
+      await expect(navigation).toBeHidden();
+    } else {
+      await page.locator('aside a[href="/console"]').click();
+    }
+
+    await page.getByRole("button", { name: "Connectors", exact: true }).click();
+    const targetsDrawer = page.getByRole("dialog", { name: "Connectors" });
+    await expect(targetsDrawer).toBeVisible();
+    await expect(targetsDrawer.getByText("worker-1", { exact: true })).toBeVisible();
+    await targetsDrawer.getByRole("button", { name: "Close drawer" }).click();
+
+    await page.getByRole("button", { name: "Tokens", exact: true }).click();
+    const tokensDrawer = page.getByRole("dialog", { name: "Tokens" });
+    await expect(tokensDrawer).toBeVisible();
+    await expect(tokensDrawer.getByText("agent", { exact: true })).toBeVisible();
+    await tokensDrawer.getByRole("button", { name: "Close drawer" }).click();
+    expect(await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+    await page.goto("/tokens");
+    expect(await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.getByRole("button", { name: "Connectors", exact: true }).click();
+    const permissionDialog = page.getByRole("dialog", { name: "agent connector permissions" });
+    await expect(permissionDialog).toBeVisible();
+    const bounds = await permissionDialog.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    const save = permissionDialog.getByRole("button", { name: "Save connector permissions" });
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport();
+    expect(await permissionDialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  });
+}
+
 test("moves an edited connector to another project", async ({ page }) => {
   let updatePayload = null;
   await page.route("http://localhost:8080/api/connector-targets/1/with-profile/1", async (route) => {

@@ -119,8 +119,8 @@ export function TokensPage() {
       {tokens.state === "error" ? <Notice tone="bad">{tokens.error}</Notice> : null}
       {connectorPermissionState.state === "error" ? <Notice tone="bad">{connectorPermissionState.error}</Notice> : null}
 
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
+      <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+        <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[20%] px-4 py-3 font-semibold">Name</th>

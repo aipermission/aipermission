@@ -48,9 +48,10 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
-- Playwright policy validation that rejects skipped/fixed critical scenarios
-  and requires the complete high-risk, real-backend, and responsive viewport
-  manifests to remain discoverable
+- Playwright policy validation that rejects skipped/fixed scenarios, requires
+  the complete smoke, accessibility, high-risk, real-backend, and responsive
+  viewport manifests to remain discoverable, and rejects removal of a
+  base-branch gate in the same change
 - frontend suite-manifest validation that discovers production owners using
   request/generation guards, abort controllers, polling timers, or sockets and
   requires each owner to name a focused regression test that reaches it through
@@ -63,7 +64,8 @@ This runs:
 - frontend Playwright browser smoke plus explicit accessibility and high-risk
   workflow gates for keyboard focus, responsive unlock/setup, database import,
   token permissions, Prompt approval, structured session isolation, live-console
-  reconnect, and transfer cancellation
+  reconnect, transfer cancellation, mobile navigation, Console drawers, and
+  viewport-contained permission dialogs
 - frontend Playwright lifecycle coverage against a real encrypted backend for
   Prompt approval, completion, stale-context rejection, lock/unlock, and restart
 - explicit frontend async-state ownership coverage for stale completion,
@@ -112,7 +114,9 @@ Playwright release gates run with retries disabled and reject committed
 `test.only` calls in CI. A flaky first attempt is therefore a failure, while
 failure traces remain available for diagnosis. High-risk route fixtures assert
 the HTTP method and request body, and responsive accessibility checks run after
-every tested unlock/setup tab transition.
+every tested unlock/setup tab transition. The checked manifest is ratcheted
+against the base Git revision, so deleting both a critical test and its current
+manifest entry cannot make the same pull request pass.
 
 The real-backend browser test runs the production API, SQLCipher database,
 UI-session authentication, CSRF, connector permission, approval, and history

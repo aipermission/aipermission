@@ -37,6 +37,17 @@ export function assertPlaywrightListing(report, requiredTitles, label) {
   }
 }
 
+export function assertPlaywrightManifestRatchet(baseManifest, currentManifest) {
+  const failures = [];
+  for (const [suite, baseTitles] of Object.entries(baseManifest)) {
+    const currentTitles = new Set(currentManifest[suite] || []);
+    for (const title of baseTitles) {
+      if (!currentTitles.has(title)) failures.push(`${suite}: ${title}`);
+    }
+  }
+  if (failures.length > 0) throw new Error(`Playwright manifest ratchet removed required scenarios: ${failures.join(" | ")}`);
+}
+
 function collectSpecs(suites) {
   return suites.flatMap((suite) => [...(suite.specs || []), ...collectSpecs(suite.suites || [])]);
 }

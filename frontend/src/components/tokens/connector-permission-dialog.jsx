@@ -132,7 +132,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
       closeDisabled={save.state === "saving"}
       size="wide"
       className="!max-w-[1120px]"
-      bodyClassName="max-h-[calc(100vh-180px)] overflow-hidden"
+      bodyClassName="min-h-0 max-h-[calc(100dvh-180px)] overflow-y-auto"
     >
       <form className="grid gap-4" onSubmit={savePermissions}>
         <Notice>
