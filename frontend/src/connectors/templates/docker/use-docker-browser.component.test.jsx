@@ -64,6 +64,38 @@ it("preserves inspect mode while switching Docker containers", async () => {
   );
 });
 
+it("ignores a detail response after the selected container is cleared", async () => {
+  let resolveDetail;
+  runGuardedConnectorAction.mockImplementation(async ({ actionName, input, onCompleted, requestGuard, channel }) => {
+    const output = actionName === "list_containers" ? { containers } : { container: { name: input?.container } };
+    const item = { action_name: actionName, output };
+    if (channel !== "detail") {
+      onCompleted?.(item);
+      return item;
+    }
+    const request = requestGuard.begin(channel);
+    await new Promise((resolve) => {
+      resolveDetail = resolve;
+    });
+    if (!request.isCurrent()) return null;
+    onCompleted?.(item);
+    request.complete();
+    return item;
+  });
+
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.visibleCount).toBe(2));
+  act(() => result.current.selectResource("containers", containers[0]));
+  await waitFor(() => expect(result.current.selectedContainer?.name).toBe("api"));
+
+  act(() => result.current.selectResource("containers", containers[0]));
+  await waitFor(() => expect(result.current.selectedContainer).toBeNull());
+  await act(async () => resolveDetail());
+
+  expect(result.current.result).toBeNull();
+  expect(result.current.state.state).toBe("idle");
+});
+
 it("builds bounded Docker lifecycle payloads and refreshes after completion", async () => {
   const runAction = vi.fn().mockResolvedValue({ action_name: "stop_container" });
   const refreshContainers = vi.fn().mockResolvedValue(undefined);

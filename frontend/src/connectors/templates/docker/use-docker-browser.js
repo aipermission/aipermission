@@ -233,8 +233,10 @@ export function useDockerBrowser({
   }
 
   function clearResult() {
+    requestGuard.invalidate("detail");
     setResult(null);
     setResultSearch("");
+    setState({ state: "idle", error: "", message: "" });
   }
 
   return {
