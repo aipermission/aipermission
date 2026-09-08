@@ -82,7 +82,9 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	}
 	if replay, replayErr := runtime.fileTransfers.GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
 		_ = os.Remove(tempPath)
-		s.launchUpload(runtime, replay.ID, overwrite)
+		if fileTransferCanLaunch(replay.Status) {
+			s.launchUpload(runtime, replay.ID, overwrite)
+		}
 		writeJSON(w, http.StatusAccepted, replay)
 		return
 	} else if !errors.Is(replayErr, filetransfer.ErrIdempotencyNotFound) {
@@ -124,7 +126,9 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 			"overwrite":   overwrite,
 		})
 	}
-	s.launchUpload(runtime, record.ID, overwrite)
+	if fileTransferCanLaunch(record.Status) {
+		s.launchUpload(runtime, record.ID, overwrite)
+	}
 	writeJSON(w, http.StatusAccepted, record)
 }
 
@@ -413,7 +417,9 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if replay, replayErr := runtime.fileTransfers.GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
-		s.launchDownload(runtime, replay.ID)
+		if fileTransferCanLaunch(replay.Status) {
+			s.launchDownload(runtime, replay.ID)
+		}
 		writeJSON(w, http.StatusAccepted, replay)
 		return
 	} else if !errors.Is(replayErr, filetransfer.ErrIdempotencyNotFound) {
@@ -473,8 +479,14 @@ func (s fileTransferHandlers) startDownload(w http.ResponseWriter, r *http.Reque
 			"file_name":   fileName,
 		})
 	}
-	s.launchDownload(runtime, record.ID)
+	if fileTransferCanLaunch(record.Status) {
+		s.launchDownload(runtime, record.ID)
+	}
 	writeJSON(w, http.StatusAccepted, record)
+}
+
+func fileTransferCanLaunch(status string) bool {
+	return status == filetransfer.StatusPending || status == filetransfer.StatusPaused
 }
 
 func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.Request) {

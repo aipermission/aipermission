@@ -190,6 +190,9 @@ func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPen
 			return nil, fmt.Errorf("remove paused file transfer batch item: %w", err)
 		}
 		removed = append(removed, Record{ID: itemID, TempPath: item.tempPath})
+		if err := history.DeleteSourceRefWithExecutor(ctx, tx, history.SourceFileTransfer, itemID); err != nil {
+			return nil, err
+		}
 	}
 
 	for index, itemID := range orderedPendingIDs {
@@ -209,16 +212,11 @@ func (s *Store) UpdatePausedBatchQueue(ctx context.Context, id int64, orderedPen
 	if err := recalculateBatch(ctx, tx, id); err != nil {
 		return nil, err
 	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit file transfer batch queue update: %w", err)
-	}
-	for _, item := range removed {
-		if err := history.NewStore(s.db).DeleteSourceRef(ctx, history.SourceFileTransfer, item.ID); err != nil {
-			return nil, err
-		}
-	}
-	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
-		return nil, err
 	}
 	return removed, nil
 }
@@ -290,26 +288,26 @@ func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorT
 	if err := recalculateBatch(ctx, tx, id); err != nil {
 		return false, err
 	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit file transfer batch finalization: %w", err)
-	}
-	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
-		return false, err
 	}
 	return true, nil
 }
 
 func (s *Store) FailActive(ctx context.Context, transferError string, batchError string) error {
 	now := nowString()
-	ids, err := s.transferIDsByStatuses(ctx, StatusPendingApproval, StatusPending, StatusRunning, StatusPaused)
-	if err != nil {
-		return err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin active file transfer shutdown: %w", err)
 	}
 	defer tx.Rollback()
+	ids, err := transferIDsByStatuses(ctx, tx, StatusPendingApproval, StatusPending, StatusRunning, StatusPaused)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 			UPDATE file_transfers
 			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
@@ -366,13 +364,30 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	); err != nil {
 		return fmt.Errorf("mark dispatched file transfer batches outcome unknown: %w", err)
 	}
+	if err := syncTransferHistoryIDsWithExecutor(ctx, tx, ids); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit active file transfer shutdown: %w", err)
 	}
-	return s.syncTransferHistoryIDs(ctx, ids)
+	return nil
 }
 func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
-	return recalculateBatch(ctx, s.db, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin file transfer batch recalculation: %w", err)
+	}
+	defer tx.Rollback()
+	if err := recalculateBatch(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit file transfer batch recalculation: %w", err)
+	}
+	return nil
 }
 
 type batchRecalculator interface {
@@ -423,7 +438,15 @@ func recalculateBatch(ctx context.Context, execer batchRecalculator, id int64) e
 
 func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin file transfer batch completion: %w", err)
+	}
+	defer tx.Rollback()
+	if err := recalculateBatch(ctx, tx, id); err != nil {
+		return false, err
+	}
+	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = CASE
 				WHEN failed_items > 0 THEN ?
@@ -465,12 +488,26 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read completed file transfer batch rows: %w", err)
 	}
-	return rows > 0, nil
+	if rows == 0 {
+		return false, nil
+	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit file transfer batch completion: %w", err)
+	}
+	return true, nil
 }
 
 func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath string) error {
 	now := nowString()
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin file transfer batch archive update: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET archive_path = ?, updated_at = ?
 		WHERE id = ?`,
@@ -480,6 +517,12 @@ func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath strin
 	)
 	if err != nil {
 		return fmt.Errorf("set file transfer batch archive: %w", err)
+	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit file transfer batch archive update: %w", err)
 	}
 	return nil
 }

@@ -333,13 +333,13 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusConflict, "file transfer is not running")
 		return
 	}
-	runtime.transferJobs.Files.Cancel(id)
 	changed, err := runtime.fileTransfers.Cancel(context.Background(), id, "canceled by local user")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	if changed {
+		runtime.transferJobs.Files.Cancel(id)
 		s.removeTransferTemp(runtime, id)
 	}
 	updated, err := runtime.fileTransfers.Get(r.Context(), id)

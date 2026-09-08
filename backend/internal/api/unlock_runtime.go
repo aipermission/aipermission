@@ -23,6 +23,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -223,6 +224,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		actionIdentityKey:  actionIdentityKey,
 		vaultLeases:        vaultsessions.NewStore(),
 	}
+	runtime.finalization = transferjobs.NewFinalizationLifetime()
 	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
@@ -471,6 +473,7 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 		if err := runtime.fileTransfers.FailActive(context.Background(), "workspace locked while file transfer was running", "workspace locked while file transfer queue was running"); err != nil {
 			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.id, err)
 		}
+		runtime.finalization.Stop()
 		if !drained {
 			go func() {
 				runtime.transferJobs.Wait(context.Background())
@@ -481,6 +484,7 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", fileTransferShutdownWait)
 		}
 	}
+	runtime.finalization.Stop()
 	return closeRuntimeStorage(runtime)
 }
 

@@ -24,10 +24,6 @@ func (s *Store) SyncHistory(ctx context.Context, id int64) error {
 	return s.syncTransferHistory(ctx, id)
 }
 
-func (s *Store) syncBatchTransferHistory(ctx context.Context, batchID int64) error {
-	return syncBatchTransferHistoryWithExecutor(ctx, s.db, batchID)
-}
-
 func syncBatchTransferHistoryWithExecutor(ctx context.Context, executor history.CommandProjectionExecutor, batchID int64) error {
 	if batchID < 1 {
 		return nil
@@ -36,17 +32,21 @@ func syncBatchTransferHistoryWithExecutor(ctx context.Context, executor history.
 	if err != nil {
 		return fmt.Errorf("read batch transfer ids for history sync: %w", err)
 	}
-	defer rows.Close()
 	ids := []int64{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return fmt.Errorf("scan batch transfer id for history sync: %w", err)
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return fmt.Errorf("iterate batch transfer ids for history sync: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close batch transfer ids for history sync: %w", err)
 	}
 	for _, id := range ids {
 		if err := history.SyncFileTransferWithExecutor(ctx, executor, id); err != nil {
@@ -55,16 +55,17 @@ func syncBatchTransferHistoryWithExecutor(ctx context.Context, executor history.
 	}
 	return nil
 }
-func (s *Store) syncTransferHistoryIDs(ctx context.Context, ids []int64) error {
+
+func syncTransferHistoryIDsWithExecutor(ctx context.Context, executor history.CommandProjectionExecutor, ids []int64) error {
 	for _, id := range ids {
-		if err := s.syncTransferHistory(ctx, id); err != nil {
+		if err := syncTransferHistoryWithExecutor(ctx, executor, id); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Store) transferIDsByStatuses(ctx context.Context, statuses ...string) ([]int64, error) {
+func transferIDsByStatuses(ctx context.Context, executor history.CommandProjectionExecutor, statuses ...string) ([]int64, error) {
 	if len(statuses) == 0 {
 		return nil, nil
 	}
@@ -74,7 +75,7 @@ func (s *Store) transferIDsByStatuses(ctx context.Context, statuses ...string) (
 		placeholders = append(placeholders, "?")
 		args = append(args, status)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := executor.QueryContext(ctx, `
 		SELECT id
 		FROM file_transfers
 		WHERE status IN (`+strings.Join(placeholders, ",")+`)`,
@@ -83,17 +84,21 @@ func (s *Store) transferIDsByStatuses(ctx context.Context, statuses ...string) (
 	if err != nil {
 		return nil, fmt.Errorf("read transfer ids for history sync: %w", err)
 	}
-	defer rows.Close()
 	ids := []int64{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("scan transfer id for history sync: %w", err)
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, fmt.Errorf("iterate transfer ids for history sync: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close transfer ids for history sync: %w", err)
 	}
 	return ids, nil
 }
