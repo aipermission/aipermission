@@ -2,10 +2,12 @@ package migration
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/localhttp"
 )
 
 type Config struct {
@@ -26,7 +28,7 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	cfg := Config{
-		Host:          env("AIPERMISSION_MIGRATION_HOST", "0.0.0.0"),
+		Host:          env("AIPERMISSION_MIGRATION_HOST", "127.0.0.1"),
 		Port:          env("AIPERMISSION_MIGRATION_PORT", "3211"),
 		DataPath:      dataPath,
 		GatewaySecret: secret,
@@ -34,11 +36,14 @@ func LoadConfig() (Config, error) {
 	if strings.TrimSpace(cfg.Port) == "" {
 		return Config{}, fmt.Errorf("AIPERMISSION_MIGRATION_PORT is required")
 	}
+	if !localhttp.IsLoopbackHost(cfg.Host) {
+		return Config{}, fmt.Errorf("AIPermission migration is local-only and refuses to bind to %q", cfg.Host)
+	}
 	return cfg, nil
 }
 
 func (c Config) Address() string {
-	return c.Host + ":" + c.Port
+	return net.JoinHostPort(c.Host, c.Port)
 }
 
 func env(key string, fallback string) string {

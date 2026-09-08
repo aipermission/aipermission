@@ -20,6 +20,7 @@ test("release staging keeps MCP docs placeholder and updates Docker image pins",
         "image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-1.0.0}",
         "image: ghcr.io/aipermission/aipermission-backend:${AIPERMISSION_VERSION:-1.0.0}",
         "image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-1.0.0}",
+        "image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-1.0.0}",
       ].join("\n"),
     ],
   ]);
@@ -57,6 +58,7 @@ test("pinnedDockerReleaseValue rejects missing and stale image pins", () => {
         `image: aipermission-backend:\${AIPERMISSION_VERSION:-${version}}`,
         `image: aipermission-backend:\${AIPERMISSION_VERSION:-${version}}`,
         `image: aipermission-frontend:\${AIPERMISSION_VERSION:-${version}}`,
+        `image: aipermission-frontend:\${AIPERMISSION_VERSION:-${version}}`,
       ].join("\n"),
       version,
     ),
@@ -75,10 +77,11 @@ test("pinnedDockerReleaseValue rejects missing and stale image pins", () => {
         "image: aipermission-backend:${AIPERMISSION_VERSION:-1.2.2}",
         "image: aipermission-backend:${AIPERMISSION_VERSION:-1.2.2}",
         "image: aipermission-frontend:${AIPERMISSION_VERSION:-1.2.1}",
+        "image: aipermission-frontend:${AIPERMISSION_VERSION:-1.2.1}",
       ].join("\n"),
       version,
     ),
-    "1.2.2,1.2.2,1.2.1",
+    "1.2.2,1.2.2,1.2.1,1.2.1",
   );
 });
 

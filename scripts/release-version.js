@@ -13,6 +13,7 @@ const mcpConfigDocs = [
 ];
 const dockerReleaseComposePath = "docker-compose.release.yml";
 const dockerReleaseImagePattern = /(aipermission-(?:backend|frontend):\$\{AIPERMISSION_VERSION:-)([^}]+)(\})/g;
+const dockerReleaseImageCount = 4;
 
 function readJSON(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
@@ -39,7 +40,7 @@ function readStagedSource(updates, relativePath) {
 function stagePinnedDockerCompose(updates, version) {
   const source = readStagedSource(updates, dockerReleaseComposePath);
   const matches = [...source.matchAll(dockerReleaseImagePattern)];
-  if (matches.length !== 3) {
+  if (matches.length !== dockerReleaseImageCount) {
     throw new Error(`could not update all pinned Docker release images in ${dockerReleaseComposePath}`);
   }
   updates.set(
@@ -115,7 +116,7 @@ function setVersion(version) {
 
 function pinnedDockerReleaseValue(source, version) {
   const matches = [...source.matchAll(dockerReleaseImagePattern)];
-  if (matches.length !== 3) return undefined;
+  if (matches.length !== dockerReleaseImageCount) return undefined;
   const versions = matches.map((match) => match[2]);
   return versions.every((item) => item === version) ? version : versions.join(",");
 }

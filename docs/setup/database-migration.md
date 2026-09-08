@@ -8,6 +8,12 @@ If you need to keep important 0.1.x local data, use the versioned migration
 helper. It is a separate local-only Compose service that creates a new 0.2
 database and never modifies the source database.
 
+The helper listens behind a dedicated loopback-only migration proxy. Its
+browser endpoint rejects non-local clients and hosts, cross-origin writes, and
+requests without the process-scoped CSRF token. Only one migration can run at a
+time. Do not override these network boundaries or expose port `3211` to a LAN,
+reverse proxy, tunnel, or public interface.
+
 ## 0.1.x To 0.2.0
 
 Start the migration helper only when you need it:
@@ -57,8 +63,8 @@ It intentionally does not migrate:
 After the migration succeeds, stop the helper:
 
 ```bash
-docker compose --profile migrate stop migration
-docker compose --profile migrate rm -f migration
+docker compose --profile migrate stop migration migration-proxy
+docker compose --profile migrate rm -f migration migration-proxy
 ```
 
 Then return to the normal gateway at:
