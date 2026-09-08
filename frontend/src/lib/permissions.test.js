@@ -14,11 +14,26 @@ test("permission helpers treat expired grants as ineffective", () => {
 });
 
 test("permission helpers fail closed for malformed non-empty expiry values", () => {
-  const malformed = { execution_rule: "always_run", expires_at: "not-a-timestamp" };
+  for (const expires_at of [
+    "not-a-timestamp",
+    "2099",
+    "12/31/2099",
+    "2099-02-30T00:00:00Z",
+    "2099-01-01T24:00:00Z",
+    "2099-01-01T00:00:00+24:00",
+  ]) {
+    const malformed = { execution_rule: "always_run", expires_at };
+    assert.equal(permissionExpired(malformed), true, expires_at);
+    assert.equal(effectiveRule(malformed), "", expires_at);
+    assert.equal(permissionLifetimeLabel(malformed), "Invalid expiry", expires_at);
+  }
+});
 
-  assert.equal(permissionExpired(malformed), true);
-  assert.equal(effectiveRule(malformed), "");
-  assert.equal(permissionLifetimeLabel(malformed), "Invalid expiry");
+test("permission helpers accept canonical RFC3339 offsets and fractional seconds", () => {
+  const now = Date.parse("2026-06-07T11:00:00Z");
+  for (const expires_at of ["2026-06-07T12:00:00Z", "2026-06-07T15:00:00.123456789+03:00"]) {
+    assert.equal(effectiveRule({ execution_rule: "always_run", expires_at }, now), "always_run", expires_at);
+  }
 });
 
 test("token and rule helpers produce compact labels", () => {
