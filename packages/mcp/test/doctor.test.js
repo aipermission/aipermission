@@ -204,6 +204,7 @@ test("doctor validates Windows ACLs and fails closed on inherited permissions", 
   const sid = "S-1-5-21-1000";
   const windowsExec = async (executable) => {
     if (executable.endsWith("whoami.exe")) return { stdout: `"user","${sid}"\n`, stderr: "" };
+    if (executable.endsWith("powershell.exe")) return { stdout: `${sid}\n`, stderr: "" };
     if (executable.endsWith("icacls.exe")) return { stdout: `config ${sid}:(I)(F)\n`, stderr: "" };
     throw new Error(`Unexpected executable: ${executable}`);
   };
