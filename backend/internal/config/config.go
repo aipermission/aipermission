@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/localhttp"
 )
 
 type Config struct {
@@ -139,15 +141,30 @@ func validateAllowedOrigin(origin string) error {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return fmt.Errorf("AIPERMISSION_ALLOWED_ORIGINS entry %q must use http or https", origin)
 	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && ip.IsLoopback() {
+	if localhttp.IsLoopbackOrigin(origin) {
 		return nil
 	}
 	return fmt.Errorf("AIPERMISSION_ALLOWED_ORIGINS entry %q is not loopback; AIPermission only accepts localhost, 127.0.0.1, or [::1] origins", origin)
+}
+
+func (c Config) AllowsOrigin(origin string) bool {
+	if !localhttp.IsLoopbackOrigin(origin) {
+		return false
+	}
+	for _, allowed := range c.AllowedOrigins {
+		if strings.EqualFold(strings.TrimSpace(allowed), strings.TrimSpace(origin)) {
+			return true
+		}
+	}
+	return false
+}
+
+func IsLocalhostHeader(hostHeader string) bool {
+	return localhttp.IsLocalhostHeader(hostHeader)
+}
+
+func IsLocalRemoteAddr(remoteAddr string) bool {
+	return localhttp.IsLocalRemoteAddr(remoteAddr)
 }
 
 func secretState(value string) string {

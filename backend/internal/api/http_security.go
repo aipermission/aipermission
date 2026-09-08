@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/localhttp"
 	"github.com/gorilla/websocket"
 )
 
@@ -38,19 +37,7 @@ func (s *Server) isAllowedOrigin(origin string) bool {
 	if origin == "" {
 		return true
 	}
-	if !isLoopbackOrigin(origin) {
-		return false
-	}
-	for _, allowed := range s.config.AllowedOrigins {
-		if strings.EqualFold(strings.TrimSpace(allowed), origin) {
-			return true
-		}
-	}
-	return false
-}
-
-func isLoopbackOrigin(origin string) bool {
-	return localhttp.IsLoopbackOrigin(origin)
+	return s.config.AllowsOrigin(origin)
 }
 
 func (s *Server) upgradeWebSocket(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
