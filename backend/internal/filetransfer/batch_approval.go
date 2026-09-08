@@ -9,8 +9,14 @@ import (
 )
 
 func (s *Store) MarkBatchRunning(ctx context.Context, id int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin mark file transfer batch running: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := nowString()
-	result, err := s.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
 		SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ?
 		WHERE id = ? AND status IN (?, ?)`,
@@ -29,9 +35,12 @@ func (s *Store) MarkBatchRunning(ctx context.Context, id int64) (bool, error) {
 		return false, fmt.Errorf("read file transfer batch running rows: %w", err)
 	}
 	if rows > 0 {
-		if err := s.syncBatchTransferHistory(ctx, id); err != nil {
+		if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
 			return false, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit file transfer batch running: %w", err)
 	}
 	return rows > 0, nil
 }
@@ -170,14 +179,14 @@ func (s *Store) ApproveBatch(ctx context.Context, id int64, request BatchApprova
 	if err := recalculateBatch(ctx, tx, id); err != nil {
 		return BatchRecord{}, nil, err
 	}
+	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+		return BatchRecord{}, nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return BatchRecord{}, nil, fmt.Errorf("commit file transfer batch approval: %w", err)
 	}
 	batch, err := s.GetBatch(ctx, id)
 	if err != nil {
-		return BatchRecord{}, nil, err
-	}
-	if err := s.syncBatchTransferHistory(ctx, id); err != nil {
 		return BatchRecord{}, nil, err
 	}
 	return batch, rejected, nil

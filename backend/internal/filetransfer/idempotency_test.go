@@ -150,6 +150,92 @@ func TestIdempotencyClaimRollsBackWithFailedTransferCreation(t *testing.T) {
 	}
 }
 
+func TestIdempotentCreationRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	if _, err := database.Exec(`DROP TABLE history_entries`); err != nil {
+		t.Fatalf("drop history entries: %v", err)
+	}
+	transferClaim := IdempotencyClaim{
+		Scope: "ui", Key: "transfer-projection-failure", IdentityHash: "h1:transfer-projection", ResourceKind: IdempotencyResourceTransfer,
+	}
+	_, created, err := NewStore(database).CreateIdempotent(context.Background(), CreateRequest{
+		RuntimeID:  runtimeID,
+		Direction:  DirectionUpload,
+		Source:     SourceUI,
+		RemotePath: "/tmp/single-upload.txt",
+		FileName:   "single-upload.txt",
+		TempPath:   "/tmp/staged-single-upload",
+	}, transferClaim)
+	if err == nil || created {
+		t.Fatalf("transfer creation should fail atomically with its history projection: created=%v err=%v", created, err)
+	}
+	assertRowCount(t, database, "file_transfers", 0)
+	assertRowCount(t, database, "file_transfer_start_idempotency", 0)
+
+	claim := IdempotencyClaim{
+		Scope: "ui", Key: "batch-projection-failure", IdentityHash: "h1:batch-projection", ResourceKind: IdempotencyResourceBatch,
+	}
+	_, created, err = NewStore(database).CreateBatchIdempotent(context.Background(), CreateBatchRequest{
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{{
+			RemotePath: "/tmp/upload.txt",
+			FileName:   "upload.txt",
+			TempPath:   "/tmp/staged-upload",
+		}},
+	}, claim)
+	if err == nil || created {
+		t.Fatalf("batch creation should fail atomically with its history projection: created=%v err=%v", created, err)
+	}
+	assertRowCount(t, database, "file_transfers", 0)
+	assertRowCount(t, database, "file_transfer_batches", 0)
+	assertRowCount(t, database, "file_transfer_start_idempotency", 0)
+}
+
+func TestMarkBatchRunningRollsBackWhenHistoryProjectionFails(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	runtimeID := insertTestServer(t, database)
+	store := NewStore(database)
+	batch, err := store.CreateBatch(context.Background(), CreateBatchRequest{
+		RuntimeID: runtimeID,
+		Direction: DirectionUpload,
+		Source:    SourceUI,
+		Items: []CreateRequest{{
+			RemotePath: "/tmp/upload.txt",
+			FileName:   "upload.txt",
+			TempPath:   "/tmp/staged-upload",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if _, err := database.Exec(`DROP TABLE history_entries`); err != nil {
+		t.Fatalf("drop history entries: %v", err)
+	}
+
+	claimed, err := store.MarkBatchRunning(context.Background(), batch.ID)
+	if err == nil || claimed {
+		t.Fatalf("mark running should fail atomically with history projection: claimed=%v err=%v", claimed, err)
+	}
+	var status string
+	if err := database.QueryRow(`SELECT status FROM file_transfer_batches WHERE id = ?`, batch.ID).Scan(&status); err != nil {
+		t.Fatalf("read batch status: %v", err)
+	}
+	if status != StatusPending {
+		t.Fatalf("batch status=%q want=%q", status, StatusPending)
+	}
+}
+
 func TestIdempotencyTombstonePreventsReplayAfterTransferRetention(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
 	if err != nil {
