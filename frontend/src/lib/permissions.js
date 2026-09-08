@@ -20,7 +20,7 @@ export function permissionExpired(value, now = Date.now()) {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return false;
   const expiresAt = new Date(permission.expires_at).getTime();
-  return Number.isFinite(expiresAt) && expiresAt <= now;
+  return !Number.isFinite(expiresAt) || expiresAt <= now;
 }
 
 export function effectiveRule(value, now = Date.now()) {
@@ -33,7 +33,7 @@ export function permissionLifetimeLabel(value, now = Date.now()) {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return "Permanent";
   const expiresAt = new Date(permission.expires_at).getTime();
-  if (!Number.isFinite(expiresAt)) return "Permanent";
+  if (!Number.isFinite(expiresAt)) return "Invalid expiry";
   const diff = expiresAt - now;
   if (diff <= 0) return "Expired";
   const minutes = Math.max(1, Math.round(diff / 60000));
