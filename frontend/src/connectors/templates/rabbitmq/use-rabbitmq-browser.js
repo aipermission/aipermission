@@ -12,6 +12,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   const activeSession = session || { active: false, startedAt: "" };
   const [pattern, setPattern] = useState("");
   const [vhost, setVhost] = useState(target.config?.vhost || "/");
+  const [vhostDraft, setVhostDraft] = useState(target.config?.vhost || "/");
   const [queues, setQueues] = useState([]);
   const [activeQueue, setActiveQueue] = useState("");
   const [queueDetail, setQueueDetail] = useState(null);
@@ -27,8 +28,9 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     properties: defaultProperties,
   });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const scopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
-  const requestGuard = useRequestGuard(scopeKey);
+  const sessionScopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
+  const requestScopeKey = `${sessionScopeKey}:${vhost}`;
+  const requestGuard = useRequestGuard(requestScopeKey);
   const filteredQueues = useMemo(() => filterQueues(queues, pattern), [queues, pattern]);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
@@ -38,6 +40,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
 
   useEffect(() => {
     setVhost(target.config?.vhost || "/");
+    setVhostDraft(target.config?.vhost || "/");
     setQueues([]);
     setActiveQueue("");
     setQueueDetail(null);
@@ -48,11 +51,11 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     setDetailMode("inspect");
     setPublish({ exchange: "amq.default", customRoutingKey: false, routingKey: "", payload: "", properties: defaultProperties });
     setState({ state: "idle", error: "", message: "" });
-  }, [scopeKey, target.config?.vhost]);
+  }, [sessionScopeKey, target.config?.vhost]);
 
   useEffect(() => {
     if (activeSession.active) void refreshForEffect();
-  }, [activeSession.active, activeSession.startedAt, target.ref]);
+  }, [activeSession.active, activeSession.startedAt, target.ref, vhost]);
 
   useEffect(() => {
     if (activeQueue) return;
@@ -154,12 +157,21 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     );
   }
 
-  function changeVhost(value) {
-    setVhost(value);
+  function applyVhost() {
+    if (state.state === "publishing") return;
+    const nextVhost = vhostDraft.trim() || "/";
+    if (nextVhost === vhost) {
+      void refreshQueues();
+      return;
+    }
+    requestGuard.setScope(`${sessionScopeKey}:${nextVhost}`);
+    setVhost(nextVhost);
+    setVhostDraft(nextVhost);
     setActiveQueue("");
     setQueueDetail(null);
     setBindings([]);
     setMessages([]);
+    setState({ state: "idle", error: "", message: "" });
   }
 
   async function publishMessage() {
@@ -201,7 +213,9 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     pattern,
     setPattern,
     vhost,
-    setVhost: changeVhost,
+    vhostDraft,
+    setVhostDraft,
+    applyVhost,
     queues,
     filteredQueues,
     activeQueue,
