@@ -4,6 +4,7 @@ export function createRequestGuard(initialScope = "") {
   let active = true;
   let lifecycle = 0;
   let scope = initialScope;
+  let visibilityVersion = 0;
   const versions = new Map();
   const controllers = new Map();
 
@@ -26,7 +27,19 @@ export function createRequestGuard(initialScope = "") {
       abortAll();
       scope = nextScope;
       lifecycle += 1;
+      visibilityVersion += 1;
       versions.clear();
+    },
+    claimVisibility() {
+      const requestLifecycle = lifecycle;
+      const requestScope = scope;
+      const version = visibilityVersion + 1;
+      visibilityVersion = version;
+      return {
+        isCurrent() {
+          return active && lifecycle === requestLifecycle && scope === requestScope && visibilityVersion === version;
+        },
+      };
     },
     begin(channel) {
       abortChannel(channel);
@@ -60,6 +73,7 @@ export function createRequestGuard(initialScope = "") {
       abortAll();
       active = false;
       lifecycle += 1;
+      visibilityVersion += 1;
       versions.clear();
     },
   };

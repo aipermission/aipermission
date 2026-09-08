@@ -19,6 +19,8 @@ export async function runGuardedConnectorAction({
   post = apiPost,
 }) {
   const request = requestGuard.begin(channel || actionName);
+  const visibility = requestGuard.claimVisibility();
+  const canUpdateState = () => request.isCurrent() && visibility.isCurrent();
   setState({ state: busy, error: "", message: "" });
   try {
     const response = await post(
@@ -33,29 +35,31 @@ export async function runGuardedConnectorAction({
     );
     if (!request.isCurrent()) return null;
     const item = requireCompletedConnectorAction(response, `${product} action failed.`);
-    if (!item) return handlePendingAction({ response, product, request, setState, onRefreshActivity });
-    return await handleCompletedAction({ item, request, setState, onRefreshActivity, onCompleted, successMessage });
+    if (!item) return handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity });
+    return await handleCompletedAction({ item, request, canUpdateState, setState, onRefreshActivity, onCompleted, successMessage });
   } catch (error) {
     if (!request.isCurrent()) return null;
-    if (outcomeUnknown(error)) await handleUnknownOutcome({ error, product, request, setState, onRefreshActivity });
-    setState(
-      suppressError
-        ? { state: "idle", error: "", message: "" }
-        : { state: "error", error: errorMessage(error, `${product} action failed.`), message: "" },
-    );
+    if (outcomeUnknown(error)) await handleUnknownOutcome({ error, product, canUpdateState, setState, onRefreshActivity });
+    if (canUpdateState()) {
+      setState(
+        suppressError
+          ? { state: "idle", error: "", message: "" }
+          : { state: "error", error: errorMessage(error, `${product} action failed.`), message: "" },
+      );
+    }
     throw error;
   } finally {
     request.complete();
   }
 }
 
-function handlePendingAction({ response, product, request, setState, onRefreshActivity }) {
+function handlePendingAction({ response, product, canUpdateState, setState, onRefreshActivity }) {
   const message = response.display_text || `${product} action is awaiting approval.`;
-  setState({ state: "idle", error: "", message });
+  if (canUpdateState()) setState({ state: "idle", error: "", message });
   void Promise.resolve()
     .then(() => onRefreshActivity?.())
     .catch((refreshError) => {
-      if (!request.isCurrent()) return;
+      if (!canUpdateState()) return;
       setState({
         state: "idle",
         error: `Approval is pending, but activity refresh failed: ${errorMessage(refreshError)}`,
@@ -65,14 +69,14 @@ function handlePendingAction({ response, product, request, setState, onRefreshAc
   return null;
 }
 
-async function handleCompletedAction({ item, request, setState, onRefreshActivity, onCompleted, successMessage }) {
+async function handleCompletedAction({ item, request, canUpdateState, setState, onRefreshActivity, onCompleted, successMessage }) {
   const message = successMessage ? successMessage(item) : item.display_text || "";
-  setState({ state: "idle", error: "", message });
+  if (canUpdateState()) setState({ state: "idle", error: "", message });
   onCompleted?.(item);
   try {
     await onRefreshActivity?.();
   } catch (refreshError) {
-    if (request.isCurrent()) {
+    if (canUpdateState()) {
       setState({ state: "idle", error: `Action completed, but activity refresh failed: ${errorMessage(refreshError)}`, message });
     }
   }
@@ -84,7 +88,7 @@ function outcomeUnknown(error) {
   return error?.data?.status === "outcome_unknown" ? error.data : null;
 }
 
-async function handleUnknownOutcome({ error, product, request, setState, onRefreshActivity }) {
+async function handleUnknownOutcome({ error, product, canUpdateState, setState, onRefreshActivity }) {
   const uncertain = outcomeUnknown(error);
   let message = uncertain.error || errorMessage(error, `${product} action outcome is unknown.`);
   if (uncertain.request_id) message += ` Request ${uncertain.request_id}.`;
@@ -94,6 +98,6 @@ async function handleUnknownOutcome({ error, product, request, setState, onRefre
   } catch (refreshError) {
     message += ` Activity refresh failed: ${errorMessage(refreshError)}`;
   }
-  if (request.isCurrent()) setState({ state: "error", error: message, message: "" });
+  if (canUpdateState()) setState({ state: "error", error: message, message: "" });
   throw error;
 }

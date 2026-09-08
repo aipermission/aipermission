@@ -63,6 +63,31 @@ test("request guard aborts only the invalidated channel", () => {
   assert.equal(detail.isCurrent(), true);
 });
 
+test("request guard gives visible state ownership to the newest channel", () => {
+  const guard = createRequestGuard("target:1");
+  const list = guard.begin("list");
+  const listVisibility = guard.claimVisibility();
+  const detail = guard.begin("detail");
+  const detailVisibility = guard.claimVisibility();
+
+  assert.equal(list.isCurrent(), true);
+  assert.equal(detail.isCurrent(), true);
+  assert.equal(listVisibility.isCurrent(), false);
+  assert.equal(detailVisibility.isCurrent(), true);
+});
+
+test("request guard invalidates visible state ownership across scope and disposal", () => {
+  const guard = createRequestGuard("target:1");
+  const previousScope = guard.claimVisibility();
+  guard.setScope("target:2");
+  const currentScope = guard.claimVisibility();
+
+  assert.equal(previousScope.isCurrent(), false);
+  assert.equal(currentScope.isCurrent(), true);
+  guard.dispose();
+  assert.equal(currentScope.isCurrent(), false);
+});
+
 test("request guard scope changes abort every in-flight channel", () => {
   const guard = createRequestGuard("target:1");
   const list = guard.begin("list");
