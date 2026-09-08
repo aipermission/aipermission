@@ -44,7 +44,7 @@ func createS3IdentityRuntime(t *testing.T, server *Server, endpoint string) targ
 }
 
 func TestS3TransferAPIExactIdentity(t *testing.T) {
-	keys := []string{"invoice", "invoice ", " invoice", "/invoice", "a//b", "a/../b", "a/./b", "caf\u00e9", "cafe\u0301", " ", "a%2Fb", "a\\b"}
+	keys := []string{"invoice", "invoice ", " invoice", " ", "/invoice", "a//b", "a/../b", "a/./b", "caf\u00e9", "cafe\u0301", "a%2Fb", "a\\b"}
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			requests := make(chan string, 8)
@@ -85,6 +85,9 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			}
 			if batch.Items[0].RemotePath != "/"+key {
 				t.Fatalf("stored key = %q", batch.Items[0].RemotePath)
+			}
+			if key == " " && batch.Items[0].FileName != "aipermission-file" {
+				t.Fatalf("whitespace key local filename = %q", batch.Items[0].FileName)
 			}
 			_, _, err = runtime.fileTransfers.ApproveBatch(context.Background(), batch.ID, filetransfer.BatchApprovalRequest{ApprovedItemIDs: []int64{batch.Items[0].ID}})
 			if err != nil {

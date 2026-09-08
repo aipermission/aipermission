@@ -29,10 +29,14 @@ func TestTransferPathPolicyFallbackRetainsFilesystemRules(t *testing.T) {
 	if got := transferParent(adapter, "/base/folder"); got != "/base" {
 		t.Fatalf("parent = %q", got)
 	}
-	header := &multipart.FileHeader{Filename: " .report. ", Header: textproto.MIMEHeader{}}
+	header := &multipart.FileHeader{Filename: ".report.", Header: textproto.MIMEHeader{}}
 	header.Header.Set("Content-Disposition", `form-data; name="files"; filename="a/../different"`)
 	got, err := transferUploadFilename(adapter, header)
-	if err != nil || got != "report" {
+	if err != nil || got != ".report." {
 		t.Fatalf("non-opaque filename = %q, %v", got, err)
+	}
+	header.Filename = "bad\nname"
+	if _, err := transferUploadFilename(adapter, header); err == nil {
+		t.Fatal("unsafe upload filename was accepted")
 	}
 }

@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 func StageUpload(root string, reader io.Reader) (string, int64, string, error) {
@@ -93,11 +96,15 @@ func UniqueArchiveEntryName(name, remotePath, archiveRoot string, used map[strin
 		stem = "file"
 	}
 	candidate := base
-	for suffix := 2; used[candidate] > 0; suffix++ {
+	for suffix := 2; used[archiveCollisionKey(candidate)] > 0; suffix++ {
 		candidate = directory + fmt.Sprintf("%s-%d%s", stem, suffix, ext)
 	}
-	used[candidate] = 1
+	used[archiveCollisionKey(candidate)] = 1
 	return candidate
+}
+
+func archiveCollisionKey(value string) string {
+	return cases.Fold().String(norm.NFC.String(strings.TrimRight(value, " .")))
 }
 
 func RelativeArchiveEntryPath(remotePath, archiveRoot string) string {
@@ -145,15 +152,52 @@ func commonRemoteArchiveRoot(items []Record) string {
 }
 
 func safeArchiveEntryPath(value string) string {
-	cleaned := path.Clean(strings.TrimSpace(strings.ReplaceAll(value, "\\", "/")))
+	value = strings.ReplaceAll(value, "\\", "/")
+	if strings.TrimSpace(value) == "" {
+		return "aipermission-file"
+	}
+	cleaned := path.Clean(value)
 	if cleaned == "." || cleaned == "/" || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "aipermission-file"
 	}
 	parts := strings.Split(strings.TrimLeft(cleaned, "/"), "/")
 	for index, part := range parts {
-		parts[index] = SafeFileName(part)
+		parts[index] = safeArchiveComponent(part)
 	}
 	return strings.Join(parts, "/")
+}
+
+func safeArchiveComponent(value string) string {
+	value = SafeFileName(value)
+	var builder strings.Builder
+	for _, char := range value {
+		if strings.ContainsRune(`<>:"|?*`, char) {
+			builder.WriteRune('_')
+		} else {
+			builder.WriteRune(char)
+		}
+	}
+	value = builder.String()
+	trailing := len(value) - len(strings.TrimRight(value, " ."))
+	if trailing > 0 {
+		value = strings.TrimRight(value, " .") + strings.Repeat("_", trailing)
+	}
+	if value == "" || value == "." || value == ".." {
+		return "aipermission-file"
+	}
+	base := strings.TrimRight(strings.SplitN(value, ".", 2)[0], " .")
+	if windowsReservedArchiveNames[strings.ToLower(base)] {
+		value = "_" + value
+	}
+	return value
+}
+
+var windowsReservedArchiveNames = map[string]bool{
+	"aux": true, "con": true, "nul": true, "prn": true,
+	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
+	"com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
+	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
 func addFileToZip(zipWriter *zip.Writer, filePath, name string) error {
@@ -309,10 +353,9 @@ func JoinRemoteRelativePath(remoteDir, relativePath string) string {
 }
 
 func SafeFileName(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	value = strings.ReplaceAll(value, "\\", "/")
 	value = path.Base(value)
-	value = strings.Trim(value, ". ")
-	if value == "" || value == "/" || value == "." {
+	if value == "" || value == "/" || value == "." || value == ".." {
 		return "aipermission-file"
 	}
 	var builder strings.Builder
@@ -323,7 +366,7 @@ func SafeFileName(value string) string {
 		}
 		builder.WriteRune(r)
 	}
-	result := strings.TrimSpace(builder.String())
+	result := builder.String()
 	if result == "" {
 		return "aipermission-file"
 	}
@@ -331,4 +374,28 @@ func SafeFileName(value string) string {
 		return string([]rune(result)[:160])
 	}
 	return result
+}
+
+func ValidateFileName(value string) error {
+	if value == "" {
+		return fmt.Errorf("file name is required")
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("file name cannot contain only whitespace")
+	}
+	if value == "." || value == ".." {
+		return fmt.Errorf("file name cannot be %q", value)
+	}
+	if len([]rune(value)) > 160 {
+		return fmt.Errorf("file name must be 160 characters or fewer")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("file name cannot contain control characters")
+		}
+		if r == '/' || r == '\\' {
+			return fmt.Errorf("file name cannot contain path separators")
+		}
+	}
+	return nil
 }
