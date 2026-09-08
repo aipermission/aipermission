@@ -27,7 +27,7 @@ func TestHeadersRejectFilenameInjectionAndSniffing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse Content-Disposition: %v", err)
 	}
-	if disposition != "attachment" || parameters["filename"] != "reportX-Injected: yes.json" {
+	if disposition != "attachment" || parameters["filename"] != "reportX-Injected_ yes.json" {
 		t.Fatalf("unexpected Content-Disposition: %q %#v", disposition, parameters)
 	}
 	for name := range response.Header() {
@@ -42,8 +42,11 @@ func TestSafeFilenameUsesBoundedBasename(t *testing.T) {
 		"../nested/report.sql":       "report.sql",
 		`..\nested\windows.sql`:      "windows.sql",
 		"\x00\r\n":                   "fallback.bin",
-		" normal-backup.aipdb ":      "normal-backup.aipdb",
+		" normal-backup.aipdb ":      " normal-backup.aipdb_",
 		"folder/control\x00name.zip": "controlname.zip",
+		"CON.txt":                    "_CON.txt",
+		"...":                        "___",
+		"invoice ":                   "invoice_",
 		"":                           "fallback.bin",
 	}
 	for input, want := range tests {

@@ -749,7 +749,11 @@ approval queue:
 }
 ```
 
-Remote paths must be absolute file paths. Bounded recursive selection is
+Remote paths must be absolute file paths. Filesystem-backed paths must be valid
+UTF-8, at most 4096 bytes overall, and at most 255 bytes per path component;
+uploaded filenames are additionally limited to 160 characters. These portable
+bounds reject paths that the remote filesystem could not create before any
+connector I/O begins. Bounded recursive selection is
 available through `/api/file-transfers/expand` when the connector implements
 the recursive transfer adapter. Arbitrary recursive copy, remote glob
 expansion, restart-surviving resumable transfers, and SSH-agent/ProxyJump based

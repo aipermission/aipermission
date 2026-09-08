@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
-	"golang.org/x/text/cases"
-	"golang.org/x/text/unicode/norm"
+	"github.com/aipermission/aipermission/backend/internal/archivepath"
+	"github.com/aipermission/aipermission/backend/internal/localfilename"
 )
 
 func StageUpload(root string, reader io.Reader) (string, int64, string, error) {
@@ -53,7 +54,7 @@ func CreateDownloadArchive(root string, batch BatchRecord) (string, error) {
 	}
 	archivePath := temp.Name()
 	zipWriter := zip.NewWriter(temp)
-	usedNames := map[string]int{}
+	usedNames := archivepath.NewTracker()
 	archiveRoot := commonRemoteArchiveRoot(batch.Items)
 	for _, item := range batch.Items {
 		if item.Status != StatusCompleted {
@@ -84,27 +85,38 @@ func CreateDownloadArchive(root string, batch BatchRecord) (string, error) {
 	return archivePath, nil
 }
 
-func UniqueArchiveEntryName(name, remotePath, archiveRoot string, used map[string]int) string {
+func UniqueArchiveEntryName(name, remotePath, archiveRoot string, used *archivepath.Tracker) string {
 	base := RelativeArchiveEntryPath(remotePath, archiveRoot)
 	if base == "" {
 		base = safeArchiveEntryPath(name)
 	}
-	directory, fileName := path.Split(base)
-	ext := path.Ext(fileName)
-	stem := strings.TrimSuffix(fileName, ext)
+	parts := strings.Split(safeArchiveEntryPath(base), "/")
+	original := append([]string(nil), parts...)
+	suffixes := make([]int, len(parts))
+	for {
+		conflict := used.ConflictIndex(parts)
+		if conflict < 0 {
+			used.Register(parts)
+			return strings.Join(parts, "/")
+		}
+		suffixes[conflict]++
+		parts[conflict] = archiveComponentWithSuffix(original[conflict], suffixes[conflict]+1)
+	}
+}
+
+func archiveComponentWithSuffix(value string, suffix int) string {
+	suffixText := fmt.Sprintf("-%d", suffix)
+	ext := path.Ext(value)
+	stem := strings.TrimSuffix(value, ext)
 	if stem == "" {
 		stem = "file"
 	}
-	candidate := base
-	for suffix := 2; used[archiveCollisionKey(candidate)] > 0; suffix++ {
-		candidate = directory + fmt.Sprintf("%s-%d%s", stem, suffix, ext)
+	stem = localfilename.FitWithSuffix(stem, suffixText+ext)
+	if stem == "" {
+		ext = ""
+		stem = localfilename.FitWithSuffix("file", suffixText)
 	}
-	used[archiveCollisionKey(candidate)] = 1
-	return candidate
-}
-
-func archiveCollisionKey(value string) string {
-	return cases.Fold().String(norm.NFC.String(strings.TrimRight(value, " .")))
+	return stem + suffixText + ext
 }
 
 func RelativeArchiveEntryPath(remotePath, archiveRoot string) string {
@@ -168,36 +180,7 @@ func safeArchiveEntryPath(value string) string {
 }
 
 func safeArchiveComponent(value string) string {
-	value = SafeFileName(value)
-	var builder strings.Builder
-	for _, char := range value {
-		if strings.ContainsRune(`<>:"|?*`, char) {
-			builder.WriteRune('_')
-		} else {
-			builder.WriteRune(char)
-		}
-	}
-	value = builder.String()
-	trailing := len(value) - len(strings.TrimRight(value, " ."))
-	if trailing > 0 {
-		value = strings.TrimRight(value, " .") + strings.Repeat("_", trailing)
-	}
-	if value == "" || value == "." || value == ".." {
-		return "aipermission-file"
-	}
-	base := strings.TrimRight(strings.SplitN(value, ".", 2)[0], " .")
-	if windowsReservedArchiveNames[strings.ToLower(base)] {
-		value = "_" + value
-	}
-	return value
-}
-
-var windowsReservedArchiveNames = map[string]bool{
-	"aux": true, "con": true, "nul": true, "prn": true,
-	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
-	"com6": true, "com7": true, "com8": true, "com9": true,
-	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
-	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+	return localfilename.Safe(value, "aipermission-file")
 }
 
 func addFileToZip(zipWriter *zip.Writer, filePath, name string) error {
@@ -214,7 +197,10 @@ func addFileToZip(zipWriter *zip.Writer, filePath, name string) error {
 	if err != nil {
 		return fmt.Errorf("create archive header: %w", err)
 	}
-	header.Name = safeArchiveEntryPath(name)
+	if name == "" || safeArchiveEntryPath(name) != name {
+		return fmt.Errorf("archive entry name is not canonical")
+	}
+	header.Name = name
 	header.Method = zip.Deflate
 	switch strings.ToLower(filepath.Ext(header.Name)) {
 	case ".zip", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar":
@@ -259,7 +245,7 @@ func ScheduleTempCleanup(root, value string, ttl time.Duration) {
 }
 
 func JoinRemoteFilePath(remoteDir, fileName string) string {
-	cleanName := strings.TrimLeft(SafeFileName(fileName), "/")
+	cleanName := strings.TrimLeft(safeRemoteUploadName(fileName), "/")
 	if cleanName == "" {
 		cleanName = "file"
 	}
@@ -267,6 +253,23 @@ func JoinRemoteFilePath(remoteDir, fileName string) string {
 		return "/" + cleanName
 	}
 	return strings.TrimRight(remoteDir, "/") + "/" + cleanName
+}
+
+func safeRemoteUploadName(value string) string {
+	value = strings.ReplaceAll(value, "\\", "/")
+	value = path.Base(value)
+	if value == "" || value == "/" || value == "." || value == ".." {
+		return "file"
+	}
+	var builder strings.Builder
+	for _, character := range value {
+		if unicode.IsControl(character) || character == '/' || character == '\\' {
+			builder.WriteRune('_')
+			continue
+		}
+		builder.WriteRune(character)
+	}
+	return localfilename.FitWithSuffix(builder.String(), "")
 }
 
 func SpeedAndETA(transferred, total int64, elapsed time.Duration) (int64, int64) {
@@ -284,6 +287,9 @@ func SpeedAndETA(transferred, total int64, elapsed time.Duration) (int64, int64)
 }
 
 func NormalizeRemoteFilePath(value string) (string, error) {
+	if err := validatePortableRemotePath(value, "remote_path"); err != nil {
+		return "", err
+	}
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", fmt.Errorf("remote_path is required")
@@ -307,6 +313,11 @@ func NormalizeRemoteFilePath(value string) (string, error) {
 }
 
 func NormalizeRemoteDirectoryPath(value string) (string, error) {
+	if value != "" {
+		if err := validatePortableRemotePath(value, "path"); err != nil {
+			return "", err
+		}
+	}
 	value = strings.TrimSpace(value)
 	if value == "" {
 		value = "/"
@@ -326,6 +337,9 @@ func NormalizeRemoteDirectoryPath(value string) (string, error) {
 }
 
 func NormalizeRelativeTransferPath(value string) (string, error) {
+	if err := validatePortableRemotePath(strings.ReplaceAll(value, "\\", "/"), "relative upload path"); err != nil {
+		return "", err
+	}
 	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
 	if value == "" || len([]rune(value)) > 4096 {
 		return "", fmt.Errorf("relative upload path is invalid")
@@ -353,27 +367,7 @@ func JoinRemoteRelativePath(remoteDir, relativePath string) string {
 }
 
 func SafeFileName(value string) string {
-	value = strings.ReplaceAll(value, "\\", "/")
-	value = path.Base(value)
-	if value == "" || value == "/" || value == "." || value == ".." {
-		return "aipermission-file"
-	}
-	var builder strings.Builder
-	for _, r := range value {
-		if unicode.IsControl(r) || r == '/' || r == '\\' {
-			builder.WriteRune('_')
-			continue
-		}
-		builder.WriteRune(r)
-	}
-	result := builder.String()
-	if result == "" {
-		return "aipermission-file"
-	}
-	if len([]rune(result)) > 160 {
-		return string([]rune(result)[:160])
-	}
-	return result
+	return localfilename.Safe(value, "aipermission-file")
 }
 
 func ValidateFileName(value string) error {
@@ -389,12 +383,30 @@ func ValidateFileName(value string) error {
 	if len([]rune(value)) > 160 {
 		return fmt.Errorf("file name must be 160 characters or fewer")
 	}
+	if !utf8.ValidString(value) || len(value) > localfilename.MaxUTF8Bytes {
+		return fmt.Errorf("file name must be valid UTF-8 and %d bytes or fewer", localfilename.MaxUTF8Bytes)
+	}
 	for _, r := range value {
 		if unicode.IsControl(r) {
 			return fmt.Errorf("file name cannot contain control characters")
 		}
 		if r == '/' || r == '\\' {
 			return fmt.Errorf("file name cannot contain path separators")
+		}
+	}
+	return nil
+}
+
+func validatePortableRemotePath(value, label string) error {
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s must be valid UTF-8", label)
+	}
+	if len(value) > 4096 {
+		return fmt.Errorf("%s must be 4096 bytes or fewer", label)
+	}
+	for _, component := range strings.Split(value, "/") {
+		if len(component) > localfilename.MaxUTF8Bytes {
+			return fmt.Errorf("%s components must be %d bytes or fewer", label, localfilename.MaxUTF8Bytes)
 		}
 	}
 	return nil

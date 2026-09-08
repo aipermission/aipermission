@@ -3,6 +3,7 @@ package api
 import (
 	"mime/multipart"
 	"net/textproto"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,11 @@ func TestTransferPathPolicyFallbackRetainsFilesystemRules(t *testing.T) {
 		if _, err := transferUploadPath(adapter, "/base", name); err == nil {
 			t.Fatalf("unsafe relative path %q accepted", name)
 		}
+	}
+	longDirectory := "/" + strings.Repeat("a/", 1500)
+	longRelative := strings.Repeat("b/", 600) + "report.txt"
+	if _, err := transferUploadPath(adapter, longDirectory, longRelative); err == nil {
+		t.Fatal("combined upload path exceeding the portable byte limit was accepted")
 	}
 	if got := transferParent(adapter, "/base/folder"); got != "/base" {
 		t.Fatalf("parent = %q", got)

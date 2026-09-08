@@ -147,40 +147,6 @@ func TestFileTransferStartRoutesRequireBoundedIdempotencyKeys(t *testing.T) {
 	}
 }
 
-func TestUniqueArchiveEntryNameAvoidsDuplicateBasenames(t *testing.T) {
-	used := map[string]int{}
-
-	first := uniqueArchiveEntryName("app.log", "/var/log/app.log", "/", used)
-	second := uniqueArchiveEntryName("app.log", "/tmp/app.log", "/", used)
-	third := uniqueArchiveEntryName("", "/opt/app.log", "/", used)
-
-	if first != "var/log/app.log" {
-		t.Fatalf("unexpected first archive name: %s", first)
-	}
-	if second != "tmp/app.log" {
-		t.Fatalf("remote directories should distinguish duplicate basenames, got %s", second)
-	}
-	if third != "opt/app.log" {
-		t.Fatalf("remote path should determine the archive entry, got %s", third)
-	}
-}
-
-func TestUniqueArchiveEntryNameTracksGeneratedSuffixes(t *testing.T) {
-	used := map[string]int{}
-	names := []string{
-		uniqueArchiveEntryName("", "/a/f.txt", "/", used),
-		uniqueArchiveEntryName("", `/a\f.txt`, "/", used),
-		uniqueArchiveEntryName("", "/a/f-2.txt", "/", used),
-	}
-	seen := map[string]bool{}
-	for _, name := range names {
-		if seen[name] {
-			t.Fatalf("duplicate generated archive entry %q in %#v", name, names)
-		}
-		seen[name] = true
-	}
-}
-
 func TestNormalizeRelativeTransferPathPreservesFoldersAndRejectsTraversal(t *testing.T) {
 	value, err := normalizeRelativeTransferPath(`reports\2026\daily.csv`)
 	if err != nil || value != "reports/2026/daily.csv" {

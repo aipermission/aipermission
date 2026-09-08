@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,65 @@ func createS3IdentityRuntime(t *testing.T, server *Server, endpoint string) targ
 		t.Fatalf("targets: %s", response.Body.String())
 	}
 	return targets.Items[0]
+}
+
+func TestS3SingleWhitespaceKeyDownloadUsesFallbackLocalName(t *testing.T) {
+	requests := make(chan string, 2)
+	objectStore := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.Method + " " + r.URL.Path
+		if r.URL.Path != "/identity-bucket/ " {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Length", "4")
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte("data"))
+		}
+	}))
+	defer objectStore.Close()
+
+	fixture := newAPITestFixture(t)
+	runtimeID := createS3IdentityRuntime(t, fixture.server, objectStore.URL).TransferRuntimeID
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{
+		RuntimeID: runtimeID, RemotePath: "/ ", IdempotencyKey: "single-whitespace-key",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("start single download: %d %s", response.Code, response.Body.String())
+	}
+	var started filetransfer.Record
+	if err := json.Unmarshal(response.Body.Bytes(), &started); err != nil {
+		t.Fatalf("decode transfer: %v", err)
+	}
+	if started.RemotePath != "/ " || started.FileName != "aipermission-file" {
+		t.Fatalf("stored identity = remote %q local %q", started.RemotePath, started.FileName)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if !fixture.server.activeRuntime().transferJobs.Wait(waitCtx) {
+		t.Fatal("single download did not finish")
+	}
+	completed, err := fixture.server.activeRuntime().fileTransfers.Get(context.Background(), started.ID)
+	if err != nil || completed.Status != filetransfer.StatusCompleted {
+		t.Fatalf("completed transfer = %#v, %v", completed, err)
+	}
+	if data, err := os.ReadFile(completed.TempPath); err != nil || string(data) != "data" {
+		t.Fatalf("downloaded bytes = %q, %v", data, err)
+	}
+	download := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfers/"+strconv.FormatInt(started.ID, 10)+"/download", "", nil)
+	_, parameters, err := mime.ParseMediaType(download.Header().Get("Content-Disposition"))
+	if download.Code != http.StatusOK || err != nil || parameters["filename"] != "aipermission-file" || download.Body.String() != "data" {
+		t.Fatalf("served download: status=%d disposition=%q body=%q err=%v", download.Code, download.Header().Get("Content-Disposition"), download.Body.String(), err)
+	}
+	for _, method := range []string{http.MethodHead, http.MethodGet} {
+		select {
+		case got := <-requests:
+			if got != method+" /identity-bucket/ " {
+				t.Fatalf("remote request = %q", got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("missing %s request", method)
+		}
+	}
 }
 
 func TestS3TransferAPIExactIdentity(t *testing.T) {

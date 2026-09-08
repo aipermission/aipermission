@@ -15,18 +15,36 @@ func TestTransferPathPolicyRejectsUnsupportedMappings(t *testing.T) {
 			t.Fatalf("accepted unsupported file %q", value)
 		}
 	}
-	for _, value := range []string{"/.env", "/a/../b", "/a//b", "//a", "/a\\b", "/ space", "/a.", "/" + strings.Repeat("x", 161)} {
+	for _, value := range []string{
+		"/.env", "/a/../b", "/a//b", "//a", "/a\\b", "/a.", "/CON", "/CONIN$", "/invoice ", "/" + strings.Repeat("x", 161),
+	} {
 		if err := ValidateDownloadPaths([]string{value}); err == nil {
 			t.Fatalf("accepted lossy ZIP mapping %q", value)
 		}
 	}
-	if err := ValidateDownloadPaths([]string{"/daily/a.txt", "/daily/nested/b.txt"}); err != nil {
+	if err := ValidateDownloadPaths([]string{"/daily/a.txt", "/daily/nested/b.txt", "/ space"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range identityKeys {
 		locator, err := NormalizeTransferPath("/"+key, false)
 		if err != nil || objectKey(locator) != key {
 			t.Fatalf("roundtrip %q: %q %v", key, locator, err)
+		}
+	}
+}
+
+func TestDownloadPathPolicyRejectsPortableBatchCollisions(t *testing.T) {
+	tests := [][]string{
+		{"/Report.txt", "/report.txt"},
+		{"/report.txt", "/Report.txt"},
+		{"/caf\u00e9.txt", "/cafe\u0301.txt"},
+		{"/cafe\u0301.txt", "/caf\u00e9.txt"},
+		{"/a", "/a/b.txt"},
+		{"/a/b.txt", "/a"},
+	}
+	for _, paths := range tests {
+		if err := ValidateDownloadPaths(paths); err == nil {
+			t.Fatalf("accepted colliding ZIP paths %#v", paths)
 		}
 	}
 }

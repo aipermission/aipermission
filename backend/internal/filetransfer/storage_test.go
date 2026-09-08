@@ -13,6 +13,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
+
+	"github.com/aipermission/aipermission/backend/internal/archivepath"
+	"github.com/aipermission/aipermission/backend/internal/localfilename"
 )
 
 func TestStageUploadAndReserveDownload(t *testing.T) {
@@ -146,6 +150,104 @@ func TestCreateDownloadArchiveUsesCrossPlatformSafeEntryNames(t *testing.T) {
 	}
 }
 
+func TestCreateDownloadArchiveKeepsFinalNamesUniqueAtTheLengthBoundary(t *testing.T) {
+	root := t.TempDir()
+	firstName := "CON." + strings.Repeat("x", 156)
+	secondName := "_CON." + strings.Repeat("x", 155)
+	caseName := strings.Repeat("A", 160)
+	items := []Record{}
+	for index, name := range []string{
+		firstName,
+		secondName,
+		caseName,
+		strings.ToLower(caseName),
+		strings.Repeat("界", localfilename.MaxRunes),
+		strings.Repeat("界", localfilename.MaxRunes),
+		strings.Repeat("🙂", localfilename.MaxRunes),
+		strings.Repeat("🙂", localfilename.MaxRunes),
+	} {
+		tempPath := writeTransferFixture(t, root, fmt.Sprintf("long-%d", index), []byte(name))
+		items = append(items, Record{Status: StatusCompleted, TempPath: tempPath, RemotePath: "/" + name})
+	}
+
+	archivePath, err := CreateDownloadArchive(root, BatchRecord{Items: items})
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(archivePath) })
+	archive, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer archive.Close()
+	seen := map[string]bool{}
+	for _, file := range archive.File {
+		if len([]rune(file.Name)) > localfilename.MaxRunes || len([]byte(file.Name)) > localfilename.MaxUTF8Bytes || len(utf16.Encode([]rune(file.Name))) > localfilename.MaxUTF16Units {
+			t.Fatalf("archive name exceeds portable limits: %q", file.Name)
+		}
+		key := archivepath.CanonicalKey(file.Name)
+		if seen[key] {
+			t.Fatalf("archive contains colliding final name %q", file.Name)
+		}
+		seen[key] = true
+	}
+}
+
+func TestCreateDownloadArchiveSeparatesFileDirectoryPrefixCollisions(t *testing.T) {
+	for _, paths := range [][]string{
+		{"/reports/CON", "/reports/_CON/child.txt"},
+		{"/reports/_CON/child.txt", "/reports/CON"},
+		{"/reports/Caf\u00e9", "/reports/cafe\u0301/child.txt"},
+	} {
+		t.Run(strings.Join(paths, "-"), func(t *testing.T) {
+			root := t.TempDir()
+			items := make([]Record, 0, len(paths))
+			for index, remotePath := range paths {
+				tempPath := writeTransferFixture(t, root, fmt.Sprintf("prefix-%d", index), []byte(remotePath))
+				items = append(items, Record{Status: StatusCompleted, TempPath: tempPath, RemotePath: remotePath})
+			}
+			archivePath, err := CreateDownloadArchive(root, BatchRecord{Items: items})
+			if err != nil {
+				t.Fatalf("create archive: %v", err)
+			}
+			archive, err := zip.OpenReader(archivePath)
+			if err != nil {
+				t.Fatalf("open archive: %v", err)
+			}
+			defer archive.Close()
+			files := map[string]bool{}
+			for _, file := range archive.File {
+				parts := strings.Split(file.Name, "/")
+				for index := 1; index < len(parts); index++ {
+					if files[archivepath.CanonicalKey(strings.Join(parts[:index], "/"))] {
+						t.Fatalf("entry %q has a file as its parent", file.Name)
+					}
+				}
+				files[archivepath.CanonicalKey(file.Name)] = true
+			}
+			extractRoot := t.TempDir()
+			for _, file := range archive.File {
+				target := filepath.Join(extractRoot, filepath.FromSlash(file.Name))
+				if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+					t.Fatalf("create extraction parent for %q: %v", file.Name, err)
+				}
+				reader, err := file.Open()
+				if err != nil {
+					t.Fatalf("open archive entry %q: %v", file.Name, err)
+				}
+				contents, readErr := io.ReadAll(reader)
+				closeErr := reader.Close()
+				if readErr != nil || closeErr != nil {
+					t.Fatalf("read archive entry %q: read=%v close=%v", file.Name, readErr, closeErr)
+				}
+				if err := os.WriteFile(target, contents, 0o600); err != nil {
+					t.Fatalf("extract archive entry %q: %v", file.Name, err)
+				}
+			}
+		})
+	}
+}
+
 func TestCreateDownloadArchiveRejectsUnavailableFiles(t *testing.T) {
 	root := t.TempDir()
 	outside := writeTransferFixture(t, t.TempDir(), "outside.txt", []byte("outside"))
@@ -168,7 +270,7 @@ func TestCreateDownloadArchiveRejectsUnavailableFiles(t *testing.T) {
 }
 
 func TestTransferPathAndProgressHelpers(t *testing.T) {
-	if got := UniqueArchiveEntryName("fallback.txt", "/outside/file.txt", "/reports", map[string]int{}); got != "fallback.txt" {
+	if got := UniqueArchiveEntryName("fallback.txt", "/outside/file.txt", "/reports", archivepath.NewTracker()); got != "fallback.txt" {
 		t.Fatalf("fallback archive name = %q", got)
 	}
 	if got := RelativeArchiveEntryPath("/reports/2026/daily.csv", "/reports"); got != "2026/daily.csv" {
@@ -194,6 +296,11 @@ func TestTransferPathAndProgressHelpers(t *testing.T) {
 	if _, err := NormalizeRemoteFilePath("/" + strings.Repeat("x", 4097)); err == nil {
 		t.Fatal("expected oversized remote file path to fail")
 	}
+	for _, input := range []string{"/" + strings.Repeat("界", 86), "/reports/" + strings.Repeat("🙂", 64) + "/daily.csv"} {
+		if _, err := NormalizeRemoteFilePath(input); err == nil {
+			t.Fatalf("expected non-portable remote component %q to fail", input)
+		}
+	}
 
 	if got, err := NormalizeRemoteDirectoryPath(""); err != nil || got != "/" {
 		t.Fatalf("empty remote directory = %q, %v", got, err)
@@ -214,6 +321,9 @@ func TestTransferPathAndProgressHelpers(t *testing.T) {
 		if _, err := NormalizeRelativeTransferPath(input); err == nil {
 			t.Fatalf("expected relative path %q to fail", input)
 		}
+	}
+	if _, err := NormalizeRelativeTransferPath("reports/" + strings.Repeat("🙂", 64) + "/daily.csv"); err == nil {
+		t.Fatal("expected oversized multibyte relative component to fail")
 	}
 
 	if got := JoinRemoteFilePath("/tmp", "../report.txt"); got != "/tmp/report.txt" {
@@ -268,16 +378,16 @@ func TestTempPathBoundaryAndScheduledCleanup(t *testing.T) {
 }
 
 func TestSafeFileNameBoundsAndSanitizesValues(t *testing.T) {
-	if got := SafeFileName(" ../report.txt "); got != "report.txt " {
+	if got := SafeFileName(" ../report.txt "); got != "report.txt_" {
 		t.Fatalf("safe file name = %q", got)
 	}
 	if got := SafeFileName(".env"); got != ".env" {
 		t.Fatalf("leading-dot safe file name = %q", got)
 	}
-	if got := SafeFileName(".report. "); got != ".report. " {
+	if got := SafeFileName(".report. "); got != ".report__" {
 		t.Fatalf("edge-character safe file name = %q", got)
 	}
-	if got := SafeFileName("bad\nname.txt"); got != "bad_name.txt" {
+	if got := SafeFileName("bad\nname.txt"); got != "badname.txt" {
 		t.Fatalf("control-safe file name = %q", got)
 	}
 	if got := SafeFileName(strings.Repeat("x", 200)); len([]rune(got)) != 160 {
@@ -291,7 +401,7 @@ func TestValidateFileNamePreservesSupportedNamesAndRejectsUnsafeValues(t *testin
 			t.Errorf("supported file name %q rejected: %v", value, err)
 		}
 	}
-	for _, value := range []string{"", "   ", ".", "..", "folder/report.txt", `folder\report.txt`, "bad\nname", strings.Repeat("x", 161)} {
+	for _, value := range []string{"", "   ", ".", "..", "folder/report.txt", `folder\report.txt`, "bad\nname", strings.Repeat("x", 161), strings.Repeat("🙂", 64)} {
 		if err := ValidateFileName(value); err == nil {
 			t.Errorf("unsafe file name %q accepted", value)
 		}
