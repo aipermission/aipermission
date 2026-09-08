@@ -5,15 +5,13 @@ import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPost } from "../lib/api";
-import { useRequestGuard } from "../lib/request-guard";
 
-export function UnlockDatabasePanel({ database, unsupported, migrationRequired, onMigrationRequired, onDeleted, onUnlocked }) {
+export function UnlockDatabasePanel({ database, unsupported, migrationRequired, onMigrationRequired, onDeleted, runLifecycleMutation }) {
   const [password, setPassword] = useState("");
   const [action, setAction] = useState("unlock");
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, confirmName: "", state: "idle", error: null });
   const [state, setState] = useState({ state: "idle", error: null });
-  const requestGuard = useRequestGuard(`unlock:database:${database?.id || ""}`);
 
   useEffect(() => {
     setAction("unlock");
@@ -22,17 +20,14 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
 
   async function unlockDatabase(event) {
     event.preventDefault();
-    const request = requestGuard.begin("unlock");
     setState({ state: "unlocking", error: null });
     try {
-      await apiPost("/api/unlock", { database_id: database?.id, password }, { signal: request.signal });
-      if (request.isCurrent()) await onUnlocked();
+      await runLifecycleMutation(`unlock:${database?.id || ""}`, (signal) =>
+        apiPost("/api/unlock", { database_id: database?.id, password }, { signal }),
+      );
     } catch (error) {
-      if (!request.isCurrent()) return;
       if (isMigrationRequiredError(error) && database?.id) onMigrationRequired(database.id);
       setState({ state: "error", error: error.message });
-    } finally {
-      request.complete();
     }
   }
 
@@ -54,18 +49,16 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
   async function deleteLockedDatabase(event) {
     event.preventDefault();
     if (!database) return;
-    const request = requestGuard.begin("delete");
     setDeleteDialog((current) => ({ ...current, state: "deleting", error: null }));
     try {
-      await apiPost("/api/databases/delete-locked", { database_id: database.id, current_password: password }, { signal: request.signal });
-      if (!request.isCurrent()) return;
+      await runLifecycleMutation(`delete:${database.id}`, (signal) =>
+        apiPost("/api/databases/delete-locked", { database_id: database.id, current_password: password }, { signal }),
+      );
       setDeleteDialog({ open: false, confirmName: "", state: "idle", error: null });
       setPassword("");
-      await onDeleted(database.id);
+      onDeleted(database.id);
     } catch (error) {
-      if (request.isCurrent()) setDeleteDialog((current) => ({ ...current, state: "error", error: error.message }));
-    } finally {
-      request.complete();
+      setDeleteDialog((current) => ({ ...current, state: "error", error: error.message }));
     }
   }
 

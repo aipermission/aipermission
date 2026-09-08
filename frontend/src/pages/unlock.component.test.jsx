@@ -4,9 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost, apiPostForm } from "../lib/api";
 import { UnlockPage } from "./unlock";
 
-// async-owner: src/pages/unlock-create-panel.jsx
 // async-owner: src/pages/unlock-database-panel.jsx
-// async-owner: src/pages/unlock-import-panel.jsx
+// async-owner: src/pages/use-unlock-lifecycle-mutation.js
 
 vi.mock("../lib/api", () => ({
   apiPost: vi.fn(),
@@ -152,7 +151,7 @@ describe("UnlockPage", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("cancels an unlock request when the selected database changes", async () => {
+  it("locks database selection while an unlock mutation is pending", async () => {
     const user = userEvent.setup();
     const pending = deferred();
     const onUnlocked = vi.fn();
@@ -173,45 +172,100 @@ describe("UnlockPage", () => {
     await user.type(screen.getByLabelText("Database password"), "FirstPassword123");
     await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
     const requestOptions = apiPost.mock.calls[0][2];
-    await user.selectOptions(screen.getByLabelText("Database"), "db-2");
-    expect(requestOptions.signal.aborted).toBe(true);
-    expect(screen.getByLabelText("Database password")).toHaveValue("");
+    expect(screen.getByLabelText("Database")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New Database" })).toBeDisabled();
+    expect(requestOptions.signal.aborted).toBe(false);
 
     pending.resolve({});
-    await Promise.resolve();
-    expect(onUnlocked).not.toHaveBeenCalled();
+    await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
   });
 
-  it("cancels create and import requests when their workflow unmounts", async () => {
+  it("reconciles a completed create after its workflow panel unmounts", async () => {
     const user = userEvent.setup();
     const createPending = deferred();
-    const importPending = deferred();
     const onUnlocked = vi.fn();
     apiPost.mockReturnValueOnce(createPending.promise);
-    apiPostForm.mockReturnValueOnce(importPending.promise);
     const view = render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
     await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
     await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
     const createOptions = apiPost.mock.calls[0][2];
-    await user.click(screen.getByRole("button", { name: "Import Database" }));
-    expect(createOptions.signal.aborted).toBe(true);
-
-    await user.type(screen.getByLabelText("Database name"), "Imported");
-    fireEvent.change(screen.getByLabelText("Database file"), {
-      target: { files: [new File(["encrypted"], "backup.aipdb", { type: "application/octet-stream" })] },
-    });
-    await user.type(screen.getByLabelText("Database password"), "ImportPassword123");
-    fireEvent.submit(screen.getByRole("button", { name: "Import database" }).closest("form"));
-    await waitFor(() => expect(apiPostForm).toHaveBeenCalledOnce());
-    const importOptions = apiPostForm.mock.calls[0][2];
-    view.unmount();
-    expect(importOptions.signal.aborted).toBe(true);
+    view.rerender(
+      <UnlockPage
+        status={{ database_id: "created-db", databases: [{ id: "created-db", name: "Created", state: "locked" }] }}
+        onUnlocked={onUnlocked}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+    expect(createOptions.signal.aborted).toBe(false);
 
     createPending.resolve({});
-    importPending.resolve({});
+    await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
+  });
+
+  it("aborts lifecycle reconciliation when the unlock page unmounts", async () => {
+    const user = userEvent.setup();
+    const createPending = deferred();
+    const onUnlocked = vi.fn();
+    apiPost.mockReturnValueOnce(createPending.promise);
+    const view = render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
+
+    await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
+    await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
+    await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
+    const requestOptions = apiPost.mock.calls[0][2];
+    view.unmount();
+
+    expect(requestOptions.signal.aborted).toBe(true);
+    createPending.resolve({});
     await Promise.resolve();
     expect(onUnlocked).not.toHaveBeenCalled();
+  });
+
+  it("aborts status reconciliation after a completed lifecycle mutation unmounts", async () => {
+    const user = userEvent.setup();
+    const reconciliation = deferred();
+    let reconciliationSignal;
+    apiPost.mockResolvedValueOnce({});
+    const onUnlocked = vi.fn((signal) => {
+      reconciliationSignal = signal;
+      return reconciliation.promise;
+    });
+    const view = render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
+
+    await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
+    await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
+    await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
+    await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
+    expect(reconciliationSignal.aborted).toBe(false);
+
+    view.unmount();
+    expect(reconciliationSignal.aborted).toBe(true);
+    reconciliation.resolve();
+    await Promise.resolve();
+  });
+
+  it("requires a name when creating another encrypted database", async () => {
+    const user = userEvent.setup();
+    apiPost.mockResolvedValueOnce({});
+    render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "New Database" }));
+    const name = screen.getByLabelText("Database name");
+    expect(name).toBeRequired();
+    expect(name).toHaveAttribute("placeholder", "Project name");
+    await user.type(name, "Second");
+    await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
+    await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
+    await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        "/api/unlock/setup",
+        { database_name: "Second", password: "StrongDatabase123", confirm_password: "StrongDatabase123" },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
   });
 });
