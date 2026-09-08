@@ -132,6 +132,29 @@ the same recursive redaction to typed, map, slice, and custom-marshaled output
 and reuses that exact projection for encrypted history and MCP. Redaction is
 best-effort and can be extended with custom regex rules in Security.
 
+## Redaction Guarantee Matrix
+
+Encryption, credential isolation, declared-field masking, and pattern matching
+are different controls. This table is the canonical statement of what
+AIPermission does and does not guarantee.
+
+| Boundary | Enforcement | What it covers | What it does not promise |
+| --- | --- | --- | --- |
+| SQLCipher and gateway-vault storage | Mandatory | Supported database records at rest and connector/Project Vault secret payloads | Protection after the database is unlocked or the trusted local process/browser is compromised |
+| Gateway-held connector credentials | Mandatory, even when optional redaction is off | Stored credential values, registered normalized forms, and registered reusable wire forms across REST/MCP output, connector errors, history, and audit | Detection of an unregistered transformation or unrelated sensitive data read from the target |
+| Schema-declared sensitive action input | Mandatory for every declared field | Persisted input previews plus exact reflected values from `SensitiveInputFields` | Fields a connector contributor failed to declare, or derived values that were not registered |
+| Schema-declared sensitive connector output | Mandatory for every declared field | Output fields listed in `OutputHint.SensitiveFields`, including connector-specific names | Secret content placed in undeclared arbitrary fields |
+| Built-in basic patterns | Best effort | Common password, token, API-key, bearer-token, and private-key shapes | Every encoding, split value, novel format, or ordinary-looking secret |
+| Operator custom regex rules | Deterministic for text that matches a valid configured expression; coverage remains best effort | Additional project- or provider-specific text patterns | Values the expression does not match, non-text semantics, or a complete data-loss-prevention boundary |
+| Arbitrary command, log, query, object, queue, or mail content | No secrecy guarantee | Bounded output still passes through mandatory known-value controls and enabled pattern rules | That target data is safe to persist, display, return to MCP, or include in an encrypted backup |
+| Declared temporary capability fields | Intentional narrow exception | Authorized short-lived values such as bounded presigned URLs retain usable syntax while custom rules still apply | Source credentials, refresh tokens, or long-lived secrets; those must never use this declaration |
+
+The mandatory rows depend on connectors following the credential schema,
+sensitive-field, and reusable-wire-value contracts. Registry validation and
+shared projection code enforce those contracts where possible, but arbitrary
+target output remains untrusted. Avoid printing secrets, keep retention finite,
+and review Prompt requests according to the data the action can read.
+
 Connector credentials use a separate mandatory execution-scoped boundary that
 remains active even when optional redaction is disabled. It covers stored
 credential values, normalized representations, connector-registered reusable

@@ -216,8 +216,12 @@ Important boundaries:
 - Web mutations require the unlocked local browser session and CSRF checks.
 - Connector outputs, command text, mail content, paths, and notes are untrusted
   data and may contain secrets.
-- Redaction is best-effort. Do not intentionally print credentials into action
-  output or console transcripts.
+- Gateway-held credentials and correctly declared sensitive fields use a
+  mandatory boundary; pattern matching for arbitrary output remains
+  best-effort. See the
+  [redaction guarantee matrix](docs/security/credential-boundary.md#redaction-guarantee-matrix),
+  and do not intentionally print credentials into action output or console
+  transcripts.
 - Always is for intentional trusted automation, not a substitute for least
   privilege.
 - Downloaded encrypted database backups remain sensitive and require a strong

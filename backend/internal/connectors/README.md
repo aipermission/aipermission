@@ -54,6 +54,10 @@ The gateway core remains responsible for:
 - redaction, history, and audit
 - local-only HTTP/MCP boundaries
 
+Connector authors must preserve the distinction between mandatory
+credential/declared-field controls and best-effort pattern matching documented
+in the [redaction guarantee matrix](../../../docs/security/credential-boundary.md#redaction-guarantee-matrix).
+
 Connectors must not write audit or history rows directly. Return structured
 results and let the shared action service persist them. In the 0.2 baseline,
 `RuntimeContext.Events` is reserved/no-op and `ActionResult.Metadata` is not a
