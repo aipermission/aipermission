@@ -372,10 +372,12 @@ function PermissionMutationError({ value, onRetry }) {
     <div role="alert">
       <Notice tone="bad" className="grid gap-2">
         <p>{value.message}</p>
-        <Button type="button" variant="outline" className="h-8 justify-self-start" onClick={onRetry}>
-          <RefreshCcw className="h-3.5 w-3.5" />
-          Retry
-        </Button>
+        {value.retryable !== false ? (
+          <Button type="button" variant="outline" className="h-8 justify-self-start" onClick={onRetry}>
+            <RefreshCcw className="h-3.5 w-3.5" />
+            Retry
+          </Button>
+        ) : null}
       </Notice>
     </div>
   );

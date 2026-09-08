@@ -17,7 +17,7 @@ export function useConnectorPermissions(initialTokens = []) {
   const requestGuard = useRequestGuard("connector-permissions");
 
   const loadAllConnectorPermissions = useCallback(
-    async (tokenItems = initialTokens) => {
+    async (tokenItems = initialTokens, { requireCurrent = false } = {}) => {
       const request = requestGuard.begin("permissions:load");
       const revision = permissionRevisionRef.current;
       if (tokenItems.length === 0) {
@@ -38,13 +38,20 @@ export function useConnectorPermissions(initialTokens = []) {
         );
         const data = Object.fromEntries(entries.map(([tokenID, items]) => [tokenID, items]));
         const revisionsByToken = Object.fromEntries(entries.map(([tokenID, _items, revision]) => [tokenID, revision]));
-        if (!request.isCurrent() || revision !== permissionRevisionRef.current) return data;
+        if (!request.isCurrent() || revision !== permissionRevisionRef.current) {
+          if (requireCurrent) throw new Error("Permission refresh was superseded before it could be applied.");
+          return data;
+        }
         serverRevisionsRef.current = revisionsByToken;
         setPermissionState((current) => ({ ...current, state: "ready", data, revisionsByToken, error: null }));
         return data;
       } catch (error) {
-        if (!request.isCurrent() || revision !== permissionRevisionRef.current) return {};
+        if (!request.isCurrent() || revision !== permissionRevisionRef.current) {
+          if (requireCurrent) throw error;
+          return {};
+        }
         setPermissionState((current) => ({ ...current, state: "error", error: error.message }));
+        if (requireCurrent) throw error;
         return {};
       } finally {
         request.complete();

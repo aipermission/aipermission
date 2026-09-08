@@ -41,10 +41,24 @@ export function useConnectorTokenPermissionState({
   const tokenTriggerRef = useRef(null);
   const permissionMutationRetryRef = useRef(null);
   const permissionMutationActiveRef = useRef(false);
+  const permissionMutationOwnerRef = useRef(null);
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
   const permissionsByToken = useMemo(() => load.data || {}, [load.data]);
+  const permissionsByTokenRef = useRef(permissionsByToken);
+  const permissionSnapshotSourceRef = useRef(permissionsByToken);
+  if (permissionSnapshotSourceRef.current !== permissionsByToken) {
+    permissionSnapshotSourceRef.current = permissionsByToken;
+    permissionsByTokenRef.current = permissionsByToken;
+  }
   const targetProfiles = useMemo(() => profilesForConnectorTarget(targets?.data || [], selectedTarget), [targets?.data, selectedTarget]);
   const selectedTargetKey = connectorTargetKey(selectedTarget);
+  const permissionMutationScopeRef = useRef(selectedTargetKey);
+  if (permissionMutationScopeRef.current !== selectedTargetKey) {
+    permissionMutationScopeRef.current = selectedTargetKey;
+    permissionMutationOwnerRef.current = null;
+    permissionMutationActiveRef.current = false;
+    permissionMutationRetryRef.current = null;
+  }
   const tokenIDsKey = activeTokens.map((token) => token.id).join(",");
   const targetProfileSignature = targetProfiles.map((profile) => profile.profile_id).join(",");
   const loadForEffect = useEffectEvent(loadConnectorPermissions);
@@ -53,7 +67,6 @@ export function useConnectorTokenPermissionState({
   useEffect(() => {
     setSavingKey("");
     setPermissionMutationError(null);
-    permissionMutationRetryRef.current = null;
   }, [selectedTargetKey]);
 
   useEffect(() => {
@@ -62,8 +75,6 @@ export function useConnectorTokenPermissionState({
       setProjectScopesByToken({});
       setProjectScopeRevisionByToken({});
       setProjectScopeStateByToken({});
-      setPermissionMutationError(null);
-      permissionMutationRetryRef.current = null;
       return;
     }
     void loadForEffect();
@@ -186,8 +197,8 @@ export function useConnectorTokenPermissionState({
           targetProfiles,
           selectedTargetKey,
         }),
-      mutate: async () => {
-        const existing = permissionsByToken[token.id] || [];
+      mutate: async (isCurrent) => {
+        const existing = permissionsByTokenRef.current[token.id] || [];
         const actionNames = new Set(selectedActions.map((action) => action.name));
         const preserved = existing.filter(
           (permission) => !matchesConnectorTargetProfile(permission, selectedTarget, profileID) || !actionNames.has(permission.action_name),
@@ -206,11 +217,11 @@ export function useConnectorTokenPermissionState({
             ]
           : preserved;
         await replaceTokenConnectorPermissions?.(token.id, next);
+        if (!isCurrent()) return next;
         const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profileID)] || selectedActions;
         const modeKey = tokenProfileModeKey(token.id, selectedTarget, profileID);
         const nextMode = inferPermissionMode(next, selectedTarget, profileID, actions);
         setPermissionModeByKey((current) => ({ ...current, [modeKey]: nextMode }));
-        permissionMutationRetryRef.current = null;
         return next;
       },
     });
@@ -223,7 +234,7 @@ export function useConnectorTokenPermissionState({
       retry: () => setProfileLifetime(token, profileID, expiresAt),
       failure: (error) => createPermissionMutationFailure(token, profileID, "lifetime", error, { targetProfiles, selectedTargetKey }),
       mutate: async () => {
-        const existing = permissionsByToken[token.id] || [];
+        const existing = permissionsByTokenRef.current[token.id] || [];
         const next = existing.map((permission) => {
           if (!matchesConnectorTargetProfile(permission, selectedTarget, profileID)) return permission;
           return effectiveRule(permission) === "blocked"
@@ -231,25 +242,16 @@ export function useConnectorTokenPermissionState({
             : { ...permission, expires_at: expiresAt || "" };
         });
         await replaceTokenConnectorPermissions?.(token.id, next);
-        permissionMutationRetryRef.current = null;
       },
     });
   }
 
   async function runPermissionMutation({ key, retry, failure, mutate }) {
-    permissionMutationActiveRef.current = true;
-    setSavingKey(key);
-    setPermissionMutationError(null);
-    permissionMutationRetryRef.current = retry;
-    try {
-      return await mutate();
-    } catch (error) {
-      setPermissionMutationError(failure(error));
-      return null;
-    } finally {
-      permissionMutationActiveRef.current = false;
-      setSavingKey("");
-    }
+    return executePermissionMutation(
+      { key, retry, failure, mutate, owner: { targetKey: selectedTargetKey } },
+      { permissionMutationActiveRef, permissionMutationOwnerRef, permissionMutationRetryRef, setPermissionMutationError, setSavingKey },
+      (error) => refreshPermissionSnapshot(error, loadAllConnectorPermissions, activeTokens, permissionsByTokenRef),
+    );
   }
 
   return {
@@ -279,6 +281,50 @@ export function useConnectorTokenPermissionState({
     targetProfiles,
     tokenTriggerRef,
   };
+}
+
+async function refreshPermissionSnapshot(error, loadAllConnectorPermissions, activeTokens, permissionsByTokenRef) {
+  if (error?.status !== 409) return;
+  const refreshed = await loadAllConnectorPermissions?.(activeTokens, { requireCurrent: true });
+  const completeSnapshot = refreshed && typeof refreshed === "object" && activeTokens.every((token) => Array.isArray(refreshed[token.id]));
+  if (!completeSnapshot) throw new Error("Current connector permissions could not be refreshed; retry is disabled.");
+  permissionsByTokenRef.current = refreshed;
+}
+
+async function executePermissionMutation(
+  { key, retry, failure, mutate, owner },
+  { permissionMutationActiveRef, permissionMutationOwnerRef, permissionMutationRetryRef, setPermissionMutationError, setSavingKey },
+  refreshConflict,
+) {
+  const isCurrent = () => permissionMutationOwnerRef.current === owner;
+  permissionMutationOwnerRef.current = owner;
+  permissionMutationActiveRef.current = true;
+  setSavingKey(key);
+  setPermissionMutationError(null);
+  permissionMutationRetryRef.current = retry;
+  try {
+    const result = await mutate(isCurrent);
+    if (isCurrent()) permissionMutationRetryRef.current = null;
+    return result;
+  } catch (error) {
+    if (!isCurrent()) return null;
+    try {
+      await refreshConflict(error);
+      if (!isCurrent()) return null;
+      setPermissionMutationError({ ...failure(error), retryable: true });
+    } catch (refreshError) {
+      if (!isCurrent()) return null;
+      permissionMutationRetryRef.current = null;
+      setPermissionMutationError({ ...failure(refreshError), retryable: false });
+    }
+    return null;
+  } finally {
+    if (isCurrent()) {
+      permissionMutationOwnerRef.current = null;
+      permissionMutationActiveRef.current = false;
+      setSavingKey("");
+    }
+  }
 }
 
 function createPermissionMutationFailure(token, profileID, operation, error, { targetProfiles, selectedTargetKey }) {
