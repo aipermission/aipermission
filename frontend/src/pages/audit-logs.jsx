@@ -236,12 +236,19 @@ export function AuditLogsPage() {
             ) : null}
             {state.state !== "loading"
               ? state.data.map((item) => (
-                  <tr key={item.id} className="cursor-pointer transition hover:bg-stone-50" onClick={() => openAuditItem(item)}>
+                  <tr key={item.id} className="transition hover:bg-stone-50">
                     <td className="px-4 py-3">
                       <ActorBadge actor={item.actor_type} />
                     </td>
                     <td className="truncate px-4 py-3">
-                      <ActionBadge action={item.action} />
+                      <button
+                        type="button"
+                        className="max-w-full rounded outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                        aria-label={`Open audit details for ${item.action || "unknown action"}`}
+                        onClick={() => openAuditItem(item)}
+                      >
+                        <ActionBadge action={item.action} />
+                      </button>
                     </td>
                     <td className="truncate px-4 py-3">
                       <div className="truncate font-medium text-stone-900">{auditTargetLabel(item)}</div>

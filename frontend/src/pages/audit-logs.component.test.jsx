@@ -42,6 +42,11 @@ it("ignores an older audit response after the search filter changes", async () =
   await act(async () => older.resolve(auditResponse("stale")));
   expect(screen.queryByText("stale")).not.toBeInTheDocument();
   expect(screen.getByText("current")).toBeVisible();
+
+  const detailButton = screen.getByRole("button", { name: "Open audit details for current" });
+  detailButton.focus();
+  fireEvent.click(detailButton);
+  expect(screen.getByRole("dialog", { name: "Audit #current" })).toBeVisible();
 });
 
 function auditResponse(action) {
