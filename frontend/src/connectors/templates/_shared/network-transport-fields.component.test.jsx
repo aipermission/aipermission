@@ -42,6 +42,7 @@ describe("ConnectionModeFields", () => {
       ),
     ).toEqual([{ ref: "ssh:4:8", label: "Operations / root · ops.example:22" }]);
     expect(transportProfileOptions(targets, "unsupported_transport")).toEqual([]);
+    expect(transportProfileOptions(targets)).toEqual([]);
     expect(sortNetworkTransportDescriptors([{ option_label: "Zulu" }, { option_label: "Alpha" }])).toEqual([
       { option_label: "Alpha" },
       { option_label: "Zulu" },

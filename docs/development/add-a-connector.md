@@ -366,10 +366,14 @@ only when the shared template registry and docs are updated together.
 
 A connector that implements the backend `TCPTransportAdapter` may advertise
 the matching frontend transport profile selector with a `network_transport`
-descriptor. Its `mode` must be the backend-owned `connection_mode` value; its
-labels are display text, and `default_port` is used only when a saved target
-does not expose a port. Advertising this metadata without the matching backend
-adapter is a contract error and must be covered by connector conformance tests.
+descriptor. Its `mode` must be the backend-owned `connection_mode` value and
+its labels are display text. Every endpoint field must read from public
+`target.name`, `target.config.*`, `profile.label`, or `profile.public.*` data
+and declare a non-secret scalar `fallback` used when that value is absent.
+Advertising this metadata without the matching backend adapter is a contract
+error and must be covered by connector conformance tests. Two transport
+providers may share a mode only when their complete descriptors are identical;
+conflicting labels or endpoint templates fail the frontend registry contract.
 
 ```json
 {

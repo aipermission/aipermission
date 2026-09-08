@@ -15,6 +15,7 @@ it("edits explicit container and pattern scopes", async () => {
     <DockerConnectorFormTemplate
       form={{
         name: "Scoped Docker",
+        connection_mode: "over_ssh",
         docker_command: "docker",
         profile_label: "selected",
         risk_label: "production",

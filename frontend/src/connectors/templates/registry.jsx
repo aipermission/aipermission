@@ -1,5 +1,7 @@
 import { Notice } from "../../components/ui/notice";
 import { allowedConnectorIcons, connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
+import { assertNetworkTransportMetadata, uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
+import { usesStandardTargetProfileLifecycle } from "./_shared/target-profile-lifecycle";
 
 const templateModules = import.meta.glob("./*/index.jsx", { eager: true });
 
@@ -82,6 +84,7 @@ function assertConnectorTemplateRegistration() {
   for (const kind of registryKinds) {
     assertConnectorTemplate(kind, connectorTemplates[kind]);
   }
+  uniqueNetworkTransportDescriptors(Object.entries(connectorTemplateMetadata));
 }
 
 function assertConnectorTemplate(kind, template) {
@@ -116,30 +119,8 @@ function assertConnectorTemplate(kind, template) {
       throw new Error(`Connector template ${kind} model is missing ${fn}()`);
     }
   }
-}
-
-function assertNetworkTransportMetadata(kind, transport) {
-  if (transport === undefined) return;
-  if (!transport || typeof transport !== "object" || Array.isArray(transport)) {
-    throw new Error(`Connector template ${kind} metadata network_transport must be an object`);
-  }
-  if (
-    !String(transport.mode || "").trim() ||
-    !String(transport.label || "").trim() ||
-    !String(transport.option_label || "").trim() ||
-    !String(transport.profile_label || "").trim()
-  ) {
-    throw new Error(`Connector template ${kind} metadata network_transport requires mode, label, option_label, and profile_label`);
-  }
-  const endpoint = transport.profile_endpoint;
-  if (
-    !endpoint ||
-    !Array.isArray(endpoint.fields) ||
-    endpoint.fields.length === 0 ||
-    endpoint.fields.some((field) => !String(field?.path || "").trim()) ||
-    !String(endpoint.separator || "").trim()
-  ) {
-    throw new Error(`Connector template ${kind} metadata network_transport requires a profile_endpoint field template`);
+  if (template.metadata.profile_lifecycle === "standard" && !usesStandardTargetProfileLifecycle(template.model)) {
+    throw new Error(`Connector template ${kind} standard profile lifecycle must use the shared executable contract`);
   }
 }
 

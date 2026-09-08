@@ -687,9 +687,15 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/_shared/network-transport-contract.js": {
+      "statements": 98.27,
+      "branches": 96.92,
+      "functions": 100,
+      "lines": 97.82
+    },
     "src/connectors/templates/_shared/network-transport-fields.jsx": {
       "statements": 100,
-      "branches": 72.72,
+      "branches": 73.8,
       "functions": 100,
       "lines": 100
     },
@@ -790,10 +796,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/target-profile-lifecycle.js": {
-      "statements": 76.19,
-      "branches": 71.73,
-      "functions": 77.77,
-      "lines": 83.33
+      "statements": 79.59,
+      "branches": 72.91,
+      "functions": 80.95,
+      "lines": 85.36
     },
     "src/connectors/templates/_shared/use-sql-console.js": {
       "statements": 74.35,
@@ -1036,10 +1042,10 @@
       "lines": 0
     },
     "src/connectors/templates/kubernetes/form.jsx": {
-      "statements": 90,
-      "branches": 33.33,
-      "functions": 90,
-      "lines": 90
+      "statements": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/kubernetes/helpers.js": {
       "statements": 6.57,
@@ -1432,10 +1438,10 @@
       "lines": 0
     },
     "src/connectors/templates/registry.jsx": {
-      "statements": 68.18,
-      "branches": 51.21,
-      "functions": 88.88,
-      "lines": 67.44
+      "statements": 77.08,
+      "branches": 62.79,
+      "functions": 100,
+      "lines": 76.59
     },
     "src/connectors/templates/s3/console.jsx": {
       "statements": 0,

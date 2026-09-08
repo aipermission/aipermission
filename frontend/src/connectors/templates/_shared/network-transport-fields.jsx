@@ -2,6 +2,7 @@ import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
 import { connectorTemplateMetadata, getConnectorMetadata } from "../catalog";
+import { publicEndpointValue, uniqueNetworkTransportDescriptors } from "./network-transport-contract";
 
 export function NetworkTransportFields({
   form,
@@ -57,7 +58,7 @@ export function ConnectionModeFields({ form, targets = [], onChange, transportNo
   );
 }
 
-export function TransportProfileField({ value, transportMode = "over_ssh", label = "Transport profile", targets = [], onChange }) {
+export function TransportProfileField({ value, transportMode, label = "Transport profile", targets = [], onChange }) {
   return (
     <Field>
       {label}
@@ -75,7 +76,8 @@ export function TransportProfileField({ value, transportMode = "over_ssh", label
   );
 }
 
-export function transportProfileOptions(targets, transportMode = "over_ssh") {
+export function transportProfileOptions(targets, transportMode) {
+  if (!transportMode) return [];
   return (targets || []).flatMap((target) => {
     const transport = getConnectorMetadata(target.connector_kind)?.network_transport;
     if (transport?.mode !== transportMode) return [];
@@ -131,26 +133,14 @@ export function NetworkEndpointFields({
 
 function transportProfileOptionLabel(target, profile, transport) {
   const endpoint = (transport.profile_endpoint?.fields || [])
-    .map((field) => valueAtPath({ target, profile }, field.path) ?? field.fallback)
+    .map((field) => publicEndpointValue({ target, profile }, field.path) ?? field.fallback)
     .filter((value) => value !== undefined && value !== null && value !== "")
     .join(transport.profile_endpoint?.separator || " ");
   return `${target.name} / ${profile.label}${endpoint ? ` · ${endpoint}` : ""}`;
 }
 
-function valueAtPath(value, path) {
-  return String(path || "")
-    .split(".")
-    .filter(Boolean)
-    .reduce((current, key) => current?.[key], value);
-}
-
 export function networkTransportDescriptors() {
-  const byMode = new Map();
-  for (const metadata of Object.values(connectorTemplateMetadata)) {
-    const transport = metadata.network_transport;
-    if (transport && !byMode.has(transport.mode)) byMode.set(transport.mode, transport);
-  }
-  return sortNetworkTransportDescriptors([...byMode.values()]);
+  return sortNetworkTransportDescriptors(uniqueNetworkTransportDescriptors(Object.entries(connectorTemplateMetadata)));
 }
 
 export function sortNetworkTransportDescriptors(descriptors) {

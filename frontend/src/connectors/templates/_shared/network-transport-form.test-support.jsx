@@ -52,7 +52,11 @@ export async function verifyTransportProfileForm(Component, form) {
   const user = userEvent.setup();
   const onChange = vi.fn();
   const { container } = render(
-    <Component form={{ ...baseForm, ...form, transport_target_ref: "ssh:4:8" }} targets={targets} onChange={onChange} />,
+    <Component
+      form={{ ...baseForm, ...form, connection_mode: "over_ssh", transport_target_ref: "ssh:4:8" }}
+      targets={targets}
+      onChange={onChange}
+    />,
   );
 
   exerciseEditableFields(container);

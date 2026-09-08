@@ -15,6 +15,7 @@ export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
       </Field>
       <TransportProfileField
         value={form.transport_target_ref}
+        transportMode={form.connection_mode}
         targets={targets}
         onChange={(value) => onChange("transport_target_ref", value)}
       />
