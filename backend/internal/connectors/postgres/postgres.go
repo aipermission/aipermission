@@ -13,7 +13,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
-	"github.com/aipermission/aipermission/backend/internal/connectors/sqlsafe"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -449,6 +448,9 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 		if err := validateReadonlySQL(sql); err != nil {
 			return connectors.ActionResult{}, err
 		}
+		if err := protectReadonlyFunctionResolution(ctx, tx); err != nil {
+			return connectors.ActionResult{}, err
+		}
 		output, err = queryRows(ctx, tx, sql, payloadInt(action.Payload, "max_rows", defaultMaxRows))
 	default:
 		return connectors.ActionResult{}, fmt.Errorf("%w: %s", ErrUnsupportedAction, action.ActionName)
@@ -669,17 +671,6 @@ func targetSummary(target connectors.TargetView, action string) string {
 		return action + " on Postgres target."
 	}
 	return action + " on " + target.Name + "."
-}
-
-func validateReadonlySQL(sql string) error {
-	return sqlsafe.ValidateReadOnly(
-		sql,
-		ActionQueryReadonly,
-		maxSQLBytes,
-		[]string{"select", "with", "show", "explain"},
-		"SELECT, WITH, SHOW, or EXPLAIN",
-		disallowedReadonlyTerms,
-	)
 }
 
 func cleanIdentifierInput(input map[string]any, name string) string {

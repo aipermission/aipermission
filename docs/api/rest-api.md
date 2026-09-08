@@ -466,8 +466,11 @@ the action catalog depend on network state or raw credential values.
 Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. It rejects
 obvious writes plus session/transaction and dynamic-execution statements such as
 `SELECT INTO`, `SET`, `NOTIFY`, `PREPARE`, and `EXECUTE`. It also runs inside a
-read-only transaction, caps rows and output bytes, and applies a statement
-timeout, but operators should still use dedicated
+read-only transaction, accepts only an audited set of read-only `pg_catalog`
+functions, pins built-in function resolution ahead of profile schemas, caps rows
+and output bytes, and applies a statement timeout. Unknown, extension-provided,
+schema-qualified non-catalog, and quoted function calls are rejected. Operators
+should still use dedicated
 least-privilege database roles and prefer `approval_required` for ad-hoc
 queries over sensitive data.
 

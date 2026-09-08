@@ -626,8 +626,10 @@ security boundary.
 
 The built-in Postgres connector is intentionally conservative. `query_readonly`
 rejects obvious write statements, enforces a SQL size limit, executes with a
-read-only transaction, applies a statement timeout, caps row count, and caps
-returned output bytes before MCP/history persistence. Postgres credential
+read-only transaction, permits only an audited set of read-only `pg_catalog`
+functions, pins catalog function resolution first, applies a statement timeout,
+caps row count, and caps returned output bytes before MCP/history persistence.
+Unknown and extension-provided function calls fail closed. Postgres credential
 provisioning is a UI operator flow, not an MCP action: it uses an admin profile
 to create a scoped database role with a random password, then stores the
 resulting credential profile encrypted in AIPermission. Those controls are not a
