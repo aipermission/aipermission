@@ -140,7 +140,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

@@ -2,6 +2,26 @@ name: Connector Conformance
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "backend/internal/connectors/**"
+      - "backend/testdata/connector-conformance/**"
+      - "backend/go.mod"
+      - "backend/go.sum"
+      - "Makefile"
+      - ".github/actions/setup-backend-native/**"
+      - ".github/workflows/connector-conformance.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "backend/internal/connectors/**"
+      - "backend/testdata/connector-conformance/**"
+      - "backend/go.mod"
+      - "backend/go.sum"
+      - "Makefile"
+      - ".github/actions/setup-backend-native/**"
+      - ".github/workflows/connector-conformance.yml"
   schedule:
     - cron: "37 3 * * 3"
 
