@@ -53,6 +53,33 @@ test("detects connector literals in branches, switches, and lookup tables", () =
   assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis", "ssh"]), ["kafka", "postgres", "redis", "ssh"]);
 });
 
+test("detects connector literals in array and Set membership checks", () => {
+  const source = `
+    const connectorKind = target.connector_kind;
+    const direct = ["redis", "ssh"].includes(connectorKind);
+    const lookup = new Set(["postgres", "kafka"]).has(connectorKind);
+  `;
+  assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis", "ssh"]), ["kafka", "postgres", "redis", "ssh"]);
+});
+
+test("rejects production imports through test-support bridges", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-test-bridge-"));
+  try {
+    for (const directory of ["components", "test", "connectors/templates/fixture"]) {
+      mkdirSync(join(root, directory), { recursive: true });
+    }
+    writeFileSync(join(root, "components/panel.js"), 'export { connector } from "../test/bridge.js";\n');
+    writeFileSync(join(root, "test/bridge.js"), 'export { connector } from "../connectors/templates/fixture/model.js";\n');
+    writeFileSync(join(root, "connectors/templates/fixture/model.js"), 'export const connector = "fixture";\n');
+
+    const result = analyzeSourceTree(root);
+    assert.ok(result.failures.some((failure) => failure.includes("components/panel.js imports test/bridge.js")));
+    assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("covers supported module extensions and rejects unclassified bridge modules", () => {
   const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-extensions-"));
   try {

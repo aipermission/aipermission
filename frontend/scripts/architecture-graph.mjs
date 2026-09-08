@@ -12,8 +12,9 @@ const genericRoots = Object.freeze(["components", "lib", "pages"]);
 export function analyzeSourceTree(sourceRoot, options = {}) {
   const importBudget = options.importBudget ?? architecturePolicy.maxDependencyFanout;
   const lineBudget = options.lineBudget ?? architecturePolicy.maxProductionModuleLines;
-  const files = sourceFiles(sourceRoot).filter((file) => !isTestSupport(sourceRoot, file));
-  const fileSet = new Set(files);
+  const allFiles = sourceFiles(sourceRoot);
+  const files = allFiles.filter((file) => !isTestSupport(sourceRoot, file));
+  const fileSet = new Set(allFiles);
   const graph = new Map();
   const failures = [];
   const connectorKinds = connectorTemplateKinds(sourceRoot);
@@ -24,10 +25,10 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     }
   }
 
-  for (const file of files) {
+  for (const file of allFiles) {
     const source = readFileSync(file, "utf8");
     const lineCount = source.endsWith("\n") ? source.split("\n").length - 1 : source.split("\n").length;
-    if (lineCount > lineBudget) {
+    if (!isTestSupport(sourceRoot, file) && lineCount > lineBudget) {
       failures.push(`${displayPath(sourceRoot, file)} has ${lineCount} lines; budget is ${lineBudget}`);
     }
     let parsed;
@@ -55,7 +56,7 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
       failures.push(`${displayPath(sourceRoot, file)} is not in a recognized architecture layer`);
     }
     failures.push(...boundaryFailures({ sourceRoot, file, dependencies, connectorKinds }));
-    if (isConnectorAgnosticModule(sourceRoot, file, connectorKinds)) {
+    if (!isTestSupport(sourceRoot, file) && isConnectorAgnosticModule(sourceRoot, file, connectorKinds)) {
       for (const kind of hardCodedConnectorKinds(parsed, connectorKinds)) {
         failures.push(`${displayPath(sourceRoot, file)} hard-codes connector kind ${kind}; use the template registry`);
       }
@@ -159,6 +160,9 @@ export function hardCodedConnectorKinds(sourceOrProgram, connectorKinds) {
     if (node.type === "SwitchStatement" && isConnectorKindReference(node.discriminant, aliases)) {
       for (const switchCase of node.cases) collectKindLiteral(switchCase.test, kinds, found);
     }
+    if (node.type === "CallExpression" && node.arguments.some((argument) => isConnectorKindReference(argument, aliases))) {
+      collectKindMembership(node.callee, kinds, found);
+    }
     if (
       node.type === "VariableDeclarator" &&
       node.id.type === "Identifier" &&
@@ -173,6 +177,19 @@ export function hardCodedConnectorKinds(sourceOrProgram, connectorKinds) {
     }
   });
   return [...found].sort();
+}
+
+function collectKindMembership(callee, kinds, found) {
+  if (callee?.type !== "MemberExpression") return;
+  const method = callee.computed ? callee.property?.value : callee.property?.name;
+  if (method === "includes" && callee.object?.type === "ArrayExpression") {
+    for (const element of callee.object.elements) collectKindLiteral(element, kinds, found);
+    return;
+  }
+  if (method !== "has" || callee.object?.type !== "NewExpression" || callee.object.callee?.name !== "Set") return;
+  const [values] = callee.object.arguments;
+  if (values?.type !== "ArrayExpression") return;
+  for (const element of values.elements) collectKindLiteral(element, kinds, found);
 }
 
 function connectorKindAliases(program) {
@@ -264,6 +281,9 @@ function boundaryFailures({ sourceRoot, file, dependencies, connectorKinds }) {
 }
 
 function forbiddenDependency(sourceLayer, targetLayer) {
+  if (sourceLayer !== "test-support" && targetLayer === "test-support") {
+    return "production modules must not import test support";
+  }
   const targetsConnectorTemplate = targetLayer.startsWith("connector-template:");
   if (sourceLayer === "app" && targetsConnectorTemplate) {
     return "application entry points must use connector registry surfaces instead of concrete templates";
@@ -294,6 +314,7 @@ function forbiddenDependency(sourceLayer, targetLayer) {
 
 function moduleLayer(sourceRoot, file, connectorKinds) {
   const path = displayPath(sourceRoot, file);
+  if (path.startsWith("test/")) return "test-support";
   if (["App.jsx", "main.jsx"].includes(path)) return "app";
   const first = path.split("/")[0];
   if (genericRoots.includes(first)) return first;
