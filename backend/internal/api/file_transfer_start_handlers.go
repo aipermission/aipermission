@@ -495,7 +495,9 @@ func (s fileTransferHandlers) startDownloadBatch(w http.ResponseWriter, r *http.
 			"size_bytes": batch.SizeBytes,
 		})
 	}
-	s.launchTransferBatch(runtime, batch.ID, false)
+	if batch.Status == filetransfer.StatusPending || batch.Status == filetransfer.StatusPaused {
+		s.launchTransferBatch(runtime, batch.ID, false)
+	}
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
