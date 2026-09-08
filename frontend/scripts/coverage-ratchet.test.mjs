@@ -6,6 +6,7 @@ import {
   mergeChangedCoverageBaseline,
   mergeCoverageMetrics,
   ratchetedMetrics,
+  requiredChangedMetrics,
   validateCoverageBaseline,
 } from "./coverage-ratchet.mjs";
 
@@ -26,10 +27,41 @@ test("malformed base metrics fail closed", () => {
   assert.throws(() => ratchetedMetrics({ statements: 10 }), /missing branches/);
 });
 
+test("bootstrap applies full floors only to newly added owners", () => {
+  const accepted = { statements: 12, branches: 8, functions: 10, lines: 12 };
+  assert.deepEqual(requiredChangedMetrics({ baseBaselineAvailable: false, previous: null, added: true, accepted }), coverageFloors);
+  assert.deepEqual(requiredChangedMetrics({ baseBaselineAvailable: false, previous: null, added: false, accepted }), accepted);
+});
+
+test("an established base baseline ratchets missing owners to full floors", () => {
+  assert.deepEqual(
+    requiredChangedMetrics({ baseBaselineAvailable: true, previous: null, added: false, accepted: coverageFloors }),
+    coverageFloors,
+  );
+});
+
 test("baseline validation rejects hidden and unclassified owners", () => {
   assert.throws(
-    () => validateCoverageBaseline({ version: 2, files: { "src/known.js": coverageFloors } }, ["src/known.js", "src/missing.js"]),
+    () =>
+      validateCoverageBaseline({ version: 2, floors: coverageFloors, files: { "src/known.js": coverageFloors } }, [
+        "src/known.js",
+        "src/missing.js",
+      ]),
     /owner mismatch.*missing: src\/missing.js/,
+  );
+});
+
+test("baseline validation rejects missing or weakened floor declarations", () => {
+  assert.throws(
+    () => validateCoverageBaseline({ version: 2, files: { "src/known.js": coverageFloors } }, ["src/known.js"]),
+    /floor mismatch/,
+  );
+  assert.throws(
+    () =>
+      validateCoverageBaseline({ version: 2, floors: { ...coverageFloors, branches: 0 }, files: { "src/known.js": coverageFloors } }, [
+        "src/known.js",
+      ]),
+    /floor mismatch for branches/,
   );
 });
 
@@ -53,6 +85,16 @@ test("baseline updates merge only changed behavior owners", () => {
     changed: { statements: 55, branches: 42, functions: 51, lines: 56 },
   };
   expectBaseline(mergeChangedCoverageBaseline(["stable", "changed"], ["changed"], previous, measured), previous.stable, measured.changed);
+});
+
+test("baseline updates cannot undercut the required ratchet", () => {
+  const previous = { owner: { statements: 50, branches: 40, functions: 50, lines: 50 } };
+  const measured = { owner: { statements: 50.5, branches: 39, functions: 52, lines: 50.5 } };
+  const required = { owner: { statements: 51, branches: 41, functions: 51, lines: 51 } };
+
+  assert.deepEqual(mergeChangedCoverageBaseline(["owner"], ["owner"], previous, measured, required), {
+    owner: { statements: 51, branches: 41, functions: 52, lines: 51 },
+  });
 });
 
 function expectBaseline(actual, stable, changed) {

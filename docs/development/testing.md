@@ -95,8 +95,14 @@ full floor; an existing module below the floor must improve by at least one
 percentage point whenever it changes, until it reaches the floor.
 Changed-coverage runs allocate an isolated temporary report directory, so
 parallel or interrupted checks cannot reuse stale coverage artifacts. The
-IndexedDB-backed local action retry ledger has a separate Node coverage gate;
-its storage internals cannot disappear behind the browser-owner exclusion.
+accepted bootstrap is pinned by both commit and Git tree, preserving the same
+boundary when a rebase merge rewrites commit identities. Missing or malformed
+base state fails closed, and untracked production owners are included before
+the first commit. Baseline updates preserve both stronger accepted metrics and
+the next required ratchet; the normal read-only gate must still pass afterward.
+The IndexedDB-backed local action retry ledger has a separate Node coverage
+gate that checks every retry module independently, so aggregate coverage or a
+well-tested sibling cannot hide an under-tested storage boundary.
 
 Playwright release gates run with retries disabled and reject committed
 `test.only` calls in CI. A flaky first attempt is therefore a failure, while

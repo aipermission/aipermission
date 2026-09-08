@@ -20,14 +20,14 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
-function renderPanel({ compact = false, onToggleCompact = () => {}, permissions = [], replacePermissions } = {}) {
+function renderPanel({ compact = false, onToggleCompact = () => {}, permissions = [], replacePermissions, target = selectedTarget } = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
   const loadAllConnectorPermissions = vi.fn(async () => ({}));
   render(
     <ConnectorTokenPermissionPanel
       tokens={{ state: "ready", data: [{ id: 5, name: "codex", token: "aip_example" }] }}
-      selectedTarget={selectedTarget}
+      selectedTarget={target}
       targets={{ state: "ready", data: profiles }}
       compact={compact}
       connectorPermissionState={{
@@ -49,19 +49,19 @@ function renderPanel({ compact = false, onToggleCompact = () => {}, permissions 
   return { replaceTokenConnectorPermissions, loadConnectorActions };
 }
 
-describe("ConnectorTokenPermissionPanel", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 })),
-    );
-  });
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 })),
+  );
+});
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
+describe("ConnectorTokenPermissionPanel modes", () => {
   it("selects and persists a connector credential profile", async () => {
     const user = userEvent.setup();
     const { loadConnectorActions } = renderPanel();
@@ -73,6 +73,14 @@ describe("ConnectorTokenPermissionPanel", () => {
     expect(profile).toHaveValue("12");
     expect(window.localStorage.getItem("aipermission.console.profile:postgres:7:5")).toBe("12");
     await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
+  });
+
+  it("keeps the panel inert until a connector target is selected", async () => {
+    const { loadConnectorActions } = renderPanel({ target: null });
+
+    expect(screen.getByText("Select a connector")).toBeVisible();
+    expect(await screen.findByText("No credential profiles for this connector.")).toBeVisible();
+    expect(loadConnectorActions).not.toHaveBeenCalled();
   });
 
   it("infers grouped permissions and lets the user switch to advanced controls", async () => {
@@ -149,7 +157,9 @@ describe("ConnectorTokenPermissionPanel", () => {
     await user.selectOptions(screen.getByLabelText("Profile"), "12");
     await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
   });
+});
 
+describe("ConnectorTokenPermissionPanel mutations", () => {
   it("updates the token project visibility from the permission panel", async () => {
     const user = userEvent.setup();
     renderPanel();
@@ -180,6 +190,14 @@ describe("ConnectorTokenPermissionPanel", () => {
 
     projectScopes.resolve(new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 }));
     expect(await screen.findByRole("button", { name: "Hide" })).toBeEnabled();
+  });
+
+  it("reports a project-scope load failure without enabling mutations", async () => {
+    fetch.mockRejectedValue(new Error("scope service unavailable"));
+    renderPanel();
+
+    expect(await screen.findByText("scope service unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
   });
 
   it("uses a complete refreshed project snapshot for visibility replacement", async () => {
@@ -240,6 +258,20 @@ describe("ConnectorTokenPermissionPanel", () => {
     );
   });
 
+  it("restores project controls and reports a failed visibility update", async () => {
+    const user = userEvent.setup();
+    fetch.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") throw new Error("scope update unavailable");
+      return new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }] }), { status: 200 });
+    });
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    expect(await screen.findByText("scope update unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hide" })).toBeEnabled();
+  });
+
   it("applies one temporary lifetime to every enabled action in the profile", async () => {
     const now = new Date("2026-08-11T10:00:00Z").getTime();
     vi.spyOn(Date, "now").mockReturnValue(now);
@@ -260,6 +292,29 @@ describe("ConnectorTokenPermissionPanel", () => {
       5,
       permissions.map((permission) => ({ ...permission, expires_at: "2026-08-11T11:00:00.000Z" })),
     );
+  });
+
+  it("keeps blocked actions permanent when a profile lifetime changes", async () => {
+    const now = new Date("2026-08-11T10:00:00Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const user = userEvent.setup();
+    const permissions = actions.map((action, index) => ({
+      target_id: 7,
+      profile_id: 11,
+      action_name: action.name,
+      execution_rule: index === 0 ? "blocked" : "approval_required",
+      expires_at: "",
+    }));
+    const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
+
+    await user.click(await screen.findByRole("button", { name: "1h", exact: true }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
+      { ...permissions[0], expires_at: "" },
+      { ...permissions[1], expires_at: "2026-08-11T11:00:00.000Z" },
+      { ...permissions[2], expires_at: "2026-08-11T11:00:00.000Z" },
+    ]);
   });
 
   it("shows permission save failures with context and retries the mutation", async () => {

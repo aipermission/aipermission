@@ -13,6 +13,7 @@ test("treats production modules as owners by default", () => {
     "src/connectors/templates/redis/key-browser.jsx",
     "src/components/ui/button.jsx",
     "src/lib/local-action-retry.js",
+    "src/lib/runtime-owner.mjs",
   ];
   const exclusions = [
     "src/lib/release.generated.json",

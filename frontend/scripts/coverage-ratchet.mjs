@@ -12,18 +12,29 @@ export function ratchetedMetrics(previous, floors = coverageFloors) {
   );
 }
 
+export function requiredChangedMetrics({ baseBaselineAvailable, previous, added, accepted }, floors = coverageFloors) {
+  if (baseBaselineAvailable) return ratchetedMetrics(previous, floors);
+  if (added) return ratchetedMetrics(null, floors);
+  return { ...accepted };
+}
+
 export function validateCoverageBaseline(baseline, owners, floors = coverageFloors) {
   if (baseline?.version !== 2 || !baseline.files || typeof baseline.files !== "object") {
     throw new Error("Changed coverage baseline must use version 2");
   }
-  const expected = [...owners].sort();
-  const actual = Object.keys(baseline.files).sort();
-  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
-    const missing = expected.filter((file) => !Object.hasOwn(baseline.files, file));
-    const unknown = actual.filter((file) => !owners.includes(file));
-    throw new Error(
-      `Changed coverage baseline owner mismatch (missing: ${missing.join(", ") || "none"}; unknown: ${unknown.join(", ") || "none"})`,
-    );
+  for (const [metric, floor] of Object.entries(floors)) {
+    if (baseline.floors?.[metric] !== floor) throw new Error(`Changed coverage baseline floor mismatch for ${metric}`);
+  }
+  if (owners) {
+    const expected = [...owners].sort();
+    const actual = Object.keys(baseline.files).sort();
+    if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+      const missing = expected.filter((file) => !Object.hasOwn(baseline.files, file));
+      const unknown = actual.filter((file) => !owners.includes(file));
+      throw new Error(
+        `Changed coverage baseline owner mismatch (missing: ${missing.join(", ") || "none"}; unknown: ${unknown.join(", ") || "none"})`,
+      );
+    }
   }
   for (const [file, metrics] of Object.entries(baseline.files)) {
     for (const metric of Object.keys(floors)) {
@@ -45,12 +56,14 @@ export function mergeCoverageMetrics(previous, actual, floors = coverageFloors) 
   );
 }
 
-export function mergeChangedCoverageBaseline(owners, changedOwners, currentFiles, measuredFiles) {
+export function mergeChangedCoverageBaseline(owners, changedOwners, currentFiles, measuredFiles, requiredFiles = {}) {
   const changed = new Set(changedOwners);
   return Object.fromEntries(
     owners.map((file) => [
       file,
-      changed.has(file) ? mergeCoverageMetrics(currentFiles?.[file], measuredFiles[file]) : currentFiles?.[file] || measuredFiles[file],
+      changed.has(file)
+        ? mergeCoverageMetrics(mergeCoverageMetrics(currentFiles?.[file], measuredFiles[file]), requiredFiles[file] || measuredFiles[file])
+        : currentFiles?.[file] || measuredFiles[file],
     ]),
   );
 }

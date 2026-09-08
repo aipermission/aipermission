@@ -41,4 +41,21 @@ describe("TokensPage", () => {
     expect(await screen.findByText("maintenance revoked.")).toBeVisible();
     expect(apiPost).toHaveBeenCalledWith("/api/tokens/7/revoke", {});
   });
+
+  it("creates a short-lived token from the drawer", async () => {
+    const user = userEvent.setup();
+    apiPost.mockResolvedValue({ id: 8, name: "review-agent", token: "aip_new" });
+    render(<TokensPage />);
+
+    await user.click(screen.getByRole("button", { name: "Add token" }));
+    const name = screen.getByLabelText("Name");
+    await user.clear(name);
+    await user.type(name, "review-agent");
+    await user.selectOptions(screen.getByLabelText("Expiration"), "1h");
+    await user.click(screen.getByRole("button", { name: "Create token" }));
+
+    expect(apiPost).toHaveBeenCalledWith("/api/tokens", expect.objectContaining({ name: "review-agent", expires_at: expect.any(String) }));
+    expect(await screen.findByText("Token created.")).toBeVisible();
+    expect(gateway.loadTokens).toHaveBeenCalled();
+  });
 });

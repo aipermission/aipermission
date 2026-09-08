@@ -131,6 +131,7 @@ export function RemoteBrowserDialog({
                     {browser.purpose === "download" && (entry.type === "file" || (recursive && entry.type === "directory")) ? (
                       <input
                         type="checkbox"
+                        aria-label={`Select ${entry.name}`}
                         className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
                         checked={Boolean(selectedFiles[entry.path]) || queuedPaths?.has(entry.path)}
                         disabled={queuedPaths?.has(entry.path)}

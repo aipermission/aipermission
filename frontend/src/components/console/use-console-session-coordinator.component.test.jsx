@@ -244,4 +244,29 @@ describe("useConsoleSessionCoordinator", () => {
     expect(apiPost).toHaveBeenCalledWith("/api/console/runtime-surfaces/7/restart", {});
     expect(result.current.sessions.data).toEqual([]);
   });
+
+  it("reports a current session-list failure", async () => {
+    apiGet.mockRejectedValue(new Error("session service unavailable"));
+    const { result } = renderCoordinator();
+
+    await act(async () => result.current.loadSessions());
+
+    expect(result.current.sessions).toEqual({ state: "error", data: [], error: "session service unavailable" });
+  });
+
+  it("reattaches an existing live runtime session without creating another", async () => {
+    apiGet.mockResolvedValue([{ id: 10, runtime_id: 7, status: "connected" }]);
+    const { result, connections } = renderCoordinator();
+    await act(async () => result.current.loadSessions());
+    connections.attachSession.mockClear();
+
+    let session;
+    await act(async () => {
+      session = await result.current.ensureSession(runtime);
+    });
+
+    expect(session).toMatchObject({ id: 10, runtime_id: 7 });
+    expect(connections.attachSession).toHaveBeenCalledWith(10);
+    expect(apiPost).not.toHaveBeenCalled();
+  });
 });

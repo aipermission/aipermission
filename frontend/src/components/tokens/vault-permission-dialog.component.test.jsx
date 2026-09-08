@@ -68,6 +68,40 @@ describe("VaultPermissionDialog", () => {
     expect(onSaved).toHaveBeenCalledOnce();
   });
 
+  it("persists project visibility and a temporary capability lifetime", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    apiPut.mockImplementation(async (path) => {
+      if (path === "/api/tokens/7/project-scopes") {
+        return { items: [{ project_id: 3, project_name: "My Project", enabled: false }] };
+      }
+      return {
+        definitions: [
+          {
+            name: "vault.inject",
+            label: "Inject secrets",
+            description: "Inject selected Vault values into a connector session.",
+            allowed_rules: ["approval_required", "always_run"],
+          },
+        ],
+        items: [{ project_id: 3, capability: "vault.inject", execution_rule: "approval_required", expires_at: "future" }],
+      };
+    });
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={onSaved} />);
+
+    await screen.findByText("Inject secrets");
+    await user.click(screen.getByRole("checkbox", { name: "My Project project visibility" }));
+    await waitFor(() =>
+      expect(apiPut).toHaveBeenCalledWith("/api/tokens/7/project-scopes", { enabled_project_ids: [] }, { signal: expect.any(AbortSignal) }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Prompt" }));
+    await user.click(screen.getByRole("button", { name: "1h" }));
+    await user.click(screen.getByRole("button", { name: "Save Vault capabilities" }));
+    await waitFor(() => expect(apiPut).toHaveBeenCalledWith("/api/tokens/7/project-capabilities", expect.anything(), expect.anything()));
+    expect(onSaved).toHaveBeenCalled();
+  });
+
   it("does not submit Vault capabilities loaded for a previously open token", async () => {
     const user = userEvent.setup();
     const firstScopes = deferred();

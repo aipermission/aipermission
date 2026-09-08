@@ -7,12 +7,69 @@ import { apiDelete, apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./
 import {
   completeLocalActionRetry,
   listLocalActionRetryEntries,
+  markLocalActionRetryOutcome,
   prepareLocalActionRetry,
+  preserveLocalActionRetryAttempt,
+  releaseLocalActionRetryAttempt,
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
 } from "./local-action-retry.js";
+import { legacyStoragePrefix } from "./local-action-retry/constants.js";
+import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.js";
+import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.js";
 
 const fakeRetryIndexedDB = new IDBFactory();
+
+test("retry helpers ignore absent prepared identities and expose stable errors", async () => {
+  assert.equal(await markLocalActionRetryOutcome(null, {}), undefined);
+  assert.equal(await completeLocalActionRetry({}), undefined);
+  assert.equal(await releaseLocalActionRetryAttempt({ scope: {} }), undefined);
+  assert.equal(await preserveLocalActionRetryAttempt({ signature: "missing-scope" }), undefined);
+  assert.match(ledgerFullError().message, /ledger is full/i);
+  assert.match(storageError().message, /storage is unavailable/i);
+  assert.match(retryIdentityChangedError().message, /identity changed/i);
+});
+
+test("legacy retry entries remain visible until explicit reconciliation", async () => {
+  const workspaceID = "workspace-legacy-ledger";
+  const restoreBrowser = installFakeBrowserRetryStorage(workspaceID);
+  try {
+    globalThis.window.localStorage.setItem(`${legacyStoragePrefix}${workspaceID}`, "protected");
+    const [entry] = await listLocalActionRetryEntries();
+    assert.equal(entry.signature, "legacy-v2-ledger");
+    assert.equal(entry.invalid, true);
+    assert.equal(await resolveLocalActionRetryEntry(entry), true);
+    assert.deepEqual(await listLocalActionRetryEntries(), []);
+  } finally {
+    await resetLocalActionRetryLedger();
+    restoreBrowser();
+  }
+});
+
+test("retry storage supports the single-store transaction adapter and memory reset", async () => {
+  const stores = { entries: { marker: true } };
+  const database = {
+    transaction(_storeNames) {
+      const transaction = {
+        objectStore(name) {
+          return stores[name];
+        },
+        abort() {},
+      };
+      setTimeout(() => transaction.oncomplete(), 0);
+      return transaction;
+    },
+  };
+  assert.equal(await transactionPromise(database, "entries", "readonly", (store) => store.marker), true);
+
+  const originalWindow = globalThis.window;
+  delete globalThis.window;
+  try {
+    await resetRetryStorage();
+  } finally {
+    restoreWindow(originalWindow);
+  }
+});
 
 test("all API helpers forward the caller AbortSignal", async () => {
   const originalFetch = globalThis.fetch;

@@ -1,13 +1,15 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
 
 const excludedNames = new Set(["mcp-client-catalog.js", "release.generated.json"]);
 const excludedDirectories = new Set(["src/test"]);
 const nodeCoverageDirectories = new Set(["src/lib/local-action-retry"]);
+const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
+const sourceExtensions = new Set(architecturePolicy.sourceExtensions);
 
 export function isBehaviorOwner(file) {
   const normalized = file.split(sep).join("/");
-  if (!normalized.startsWith("src/") || ![".js", ".jsx"].includes(extname(normalized))) return false;
+  if (!normalized.startsWith("src/") || !sourceExtensions.has(extname(normalized))) return false;
   if (normalized.includes(".test.") || excludedNames.has(basename(normalized))) return false;
   if (/^src\/connectors\/templates\/[^/]+\/index\.jsx$/.test(normalized)) return false;
   if ([...excludedDirectories].some((directory) => normalized === directory || normalized.startsWith(`${directory}/`))) return false;

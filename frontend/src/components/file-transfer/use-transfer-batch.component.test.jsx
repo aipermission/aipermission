@@ -50,6 +50,31 @@ function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
   );
 }
 
+function DownloadBatchHarness({ onNotice = vi.fn() }) {
+  const transfer = useTransferBatch({
+    open: true,
+    runtimeTarget: { id: 9 },
+    mode: "download",
+    remoteDir: "/tmp",
+    uploadQueue: [],
+    downloadQueue: [{ id: "remote", path: "/var/log/app.log", relative_path: "app.log" }],
+    queue: [{ id: "remote" }],
+    onNotice,
+    onUploadCompleted: vi.fn(),
+  });
+  return (
+    <div>
+      <button type="button" onClick={() => void transfer.startQueue()}>
+        Start download
+      </button>
+      <button type="button" onClick={() => void transfer.refreshBatch()}>
+        Refresh download
+      </button>
+      <p data-testid="download-status">{transfer.batch.item?.status || transfer.batch.state}</p>
+    </div>
+  );
+}
+
 beforeEach(() => {
   apiGet.mockReset();
   apiPost.mockReset();
@@ -139,4 +164,27 @@ it("keeps the latest transition when an older transition completes last", async 
   paused.resolve({ id: 12, status: "paused", direction: "upload", items: [] });
 
   await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("canceled"));
+});
+
+it("creates and refreshes an owned download batch", async () => {
+  const user = userEvent.setup();
+  apiPost.mockResolvedValue({ id: 22, status: "running", direction: "download", items: [] });
+  apiGet.mockResolvedValue({ id: 22, status: "completed", direction: "download", items: [] });
+  render(<DownloadBatchHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Start download" }));
+  expect(apiPost).toHaveBeenCalledWith(
+    "/api/file-transfers/download-batch",
+    {
+      runtime_id: 9,
+      remote_paths: ["/var/log/app.log"],
+      archive_name: "",
+    },
+    { signal: expect.any(AbortSignal) },
+  );
+  expect(await screen.findByTestId("download-status")).toHaveTextContent("running");
+
+  await user.click(screen.getByRole("button", { name: "Refresh download" }));
+  expect(apiGet).toHaveBeenCalledWith("/api/file-transfer-batches/22", { signal: expect.any(AbortSignal) });
+  expect(await screen.findByTestId("download-status")).toHaveTextContent("completed");
 });

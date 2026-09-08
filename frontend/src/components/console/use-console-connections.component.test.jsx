@@ -98,6 +98,36 @@ describe("useConsoleConnections", () => {
     expect(result.current.sessions.data[0]).toMatchObject({ status: "closed", error: "Remote shell exited." });
   });
 
+  it("applies snapshot, ready, output, and error protocol frames", () => {
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+    const socket = FakeWebSocket.instances[0];
+
+    act(() => socket.onmessage({ data: JSON.stringify({ type: "snapshot", data: "snapshot", status: "connecting" }) }));
+    expect(result.current.sessions.data[0]).toMatchObject({ transcript: "snapshot", status: "connecting", error: null });
+    act(() => socket.onmessage({ data: JSON.stringify({ type: "ready" }) }));
+    expect(result.current.sessions.data[0]).toMatchObject({ status: "connected", error: null });
+    act(() => socket.onmessage({ data: JSON.stringify({ type: "output", data: " output" }) }));
+    expect(result.current.sessions.data[0].transcript).toBe("snapshot output");
+    act(() => socket.onmessage({ data: JSON.stringify({ type: "error", data: "remote failure" }) }));
+    expect(result.current.sessions.data[0]).toMatchObject({ status: "error", error: "remote failure" });
+  });
+
+  it("sends input and resize frames over an open socket", () => {
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+    const socket = FakeWebSocket.instances[0];
+    socket.readyState = FakeWebSocket.OPEN;
+
+    act(() => {
+      result.current.connections.sendInput(7, "ls\n");
+      result.current.connections.resizeSession(7, 120, 40);
+    });
+
+    expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "input", data: "ls\n" }));
+    expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
+  });
+
   it("ignores the replaced socket close while forcing a reconnect", () => {
     const { result } = renderHook(() => useHarness());
 

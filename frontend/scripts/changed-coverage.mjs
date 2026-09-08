@@ -1,21 +1,30 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
+import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision } from "./coverage-git-state.mjs";
 import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
-import { coverageFloors as floors, mergeChangedCoverageBaseline, ratchetedMetrics, validateCoverageBaseline } from "./coverage-ratchet.mjs";
+import {
+  coverageFloors as floors,
+  mergeChangedCoverageBaseline,
+  requiredChangedMetrics,
+  validateCoverageBaseline,
+} from "./coverage-ratchet.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(frontendRoot, "..");
 const baselinePath = join(frontendRoot, ".changed-coverage-baseline.json");
 const updateBaseline = process.argv.includes("--update-baseline");
 const base = coverageBase();
-const comparison = coverageComparison(base);
-
 const allOwners = listBehaviorOwners(frontendRoot);
-const changedOwners = findChangedOwners(comparison.ref);
+const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+validateCoverageBaseline(baseline, allOwners);
+const comparison = coverageComparison(base, baseline);
+const changedEntries = findChangedOwnerEntries(repositoryRoot, comparison.ref, isBehaviorOwner);
+const changedOwners = changedEntries.map((entry) => entry.file);
+const changedStatus = new Map(changedEntries.map((entry) => [entry.file, entry.status]));
 if (!updateBaseline && changedOwners.length === 0 && !baselineChanged()) {
   console.log("Changed frontend coverage passed: no behavior owners changed.");
   process.exit(0);
@@ -30,14 +39,30 @@ if (updateBaseline) {
   if (process.env.CI) throw new Error("Refusing to update the changed coverage baseline in CI");
   const currentBaseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : null;
   const measuredFiles = Object.fromEntries(allOwners.map((file) => [file, metricsFor(file, coverage)]));
-  const files = mergeChangedCoverageBaseline(allOwners, changedOwners, currentBaseline?.files, measuredFiles);
-  writeFileSync(baselinePath, `${JSON.stringify({ version: 2, floors, files }, null, 2)}\n`);
+  const requiredFiles = Object.fromEntries(
+    changedOwners.map((file) => [
+      file,
+      requiredChangedMetrics({
+        baseBaselineAvailable: Boolean(comparison.baseline),
+        previous: comparison.baseline?.files?.[file],
+        added: changedStatus.get(file) === "A" || changedStatus.get(file) === "C",
+        accepted: currentBaseline?.files?.[file] || measuredFiles[file],
+      }),
+    ]),
+  );
+  const files = mergeChangedCoverageBaseline(allOwners, changedOwners, currentBaseline?.files, measuredFiles, requiredFiles);
+  writeFileSync(
+    baselinePath,
+    `${JSON.stringify(
+      { version: 2, bootstrap_revision: baseline.bootstrap_revision, bootstrap_tree: baseline.bootstrap_tree, floors, files },
+      null,
+      2,
+    )}\n`,
+  );
   console.log(`Changed frontend coverage baseline updated for ${changedOwners.length} behavior owners.`);
   process.exit(0);
 }
 
-const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-validateCoverageBaseline(baseline, allOwners);
 const baseBaseline = comparison.baseline;
 const failures = [];
 for (const file of allOwners) {
@@ -55,7 +80,12 @@ for (const file of allOwners) {
 }
 for (const file of changedOwners) {
   const previous = baseBaseline?.files?.[file];
-  const required = baseBaseline ? ratchetedMetrics(previous) : baseline.files[file];
+  const required = requiredChangedMetrics({
+    baseBaselineAvailable: Boolean(baseBaseline),
+    previous,
+    added: changedStatus.get(file) === "A" || changedStatus.get(file) === "C",
+    accepted: baseline.files[file],
+  });
   for (const metric of Object.keys(floors)) {
     if (baseline.files[file][metric] + 0.001 < required[metric]) {
       const source = previous ? "ratcheted base" : "new-file floor";
@@ -72,39 +102,31 @@ if (failures.length > 0) {
 
 console.log(`Changed frontend coverage passed for ${changedOwners.length} behavior owners.`);
 
-function findChangedOwners(ref) {
-  const output = execFileSync("git", ["diff", "--name-only", "--diff-filter=ACMR", ref, "--", "frontend/src"], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-  });
-  return output
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((file) => file.replace(/^frontend\//, ""))
-    .filter(isBehaviorOwner)
-    .sort();
-}
-
 function readBaseBaseline(ref) {
-  const baseline = readBaselineAt(ref);
+  const baseline = readBaselineAt(repositoryRoot, ref);
   if (baseline === null) return null;
-  if (baseline?.version !== 2) throw new Error("Base changed coverage baseline must use version 2");
+  validateCoverageBaseline(baseline);
   return baseline;
 }
 
-function readBaselineAt(ref) {
-  const result = spawnSync("git", ["show", `${ref}:frontend/.changed-coverage-baseline.json`], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
+function coverageComparison(ref, checkedBaseline) {
+  const baseline = readBaseBaseline(ref);
+  if (baseline) return { ref, baseline };
+  const bootstrap = checkedBaseline.bootstrap_revision;
+  const resolvedBootstrap = resolveBootstrapRevision(repositoryRoot, {
+    revision: bootstrap,
+    tree: checkedBaseline.bootstrap_tree,
   });
-  if (result.status !== 0) return null;
-  return JSON.parse(result.stdout);
+  assertAncestor(ref, resolvedBootstrap, "coverage base must be an ancestor of the accepted bootstrap tree");
+  const bootstrapBaseline = readBaseBaseline(resolvedBootstrap);
+  if (!bootstrapBaseline) throw new Error(`Coverage bootstrap revision ${resolvedBootstrap} does not contain a baseline`);
+  return { ref: resolvedBootstrap, baseline: bootstrapBaseline };
 }
 
-function coverageComparison(ref) {
-  const baseline = readBaseBaseline(ref);
-  return { ref, baseline };
+function assertAncestor(ancestor, descendant, message) {
+  const result = spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: repositoryRoot });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(message);
 }
 
 function baselineChanged() {

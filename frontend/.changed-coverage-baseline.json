@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "bootstrap_revision": "419c08c57d03454a0d048ecf0aa93bcb2291086d",
+  "bootstrap_tree": "9979821b00b87bcb349f1122265f7e794ae341eb",
   "floors": {
     "statements": 75,
     "branches": 60,
@@ -62,8 +64,8 @@
       "lines": 96.66
     },
     "src/components/console/connector-token-permission-panel.jsx": {
-      "statements": 84.93,
-      "branches": 74.4,
+      "statements": 86.3,
+      "branches": 76.69,
       "functions": 78.72,
       "lines": 85.71
     },
@@ -140,16 +142,16 @@
       "lines": 71.95
     },
     "src/components/console/use-connector-token-permission-state.js": {
-      "statements": 90.96,
-      "branches": 57.89,
-      "functions": 89.58,
-      "lines": 94.57
+      "statements": 92.02,
+      "branches": 61.46,
+      "functions": 92.72,
+      "lines": 98
     },
     "src/components/console/use-console-connections.js": {
-      "statements": 69.74,
-      "branches": 48.23,
-      "functions": 58.62,
-      "lines": 76.08
+      "statements": 81.96,
+      "branches": 69.56,
+      "functions": 79.31,
+      "lines": 88.17
     },
     "src/components/console/use-console-connector-view.js": {
       "statements": 100,
@@ -158,10 +160,10 @@
       "lines": 100
     },
     "src/components/console/use-console-messages.js": {
-      "statements": 77.58,
-      "branches": 65.71,
+      "statements": 79.66,
+      "branches": 68.57,
       "functions": 70,
-      "lines": 89.13
+      "lines": 89.36
     },
     "src/components/console/use-console-page-state.js": {
       "statements": 95.23,
@@ -182,10 +184,10 @@
       "lines": 100
     },
     "src/components/console/use-console-session-coordinator.js": {
-      "statements": 76.52,
-      "branches": 50.98,
-      "functions": 80,
-      "lines": 83.51
+      "statements": 82.35,
+      "branches": 61.9,
+      "functions": 87.5,
+      "lines": 89.47
     },
     "src/components/console/use-console-target-selection.js": {
       "statements": 91.17,
@@ -224,10 +226,10 @@
       "lines": 89.47
     },
     "src/components/file-transfer/file-transfer-browser-dialog.jsx": {
-      "statements": 28.94,
-      "branches": 31.74,
-      "functions": 20,
-      "lines": 29.41
+      "statements": 82.05,
+      "branches": 78.46,
+      "functions": 80,
+      "lines": 88.57
     },
     "src/components/file-transfer/file-transfer-confirm-dialogs.jsx": {
       "statements": 100,
@@ -260,10 +262,10 @@
       "lines": 84.21
     },
     "src/components/file-transfer/use-transfer-batch.js": {
-      "statements": 52.3,
-      "branches": 45.71,
-      "functions": 50,
-      "lines": 57.54
+      "statements": 66.66,
+      "branches": 54.44,
+      "functions": 67.64,
+      "lines": 74.41
     },
     "src/components/file-transfer/use-transfer-browser.js": {
       "statements": 66.66,
@@ -284,10 +286,10 @@
       "lines": 81.25
     },
     "src/components/file-transfer/use-transfer-queues.js": {
-      "statements": 72.41,
-      "branches": 52.94,
-      "functions": 88,
-      "lines": 75.55
+      "statements": 77.11,
+      "branches": 57.35,
+      "functions": 92,
+      "lines": 81.52
     },
     "src/components/history/history-components.jsx": {
       "statements": 40.96,
@@ -392,10 +394,10 @@
       "lines": 25
     },
     "src/components/tokens/connector-permission-dialog.jsx": {
-      "statements": 26.88,
-      "branches": 18.82,
-      "functions": 13.51,
-      "lines": 30.76
+      "statements": 73.39,
+      "branches": 49.48,
+      "functions": 62.16,
+      "lines": 77.52
     },
     "src/components/tokens/created-token-notice.jsx": {
       "statements": 100,
@@ -416,10 +418,10 @@
       "lines": 100
     },
     "src/components/tokens/vault-permission-dialog.jsx": {
-      "statements": 66.36,
-      "branches": 68.42,
-      "functions": 64.86,
-      "lines": 68.47
+      "statements": 83.96,
+      "branches": 75.22,
+      "functions": 89.18,
+      "lines": 87.85
     },
     "src/components/transfer-center.jsx": {
       "statements": 82.43,
@@ -542,16 +544,16 @@
       "lines": 77.5
     },
     "src/components/vault/use-vault-collection.js": {
-      "statements": 83.95,
-      "branches": 47.61,
-      "functions": 82.6,
-      "lines": 89.39
+      "statements": 92.39,
+      "branches": 82.08,
+      "functions": 87.5,
+      "lines": 96.05
     },
     "src/components/vault/use-vault-value-actions.js": {
-      "statements": 55.33,
-      "branches": 36.53,
-      "functions": 53.33,
-      "lines": 64.47
+      "statements": 72.72,
+      "branches": 53.84,
+      "functions": 64.28,
+      "lines": 83.13
     },
     "src/components/vault/vault-action-approval-dialog.jsx": {
       "statements": 100,
@@ -572,10 +574,10 @@
       "lines": 100
     },
     "src/components/vault/vault-page-content.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/vault/vault-row.jsx": {
       "statements": 100,
@@ -1094,10 +1096,10 @@
       "lines": 0
     },
     "src/connectors/templates/kubernetes/use-kubernetes-browser.js": {
-      "statements": 79.73,
-      "branches": 60.39,
+      "statements": 81.16,
+      "branches": 62.37,
       "functions": 81.81,
-      "lines": 85.36
+      "lines": 85.48
     },
     "src/connectors/templates/kubernetes/use-rollout-restart.js": {
       "statements": 71.42,
@@ -1184,10 +1186,10 @@
       "lines": 5.26
     },
     "src/connectors/templates/mail/use-mail-action-runner.js": {
-      "statements": 76.13,
-      "branches": 53.33,
-      "functions": 68.42,
-      "lines": 76.92
+      "statements": 76.28,
+      "branches": 57.4,
+      "functions": 75,
+      "lines": 78.31
     },
     "src/connectors/templates/mail/use-mail-compose.js": {
       "statements": 64,
@@ -1466,10 +1468,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/helpers.js": {
-      "statements": 32.6,
-      "branches": 23.8,
-      "functions": 50,
-      "lines": 37.14
+      "statements": 52.38,
+      "branches": 25.53,
+      "functions": 63.63,
+      "lines": 59.57
     },
     "src/connectors/templates/s3/lifecycle-dialog.jsx": {
       "statements": 2.56,
@@ -1526,10 +1528,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/use-s3-browser.js": {
-      "statements": 67.28,
-      "branches": 44.04,
+      "statements": 68.46,
+      "branches": 46.42,
       "functions": 80,
-      "lines": 72.72
+      "lines": 73.91
     },
     "src/connectors/templates/s3/use-s3-object-delete.js": {
       "statements": 67.85,
@@ -1538,10 +1540,10 @@
       "lines": 80.95
     },
     "src/connectors/templates/s3/use-s3-upload.js": {
-      "statements": 50.81,
-      "branches": 45.83,
-      "functions": 33.33,
-      "lines": 61.36
+      "statements": 58.44,
+      "branches": 46.87,
+      "functions": 45.83,
+      "lines": 70.37
     },
     "src/connectors/templates/s3/versions-dialog.jsx": {
       "statements": 1.75,
@@ -1550,16 +1552,16 @@
       "lines": 2
     },
     "src/connectors/templates/ssh/bulk-command-dialog.jsx": {
-      "statements": 0.77,
-      "branches": 0,
-      "functions": 0,
-      "lines": 1
+      "statements": 59.35,
+      "branches": 39.04,
+      "functions": 56.86,
+      "lines": 65.83
     },
     "src/connectors/templates/ssh/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 69.23,
+      "branches": 66.66,
+      "functions": 50,
+      "lines": 66.66
     },
     "src/connectors/templates/ssh/credential-form.jsx": {
       "statements": 7.69,
@@ -1604,10 +1606,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 45.16,
-      "branches": 54.83,
-      "functions": 70,
-      "lines": 46.15
+      "statements": 54.61,
+      "branches": 61.71,
+      "functions": 76.19,
+      "lines": 56.55
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,
@@ -1658,10 +1660,10 @@
       "lines": 85.71
     },
     "src/lib/local-action-retry.js": {
-      "statements": 67.24,
-      "branches": 61.11,
-      "functions": 90.9,
-      "lines": 76
+      "statements": 75.67,
+      "branches": 69.09,
+      "functions": 92.3,
+      "lines": 82.53
     },
     "src/lib/mcp-package.js": {
       "statements": 100,
@@ -1682,10 +1684,10 @@
       "lines": 73.8
     },
     "src/lib/project-scopes.js": {
-      "statements": 75,
-      "branches": 50,
-      "functions": 75,
-      "lines": 75
+      "statements": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/release.js": {
       "statements": 100,
@@ -1778,10 +1780,10 @@
       "lines": 0
     },
     "src/pages/console.jsx": {
-      "statements": 63.04,
-      "branches": 17.64,
-      "functions": 18.75,
-      "lines": 65.11
+      "statements": 78.26,
+      "branches": 55.88,
+      "functions": 52.94,
+      "lines": 81.39
     },
     "src/pages/credentials.jsx": {
       "statements": 0,
@@ -1838,10 +1840,10 @@
       "lines": 0
     },
     "src/pages/tokens.jsx": {
-      "statements": 55.85,
-      "branches": 55.84,
-      "functions": 45.28,
-      "lines": 59.57
+      "statements": 70.27,
+      "branches": 61.72,
+      "functions": 58.49,
+      "lines": 75.53
     },
     "src/pages/unlock-create-panel.jsx": {
       "statements": 90.47,
@@ -1880,10 +1882,10 @@
       "lines": 77.14
     },
     "src/pages/vault-components.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 35.38,
+      "branches": 35.21,
+      "functions": 26.92,
+      "lines": 34.48
     },
     "src/pages/vault.jsx": {
       "statements": 0,
