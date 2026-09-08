@@ -130,3 +130,64 @@ func TestS3TransferRejectsUnsupportedBeforeDispatch(t *testing.T) {
 		}
 	}
 }
+
+func TestS3CompletedDownloadBatchReplayPreservesArtifact(t *testing.T) {
+	objectStore := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/identity-bucket/report.txt" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Length", "4")
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte("data"))
+		}
+	}))
+	defer objectStore.Close()
+
+	fixture := newAPITestFixture(t)
+	runtimeID := createS3IdentityRuntime(t, fixture.server, objectStore.URL).TransferRuntimeID
+	request := startDownloadBatchRequest{
+		RuntimeID:      runtimeID,
+		RemotePaths:    []string{"/report.txt"},
+		IdempotencyKey: "completed-download-replay",
+	}
+	first := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download-batch", "", request)
+	if first.Code != http.StatusAccepted {
+		t.Fatalf("start download batch: %d %s", first.Code, first.Body.String())
+	}
+	var started filetransfer.BatchRecord
+	if err := json.Unmarshal(first.Body.Bytes(), &started); err != nil {
+		t.Fatalf("decode download batch: %v", err)
+	}
+	runtime := fixture.server.activeRuntime()
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if !runtime.transferJobs.Wait(waitCtx) {
+		t.Fatal("download batch did not finish")
+	}
+	completed, err := runtime.fileTransfers.GetBatch(context.Background(), started.ID)
+	if err != nil || completed.Status != filetransfer.StatusCompleted || len(completed.Items) != 1 {
+		t.Fatalf("completed batch = %#v, %v", completed, err)
+	}
+	artifactPath := completed.Items[0].TempPath
+	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {
+		t.Fatalf("artifact before replay = %q, %v", data, err)
+	}
+
+	replay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download-batch", "", request)
+	if replay.Code != http.StatusAccepted {
+		t.Fatalf("replay download batch: %d %s", replay.Code, replay.Body.String())
+	}
+	waitCtx, cancelReplay := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelReplay()
+	if !runtime.transferJobs.Wait(waitCtx) {
+		t.Fatal("replayed download batch did not settle")
+	}
+	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {
+		t.Fatalf("artifact after replay = %q, %v", data, err)
+	}
+	fileTransferHandlers{fixture.server}.runTransferBatch(context.Background(), runtime, completed.ID, false)
+	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {
+		t.Fatalf("artifact after terminal runner replay = %q, %v", data, err)
+	}
+}

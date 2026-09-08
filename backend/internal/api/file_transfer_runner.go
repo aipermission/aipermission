@@ -133,6 +133,12 @@ func (s fileTransferHandlers) runTransferBatch(ctx context.Context, runtime *dat
 	runtime.transferJobs.Batches.RegisterControl(batchID, control)
 	defer runtime.transferJobs.Batches.UnregisterControl(batchID)
 
+	if ok, err := runtime.fileTransfers.MarkBatchRunning(ctx, batchID); err != nil {
+		log.Printf("claim file transfer batch failed batch=%d error=%v", batchID, err)
+		return
+	} else if !ok {
+		return
+	}
 	batch, err := runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
 		s.finishFileTransferBatchError(runtime, batchID, ctx, err)
@@ -157,14 +163,6 @@ func (s fileTransferHandlers) runTransferBatch(ctx context.Context, runtime *dat
 			})
 			return
 		}
-	}
-	if ok, err := runtime.fileTransfers.MarkBatchRunning(ctx, batchID); err != nil {
-		s.finishFileTransferBatchError(runtime, batchID, ctx, err)
-		s.cleanupBatchTemps(runtime, batchID)
-		log.Printf("mark file transfer batch running failed batch=%d error=%v", batchID, err)
-		return
-	} else if !ok {
-		return
 	}
 	batch, err = runtime.fileTransfers.GetBatch(ctx, batchID)
 	if err != nil {
