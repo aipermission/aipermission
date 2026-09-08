@@ -121,7 +121,9 @@ export function useHistoryPageState() {
         error: null,
       }));
     } catch (error) {
-      if (request.isCurrent()) setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+      if (request.isCurrent()) {
+        setState((current) => ({ ...current, state: "error", data: [], total: 0, nextCursor: null, error: error.message }));
+      }
     } finally {
       if (!options.poll && request.isCurrent()) interactiveRequestPendingRef.current = false;
       request.complete();

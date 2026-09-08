@@ -43,7 +43,7 @@ export function HistoryPage() {
   const pageStart = view.state.total === 0 ? 0 : view.state.pageIndex * view.state.limit + 1;
   const pageEnd = Math.min(view.state.pageIndex * view.state.limit + view.state.data.length, view.state.total);
   return (
-    <section className="mx-auto grid w-full max-w-7xl gap-5">
+    <section className="mx-auto grid min-w-0 w-full max-w-7xl gap-5">
       <HistoryHeader state={view.state} onRefresh={view.refresh} />
       <HistoryStats stats={view.stats} />
       <HistoryFilters view={view} />
@@ -198,8 +198,8 @@ function HistoryErrors({ view }) {
 
 function HistoryTable({ state, onOpen }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-      <table className="w-full table-fixed border-collapse text-left text-sm">
+    <div data-testid="history-table-scroll" className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+      <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
         <thead className="bg-stone-50 text-xs uppercase text-stone-500">
           <tr>
             <th className="w-[12%] px-4 py-3 font-semibold">Status</th>

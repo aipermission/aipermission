@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { apiGet } from "../lib/api";
 import { AuditLogsPage } from "./audit-logs";
@@ -59,6 +59,59 @@ it("does not describe a failed audit request as an empty result", async () => {
 
   expect(screen.getByText("audit unavailable")).toBeVisible();
   expect(screen.queryByText("No audit events match these filters.")).not.toBeInTheDocument();
+});
+
+it("names every filter and keeps the audit table horizontally recoverable", async () => {
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [] });
+    return Promise.resolve(auditResponse("opened"));
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  expect(screen.getByRole("textbox", { name: "Search audit logs" })).toBeVisible();
+  for (const name of [
+    "Filter audit logs by project",
+    "Filter audit logs by actor",
+    "Filter audit logs by connector type",
+    "Filter audit logs by connector",
+  ]) {
+    expect(screen.getByRole("combobox", { name })).toBeVisible();
+  }
+  expect(screen.getByTestId("audit-table-scroll")).toHaveClass("overflow-x-auto");
+});
+
+it("uses target_ref once when a target name is unavailable", async () => {
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [] });
+    if (path === "/api/audit-logs/fallback") {
+      return Promise.resolve({
+        id: "fallback",
+        actor_type: "mcp",
+        action: "connector.run",
+        target_ref: "postgres:7:11",
+        created_at: "2026-09-08T00:00:00Z",
+      });
+    }
+    return Promise.resolve({
+      ...auditResponse("connector.run"),
+      items: [
+        {
+          id: "fallback",
+          actor_type: "mcp",
+          action: "connector.run",
+          target_ref: "postgres:7:11",
+          created_at: "2026-09-08T00:00:00Z",
+        },
+      ],
+    });
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open audit details for connector.run" })));
+  const dialog = screen.getByRole("dialog", { name: "Audit #fallback" });
+  expect(within(dialog).getAllByText("postgres:7:11")).toHaveLength(1);
 });
 
 function auditResponse(action) {

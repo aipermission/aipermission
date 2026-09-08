@@ -100,6 +100,32 @@ describe("HistoryPage request ownership", () => {
     expect(screen.queryByText("No history yet.")).not.toBeInTheDocument();
   });
 
+  it("clears stale forward pagination after the next page fails", async () => {
+    let historyCalls = 0;
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (typeof path !== "string" || !path.startsWith("/api/history?")) return Promise.resolve({});
+      historyCalls++;
+      if (historyCalls === 1) return Promise.resolve(historyResponse("page one", { nextCursor: "page-2" }));
+      return Promise.reject(new Error("next page unavailable"));
+    });
+    render(<HistoryPage />);
+
+    expect(await screen.findByText("page one")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("next page unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
+  });
+
+  it("keeps the history table horizontally recoverable", async () => {
+    installHistoryMock();
+    render(<HistoryPage />);
+    expect(await screen.findByText("initial")).toBeVisible();
+    expect(screen.getByTestId("history-table-scroll")).toHaveClass("overflow-x-auto");
+  });
+
   it("invalidates an in-flight filter response before the debounced replacement starts", async () => {
     const older = deferred();
     const current = deferred();
