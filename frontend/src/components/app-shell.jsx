@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 import { Outlet, useLocation } from "react-router";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
+import { AppMobileNavigation } from "./app-mobile-navigation";
 import { createPollGenerationGuard } from "./app-shell-runtime";
 import { DatabaseSwitchDialog } from "./database-switch-dialog";
 import { DatabaseLockDialog } from "./database-lock-dialog";
@@ -112,22 +113,24 @@ export function Shell({ theme, setTheme }) {
   const pendingVaultActionApprovalCount = vaultApprovals.approvals.data.filter((approval) => approval.status === "approval_pending").length;
   const unreadMessageCount = resources.messages.data.filter(isUnreadMessage).length;
   const consoleAttentionCount = pendingConnectorActionApprovalCount + pendingVaultActionApprovalCount + unreadMessageCount;
+  const sidebarProps = {
+    pathname: location.pathname,
+    consoleAttentionCount,
+    activeTransferCount: transferCenter.activeCount,
+    gatewayState: resources.gatewayState,
+    mcpRuntime: resources.mcpRuntime,
+    theme,
+    onSetTheme: setTheme,
+    onSetMCPRuntimeEnabled: resources.setMCPRuntimeEnabled,
+    onOpenTransferCenter: transferCenter.show,
+    onSwitchDatabase: database.openSwitch,
+    onLockDatabase: database.requestLock,
+  };
 
   return (
     <main className="min-h-screen bg-stone-100 text-stone-950">
-      <AppSidebar
-        pathname={location.pathname}
-        consoleAttentionCount={consoleAttentionCount}
-        activeTransferCount={transferCenter.activeCount}
-        gatewayState={resources.gatewayState}
-        mcpRuntime={resources.mcpRuntime}
-        theme={theme}
-        onSetTheme={setTheme}
-        onSetMCPRuntimeEnabled={resources.setMCPRuntimeEnabled}
-        onOpenTransferCenter={transferCenter.show}
-        onSwitchDatabase={database.openSwitch}
-        onLockDatabase={database.requestLock}
-      />
+      <AppSidebar {...sidebarProps} />
+      <AppMobileNavigation sidebarProps={sidebarProps} />
 
       <TransferCenter
         open={transferCenter.open}
