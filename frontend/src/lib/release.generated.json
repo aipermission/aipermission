@@ -1,6 +1,51 @@
 {
-  "version": "0.2.44",
+  "version": "0.2.45",
   "entries": [
+    {
+      "version": "0.2.45",
+      "label": "Frontend architecture and concurrent workflow correctness",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "The application shell now provides an accessible mobile navigation path while preserving the dense desktop operator workspace."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Console, connector, transfer, token, Vault, unlock, history, security, backup, and settings interfaces are split into behavior-owned coordinators and presentation components with shared layout, focus, empty-state, and action-menu primitives.",
+            "Connector templates now own their browser and session workflows behind explicit transport and capability contracts instead of page-level connector assumptions.",
+            "Backend search parsing, rate limiting, transfer storage, and transport delegation now live behind smaller behavior-owned boundaries."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Superseded, dismissed, or cross-target browser requests can no longer overwrite newer console, connector, transfer, Vault, restore, permission, or activity state.",
+            "Connector action feedback is serialized so overlapping completions preserve the newest visible result.",
+            "Transfer starts are idempotent across retries and concurrent requests while preserving one stable start identity.",
+            "Console session lifecycle, messages, permission dialogs, project scope changes, and uncertain retries now remain bound to the initiating token, target, and request owner.",
+            "Narrow-screen navigation, connector pickers, drawers, dialogs, audit details, and primary workflows now preserve keyboard and screen-reader access."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Token connector, project, and Vault authorization mutations now reject stale revisions instead of applying permissions derived from an obsolete snapshot.",
+            "Runtime recovery, SSH bulk and transfer operations, connector templates, and delegated transports now enforce explicit capability and ownership boundaries."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Frontend architecture gates now ratchet module size, complexity, duplication, async ownership, accessibility, responsive behavior, connector isolation, changed-line coverage, and critical Playwright workflows.",
+            "Connector conformance can require same-commit real-service validation, and backend architecture checks now ratchet dependency boundaries.",
+            "Focused regression coverage locks stale completion handling, request identity preservation, permission revisions, transfer idempotency, responsive layouts, and accessible interaction contracts."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.44",
       "label": "Protocol correctness and backend boundaries",
@@ -236,28 +281,6 @@
           "items": [
             "Frontend risk coverage now exercises approval dialogs, transfers, unlock and restore flows, maintenance console lifecycle, and connector transport forms across asynchronous failure paths.",
             "Release automation now verifies pinned release images, package lock ownership, MCP package quality, and container publication workflow behavior before promotion."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.37",
-      "label": "Connector transport safety hardening",
-      "sections": [
-        {
-          "title": "Fixed",
-          "items": [
-            "Docker connector execution now accepts only the standard CLI or an absolute wrapper, verifies Docker identity, and shares the same renderer across actions and live consoles.",
-            "S3 object rename is disabled because S3-compatible APIs cannot provide an atomic cross-key move; source deletion remains a separate destructive operator decision."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "New direct remote Postgres targets now default to hostname-verified TLS while explicit and legacy transport modes remain compatible.",
-            "Backup service requests ignore ambient process proxies and refuse redirects so encrypted snapshots and provider tokens stay on the operator-selected route.",
-            "Database mutation paths now preserve affected-row driver failures instead of treating them as successful zero-row updates.",
-            "The backend now uses the patched Go cryptography module release that closes CVE-2026-56854 in SSH source-address restriction enforcement."
           ]
         }
       ]

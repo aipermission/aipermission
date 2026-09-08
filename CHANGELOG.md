@@ -9,6 +9,54 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.45] - 2026-09-08
+
+### Added
+
+- The application shell now provides an accessible mobile navigation path while
+  preserving the dense desktop operator workspace.
+
+### Changed
+
+- Console, connector, transfer, token, Vault, unlock, history, security, backup, and
+  settings interfaces are split into behavior-owned coordinators and presentation
+  components with shared layout, focus, empty-state, and action-menu primitives.
+- Connector templates now own their browser and session workflows behind explicit
+  transport and capability contracts instead of page-level connector assumptions.
+- Backend search parsing, rate limiting, transfer storage, and transport delegation now
+  live behind smaller behavior-owned boundaries.
+
+### Fixed
+
+- Superseded, dismissed, or cross-target browser requests can no longer overwrite newer
+  console, connector, transfer, Vault, restore, permission, or activity state.
+- Connector action feedback is serialized so overlapping completions preserve the newest
+  visible result.
+- Transfer starts are idempotent across retries and concurrent requests while preserving
+  one stable start identity.
+- Console session lifecycle, messages, permission dialogs, project scope changes, and
+  uncertain retries now remain bound to the initiating token, target, and request owner.
+- Narrow-screen navigation, connector pickers, drawers, dialogs, audit details, and
+  primary workflows now preserve keyboard and screen-reader access.
+
+### Security
+
+- Token connector, project, and Vault authorization mutations now reject stale revisions
+  instead of applying permissions derived from an obsolete snapshot.
+- Runtime recovery, SSH bulk and transfer operations, connector templates, and delegated
+  transports now enforce explicit capability and ownership boundaries.
+
+### Maintenance
+
+- Frontend architecture gates now ratchet module size, complexity, duplication, async
+  ownership, accessibility, responsive behavior, connector isolation, changed-line
+  coverage, and critical Playwright workflows.
+- Connector conformance can require same-commit real-service validation, and backend
+  architecture checks now ratchet dependency boundaries.
+- Focused regression coverage locks stale completion handling, request identity
+  preservation, permission revisions, transfer idempotency, responsive layouts, and
+  accessible interaction contracts.
+
 ## [0.2.44] - 2026-09-05
 
 ### Changed
