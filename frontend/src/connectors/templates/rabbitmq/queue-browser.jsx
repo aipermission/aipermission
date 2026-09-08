@@ -38,7 +38,7 @@ export function QueueBrowser({ browser, styles }) {
         className={`grid gap-2 border-b p-3 ${styles.border}`}
         onSubmit={(event) => {
           event.preventDefault();
-          void browser.refreshQueues();
+          browser.applyVhost();
         }}
       >
         <div className="relative">
@@ -53,11 +53,12 @@ export function QueueBrowser({ browser, styles }) {
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <Input
             className={styles.input}
-            value={browser.vhost}
-            onChange={(event) => browser.setVhost(event.target.value)}
+            value={browser.vhostDraft}
+            onChange={(event) => browser.setVhostDraft(event.target.value)}
             placeholder="vhost"
+            disabled={browser.state.state === "publishing"}
           />
-          <Button type="submit" variant="outline" className="h-9" disabled={browser.state.state !== "idle"}>
+          <Button type="submit" variant="outline" className="h-9" disabled={browser.state.state === "publishing"}>
             {browser.state.state === "loading" ? "Loading" : "Refresh"}
           </Button>
         </div>
