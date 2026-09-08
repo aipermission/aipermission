@@ -30,8 +30,10 @@ it("edits explicit container and pattern scopes", async () => {
   );
 
   fireEvent.change(screen.getByLabelText("Allowed containers"), { target: { value: "web" } });
+  fireEvent.change(screen.getByLabelText("Allowed name patterns"), { target: { value: "api-*" } });
   await user.selectOptions(screen.getByLabelText("Container scope"), "all");
 
   expect(onChange).toHaveBeenCalledWith("allowed_containers", "web");
+  expect(onChange).toHaveBeenCalledWith("allowed_patterns", "api-*");
   expect(onChange).toHaveBeenCalledWith("scope_mode", "all");
 });

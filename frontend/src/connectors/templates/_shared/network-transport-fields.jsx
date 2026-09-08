@@ -76,6 +76,23 @@ export function TransportProfileField({ value, transportMode, label = "Transport
   );
 }
 
+export function TransportConnectorIdentityFields({ form, targets = [], onChange }) {
+  return (
+    <>
+      <Field>
+        Connector name
+        <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
+      </Field>
+      <TransportProfileField
+        value={form.transport_target_ref}
+        transportMode={form.connection_mode}
+        targets={targets}
+        onChange={(value) => onChange("transport_target_ref", value)}
+      />
+    </>
+  );
+}
+
 export function transportProfileOptions(targets, transportMode) {
   if (!transportMode) return [];
   return (targets || []).flatMap((target) => {

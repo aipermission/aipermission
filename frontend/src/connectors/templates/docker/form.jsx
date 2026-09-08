@@ -1,6 +1,6 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
-import { TransportProfileField } from "../_shared/network-transport-fields";
+import { TransportConnectorIdentityFields } from "../_shared/network-transport-fields";
 
 export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
   return (
@@ -9,16 +9,7 @@ export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
         Docker actions run through bounded command templates over an SSH connector profile. Start lifecycle actions in Prompt mode until the
         workflow is trusted.
       </Notice>
-      <Field>
-        Connector name
-        <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} required />
-      </Field>
-      <TransportProfileField
-        value={form.transport_target_ref}
-        transportMode={form.connection_mode}
-        targets={targets}
-        onChange={(value) => onChange("transport_target_ref", value)}
-      />
+      <TransportConnectorIdentityFields form={form} targets={targets} onChange={onChange} />
       <Field>
         Docker command
         <Input

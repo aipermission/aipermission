@@ -5,6 +5,7 @@ import {
   ConnectionModeFields,
   NetworkEndpointFields,
   networkTransportDescriptors,
+  TransportConnectorIdentityFields,
   NetworkTransportFields,
   sortNetworkTransportDescriptors,
   transportProfileOptions,
@@ -31,6 +32,20 @@ const targets = [
 ];
 
 describe("ConnectionModeFields", () => {
+  it("wires connector identity fields without requiring transport targets", () => {
+    const onChange = vi.fn();
+    render(
+      <TransportConnectorIdentityFields
+        form={{ name: "Docker host", connection_mode: "over_ssh", transport_target_ref: "" }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Connector name" }), { target: { value: "New host" } });
+    expect(onChange).toHaveBeenCalledWith("name", "New host");
+    expect(screen.getByRole("combobox", { name: "Transport profile" })).toHaveValue("");
+  });
+
   it("discovers transport modes and profile defaults from connector metadata", () => {
     expect(networkTransportDescriptors()).toEqual([
       expect.objectContaining({ mode: "over_ssh", option_label: "Over an SSH connector profile" }),
