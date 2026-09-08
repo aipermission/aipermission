@@ -1,4 +1,4 @@
-package api
+package runtimecontrol
 
 import (
 	"context"
@@ -8,39 +8,33 @@ import (
 	"time"
 )
 
-const maxAuthRateLimitEntries = 1024
-const authRateLimitLockoutFailures = 8
+const maxAuthEntries = 1024
 
-const (
-	mcpGlobalDelayFailures   = 32
-	mcpGlobalLockoutFailures = 64
-)
-
-type authRateLimiter struct {
+type Auth struct {
 	mu              sync.Mutex
-	entries         map[string]authRateLimitEntry
+	entries         map[string]authEntry
 	delayFailures   int
 	lockoutFailures int
 }
 
-type authRateLimitEntry struct {
+type authEntry struct {
 	failures    int
 	lastSeen    time.Time
 	lockedUntil time.Time
 }
 
-type windowRateLimiter struct {
+type Window struct {
 	mu       sync.Mutex
 	limit    int
 	window   time.Duration
 	attempts map[string][]time.Time
 }
 
-func newWindowRateLimiter(limit int, window time.Duration) *windowRateLimiter {
-	return &windowRateLimiter{limit: limit, window: window, attempts: map[string][]time.Time{}}
+func NewWindow(limit int, window time.Duration) *Window {
+	return &Window{limit: limit, window: window, attempts: map[string][]time.Time{}}
 }
 
-func (l *windowRateLimiter) allow(key string) bool {
+func (l *Window) Allow(key string) bool {
 	if l == nil || l.limit < 1 || l.window <= 0 {
 		return false
 	}
@@ -67,24 +61,16 @@ func (l *windowRateLimiter) allow(key string) bool {
 	return true
 }
 
-func newAuthRateLimiter() *authRateLimiter {
-	return newConfiguredAuthRateLimiter(1, authRateLimitLockoutFailures)
-}
-
-func newMCPGlobalAuthRateLimiter() *authRateLimiter {
-	return newConfiguredAuthRateLimiter(mcpGlobalDelayFailures, mcpGlobalLockoutFailures)
-}
-
-func newConfiguredAuthRateLimiter(delayFailures int, lockoutFailures int) *authRateLimiter {
-	return &authRateLimiter{
-		entries:         map[string]authRateLimitEntry{},
+func NewAuth(delayFailures, lockoutFailures int) *Auth {
+	return &Auth{
+		entries:         map[string]authEntry{},
 		delayFailures:   delayFailures,
 		lockoutFailures: lockoutFailures,
 	}
 }
 
-func (l *authRateLimiter) wait(ctx context.Context, key string) error {
-	delay := l.delay(key)
+func (l *Auth) Wait(ctx context.Context, key string) error {
+	delay := l.Delay(key)
 	if delay <= 0 {
 		return nil
 	}
@@ -98,7 +84,7 @@ func (l *authRateLimiter) wait(ctx context.Context, key string) error {
 	}
 }
 
-func (l *authRateLimiter) recordFailure(key string) {
+func (l *Auth) RecordFailure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
@@ -107,24 +93,25 @@ func (l *authRateLimiter) recordFailure(key string) {
 	entry.failures++
 	entry.lastSeen = now
 	if entry.failures >= l.lockoutFailures {
-		entry.lockedUntil = now.Add(1 * time.Minute)
+		entry.lockedUntil = now.Add(time.Minute)
 	}
 	l.entries[key] = entry
 	l.pruneLocked(now)
 }
 
-func (l *authRateLimiter) recordSuccess(key string) {
+func (l *Auth) RecordSuccess(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.entries, key)
 }
 
-func (l *authRateLimiter) delay(key string) time.Duration {
+func (l *Auth) Delay(key string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.pruneLocked(time.Now())
+	now := time.Now()
+	l.pruneLocked(now)
 	entry := l.entries[key]
-	if entry.lockedUntil.After(time.Now()) {
+	if entry.lockedUntil.After(now) {
 		return time.Until(entry.lockedUntil)
 	}
 	if entry.failures < l.delayFailures {
@@ -141,15 +128,23 @@ func (l *authRateLimiter) delay(key string) time.Duration {
 	return delay
 }
 
-func (l *authRateLimiter) pruneLocked(now time.Time) {
+func (l *Auth) FailureCount(key string) int {
+	if l == nil {
+		return 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pruneLocked(time.Now())
+	return l.entries[key].failures
+}
+
+func (l *Auth) pruneLocked(now time.Time) {
 	for key, entry := range l.entries {
 		if now.Sub(entry.lastSeen) > 10*time.Minute {
 			delete(l.entries, key)
 		}
 	}
-	for len(l.entries) > maxAuthRateLimitEntries {
-		// Capacity eviction intentionally favors bounded memory over preserving
-		// backoff for the least recently observed identity.
+	for len(l.entries) > maxAuthEntries {
 		var oldestKey string
 		var oldest time.Time
 		for key, entry := range l.entries {
@@ -162,7 +157,7 @@ func (l *authRateLimiter) pruneLocked(now time.Time) {
 	}
 }
 
-func authRateLimitKey(r *http.Request, scope string) string {
+func Key(r *http.Request, scope string) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil || host == "" {
 		host = r.RemoteAddr

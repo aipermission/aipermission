@@ -55,7 +55,7 @@ func executeVaultGenerate(
 	approval vaultApprovalContext,
 ) (any, error) {
 	if server == nil || server.vaultGenerateLimiter == nil ||
-		!server.vaultGenerateLimiter.allow(fmt.Sprintf("vault-generate:%s:%d", runtime.id, request.TokenID)) {
+		!server.vaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.id, request.TokenID)) {
 		return nil, errors.New("Vault generation rate limit exceeded; wait before generating another item")
 	}
 	var input vaultGenerateActionInput

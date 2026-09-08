@@ -39,12 +39,12 @@ type Server struct {
 	mu                   sync.RWMutex
 	lifecycleMu          sync.RWMutex
 	maintenanceConsole   *maintenanceConsoleRuntime
-	authLimiter          *authRateLimiter
-	mcpIPAuthLimiter     *authRateLimiter
-	mcpTokenAuthLimiter  *authRateLimiter
-	vaultRevealLimiter   *windowRateLimiter
-	vaultGenerateLimiter *windowRateLimiter
-	vaultRequestLimiter  *windowRateLimiter
+	authLimiter          *runtimecontrol.Auth
+	mcpIPAuthLimiter     *runtimecontrol.Auth
+	mcpTokenAuthLimiter  *runtimecontrol.Auth
+	vaultRevealLimiter   *runtimecontrol.Window
+	vaultGenerateLimiter *runtimecontrol.Window
+	vaultRequestLimiter  *runtimecontrol.Window
 	uiSessionMu          sync.RWMutex
 	uiSessions           map[string]uiSessionRecord
 	auditHealth          auditHealthState
@@ -161,12 +161,12 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
-		authLimiter:          newAuthRateLimiter(),
-		mcpIPAuthLimiter:     newMCPGlobalAuthRateLimiter(),
-		mcpTokenAuthLimiter:  newAuthRateLimiter(),
-		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
-		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
-		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
+		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
+		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
+		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
+		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
+		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
+		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
 		retentionInterval:    defaultRetentionCleanupInterval,
 	}
@@ -222,12 +222,12 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
 		maintenanceConsole:   newMaintenanceConsoleRuntime(),
-		authLimiter:          newAuthRateLimiter(),
-		mcpIPAuthLimiter:     newMCPGlobalAuthRateLimiter(),
-		mcpTokenAuthLimiter:  newAuthRateLimiter(),
-		vaultRevealLimiter:   newWindowRateLimiter(8, time.Minute),
-		vaultGenerateLimiter: newWindowRateLimiter(10, time.Minute),
-		vaultRequestLimiter:  newWindowRateLimiter(30, time.Minute),
+		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
+		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
+		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
+		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
+		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
+		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
 		retentionInterval:    defaultRetentionCleanupInterval,
 	}

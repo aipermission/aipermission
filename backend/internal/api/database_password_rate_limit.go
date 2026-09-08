@@ -2,21 +2,29 @@ package api
 
 import (
 	"net/http"
+
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 const databasePasswordRateLimitScope = "database-password"
+const authRateLimitLockoutFailures = 8
+
+const (
+	mcpGlobalDelayFailures   = 32
+	mcpGlobalLockoutFailures = 64
+)
 
 type databasePasswordAttempt struct {
-	limiter *authRateLimiter
+	limiter *runtimecontrol.Auth
 	key     string
 }
 
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
 	attempt := databasePasswordAttempt{
 		limiter: s.authLimiter,
-		key:     authRateLimitKey(r, databasePasswordRateLimitScope),
+		key:     runtimecontrol.Key(r, databasePasswordRateLimitScope),
 	}
-	if err := attempt.limiter.wait(r.Context(), attempt.key); err != nil {
+	if err := attempt.limiter.Wait(r.Context(), attempt.key); err != nil {
 		writeError(w, http.StatusRequestTimeout, "database password verification timed out")
 		return databasePasswordAttempt{}, false
 	}
@@ -24,9 +32,9 @@ func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Req
 }
 
 func (attempt databasePasswordAttempt) failure() {
-	attempt.limiter.recordFailure(attempt.key)
+	attempt.limiter.RecordFailure(attempt.key)
 }
 
 func (attempt databasePasswordAttempt) success() {
-	attempt.limiter.recordSuccess(attempt.key)
+	attempt.limiter.RecordSuccess(attempt.key)
 }
