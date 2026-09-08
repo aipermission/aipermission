@@ -101,6 +101,7 @@ it("owns upload creation and ordered pause, resume, and cancel transitions", asy
   expect(form.get("runtime_id")).toBe("7");
   expect(form.get("remote_dir")).toBe("/tmp");
   expect(JSON.parse(form.get("relative_paths"))).toEqual(["a.txt"]);
+  expect(form.get("idempotency_key")).toMatch(/^[0-9a-f-]{36}$/);
 
   await user.click(screen.getByRole("button", { name: "Pause" }));
   expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/pause", {}, { signal: expect.any(AbortSignal) });
@@ -134,6 +135,25 @@ it("owns upload overwrite conflicts without creating a batch", async () => {
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(await screen.findByTestId("conflicts")).toHaveTextContent("1");
   expect(screen.getByTestId("status")).toHaveTextContent("idle");
+});
+
+it("reuses the upload idempotency key when a response is lost", async () => {
+  const user = userEvent.setup();
+  apiPostForm.mockRejectedValueOnce(new Error("network response lost")).mockResolvedValueOnce({
+    id: 12,
+    status: "running",
+    direction: "upload",
+    items: [],
+  });
+  render(<BatchHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  expect(await screen.findByTestId("status")).toHaveTextContent("error");
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  expect(await screen.findByTestId("status")).toHaveTextContent("running");
+
+  expect(apiPostForm).toHaveBeenCalledTimes(2);
+  expect(apiPostForm.mock.calls[1][1].get("idempotency_key")).toBe(apiPostForm.mock.calls[0][1].get("idempotency_key"));
 });
 
 it("ignores upload completion after the dialog batch is reset", async () => {
@@ -179,6 +199,7 @@ it("creates and refreshes an owned download batch", async () => {
       runtime_id: 9,
       remote_paths: ["/var/log/app.log"],
       archive_name: "",
+      idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
     },
     { signal: expect.any(AbortSignal) },
   );

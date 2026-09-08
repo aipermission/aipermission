@@ -91,3 +91,34 @@ it("renders only the commands valid for the current batch state", async () => {
   expect(actions.onCancel).toHaveBeenCalledOnce();
   expect(screen.queryByRole("button", { name: "Save download" })).not.toBeInTheDocument();
 });
+
+it("keeps the transfer mode fixed while a batch start is pending", async () => {
+  const user = userEvent.setup();
+  const onModeChange = vi.fn();
+  render(
+    <TransferSetupPanel
+      runtimeTarget={{ name: "My connector", subtitle: "profile" }}
+      mode="upload"
+      batch={{ state: "starting", item: null, error: null }}
+      activeBatch={false}
+      queue={[]}
+      progress={{ percent: 0, processed: 0, total: 0, bytes: 0 }}
+      notice={null}
+      transferNotice="Transfer policy"
+      remoteDir="/tmp"
+      defaultRemoteDir="/home"
+      recursive={false}
+      fileInputRef={createRef()}
+      folderInputRef={createRef()}
+      onModeChange={onModeChange}
+      onRemoteDirectoryChange={vi.fn()}
+      onOpenBrowser={vi.fn()}
+      onLocalFileChange={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Download" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Download" }));
+  expect(onModeChange).not.toHaveBeenCalled();
+});

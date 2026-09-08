@@ -34,7 +34,7 @@ export function TransferSetupPanel({
           variant={mode === "upload" ? "default" : "ghost"}
           className="h-9"
           onClick={() => onModeChange("upload")}
-          disabled={Boolean(batch.item)}
+          disabled={Boolean(batch.item) || batch.state === "starting"}
         >
           <Upload className="h-4 w-4" />
           Upload
@@ -44,7 +44,7 @@ export function TransferSetupPanel({
           variant={mode === "download" ? "default" : "ghost"}
           className="h-9"
           onClick={() => onModeChange("download")}
-          disabled={Boolean(batch.item)}
+          disabled={Boolean(batch.item) || batch.state === "starting"}
         >
           <Download className="h-4 w-4" />
           Download

@@ -30,7 +30,7 @@ func TestS3MultipartOriginalFilenameIdentity(t *testing.T) {
 			status := filetransfer.StatusPendingApproval
 			handlers := fileTransferHandlers{fixture.server}
 			runtime := fixture.server.activeRuntime()
-			batch, _, _, ok := handlers.createUploadBatchFromMultipart(httptest.NewRecorder(), req, runtime, filetransfer.SourceMCP, &status, nil, nil)
+			batch, _, _, _, ok := handlers.createUploadBatchFromMultipart(httptest.NewRecorder(), req, runtime, filetransfer.SourceMCP, &status, nil, nil)
 			if !ok {
 				t.Fatal("multipart preparation failed")
 			}

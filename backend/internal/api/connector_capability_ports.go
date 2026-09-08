@@ -146,7 +146,8 @@ func (p connectorRuntimeActionGatewayPort) ConnectorCreateDownloadBatch(ctx cont
 	if err := connectorRuntimeIDBelongsToKind(ctx, p.runtime, p.kind, runtimeID); err != nil {
 		return filetransfer.BatchRecord{}, err
 	}
-	return fileTransferHandlers{p.server}.createDownloadBatch(ctx, p.runtime, runtimeID, remotePaths, archiveName, source, status)
+	batch, _, err := fileTransferHandlers{p.server}.createDownloadBatch(ctx, p.runtime, runtimeID, remotePaths, archiveName, source, status, "")
+	return batch, err
 }
 
 func (p connectorRuntimeActionGatewayPort) ConnectorRunTransferBatch(batchID int64, overwrite bool) {

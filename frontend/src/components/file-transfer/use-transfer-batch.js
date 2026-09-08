@@ -9,6 +9,7 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
   const [batch, setBatch] = useState(emptyBatchState);
   const [overwritePrompt, setOverwritePrompt] = useState(null);
   const completedUploadRef = useRef(0);
+  const startAttemptRef = useRef(null);
   const requests = useRequestGuard(`transfer-batch:${open ? "open" : "closed"}:${runtimeTarget?.id || "none"}`);
   const progress = useMemo(() => transferProgress(batch.item), [batch.item]);
   const activeBatch = batch.item && ["pending", "running", "paused"].includes(batch.item.status);
@@ -55,11 +56,13 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     setBatch(emptyBatchState);
     setOverwritePrompt(null);
     completedUploadRef.current = 0;
+    startAttemptRef.current = null;
   }
 
   function clearBatch() {
     setBatch(emptyBatchState);
     setOverwritePrompt(null);
+    startAttemptRef.current = null;
   }
 
   async function refreshBatch(id = batch.item?.id, options = {}) {
@@ -118,7 +121,8 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
 
   async function startQueue(options = {}) {
     if (!runtimeTarget || queue.length === 0) return;
-    if (mode === "upload") {
+    const startMode = mode;
+    if (startMode === "upload") {
       await startUploadBatch(options);
       return;
     }
@@ -132,6 +136,22 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     formData.append("runtime_id", String(runtimeTarget.id));
     formData.append("remote_dir", remoteDir);
     formData.append("overwrite", options.overwrite ? "true" : "false");
+    const attempt = startAttempt(
+      startAttemptRef,
+      JSON.stringify({
+        mode: "upload",
+        runtimeID: runtimeTarget.id,
+        remoteDir,
+        overwrite: Boolean(options.overwrite),
+        files: uploadQueue.map((item) => ({
+          id: item.id,
+          name: item.name,
+          relativePath: item.relative_path || item.name,
+          size: item.file.size,
+        })),
+      }),
+    );
+    formData.append("idempotency_key", attempt.key);
     uploadQueue.forEach((item) => formData.append("files", item.file, item.name));
     formData.append("relative_paths", JSON.stringify(uploadQueue.map((item) => item.relative_path || item.name)));
     onNotice(null);
@@ -160,12 +180,22 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     onNotice(null);
     setBatch({ state: "starting", item: null, error: null });
     try {
+      const attempt = startAttempt(
+        startAttemptRef,
+        JSON.stringify({
+          mode: "download",
+          runtimeID: runtimeTarget.id,
+          remotePaths: downloadQueue.map((item) => item.path),
+        }),
+        () => (downloadQueue.length > 1 ? suggestedArchiveName() : ""),
+      );
       const item = await apiPost(
         "/api/file-transfers/download-batch",
         {
           runtime_id: Number(runtimeTarget.id),
           remote_paths: downloadQueue.map((item) => item.path),
-          archive_name: downloadQueue.length > 1 ? suggestedArchiveName() : "",
+          archive_name: attempt.archiveName,
+          idempotency_key: attempt.key,
         },
         { signal: request.signal },
       );
@@ -217,4 +247,14 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
     resumeBatch: () => transitionBatch("resuming", "resume"),
     cancelBatch: () => transitionBatch("canceling", "cancel", { tone: "warn", message: "Transfer queue canceled." }),
   };
+}
+
+function startAttempt(ref, signature, createArchiveName = () => "") {
+  if (ref.current?.signature === signature) return ref.current;
+  ref.current = {
+    signature,
+    key: globalThis.crypto.randomUUID(),
+    archiveName: createArchiveName(),
+  };
+  return ref.current;
 }

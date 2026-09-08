@@ -79,7 +79,7 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			// Approval persistence and execution must retain the selected locator.
 			handlers := fileTransferHandlers{fixture.server}
 			runtime := fixture.server.activeRuntime()
-			batch, err := handlers.createDownloadBatch(context.Background(), runtime, id, []string{page.Entries[0].Path}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval)
+			batch, _, err := handlers.createDownloadBatch(context.Background(), runtime, id, []string{page.Entries[0].Path}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,10 +118,15 @@ func TestS3TransferRejectsUnsupportedBeforeDispatch(t *testing.T) {
 	defer objectStore.Close()
 	fixture := newAPITestFixture(t)
 	id := createS3IdentityRuntime(t, fixture.server, objectStore.URL).TransferRuntimeID
-	for _, paths := range [][]string{{"/folder/"}, {"/control\tkey"}, {"/a/../b", "/b"}, {"/a//b", "/a/b"}, {"//a", "/a"}, {"/.env", "/env"}, {"/" + strings.Repeat("x", 161), "/other"}} {
-		response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download-batch", "", startDownloadBatchRequest{RuntimeID: id, RemotePaths: paths})
+	for index, paths := range [][]string{{"/folder/"}, {"/control\tkey"}, {"/a/../b", "/b"}, {"/a//b", "/a/b"}, {"//a", "/a"}, {"/.env", "/env"}, {"/" + strings.Repeat("x", 161), "/other"}} {
+		response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download-batch", "", startDownloadBatchRequest{
+			RuntimeID: id, RemotePaths: paths, IdempotencyKey: fmt.Sprintf("unsupported-path-%d", index),
+		})
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("paths %q: %d %s", paths, response.Code, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), "idempotency_key") {
+			t.Fatalf("paths %q bypassed path validation: %s", paths, response.Body.String())
 		}
 	}
 }

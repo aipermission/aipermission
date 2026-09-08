@@ -3,6 +3,8 @@ package api
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"mime"
@@ -17,23 +19,24 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
-func (s fileTransferHandlers) stageUploadFile(reader io.Reader) (string, int64, error) {
+func (s fileTransferHandlers) stageUploadFile(reader io.Reader) (string, int64, string, error) {
 	root, err := s.ensureFileTransferTempRoot()
 	if err != nil {
-		return "", 0, err
+		return "", 0, "", err
 	}
 	temp, err := os.CreateTemp(root, "upload-*")
 	if err != nil {
-		return "", 0, fmt.Errorf("create temporary upload file: %w", err)
+		return "", 0, "", fmt.Errorf("create temporary upload file: %w", err)
 	}
 	tempPath := temp.Name()
 	defer temp.Close()
-	size, err := io.Copy(temp, reader)
+	digest := sha256.New()
+	size, err := io.Copy(io.MultiWriter(temp, digest), reader)
 	if err != nil {
 		_ = os.Remove(tempPath)
-		return "", 0, fmt.Errorf("stage upload file: %w", err)
+		return "", 0, "", fmt.Errorf("stage upload file: %w", err)
 	}
-	return tempPath, size, nil
+	return tempPath, size, hex.EncodeToString(digest.Sum(nil)), nil
 }
 
 func (s fileTransferHandlers) reserveDownloadTempFile() (string, error) {

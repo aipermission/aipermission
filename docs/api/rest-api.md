@@ -619,6 +619,7 @@ recursive listing. Expansion is limited to 100 files and 1 GiB total size:
 runtime_id=3
 remote_path=/tmp/app.log
 overwrite=false
+idempotency_key=<caller-stable UUID>
 file=<browser selected file>
 ```
 
@@ -636,7 +637,8 @@ prefixes are rejected.
 ```json
 {
   "runtime_id": 3,
-  "remote_path": "/var/log/syslog"
+  "remote_path": "/var/log/syslog",
+  "idempotency_key": "caller-stable UUID"
 }
 ```
 
@@ -656,6 +658,7 @@ The local UI primarily uses the batch queue endpoints. `POST
 runtime_id=3
 remote_dir=/home/deploy
 overwrite=false
+idempotency_key=<caller-stable UUID>
 files=<browser selected file>
 files=<another browser selected file>
 relative_paths=["reports/2026/a.csv","reports/2026/b.csv"]
@@ -677,9 +680,20 @@ the same queue are rejected before the transfer starts.
 {
   "runtime_id": 3,
   "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
-  "archive_name": "logs.zip"
+  "archive_name": "logs.zip",
+  "idempotency_key": "caller-stable UUID"
 }
 ```
+
+Every local UI transfer-start request requires an `idempotency_key` of at most
+128 bytes. Reuse one key only when retrying the exact same logical start after
+an uncertain or lost response. The gateway atomically binds the key to the
+normalized request and returns the original transfer or batch on replay; using
+that key with different paths, files, content, or overwrite behavior returns
+`409 Conflict`. Completed keys remain reserved for 30 days even when normal
+history retention removes the transfer record; a replay whose result has
+expired returns `410 Gone` and must use a new key after the destination is
+inspected.
 
 Remote files are downloaded sequentially to private temporary files. A single
 download is served as the downloaded file. Multiple completed downloads are
