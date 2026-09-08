@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { apiGet } from "./lib/api";
 import { useTheme } from "./lib/theme";
@@ -22,14 +22,17 @@ const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ def
 export default function App() {
   const { theme, setTheme } = useTheme();
   const [unlock, setUnlock] = useState({ state: "loading", data: null, error: null });
+  const unlockLoadGeneration = useRef(0);
 
   async function loadUnlockStatus(signal) {
+    const generation = ++unlockLoadGeneration.current;
     try {
       const data = await apiGet("/api/unlock/status", { signal });
-      if (signal?.aborted) return;
+      if (signal?.aborted || generation !== unlockLoadGeneration.current) return;
       setUnlock({ state: "ready", data, error: null });
     } catch (error) {
-      if (signal?.aborted) return;
+      if (signal?.aborted || generation !== unlockLoadGeneration.current) return;
+      if (signal) throw error;
       setUnlock({ state: "error", data: null, error: error.message });
     }
   }

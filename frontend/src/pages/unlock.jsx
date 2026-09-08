@@ -24,19 +24,17 @@ export function UnlockPage({ status, onUnlocked }) {
   const [toast, setToast] = useState("");
   const toastTimerRef = useRef(null);
   const lifecycleMutation = useUnlockLifecycleMutation(onUnlocked);
+  const statusSelectionKey = `${status?.database_id || ""}:${databases.map((database) => `${database.id}:${database.state || ""}`).join("|")}`;
+  const appliedStatusSelectionRef = useRef(statusSelectionKey);
 
   useEffect(() => {
+    if (lifecycleMutation.activeMutation || appliedStatusSelectionRef.current === statusSelectionKey) return;
+    appliedStatusSelectionRef.current = statusSelectionKey;
     const nextID = status?.database_id || databases[0]?.id || "default";
     setSelectedDatabaseID(nextID);
-  }, [status?.database_id, databases]);
-
-  useEffect(() => {
-    if (!selectedDatabase) {
-      setActiveTab("create");
-      return;
-    }
-    setActiveTab("unlock");
-  }, [selectedDatabase]);
+    const nextDatabase = databases.find((database) => database.id === nextID) || databases[0] || null;
+    setActiveTab(nextDatabase ? "unlock" : "create");
+  }, [statusSelectionKey, status?.database_id, databases, lifecycleMutation.activeMutation]);
 
   useEffect(
     () => () => {
@@ -75,9 +73,11 @@ export function UnlockPage({ status, onUnlocked }) {
       <UnlockDatabasePicker
         databases={databases}
         selectedDatabase={selectedDatabase}
-        selectedDatabaseID={selectedDatabaseID}
         disabled={Boolean(lifecycleMutation.activeMutation)}
-        onSelect={setSelectedDatabaseID}
+        onSelect={(databaseID) => {
+          setSelectedDatabaseID(databaseID);
+          setActiveTab("unlock");
+        }}
       />
       <UnlockStatusNotices
         sessionRequired={status?.state === "session_required"}
@@ -99,7 +99,7 @@ export function UnlockPage({ status, onUnlocked }) {
   );
 }
 
-function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID, disabled, onSelect }) {
+function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect }) {
   if (databases.length === 0) return null;
   return (
     <div className="grid gap-2">
@@ -109,7 +109,7 @@ function UnlockDatabasePicker({ databases, selectedDatabase, selectedDatabaseID,
       <select
         id="unlock-database"
         className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
-        value={selectedDatabase?.id || selectedDatabaseID}
+        value={selectedDatabase.id}
         disabled={disabled}
         onChange={(event) => onSelect(event.target.value)}
       >
@@ -177,7 +177,6 @@ function UnlockActivePanel({
   if (activeTab === "create") return <UnlockCreatePanel hasDatabase={hasDatabase} runLifecycleMutation={runLifecycleMutation} />;
   if (activeTab === "import") return <UnlockImportPanel runLifecycleMutation={runLifecycleMutation} />;
   if (activeTab === "remote") return <RemoteRestorePanel runLifecycleMutation={runLifecycleMutation} />;
-  if (activeTab !== "unlock") return null;
   return (
     <UnlockDatabasePanel
       key={selectedDatabase?.id}

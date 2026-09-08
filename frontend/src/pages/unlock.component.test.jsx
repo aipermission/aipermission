@@ -64,6 +64,36 @@ describe("UnlockPage workflows", () => {
     expect(tabs).toHaveClass("grid-cols-2", "sm:grid-cols-4");
   });
 
+  it("renders session and unsupported-database guidance", async () => {
+    const user = userEvent.setup();
+    render(
+      <UnlockPage
+        status={{
+          state: "session_required",
+          databases: [{ id: "plain", name: "Plain", state: "unsupported_plaintext" }],
+        }}
+        onUnlocked={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/browser session is missing or expired/i)).toBeVisible();
+    expect(screen.getByText(/plaintext SQLite database/i)).toBeVisible();
+    expect(screen.getByRole("option", { name: /unsupported plaintext/i })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Restore Remote" }));
+    expect(screen.getByRole("button", { name: /connect and list backups/i })).toBeVisible();
+  });
+
+  it("reconciles selection when the available database set changes", async () => {
+    const view = render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
+
+    view.rerender(<UnlockPage status={{ databases: [] }} onUnlocked={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Create encrypted database" })).toBeVisible();
+
+    view.rerender(<UnlockPage status={{ databases: [{ id: "db-2", name: "Second", state: "locked" }] }} onUnlocked={vi.fn()} />);
+    expect(await screen.findByLabelText("Database")).toHaveValue("db-2");
+  });
+
   it("turns a migration conflict into guidance and requires password plus name before deletion", async () => {
     const user = userEvent.setup();
     const onUnlocked = vi.fn();
@@ -254,7 +284,7 @@ describe("UnlockPage lifecycle ownership", () => {
     vi.useRealTimers();
   });
 
-  it("reconciles a completed create after its workflow panel unmounts", async () => {
+  it("keeps a lifecycle workflow mounted until its status reconciliation completes", async () => {
     const user = userEvent.setup();
     const createPending = deferred();
     const onUnlocked = vi.fn();
@@ -271,11 +301,13 @@ describe("UnlockPage lifecycle ownership", () => {
         onUnlocked={onUnlocked}
       />,
     );
-    expect(await screen.findByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Working..." })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Unlock", exact: true })).not.toBeInTheDocument();
     expect(createOptions.signal.aborted).toBe(false);
 
     createPending.resolve({});
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Unlock", exact: true })).toBeVisible());
   });
 
   it("aborts lifecycle reconciliation when the unlock page unmounts", async () => {
