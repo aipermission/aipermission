@@ -73,9 +73,12 @@ export async function assertPrivateFilePermissions(filePath, options = {}) {
     if ((stat.mode & 0o077) !== 0) throw new Error(`permissions are not private; run chmod 600 ${filePath}`);
     return;
   }
-  const sid = await currentWindowsSID(options);
-  const { stdout } = await runWindowsSystemExecutable("icacls", [filePath], options, { encoding: "utf8" });
-  if (!stdout.includes(sid) || !stdout.includes("(F)") || stdout.includes("(I)")) {
+  const identity = await currentWindowsIdentity(options);
+  const [ownerSID, { stdout }] = await Promise.all([
+    currentWindowsOwnerSID(filePath, options),
+    runWindowsSystemExecutable("icacls", [filePath], options, { encoding: "utf8" }),
+  ]);
+  if (ownerSID.toLowerCase() !== identity.sid.toLowerCase() || !windowsACLIsPrivate(stdout, filePath, identity)) {
     throw new Error(`Windows ACL is not restricted to the current user: ${filePath}`);
   }
 }
@@ -272,6 +275,7 @@ async function enforcePrivateFilePermissions(filePath, options) {
     return;
   }
   const sid = await currentWindowsSID(options);
+  await setWindowsOwner(filePath, sid, options);
   await runWindowsSystemExecutable("icacls", [filePath, "/inheritance:r", "/grant:r", `*${sid}:(F)`], options);
 }
 
@@ -285,16 +289,62 @@ async function enforcePrivateDirectoryPermissions(directory, options) {
     return;
   }
   const sid = await currentWindowsSID(options);
+  await setWindowsOwner(directory, sid, options);
   await runWindowsSystemExecutable("icacls", [directory, "/inheritance:r", "/grant:r", `*${sid}:(OI)(CI)(F)`], options);
 }
 
+async function setWindowsOwner(targetPath, sid, options) {
+  await runWindowsSystemExecutable("icacls", [targetPath, "/setowner", `*${sid}`], options);
+}
+
 async function currentWindowsSID(options) {
+  return (await currentWindowsIdentity(options)).sid;
+}
+
+async function currentWindowsIdentity(options) {
   const { stdout } = await runWindowsSystemExecutable("whoami", ["/user", "/fo", "csv", "/nh"], options, {
     encoding: "utf8",
   });
-  const sid = stdout.match(/S-\d-(?:\d+-)+\d+/)?.[0];
-  if (!sid) throw new Error("Could not determine current Windows SID for private config ACL");
+  const match = stdout.match(/^\s*"((?:[^"]|"")*)"\s*,\s*"(S-\d-(?:\d+-)+\d+)"\s*$/im);
+  if (!match) throw new Error("Could not determine current Windows identity for private config ACL");
+  return { name: match[1].replaceAll('""', '"'), sid: match[2] };
+}
+
+async function currentWindowsOwnerSID(filePath, options) {
+  const script = [
+    "& { param([string] $TargetPath)",
+    "(Get-Acl -LiteralPath $TargetPath).GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
+    "}",
+  ].join(" ");
+  const execute = options.execFile || execFileAsync;
+  const { stdout } = await execute(
+    windowsPowerShellExecutable(options),
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, filePath],
+    { windowsHide: true, encoding: "utf8" },
+  );
+  const sid = String(stdout).trim();
+  if (!/^S-\d-(?:\d+-)+\d+$/i.test(sid)) {
+    throw new Error(`Could not determine Windows owner for private config: ${filePath}`);
+  }
   return sid;
+}
+
+function windowsACLIsPrivate(stdout, filePath, identity) {
+  const entries = [];
+  for (const rawLine of String(stdout).split(/\r?\n/)) {
+    let line = rawLine.trim();
+    if (!line) continue;
+    if (line.toLowerCase().startsWith(filePath.toLowerCase())) line = line.slice(filePath.length).trim();
+    if (!line.includes(":(")) continue;
+    const match = line.match(/^(.+?):((?:\([A-Z]+\))+?)$/i);
+    if (!match) return false;
+    entries.push({ principal: match[1].trim(), rights: match[2].toUpperCase() });
+  }
+  if (entries.length !== 1 || entries[0].rights !== "(F)") return false;
+  const principal = entries[0].principal.toLowerCase();
+  return (
+    principal === identity.name.toLowerCase() || principal === identity.sid.toLowerCase() || principal === `*${identity.sid.toLowerCase()}`
+  );
 }
 
 function runWindowsSystemExecutable(name, args, options, executionOptions = {}) {
@@ -311,6 +361,14 @@ function windowsSystemExecutable(name, options) {
     throw new Error("Windows SystemRoot must be an absolute path for private config ACL setup");
   }
   return path.win32.join(systemRoot, "System32", `${name}.exe`);
+}
+
+function windowsPowerShellExecutable(options) {
+  const systemRoot = options.windowsSystemRoot || process.env.SystemRoot || process.env.windir || "C:\\Windows";
+  if (!path.win32.isAbsolute(systemRoot)) {
+    throw new Error("Windows SystemRoot must be an absolute path for private config ACL setup");
+  }
+  return path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
 function operatingSystem(options) {
