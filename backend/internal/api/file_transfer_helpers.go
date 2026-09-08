@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -159,97 +156,23 @@ func parseFormBool(r *http.Request, field string) bool {
 }
 
 func normalizeRemoteFilePath(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("remote_path is required")
-	}
-	if len([]rune(value)) > 4096 {
-		return "", fmt.Errorf("remote_path must be 4096 characters or fewer")
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return "", fmt.Errorf("remote_path cannot contain control characters")
-		}
-	}
-	if !path.IsAbs(value) {
-		return "", fmt.Errorf("remote_path must be an absolute path")
-	}
-	cleaned := path.Clean(value)
-	if cleaned == "/" || path.Base(cleaned) == "." {
-		return "", fmt.Errorf("remote_path must point to a file")
-	}
-	return cleaned, nil
+	return filetransfer.NormalizeRemoteFilePath(value)
 }
 
 func normalizeRemoteDirectoryPath(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		value = "/"
-	}
-	if len([]rune(value)) > 4096 {
-		return "", fmt.Errorf("path must be 4096 characters or fewer")
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return "", fmt.Errorf("path cannot contain control characters")
-		}
-	}
-	if !path.IsAbs(value) {
-		return "", fmt.Errorf("path must be an absolute path")
-	}
-	return path.Clean(value), nil
+	return filetransfer.NormalizeRemoteDirectoryPath(value)
 }
 
 func normalizeRelativeTransferPath(value string) (string, error) {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	if value == "" || len([]rune(value)) > 4096 {
-		return "", fmt.Errorf("relative upload path is invalid")
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return "", fmt.Errorf("relative upload path cannot contain control characters")
-		}
-	}
-	if path.IsAbs(value) {
-		return "", fmt.Errorf("relative upload path must not be absolute")
-	}
-	cleaned := path.Clean(value)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", fmt.Errorf("relative upload path cannot leave the selected directory")
-	}
-	return cleaned, nil
+	return filetransfer.NormalizeRelativeTransferPath(value)
 }
 
-func joinRemoteRelativePath(remoteDir string, relativePath string) string {
-	if remoteDir == "/" {
-		return "/" + strings.TrimLeft(relativePath, "/")
-	}
-	return strings.TrimRight(remoteDir, "/") + "/" + strings.TrimLeft(relativePath, "/")
+func joinRemoteRelativePath(remoteDir, relativePath string) string {
+	return filetransfer.JoinRemoteRelativePath(remoteDir, relativePath)
 }
 
 func safeFileName(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	value = path.Base(value)
-	value = strings.Trim(value, ". ")
-	if value == "" || value == "/" || value == "." {
-		return "aipermission-file"
-	}
-	var builder strings.Builder
-	for _, r := range value {
-		if unicode.IsControl(r) || r == '/' || r == '\\' {
-			builder.WriteRune('_')
-			continue
-		}
-		builder.WriteRune(r)
-	}
-	result := strings.TrimSpace(builder.String())
-	if result == "" {
-		return "aipermission-file"
-	}
-	if len([]rune(result)) > 160 {
-		return string([]rune(result)[:160])
-	}
-	return result
+	return filetransfer.SafeFileName(value)
 }
 
 func validFileTransferStatus(status string) bool {
