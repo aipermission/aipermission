@@ -220,8 +220,10 @@ an invitation to create connector-specific mirrors.
 The Postgres connector is a read-oriented MVP. It uses read-only transactions,
 an audited `pg_catalog` read-function allowlist, statement timeouts, row caps,
 and output byte caps, but it is not a replacement for database roles. Unknown
-or extension-provided functions fail closed. Operators should use dedicated
-read-only Postgres users for AI profiles.
+or extension-provided functions fail closed. Read-only SQL resolves unqualified
+functions only from `pg_catalog`; application relations must be schema-qualified,
+for example `public.orders`. Operators should use dedicated read-only Postgres
+users for AI profiles.
 Explicit `OPERATOR(...)`, `CAST(...)`, and `::type` expressions are rejected
 because their implementations can resolve to user-defined code outside the
 audited function allowlist. Database roles must also deny execution of

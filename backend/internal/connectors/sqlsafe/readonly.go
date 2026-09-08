@@ -71,34 +71,84 @@ func hasAllowedPrefix(sql string, prefixes []string) bool {
 }
 
 func validationSQL(sql string, dialect Dialect) (string, error) {
-	return normalizedSQL(sql, dialect, false)
+	return normalizedSQL(sql, dialect, false, false)
 }
 
 // PostgreSQLFunctionCalls returns function-shaped identifiers outside comments
 // and quoted values. Quoted function identifiers are represented by a sentinel
 // so callers can reject them without confusing their contents with SQL terms.
 func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
-	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true)
+	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true, false)
 	if err != nil {
 		return nil, err
 	}
-	matches := functionCallPattern.FindAllStringSubmatch(normalized, -1)
-	calls := make([]FunctionCall, 0, len(matches))
-	for _, match := range matches {
-		name := strings.TrimSpace(match[2])
-		if isFunctionSyntaxKeyword(name) {
+	calls := make([]FunctionCall, 0)
+	for offset := 0; offset < len(normalized); {
+		if !postgresIdentifierStart(normalized[offset]) || (offset > 0 && postgresIdentifierContinue(normalized[offset-1])) {
+			offset++
 			continue
 		}
-		calls = append(calls, FunctionCall{Schema: strings.TrimSpace(match[1]), Name: name})
+		first, end := postgresIdentifierAt(normalized, offset)
+		cursor := skipSQLSpace(normalized, end)
+		schema, name := "", first
+		if cursor < len(normalized) && normalized[cursor] == '.' {
+			cursor = skipSQLSpace(normalized, cursor+1)
+			if cursor >= len(normalized) || !postgresIdentifierStart(normalized[cursor]) {
+				offset = end
+				continue
+			}
+			schema = first
+			name, end = postgresIdentifierAt(normalized, cursor)
+			cursor = skipSQLSpace(normalized, end)
+		}
+		if cursor >= len(normalized) || normalized[cursor] != '(' {
+			offset = end
+			continue
+		}
+		if schema == "" && isFunctionSyntaxKeyword(name) {
+			offset = end
+			continue
+		}
+		calls = append(calls, FunctionCall{Schema: schema, Name: name})
+		// Continue at the opening parenthesis so nested calls are discovered.
+		offset = cursor + 1
 	}
 	return calls, nil
+}
+
+func postgresIdentifierAt(sql string, start int) (string, int) {
+	end := start + 1
+	for end < len(sql) && postgresIdentifierContinue(sql[end]) {
+		end++
+	}
+	return sql[start:end], end
+}
+
+func postgresIdentifierStart(ch byte) bool {
+	return ch == '_' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= 0x80
+}
+
+func postgresIdentifierContinue(ch byte) bool {
+	return postgresIdentifierStart(ch) || ch >= '0' && ch <= '9' || ch == '$'
+}
+
+func skipSQLSpace(sql string, start int) int {
+	for start < len(sql) {
+		switch sql[start] {
+		case ' ', '\t', '\r', '\n', '\f':
+			start++
+		default:
+			return start
+		}
+	}
+	return start
 }
 
 // ValidatePostgreSQLResolutionSyntax rejects explicit operator and cast syntax
 // whose implementation can resolve to user-defined code outside the visible
 // function-call allowlist.
 func ValidatePostgreSQLResolutionSyntax(sql string) error {
-	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true)
+	normalized, err := normalizedSQL(sql, DialectPostgreSQL, true, true)
 	if err != nil {
 		return err
 	}
@@ -108,12 +158,15 @@ func ValidatePostgreSQLResolutionSyntax(sql string) error {
 	if strings.Contains(normalized, "::") || postgresCastPattern.MatchString(normalized) {
 		return fmt.Errorf("explicit casts are not allowed")
 	}
+	if postgresQualifiedTypedLiteralPattern.MatchString(normalized) {
+		return fmt.Errorf("schema-qualified typed literals are not allowed")
+	}
 	return nil
 }
 
-var functionCallPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])(?:([\pL_][\pL\pN_$]*|quoted_identifier)\s*\.\s*)?([\pL_][\pL\pN_$]*|quoted_identifier)\s*\(`)
 var postgresOperatorPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])operator\s*\(`)
 var postgresCastPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])cast\s*\(`)
+var postgresQualifiedTypedLiteralPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])(?:[a-z_][a-z0-9_$]*|quoted_identifier)\s*\.\s*(?:[a-z_][a-z0-9_$]*|quoted_identifier)\s+(?:e\s*)?string_literal(?:\s|$)`)
 
 func isFunctionSyntaxKeyword(value string) bool {
 	switch strings.ToLower(value) {
@@ -124,7 +177,7 @@ func isFunctionSyntaxKeyword(value string) bool {
 	}
 }
 
-func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool) (string, error) {
+func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool, preserveStringMarkers bool) (string, error) {
 	var out strings.Builder
 	out.Grow(len(sql))
 	for i := 0; i < len(sql); {
@@ -163,7 +216,13 @@ func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool) 
 			}
 		case sql[i] == '\'':
 			var closed bool
-			i, closed = maskQuoted(sql, i, '\'', postgresEscapeStringAt(sql, i, dialect), &out)
+			if preserveStringMarkers {
+				var discarded strings.Builder
+				i, closed = maskQuoted(sql, i, '\'', postgresEscapeStringAt(sql, i, dialect), &discarded)
+				out.WriteString(" string_literal ")
+			} else {
+				i, closed = maskQuoted(sql, i, '\'', postgresEscapeStringAt(sql, i, dialect), &out)
+			}
 			if !closed {
 				return "", fmt.Errorf("unterminated single-quoted value")
 			}
@@ -189,9 +248,14 @@ func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool) 
 				return "", fmt.Errorf("unterminated dollar-quoted value")
 			}
 			if end > i {
-				for i < end {
-					out.WriteByte(' ')
-					i++
+				if preserveStringMarkers {
+					out.WriteString(" string_literal ")
+					i = end
+				} else {
+					for i < end {
+						out.WriteByte(' ')
+						i++
+					}
 				}
 			} else {
 				out.WriteByte(byteLower(sql[i]))
@@ -291,8 +355,15 @@ func validDollarQuoteTag(tag string) bool {
 	if len(tag) < 2 || tag[0] != '$' || tag[len(tag)-1] != '$' {
 		return false
 	}
-	for _, ch := range tag[1 : len(tag)-1] {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_') {
+	body := tag[1 : len(tag)-1]
+	if body == "" {
+		return true
+	}
+	if !postgresIdentifierStart(body[0]) {
+		return false
+	}
+	for index := 1; index < len(body); index++ {
+		if !postgresIdentifierContinue(body[index]) || body[index] == '$' {
 			return false
 		}
 	}

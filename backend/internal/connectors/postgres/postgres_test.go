@@ -267,9 +267,14 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		"set statement_timeout = 0",
 		"execute prepared_query",
 		"select pg_notify('events', 'changed')",
+		"select count(pg_notify('events', 'changed'))",
+		"select lower(pg_read_file('/etc/passwd'))",
+		"select a\u0301()",
 		"select dblink_exec('dbname=other', 'delete from users')",
 		"select lo_export(123, '/tmp/export')",
 		"select public.custom_read_function()",
+		"select public.select()",
+		"select audit.where()",
 		`select "pg_notify"('events', 'changed')`,
 	} {
 		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
