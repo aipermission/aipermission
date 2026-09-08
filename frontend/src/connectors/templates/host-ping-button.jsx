@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Notice } from "../../components/ui/notice";
 import { apiPost } from "../../lib/api";
+import { useRequestGuard } from "../../lib/request-guard";
 import { connectorTemplateMetadata } from "./catalog";
 
 export function HostPingButton({ host, port, mode = "direct", transportTargetRef = "", projectID = 0, label = "Ping host" }) {
@@ -12,28 +13,37 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
   const normalizedMode = mode || "direct";
   const numericPort = Number(port);
   const disabledReason = pingDisabledReason({ host, port: numericPort, mode: normalizedMode, transportTargetRef, projectID });
+  const requests = useRequestGuard(`${host}:${numericPort}:${normalizedMode}:${transportTargetRef}:${projectID}`);
 
   async function runPing(event) {
     event.preventDefault();
     event.stopPropagation();
     if (disabledReason) return;
+    const request = requests.begin("ping");
     setDialog({ open: true, state: "running", result: null, error: "" });
     try {
-      const result = await apiPost("/api/connector-targets/ping", {
-        project_id: Number(projectID) || 0,
-        host,
-        port: numericPort,
-        mode: normalizedMode,
-        transport_target_ref: transportTargetRef || "",
-        attempts: 4,
-      });
-      setDialog({ open: true, state: "done", result, error: "" });
+      const result = await apiPost(
+        "/api/connector-targets/ping",
+        {
+          project_id: Number(projectID) || 0,
+          host,
+          port: numericPort,
+          mode: normalizedMode,
+          transport_target_ref: transportTargetRef || "",
+          attempts: 4,
+        },
+        { signal: request.signal },
+      );
+      if (request.isCurrent()) setDialog({ open: true, state: "done", result, error: "" });
     } catch (error) {
-      setDialog({ open: true, state: "error", result: null, error: error.message || "Ping failed." });
+      if (request.isCurrent()) setDialog({ open: true, state: "error", result: null, error: error.message || "Ping failed." });
+    } finally {
+      request.complete();
     }
   }
 
   function closeDialog() {
+    requests.invalidate("ping");
     setDialog((current) => ({ ...current, open: false }));
   }
 

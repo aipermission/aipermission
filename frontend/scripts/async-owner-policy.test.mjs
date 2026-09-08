@@ -20,6 +20,7 @@ test("discovers request guards, sockets, abort controllers, timers, and generati
     "backupRecordsRequest.current = requestID;",
     "requests.begin('load');",
     "requestGuard.invalidate('load');",
+    "import { useAsyncAction as useAction } from './async.js'; const action = useAction();",
   ]) {
     assert.equal(isAsyncStateOwner(source), true, source);
   }

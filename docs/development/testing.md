@@ -54,8 +54,9 @@ This runs:
   base-branch gate in the same change
 - frontend suite-manifest validation that discovers production owners using
   request/generation guards, abort controllers, polling timers, or sockets and
-  requires each owner to name a focused regression test that reaches it through
-  the real import graph; comments and filename substrings do not satisfy the gate
+  requires each owner to map to a test that reaches it through the real import
+  graph; this is a discovery/ownership gate, while cancellation and stale-result
+  behavior remain explicit assertions in the mapped tests
 - frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console

@@ -6,12 +6,14 @@ const asyncConstructors = new Set(["AbortController", "WebSocket"]);
 export function isAsyncStateOwner(sourceOrProgram) {
   const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram) : sourceOrProgram;
   let found = false;
+  const asyncAliases = importedAsyncAliases(program);
   walk(program, (node) => {
     if (found) return;
     if (node.type === "CallExpression") {
       const name = calledName(node.callee);
       if (
         asyncCalls.has(name) ||
+        asyncAliases.has(name) ||
         (name === "setTimeout" && schedulesAsyncWork(node.arguments[0])) ||
         (["begin", "invalidate"].includes(name) && requestGuardReceiver(node.callee))
       )
@@ -22,6 +24,18 @@ export function isAsyncStateOwner(sourceOrProgram) {
     if (node.type === "AssignmentExpression" && isAsyncGenerationReference(node.left)) found = true;
   });
   return found;
+}
+
+function importedAsyncAliases(program) {
+  const aliases = new Set();
+  for (const node of program.body || []) {
+    if (node.type !== "ImportDeclaration") continue;
+    for (const specifier of node.specifiers || []) {
+      const imported = specifier.imported?.name;
+      if (asyncCalls.has(imported)) aliases.add(specifier.local.name);
+    }
+  }
+  return aliases;
 }
 
 function schedulesAsyncWork(callback) {

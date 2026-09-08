@@ -37,6 +37,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/_shared/action-runner.js": ["src/connectors/templates/_shared/action-runner.component.test.jsx"],
   "src/connectors/templates/_shared/use-sql-metadata.js": ["src/connectors/templates/_shared/use-sql-console.component.test.jsx"],
   "src/connectors/templates/_shared/use-sql-console.js": ["src/connectors/templates/_shared/use-sql-console.component.test.jsx"],
+  "src/connectors/templates/host-ping-button.jsx": ["src/connectors/templates/host-ping-button.component.test.jsx"],
   "src/connectors/templates/docker/use-docker-browser.js": ["src/connectors/templates/docker/use-docker-browser.component.test.jsx"],
   "src/connectors/templates/kafka/use-kafka-browser.js": ["src/connectors/templates/kafka/use-kafka-browser.component.test.jsx"],
   "src/connectors/templates/kubernetes/use-kubernetes-browser.js": [
