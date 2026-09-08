@@ -19,8 +19,8 @@ export function normalizePermission(value) {
 export function permissionExpired(value, now = Date.now()) {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return false;
-  const expiresAt = new Date(permission.expires_at).getTime();
-  return !Number.isFinite(expiresAt) || expiresAt <= now;
+  const expiresAt = parseRFC3339Timestamp(permission.expires_at);
+  return expiresAt === null || expiresAt <= now;
 }
 
 export function effectiveRule(value, now = Date.now()) {
@@ -32,8 +32,8 @@ export function effectiveRule(value, now = Date.now()) {
 export function permissionLifetimeLabel(value, now = Date.now()) {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return "Permanent";
-  const expiresAt = new Date(permission.expires_at).getTime();
-  if (!Number.isFinite(expiresAt)) return "Invalid expiry";
+  const expiresAt = parseRFC3339Timestamp(permission.expires_at);
+  if (expiresAt === null) return "Invalid expiry";
   const diff = expiresAt - now;
   if (diff <= 0) return "Expired";
   const minutes = Math.max(1, Math.round(diff / 60000));
@@ -42,6 +42,25 @@ export function permissionLifetimeLabel(value, now = Date.now()) {
   if (hours < 24) return `${hours}h left`;
   const days = Math.max(1, Math.round(hours / 24));
   return `${days}d left`;
+}
+
+function parseRFC3339Timestamp(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/);
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offsetHour = offsetHourText === undefined ? 0 : Number(offsetHourText);
+  const offsetMinute = offsetMinuteText === undefined ? 0 : Number(offsetMinuteText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] || 0;
+  if (day < 1 || day > daysInMonth || hour > 23 || minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) return null;
+  return Date.parse(value);
 }
 
 export function expiresAtFromLifetime(value, now = Date.now()) {
