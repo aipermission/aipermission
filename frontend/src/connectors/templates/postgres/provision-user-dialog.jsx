@@ -18,10 +18,13 @@ export function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
       onClose={onClose}
       closeDisabled={controller.state.state === "running"}
       size="xl"
-      className="!w-[calc(100vw-300px)] !max-w-none h-[calc(100vh-200px)] grid-rows-[auto_minmax(0,1fr)]"
-      bodyClassName="min-h-0 overflow-hidden"
+      className="h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[1400px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-100px)] xl:w-[calc(100vw-300px)]"
+      bodyClassName="min-h-0 overflow-auto lg:overflow-hidden"
     >
-      <form className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto_auto] gap-4" onSubmit={controller.provisionUser}>
+      <form
+        className="grid min-h-full grid-rows-none gap-4 lg:h-full lg:min-h-0 lg:grid-rows-[auto_auto_minmax(0,1fr)_auto_auto]"
+        onSubmit={controller.provisionUser}
+      >
         <Notice tone="warn">
           AIPermission will create the database role through this admin profile. Deleting the managed credential reassigns objects owned by
           that role to the admin role, removes the managed role's privileges, and drops the managed role.

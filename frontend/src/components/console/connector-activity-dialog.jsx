@@ -20,10 +20,10 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
       description="Recent structured connector requests, including always-run requests that do not appear in a live terminal."
       onClose={onClose}
       size="wide"
-      className="h-[calc(100vh-100px)] !w-[85vw] !min-w-[1024px] !max-w-[1440px] grid-rows-[auto_minmax(0,1fr)]"
+      className="h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-64px)] xl:w-[85vw]"
       bodyClassName="min-h-0 overflow-hidden"
     >
-      <div className="grid h-full min-h-0 gap-3 grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid h-full min-h-0 grid-rows-[minmax(180px,35%)_minmax(0,1fr)] gap-3 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-1">
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-stone-200 bg-stone-50 px-3 py-2">
             <div>

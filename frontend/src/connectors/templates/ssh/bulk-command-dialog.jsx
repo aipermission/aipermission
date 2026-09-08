@@ -159,12 +159,15 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       description="Run one shell command across selected SSH connector targets."
       onClose={onClose}
       size="wide"
-      className="h-[calc(100vh-100px)] !w-[100vw] !min-w-[1024px] !max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]"
+      className="h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[1600px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-64px)] xl:w-[85vw]"
       closeOnOverlay={false}
       autoFocusClose={false}
       bodyClassName="grid min-h-0 gap-4 overflow-hidden"
     >
-      <form className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]" onSubmit={startBulkCommand}>
+      <form
+        className="grid h-full min-h-0 grid-rows-[minmax(180px,35%)_minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] lg:grid-rows-1"
+        onSubmit={startBulkCommand}
+      >
         <BulkTargetPicker
           visibleTargets={visibleTargets}
           selected={selected}
