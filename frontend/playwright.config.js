@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  reporter: [["line"], ["./scripts/no-skipped-playwright-reporter.mjs"]],
   timeout: 30_000,
   forbidOnly: true,
   retries: 0,

@@ -48,6 +48,9 @@ This runs:
 - backend vet
 - backend govulncheck
 - frontend tests
+- Playwright policy validation that rejects skipped/fixed critical scenarios
+  and requires the complete high-risk, real-backend, and responsive viewport
+  manifests to remain discoverable
 - frontend suite-manifest validation that discovers production owners using
   request/generation guards, abort controllers, polling timers, or sockets and
   requires each owner to name a focused regression test that reaches it through
