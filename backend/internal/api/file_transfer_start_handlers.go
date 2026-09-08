@@ -50,6 +50,11 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 	}
 	defer file.Close()
 	overwrite := parseFormBool(r, "overwrite")
+	fileName := header.Filename
+	if err := filetransfer.ValidateFileName(fileName); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	tempPath, size, checksum, err := s.stageUploadFile(file)
 	if err != nil {
@@ -61,7 +66,6 @@ func (s fileTransferHandlers) startUpload(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	}
-	fileName := safeFileName(header.Filename)
 	claim, err := fileTransferStartClaim(idempotencyKey, filetransfer.IdempotencyResourceTransfer, struct {
 		RuntimeID  int64  `json:"runtime_id"`
 		Direction  string `json:"direction"`
@@ -329,7 +333,11 @@ func (s fileTransferHandlers) prepareUploadBatchMultipart(w http.ResponseWriter,
 	plan.remotePaths = make([]string, 0, len(plan.headers))
 	seenRemotePaths := map[string]bool{}
 	for index, header := range plan.headers {
-		fileName := safeFileName(header.Filename)
+		fileName := header.Filename
+		if err := filetransfer.ValidateFileName(fileName); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return uploadBatchMultipartPlan{}, false
+		}
 		relativePath, err := transferUploadFilename(adapter, header)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid upload filename")
@@ -527,6 +535,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		}
 	}
 	normalizedPaths := make([]string, 0, len(remotePaths))
+	fileNames := make([]string, 0, len(remotePaths))
 	seenRemotePaths := map[string]bool{}
 	for _, raw := range remotePaths {
 		remotePath, err := s.normalizeTransferPath(ctx, runtime, runtimeID, raw, false)
@@ -536,8 +545,16 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 		if seenRemotePaths[remotePath] {
 			return filetransfer.BatchRecord{}, false, newFileTransferStartError(http.StatusBadRequest, "download queue contains duplicate remote paths")
 		}
+		fileName := safeFileName(path.Base(remotePath))
+		if strings.TrimSpace(fileName) == "" {
+			fileName = "aipermission-file"
+		}
+		if err := filetransfer.ValidateFileName(fileName); err != nil {
+			return filetransfer.BatchRecord{}, false, newFileTransferStartError(http.StatusBadRequest, "remote path cannot be represented as a local filename")
+		}
 		seenRemotePaths[remotePath] = true
 		normalizedPaths = append(normalizedPaths, remotePath)
+		fileNames = append(fileNames, fileName)
 	}
 	cleanArchiveName := ""
 	if strings.TrimSpace(archiveName) != "" {
@@ -568,7 +585,7 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 	tempPaths := []string{}
 	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, runtimeID)
 	var totalSize int64
-	for _, remotePath := range normalizedPaths {
+	for index, remotePath := range normalizedPaths {
 		var size int64
 		if validateRemoteBeforeApproval {
 			status, err := adapter.StatRemotePath(ctx, ports.gateway, ports.runtime, runtimeID, remotePath)
@@ -597,10 +614,9 @@ func (s fileTransferHandlers) createDownloadBatch(ctx context.Context, runtime *
 			return filetransfer.BatchRecord{}, false, err
 		}
 		tempPaths = append(tempPaths, tempPath)
-		fileName := safeFileName(path.Base(remotePath))
 		items = append(items, filetransfer.CreateRequest{
 			RemotePath: remotePath,
-			FileName:   fileName,
+			FileName:   fileNames[index],
 			SizeBytes:  size,
 			TempPath:   tempPath,
 		})

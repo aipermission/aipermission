@@ -10,9 +10,6 @@ import (
 func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	request.Direction = strings.TrimSpace(request.Direction)
 	request.Source = strings.TrimSpace(request.Source)
-	request.LocalPath = strings.TrimSpace(request.LocalPath)
-	request.FileName = strings.TrimSpace(request.FileName)
-	request.TempPath = strings.TrimSpace(request.TempPath)
 	if request.Source == "" {
 		request.Source = SourceUI
 	}
@@ -39,6 +36,11 @@ func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	}
 	if err := validatePathLike("file_name", request.FileName, false); err != nil {
 		return request, err
+	}
+	if request.FileName != "" {
+		if err := ValidateFileName(request.FileName); err != nil {
+			return request, err
+		}
 	}
 	if request.SizeBytes < 0 {
 		return request, fmt.Errorf("size_bytes cannot be negative")
@@ -171,6 +173,9 @@ func validatePathLike(field string, value string, required bool) error {
 			return fmt.Errorf("%s is required", field)
 		}
 		return nil
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s cannot contain only whitespace", field)
 	}
 	if len([]rune(value)) > maxPathRunes {
 		return fmt.Errorf("%s must be %d characters or fewer", field, maxPathRunes)

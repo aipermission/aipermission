@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
 func transferUploadFilename(adapter any, header *multipart.FileHeader) (string, error) {
@@ -20,7 +21,10 @@ func transferUploadFilename(adapter any, header *multipart.FileHeader) (string, 
 		}
 		return params["filename"], nil
 	}
-	return safeFileName(header.Filename), nil
+	if err := filetransfer.ValidateFileName(header.Filename); err != nil {
+		return "", err
+	}
+	return header.Filename, nil
 }
 
 func writeTransferPathError(w http.ResponseWriter, err error) {

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -111,6 +112,40 @@ func TestCreateDownloadArchivePreservesHierarchyAndCompressedBytes(t *testing.T)
 	}
 }
 
+func TestCreateDownloadArchiveUsesCrossPlatformSafeEntryNames(t *testing.T) {
+	root := t.TempDir()
+	items := []Record{}
+	for index, remotePath := range []string{
+		"/reports/nested/.. /escape.txt",
+		"/reports/CON.txt",
+		"/reports/name. ",
+		"/reports/Report.txt",
+		"/reports/report.txt",
+		"/reports/café.txt",
+		"/reports/café.txt",
+	} {
+		tempPath := writeTransferFixture(t, root, fmt.Sprintf("source-%d", index), []byte(remotePath))
+		items = append(items, Record{Status: StatusCompleted, TempPath: tempPath, RemotePath: remotePath})
+	}
+
+	archivePath, err := CreateDownloadArchive(root, BatchRecord{Items: items})
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(archivePath) })
+	archive, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer archive.Close()
+	want := []string{"nested/___/escape.txt", "_CON.txt", "name__", "Report.txt", "report-2.txt", "café.txt", "café-2.txt"}
+	for index, file := range archive.File {
+		if file.Name != want[index] {
+			t.Fatalf("archive entry %d = %q, want %q", index, file.Name, want[index])
+		}
+	}
+}
+
 func TestCreateDownloadArchiveRejectsUnavailableFiles(t *testing.T) {
 	root := t.TempDir()
 	outside := writeTransferFixture(t, t.TempDir(), "outside.txt", []byte("outside"))
@@ -184,7 +219,7 @@ func TestTransferPathAndProgressHelpers(t *testing.T) {
 	if got := JoinRemoteFilePath("/tmp", "../report.txt"); got != "/tmp/report.txt" {
 		t.Fatalf("joined file path = %q", got)
 	}
-	if got := JoinRemoteFilePath("/", "..."); got != "/aipermission-file" {
+	if got := JoinRemoteFilePath("/", "..."); got != "/..." {
 		t.Fatalf("root file path = %q", got)
 	}
 	if got := JoinRemoteRelativePath("/", "nested/file"); got != "/nested/file" {
@@ -233,17 +268,53 @@ func TestTempPathBoundaryAndScheduledCleanup(t *testing.T) {
 }
 
 func TestSafeFileNameBoundsAndSanitizesValues(t *testing.T) {
-	if got := SafeFileName(" ../report.txt "); got != "report.txt" {
+	if got := SafeFileName(" ../report.txt "); got != "report.txt " {
 		t.Fatalf("safe file name = %q", got)
 	}
-	if got := SafeFileName("... "); got != "aipermission-file" {
-		t.Fatalf("empty safe file name = %q", got)
+	if got := SafeFileName(".env"); got != ".env" {
+		t.Fatalf("leading-dot safe file name = %q", got)
+	}
+	if got := SafeFileName(".report. "); got != ".report. " {
+		t.Fatalf("edge-character safe file name = %q", got)
 	}
 	if got := SafeFileName("bad\nname.txt"); got != "bad_name.txt" {
 		t.Fatalf("control-safe file name = %q", got)
 	}
 	if got := SafeFileName(strings.Repeat("x", 200)); len([]rune(got)) != 160 {
 		t.Fatalf("bounded safe file name length = %d", len([]rune(got)))
+	}
+}
+
+func TestValidateFileNamePreservesSupportedNamesAndRejectsUnsafeValues(t *testing.T) {
+	for _, value := range []string{".env", ".report.", " report.txt ", "release:notes.txt"} {
+		if err := ValidateFileName(value); err != nil {
+			t.Errorf("supported file name %q rejected: %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "   ", ".", "..", "folder/report.txt", `folder\report.txt`, "bad\nname", strings.Repeat("x", 161)} {
+		if err := ValidateFileName(value); err == nil {
+			t.Errorf("unsafe file name %q accepted", value)
+		}
+	}
+}
+
+func TestNormalizeCreateRequestDoesNotRewriteFileIdentity(t *testing.T) {
+	request := CreateRequest{
+		RuntimeID:  1,
+		Direction:  DirectionUpload,
+		Source:     SourceUI,
+		LocalPath:  " local file ",
+		RemotePath: "/remote/.env",
+		FileName:   ".env",
+		TempPath:   "/tmp/staged file ",
+	}
+
+	normalized, err := normalizeCreateRequest(request)
+	if err != nil {
+		t.Fatalf("normalize create request: %v", err)
+	}
+	if normalized.LocalPath != request.LocalPath || normalized.FileName != request.FileName || normalized.TempPath != request.TempPath {
+		t.Fatalf("file identity changed: %#v", normalized)
 	}
 }
 
