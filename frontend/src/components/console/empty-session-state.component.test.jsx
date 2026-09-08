@@ -21,3 +21,9 @@ it("renders connector-owned session text and starts from a native button", async
   await user.click(screen.getByRole("button", { name: "New Session" }));
   expect(onStart).toHaveBeenCalledOnce();
 });
+
+it("supports the dark empty state without optional detail", () => {
+  render(<EmptySessionState title="Closed" description="Open it." onStart={vi.fn()} buttonLabel="Reconnect" />);
+  expect(screen.getByRole("button", { name: "Reconnect" })).toBeVisible();
+  expect(screen.queryByText(/Last session:/)).not.toBeInTheDocument();
+});

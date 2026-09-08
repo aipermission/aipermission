@@ -157,6 +157,35 @@ describe("VaultPermissionDialog", () => {
       ),
     );
   });
+
+  it("resets its drafts when closed", () => {
+    render(<VaultPermissionDialog token={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("explains when no projects are available for Vault permissions", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/tokens/7/project-scopes") return { items: [], revision: "scope-empty" };
+      if (path === "/api/tokens/7/project-capabilities") {
+        return { definitions: [], items: [], revision: "capability-empty" };
+      }
+      throw new Error(`Unexpected GET ${path}`);
+    });
+
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(await screen.findByText("Create a project before granting Vault capabilities.")).toBeInTheDocument();
+    expect(screen.getByText("0 Vault capability grants selected.")).toBeInTheDocument();
+  });
+
+  it("shows a load failure without enabling capability saves", async () => {
+    apiGet.mockRejectedValue(new Error("Vault permissions unavailable"));
+
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(await screen.findByText("Vault permissions unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save Vault capabilities" })).toBeDisabled();
+  });
 });
 
 function deferred() {

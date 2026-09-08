@@ -20,7 +20,16 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
-function renderPanel({ compact = false, onToggleCompact = () => {}, permissions = [], replacePermissions, target = selectedTarget } = {}) {
+function renderPanel({
+  compact = false,
+  onToggleCompact = () => {},
+  permissions = [],
+  replacePermissions,
+  target = selectedTarget,
+  targetProfiles = profiles,
+  unreadMessages = [],
+  onOpenMessages = vi.fn(),
+} = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
   const loadAllConnectorPermissions = vi.fn(async () => ({}));
@@ -28,7 +37,8 @@ function renderPanel({ compact = false, onToggleCompact = () => {}, permissions 
     <ConnectorTokenPermissionPanel
       tokens={{ state: "ready", data: [{ id: 5, name: "codex", token: "aip_example" }] }}
       selectedTarget={target}
-      targets={{ state: "ready", data: profiles }}
+      targets={{ state: "ready", data: targetProfiles }}
+      unreadMessages={unreadMessages}
       compact={compact}
       connectorPermissionState={{
         state: "ready",
@@ -44,6 +54,7 @@ function renderPanel({ compact = false, onToggleCompact = () => {}, permissions 
       replaceTokenConnectorPermissions={replaceTokenConnectorPermissions}
       onToggleCompact={onToggleCompact}
       onRefresh={async () => {}}
+      onOpenMessages={onOpenMessages}
     />,
   );
   return { replaceTokenConnectorPermissions, loadConnectorActions };
@@ -186,6 +197,36 @@ describe("ConnectorTokenPermissionPanel modes", () => {
 
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the compact token popover after an outside pointer press", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.pointer({ target: document.body, keys: "[MouseLeft]" });
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-expanded", "false"));
+  });
+
+  it("opens unread connector messages for the selected token profile", async () => {
+    const onOpenMessages = vi.fn();
+    const liveTarget = {
+      ...selectedTarget,
+      connector_kind: "ssh",
+      target_id: 8,
+      profile_id: 13,
+      runtime_id: 21,
+      target_name: "Support mailbox",
+    };
+    renderPanel({
+      target: liveTarget,
+      targetProfiles: [liveTarget],
+      unreadMessages: [{ runtime_id: 21, token_id: 5 }],
+      onOpenMessages,
+    });
+    await userEvent.click(await screen.findByRole("button", { name: /codex/ }));
+    expect(onOpenMessages).toHaveBeenCalledWith(5);
   });
 });
 

@@ -126,6 +126,33 @@ describe("HistoryPage request ownership", () => {
     expect(screen.getByTestId("history-table-scroll")).toHaveClass("overflow-x-auto");
   });
 
+  it("updates and clears every connector-aware history filter", async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([{ id: 5, name: "Investigate" }]);
+      if (path === "/api/projects") return Promise.resolve({ items: [{ id: 3, name: "My Project" }] });
+      if (path === "/api/history/targets") {
+        return Promise.resolve({ items: [{ ref: "ssh:1:1", connector_kind: "ssh", target_name: "Host", project_id: 3 }] });
+      }
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("initial")).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText("Filter by project"), "3");
+    await user.selectOptions(screen.getByLabelText("Filter by connector type"), "ssh");
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "completed");
+    await user.selectOptions(screen.getByLabelText("Filter by source"), "mcp");
+    await user.selectOptions(screen.getByLabelText("Filter by connector"), "ssh:1:1");
+    await user.selectOptions(screen.getByLabelText("Filter by label"), "5");
+    await user.type(screen.getByLabelText("Search history"), "query");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByLabelText("Search history")).toHaveValue("");
+    expect(screen.getByLabelText("Filter by project")).toHaveValue("");
+  });
+
   it("invalidates an in-flight filter response before the debounced replacement starts", async () => {
     const older = deferred();
     const current = deferred();

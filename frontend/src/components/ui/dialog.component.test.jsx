@@ -4,7 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Dialog } from "./dialog";
 
-function DialogHarness({ closeDisabled = false, closeOnOverlay = true, closeOnEscape = true, onClose = () => {} }) {
+function DialogHarness({ closeDisabled = false, closeOnOverlay = true, closeOnEscape = true, onClose = () => {}, size }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -21,6 +21,7 @@ function DialogHarness({ closeDisabled = false, closeOnOverlay = true, closeOnEs
         closeDisabled={closeDisabled}
         closeOnOverlay={closeOnOverlay}
         closeOnEscape={closeOnEscape}
+        size={size}
       >
         <button type="button">Save</button>
       </Dialog>
@@ -165,5 +166,12 @@ describe("Dialog", () => {
 
     await user.keyboard("{Escape}");
     expect(onParentClose).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to the small frame for an unknown size", async () => {
+    const user = userEvent.setup();
+    render(<DialogHarness size="unknown" />);
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(screen.getByRole("dialog", { name: "Connection settings" })).toHaveClass("max-w-md");
   });
 });

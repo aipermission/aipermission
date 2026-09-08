@@ -1,7 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { ConsoleResponsiveShell } from "./console-responsive-shell";
+
+const media = vi.hoisted(() => ({ wide: false }));
+vi.mock("../../lib/use-media-query", () => ({ useMediaQuery: () => media.wide }));
+
+beforeEach(() => {
+  media.wide = false;
+});
 
 function TargetPanel({ onSelect, onCompactChange }) {
   return (
@@ -46,4 +53,28 @@ it("opens narrow side panels and closes targets after selection", async () => {
   await user.click(screen.getByRole("button", { name: "Tokens" }));
   expect(screen.getByText("Token rules")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Collapse tokens" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Close drawer" }));
+  expect(screen.queryByText("Token rules")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Connectors" }));
+  await user.click(screen.getByRole("button", { name: "Close drawer" }));
+  expect(screen.queryByRole("button", { name: "Select target" })).not.toBeInTheDocument();
+});
+
+it("renders both compact-capable side panels at wide width", () => {
+  media.wide = true;
+  render(
+    <ConsoleResponsiveShell
+      targetsCompact
+      tokensCompact
+      targetSidebar={<TargetPanel onSelect={vi.fn()} onCompactChange={vi.fn()} />}
+      workspace={<div>Wide workspace</div>}
+      tokenPanel={<TokenPanel onToggleCompact={vi.fn()} />}
+      dialogs={<div>Dialogs</div>}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: "Collapse connectors" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Collapse tokens" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Connectors" })).not.toBeInTheDocument();
 });

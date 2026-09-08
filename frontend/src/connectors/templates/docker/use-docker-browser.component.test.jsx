@@ -14,7 +14,12 @@ const containers = [
 beforeEach(() => {
   runGuardedConnectorAction.mockReset();
   runGuardedConnectorAction.mockImplementation(async ({ actionName, input, onCompleted }) => {
-    const output = actionName === "list_containers" ? { containers } : { container: { name: input?.container } };
+    const output =
+      actionName === "list_containers"
+        ? { containers }
+        : actionName === "list_images"
+          ? { images: [{ id: "image-1", repository: "example/api", tag: "latest" }] }
+          : { container: { name: input?.container } };
     const item = { action_name: actionName, output };
     onCompleted?.(item);
     return item;
@@ -115,4 +120,25 @@ it("builds bounded Docker lifecycle payloads and refreshes after completion", as
 it("filters Docker resources through connector-owned searchable fields", () => {
   expect(filterDockerResources("containers", containers, "WORK")).toEqual([containers[1]]);
   expect(filterDockerResources("containers", containers, "  ")).toBe(containers);
+});
+
+it("browses non-container resources and starts a named container console", async () => {
+  const onNewLiveSession = vi.fn().mockResolvedValue(undefined);
+  const onSelectLiveSessionName = vi.fn();
+  const { result } = renderBrowser({ onNewLiveSession, onSelectLiveSessionName });
+  await waitFor(() => expect(result.current.visibleCount).toBe(2));
+
+  act(() => result.current.switchResourceView("images"));
+  await waitFor(() => expect(result.current.visibleCount).toBe(1));
+  act(() => result.current.selectResource("images", result.current.filteredItems[0]));
+  expect(result.current.selectedResourceID).toBeTruthy();
+
+  act(() => result.current.switchResourceView("containers"));
+  act(() => result.current.selectResource("containers", containers[0]));
+  await waitFor(() => expect(result.current.selectedContainer?.name).toBe("api"));
+  act(() => result.current.openContainerConsole());
+  expect(result.current.viewMode).toBe("console");
+  await act(async () => result.current.startContainerConsole());
+  expect(onSelectLiveSessionName).toHaveBeenCalled();
+  expect(onNewLiveSession).toHaveBeenCalledWith(expect.objectContaining({ params: { container: "api" }, closeExisting: false }));
 });

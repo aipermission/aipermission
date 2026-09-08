@@ -30,7 +30,15 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
               <p className="text-xs font-semibold uppercase text-stone-500">Recent requests</p>
               <p className="text-xs text-stone-500">{items.length} shown</p>
             </div>
-            <Button type="button" variant="outline" className="h-8 px-2" onClick={onRefresh} disabled={approvals?.state === "loading"}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 px-2"
+              onClick={onRefresh}
+              disabled={approvals?.state === "loading"}
+              aria-label="Refresh connector activity"
+              title="Refresh connector activity"
+            >
               <RefreshCcw className="h-3.5 w-3.5" />
             </Button>
           </div>

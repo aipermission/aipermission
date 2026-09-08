@@ -15,6 +15,12 @@
       "functions": 0,
       "lines": 0
     },
+    "src/components/app-mobile-navigation.jsx": {
+      "statements": 75,
+      "branches": 100,
+      "functions": 70,
+      "lines": 75
+    },
     "src/components/app-shell-runtime.js": {
       "statements": 63.88,
       "branches": 54.05,
@@ -22,16 +28,16 @@
       "lines": 68.75
     },
     "src/components/app-shell.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 83.63,
+      "branches": 60.86,
+      "functions": 57.14,
+      "lines": 90
     },
     "src/components/app-sidebar.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 54.83,
+      "branches": 51.11,
+      "functions": 53.84,
+      "lines": 54.83
     },
     "src/components/backup-freshness-notices.jsx": {
       "statements": 0,
@@ -52,10 +58,10 @@
       "lines": 91.66
     },
     "src/components/console/connector-activity-dialog.jsx": {
-      "statements": 31.81,
-      "branches": 11.53,
-      "functions": 30,
-      "lines": 35.29
+      "statements": 32.81,
+      "branches": 12.53,
+      "functions": 31,
+      "lines": 36.29
     },
     "src/components/console/connector-token-permission-model.js": {
       "statements": 92.5,
@@ -64,10 +70,10 @@
       "lines": 96.66
     },
     "src/components/console/connector-token-permission-panel.jsx": {
-      "statements": 86.3,
+      "statements": 86.48,
       "branches": 76.69,
       "functions": 78.72,
-      "lines": 85.71
+      "lines": 85.91
     },
     "src/components/console/console-layout.js": {
       "statements": 100,
@@ -87,17 +93,29 @@
       "functions": 0,
       "lines": 0
     },
+    "src/components/console/console-responsive-shell.jsx": {
+      "statements": 83.33,
+      "branches": 62.5,
+      "functions": 70,
+      "lines": 83.33
+    },
     "src/components/console/console-target-sidebar.jsx": {
-      "statements": 62.1,
-      "branches": 42.85,
-      "functions": 51.51,
-      "lines": 63.01
+      "statements": 64.21,
+      "branches": 44.36,
+      "functions": 54.54,
+      "lines": 65.75
     },
     "src/components/console/console-workspace-panel.jsx": {
-      "statements": 56.41,
-      "branches": 36.5,
-      "functions": 75,
-      "lines": 65.62
+      "statements": 64.1,
+      "branches": 42.85,
+      "functions": 91.66,
+      "lines": 75
+    },
+    "src/components/console/empty-session-state.jsx": {
+      "statements": 100,
+      "branches": 60,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/console/helpers.js": {
       "statements": 100,
@@ -112,10 +130,10 @@
       "lines": 33.33
     },
     "src/components/console/no-live-session.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/components/console/pty-console.jsx": {
       "statements": 0,
@@ -142,10 +160,10 @@
       "lines": 71.95
     },
     "src/components/console/use-connector-token-permission-state.js": {
-      "statements": 92.02,
+      "statements": 92.46,
       "branches": 61.46,
-      "functions": 92.72,
-      "lines": 98
+      "functions": 94.82,
+      "lines": 98.1
     },
     "src/components/console/use-console-connections.js": {
       "statements": 81.96,
@@ -250,10 +268,10 @@
       "lines": 100
     },
     "src/components/file-transfer/file-transfer-panels.jsx": {
-      "statements": 66.66,
-      "branches": 76.08,
-      "functions": 63.63,
-      "lines": 66.66
+      "statements": 67.66,
+      "branches": 80,
+      "functions": 64.63,
+      "lines": 67.66
     },
     "src/components/file-transfer/file-transfer-queue.jsx": {
       "statements": 85,
@@ -262,10 +280,10 @@
       "lines": 84.21
     },
     "src/components/file-transfer/use-transfer-batch.js": {
-      "statements": 66.66,
-      "branches": 54.44,
-      "functions": 67.64,
-      "lines": 74.41
+      "statements": 69.49,
+      "branches": 56.84,
+      "functions": 71.79,
+      "lines": 76.92
     },
     "src/components/file-transfer/use-transfer-browser.js": {
       "statements": 66.66,
@@ -394,10 +412,10 @@
       "lines": 25
     },
     "src/components/tokens/connector-permission-dialog.jsx": {
-      "statements": 73.39,
-      "branches": 49.48,
+      "statements": 75.22,
+      "branches": 51.48,
       "functions": 62.16,
-      "lines": 77.52
+      "lines": 79.77
     },
     "src/components/tokens/created-token-notice.jsx": {
       "statements": 100,
@@ -428,6 +446,12 @@
       "branches": 80.48,
       "functions": 88,
       "lines": 86.44
+    },
+    "src/components/ui/action-menu.jsx": {
+      "statements": 91.83,
+      "branches": 69.76,
+      "functions": 100,
+      "lines": 95.23
     },
     "src/components/ui/badge.jsx": {
       "statements": 50,
@@ -467,7 +491,7 @@
     },
     "src/components/ui/drawer.jsx": {
       "statements": 100,
-      "branches": 75,
+      "branches": 83.33,
       "functions": 100,
       "lines": 100
     },
@@ -498,6 +522,12 @@
     "src/components/ui/terminal-block.jsx": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/ui/use-dialog-frame.js": {
+      "statements": 100,
+      "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
@@ -593,7 +623,7 @@
     },
     "src/connectors/editor/connector-page-dialogs.jsx": {
       "statements": 77.94,
-      "branches": 45.09,
+      "branches": 46.09,
       "functions": 70.83,
       "lines": 79.66
     },
@@ -646,10 +676,10 @@
       "lines": 93.33
     },
     "src/connectors/templates/_shared/action-runner.js": {
-      "statements": 91.66,
-      "branches": 70,
+      "statements": 92.59,
+      "branches": 70.83,
       "functions": 100,
-      "lines": 97.43
+      "lines": 97.61
     },
     "src/connectors/templates/_shared/console-theme.js": {
       "statements": 0,
@@ -712,10 +742,10 @@
       "lines": 60
     },
     "src/connectors/templates/_shared/sql-console-chrome.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/connectors/templates/_shared/sql-console-config.js": {
       "statements": 29.62,
@@ -928,10 +958,10 @@
       "lines": 0
     },
     "src/connectors/templates/docker/use-docker-browser.js": {
-      "statements": 62.58,
-      "branches": 44.85,
-      "functions": 63.15,
-      "lines": 69.1
+      "statements": 63.58,
+      "branches": 45.85,
+      "functions": 64.15,
+      "lines": 70.1
     },
     "src/connectors/templates/docker/use-docker-lifecycle.js": {
       "statements": 70.37,
@@ -940,10 +970,10 @@
       "lines": 80.95
     },
     "src/connectors/templates/host-ping-button.jsx": {
-      "statements": 40.74,
-      "branches": 39.39,
-      "functions": 42.85,
-      "lines": 50
+      "statements": 75,
+      "branches": 50,
+      "functions": 87.5,
+      "lines": 89.28
     },
     "src/connectors/templates/kafka/console-helpers.js": {
       "statements": 30.76,
@@ -1264,10 +1294,10 @@
       "lines": 0
     },
     "src/connectors/templates/postgres/provision-user-dialog.jsx": {
-      "statements": 55.55,
+      "statements": 56.55,
       "branches": 65.38,
-      "functions": 50,
-      "lines": 62.5
+      "functions": 51,
+      "lines": 63.5
     },
     "src/connectors/templates/postgres/provisioning.js": {
       "statements": 40.56,
@@ -1703,7 +1733,7 @@
     },
     "src/lib/request-guard.js": {
       "statements": 100,
-      "branches": 93.75,
+      "branches": 95,
       "functions": 100,
       "lines": 100
     },
@@ -1738,10 +1768,16 @@
       "lines": 100
     },
     "src/lib/use-connector-permissions.js": {
-      "statements": 79.06,
-      "branches": 52.72,
-      "functions": 81.25,
-      "lines": 85.29
+      "statements": 82.97,
+      "branches": 63.49,
+      "functions": 83.33,
+      "lines": 88
+    },
+    "src/lib/use-media-query.js": {
+      "statements": 75,
+      "branches": 60,
+      "functions": 70,
+      "lines": 75
     },
     "src/lib/utils.js": {
       "statements": 100,
@@ -1774,10 +1810,10 @@
       "lines": 0
     },
     "src/pages/audit-logs.jsx": {
-      "statements": 55.42,
-      "branches": 47.87,
-      "functions": 57.14,
-      "lines": 66.93
+      "statements": 69.87,
+      "branches": 56.88,
+      "functions": 70.9,
+      "lines": 80.46
     },
     "src/pages/connectors.jsx": {
       "statements": 0,
@@ -1786,16 +1822,16 @@
       "lines": 0
     },
     "src/pages/console.jsx": {
-      "statements": 78.26,
+      "statements": 79.16,
       "branches": 55.88,
       "functions": 52.94,
-      "lines": 81.39
+      "lines": 82.22
     },
     "src/pages/credentials.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 2.94,
+      "branches": 1,
+      "functions": 6.66,
+      "lines": 3.27
     },
     "src/pages/dashboard.jsx": {
       "statements": 0,
@@ -1804,10 +1840,10 @@
       "lines": 0
     },
     "src/pages/history.jsx": {
-      "statements": 63.88,
+      "statements": 64.88,
       "branches": 73.07,
-      "functions": 55.17,
-      "lines": 63.63
+      "functions": 56.17,
+      "lines": 64.63
     },
     "src/pages/mcp-setup.jsx": {
       "statements": 0,
@@ -1876,10 +1912,10 @@
       "lines": 96.15
     },
     "src/pages/use-history-page-state.js": {
-      "statements": 83.11,
-      "branches": 54.66,
-      "functions": 72.54,
-      "lines": 90.51
+      "statements": 84.41,
+      "branches": 56,
+      "functions": 74.5,
+      "lines": 90.59
     },
     "src/pages/use-security-page-state.js": {
       "statements": 77.77,
