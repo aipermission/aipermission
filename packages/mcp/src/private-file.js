@@ -8,6 +8,7 @@ const execFileAsync = promisify(execFile);
 const staleTemporaryAgeMs = 24 * 60 * 60 * 1000;
 const lockRetryDelayMs = 50;
 const lockRetryLimit = 100;
+const windowsFullControlRights = 2032127;
 
 export async function atomicWritePrivateFile(filePath, contents, options = {}) {
   const destination = path.resolve(filePath);
@@ -73,12 +74,8 @@ export async function assertPrivateFilePermissions(filePath, options = {}) {
     if ((stat.mode & 0o077) !== 0) throw new Error(`permissions are not private; run chmod 600 ${filePath}`);
     return;
   }
-  const identity = await currentWindowsIdentity(options);
-  const [ownerSID, { stdout }] = await Promise.all([
-    currentWindowsOwnerSID(filePath, options),
-    runWindowsSystemExecutable("icacls", [filePath], options, { encoding: "utf8" }),
-  ]);
-  if (ownerSID.toLowerCase() !== identity.sid.toLowerCase() || !windowsACLIsPrivate(stdout, filePath, identity)) {
+  const [identity, acl] = await Promise.all([currentWindowsIdentity(options), readWindowsACL(filePath, options)]);
+  if (!windowsACLIsPrivate(acl, identity)) {
     throw new Error(`Windows ACL is not restricted to the current user: ${filePath}`);
   }
 }
@@ -310,40 +307,58 @@ async function currentWindowsIdentity(options) {
   return { name: match[1].replaceAll('""', '"'), sid: match[2] };
 }
 
-async function currentWindowsOwnerSID(filePath, options) {
+async function readWindowsACL(filePath, options) {
   const script = [
-    "& { param([string] $TargetPath)",
-    "(Get-Acl -LiteralPath $TargetPath).GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
-    "}",
-  ].join(" ");
+    "$ErrorActionPreference = 'Stop'",
+    "$TargetPath = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:AIPERMISSION_PRIVATE_FILE_PATH_B64))",
+    "$Acl = [System.IO.File]::GetAccessControl($TargetPath)",
+    "$Rules = @($Acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {",
+    "[PSCustomObject]@{ identity_sid = $_.IdentityReference.Value; access_type = $_.AccessControlType.ToString(); inherited = [bool]$_.IsInherited; rights = [int64]$_.FileSystemRights }",
+    "})",
+    "[PSCustomObject]@{ owner_sid = $Acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value; protected = [bool]$Acl.AreAccessRulesProtected; rules = $Rules } | ConvertTo-Json -Depth 4 -Compress",
+  ].join("\n");
   const execute = options.execFile || execFileAsync;
-  const { stdout } = await execute(
-    windowsPowerShellExecutable(options),
-    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script, filePath],
-    { windowsHide: true, encoding: "utf8" },
-  );
-  const sid = String(stdout).trim();
-  if (!/^S-\d-(?:\d+-)+\d+$/i.test(sid)) {
+  const { stdout } = await execute(windowsPowerShellExecutable(options), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      AIPERMISSION_PRIVATE_FILE_PATH_B64: Buffer.from(filePath, "utf8").toString("base64"),
+    },
+  });
+  let acl;
+  try {
+    acl = JSON.parse(String(stdout).trim());
+  } catch {
     throw new Error(`Could not determine Windows owner for private config: ${filePath}`);
   }
-  return sid;
+  if (
+    !acl ||
+    !/^S-\d-(?:\d+-)+\d+$/i.test(acl.owner_sid) ||
+    typeof acl.protected !== "boolean" ||
+    !Array.isArray(acl.rules) ||
+    !acl.rules.every(
+      (rule) =>
+        rule &&
+        /^S-\d-(?:\d+-)+\d+$/i.test(rule.identity_sid) &&
+        ["Allow", "Deny"].includes(rule.access_type) &&
+        typeof rule.inherited === "boolean" &&
+        Number.isSafeInteger(rule.rights),
+    )
+  ) {
+    throw new Error(`Could not determine Windows ACL for private config: ${filePath}`);
+  }
+  return acl;
 }
 
-function windowsACLIsPrivate(stdout, filePath, identity) {
-  const entries = [];
-  for (const rawLine of String(stdout).split(/\r?\n/)) {
-    let line = rawLine.trim();
-    if (!line) continue;
-    if (line.toLowerCase().startsWith(filePath.toLowerCase())) line = line.slice(filePath.length).trim();
-    if (!line.includes(":(")) continue;
-    const match = line.match(/^(.+?):((?:\([A-Z]+\))+?)$/i);
-    if (!match) return false;
-    entries.push({ principal: match[1].trim(), rights: match[2].toUpperCase() });
-  }
-  if (entries.length !== 1 || entries[0].rights !== "(F)") return false;
-  const principal = entries[0].principal.toLowerCase();
+function windowsACLIsPrivate(acl, identity) {
+  if (!acl.protected || acl.owner_sid.toLowerCase() !== identity.sid.toLowerCase() || acl.rules.length !== 1) return false;
+  const rule = acl.rules[0];
   return (
-    principal === identity.name.toLowerCase() || principal === identity.sid.toLowerCase() || principal === `*${identity.sid.toLowerCase()}`
+    rule.identity_sid.toLowerCase() === identity.sid.toLowerCase() &&
+    rule.access_type === "Allow" &&
+    !rule.inherited &&
+    rule.rights === windowsFullControlRights
   );
 }
 
