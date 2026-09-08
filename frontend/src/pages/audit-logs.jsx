@@ -227,14 +227,14 @@ export function AuditLogsPage() {
                 </td>
               </tr>
             ) : null}
-            {state.state !== "loading" && state.data.length === 0 ? (
+            {state.state === "ready" && state.data.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={6}>
                   No audit events match these filters.
                 </td>
               </tr>
             ) : null}
-            {state.state !== "loading"
+            {state.state === "ready"
               ? state.data.map((item) => (
                   <tr key={item.id} className="transition hover:bg-stone-50">
                     <td className="px-4 py-3">

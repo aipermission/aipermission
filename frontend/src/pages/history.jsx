@@ -213,8 +213,8 @@ function HistoryTable({ state, onOpen }) {
         </thead>
         <tbody className="divide-y divide-stone-100">
           {state.state === "loading" ? <EmptyHistoryRow>Loading history...</EmptyHistoryRow> : null}
-          {state.state !== "loading" && state.data.length === 0 ? <EmptyHistoryRow>No history yet.</EmptyHistoryRow> : null}
-          {state.state !== "loading" ? state.data.map((item) => <HistoryRow key={item.id} item={item} onOpen={onOpen} />) : null}
+          {state.state === "ready" && state.data.length === 0 ? <EmptyHistoryRow>No history yet.</EmptyHistoryRow> : null}
+          {state.state === "ready" ? state.data.map((item) => <HistoryRow key={item.id} item={item} onOpen={onOpen} />) : null}
         </tbody>
       </table>
     </div>

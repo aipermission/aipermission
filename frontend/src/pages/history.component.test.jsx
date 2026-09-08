@@ -87,6 +87,19 @@ describe("HistoryPage request ownership", () => {
     expect(within(screen.getByText("Total").parentElement).getByText("7")).toBeVisible();
   });
 
+  it("does not describe a failed history request as an empty history", async () => {
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.reject(new Error("history unavailable"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+
+    expect(await screen.findByText("history unavailable")).toBeVisible();
+    expect(screen.queryByText("No history yet.")).not.toBeInTheDocument();
+  });
+
   it("invalidates an in-flight filter response before the debounced replacement starts", async () => {
     const older = deferred();
     const current = deferred();

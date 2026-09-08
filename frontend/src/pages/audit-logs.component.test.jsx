@@ -49,6 +49,18 @@ it("ignores an older audit response after the search filter changes", async () =
   expect(screen.getByRole("dialog", { name: "Audit #current" })).toBeVisible();
 });
 
+it("does not describe a failed audit request as an empty result", async () => {
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [] });
+    return Promise.reject(new Error("audit unavailable"));
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  expect(screen.getByText("audit unavailable")).toBeVisible();
+  expect(screen.queryByText("No audit events match these filters.")).not.toBeInTheDocument();
+});
+
 function auditResponse(action) {
   return {
     items: [{ id: action, actor_type: "user", action, created_at: "2026-09-08T00:00:00Z" }],
