@@ -527,6 +527,33 @@ describe("ConnectorTokenPermissionPanel mutation ownership", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce();
   });
+
+  it("builds a mutation from a permission snapshot received after mount", async () => {
+    const user = userEvent.setup();
+    const currentPermission = {
+      target_id: 99,
+      profile_id: 101,
+      action_name: "deploy",
+      execution_rule: "approval_required",
+      expires_at: "",
+    };
+    const { rerenderPermissions, replaceTokenConnectorPermissions } = renderPanel();
+    rerenderPermissions([currentPermission]);
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
+      currentPermission,
+      ...actions.map((action) => ({
+        target_id: 7,
+        profile_id: 11,
+        action_name: action.name,
+        execution_rule: "always_run",
+        expires_at: "",
+      })),
+    ]);
+  });
   it("locks profile, mode, and refresh controls while a permission mutation is pending", async () => {
     const user = userEvent.setup();
     const mutation = deferred();

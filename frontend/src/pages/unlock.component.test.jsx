@@ -1,10 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost, apiPostForm } from "../lib/api";
 import { UnlockPage } from "./unlock";
 
-// async-owner: src/pages/unlock-database-panel.jsx
 // async-owner: src/pages/use-unlock-lifecycle-mutation.js
 
 vi.mock("../lib/api", () => ({
@@ -25,11 +24,14 @@ function deferred() {
   return { promise, resolve };
 }
 
-describe("UnlockPage", () => {
-  beforeEach(() => {
-    apiPost.mockReset();
-    apiPostForm.mockReset();
-  });
+function resetMocks() {
+  vi.useRealTimers();
+  apiPost.mockReset();
+  apiPostForm.mockReset();
+}
+
+describe("UnlockPage workflows", () => {
+  beforeEach(resetMocks);
 
   it("unlocks the selected encrypted database and preserves backend failures", async () => {
     const user = userEvent.setup();
@@ -64,9 +66,10 @@ describe("UnlockPage", () => {
 
   it("turns a migration conflict into guidance and requires password plus name before deletion", async () => {
     const user = userEvent.setup();
+    const onUnlocked = vi.fn();
     const migrationError = Object.assign(new Error("database uses a pre-0.2 schema; use migration helper"), { status: 409 });
     apiPost.mockRejectedValueOnce(migrationError).mockResolvedValueOnce({});
-    render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
+    render(<UnlockPage status={status} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "OldPassword123");
     await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
@@ -84,6 +87,8 @@ describe("UnlockPage", () => {
       },
       { signal: expect.any(AbortSignal) },
     );
+    expect(await screen.findByRole("status")).toHaveTextContent("Local database deleted.");
+    expect(onUnlocked).toHaveBeenCalledOnce();
   });
 
   it("validates creation locally and reports an import without a selected file", async () => {
@@ -150,6 +155,10 @@ describe("UnlockPage", () => {
     expect(body.get("sqlite")).toBeInstanceOf(File);
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
+});
+
+describe("UnlockPage lifecycle ownership", () => {
+  beforeEach(resetMocks);
 
   it("locks database selection while an unlock mutation is pending", async () => {
     const user = userEvent.setup();
@@ -178,6 +187,71 @@ describe("UnlockPage", () => {
 
     pending.resolve({});
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
+  });
+
+  it("switches the selected database when no lifecycle mutation is running", async () => {
+    const user = userEvent.setup();
+    render(
+      <UnlockPage
+        status={{
+          database_id: "db-1",
+          databases: [
+            { id: "db-1", name: "First", state: "locked" },
+            { id: "db-2", name: "Second", state: "locked" },
+          ],
+        }}
+        onUnlocked={vi.fn()}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("Database"), "db-2");
+
+    expect(screen.getByLabelText("Database")).toHaveValue("db-2");
+  });
+
+  it("validates, cancels, and reports failures from the split delete action", async () => {
+    const user = userEvent.setup();
+    apiPost.mockRejectedValueOnce(new Error("Delete failed"));
+    render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Choose database action" }));
+    await user.click(screen.getByRole("button", { name: "Delete this local database" }));
+    await user.click(screen.getByRole("button", { name: "Delete this local database" }));
+    expect(await screen.findByText("Enter the database password before deleting this local database.")).toBeVisible();
+
+    await user.type(screen.getByLabelText("Database password"), "DeletePassword123");
+    await user.click(screen.getByRole("button", { name: "Delete this local database" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Choose database action" }));
+    await user.click(screen.getByRole("button", { name: "Delete this local database" }));
+    await user.click(screen.getByRole("button", { name: "Delete this local database" }));
+    await user.type(screen.getByLabelText("Type the database name to confirm"), "Default");
+    await user.click(screen.getByRole("button", { name: "Delete permanently" }));
+
+    expect(await screen.findByText("Delete failed")).toBeVisible();
+  });
+
+  it("removes the deletion toast after its display interval", async () => {
+    vi.useFakeTimers();
+    apiPost.mockResolvedValueOnce({});
+    const onUnlocked = vi.fn();
+    render(<UnlockPage status={status} onUnlocked={onUnlocked} />);
+
+    fireEvent.change(screen.getByLabelText("Database password"), { target: { value: "DeletePassword123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose database action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete this local database" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete this local database" }));
+    fireEvent.change(screen.getByLabelText("Type the database name to confirm"), { target: { value: "Default" } });
+    fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
+    await act(async () => Promise.resolve());
+
+    expect(onUnlocked).toHaveBeenCalledOnce();
+    expect(screen.getByRole("status")).toHaveTextContent("Local database deleted.");
+    act(() => vi.advanceTimersByTime(2400));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("reconciles a completed create after its workflow panel unmounts", async () => {
