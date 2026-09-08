@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Input } from "../../../components/ui/form";
 import { uniqueQueueNames } from "./helpers";
 
-export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, styles }) {
+export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, styles, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -72,6 +72,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
         onKeyDown={handleKeyDown}
         placeholder="Search queue routing keys"
         aria-label="Search queue routing keys"
+        disabled={disabled}
       />
       {open ? (
         <div

@@ -62,11 +62,13 @@ func (s connectorActionApprovalHandlers) listConnectorActionApprovals(w http.Res
 	if !ok {
 		return
 	}
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	items, err := connectortargets.NewStore(runtime.database).ListActionRequests(r.Context(), connectortargets.ActionRequestFilter{
-		Status: status,
-		Limit:  100,
-	})
+	query := r.URL.Query()
+	filter, err := connectortargets.NewActionRequestFilter(query.Get("status"), query.Get("target_ref"), query.Get("action_name"), query.Get("active"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	items, err := connectortargets.NewStore(runtime.database).ListActionRequests(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return

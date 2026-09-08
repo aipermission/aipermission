@@ -138,8 +138,37 @@ type InvalidateActionRequestsForTargetResult struct {
 }
 
 type ActionRequestFilter struct {
-	Status string
-	Limit  int
+	Status        string
+	ConnectorKind string
+	ActionName    string
+	TargetID      int64
+	ProfileID     int64
+	Active        bool
+	Limit         int
+}
+
+func NewActionRequestFilter(status, targetRef, actionName, active string) (ActionRequestFilter, error) {
+	filter := ActionRequestFilter{Status: strings.TrimSpace(status), ActionName: strings.TrimSpace(actionName), Limit: 100}
+	if active = strings.TrimSpace(active); active != "" {
+		if active != "true" {
+			return ActionRequestFilter{}, ValidationError("active must be true when provided")
+		}
+		filter.Active = true
+	}
+	if targetRef = strings.TrimSpace(targetRef); targetRef != "" {
+		kind, targetID, profileID, valid := ParseConnectorTargetRef(targetRef)
+		if !valid {
+			return ActionRequestFilter{}, ValidationError("target_ref is invalid")
+		}
+		filter.ConnectorKind, filter.TargetID, filter.ProfileID = kind, targetID, profileID
+	}
+	if filter.ActionName != "" && filter.TargetID == 0 {
+		return ActionRequestFilter{}, ValidationError("action_name requires target_ref")
+	}
+	if filter.Active && filter.TargetID > 0 && filter.ActionName != "" {
+		filter.Limit = 1
+	}
+	return filter, nil
 }
 
 func (s *Store) SetActionPermission(ctx context.Context, input SetActionPermissionInput) error {
@@ -1049,8 +1078,32 @@ func (s *Store) ListActionRequests(ctx context.Context, filter ActionRequestFilt
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("connector target store is not configured")
 	}
-	where := []string{"(? = '' OR r.status = ?)"}
-	args := []any{strings.TrimSpace(filter.Status), strings.TrimSpace(filter.Status)}
+	where := []string{"1 = 1"}
+	args := []any{}
+	if status := strings.TrimSpace(filter.Status); status != "" {
+		where = append(where, "r.status = ?")
+		args = append(args, status)
+	}
+	if kind := strings.TrimSpace(filter.ConnectorKind); kind != "" {
+		where = append(where, "r.connector_kind = ?")
+		args = append(args, kind)
+	}
+	if actionName := strings.TrimSpace(filter.ActionName); actionName != "" {
+		where = append(where, "r.action_name = ?")
+		args = append(args, actionName)
+	}
+	if filter.TargetID > 0 {
+		where = append(where, "r.target_id = ?")
+		args = append(args, filter.TargetID)
+	}
+	if filter.ProfileID > 0 {
+		where = append(where, "r.profile_id = ?")
+		args = append(args, filter.ProfileID)
+	}
+	if filter.Active {
+		where = append(where, "r.status IN (?, ?, ?)")
+		args = append(args, connectors.ResultApprovalPending, connectors.ResultRunning, connectors.ResultOutcomeUnknown)
+	}
 	limit := filter.Limit
 	if limit < 1 || limit > 100 {
 		limit = 100

@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { connectorActionRequestID } from "../_shared/action-result";
 import { filterQueues, parsePublishProperties } from "./helpers";
+import { useRabbitMQPublishOwnership } from "./use-rabbitmq-publish-ownership";
 
 const defaultQueueLimit = 250;
 const defaultPeekCount = 5;
@@ -36,6 +38,12 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
   );
+  const publishOwnership = useRabbitMQPublishOwnership(target.ref, activeItems, approvals?.state);
+  const publishOwnerRef = publishOwnership.ownerRef;
+  const unresolvedPublish = publishOwnership.unresolved;
+  const beginPublishOwner = publishOwnership.begin;
+  const updatePublishOwner = publishOwnership.update;
+  const releasePublishOwner = publishOwnership.release;
   const refreshForEffect = useEffectEvent(() => refreshQueues());
 
   useEffect(() => {
@@ -65,7 +73,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     setMessages([]);
   }, [activeQueue, requestGuard]);
 
-  async function runRabbitAction({ actionName, input, reason, busy = "running", suppressError = false, channel = actionName }) {
+  async function runRabbitAction({ actionName, input, reason, busy = "running", suppressError = false, channel = actionName, onPending }) {
     return runGuardedConnectorAction({
       requestGuard,
       channel,
@@ -78,11 +86,12 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
       setState,
       onRefreshActivity,
       suppressError,
+      onPending,
     });
   }
 
   async function refreshQueues() {
-    if (!activeSession.active) return;
+    if (!activeSession.active || publishOwnerRef.current || unresolvedPublish) return;
     try {
       const item = await runRabbitAction({
         actionName: "list_queues",
@@ -100,7 +109,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   async function selectQueue(queueName) {
-    if (!activeSession.active || !queueName) return;
+    if (!activeSession.active || !queueName || publishOwnerRef.current || unresolvedPublish) return;
     const selection = requestGuard.begin("queue-selection");
     requestGuard.invalidate("list_bindings");
     requestGuard.invalidate("peek_messages");
@@ -135,7 +144,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   async function peekMessages() {
-    if (!activeQueue) return;
+    if (!activeQueue || publishOwnerRef.current || unresolvedPublish) return;
     try {
       const item = await runRabbitAction({
         actionName: "peek_messages",
@@ -150,6 +159,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   function startPublish() {
+    if (publishOwnerRef.current || unresolvedPublish) return;
     setDetailMode("publish");
     setState({ state: "idle", error: "", message: "" });
     setPublish((current) =>
@@ -158,7 +168,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   function applyVhost() {
-    if (state.state === "publishing") return;
+    if (publishOwnerRef.current || unresolvedPublish) return;
     const nextVhost = vhostDraft.trim() || "/";
     if (nextVhost === vhost) {
       void refreshQueues();
@@ -175,7 +185,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   async function publishMessage() {
-    if (!activeSession.active || state.state !== "idle") return;
+    if (!activeSession.active || state.state !== "idle" || publishOwnership.locked) return;
     const routingKey = publish.routingKey.trim();
     if (!routingKey || !publish.payload) {
       setState({ state: "error", error: "Routing key and payload are required.", message: "" });
@@ -186,6 +196,8 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
       setState({ state: "error", error: properties.error, message: "" });
       return;
     }
+    const attemptID = beginPublishOwner();
+    let pendingRequestID = null;
     try {
       const item = await runRabbitAction({
         actionName: "publish_message",
@@ -199,11 +211,25 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
         },
         reason: "manual RabbitMQ browser message publish",
         busy: "publishing",
+        onPending: (pending) => {
+          pendingRequestID = connectorActionRequestID(pending);
+          updatePublishOwner(attemptID, { requestID: pendingRequestID, observed: false });
+        },
       });
-      if (!item) return;
+      if (!item) {
+        if (!pendingRequestID) releasePublishOwner(attemptID);
+        return;
+      }
+      if (!releasePublishOwner(attemptID)) return;
       setPublish((current) => ({ ...current, payload: "" }));
       await refreshQueues();
-    } catch {
+    } catch (error) {
+      const uncertain = error?.actionItem?.status === "outcome_unknown" ? error.actionItem : error?.data;
+      if (uncertain?.status === "outcome_unknown") {
+        updatePublishOwner(attemptID, { requestID: connectorActionRequestID(uncertain), observed: false });
+      } else {
+        releasePublishOwner(attemptID);
+      }
       // The guarded runner owns the visible error state.
     }
   }
@@ -229,6 +255,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     publish,
     setPublish,
     state,
+    publishLocked: publishOwnership.locked,
     latestAction: activeItems[0] || null,
     refreshQueues,
     selectQueue,

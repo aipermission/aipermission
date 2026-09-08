@@ -60,6 +60,15 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
+	targetRef := connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID)
+	activeResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?target_ref="+targetRef+"&action_name=query_readonly&active=true", "", nil)
+	if activeResponse.Code != http.StatusOK || !strings.Contains(activeResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
+		t.Fatalf("list active scoped connector approvals failed: %d %s", activeResponse.Code, activeResponse.Body.String())
+	}
+	invalidFilter := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?target_ref=invalid&action_name=query_readonly&active=true", "", nil)
+	if invalidFilter.Code != http.StatusBadRequest {
+		t.Fatalf("invalid scoped connector approval filter=%d %s", invalidFilter.Code, invalidFilter.Body.String())
+	}
 	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, approvalPath, "", nil)
 	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "select 1") {
 		t.Fatalf("approval detail must expose exact pending preview: %d %s", detailResponse.Code, detailResponse.Body.String())
