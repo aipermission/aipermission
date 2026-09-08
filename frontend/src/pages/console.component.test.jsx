@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router";
 import { expect, it, vi } from "vitest";
 import { ConsolePage } from "./console";
@@ -11,7 +11,7 @@ vi.mock("../components/console/console-workspace-panel", () => ({
   },
 }));
 
-it("renders the console route before a target is available", () => {
+it("renders the console route and exposes connector navigation on narrow screens", () => {
   render(
     <MemoryRouter initialEntries={["/console"]}>
       <Routes>
@@ -23,6 +23,7 @@ it("renders the console route before a target is available", () => {
   );
 
   expect(screen.getByTestId("console-workspace")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Connectors" }));
   expect(screen.getByPlaceholderText("Search connectors")).toBeVisible();
 });
 

@@ -67,7 +67,7 @@ export function ConnectorTokenPermissionPanel({
     return (
       <aside
         ref={compactPanelRef}
-        className="relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white"
+        className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-visible rounded-lg border border-stone-200 bg-white"
       >
         <header className="grid gap-2 border-b border-stone-200 p-2">
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand tokens" onClick={onToggleCompact}>
@@ -134,7 +134,7 @@ export function ConnectorTokenPermissionPanel({
   }
 
   return (
-    <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
+    <aside className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
       <header className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-semibold">

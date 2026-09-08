@@ -44,11 +44,11 @@ function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView,
   const { selectedSession, selectedSessionLive, selectedStructuredSession } = sessionView;
   return (
     <header
-      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b px-4 py-3 ${
+      className={`grid grid-cols-1 items-center gap-3 border-b px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] ${
         theme === "light" ? "border-stone-200 bg-stone-50 text-stone-950" : "border-stone-700 bg-[#2d2d2d] text-stone-100"
       }`}
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
         <ConsoleStatusDot
           status={selectedTargetStatus({
             target: selectedTarget,
@@ -70,7 +70,7 @@ function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView,
         </div>
         <WorkspaceProfileSelect profiles={selectedTargetProfiles} target={selectedTarget} theme={theme} onChange={actions.selectProfile} />
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex min-w-0 flex-wrap gap-2 sm:justify-end">
         {selectedPendingApprovals.length > 0 ? (
           <Button
             type="button"

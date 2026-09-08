@@ -29,7 +29,7 @@ export function ConsoleTargetSidebar({
   filteredTargetCount,
 }) {
   return (
-    <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
+    <aside className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
       <div className={`border-b border-stone-200 ${compact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}>
         {compact ? (
           <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Expand connectors" onClick={() => onCompactChange(false)}>
