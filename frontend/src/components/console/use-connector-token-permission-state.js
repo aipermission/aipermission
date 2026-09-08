@@ -37,6 +37,7 @@ export function useConnectorTokenPermissionState({
   const [projectScopeError, setProjectScopeError] = useState("");
   const [permissionMutationError, setPermissionMutationError] = useState(null);
   const compactPanelRef = useRef(null);
+  const tokenTriggerRef = useRef(null);
   const permissionMutationRetryRef = useRef(null);
   const permissionMutationActiveRef = useRef(false);
   const load = connectorPermissionState || { state: "idle", data: {}, actionsByTargetRef: {}, error: null };
@@ -74,7 +75,11 @@ export function useConnectorTokenPermissionState({
   useEffect(() => {
     if (!openTokenID) return undefined;
     const closeOnOutsidePointer = (event) => !compactPanelRef.current?.contains(event.target) && setOpenTokenID(null);
-    const closeOnEscape = (event) => event.key === "Escape" && setOpenTokenID(null);
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setOpenTokenID(null);
+      queueMicrotask(() => tokenTriggerRef.current?.focus());
+    };
     window.addEventListener("pointerdown", closeOnOutsidePointer);
     window.addEventListener("keydown", closeOnEscape);
     return () => {
@@ -271,6 +276,7 @@ export function useConnectorTokenPermissionState({
     setProfileLifetime,
     setProjectVisibility,
     targetProfiles,
+    tokenTriggerRef,
   };
 }
 

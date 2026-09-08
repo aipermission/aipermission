@@ -157,6 +157,27 @@ describe("ConnectorTokenPermissionPanel modes", () => {
     await user.selectOptions(screen.getByLabelText("Profile"), "12");
     await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
   });
+
+  it("keeps compact token controls inert without a selected connector", async () => {
+    renderPanel({ compact: true, target: null });
+
+    expect(screen.getByTitle("Select a connector first")).toBeDisabled();
+    expect(screen.queryByText("No credential profiles for this connector.")).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the compact token trigger after Escape", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(screen.getByLabelText("Profile"));
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
 });
 
 describe("ConnectorTokenPermissionPanel mutations", () => {

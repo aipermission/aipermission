@@ -60,6 +60,7 @@ export function ConnectorTokenPermissionPanel({
     selectProfile,
     selectedCountByToken,
     setOpenTokenID,
+    tokenTriggerRef,
     targetProfiles,
   } = panel;
 
@@ -94,17 +95,26 @@ export function ConnectorTokenPermissionPanel({
                 <button
                   type="button"
                   className={`relative grid h-10 w-10 place-items-center rounded-md border text-stone-700 transition hover:bg-stone-100 ${selectedCount > 0 ? "border-emerald-700" : "border-stone-300"}`}
-                  title={`${token.name}: ${selectedCount} connector grants`}
-                  onClick={() => setOpenTokenID(open ? null : token.id)}
+                  title={selectedTarget ? `${token.name}: ${selectedCount} connector grants` : "Select a connector first"}
+                  disabled={!selectedTarget}
+                  aria-expanded={open}
+                  aria-controls={`connector-token-popover-${token.id}`}
+                  onClick={(event) => {
+                    tokenTriggerRef.current = event.currentTarget;
+                    setOpenTokenID(open ? null : token.id);
+                  }}
                 >
                   <KeyRound className="h-4 w-4" />
                   {selectedCount > 0 ? <CountBadge className="absolute -right-1 -top-1">{selectedCount}</CountBadge> : null}
                 </button>
                 {open ? (
-                  <div className="absolute right-full top-0 z-30 mr-2 grid max-h-[70vh] w-96 gap-3 overflow-auto rounded-lg border border-stone-200 bg-white p-3 shadow-xl">
+                  <div
+                    id={`connector-token-popover-${token.id}`}
+                    className="absolute right-full top-0 z-30 mr-2 grid max-h-[70vh] w-96 gap-3 overflow-auto rounded-lg border border-stone-200 bg-white p-3 shadow-xl"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-stone-900">{token.name}</p>
-                      <p className="mt-1 text-xs text-stone-500">{selectedTarget.target_name}</p>
+                      <p className="mt-1 text-xs text-stone-500">{selectedTarget?.target_name || "Select a connector"}</p>
                     </div>
                     <ProfileSelect
                       profiles={targetProfiles}
@@ -144,9 +154,11 @@ export function ConnectorTokenPermissionPanel({
           <p className="mt-1 truncate text-xs text-stone-500">{selectedTarget ? selectedTarget.target_name : "Select a connector"}</p>
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse tokens" onClick={onToggleCompact}>
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
+          {onToggleCompact ? (
+            <Button type="button" variant="ghost" className="h-9 w-9 px-0" title="Collapse tokens" onClick={onToggleCompact}>
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"

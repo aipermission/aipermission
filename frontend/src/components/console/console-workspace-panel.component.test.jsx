@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConsoleWorkspacePanel } from "./console-workspace-panel";
 
@@ -88,5 +89,19 @@ describe("ConsoleWorkspacePanel", () => {
 
     expect(screen.getByText("Select a target.")).toBeInTheDocument();
     expect(screen.queryByTestId("connector-console")).not.toBeInTheDocument();
+  });
+
+  it("keeps profile selection available in the workspace header", async () => {
+    const user = userEvent.setup();
+    const value = panelProps();
+    value.targetView.selectedTargetProfiles = [
+      value.targetView.selectedTarget,
+      { ...value.targetView.selectedTarget, profile_id: 2, profile_label: "Read only" },
+    ];
+    render(<ConsoleWorkspacePanel {...value} />);
+
+    await user.selectOptions(screen.getByLabelText("Profile"), "2");
+
+    expect(value.actions.selectProfile).toHaveBeenCalledWith("2");
   });
 });

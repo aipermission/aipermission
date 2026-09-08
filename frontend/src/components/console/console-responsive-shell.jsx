@@ -11,12 +11,16 @@ export function ConsoleResponsiveShell({ targetsCompact, tokensCompact, targetSi
   const wide = useMediaQuery("(min-width: 1536px)");
   const targets = cloneElement(targetSidebar, {
     compact: wide && targetsCompact,
+    onCompactChange: wide ? targetSidebar.props.onCompactChange : undefined,
     onSelect: (...args) => {
       targetSidebar.props.onSelect?.(...args);
       setTargetsDrawerOpen(false);
     },
   });
-  const tokens = cloneElement(tokenPanel, { compact: wide && tokensCompact });
+  const tokens = cloneElement(tokenPanel, {
+    compact: wide && tokensCompact,
+    onToggleCompact: wide ? tokenPanel.props.onToggleCompact : undefined,
+  });
 
   return (
     <section

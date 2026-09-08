@@ -42,15 +42,17 @@ export function ConsoleTargetSidebar({
               Connectors
               <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">{targetRows.length}</span>
             </h3>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9 w-9 px-0"
-              title="Collapse connectors"
-              onClick={() => onCompactChange(true)}
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
+            {onCompactChange ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 w-9 px-0"
+                title="Collapse connectors"
+                onClick={() => onCompactChange(true)}
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            ) : null}
           </>
         )}
       </div>

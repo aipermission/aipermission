@@ -111,7 +111,7 @@ function WorkspaceProfileSelect({ profiles, target, theme, onChange }) {
   if (profiles.length <= 1) return null;
   return (
     <label
-      className={`ml-2 hidden min-w-36 max-w-48 shrink-0 items-center gap-2 text-xs font-semibold 2xl:flex ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}
+      className={`flex w-full min-w-0 items-center gap-2 text-xs font-semibold sm:ml-2 sm:w-auto sm:min-w-36 sm:max-w-48 sm:shrink-0 ${theme === "light" ? "text-stone-600" : "text-stone-300"}`}
     >
       Profile
       <Select
