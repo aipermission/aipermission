@@ -19,6 +19,15 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+function windowsACL(sid, overrides = {}) {
+  return JSON.stringify({
+    owner_sid: sid,
+    protected: true,
+    rules: [{ identity_sid: sid, access_type: "Allow", inherited: false, rights: 2032127 }],
+    ...overrides,
+  });
+}
+
 test("private staging paths distinguish concrete directories from ignore patterns", () => {
   const filePath = path.join("project", "config*.json");
 
@@ -177,7 +186,7 @@ test("Windows ACL helpers use absolute System32 executables", async () => {
     execFile: async (executable, args) => {
       invocations.push({ executable, args });
       if (executable.endsWith("whoami.exe")) return { stdout: '"user","S-1-5-21-1-2-3-1001"\n', stderr: "" };
-      if (executable.endsWith("powershell.exe")) return { stdout: "S-1-5-21-1-2-3-1001\n", stderr: "" };
+      if (executable.endsWith("powershell.exe")) return { stdout: windowsACL("S-1-5-21-1-2-3-1001"), stderr: "" };
       return { stdout: "", stderr: "" };
     },
   });
@@ -191,16 +200,17 @@ test("Windows ACL helpers use absolute System32 executables", async () => {
 });
 
 test("Windows ACL verification accepts only one explicit full-control identity", async () => {
-  const filePath = "C:\\Users\\developer\\.aipermission\\config.json";
+  const filePath = "C:\\Users\\developer name\\.aipermission\\config & $(bad).json";
   const sid = "S-1-5-21-1-2-3-1001";
-  const execFile = async (executable, args) => {
+  const execFile = async (executable, args, options) => {
     if (executable.endsWith("whoami.exe")) return { stdout: `"DESKTOP\\developer","${sid}"\n`, stderr: "" };
     if (executable.endsWith("powershell.exe")) {
-      assert.equal(args.at(-1), filePath);
-      return { stdout: `${sid}\n`, stderr: "" };
-    }
-    if (executable.endsWith("icacls.exe")) {
-      return { stdout: `${filePath} ${sid}:(F)\n1 dosya başarıyla işlendi\n`, stderr: "" };
+      assert.equal(args.includes(filePath), false);
+      assert.match(args.at(-1), /\$ErrorActionPreference = 'Stop'\r?\n\$TargetPath =/);
+      assert.match(args.at(-1), /\[System\.IO\.File\]::GetAccessControl\(\$TargetPath\)/);
+      assert.doesNotMatch(args.at(-1), /Get-Acl/);
+      assert.equal(Buffer.from(options.env.AIPERMISSION_PRIVATE_FILE_PATH_B64, "base64").toString("utf8"), filePath);
+      return { stdout: windowsACL(sid), stderr: "" };
     }
     throw new Error(`unexpected executable: ${executable}`);
   };
@@ -215,8 +225,7 @@ test("Windows ACL verification rejects a foreign owner SID", async () => {
   const sid = "S-1-5-21-1-2-3-1001";
   const execFile = async (executable) => {
     if (executable.endsWith("whoami.exe")) return { stdout: `"DESKTOP\\developer","${sid}"\n`, stderr: "" };
-    if (executable.endsWith("powershell.exe")) return { stdout: "S-1-5-21-1-2-3-1002\n", stderr: "" };
-    if (executable.endsWith("icacls.exe")) return { stdout: `${filePath} ${sid}:(F)\n`, stderr: "" };
+    if (executable.endsWith("powershell.exe")) return { stdout: windowsACL("S-1-5-21-1-2-3-1002"), stderr: "" };
     throw new Error(`unexpected executable: ${executable}`);
   };
 
@@ -229,17 +238,42 @@ test("Windows ACL verification rejects a foreign owner SID", async () => {
 test("Windows ACL verification rejects extra principals and split full-control evidence", async () => {
   const filePath = "C:\\Users\\developer\\.aipermission\\config.json";
   const sid = "S-1-5-21-1-2-3-1001";
-  for (const acl of [`${filePath} ${sid}:(F)\n  BUILTIN\\Administrators:(F)\n`, `${filePath} ${sid}:(R)\n  Everyone:(F)\n`]) {
+  for (const acl of [
+    windowsACL(sid, {
+      rules: [
+        { identity_sid: sid, access_type: "Allow", inherited: false, rights: 2032127 },
+        { identity_sid: "S-1-5-32-544", access_type: "Allow", inherited: false, rights: 2032127 },
+      ],
+    }),
+    windowsACL(sid, { rules: [{ identity_sid: sid, access_type: "Allow", inherited: false, rights: 1179785 }] }),
+  ]) {
     const execFile = async (executable) => {
       if (executable.endsWith("whoami.exe")) return { stdout: `"DESKTOP\\developer","${sid}"\n`, stderr: "" };
-      if (executable.endsWith("powershell.exe")) return { stdout: `${sid}\n`, stderr: "" };
-      return { stdout: acl, stderr: "" };
+      if (executable.endsWith("powershell.exe")) return { stdout: acl, stderr: "" };
+      throw new Error(`unexpected executable: ${executable}`);
     };
     await assert.rejects(
       () => assertPrivateFilePermissions(filePath, { platform: "win32", windowsSystemRoot: "C:\\Windows", execFile }),
       /Windows ACL is not restricted/,
     );
   }
+});
+
+test("Windows ACL verification rejects malformed structured output", async () => {
+  const filePath = "C:\\Users\\developer\\.aipermission\\config.json";
+  const sid = "S-1-5-21-1-2-3-1001";
+  const execFile = async (executable) => {
+    if (executable.endsWith("whoami.exe")) return { stdout: `"DESKTOP\\developer","${sid}"\n`, stderr: "" };
+    if (executable.endsWith("powershell.exe")) {
+      return { stdout: JSON.stringify({ owner_sid: sid, protected: true, rules: "success text" }), stderr: "" };
+    }
+    throw new Error(`unexpected executable: ${executable}`);
+  };
+
+  await assert.rejects(
+    () => assertPrivateFilePermissions(filePath, { platform: "win32", windowsSystemRoot: "C:\\Windows", execFile }),
+    /Could not determine Windows ACL/,
+  );
 });
 
 test("withPrivateFileLock does not steal an old lock from a live process", async () => {
@@ -311,6 +345,8 @@ test("atomicWritePrivateFile applies a protected Windows ACL", { skip: process.p
   const filePath = path.join(directory, "config.json");
 
   await atomicWritePrivateFile(filePath, "secret");
+
+  await assertPrivateFilePermissions(filePath);
 
   const { stdout } = await execFileAsync("icacls", [filePath, "/verify"], { encoding: "utf8", windowsHide: true });
   assert.match(stdout, /Successfully processed 1 files/i);
