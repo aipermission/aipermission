@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { budgetIncreases, budgetSnapshot } = require("./maintenance-budget-ratchet");
+const { backendFanoutBudgets, budgetIncreases, budgetSnapshot, goFunctionBudgets } = require("./maintenance-budget-ratchet");
 
 const checkSource = `
 const sourceBudgets = [
@@ -57,4 +57,41 @@ test("treats architecture constraints added over the legacy source budget as tig
   const current = budgetSnapshot(legacySource, architectureSource);
   assert.equal(legacy["frontend.maxDependencyFanout"], Number.POSITIVE_INFINITY);
   assert.deepEqual(budgetIncreases(legacy, current), []);
+});
+
+test("ratchets Go function defaults and per-function overrides", () => {
+  const source = `
+const (
+  defaultMaxLines = 180
+  defaultMaxComplexity = 35
+)
+var overrides = map[string]budget{
+  "internal/api/routes.go:Server.routes": {lines: 191, complexity: defaultMaxComplexity},
+}
+`;
+  const snapshot = goFunctionBudgets(source);
+  assert.deepEqual(snapshot, {
+    "go.function.default.lines": 180,
+    "go.function.default.complexity": 35,
+    "go.function.override.internal/api/routes.go:Server.routes.lines": 191,
+    "go.function.override.internal/api/routes.go:Server.routes.complexity": 35,
+  });
+  assert.deepEqual(budgetIncreases(snapshot, { ...snapshot, "go.function.default.lines": 181 }), [
+    "go.function.default.lines increased from 180 to 181",
+  ]);
+});
+
+test("ratchets backend fan-out defaults and overrides", () => {
+  const source = `
+func test() {
+  const defaultBudget = 8
+  overrides := map[string]int{
+    modulePath + "/internal/api": 28,
+  }
+}
+`;
+  assert.deepEqual(backendFanoutBudgets(source), {
+    "go.fanout.default": 8,
+    "go.fanout.override./internal/api": 28,
+  });
 });

@@ -87,10 +87,6 @@ func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T
 	allowedRegistry := modulePath + "/internal/connectors/builtin"
 	builtInPackages := builtInConnectorPackages(t)
 	importsByPackage := allPackageImports(t)
-	reviewedTransportEdges := map[string]bool{
-		modulePath + "/internal/connectors/docker/apiadapter->" + modulePath + "/internal/connectors/ssh/apiadapter":     true,
-		modulePath + "/internal/connectors/kubernetes/apiadapter->" + modulePath + "/internal/connectors/ssh/apiadapter": true,
-	}
 
 	for importer, imports := range importsByPackage {
 		if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") {
@@ -103,9 +99,6 @@ func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T
 			}
 			importerOwner := builtInConnectorOwner(importer, builtInPackages)
 			if importerOwner == importedOwner {
-				continue
-			}
-			if reviewedTransportEdges[importer+"->"+imported] {
 				continue
 			}
 			t.Fatalf("%s imports connector implementation %s; shared runtime and sibling connectors must use the generic connector boundary", importer, imported)
