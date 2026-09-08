@@ -13,9 +13,7 @@ function BindingHarness({ existing = false, onSave = vi.fn() }) {
     open: true,
     item,
     state: "ready",
-    data: existing
-      ? [{ id: 11, source_project_id: 2, target_id: 7, profile_id: 8, replace_existing: true, target_name: "Target" }]
-      : [],
+    data: existing ? [{ id: 11, source_project_id: 2, target_id: 7, profile_id: 8, replace_existing: true, target_name: "Target" }] : [],
     targets: [target],
     source_project_id: "2",
     target_id: "7",
