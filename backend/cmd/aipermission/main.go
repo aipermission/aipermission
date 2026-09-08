@@ -73,7 +73,10 @@ func runMigrationServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	server := migration.NewServer(cfg)
+	server, err := migration.NewServer(cfg)
+	if err != nil {
+		return err
+	}
 	log.Printf("aipermission migration helper listening on %s", cfg.Address())
 	return listenAndServe(ctx, &http.Server{
 		Addr:              cfg.Address(),

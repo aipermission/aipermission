@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 const Legacy010To020ID = "legacy_0_1_to_0_2"
@@ -19,8 +20,16 @@ const Legacy010To020ID = "legacy_0_1_to_0_2"
 const RequestTimeout = 5 * time.Minute
 
 type Server struct {
-	config Config
-	mux    *http.ServeMux
+	config         Config
+	mux            *http.ServeMux
+	csrfToken      string
+	migrationSlot  chan struct{}
+	requestLimiter *runtimecontrol.Window
+}
+
+type pageData struct {
+	CSRFToken string
+	CSPNonce  string
 }
 
 type migrationInfo struct {
@@ -46,19 +55,63 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewServer(config Config) *Server {
-	server := &Server{config: config, mux: http.NewServeMux()}
+func NewServer(config Config) (*Server, error) {
+	csrfToken, err := newBrowserToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate migration csrf token: %w", err)
+	}
+	server := &Server{
+		config:         config,
+		mux:            http.NewServeMux(),
+		csrfToken:      csrfToken,
+		migrationSlot:  make(chan struct{}, 1),
+		requestLimiter: runtimecontrol.NewWindow(10, time.Minute),
+	}
 	server.routes()
-	return server
+	return server, nil
 }
 
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonce, err := newBrowserToken()
+		if err != nil {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "migration helper could not initialize request security"})
+			return
+		}
+		s.applySecurityHeaders(w, nonce)
+		if !s.allowsRequest(r) {
+			writeJSON(w, http.StatusForbidden, errorResponse{Error: "migration helper is available only from localhost"})
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/api/migrate" {
+			if !s.allowsMigrationMutation(r) {
+				writeJSON(w, http.StatusForbidden, errorResponse{Error: "same-origin migration request with a valid csrf token required"})
+				return
+			}
+			if !hasJSONContentType(r) {
+				writeJSON(w, http.StatusUnsupportedMediaType, errorResponse{Error: "application/json content type required"})
+				return
+			}
+			if !s.requestLimiter.Allow("migration") {
+				w.Header().Set("Retry-After", "60")
+				writeJSON(w, http.StatusTooManyRequests, errorResponse{Error: "migration request rate limit exceeded; retry later"})
+				return
+			}
+			if !s.acquireMigrationSlot() {
+				w.Header().Set("Retry-After", "5")
+				writeJSON(w, http.StatusTooManyRequests, errorResponse{Error: "another migration is already running"})
+				return
+			}
+			defer s.releaseMigrationSlot()
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 		defer cancel()
-		s.mux.ServeHTTP(w, r.WithContext(ctx))
+		s.mux.ServeHTTP(w, r.WithContext(context.WithValue(ctx, pageNonceContextKey{}, nonce)))
 	})
 }
+
+type pageNonceContextKey struct{}
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.index)
@@ -66,9 +119,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/migrate", s.migrate)
 }
 
-func (s *Server) index(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := pageTemplate.Execute(w, nil); err != nil {
+	nonce, _ := r.Context().Value(pageNonceContextKey{}).(string)
+	if err := pageTemplate.Execute(w, pageData{CSRFToken: s.csrfToken, CSPNonce: nonce}); err != nil {
 		log.Printf("render migration page failed: %v", err)
 	}
 }
@@ -139,8 +193,9 @@ var pageTemplate = template.Must(template.New("migration").Parse(`<!doctype html
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{.CSRFToken}}" />
   <title>AIPermission migration</title>
-  <style>
+  <style nonce="{{.CSPNonce}}">
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #111; color: #f4f4f5; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111; }
     main { width: min(880px, calc(100vw - 32px)); border: 1px solid #343434; background: #1f1f1f; border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
@@ -203,7 +258,8 @@ var pageTemplate = template.Must(template.New("migration").Parse(`<!doctype html
   </form>
   <pre id="output">Loading migration status...</pre>
 </main>
-<script>
+<script nonce="{{.CSPNonce}}">
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const form = document.getElementById("form");
 const output = document.getElementById("output");
 const submit = document.getElementById("submit");
@@ -244,7 +300,7 @@ form.addEventListener("submit", async (event) => {
   try {
     const response = await fetch("/api/migrate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-AIPermission-CSRF": csrfToken },
       body: JSON.stringify(payload)
     });
     const data = await response.json();

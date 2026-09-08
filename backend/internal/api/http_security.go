@@ -1,11 +1,10 @@
 package api
 
 import (
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/localhttp"
 	"github.com/gorilla/websocket"
 )
 
@@ -51,16 +50,7 @@ func (s *Server) isAllowedOrigin(origin string) bool {
 }
 
 func isLoopbackOrigin(origin string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(origin))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return false
-	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return localhttp.IsLoopbackOrigin(origin)
 }
 
 func (s *Server) upgradeWebSocket(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
