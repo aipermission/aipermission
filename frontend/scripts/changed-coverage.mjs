@@ -11,6 +11,7 @@ import {
   mergeChangedCoverageBaseline,
   requiredChangedMetrics,
   validateCoverageBaseline,
+  validateCoverageBaselineForRun,
 } from "./coverage-ratchet.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,7 +21,7 @@ const updateBaseline = process.argv.includes("--update-baseline");
 const base = coverageBase();
 const allOwners = listBehaviorOwners(frontendRoot);
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
-validateCoverageBaseline(baseline, allOwners);
+validateCoverageBaselineForRun(baseline, allOwners, updateBaseline);
 const comparison = coverageComparison(base, baseline);
 const changedEntries = findChangedOwnerEntries(repositoryRoot, comparison.ref, isBehaviorOwner);
 const changedOwners = changedEntries.map((entry) => entry.file);

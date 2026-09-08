@@ -8,6 +8,7 @@ import {
   ratchetedMetrics,
   requiredChangedMetrics,
   validateCoverageBaseline,
+  validateCoverageBaselineForRun,
 } from "./coverage-ratchet.mjs";
 
 test("new owners must meet the full coverage floor", () => {
@@ -49,6 +50,14 @@ test("baseline validation rejects hidden and unclassified owners", () => {
       ]),
     /owner mismatch.*missing: src\/missing.js/,
   );
+});
+
+test("baseline update mode accepts a stale owner inventory before remeasuring it", () => {
+  const baseline = { version: 2, floors: coverageFloors, files: { "src/known.js": coverageFloors } };
+  const owners = ["src/known.js", "src/new.js"];
+
+  assert.throws(() => validateCoverageBaselineForRun(baseline, owners, false), /owner mismatch.*missing: src\/new.js/);
+  assert.doesNotThrow(() => validateCoverageBaselineForRun(baseline, owners, true));
 });
 
 test("baseline validation rejects missing or weakened floor declarations", () => {

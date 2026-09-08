@@ -45,6 +45,10 @@ export function validateCoverageBaseline(baseline, owners, floors = coverageFloo
   }
 }
 
+export function validateCoverageBaselineForRun(baseline, owners, updateBaseline, floors = coverageFloors) {
+  validateCoverageBaseline(baseline, updateBaseline ? undefined : owners, floors);
+}
+
 export function mergeCoverageMetrics(previous, actual, floors = coverageFloors) {
   return Object.fromEntries(
     Object.keys(floors).map((metric) => {
