@@ -1,5 +1,7 @@
-export const coverageFloors = { statements: 75, branches: 60, functions: 70, lines: 75 };
-export const coverageDebtStep = 1;
+import { coveragePolicy } from "./coverage-policy.mjs";
+
+export const coverageFloors = coveragePolicy.floors;
+export const coverageDebtStep = coveragePolicy.debtStep;
 
 export function ratchetedMetrics(previous, floors = coverageFloors) {
   if (!previous) return { ...floors };

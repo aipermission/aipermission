@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { coveragePolicyWeakening, legacyCoveragePolicy, readCoveragePolicy } from "./coverage-policy.mjs";
 
 import {
   coverageFloors,
@@ -104,6 +105,28 @@ test("baseline updates cannot undercut the required ratchet", () => {
   assert.deepEqual(mergeChangedCoverageBaseline(["owner"], ["owner"], previous, measured, required), {
     owner: { statements: 51, branches: 41, functions: 52, lines: 51 },
   });
+});
+
+test("coverage policy rejects weaker floors, debt progress, and new exclusions", () => {
+  assert.deepEqual(coveragePolicyWeakening(legacyCoveragePolicy, legacyCoveragePolicy), []);
+  assert.deepEqual(
+    coveragePolicyWeakening(legacyCoveragePolicy, {
+      ...legacyCoveragePolicy,
+      floors: { ...legacyCoveragePolicy.floors, branches: 0 },
+      debtStep: 0.5,
+      excludedDirectories: [...legacyCoveragePolicy.excludedDirectories, "src/pages"],
+    }),
+    [
+      "branches floor decreased from 60 to 0",
+      "debtStep decreased from 1 to 0.5",
+      "excludedDirectories added unreviewed exclusion src/pages",
+    ],
+  );
+});
+
+test("coverage policy validates every mutable field", () => {
+  assert.throws(() => readCoveragePolicy({ ...legacyCoveragePolicy, debtStep: 0 }), /debtStep/);
+  assert.throws(() => readCoveragePolicy({ ...legacyCoveragePolicy, excludedPatterns: [""] }), /excludedPatterns/);
 });
 
 function expectBaseline(actual, stable, changed) {

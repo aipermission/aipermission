@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
+import { coveragePolicy, coveragePolicyWeakening, legacyCoveragePolicy, readCoveragePolicy } from "./coverage-policy.mjs";
 import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision } from "./coverage-git-state.mjs";
 import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
 import {
@@ -23,6 +24,8 @@ const allOwners = listBehaviorOwners(frontendRoot);
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
 validateCoverageBaselineForRun(baseline, allOwners, updateBaseline);
 const comparison = coverageComparison(base, baseline);
+const policyFailures = coveragePolicyWeakening(readPolicyAt(comparison.ref), coveragePolicy);
+if (policyFailures.length > 0) throw new Error(`Changed coverage policy weakened:\n- ${policyFailures.join("\n- ")}`);
 const changedEntries = findChangedOwnerEntries(repositoryRoot, comparison.ref, isBehaviorOwner);
 const changedOwners = changedEntries.map((entry) => entry.file);
 const changedStatus = new Map(changedEntries.map((entry) => [entry.file, entry.status]));
@@ -147,6 +150,15 @@ function coverageBase() {
     if (result.status === 0) return candidate;
   }
   throw new Error("Cannot determine a base commit for changed frontend coverage");
+}
+
+function readPolicyAt(ref) {
+  const result = spawnSync("git", ["show", `${ref}:frontend/coverage-policy.json`], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  if (result.status === 0) return readCoveragePolicy(result.stdout);
+  return legacyCoveragePolicy;
 }
 
 function runCoverage(reportPath) {
