@@ -1,29 +1,16 @@
-import { Database, RefreshCcw, TerminalSquare, XCircle } from "lucide-react";
+import { Database, RefreshCcw, XCircle } from "lucide-react";
+import { EmptySessionState } from "../../../components/console/empty-session-state";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 
 export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }) {
-  const light = theme === "light";
   return (
-    <div className={`grid h-full min-h-0 place-items-center p-6 ${light ? "text-stone-700" : "text-stone-200"}`}>
-      <div className="grid max-w-md gap-4 text-center">
-        <div
-          className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${light ? "border-stone-200 bg-stone-100" : "border-stone-600 bg-stone-800"}`}
-        >
-          <TerminalSquare className={`h-6 w-6 ${light ? "text-stone-600" : "text-stone-300"}`} />
-        </div>
-        <div className="grid gap-2">
-          <h3 className={`text-base font-semibold ${light ? "text-stone-950" : "text-white"}`}>No active {config.label} session</h3>
-          <p className={`text-sm leading-6 ${light ? "text-stone-600" : "text-stone-400"}`}>
-            Start a {config.label} session before running SQL against {target.name}.
-          </p>
-        </div>
-        <Button type="button" className="mx-auto" onClick={() => onNewSession?.()}>
-          <RefreshCcw className="h-4 w-4" />
-          New Session
-        </Button>
-      </div>
-    </div>
+    <EmptySessionState
+      title={`No active ${config.label} session`}
+      description={`Start a ${config.label} session before running SQL against ${target.name}.`}
+      onStart={() => onNewSession?.()}
+      theme={theme}
+    />
   );
 }
 
