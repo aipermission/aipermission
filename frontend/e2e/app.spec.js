@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mjs";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
@@ -299,6 +300,31 @@ test("@high-risk updates project Vault permissions from the Tokens page", async 
   await dialog.getByRole("button", { name: "Save Vault capabilities" }).click();
   await expect(dialog.getByText("Project Vault capabilities saved.")).toBeVisible();
 });
+
+for (const { width, height } of responsiveViewportMatrix) {
+  test(`@high-risk keeps Vault permission completion reachable at ${width}x${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    await page.getByRole("textbox").fill("local-password");
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await page.goto("/tokens");
+
+    await page.getByRole("button", { name: "Vault", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "agent Vault permissions" });
+    await expect(dialog).toBeVisible();
+    const metadataCapability = dialog.getByText("Read metadata", { exact: true }).locator("..").locator("..");
+    await metadataCapability.getByRole("button", { name: "Always", exact: true }).click();
+    const generateCapability = dialog.getByText("Generate items", { exact: true }).locator("..").locator("..");
+    await generateCapability.getByRole("button", { name: "Always", exact: true }).click();
+    const save = dialog.getByRole("button", { name: "Save Vault capabilities" });
+    await dialog.hover();
+    await page.mouse.wheel(0, 3000);
+    await expect(save).toBeInViewport();
+    await save.click();
+    await expect(dialog.getByText("Project Vault capabilities saved.")).toBeVisible();
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  });
+}
 
 test("moves an edited connector to another project", async ({ page }) => {
   let updatePayload = null;

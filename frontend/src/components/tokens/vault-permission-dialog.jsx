@@ -141,9 +141,9 @@ export function VaultPermissionDialog({ token, onClose, onSaved }) {
       closeDisabled={scopeSave.state === "saving" || save.state === "saving"}
       size="wide"
       className="!max-w-[1120px]"
-      bodyClassName="max-h-[calc(100vh-180px)] overflow-hidden"
+      bodyClassName="max-h-[calc(100dvh-180px)] overflow-y-auto"
     >
-      <form className="grid gap-4" onSubmit={saveCapabilities}>
+      <form className="grid min-w-0 gap-4" onSubmit={saveCapabilities}>
         <VaultDialogNotices load={load} scopeSave={scopeSave} save={save} />
 
         {load.state === "ready" && load.projects.length > 0 ? (
@@ -363,11 +363,11 @@ function VaultProjectRow({ project, definitions, selected, visible, scopeSaving,
 
 function VaultDialogFooter({ selectedCount, token, loadState, saveState, onClose }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="grid items-center gap-3 sm:flex sm:flex-wrap sm:justify-between">
       <p className="text-sm text-stone-500">
         {selectedCount} Vault capability grant{selectedCount === 1 ? "" : "s"} selected.
       </p>
-      <div className="flex gap-2">
+      <div className="grid w-full gap-2 min-[380px]:grid-cols-[auto_minmax(0,1fr)] sm:w-auto sm:flex">
         <Button type="button" variant="outline" onClick={onClose}>
           Close
         </Button>
