@@ -138,6 +138,20 @@ func TestConfigAddressBracketsIPv6Loopback(t *testing.T) {
 	}
 }
 
+func TestConfigAllowsOnlyConfiguredLoopbackOrigins(t *testing.T) {
+	cfg := Config{AllowedOrigins: []string{"http://localhost:3210", "http://127.0.0.1:3210"}}
+	for _, origin := range []string{"http://localhost:3210", "HTTP://LOCALHOST:3210"} {
+		if !cfg.AllowsOrigin(origin) {
+			t.Fatalf("configured origin %q was rejected", origin)
+		}
+	}
+	for _, origin := range []string{"http://localhost:3211", "https://example.com", "http://localhost:3210/path"} {
+		if cfg.AllowsOrigin(origin) {
+			t.Fatalf("unconfigured origin %q was accepted", origin)
+		}
+	}
+}
+
 func TestLoadRejectsNonLoopbackAllowedOrigin(t *testing.T) {
 	t.Setenv("AIPERMISSION_DATA_PATH", filepath.Join(t.TempDir(), "custom.db"))
 	t.Setenv("AIPERMISSION_GATEWAY_SECRET", "real-secret-with-at-least-32-characters")

@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/localhttp"
+	"github.com/aipermission/aipermission/backend/internal/config"
 )
 
 func (s *Server) Handler() http.Handler {
-	return withHTTPResponsePolicy(s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout)))
+	return withHTTPResponsePolicy(withLocalHTTPBoundary(s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout))))
 }
 
 func withHTTPResponsePolicy(next http.Handler) http.Handler {
@@ -18,6 +18,20 @@ func withHTTPResponsePolicy(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store, private")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func withLocalHTTPBoundary(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLocalRemoteAddr(r.RemoteAddr) {
+			writeError(w, http.StatusForbidden, "remote gateway access is disabled; connect from localhost")
+			return
+		}
+		if !isLocalhostHeader(r.Host) {
+			writeError(w, http.StatusForbidden, "remote gateway host header is disabled; use localhost")
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -32,18 +46,6 @@ func (s *Server) Close() {
 }
 
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if !isLocalRemoteAddr(r.RemoteAddr) {
-		writeError(w, http.StatusForbidden, "remote gateway access is disabled; connect from localhost")
-		return
-	}
-	if !isLocalhostHeader(r.Host) {
-		writeError(w, http.StatusForbidden, "remote gateway host header is disabled; use localhost")
-		return
-	}
-	if r.Method == http.MethodOptions {
-		s.mux.ServeHTTP(w, r)
-		return
-	}
 	if isStateChangingMethod(r.Method) && !s.hasSafeBrowserMutationSource(r) {
 		writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
@@ -180,9 +182,9 @@ func managesLifecycleLock(path string) bool {
 }
 
 func isLocalhostHeader(hostHeader string) bool {
-	return localhttp.IsLocalhostHeader(hostHeader)
+	return config.IsLocalhostHeader(hostHeader)
 }
 
 func isLocalRemoteAddr(remoteAddr string) bool {
-	return localhttp.IsLocalRemoteAddr(remoteAddr)
+	return config.IsLocalRemoteAddr(remoteAddr)
 }

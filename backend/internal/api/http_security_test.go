@@ -132,6 +132,43 @@ func TestRemoteHostHeaderAndRemoteClientAreAlwaysRejected(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightCannotBypassLocalHTTPBoundary(t *testing.T) {
+	server := NewLockedServer(config.Config{
+		Host:           "127.0.0.1",
+		Port:           "8080",
+		DataPath:       t.TempDir() + "/aipermission.db",
+		GatewaySecret:  "test-secret",
+		AllowedOrigins: []string{"http://localhost:3001"},
+	})
+
+	for _, test := range []struct {
+		name       string
+		host       string
+		remoteAddr string
+	}{
+		{name: "remote host", host: "192.0.2.10:8080", remoteAddr: "127.0.0.1:12345"},
+		{name: "remote client", host: "localhost:8080", remoteAddr: "192.0.2.20:12345"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodOptions, "/api/status", nil)
+			request.Host = test.host
+			request.RemoteAddr = test.remoteAddr
+			request.Header.Set("Origin", "http://localhost:3001")
+			request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			response := httptest.NewRecorder()
+
+			server.Handler().ServeHTTP(response, request)
+
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+			}
+			if got := response.Header().Get("Access-Control-Allow-Origin"); got != "" {
+				t.Fatalf("boundary rejection exposed CORS origin %q", got)
+			}
+		})
+	}
+}
+
 func TestLocalhostHeaderValidation(t *testing.T) {
 	tests := []struct {
 		value string
