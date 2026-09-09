@@ -38,13 +38,13 @@ func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
 
 func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	first := &Server{
-		config:         config.Config{FrontendPort: "3210"},
+		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3210"}),
 		activeDatabase: "default",
 		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-one"}},
 		uiSessions:     map[string]uiSessionRecord{},
 	}
 	second := &Server{
-		config:         config.Config{FrontendPort: "3212"},
+		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3212"}),
 		activeDatabase: "default",
 		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-two"}},
 		uiSessions:     map[string]uiSessionRecord{},
@@ -113,7 +113,7 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 
 func TestEnsureUIWorkspaceCookieReplacesStaleDatabaseIdentity(t *testing.T) {
 	srv := &Server{
-		config:         config.Config{FrontendPort: "3212"},
+		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3212"}),
 		activeDatabase: "second",
 		workspaces:     map[string]*databaseRuntime{"second": {uiRetryIdentity: "current-retry"}},
 	}

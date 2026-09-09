@@ -176,7 +176,7 @@ func TestValidateStagedUploadSizeEnforcesObjectAndBatchLimits(t *testing.T) {
 
 func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 	tempDir := t.TempDir()
-	server := &Server{config: config.Config{DataPath: filepath.Join(tempDir, "data", "test.aipdb")}}
+	server := &Server{config: snapshotRuntimeConfiguration(config.Config{DataPath: filepath.Join(tempDir, "data", "test.aipdb")})}
 	handlers := fileTransferHandlers{server}
 	root, err := handlers.ensureFileTransferTempRoot()
 	if err != nil {
@@ -235,7 +235,7 @@ func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 
 func TestDownloadArchivePreservesRelativeRemoteHierarchy(t *testing.T) {
 	tempDir := t.TempDir()
-	server := &Server{config: config.Config{DataPath: filepath.Join(tempDir, "data", "test.aipdb")}}
+	server := &Server{config: snapshotRuntimeConfiguration(config.Config{DataPath: filepath.Join(tempDir, "data", "test.aipdb")})}
 	handlers := fileTransferHandlers{server}
 	root, err := handlers.ensureFileTransferTempRoot()
 	if err != nil {

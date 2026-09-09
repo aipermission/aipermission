@@ -96,6 +96,13 @@ func TestAPIDependsOnMaintenanceConsolePort(t *testing.T) {
 	}
 }
 
+func TestAPIDoesNotDependOnProcessConfiguration(t *testing.T) {
+	processConfiguration := modulePath + "/internal/config"
+	if importsPackageOrSubpackage(packageDependencies(t, modulePath+"/internal/api"), processConfiguration) {
+		t.Fatalf("internal/api must consume a narrow runtime configuration contract instead of importing %s", processConfiguration)
+	}
+}
+
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {
 	allowedRegistry := modulePath + "/internal/connectors/builtin"
 	builtInPackages := builtInConnectorPackages(t)

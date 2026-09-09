@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -27,7 +26,7 @@ import (
 )
 
 type Server struct {
-	config               config.Config
+	config               serverConfig
 	activeDataPath       string
 	activeDatabase       string
 	workspaces           map[string]*databaseRuntime
@@ -153,7 +152,8 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 	return resolved
 }
 
-func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
+func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
+	cfg := snapshotRuntimeConfiguration(configuration)
 	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
 	activeID := databasecatalog.DefaultDatabaseID(cfg.DataPath)
 	resolved := resolveServerOptions(options)
@@ -220,7 +220,8 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 	return server, nil
 }
 
-func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
+func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
+	cfg := snapshotRuntimeConfiguration(configuration)
 	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
 	resolved := resolveServerOptions(options)
 	server := &Server{

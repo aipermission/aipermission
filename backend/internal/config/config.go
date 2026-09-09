@@ -83,14 +83,25 @@ func (c Config) PublicStatusWithDataPath(dataPath string) map[string]any {
 }
 
 func (c Config) PublicStatusMinimal() map[string]any {
+	return c.PublicStatusMinimalWithGatewaySecret(c.GatewaySecret)
+}
+
+func (c Config) PublicStatusMinimalWithGatewaySecret(gatewaySecret string) map[string]any {
 	return map[string]any{
 		"host":             c.Host,
 		"port":             c.Port,
 		"frontend_port":    c.FrontendPort,
-		"gateway_secret":   secretState(c.GatewaySecret),
+		"gateway_secret":   secretState(gatewaySecret),
 		"mcp_api_url_hint": fmt.Sprintf("http://localhost:%s", c.FrontendPort),
 	}
 }
+
+func (c Config) RuntimeDataPath() string      { return c.DataPath }
+func (c Config) RuntimeGatewaySecret() string { return c.GatewaySecret }
+func (c Config) RuntimeFrontendPort() string  { return c.FrontendPort }
+
+func (Config) IsLocalhostHeader(value string) bool { return localhttp.IsLocalhostHeader(value) }
+func (Config) IsLocalRemoteAddr(value string) bool { return localhttp.IsLocalRemoteAddr(value) }
 
 func env(key, fallback string) string {
 	value := os.Getenv(key)

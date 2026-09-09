@@ -194,7 +194,7 @@ func TestLocalhostHeaderValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.value, func(t *testing.T) {
-			if got := isLocalhostHeader(test.value); got != test.want {
+			if got := config.IsLocalhostHeader(test.value); got != test.want {
 				t.Fatalf("isLocalhostHeader(%q) = %v, want %v", test.value, got, test.want)
 			}
 		})
@@ -220,7 +220,7 @@ func TestLocalRemoteAddressValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.value, func(t *testing.T) {
-			if got := isLocalRemoteAddr(test.value); got != test.want {
+			if got := config.IsLocalRemoteAddr(test.value); got != test.want {
 				t.Fatalf("isLocalRemoteAddr(%q) = %v, want %v", test.value, got, test.want)
 			}
 		})

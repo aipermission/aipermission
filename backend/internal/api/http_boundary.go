@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/aipermission/aipermission/backend/internal/config"
 )
 
 func (s *Server) Handler() http.Handler {
-	return withHTTPResponsePolicy(withLocalHTTPBoundary(s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout))))
+	return withHTTPResponsePolicy(s.withLocalHTTPBoundary(s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout))))
 }
 
 func withHTTPResponsePolicy(next http.Handler) http.Handler {
@@ -22,13 +20,13 @@ func withHTTPResponsePolicy(next http.Handler) http.Handler {
 	})
 }
 
-func withLocalHTTPBoundary(next http.Handler) http.Handler {
+func (s *Server) withLocalHTTPBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isLocalRemoteAddr(r.RemoteAddr) {
+		if !s.config.IsLocalRemoteAddr(r.RemoteAddr) {
 			writeError(w, http.StatusForbidden, "remote gateway access is disabled; connect from localhost")
 			return
 		}
-		if !isLocalhostHeader(r.Host) {
+		if !s.config.IsLocalhostHeader(r.Host) {
 			writeError(w, http.StatusForbidden, "remote gateway host header is disabled; use localhost")
 			return
 		}
@@ -179,12 +177,4 @@ func isUnboundedRequestRoute(path string) bool {
 
 func managesLifecycleLock(path string) bool {
 	return path == "/api/backup/download"
-}
-
-func isLocalhostHeader(hostHeader string) bool {
-	return config.IsLocalhostHeader(hostHeader)
-}
-
-func isLocalRemoteAddr(remoteAddr string) bool {
-	return config.IsLocalRemoteAddr(remoteAddr)
 }
