@@ -8,6 +8,7 @@ import (
 
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 )
 
@@ -17,7 +18,6 @@ type consoleHandlers struct{ *Server }
 type securityHandlers struct{ *Server }
 type retentionHandlers struct{ *Server }
 type redactionRuleHandlers struct{ *Server }
-type auditHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
@@ -242,13 +242,13 @@ func (s *Server) registerConnectorRoutes() {
 
 func (s *Server) registerMessageAndAuditRoutes() {
 	messages := messagequeue.NewHTTPHandlers(s.messageQueueScope)
-	audit := auditHandlers{s}
+	audit := observability.NewHTTPHandlers(s.auditHTTPScope)
 
 	s.mux.HandleFunc("GET /api/messages", messages.List)
 	s.mux.HandleFunc("POST /api/messages", messages.Create)
 	s.mux.HandleFunc("POST /api/messages/read", messages.MarkRead)
-	s.mux.HandleFunc("GET /api/audit-logs", audit.listAuditLogs)
-	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.getAuditLog)
+	s.mux.HandleFunc("GET /api/audit-logs", audit.List)
+	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.Get)
 }
 
 func (s *Server) registerMCPRoutes() {

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/observability"
@@ -22,78 +21,12 @@ func (s *Server) auditHealthSnapshot(ctx context.Context) observability.HealthSn
 	return s.auditHealth.Snapshot(ctx, runtime.database)
 }
 
-func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) auditHTTPScope(w http.ResponseWriter) (observability.HTTPScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return
+		return observability.HTTPScope{}, false
 	}
-	page, err := parsePageRequest(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	var runtimeID int64
-	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
-		if !ok {
-			return
-		}
-		runtimeID = id
-	}
-	var projectID int64
-	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
-		id, ok := parseInt64Query(w, rawProjectID, "project_id")
-		if !ok {
-			return
-		}
-		projectID = id
-	}
-	connectorKind := strings.TrimSpace(r.URL.Query().Get("connector_kind"))
-	var targetID int64
-	if rawTargetID := strings.TrimSpace(r.URL.Query().Get("target_id")); rawTargetID != "" {
-		id, ok := parseInt64Query(w, rawTargetID, "target_id")
-		if !ok {
-			return
-		}
-		targetID = id
-	}
-	result, err := observability.NewQueryStore(runtime.database).List(r.Context(), observability.QueryFilter{
-		Actor:         actor,
-		RuntimeID:     runtimeID,
-		ProjectID:     projectID,
-		ConnectorKind: connectorKind,
-		TargetID:      targetID,
-		Query:         page.Query,
-		Limit:         page.Limit,
-		Offset:        page.Offset,
-	})
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, makePageResponse(result.Items, result.Total, page))
-}
-
-func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	item, err := observability.NewQueryStore(runtime.database).Get(r.Context(), id)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "audit log not found")
-		return
-	}
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
+	return observability.HTTPScope{Database: runtime.database}, true
 }
 
 // writeObservationAudit records telemetry that is not the durable proof of a
