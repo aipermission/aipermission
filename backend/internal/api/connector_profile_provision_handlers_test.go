@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -215,7 +216,7 @@ func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *t
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if body := response.Body.String(); strings.Contains(body, "admin-secret") || strings.Contains(body, "generated-secret") || !strings.Contains(body, connectorCredentialRedactionMarker) {
+	if body := response.Body.String(); strings.Contains(body, "admin-secret") || strings.Contains(body, "generated-secret") || !strings.Contains(body, actionresult.CredentialRedactionMarker) {
 		t.Fatalf("provision response crossed credential boundary: %s", body)
 	}
 }
@@ -239,7 +240,7 @@ func TestProvisionConnectorCredentialProfileRedactsProvisioningErrors(t *testing
 
 	path := "/api/connector-targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(adminProfile.ID, 10) + "/provision"
 	response := performJSON(fixture.server.Handler(), http.MethodPost, path, "", provisionConnectorCredentialProfileRequest{})
-	if response.Code != http.StatusBadRequest || strings.Contains(response.Body.String(), "admin-secret") || !strings.Contains(response.Body.String(), connectorCredentialRedactionMarker) {
+	if response.Code != http.StatusBadRequest || strings.Contains(response.Body.String(), "admin-secret") || !strings.Contains(response.Body.String(), actionresult.CredentialRedactionMarker) {
 		t.Fatalf("provision error crossed credential boundary: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

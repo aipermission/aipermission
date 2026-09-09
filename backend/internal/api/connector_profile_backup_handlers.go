@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
@@ -149,7 +150,7 @@ func (s connectorTargetHandlers) resolveConnectorProfileRuntime(w http.ResponseW
 	if !ok {
 		return resolvedConnectorProfileRuntime{}, false
 	}
-	credentialBoundary := newConnectorCredentialBoundary(secrets)
+	credentialBoundary := actionresult.NewCredentialBoundary(secrets)
 	return resolvedConnectorProfileRuntime{
 		runtime:   runtime,
 		target:    target,

@@ -66,7 +66,7 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 	}
 	fields := connectorSensitiveOutputFields()
 	for _, field := range sensitiveInputFields {
-		normalized := normalizeConnectorOutputField(field)
+		normalized := actionresult.NormalizeField(field)
 		if normalized != "" {
 			fields[normalized] = true
 		}
@@ -88,7 +88,7 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 	}
 	fields := connectorSensitiveOutputFields(hints...)
 	for _, field := range sensitiveFields {
-		if normalized := normalizeConnectorOutputField(field); normalized != "" {
+		if normalized := actionresult.NormalizeField(field); normalized != "" {
 			fields[normalized] = true
 		}
 	}
@@ -114,7 +114,7 @@ func connectorTemporaryCapabilityFields(hints ...connectors.OutputHint) map[stri
 	fields := map[string]bool{}
 	for _, hint := range hints {
 		for _, field := range hint.TemporaryCapabilityFields {
-			if normalized := normalizeConnectorOutputField(field); normalized != "" {
+			if normalized := actionresult.NormalizeField(field); normalized != "" {
 				fields[normalized] = true
 			}
 		}
@@ -144,7 +144,7 @@ func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]b
 	}
 	for _, hint := range hints {
 		for _, field := range hint.SensitiveFields {
-			normalized := normalizeConnectorOutputField(field)
+			normalized := actionresult.NormalizeField(field)
 			if normalized != "" {
 				fields[normalized] = true
 			}
@@ -154,7 +154,7 @@ func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]b
 }
 
 func connectorOutputFieldSensitive(key string, sensitiveFields map[string]bool) bool {
-	normalized := normalizeConnectorOutputField(key)
+	normalized := actionresult.NormalizeField(key)
 	if normalized == "" {
 		return false
 	}
@@ -170,12 +170,6 @@ func connectorOutputFieldSensitive(key string, sensitiveFields map[string]bool) 
 }
 
 func connectorOutputFieldDeclared(key string, fields map[string]bool) bool {
-	normalized := normalizeConnectorOutputField(key)
+	normalized := actionresult.NormalizeField(key)
 	return normalized != "" && fields[normalized]
-}
-
-func normalizeConnectorOutputField(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	value = strings.ReplaceAll(value, "-", "_")
-	return value
 }

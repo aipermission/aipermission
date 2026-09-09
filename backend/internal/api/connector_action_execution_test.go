@@ -864,10 +864,10 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if exactApproval.Preview["body"] != "password=visible-for-approval internal_abc123" {
 		t.Fatalf("pending approval preview must match the exact prepared action: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["opaque_message"] != connectorCredentialRedactionMarker {
+	if exactApproval.Preview["opaque_message"] != actionresult.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a declared sensitive value: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["client_secret"] != connectorCredentialRedactionMarker {
+	if exactApproval.Preview["client_secret"] != actionresult.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a normalized sensitive value: %#v", exactApproval.Preview)
 	}
 	redactedApproval := connectorActionApprovalItemFromRequest(request)

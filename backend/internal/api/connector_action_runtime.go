@@ -461,8 +461,8 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 			return connectorActionExecutionSnapshot{}, err
 		}
 	}
-	boundary := newConnectorCredentialBoundary(secrets)
-	boundary.Add(connectorActionSensitiveValues(
+	boundary := actionresult.NewCredentialBoundary(secrets)
+	boundary.Add(actionresult.SensitiveValues(
 		prepared.Requested.Input,
 		prepared.Action.Payload,
 		prepared.ActionDefinition.SensitiveInputFields,
@@ -646,7 +646,7 @@ func connectorCredentialBoundaryForActionRequest(ctx context.Context, runtime *d
 			return connectorCredentialBoundary{}, err
 		}
 	}
-	boundary := newConnectorCredentialBoundary(secrets)
+	boundary := actionresult.NewCredentialBoundary(secrets)
 	if strings.TrimSpace(request.EncryptedPayloadJSON) == "" {
 		return boundary, nil
 	}
@@ -654,8 +654,8 @@ func connectorCredentialBoundaryForActionRequest(ctx context.Context, runtime *d
 	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, request.EncryptedPayloadJSON, &envelope); err != nil {
 		return connectorCredentialBoundary{}, fmt.Errorf("decrypt connector action redaction boundary: %w", err)
 	}
-	boundary.Add(connectorActionSensitiveValues(envelope.Input, envelope.Payload, envelope.SensitiveInputFields)...)
-	boundary.Add(connectorActionSensitiveValues(envelope.ApprovalPreview, nil, envelope.SensitiveInputFields)...)
+	boundary.Add(actionresult.SensitiveValues(envelope.Input, envelope.Payload, envelope.SensitiveInputFields)...)
+	boundary.Add(actionresult.SensitiveValues(envelope.ApprovalPreview, nil, envelope.SensitiveInputFields)...)
 	return boundary, nil
 }
 

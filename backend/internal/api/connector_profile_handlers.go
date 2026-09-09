@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -313,7 +314,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
-	credentialBoundary := newConnectorCredentialBoundary(secrets)
+	credentialBoundary := actionresult.NewCredentialBoundary(secrets)
 	result, err := testable.TestConnection(ctx, connectors.RuntimeContext{
 		Target:       target,
 		Profile:      profile,

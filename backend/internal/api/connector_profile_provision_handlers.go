@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -77,7 +78,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 	if !ok {
 		return
 	}
-	credentialBoundary := newConnectorCredentialBoundary(secrets)
+	credentialBoundary := actionresult.NewCredentialBoundary(secrets)
 	provisioned, err := provisioner.ProvisionCredentialProfile(r.Context(), connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
@@ -223,7 +224,7 @@ func (s connectorTargetHandlers) compensateProvisionedCredentialProfile(
 		return provisionCompensationOutcome{cleanupErr: fmt.Errorf("credential provisioner is unavailable")}
 	}
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), provisionCompensationTimeout)
-	credentialBoundary := combinedConnectorCredentialBoundary(secrets, provisioned.Secret)
+	credentialBoundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
 	cleanupResult, cleanupErr := provisioner.CleanupProvisionedCredentialProfile(cleanupCtx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),
@@ -305,7 +306,7 @@ func (s connectorTargetHandlers) cleanupProvisionedCredentialProfileIfNeeded(ctx
 			return credentialCleanupOutcome{}, fmt.Errorf("decrypt managed profile secret: %w", err)
 		}
 	}
-	credentialBoundary := combinedConnectorCredentialBoundary(secrets, profileSecrets)
+	credentialBoundary := actionresult.CombinedCredentialBoundary(secrets, profileSecrets)
 	result, err := provisioner.CleanupProvisionedCredentialProfile(ctx, connectors.RuntimeContext{
 		Target:       connectorTargetViewForProfile(target, adminProfile.ID),
 		Profile:      connectortargets.CredentialProfileView(adminProfile),

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -59,7 +60,7 @@ func (s *Server) insertPreparedConnectorActionRequest(
 	}
 	redactText := func(value string) string {
 		value = s.redactForPersistence(ctx, runtime, value)
-		return redactConnectorActionSensitiveText(value, connectorActionSensitiveValues(
+		return actionresult.RedactSensitiveText(value, actionresult.SensitiveValues(
 			prepared.Requested.Input,
 			prepared.Action.Payload,
 			prepared.ActionDefinition.SensitiveInputFields,

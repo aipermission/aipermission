@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -102,7 +103,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	})
 	assertOKWithoutCredential("MCP connector action response", actionResponse.Body.String(), actionResponse.Code)
 	actionResult := decodeRouteResponse[mcpConnectorActionResponse](t, actionResponse.Body.Bytes())
-	if actionResult.Status != string(connectors.ResultCompleted) || !strings.Contains(actionResult.DisplayText, targetOutput) || !strings.Contains(actionResult.DisplayText, connectorCredentialRedactionMarker) {
+	if actionResult.Status != string(connectors.ResultCompleted) || !strings.Contains(actionResult.DisplayText, targetOutput) || !strings.Contains(actionResult.DisplayText, actionresult.CredentialRedactionMarker) {
 		t.Fatalf("permitted target output should remain visible to the caller: %#v", actionResult)
 	}
 
@@ -150,56 +151,5 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	}
 	if persistedSecretReferences != 0 {
 		t.Fatalf("gateway-held connector credential appeared in %d persisted output surfaces", persistedSecretReferences)
-	}
-}
-
-func TestConnectorCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
-	boundary := newConnectorCredentialBoundary(map[string]any{
-		"password": "credential+/value",
-		"nested":   map[string]any{"token": "second-value"},
-		"quoted":   `credential"value`,
-	})
-	for _, value := range []string{
-		"credential+/value",
-		"credential%2B%2Fvalue",
-		"credential%2B%2Fvalue",
-		"Y3JlZGVudGlhbCsvdmFsdWU=",
-		"second-value",
-		`credential\"value`,
-	} {
-		if redacted := boundary.Redact("prefix " + value + " suffix"); strings.Contains(redacted, value) || !strings.Contains(redacted, connectorCredentialRedactionMarker) {
-			t.Fatalf("credential variant was not redacted: input=%q output=%q", value, redacted)
-		}
-	}
-	htmlBoundary := newConnectorCredentialBoundary(map[string]any{"password": `<admin&"secret">`})
-	if redacted := htmlBoundary.Redact(`remote said &lt;admin&amp;&#34;secret&#34;&gt;`); strings.Contains(redacted, "secret") {
-		t.Fatalf("HTML-encoded credential was not redacted: %q", redacted)
-	}
-}
-
-func TestConnectorCredentialBoundaryDoesNotCorruptTextForShortSecrets(t *testing.T) {
-	boundary := newConnectorCredentialBoundary(map[string]any{"password": "a"})
-	if got := boundary.Redact("database action completed"); got != "database action completed" {
-		t.Fatalf("short credential corrupted unrelated output: %q", got)
-	}
-	if got := boundary.Redact("a"); got != connectorCredentialRedactionMarker {
-		t.Fatalf("exact short credential scalar = %q, want redacted", got)
-	}
-	if got := boundary.Redact("authentication rejected a"); strings.Contains(got, "rejected a") {
-		t.Fatalf("delimited one-byte credential remained visible: %q", got)
-	}
-	boundary = newConnectorCredentialBoundary(map[string]any{"password": "abc"})
-	if got := boundary.Redact("authentication rejected abc"); strings.Contains(got, "abc") {
-		t.Fatalf("delimited three-byte credential remained visible: %q", got)
-	}
-	if got := boundary.Redact("prefixabcsuffix"); strings.Contains(got, "abc") {
-		t.Fatalf("embedded three-byte credential remained visible: %q", got)
-	}
-	boundary = newConnectorCredentialBoundary(map[string]any{"password": "secret"})
-	if got := boundary.Redact("credential secret rejected"); strings.Contains(got, "secret") {
-		t.Fatalf("delimited short credential remained visible: %q", got)
-	}
-	if got := boundary.RedactKey("customer_secret"); got != "customer_secret" {
-		t.Fatalf("short credential corrupted an unrelated field name: %q", got)
 	}
 }
