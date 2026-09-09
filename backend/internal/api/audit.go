@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -112,34 +111,7 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 			s.auditHealth.RecordFailure(time.Now())
 		}
 	}()
-	if runtime == nil || runtime.database == nil {
-		return fmt.Errorf("audit database is unavailable")
-	}
-	event, err := auditoutbox.BuildEvent(ctx, runtime.database, auditoutbox.BuildInput{
-		ActorType: actorType,
-		TokenID:   tokenID,
-		RuntimeID: runtimeID,
-		Action:    action,
-		Payload:   payload,
-		Redact:    s.prepareAuditRedactor(ctx, runtime),
-	})
-	if err != nil {
-		return err
-	}
-	_, err = (auditoutbox.Store{}).Append(ctx, runtime.database, event)
-	if err != nil {
-		return fmt.Errorf("append audit event: %w", err)
-	}
-	dispatcher := runtime.auditDispatcher
-	if dispatcher == nil {
-		return nil
-	}
-	if _, dispatchErr := dispatcher.DispatchOnce(ctx); dispatchErr != nil {
-		s.auditHealth.RecordFailure(time.Now())
-		log.Printf("audit projection failed action=%q error=%v", action, dispatchErr)
-		dispatcher.Notify()
-	}
-	return nil
+	return s.auditedWriteCoordinator(ctx, runtime).WriteRequired(ctx, actorType, tokenID, runtimeID, action, payload)
 }
 
 func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRuntime) func(string) string {
@@ -156,51 +128,14 @@ func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRunt
 	}
 }
 
-type auditAppender func(*sql.Tx, string, *int64, int64, string, any) error
-
-func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRuntime) auditAppender {
-	redact := s.prepareAuditRedactor(ctx, runtime)
-	return func(tx *sql.Tx, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
-		event, err := auditoutbox.BuildEvent(ctx, tx, auditoutbox.BuildInput{
-			ActorType: actorType,
-			TokenID:   tokenID,
-			RuntimeID: runtimeID,
-			Action:    action,
-			Payload:   payload,
-			Redact:    redact,
-		})
-		if err != nil {
-			return err
-		}
-		_, err = (auditoutbox.Store{}).Append(ctx, tx, event)
-		return err
-	}
-}
+type auditAppender = auditoutbox.Appender
 
 func (s *Server) withAuditedTransaction(
 	ctx context.Context,
 	runtime *databaseRuntime,
 	mutate func(*sql.Tx, auditAppender) error,
 ) error {
-	if runtime == nil || runtime.database == nil {
-		return fmt.Errorf("audit database is unavailable")
-	}
-	// Preparing the redactor reads runtime configuration. Do that before the
-	// transaction reserves SQLCipher's single database connection.
-	appendAudit := s.prepareAuditAppender(ctx, runtime)
-	tx, err := runtime.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin audited mutation: %w", err)
-	}
-	defer tx.Rollback()
-	if err := mutate(tx, appendAudit); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit audited mutation: %w", err)
-	}
-	s.projectAuditEvents(ctx, runtime)
-	return nil
+	return s.auditedWriteCoordinator(ctx, runtime).WithTransaction(ctx, mutate)
 }
 
 func (s *Server) withAuditedMutation(
@@ -213,30 +148,41 @@ func (s *Server) withAuditedMutation(
 	payload func() any,
 	mutate func(*sql.Tx) error,
 ) error {
-	if runtime == nil || runtime.database == nil {
-		return fmt.Errorf("audit database is unavailable")
-	}
-	return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-		if err := mutate(tx); err != nil {
-			return err
-		}
-		return appendAudit(tx, actorType, tokenID, runtimeID, action, payload())
-	})
+	return s.auditedWriteCoordinator(ctx, runtime).WithMutation(ctx, actorType, tokenID, runtimeID, action, payload, mutate)
 }
 
 func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntime) {
+	if runtime == nil {
+		return
+	}
+	s.newAuditCoordinator(runtime, nil).Project(ctx)
+}
+
+func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseRuntime) *auditoutbox.Coordinator {
 	if runtime == nil || runtime.database == nil {
-		return
+		return auditoutbox.NewCoordinator(nil, nil, nil, s.auditProjectionFailureHandler())
 	}
-	dispatcher := runtime.auditDispatcher
-	if dispatcher == nil {
-		return
+	// Redaction policy reads must happen before a transaction reserves
+	// SQLCipher's single database connection.
+	redact := s.prepareAuditRedactor(ctx, runtime)
+	return s.newAuditCoordinator(runtime, redact)
+}
+
+func (s *Server) newAuditCoordinator(runtime *databaseRuntime, redact func(string) string) *auditoutbox.Coordinator {
+	return auditoutbox.NewCoordinator(runtime.database, runtime.auditDispatcher, redact, s.auditProjectionFailureHandler())
+}
+
+func (s *Server) auditProjectionFailureHandler() auditoutbox.ProjectionFailureHandler {
+	return func(action string, err error) {
+		if s != nil {
+			s.auditHealth.RecordFailure(time.Now())
+		}
+		if action == "" {
+			log.Printf("audit projection failed error=%v", err)
+			return
+		}
+		log.Printf("audit projection failed action=%q error=%v", action, err)
 	}
-	if _, err := dispatcher.DispatchOnce(ctx); err != nil {
-		s.auditHealth.RecordFailure(time.Now())
-		log.Printf("audit projection failed error=%v", err)
-	}
-	dispatcher.Notify()
 }
 
 func int64Ptr(value int64) *int64 {
