@@ -6,9 +6,9 @@ import (
 	"errors"
 	"log"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -17,7 +17,7 @@ import (
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
 	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor sqldb.Executor, item vaultrequests.Request) error {
-		event, err := auditoutbox.BuildEvent(ctx, executor, auditoutbox.BuildInput{
+		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
 			ActorType: "gateway",
 			TokenID:   int64Ptr(item.TokenID),
 			RuntimeID: valueOrZero(item.RuntimeID),
@@ -28,7 +28,7 @@ func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime
 		if err != nil {
 			return err
 		}
-		_, err = (auditoutbox.Store{}).Append(ctx, executor, event)
+		_, err = (observability.Store{}).Append(ctx, executor, event)
 		return err
 	})
 }

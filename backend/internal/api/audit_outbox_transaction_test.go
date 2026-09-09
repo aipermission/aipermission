@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func TestAuditRetentionNeverDeletesUndeliveredEvents(t *testing.T) {
 	database := openAuditTransactionDatabase(t)
-	if _, err := (auditoutbox.Store{}).Append(context.Background(), database, auditoutbox.Event{
+	if _, err := (observability.Store{}).Append(context.Background(), database, observability.Event{
 		ActorType: "user", Action: "settings.test.updated", PayloadJSON: `{}`,
 	}); err != nil {
 		t.Fatal(err)
@@ -44,13 +44,13 @@ func TestAuditRetentionNeverDeletesUndeliveredEvents(t *testing.T) {
 
 func TestAuditRetentionDeletesOnlyDeliveredOldOutboxEvents(t *testing.T) {
 	database := openAuditTransactionDatabase(t)
-	event, err := (auditoutbox.Store{}).Append(context.Background(), database, auditoutbox.Event{
+	event, err := (observability.Store{}).Append(context.Background(), database, observability.Event{
 		ActorType: "user", Action: "settings.test.updated", PayloadJSON: `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auditoutbox.NewDispatcher(database).DispatchOnce(context.Background()); err != nil {
+	if _, err := observability.NewDispatcher(database).DispatchOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(`UPDATE audit_outbox SET delivered_at = datetime('now', '-90 days') WHERE event_id = ?`, event.EventID); err != nil {

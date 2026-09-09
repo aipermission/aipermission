@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
@@ -18,6 +17,7 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -48,7 +48,7 @@ type Server struct {
 	vaultRequestLimiter  *runtimecontrol.Window
 	uiSessionMu          sync.RWMutex
 	uiSessions           map[string]uiSessionRecord
-	auditHealth          auditoutbox.HealthTracker
+	auditHealth          observability.HealthTracker
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
@@ -88,7 +88,7 @@ type databaseRuntime struct {
 	vaultPreviewMu     sync.Mutex
 	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
-	auditDispatcher    *auditoutbox.Dispatcher
+	auditDispatcher    *observability.Dispatcher
 	retentionMu        sync.Mutex
 	retentionCancel    context.CancelFunc
 	retentionDone      chan struct{}

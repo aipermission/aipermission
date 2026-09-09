@@ -1,4 +1,4 @@
-package diagnostics
+package observability
 
 import (
 	"context"

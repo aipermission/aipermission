@@ -1,4 +1,4 @@
-package auditoutbox
+package observability
 
 import (
 	"context"

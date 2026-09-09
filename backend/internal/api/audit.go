@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
 
-func (s *Server) auditHealthSnapshot(ctx context.Context) auditoutbox.HealthSnapshot {
+func (s *Server) auditHealthSnapshot(ctx context.Context) observability.HealthSnapshot {
 	runtime := s.activeRuntime()
 	if runtime == nil {
 		return s.auditHealth.Snapshot(ctx, nil)
@@ -58,7 +58,7 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		targetID = id
 	}
-	result, err := auditoutbox.NewQueryStore(runtime.database).List(r.Context(), auditoutbox.QueryFilter{
+	result, err := observability.NewQueryStore(runtime.database).List(r.Context(), observability.QueryFilter{
 		Actor:         actor,
 		RuntimeID:     runtimeID,
 		ProjectID:     projectID,
@@ -84,7 +84,7 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := auditoutbox.NewQueryStore(runtime.database).Get(r.Context(), id)
+	item, err := observability.NewQueryStore(runtime.database).Get(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "audit log not found")
 		return
@@ -128,7 +128,7 @@ func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRunt
 	}
 }
 
-type auditAppender = auditoutbox.Appender
+type auditAppender = observability.Appender
 
 func (s *Server) withAuditedTransaction(
 	ctx context.Context,
@@ -158,9 +158,9 @@ func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntim
 	s.newAuditCoordinator(runtime, nil).Project(ctx)
 }
 
-func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseRuntime) *auditoutbox.Coordinator {
+func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseRuntime) *observability.Coordinator {
 	if runtime == nil || runtime.database == nil {
-		return auditoutbox.NewCoordinator(nil, nil, nil, s.auditProjectionFailureHandler())
+		return observability.NewCoordinator(nil, nil, nil, s.auditProjectionFailureHandler())
 	}
 	// Redaction policy reads must happen before a transaction reserves
 	// SQLCipher's single database connection.
@@ -168,11 +168,11 @@ func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseR
 	return s.newAuditCoordinator(runtime, redact)
 }
 
-func (s *Server) newAuditCoordinator(runtime *databaseRuntime, redact func(string) string) *auditoutbox.Coordinator {
-	return auditoutbox.NewCoordinator(runtime.database, runtime.auditDispatcher, redact, s.auditProjectionFailureHandler())
+func (s *Server) newAuditCoordinator(runtime *databaseRuntime, redact func(string) string) *observability.Coordinator {
+	return observability.NewCoordinator(runtime.database, runtime.auditDispatcher, redact, s.auditProjectionFailureHandler())
 }
 
-func (s *Server) auditProjectionFailureHandler() auditoutbox.ProjectionFailureHandler {
+func (s *Server) auditProjectionFailureHandler() observability.ProjectionFailureHandler {
 	return func(action string, err error) {
 		if s != nil {
 			s.auditHealth.RecordFailure(time.Now())

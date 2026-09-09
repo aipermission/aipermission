@@ -5,8 +5,8 @@ import (
 	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/diagnostics"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
@@ -15,12 +15,12 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	audit := h.auditHealth.Snapshot(r.Context(), runtime.database)
-	report, err := diagnostics.Collect(r.Context(), diagnostics.CollectInput{
+	report, err := observability.Collect(r.Context(), observability.CollectInput{
 		Database:               runtime.database,
 		Registry:               runtime.connectorRegistry(),
 		SupportedSchemaVersion: dbpkg.CurrentSchemaVersion(),
 		MCPEnabled:             runtime.isMCPStarted(),
-		Audit: diagnostics.AuditHealth{
+		Audit: observability.AuditHealth{
 			Status: audit.Status, FailureCount: audit.FailureCount, PendingCount: audit.PendingCount,
 			DeadLetterCount:   audit.DeadLetterCount,
 			RetriedEventCount: audit.RetriedEventCount,
@@ -31,7 +31,7 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
-		"report_format_version": diagnostics.ReportFormatVersion,
+		"report_format_version": observability.ReportFormatVersion,
 	})
 	httpattachment.SetHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
 	writeJSON(w, http.StatusOK, report)

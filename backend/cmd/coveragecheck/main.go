@@ -13,7 +13,7 @@ import (
 
 var criticalCoverageFloors = map[string]float64{
 	"internal/api":                   57.0,
-	"internal/auditoutbox":           60.0,
+	"internal/observability":         60.0,
 	"internal/backups":               64.0,
 	"internal/connectors/clickhouse": 58.0,
 	"internal/connectors/docker":     52.0,

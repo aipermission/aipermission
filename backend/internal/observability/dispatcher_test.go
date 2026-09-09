@@ -1,4 +1,4 @@
-package auditoutbox_test
+package observability_test
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func TestDispatcherProjectsAndMarksEventDelivered(t *testing.T) {
 	database := openAuditDatabase(t)
 	event := appendAuditEvent(t, database, "project.created")
-	dispatcher := auditoutbox.NewDispatcher(database)
+	dispatcher := observability.NewDispatcher(database)
 
 	count, err := dispatcher.DispatchOnce(context.Background())
 	if err != nil || count != 1 {
@@ -26,7 +26,7 @@ func TestDispatcherProjectsAndMarksEventDelivered(t *testing.T) {
 	if err := database.QueryRow(`SELECT event_id, event_version, lifecycle_phase FROM audit_logs WHERE event_id = ?`, event.EventID).Scan(&projectedID, &eventVersion, &lifecyclePhase); err != nil {
 		t.Fatal(err)
 	}
-	if eventVersion != auditoutbox.EventVersion || lifecyclePhase != "created" {
+	if eventVersion != observability.EventVersion || lifecyclePhase != "created" {
 		t.Fatalf("projected metadata version=%d phase=%q", eventVersion, lifecyclePhase)
 	}
 	var deliveredAt string
@@ -46,7 +46,7 @@ func TestDispatcherConvergesWhenProjectionAlreadyExists(t *testing.T) {
 		VALUES (?, 'user', 'project.created', '{}', datetime('now'))`, event.EventID); err != nil {
 		t.Fatal(err)
 	}
-	dispatcher := auditoutbox.NewDispatcher(database)
+	dispatcher := observability.NewDispatcher(database)
 	if count, err := dispatcher.DispatchOnce(context.Background()); err != nil || count != 1 {
 		t.Fatalf("dispatch count=%d error=%v", count, err)
 	}
@@ -65,10 +65,10 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if _, err := database.Exec(`CREATE TRIGGER reject_audit_projection BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'injected projection failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auditoutbox.NewDispatcher(database).DispatchOnce(context.Background()); err == nil {
+	if _, err := observability.NewDispatcher(database).DispatchOnce(context.Background()); err == nil {
 		t.Fatal("expected injected projection failure")
 	}
-	health, err := (auditoutbox.Store{}).Health(context.Background(), database)
+	health, err := (observability.Store{}).Health(context.Background(), database)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if _, err := database.Exec(`UPDATE audit_outbox SET next_attempt_at = datetime('now', '-1 second') WHERE event_id = ?`, event.EventID); err != nil {
 		t.Fatal(err)
 	}
-	restarted := auditoutbox.NewDispatcher(database)
+	restarted := observability.NewDispatcher(database)
 	if count, err := restarted.DispatchOnce(context.Background()); err != nil || count != 1 {
 		t.Fatalf("restart dispatch count=%d error=%v", count, err)
 	}
@@ -92,7 +92,7 @@ func TestDispatcherPersistsFailureAndRecoversAfterRestart(t *testing.T) {
 	if delivered != 1 {
 		t.Fatal("restarted dispatcher did not recover pending event")
 	}
-	health, err = (auditoutbox.Store{}).Health(context.Background(), database)
+	health, err = (observability.Store{}).Health(context.Background(), database)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestDispatcherReportsRetryBookkeepingFailure(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'injected retry bookkeeping failure'); END;`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := auditoutbox.NewDispatcher(database).DispatchOnce(context.Background())
+	_, err := observability.NewDispatcher(database).DispatchOnce(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "record audit delivery retry") {
 		t.Fatalf("unexpected dispatcher error: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestDispatcherContinuesPastPoisonEventAndDeadLettersIt(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'injected poison event'); END`); err != nil {
 		t.Fatal(err)
 	}
-	dispatcher := auditoutbox.NewDispatcher(database)
+	dispatcher := observability.NewDispatcher(database)
 	delivered, err := dispatcher.DispatchOnce(context.Background())
 	if err == nil || delivered != 1 {
 		t.Fatalf("first dispatch delivered=%d error=%v", delivered, err)
@@ -156,7 +156,7 @@ func TestDispatcherContinuesPastPoisonEventAndDeadLettersIt(t *testing.T) {
 	if attempts != 8 || !deadLettered.Valid {
 		t.Fatalf("poison event attempts=%d dead_lettered=%v", attempts, deadLettered.Valid)
 	}
-	health, err := (auditoutbox.Store{}).Health(context.Background(), database)
+	health, err := (observability.Store{}).Health(context.Background(), database)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestDispatcherRecoversEventCommittedBeforeProcessRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if count, err := auditoutbox.NewDispatcher(reopened).DispatchOnce(context.Background()); err != nil || count != 1 {
+	if count, err := observability.NewDispatcher(reopened).DispatchOnce(context.Background()); err != nil || count != 1 {
 		t.Fatalf("restart dispatch count=%d error=%v", count, err)
 	}
 	var projected int
@@ -203,9 +203,9 @@ func openAuditDatabase(t *testing.T) *sql.DB {
 	return database
 }
 
-func appendAuditEvent(t *testing.T, database *sql.DB, action string) auditoutbox.Event {
+func appendAuditEvent(t *testing.T, database *sql.DB, action string) observability.Event {
 	t.Helper()
-	event, err := (auditoutbox.Store{}).Append(context.Background(), database, auditoutbox.Event{
+	event, err := (observability.Store{}).Append(context.Background(), database, observability.Event{
 		ActorType: "user", Action: action, LifecyclePhase: "created", PayloadJSON: `{}`,
 	})
 	if err != nil {

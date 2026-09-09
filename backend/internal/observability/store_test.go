@@ -1,4 +1,4 @@
-package auditoutbox_test
+package observability_test
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func TestAppendPersistsCanonicalEvent(t *testing.T) {
@@ -17,7 +17,7 @@ func TestAppendPersistsCanonicalEvent(t *testing.T) {
 	}
 	defer database.Close()
 
-	event, err := (auditoutbox.Store{}).Append(context.Background(), database, auditoutbox.Event{
+	event, err := (observability.Store{}).Append(context.Background(), database, observability.Event{
 		ActorType:   "user",
 		Action:      "project.created",
 		PayloadJSON: `{"project_id":1}`,
@@ -25,7 +25,7 @@ func TestAppendPersistsCanonicalEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(event.EventID) != 32 || event.EventVersion != auditoutbox.EventVersion {
+	if len(event.EventID) != 32 || event.EventVersion != observability.EventVersion {
 		t.Fatalf("unexpected event identity: %#v", event)
 	}
 
@@ -45,13 +45,13 @@ func TestAppendRejectsInvalidAndOversizedPayloads(t *testing.T) {
 	}
 	defer database.Close()
 
-	store := auditoutbox.Store{}
+	store := observability.Store{}
 	for name, payload := range map[string]string{
 		"invalid":   `{`,
-		"oversized": `{"value":"` + strings.Repeat("x", auditoutbox.MaxPayloadBytes) + `"}`,
+		"oversized": `{"value":"` + strings.Repeat("x", observability.MaxPayloadBytes) + `"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := store.Append(context.Background(), database, auditoutbox.Event{ActorType: "user", Action: "test", PayloadJSON: payload}); err == nil {
+			if _, err := store.Append(context.Background(), database, observability.Event{ActorType: "user", Action: "test", PayloadJSON: payload}); err == nil {
 				t.Fatal("expected payload rejection")
 			}
 		})
@@ -69,7 +69,7 @@ func TestAppendRollsBackWithCallerTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (auditoutbox.Store{}).Append(context.Background(), tx, auditoutbox.Event{ActorType: "user", Action: "test", PayloadJSON: `{}`}); err != nil {
+	if _, err := (observability.Store{}).Append(context.Background(), tx, observability.Event{ActorType: "user", Action: "test", PayloadJSON: `{}`}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {

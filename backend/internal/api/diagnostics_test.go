@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/diagnostics"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func TestDiagnosticsDownloadRequiresUISessionAndReturnsAttachment(t *testing.T) {
@@ -45,11 +45,11 @@ func TestDiagnosticsDownloadRequiresUISessionAndReturnsAttachment(t *testing.T) 
 	if strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "192.0.2.10") || strings.Contains(response.Body.String(), "private-target") {
 		t.Fatalf("diagnostics route exposed private fixture data: %s", response.Body.String())
 	}
-	var report diagnostics.Report
+	var report observability.Report
 	if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
 		t.Fatalf("decode diagnostics report: %v", err)
 	}
-	if report.ReportFormatVersion != diagnostics.ReportFormatVersion || report.Runtime.Gateway != "running" {
+	if report.ReportFormatVersion != observability.ReportFormatVersion || report.Runtime.Gateway != "running" {
 		t.Fatalf("unexpected diagnostics report: %+v", report)
 	}
 	var auditCount int

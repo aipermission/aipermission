@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 )
 
 func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
@@ -35,7 +35,7 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	server.status(recorder, httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	var status struct {
-		Audit auditoutbox.HealthSnapshot `json:"audit"`
+		Audit observability.HealthSnapshot `json:"audit"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &status); err != nil {
 		t.Fatalf("decode status: %v", err)
