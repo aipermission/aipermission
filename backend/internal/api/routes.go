@@ -7,6 +7,7 @@ import (
 	"time"
 
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
+	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 )
 
 type tokenHandlers struct{ *Server }
@@ -20,7 +21,6 @@ type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type messageHandlers struct{ *Server }
-type projectHandlers struct{ *Server }
 type vaultItemHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
@@ -162,14 +162,14 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 }
 
 func (s *Server) registerProjectAndVaultRoutes() {
-	projects := projectHandlers{s}
+	projects := projectstore.NewHTTPHandlers(s.projectsHTTPScope)
 	vaultItems := vaultItemHandlers{s}
 	vaultApprovals := vaultActionApprovalHandlers{s}
 
-	s.mux.HandleFunc("GET /api/projects", projects.listProjects)
-	s.mux.HandleFunc("POST /api/projects", projects.createProject)
-	s.mux.HandleFunc("PUT /api/projects/{id}", projects.updateProject)
-	s.mux.HandleFunc("DELETE /api/projects/{id}", projects.archiveProject)
+	s.mux.HandleFunc("GET /api/projects", projects.List)
+	s.mux.HandleFunc("POST /api/projects", projects.Create)
+	s.mux.HandleFunc("PUT /api/projects/{id}", projects.Update)
+	s.mux.HandleFunc("DELETE /api/projects/{id}", projects.Archive)
 	s.mux.HandleFunc("GET /api/vault-items", vaultItems.listVaultItems)
 	s.mux.HandleFunc("POST /api/vault-items", vaultItems.createVaultItem)
 	s.mux.HandleFunc("GET /api/vault-items/{id}", vaultItems.getVaultItem)

@@ -1,7 +1,6 @@
 package history
 
 import (
-	"context"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -20,16 +20,9 @@ const (
 
 var ErrMutationUnchanged = errors.New("history mutation unchanged")
 
-type AuditedMutation func(
-	ctx context.Context,
-	action string,
-	payload func() any,
-	mutate func(*sql.Tx) error,
-) error
-
 type Scope struct {
 	Database *sql.DB
-	Mutate   AuditedMutation
+	Mutate   auditedmutation.Runner
 }
 
 type ScopeProvider func(http.ResponseWriter) (Scope, bool)
