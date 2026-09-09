@@ -1,4 +1,4 @@
-package api
+package accesscontrol
 
 import (
 	"crypto/sha256"
@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 )
 
@@ -68,7 +68,7 @@ func projectScopesRevision(items []projects.TokenScope) (string, error) {
 	return authorizationRevision(values)
 }
 
-func projectCapabilitiesRevision(items []projectcapabilities.Capability) (string, error) {
+func projectCapabilitiesRevision(items []Capability) (string, error) {
 	type revisionItem struct {
 		ProjectID      int64  `json:"project_id"`
 		Name           string `json:"capability_name"`
@@ -105,13 +105,13 @@ func requireAuthorizationRevision(expected, current string, err error) (string, 
 	return current, nil
 }
 
-func handleAuthorizationRevisionError(w http.ResponseWriter, err error) bool {
+func writeAuthorizationRevisionError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, errAuthorizationRevisionRequired):
-		writeError(w, http.StatusBadRequest, "authorization revision is required; reload permissions and retry")
+		httptransport.WriteError(w, http.StatusBadRequest, "authorization revision is required; reload permissions and retry")
 		return true
 	case errors.Is(err, errAuthorizationRevisionConflict):
-		writeError(w, http.StatusConflict, "authorization changed in another client; reload permissions and retry")
+		httptransport.WriteError(w, http.StatusConflict, "authorization changed in another client; reload permissions and retry")
 		return true
 	default:
 		return false

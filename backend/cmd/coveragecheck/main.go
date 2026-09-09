@@ -12,6 +12,7 @@ import (
 )
 
 var criticalCoverageFloors = map[string]float64{
+	"internal/accesscontrol":         69.0,
 	"internal/api":                   57.0,
 	"internal/observability":         60.0,
 	"internal/backups":               64.0,
@@ -30,7 +31,6 @@ var criticalCoverageFloors = map[string]float64{
 	"internal/console":               72.0,
 	"internal/db":                    75.0,
 	"internal/filetransfer":          66.0,
-	"internal/projectcapabilities":   74.0,
 	"internal/projectvault":          69.0,
 	"internal/restcontract":          84.0,
 	"internal/sessionenv":            64.0,

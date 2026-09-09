@@ -1,4 +1,4 @@
-package projectcapabilities
+package accesscontrol
 
 import (
 	"context"
@@ -17,9 +17,9 @@ func TestReplaceAndEffectiveCapability(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
+	store := NewCapabilityStore(db)
 
-	items, err := store.Replace(ctx, tokenID, []SetInput{{
+	items, err := store.Replace(ctx, tokenID, []CapabilitySetInput{{
 		ProjectID:     projectID,
 		Name:          VaultMetadataRead,
 		ExecutionRule: RuleAlwaysRun,
@@ -39,24 +39,24 @@ func TestReplaceAndEffectiveCapability(t *testing.T) {
 func TestCapabilityRulesAreDefinitionSpecific(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
+	store := NewCapabilityStore(db)
 
-	for _, input := range []SetInput{
+	for _, input := range []CapabilitySetInput{
 		{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleApprovalRequired},
 		{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: "blocked"},
 		{ProjectID: projectID, Name: VaultItemGenerate, ExecutionRule: "blocked"},
 		{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: "blocked"},
 	} {
-		if _, err := store.Replace(context.Background(), tokenID, []SetInput{input}); err == nil {
+		if _, err := store.Replace(context.Background(), tokenID, []CapabilitySetInput{input}); err == nil {
 			t.Fatalf("expected invalid rule to fail: %#v", input)
 		}
 	}
 
-	for _, input := range []SetInput{
+	for _, input := range []CapabilitySetInput{
 		{ProjectID: projectID, Name: VaultItemGenerate, ExecutionRule: RuleAlwaysRun},
 		{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun},
 	} {
-		if _, err := store.Replace(context.Background(), tokenID, []SetInput{input}); err != nil {
+		if _, err := store.Replace(context.Background(), tokenID, []CapabilitySetInput{input}); err != nil {
 			t.Fatalf("expected always rule to succeed: %#v: %v", input, err)
 		}
 	}
@@ -66,8 +66,8 @@ func TestDisabledProjectMakesCapabilityIneffective(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
-	if _, err := store.Replace(ctx, tokenID, []SetInput{{
+	store := NewCapabilityStore(db)
+	if _, err := store.Replace(ctx, tokenID, []CapabilitySetInput{{
 		ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun,
 	}}); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestDisabledProjectMakesCapabilityIneffective(t *testing.T) {
 	if _, err := db.Exec(`UPDATE token_project_scopes SET enabled = 0 WHERE token_id = ? AND project_id = ?`, tokenID, projectID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); !errors.Is(err, ErrNotFound) {
+	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); !errors.Is(err, ErrCapabilityNotFound) {
 		t.Fatalf("expected disabled project to hide capability, got %v", err)
 	}
 }
@@ -83,15 +83,15 @@ func TestDisabledProjectMakesCapabilityIneffective(t *testing.T) {
 func TestReplaceRejectsExpiredAndDuplicateCapabilities(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
+	store := NewCapabilityStore(db)
 	past := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-	if _, err := store.Replace(context.Background(), tokenID, []SetInput{{
+	if _, err := store.Replace(context.Background(), tokenID, []CapabilitySetInput{{
 		ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun, ExpiresAt: past,
 	}}); err == nil {
 		t.Fatal("expected expired capability to fail")
 	}
-	input := SetInput{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun}
-	if _, err := store.Replace(context.Background(), tokenID, []SetInput{input, input}); err == nil {
+	input := CapabilitySetInput{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun}
+	if _, err := store.Replace(context.Background(), tokenID, []CapabilitySetInput{input, input}); err == nil {
 		t.Fatal("expected duplicate capability to fail")
 	}
 }
@@ -100,8 +100,8 @@ func TestEffectiveCapabilityRejectsMalformedExpiry(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
-	if _, err := store.Replace(ctx, tokenID, []SetInput{{
+	store := NewCapabilityStore(db)
+	if _, err := store.Replace(ctx, tokenID, []CapabilitySetInput{{
 		ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun,
 	}}); err != nil {
 		t.Fatalf("create capability: %v", err)
@@ -115,7 +115,7 @@ func TestEffectiveCapabilityRejectsMalformedExpiry(t *testing.T) {
 		t.Fatalf("corrupt capability expiry: %v", err)
 	}
 
-	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); !errors.Is(err, ErrNotFound) {
+	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); !errors.Is(err, ErrCapabilityNotFound) {
 		t.Fatalf("malformed capability expiry should fail closed, got %v", err)
 	}
 }
@@ -124,16 +124,16 @@ func TestCapabilityRevisionDoesNotResetAfterRemoval(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
-	input := SetInput{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun}
-	first, err := store.Replace(ctx, tokenID, []SetInput{input})
+	store := NewCapabilityStore(db)
+	input := CapabilitySetInput{ProjectID: projectID, Name: VaultMetadataRead, ExecutionRule: RuleAlwaysRun}
+	first, err := store.Replace(ctx, tokenID, []CapabilitySetInput{input})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Replace(ctx, tokenID, nil); err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.Replace(ctx, tokenID, []SetInput{input})
+	second, err := store.Replace(ctx, tokenID, []CapabilitySetInput{input})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,16 +146,16 @@ func TestReplaceDoesNotBumpRevisionForIdenticalCapabilities(t *testing.T) {
 	db := openCapabilityTestDB(t)
 	ctx := context.Background()
 	tokenID, projectID := seedCapabilityFixture(t, db)
-	store := NewStore(db)
-	input := SetInput{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun}
-	first, changed, err := store.ReplaceWithChange(ctx, tokenID, []SetInput{input})
+	store := NewCapabilityStore(db)
+	input := CapabilitySetInput{ProjectID: projectID, Name: VaultSessionApply, ExecutionRule: RuleAlwaysRun}
+	first, changed, err := store.ReplaceWithChange(ctx, tokenID, []CapabilitySetInput{input})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
 		t.Fatal("initial capability replace was reported unchanged")
 	}
-	second, changed, err := store.ReplaceWithChange(ctx, tokenID, []SetInput{input})
+	second, changed, err := store.ReplaceWithChange(ctx, tokenID, []CapabilitySetInput{input})
 	if err != nil {
 		t.Fatal(err)
 	}

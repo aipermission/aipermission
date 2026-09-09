@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
@@ -39,9 +39,9 @@ func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := projectcapabilities.NewStore(fixture.db).Replace(ctx, token.ID, []projectcapabilities.SetInput{{
-		ProjectID: fullProject.ID, Name: projectcapabilities.VaultMetadataRead,
-		ExecutionRule: projectcapabilities.RuleAlwaysRun,
+	if _, err := accesscontrol.NewCapabilityStore(fixture.db).Replace(ctx, token.ID, []accesscontrol.CapabilitySetInput{{
+		ProjectID: fullProject.ID, Name: accesscontrol.VaultMetadataRead,
+		ExecutionRule: accesscontrol.RuleAlwaysRun,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,10 +90,10 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatal(err)
 	}
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
-		Capabilities: []projectCapabilityInput{
-			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
-			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate, ExecutionRule: projectcapabilities.RuleApprovalRequired},
+	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{
+		Capabilities: []accesscontrol.ProjectCapabilityInput{
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultMetadataRead, ExecutionRule: accesscontrol.RuleAlwaysRun},
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate, ExecutionRule: accesscontrol.RuleApprovalRequired},
 		},
 	}))
 	if capabilities.Code != http.StatusOK {
@@ -175,7 +175,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		time.Now().UTC().Format(time.RFC3339),
 		token.ID,
 		project.ID,
-		projectcapabilities.VaultItemGenerate,
+		accesscontrol.VaultItemGenerate,
 	); err != nil {
 		t.Fatalf("expire capability before idempotent retry: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		time.Now().UTC().Format(time.RFC3339),
 		token.ID,
 		project.ID,
-		projectcapabilities.VaultItemGenerate,
+		accesscontrol.VaultItemGenerate,
 	); err != nil {
 		t.Fatalf("restore capability after idempotent retry: %v", err)
 	}
@@ -250,9 +250,9 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatalf("cancel Vault action: %d %s", cancel.Code, cancel.Body.String())
 	}
 
-	revokedCapabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
-		Capabilities: []projectCapabilityInput{
-			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
+	revokedCapabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{
+		Capabilities: []accesscontrol.ProjectCapabilityInput{
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultMetadataRead, ExecutionRule: accesscontrol.RuleAlwaysRun},
 		},
 	}))
 	if revokedCapabilities.Code != http.StatusOK {
@@ -278,9 +278,9 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	}
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{
-			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead, ExecutionRule: projectcapabilities.RuleAlwaysRun},
-			{ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate, ExecutionRule: projectcapabilities.RuleAlwaysRun},
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultMetadataRead, ExecutionRule: accesscontrol.RuleAlwaysRun},
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate, ExecutionRule: accesscontrol.RuleAlwaysRun},
 		}}),
 	)
 	if capabilities.Code != http.StatusOK {
@@ -385,7 +385,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		http.MethodPut,
 		scopePath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
 	); response.Code != http.StatusOK {
 		t.Fatalf("set project scope: %d %s", response.Code, response.Body.String())
 	}
@@ -395,9 +395,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		http.MethodPut,
 		capabilityPath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
-			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
-			ExecutionRule: projectcapabilities.RuleAlwaysRun,
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{{
+			ProjectID: project.ID, CapabilityName: accesscontrol.VaultSessionApply,
+			ExecutionRule: accesscontrol.RuleAlwaysRun,
 		}}}),
 	); response.Code != http.StatusOK {
 		t.Fatalf("set Vault capability: %d %s", response.Code, response.Body.String())
@@ -559,7 +559,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		http.MethodPut,
 		scopePath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
 	)
 	if scope.Code != http.StatusOK {
 		t.Fatalf("set project scope: %d %s", scope.Code, scope.Body.String())
@@ -570,9 +570,9 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		http.MethodPut,
 		capabilityPath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
-			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
-			ExecutionRule: projectcapabilities.RuleAlwaysRun,
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{{
+			ProjectID: project.ID, CapabilityName: accesscontrol.VaultSessionApply,
+			ExecutionRule: accesscontrol.RuleAlwaysRun,
 		}}}),
 	)
 	if capabilities.Code != http.StatusOK {
@@ -604,7 +604,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build Always session context: %v", err)
 	}
-	if approval.ExecutionRule != projectcapabilities.RuleAlwaysRun ||
+	if approval.ExecutionRule != accesscontrol.RuleAlwaysRun ||
 		approval.RuntimeID != target.ID || len(approval.Items) != 1 {
 		t.Fatalf("unexpected Always session context: %#v", approval)
 	}
@@ -639,8 +639,8 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build Prompt session context: %v", err)
 	}
-	if promptApproval.ExecutionRule != projectcapabilities.RuleApprovalRequired ||
-		promptApproval.CapabilityExecutionRule != projectcapabilities.RuleAlwaysRun ||
+	if promptApproval.ExecutionRule != accesscontrol.RuleApprovalRequired ||
+		promptApproval.CapabilityExecutionRule != accesscontrol.RuleAlwaysRun ||
 		promptApproval.ConnectorExecutionRule != string(connectortargets.ActionPermissionApprovalRequired) {
 		t.Fatalf("connector Prompt must downgrade the effective session rule: %#v", promptApproval)
 	}
@@ -649,7 +649,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		http.MethodPut,
 		scopePath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{}}),
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{}}),
 	)
 	if hidden.Code != http.StatusOK {
 		t.Fatalf("hide Vault source project: %d %s", hidden.Code, hidden.Body.String())

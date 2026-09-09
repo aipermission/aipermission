@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -116,7 +116,7 @@ func executeVaultSessionApply(
 	runtime *databaseRuntime,
 	request vaultrequests.Request,
 	approval vaultApprovalContext,
-	capability projectcapabilities.Capability,
+	capability accesscontrol.Capability,
 ) (any, error) {
 	var input vaultSessionApplyActionInput
 	if err := decodeMap(request.Input, &input); err != nil {
@@ -224,7 +224,7 @@ func vaultSessionLeaseExpiry(
 	runtime *databaseRuntime,
 	request vaultrequests.Request,
 	approval vaultApprovalContext,
-	capability projectcapabilities.Capability,
+	capability accesscontrol.Capability,
 ) (time.Time, error) {
 	expiresAt := time.Now().UTC().Add(vaultsessions.MaxLeaseTTL)
 	if capability.ExpiresAt != "" {

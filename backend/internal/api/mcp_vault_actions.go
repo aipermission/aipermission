@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -77,10 +77,10 @@ func (s mcpHandlers) mcpListVaultItems(w http.ResponseWriter, r *http.Request) {
 		if !visible {
 			continue
 		}
-		capability, err := projectcapabilities.NewStore(auth.runtime.database).Effective(
-			r.Context(), auth.TokenID, project.ID, projectcapabilities.VaultMetadataRead, time.Now(),
+		capability, err := accesscontrol.NewCapabilityStore(auth.runtime.database).Effective(
+			r.Context(), auth.TokenID, project.ID, accesscontrol.VaultMetadataRead, time.Now(),
 		)
-		if err != nil || capability.ExecutionRule != projectcapabilities.RuleAlwaysRun {
+		if err != nil || capability.ExecutionRule != accesscontrol.RuleAlwaysRun {
 			continue
 		}
 		store, err := projectvault.NewStore(auth.runtime.database, auth.runtime.vault, auth.runtime.workspaceUUID)
@@ -197,7 +197,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	initialStatus := vaultrequests.StatusApprovalPending
-	if approval.ExecutionRule == projectcapabilities.RuleAlwaysRun {
+	if approval.ExecutionRule == accesscontrol.RuleAlwaysRun {
 		initialStatus = vaultrequests.StatusRunning
 	}
 	contextMap := map[string]any{}
@@ -242,13 +242,13 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		writeInternalError(w)
 		return
 	}
-	if created && approval.ExecutionRule == projectcapabilities.RuleApprovalRequired {
+	if created && approval.ExecutionRule == accesscontrol.RuleApprovalRequired {
 		s.writeObservationAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
 			"request_id": request.ID, "project_id": project.ID, "action_name": request.ActionName,
 			"approval_context_hash": request.ApprovalContextHash,
 		})
 	}
-	if created && approval.ExecutionRule == projectcapabilities.RuleAlwaysRun {
+	if created && approval.ExecutionRule == accesscontrol.RuleAlwaysRun {
 		executionContext, cancelExecution := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
 		defer cancelExecution()
 		result, runErr := vaultrequests.RunClaimedWorkflow(

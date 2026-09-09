@@ -118,6 +118,16 @@ Host *
 	} else {
 		assertSensitiveResponseHeaders(t, response)
 	}
+	if response := performJSON(handler, http.MethodPost, "/api/tokens/"+strconv.FormatInt(token.ID, 10)+"/revoke", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revoked_at"`) {
+		t.Fatalf("repeat revoke token failed: %d %s", response.Code, response.Body.String())
+	}
+	var revokeAudits int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action = 'token.revoked'`).Scan(&revokeAudits); err != nil {
+		t.Fatal(err)
+	}
+	if revokeAudits != 1 {
+		t.Fatalf("repeat revoke produced %d audit events, want 1", revokeAudits)
+	}
 	if response := performJSON(handler, http.MethodGet, "/api/audit-logs", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "token.created") || !strings.Contains(response.Body.String(), "token.revoked") {
 		t.Fatalf("audit log list should include token lifecycle events: %d %s", response.Code, response.Body.String())
 	}

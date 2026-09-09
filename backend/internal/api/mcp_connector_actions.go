@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -52,7 +53,7 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	permissions, err := projectScopedSupportedConnectorPermissions(r.Context(), auth.runtime, auth.TokenID)
+	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -86,7 +87,7 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 				Hints:         connectorTargetHints(permission.ConnectorKind),
 			}
 			if settings.ExposeMCPServerMetadata {
-				target, profile, err := connectorTargetProfileViews(r.Context(), store, permission.TargetID, permission.ProfileID)
+				target, profile, err := store.ResolveTargetProfileViews(r.Context(), permission.TargetID, permission.ProfileID)
 				if err != nil {
 					handleConnectorTargetError(w, err)
 					return
@@ -365,7 +366,7 @@ func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Re
 		handleConnectorTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	permissions, err := projectScopedSupportedConnectorPermissions(r.Context(), auth.runtime, auth.TokenID)
+	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
@@ -390,7 +391,7 @@ func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Re
 }
 
 func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, tokenID int64, targetID int64, profileID int64) (map[string]bool, error) {
-	permissions, err := projectScopedSupportedConnectorPermissions(ctx, runtime, tokenID)
+	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(ctx, runtime.database, runtime.connectorRegistry(), tokenID)
 	if err != nil {
 		return nil, err
 	}

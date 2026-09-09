@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -23,13 +23,13 @@ func TestTokenProjectCapabilityRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, updateProjectCapabilitiesRequest{
-		Capabilities: []projectCapabilityInput{{
-			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead,
-			ExecutionRule: projectcapabilities.RuleAlwaysRun,
+	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, accesscontrol.UpdateProjectCapabilitiesRequest{
+		Capabilities: []accesscontrol.ProjectCapabilityInput{{
+			ProjectID: project.ID, CapabilityName: accesscontrol.VaultMetadataRead,
+			ExecutionRule: accesscontrol.RuleAlwaysRun,
 		}},
 	}))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), projectcapabilities.VaultMetadataRead) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), accesscontrol.VaultMetadataRead) {
 		t.Fatalf("update project capabilities: %d %s", response.Code, response.Body.String())
 	}
 	response = performJSON(fixture.server.Handler(), http.MethodGet, path, "", nil)
@@ -60,9 +60,9 @@ func TestTokenProjectCapabilityRouteAcceptsAlwaysApply(t *testing.T) {
 	}
 	path := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
-			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
-			ExecutionRule: projectcapabilities.RuleAlwaysRun,
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), path, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{{
+			ProjectID: project.ID, CapabilityName: accesscontrol.VaultSessionApply,
+			ExecutionRule: accesscontrol.RuleAlwaysRun,
 		}}}),
 	)
 	if response.Code != http.StatusOK {

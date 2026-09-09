@@ -43,11 +43,22 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 	if !ok {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, ErrInvalidTargetRef
 	}
+	return s.resolveTargetProfileViews(ctx, targetID, profileID, connectorKind)
+}
+
+func (s *Store) ResolveTargetProfileViews(ctx context.Context, targetID, profileID int64) (connectors.TargetView, connectors.CredentialProfileView, error) {
+	if s == nil || s.db == nil {
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, fmt.Errorf("connector target store is not configured")
+	}
+	return s.resolveTargetProfileViews(ctx, targetID, profileID, "")
+}
+
+func (s *Store) resolveTargetProfileViews(ctx context.Context, targetID, profileID int64, connectorKind string) (connectors.TargetView, connectors.CredentialProfileView, error) {
 	var targetConfigJSON string
 	var target connectors.TargetView
 	var profile CredentialProfile
 	var profilePublicJSON string
-	err := s.db.QueryRowContext(ctx, `
+	query := `
 		SELECT
 			t.id, t.project_id, t.connector_kind, t.name, t.config_json, t.updated_at,
 			p.id, p.target_id, p.connector_kind, p.kind, p.label, p.public_json,
@@ -56,15 +67,16 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 		JOIN connector_credential_profiles p ON p.target_id = t.id
 		WHERE
 			t.id = ?
-				AND p.id = ?
-				AND t.connector_kind = ?
-				AND p.connector_kind = t.connector_kind
-				AND t.status = 'active'
-				AND p.status = 'active'`,
-		targetID,
-		profileID,
-		connectorKind,
-	).Scan(
+			AND p.id = ?
+			AND p.connector_kind = t.connector_kind
+			AND t.status = 'active'
+			AND p.status = 'active'`
+	args := []any{targetID, profileID}
+	if connectorKind != "" {
+		query += ` AND t.connector_kind = ?`
+		args = append(args, connectorKind)
+	}
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(
 		&target.ID,
 		&target.ProjectID,
 		&target.ConnectorKind,

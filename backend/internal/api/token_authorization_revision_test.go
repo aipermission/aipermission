@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -27,13 +27,13 @@ func withCurrentAuthorizationRevision(t *testing.T, handler http.Handler, path s
 		t.Fatalf("decode authorization revision for %s: revision=%q error=%v", path, body.Revision, err)
 	}
 	switch value := request.(type) {
-	case updateConnectorPermissionsRequest:
+	case accesscontrol.UpdateConnectorPermissionsRequest:
 		value.ExpectedRevision = body.Revision
 		return value
-	case updateTokenProjectScopesRequest:
+	case accesscontrol.UpdateProjectScopesRequest:
 		value.ExpectedRevision = body.Revision
 		return value
-	case updateProjectCapabilitiesRequest:
+	case accesscontrol.UpdateProjectCapabilitiesRequest:
 		value.ExpectedRevision = body.Revision
 		return value
 	default:
@@ -63,20 +63,20 @@ func TestTokenAuthorizationUpdatesRejectStaleAndMissingRevisions(t *testing.T) {
 		{
 			name: "project scopes",
 			path: base + "/project-scopes",
-			body: updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{}},
+			body: accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{}},
 		},
 		{
 			name: "project capabilities",
 			path: base + "/project-capabilities",
-			body: updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
-				ProjectID: project.ID, CapabilityName: projectcapabilities.VaultMetadataRead,
-				ExecutionRule: projectcapabilities.RuleAlwaysRun,
+			body: accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{{
+				ProjectID: project.ID, CapabilityName: accesscontrol.VaultMetadataRead,
+				ExecutionRule: accesscontrol.RuleAlwaysRun,
 			}}},
 		},
 		{
 			name: "connector permissions",
 			path: base + "/connector-permissions",
-			body: updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
+			body: accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
 				TargetID: target.TargetID, ProfileID: target.ProfileID, ActionName: sshconnector.ActionExec,
 				ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
 			}}},
@@ -101,43 +101,5 @@ func TestTokenAuthorizationUpdatesRejectStaleAndMissingRevisions(t *testing.T) {
 				t.Fatalf("stale revision response: %d %s", conflict.Code, conflict.Body.String())
 			}
 		})
-	}
-}
-
-func TestAuthorizationRevisionsIgnorePresentationOrder(t *testing.T) {
-	t.Parallel()
-
-	connectorItems := []connectortargets.ActionPermission{
-		{TargetID: 2, ProfileID: 3, ActionName: "write"},
-		{TargetID: 1, ProfileID: 4, ActionName: "read"},
-	}
-	connectorReverse := []connectortargets.ActionPermission{connectorItems[1], connectorItems[0]}
-	connectorFirst, connectorFirstErr := connectorPermissionsRevision(connectorItems)
-	connectorSecond, connectorSecondErr := connectorPermissionsRevision(connectorReverse)
-	assertSameAuthorizationRevision(t, connectorFirst, connectorFirstErr, connectorSecond, connectorSecondErr)
-
-	scopeItems := []projects.TokenScope{{ProjectID: 2, Enabled: true}, {ProjectID: 1, Enabled: false}}
-	scopeReverse := []projects.TokenScope{scopeItems[1], scopeItems[0]}
-	scopeFirst, scopeFirstErr := projectScopesRevision(scopeItems)
-	scopeSecond, scopeSecondErr := projectScopesRevision(scopeReverse)
-	assertSameAuthorizationRevision(t, scopeFirst, scopeFirstErr, scopeSecond, scopeSecondErr)
-
-	capabilityItems := []projectcapabilities.Capability{
-		{ProjectID: 2, Name: "write"},
-		{ProjectID: 1, Name: "read"},
-	}
-	capabilityReverse := []projectcapabilities.Capability{capabilityItems[1], capabilityItems[0]}
-	capabilityFirst, capabilityFirstErr := projectCapabilitiesRevision(capabilityItems)
-	capabilitySecond, capabilitySecondErr := projectCapabilitiesRevision(capabilityReverse)
-	assertSameAuthorizationRevision(t, capabilityFirst, capabilityFirstErr, capabilitySecond, capabilitySecondErr)
-}
-
-func assertSameAuthorizationRevision(t *testing.T, first string, firstErr error, second string, secondErr error) {
-	t.Helper()
-	if firstErr != nil || secondErr != nil {
-		t.Fatalf("revision errors: first=%v second=%v", firstErr, secondErr)
-	}
-	if first != second {
-		t.Fatalf("revision changed with presentation order: first=%q second=%q", first, second)
 	}
 }

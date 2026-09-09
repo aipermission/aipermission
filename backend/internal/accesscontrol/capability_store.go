@@ -1,4 +1,4 @@
-package projectcapabilities
+package accesscontrol
 
 import (
 	"context"
@@ -22,14 +22,14 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("project capability not found")
+	ErrCapabilityNotFound = errors.New("project capability not found")
 )
 
 type ValidationError string
 
 func (e ValidationError) Error() string { return string(e) }
 
-type Definition struct {
+type CapabilityDefinition struct {
 	Name         string   `json:"name"`
 	Label        string   `json:"label"`
 	Description  string   `json:"description"`
@@ -50,7 +50,7 @@ type Capability struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
-type SetInput struct {
+type CapabilitySetInput struct {
 	ProjectID     int64
 	Name          string
 	ExecutionRule string
@@ -59,17 +59,19 @@ type SetInput struct {
 
 type storeDB = sqldb.Executor
 
-type Store struct {
+type CapabilityStore struct {
 	db    storeDB
 	begin func(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db, begin: db.BeginTx} }
+func NewCapabilityStore(db *sql.DB) *CapabilityStore {
+	return &CapabilityStore{db: db, begin: db.BeginTx}
+}
 
-func NewTxStore(tx *sql.Tx) *Store { return &Store{db: tx} }
+func NewCapabilityTxStore(tx *sql.Tx) *CapabilityStore { return &CapabilityStore{db: tx} }
 
-func Definitions() []Definition {
-	return []Definition{
+func CapabilityDefinitions() []CapabilityDefinition {
+	return []CapabilityDefinition{
 		{
 			Name:         VaultMetadataRead,
 			Label:        "Read metadata",
@@ -91,16 +93,16 @@ func Definitions() []Definition {
 	}
 }
 
-func DefinitionFor(name string) (Definition, bool) {
-	for _, definition := range Definitions() {
+func CapabilityDefinitionFor(name string) (CapabilityDefinition, bool) {
+	for _, definition := range CapabilityDefinitions() {
 		if definition.Name == name {
 			return definition, true
 		}
 	}
-	return Definition{}, false
+	return CapabilityDefinition{}, false
 }
 
-func (s *Store) List(ctx context.Context, tokenID int64) ([]Capability, error) {
+func (s *CapabilityStore) List(ctx context.Context, tokenID int64) ([]Capability, error) {
 	if tokenID < 1 {
 		return nil, ValidationError("token id must be a positive integer")
 	}
@@ -123,32 +125,32 @@ func (s *Store) List(ctx context.Context, tokenID int64) ([]Capability, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, supported := DefinitionFor(item.Name); supported {
+		if _, supported := CapabilityDefinitionFor(item.Name); supported {
 			items = append(items, item)
 		}
 	}
 	return items, rows.Err()
 }
 
-func (s *Store) Effective(ctx context.Context, tokenID, projectID int64, name string, now time.Time) (Capability, error) {
+func (s *CapabilityStore) Effective(ctx context.Context, tokenID, projectID int64, name string, now time.Time) (Capability, error) {
 	item, err := s.get(ctx, tokenID, projectID, name)
 	if err != nil {
 		return Capability{}, err
 	}
 	if !item.ProjectEnabled {
-		return Capability{}, ErrNotFound
+		return Capability{}, ErrCapabilityNotFound
 	}
 	if !expirypolicy.Active(item.ExpiresAt, now) {
-		return Capability{}, ErrNotFound
+		return Capability{}, ErrCapabilityNotFound
 	}
 	return item, nil
 }
 
-func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) ([]Capability, error) {
+func (s *CapabilityStore) Replace(ctx context.Context, tokenID int64, inputs []CapabilitySetInput) ([]Capability, error) {
 	if tokenID < 1 {
 		return nil, ValidationError("token id must be a positive integer")
 	}
-	normalized := make([]SetInput, 0, len(inputs))
+	normalized := make([]CapabilitySetInput, 0, len(inputs))
 	seen := map[string]bool{}
 	for _, input := range inputs {
 		value, err := normalizeInput(input)
@@ -187,7 +189,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 		return nil, err
 	}
 	if capabilitySetEqual(existing, normalized) {
-		return (&Store{db: executor}).List(ctx, tokenID)
+		return (&CapabilityStore{db: executor}).List(ctx, tokenID)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, input := range normalized {
@@ -230,7 +232,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 			return nil, fmt.Errorf("insert project capability: %w", err)
 		}
 	}
-	items, err := (&Store{db: executor}).List(ctx, tokenID)
+	items, err := (&CapabilityStore{db: executor}).List(ctx, tokenID)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +244,7 @@ func (s *Store) Replace(ctx context.Context, tokenID int64, inputs []SetInput) (
 	return items, nil
 }
 
-func (s *Store) ReplaceWithChange(ctx context.Context, tokenID int64, inputs []SetInput) ([]Capability, bool, error) {
+func (s *CapabilityStore) ReplaceWithChange(ctx context.Context, tokenID int64, inputs []CapabilitySetInput) ([]Capability, bool, error) {
 	before, err := s.List(ctx, tokenID)
 	if err != nil {
 		return nil, false, err
@@ -302,7 +304,7 @@ func existingCapabilityStates(ctx context.Context, executor storeDB, tokenID int
 	return values, nil
 }
 
-func capabilitySetEqual(existing map[string]capabilityState, inputs []SetInput) bool {
+func capabilitySetEqual(existing map[string]capabilityState, inputs []CapabilitySetInput) bool {
 	if len(existing) != len(inputs) {
 		return false
 	}
@@ -319,16 +321,16 @@ func capabilityKey(projectID int64, name string) string {
 	return fmt.Sprintf("%d:%s", projectID, name)
 }
 
-func normalizeInput(input SetInput) (SetInput, error) {
+func normalizeInput(input CapabilitySetInput) (CapabilitySetInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.ExecutionRule = strings.TrimSpace(input.ExecutionRule)
 	input.ExpiresAt = strings.TrimSpace(input.ExpiresAt)
 	if input.ProjectID < 1 {
-		return SetInput{}, ValidationError("project id must be a positive integer")
+		return CapabilitySetInput{}, ValidationError("project id must be a positive integer")
 	}
-	definition, ok := DefinitionFor(input.Name)
+	definition, ok := CapabilityDefinitionFor(input.Name)
 	if !ok {
-		return SetInput{}, ValidationError("unsupported project capability")
+		return CapabilitySetInput{}, ValidationError("unsupported project capability")
 	}
 	allowed := false
 	for _, rule := range definition.AllowedRules {
@@ -338,22 +340,22 @@ func normalizeInput(input SetInput) (SetInput, error) {
 		}
 	}
 	if !allowed {
-		return SetInput{}, ValidationError("execution rule is not allowed for this project capability")
+		return CapabilitySetInput{}, ValidationError("execution rule is not allowed for this project capability")
 	}
 	if input.ExpiresAt != "" {
 		expiresAt, err := time.Parse(time.RFC3339, input.ExpiresAt)
 		if err != nil {
-			return SetInput{}, ValidationError("expires_at must be an RFC3339 timestamp")
+			return CapabilitySetInput{}, ValidationError("expires_at must be an RFC3339 timestamp")
 		}
 		if !expiresAt.After(time.Now().UTC()) {
-			return SetInput{}, ValidationError("expires_at must be in the future")
+			return CapabilitySetInput{}, ValidationError("expires_at must be in the future")
 		}
 		input.ExpiresAt = expiresAt.UTC().Format(time.RFC3339)
 	}
 	return input, nil
 }
 
-func (s *Store) get(ctx context.Context, tokenID, projectID int64, name string) (Capability, error) {
+func (s *CapabilityStore) get(ctx context.Context, tokenID, projectID int64, name string) (Capability, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT c.token_id, c.project_id, p.name, p.slug, COALESCE(ps.enabled, 0),
 		       c.capability_name, c.execution_rule, COALESCE(c.expires_at, ''),
@@ -366,7 +368,7 @@ func (s *Store) get(ctx context.Context, tokenID, projectID int64, name string) 
 	)
 	item, err := scanCapability(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Capability{}, ErrNotFound
+		return Capability{}, ErrCapabilityNotFound
 	}
 	return item, err
 }

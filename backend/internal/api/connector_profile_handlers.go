@@ -375,7 +375,7 @@ func (s connectorTargetHandlers) listConnectorCredentialProfileActions(w http.Re
 		return
 	}
 	store := connectortargets.NewStore(runtime.database)
-	target, profile, err := connectorTargetProfileViews(r.Context(), store, targetID, profileID)
+	target, profile, err := store.ResolveTargetProfileViews(r.Context(), targetID, profileID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return

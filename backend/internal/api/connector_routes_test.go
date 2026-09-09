@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
@@ -285,8 +287,8 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	}
 	permissionExpiresAt := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 	permissionPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/connector-permissions"
-	updatePermissions := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, updateConnectorPermissionsRequest{
-		Permissions: []connectorPermissionInput{
+	updatePermissions := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, accesscontrol.UpdateConnectorPermissionsRequest{
+		Permissions: []accesscontrol.ConnectorPermissionInput{
 			{
 				TargetID:      target.ID,
 				ProfileID:     profile.ID,
@@ -323,8 +325,8 @@ func TestConnectorTargetRoutesStoreSecretsOnlyInVaultPayload(t *testing.T) {
 	if listWithStalePermission.Code != http.StatusOK || strings.Contains(listWithStalePermission.Body.String(), "removed_action") || !strings.Contains(listWithStalePermission.Body.String(), "query_readonly") {
 		t.Fatalf("stale connector permission should be filtered without hiding supported permissions: %d %s", listWithStalePermission.Code, listWithStalePermission.Body.String())
 	}
-	badPermission := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, updateConnectorPermissionsRequest{
-		Permissions: []connectorPermissionInput{
+	badPermission := performJSON(handler, http.MethodPut, permissionPath, "", withCurrentAuthorizationRevision(t, handler, permissionPath, accesscontrol.UpdateConnectorPermissionsRequest{
+		Permissions: []accesscontrol.ConnectorPermissionInput{
 			{
 				TargetID:      target.ID,
 				ProfileID:     profile.ID,

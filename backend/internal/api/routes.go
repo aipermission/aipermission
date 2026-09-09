@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
@@ -14,7 +15,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
 
-type tokenHandlers struct{ *Server }
 type credentialHandlers struct{ *Server }
 type consoleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
@@ -75,7 +75,7 @@ func (s *Server) registerSystemRoutes() {
 func (s *Server) registerAccessRoutes() {
 	credentials := credentialHandlers{s}
 	connectorTargets := connectorTargetHandlers{s}
-	tokens := tokenHandlers{s}
+	tokenAccess := accesscontrol.NewHTTPHandlers(s.accessControlScope)
 
 	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials", credentials.listCredentials)
 	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials", credentials.createCredential)
@@ -84,15 +84,15 @@ func (s *Server) registerAccessRoutes() {
 	s.mux.HandleFunc("PUT /api/connectors/{kind}/credentials/{id}", credentials.updateCredential)
 	s.mux.HandleFunc("DELETE /api/connectors/{kind}/credentials/{id}", credentials.deleteCredential)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/operations/{operation}", connectorTargets.runConnectorTargetOperation)
-	s.mux.HandleFunc("GET /api/tokens", tokens.listTokens)
-	s.mux.HandleFunc("POST /api/tokens", tokens.createToken)
-	s.mux.HandleFunc("POST /api/tokens/{id}/revoke", tokens.revokeToken)
-	s.mux.HandleFunc("GET /api/tokens/{id}/connector-permissions", tokens.listTokenConnectorPermissions)
-	s.mux.HandleFunc("PUT /api/tokens/{id}/connector-permissions", tokens.updateTokenConnectorPermissions)
-	s.mux.HandleFunc("GET /api/tokens/{id}/project-scopes", tokens.listTokenProjectScopes)
-	s.mux.HandleFunc("PUT /api/tokens/{id}/project-scopes", tokens.updateTokenProjectScopes)
-	s.mux.HandleFunc("GET /api/tokens/{id}/project-capabilities", tokens.listTokenProjectCapabilities)
-	s.mux.HandleFunc("PUT /api/tokens/{id}/project-capabilities", tokens.updateTokenProjectCapabilities)
+	s.mux.HandleFunc("GET /api/tokens", tokenAccess.ListTokens)
+	s.mux.HandleFunc("POST /api/tokens", tokenAccess.CreateToken)
+	s.mux.HandleFunc("POST /api/tokens/{id}/revoke", tokenAccess.RevokeToken)
+	s.mux.HandleFunc("GET /api/tokens/{id}/connector-permissions", tokenAccess.ListConnectorPermissions)
+	s.mux.HandleFunc("PUT /api/tokens/{id}/connector-permissions", tokenAccess.UpdateConnectorPermissions)
+	s.mux.HandleFunc("GET /api/tokens/{id}/project-scopes", tokenAccess.ListProjectScopes)
+	s.mux.HandleFunc("PUT /api/tokens/{id}/project-scopes", tokenAccess.UpdateProjectScopes)
+	s.mux.HandleFunc("GET /api/tokens/{id}/project-capabilities", tokenAccess.ListProjectCapabilities)
+	s.mux.HandleFunc("PUT /api/tokens/{id}/project-capabilities", tokenAccess.UpdateProjectCapabilities)
 }
 
 func (s *Server) registerBackupRoutes() {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -102,11 +102,11 @@ func buildVaultApprovalContext(
 	if err != nil {
 		return vaultApprovalContext{}, "", nil, err
 	}
-	capabilityName := projectcapabilities.VaultItemGenerate
+	capabilityName := accesscontrol.VaultItemGenerate
 	if actionName == vaultrequests.ActionRestartSession {
-		capabilityName = projectcapabilities.VaultSessionApply
+		capabilityName = accesscontrol.VaultSessionApply
 	}
-	capability, err := projectcapabilities.NewStore(runtime.database).Effective(ctx, tokenID, project.ID, capabilityName, time.Now())
+	capability, err := accesscontrol.NewCapabilityStore(runtime.database).Effective(ctx, tokenID, project.ID, capabilityName, time.Now())
 	if err != nil {
 		return vaultApprovalContext{}, "", nil, err
 	}

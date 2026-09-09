@@ -1,4 +1,4 @@
-package api
+package accesscontrol
 
 import (
 	"context"
@@ -11,14 +11,15 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-type updateConnectorPermissionsRequest struct {
-	Permissions      []connectorPermissionInput `json:"permissions"`
+type UpdateConnectorPermissionsRequest struct {
+	Permissions      []ConnectorPermissionInput `json:"permissions"`
 	ExpectedRevision string                     `json:"expected_revision"`
 }
 
-type connectorPermissionInput struct {
+type ConnectorPermissionInput struct {
 	TargetID      int64  `json:"target_id"`
 	ProfileID     int64  `json:"profile_id"`
 	ActionName    string `json:"action_name"`
@@ -45,63 +46,63 @@ type connectorPermissionResponse struct {
 	UpdatedAt      string `json:"updated_at"`
 }
 
-func (s tokenHandlers) listTokenConnectorPermissions(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) ListConnectorPermissions(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireDatabase|requireTokens|requireRegistry)
 	if !ok {
 		return
 	}
-	tokenID, ok := parseID(w, r)
+	tokenID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
 	}
-	if _, err := runtime.tokens.Get(r.Context(), tokenID); err != nil {
-		handleTokenError(w, err)
+	if _, err := scope.Tokens.Get(r.Context(), tokenID); err != nil {
+		writeTokenError(w, err)
 		return
 	}
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(scope.Database)
 	rawPermissions, err := store.ListActionPermissions(r.Context(), tokenID)
 	if err != nil {
-		handleConnectorTargetError(w, err)
+		writeConnectorTargetError(w, err)
 		return
 	}
-	permissions, err := filterSupportedConnectorPermissions(r.Context(), runtime, rawPermissions)
+	permissions, err := filterSupportedConnectorPermissions(r.Context(), scope.Database, scope.Registry, rawPermissions)
 	if err != nil {
-		handleConnectorTargetError(w, err)
+		writeConnectorTargetError(w, err)
 		return
 	}
 	revision, err := connectorPermissionsRevision(rawPermissions)
 	if err != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions), "revision": revision})
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": connectorPermissionResponses(permissions), "revision": revision})
 }
 
-func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireDatabase|requireTokens|requireRegistry|requireAuthorizationMutation)
 	if !ok {
 		return
 	}
-	tokenID, ok := parseID(w, r)
+	tokenID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
 	}
-	if _, err := runtime.tokens.Get(r.Context(), tokenID); err != nil {
-		handleTokenError(w, err)
+	if _, err := scope.Tokens.Get(r.Context(), tokenID); err != nil {
+		writeTokenError(w, err)
 		return
 	}
-	var request updateConnectorPermissionsRequest
-	if !decodeJSON(w, r, &request) {
+	var request UpdateConnectorPermissionsRequest
+	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	store := connectortargets.NewStore(runtime.database)
-	inputs, err := connectorPermissionInputs(r, runtime.connectorRegistry(), store, request.Permissions)
+	store := connectortargets.NewStore(scope.Database)
+	inputs, err := connectorPermissionInputs(r.Context(), scope.Registry, store, request.Permissions)
 	if err != nil {
-		handleConnectorTargetError(w, err)
+		writeConnectorTargetError(w, err)
 		return
 	}
 	var permissions []connectortargets.ActionPermission
-	changed, err := s.mutateTokenWithVaultInvalidation(r.Context(), runtime, tokenID, "token.connector_permissions.updated", func() any {
+	changed, err := mutateAuthorization(r.Context(), scope, tokenID, "token.connector_permissions.updated", func() any {
 		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
 	}, "connector action permission changed; send a fresh request", func(tx *sql.Tx) (bool, error) {
 		txStore := connectortargets.NewTxStore(tx)
@@ -117,31 +118,31 @@ func (s tokenHandlers) updateTokenConnectorPermissions(w http.ResponseWriter, r 
 		permissions = nextPermissions
 		return mutationChanged, replaceErr
 	})
-	if errors.Is(err, errVaultDeliveryCanceled) {
-		writeError(w, http.StatusRequestTimeout, "connector permission update was canceled")
+	if errors.Is(err, ErrVaultDeliveryCanceled) {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "connector permission update was canceled")
 		return
 	}
 	if err != nil {
-		if handleAuthorizationRevisionError(w, err) {
+		if writeAuthorizationRevisionError(w, err) {
 			return
 		}
-		handleConnectorTargetError(w, err)
+		writeConnectorTargetError(w, err)
 		return
 	}
 	revision, revisionErr := connectorPermissionsRevision(permissions)
 	if revisionErr != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": connectorPermissionResponses(permissions), "changed": changed, "revision": revision,
 	})
 }
 
-func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, store *connectortargets.Store, permissions []connectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
+func connectorPermissionInputs(ctx context.Context, registry *connectors.Registry, store *connectortargets.Store, permissions []ConnectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
 	inputs := make([]connectortargets.SetActionPermissionInput, 0, len(permissions))
 	for _, permission := range permissions {
-		target, profile, err := connectorTargetProfileViews(r.Context(), store, permission.TargetID, permission.ProfileID)
+		target, profile, err := store.ResolveTargetProfileViews(ctx, permission.TargetID, permission.ProfileID)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +151,7 @@ func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, s
 			return nil, connectortargets.ValidationError("unsupported connector kind")
 		}
 		actionName := strings.TrimSpace(permission.ActionName)
-		if !actionSupported(r, connector, target, profile, actionName) {
+		if !actionSupported(ctx, connector, target, profile, actionName) {
 			return nil, connectortargets.ValidationError("unsupported connector action")
 		}
 		expiresAt, err := parseConnectorPermissionExpiresAt(permission.ExpiresAt, permission.ExecutionRule)
@@ -168,19 +169,19 @@ func connectorPermissionInputs(r *http.Request, registry *connectors.Registry, s
 	return inputs, nil
 }
 
-func activeSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64) ([]connectortargets.ActionPermission, error) {
-	return supportedConnectorPermissions(ctx, runtime, tokenID, false)
+func ActiveSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
+	return supportedConnectorPermissions(ctx, database, registry, tokenID, false)
 }
 
-func projectScopedSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64) ([]connectortargets.ActionPermission, error) {
-	return supportedConnectorPermissions(ctx, runtime, tokenID, true)
+func ProjectScopedSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
+	return supportedConnectorPermissions(ctx, database, registry, tokenID, true)
 }
 
-func supportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, tokenID int64, projectScoped bool) ([]connectortargets.ActionPermission, error) {
-	if runtime == nil || runtime.database == nil {
+func supportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64, projectScoped bool) ([]connectortargets.ActionPermission, error) {
+	if database == nil || registry == nil {
 		return nil, connectortargets.ValidationError("database runtime is not available")
 	}
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(database)
 	var permissions []connectortargets.ActionPermission
 	var err error
 	if projectScoped {
@@ -191,12 +192,11 @@ func supportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime
 	if err != nil {
 		return nil, err
 	}
-	return filterSupportedConnectorPermissions(ctx, runtime, permissions)
+	return filterSupportedConnectorPermissions(ctx, database, registry, permissions)
 }
 
-func filterSupportedConnectorPermissions(ctx context.Context, runtime *databaseRuntime, permissions []connectortargets.ActionPermission) ([]connectortargets.ActionPermission, error) {
-	store := connectortargets.NewStore(runtime.database)
-	registry := runtime.connectorRegistry()
+func filterSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, permissions []connectortargets.ActionPermission) ([]connectortargets.ActionPermission, error) {
+	store := connectortargets.NewStore(database)
 	type actionCatalog struct {
 		names map[string]bool
 		skip  bool
@@ -209,7 +209,7 @@ func filterSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 		catalog, ok := catalogs[cacheKey]
 		if !ok {
 			catalog = actionCatalog{names: map[string]bool{}}
-			target, profile, resolveErr := connectorTargetProfileViews(ctx, store, permission.TargetID, permission.ProfileID)
+			target, profile, resolveErr := store.ResolveTargetProfileViews(ctx, permission.TargetID, permission.ProfileID)
 			if resolveErr != nil {
 				if errors.Is(resolveErr, connectortargets.ErrTargetNotFound) || errors.Is(resolveErr, connectortargets.ErrTargetProfileNotFound) {
 					catalog.skip = true
@@ -246,30 +246,11 @@ func filterSupportedConnectorPermissions(ctx context.Context, runtime *databaseR
 	return supported, nil
 }
 
-func connectorTargetProfileViews(ctx context.Context, store *connectortargets.Store, targetID int64, profileID int64) (connectors.TargetView, connectors.CredentialProfileView, error) {
-	target, err := store.GetTarget(ctx, targetID)
-	if err != nil {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
-	}
-	profile, err := store.GetCredentialProfile(ctx, targetID, profileID)
-	if err != nil {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
-	}
-	ref := connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
-	return connectors.TargetView{
-		ID:            target.ID,
-		Ref:           ref,
-		ConnectorKind: target.ConnectorKind,
-		Name:          target.Name,
-		Config:        target.Config,
-	}, connectortargets.CredentialProfileView(profile), nil
-}
-
-func actionSupported(r *http.Request, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) bool {
+func actionSupported(ctx context.Context, connector connectors.Connector, target connectors.TargetView, profile connectors.CredentialProfileView, actionName string) bool {
 	if !connectors.ValidIdentifier(actionName) {
 		return false
 	}
-	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
+	actions, err := connectors.GetActionDefinitions(ctx, connector, target, profile)
 	if err != nil {
 		return false
 	}
@@ -323,4 +304,22 @@ func connectorPermissionResponses(permissions []connectortargets.ActionPermissio
 		})
 	}
 	return items
+}
+
+func writeConnectorTargetError(w http.ResponseWriter, err error) {
+	var validation connectortargets.ValidationError
+	switch {
+	case errors.Is(err, connectortargets.ErrTargetUpdateConflict),
+		errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict):
+		httptransport.WriteError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, connectortargets.ErrTargetNotFound),
+		errors.Is(err, connectortargets.ErrTargetProfileNotFound):
+		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
+	case errors.Is(err, connectortargets.ErrInvalidTargetRef):
+		httptransport.WriteError(w, http.StatusBadRequest, "invalid connector target ref")
+	case errors.As(err, &validation):
+		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
+	default:
+		httptransport.WriteInternalError(w)
+	}
 }

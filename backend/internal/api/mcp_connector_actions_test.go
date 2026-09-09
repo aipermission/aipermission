@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -254,7 +255,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 	}
 	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
 	scopeResponse := performJSON(fixture.server.Handler(), http.MethodPut, scopePath, "", withCurrentAuthorizationRevision(
-		t, fixture.server.Handler(), scopePath, updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{ungrouped.ID}},
+		t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{ungrouped.ID}},
 	))
 	if scopeResponse.Code != http.StatusOK {
 		t.Fatalf("disable project scope: %d %s", scopeResponse.Code, scopeResponse.Body.String())

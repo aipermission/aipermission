@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/projectcapabilities"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -108,10 +108,10 @@ func TestMCPStopStalesPendingVaultActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
-	response := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, updateProjectCapabilitiesRequest{
-		Capabilities: []projectCapabilityInput{{
-			ProjectID: project.ID, CapabilityName: projectcapabilities.VaultItemGenerate,
-			ExecutionRule: projectcapabilities.RuleApprovalRequired,
+	response := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{
+		Capabilities: []accesscontrol.ProjectCapabilityInput{{
+			ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate,
+			ExecutionRule: accesscontrol.RuleApprovalRequired,
 		}},
 	}))
 	if response.Code != http.StatusOK {
@@ -179,12 +179,12 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		t.Fatal(err)
 	}
 	tokenPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10)
-	scopeRequest := updateTokenProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}
-	capabilityRequest := updateProjectCapabilitiesRequest{Capabilities: []projectCapabilityInput{{
-		ProjectID: project.ID, CapabilityName: projectcapabilities.VaultSessionApply,
-		ExecutionRule: projectcapabilities.RuleAlwaysRun,
+	scopeRequest := accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}
+	capabilityRequest := accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{{
+		ProjectID: project.ID, CapabilityName: accesscontrol.VaultSessionApply,
+		ExecutionRule: accesscontrol.RuleAlwaysRun,
 	}}}
-	permissionRequest := updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
+	permissionRequest := accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
 		TargetID: target.TargetID, ProfileID: target.ProfileID,
 		ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
 	}}}
@@ -355,7 +355,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 		http.MethodPut,
 		permissionPath,
 		"",
-		withCurrentAuthorizationRevision(t, fixture.server.Handler(), permissionPath, updateConnectorPermissionsRequest{Permissions: []connectorPermissionInput{{
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), permissionPath, accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
 			TargetID: target.TargetID, ProfileID: target.ProfileID,
 			ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
 		}}}),

@@ -48,49 +48,6 @@ func closeVaultSessionReferences(ctx context.Context, runtime *databaseRuntime, 
 	return errors.Join(closeErrors...)
 }
 
-func (s *Server) invalidateVaultTokenSessions(ctx context.Context, runtime *databaseRuntime, tokenID int64, reason string) error {
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT DISTINCT session_id
-		FROM vault_session_leases
-		WHERE token_id = ? AND status = 'active'`, tokenID)
-	if err != nil {
-		return err
-	}
-	sessionIDs := []int64{}
-	for rows.Next() {
-		var sessionID int64
-		if err := rows.Scan(&sessionID); err != nil {
-			rows.Close()
-			return err
-		}
-		sessionIDs = append(sessionIDs, sessionID)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	var invalidationErrors []error
-	if _, err := runtime.database.ExecContext(ctx, `
-		UPDATE vault_session_leases
-		SET status = 'revoked', updated_at = ?
-		WHERE token_id = ? AND status = 'active'`,
-		now, tokenID,
-	); err != nil {
-		invalidationErrors = append(invalidationErrors, err)
-	}
-	if err := s.vaultRequestStore(ctx, runtime).StalePendingForToken(ctx, tokenID, reason); err != nil {
-		invalidationErrors = append(invalidationErrors, err)
-	}
-	if err := finishVaultTokenSessionInvalidation(ctx, runtime, tokenID, sessionIDs); err != nil {
-		invalidationErrors = append(invalidationErrors, err)
-	}
-	return errors.Join(invalidationErrors...)
-}
-
 func finishVaultTokenSessionInvalidation(ctx context.Context, runtime *databaseRuntime, tokenID int64, sessionIDs []int64) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), vaultSessionInvalidationTimeout)
 	defer cancel()
