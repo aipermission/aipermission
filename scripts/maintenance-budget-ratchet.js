@@ -43,7 +43,7 @@ function goFunctionBudgets(source) {
     "go.function.default.complexity": complexity,
   };
   const match = source.match(/var\s+overrides\s*=\s*map\[string\]budget\s*\{([\s\S]*?)\n\s*\}/);
-  if (!match) throw new Error("Could not read Go function overrides");
+  if (!match) return snapshot;
   for (const entry of match[1].matchAll(/"([^"]+)"\s*:\s*\{\s*lines:\s*([^,]+),\s*complexity:\s*([^}\n]+)\}/g)) {
     snapshot[`go.function.override.${entry[1]}.lines`] = goBudgetValue(entry[2], { defaultMaxLines: lines, defaultMaxComplexity: complexity });
     snapshot[`go.function.override.${entry[1]}.complexity`] = goBudgetValue(entry[3], {

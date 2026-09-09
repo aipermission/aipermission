@@ -82,6 +82,18 @@ var overrides = map[string]budget{
   assert.deepEqual(budgetIncreases(snapshot, { ...snapshot, "go.function.default.lines": 181 }), [
     "go.function.default.lines increased from 180 to 181",
   ]);
+  assert.deepEqual(
+    goFunctionBudgets(`
+const (
+  defaultMaxLines = 180
+  defaultMaxComplexity = 35
+)
+`),
+    {
+      "go.function.default.lines": 180,
+      "go.function.default.complexity": 35,
+    },
+  );
 });
 
 test("ratchets backend fan-out defaults and overrides", () => {

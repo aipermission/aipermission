@@ -32,31 +32,25 @@ type maintenanceConsoleHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
-	unlock := unlockHandlers{s}
+	s.registerSystemRoutes()
+	s.registerAccessRoutes()
+	s.registerBackupRoutes()
+	s.registerConsoleAndActivityRoutes()
+	s.registerProjectAndVaultRoutes()
+	s.registerTransferRoutes()
+	s.registerConnectorRoutes()
+	s.registerMessageAndAuditRoutes()
+	s.registerMCPRoutes()
+	registerConnectorAdapterRoutes(s.mux, s)
+}
+
+func (s *Server) registerSystemRoutes() {
 	security := securityHandlers{s}
 	retention := retentionHandlers{s}
 	redactionRules := redactionRuleHandlers{s}
-	credentials := credentialHandlers{s}
-	tokens := tokenHandlers{s}
-	backup := backupHandlers{s}
-	databases := databaseHandlers{s}
-	console := consoleHandlers{s}
-	connectorApprovals := connectorActionApprovalHandlers{s}
-	messages := messageHandlers{s}
-	audit := auditHandlers{s}
-	historyEntries := historyEntryHandlers{s}
-	historyLabels := historyLabelHandlers{s}
-	projects := projectHandlers{s}
-	vaultItems := vaultItemHandlers{s}
-	fileTransfers := fileTransferHandlers{s}
-	connectors := connectorHandlers{s}
-	connectorActions := connectorActionHandlers{s}
-	connectorTargets := connectorTargetHandlers{s}
-	targets := targetHandlers{s}
-	mcp := mcpHandlers{s}
-	vaultApprovals := vaultActionApprovalHandlers{s}
 	maintenanceConsole := maintenanceConsoleHandlers{s}
 	diagnostics := diagnosticsHandlers{s}
+	unlock := unlockHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
 	s.mux.HandleFunc("GET /api/status", s.status)
@@ -78,6 +72,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
 	s.mux.HandleFunc("POST /api/unlock", unlock.unlock)
 	s.mux.HandleFunc("POST /api/lock", unlock.lock)
+}
+
+func (s *Server) registerAccessRoutes() {
+	credentials := credentialHandlers{s}
+	connectorTargets := connectorTargetHandlers{s}
+	tokens := tokenHandlers{s}
+
 	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials", credentials.listCredentials)
 	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials", credentials.createCredential)
 	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials/import", credentials.importCredential)
@@ -94,6 +95,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/tokens/{id}/project-scopes", tokens.updateTokenProjectScopes)
 	s.mux.HandleFunc("GET /api/tokens/{id}/project-capabilities", tokens.listTokenProjectCapabilities)
 	s.mux.HandleFunc("PUT /api/tokens/{id}/project-capabilities", tokens.updateTokenProjectCapabilities)
+}
+
+func (s *Server) registerBackupRoutes() {
+	backup := backupHandlers{s}
+	databases := databaseHandlers{s}
+
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
 	s.mux.HandleFunc("POST /api/backup/remote/list", backup.listTransientRemoteBackups)
@@ -121,6 +128,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/databases/delete-locked", databases.deleteLockedDatabase)
 	s.mux.HandleFunc("POST /api/databases/switch", databases.switchDatabase)
 	s.mux.HandleFunc("POST /api/databases/change-password", databases.changeDatabasePassword)
+}
+
+func (s *Server) registerConsoleAndActivityRoutes() {
+	console := consoleHandlers{s}
+	connectorApprovals := connectorActionApprovalHandlers{s}
+	connectorActions := connectorActionHandlers{s}
+	historyEntries := historyEntryHandlers{s}
+	historyLabels := historyLabelHandlers{s}
+
 	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)
 	s.mux.HandleFunc("GET /api/console/sessions", console.listConsoleSessions)
 	s.mux.HandleFunc("POST /api/console/sessions", console.createConsoleSession)
@@ -144,6 +160,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
 	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
 	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)
+}
+
+func (s *Server) registerProjectAndVaultRoutes() {
+	projects := projectHandlers{s}
+	vaultItems := vaultItemHandlers{s}
+	vaultApprovals := vaultActionApprovalHandlers{s}
+
 	s.mux.HandleFunc("GET /api/projects", projects.listProjects)
 	s.mux.HandleFunc("POST /api/projects", projects.createProject)
 	s.mux.HandleFunc("PUT /api/projects/{id}", projects.updateProject)
@@ -163,6 +186,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.list)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.run)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.decline)
+}
+
+func (s *Server) registerTransferRoutes() {
+	fileTransfers := fileTransferHandlers{s}
+
 	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
 	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
@@ -182,6 +210,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/file-transfers/upload-batch", fileTransfers.startUploadBatch)
 	s.mux.HandleFunc("POST /api/file-transfers/download", fileTransfers.startDownload)
 	s.mux.HandleFunc("POST /api/file-transfers/download-batch", fileTransfers.startDownloadBatch)
+}
+
+func (s *Server) registerConnectorRoutes() {
+	connectors := connectorHandlers{s}
+	targets := targetHandlers{s}
+	connectorTargets := connectorTargetHandlers{s}
+
 	s.mux.HandleFunc("GET /api/connectors", connectors.listConnectors)
 	s.mux.HandleFunc("GET /api/connectors/{kind}", connectors.getConnector)
 	s.mux.HandleFunc("GET /api/targets", targets.listTargets)
@@ -204,11 +239,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.deleteConnectorCredentialProfile)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", connectorTargets.listConnectorCredentialProfileActions)
+}
+
+func (s *Server) registerMessageAndAuditRoutes() {
+	messages := messageHandlers{s}
+	audit := auditHandlers{s}
+
 	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
 	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
 	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)
 	s.mux.HandleFunc("GET /api/audit-logs", audit.listAuditLogs)
 	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.getAuditLog)
+}
+
+func (s *Server) registerMCPRoutes() {
+	mcp := mcpHandlers{s}
+
 	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
 	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
 	s.mux.HandleFunc("GET /api/mcp/connector-targets", mcp.mcpListConnectorTargets)
@@ -220,7 +266,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/mcp/vault-actions/call", mcp.mcpCallVaultAction)
 	s.mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", mcp.mcpGetVaultActionRequest)
 	s.mux.HandleFunc("POST /api/mcp/vault-action-requests/{id}/cancel", mcp.mcpCancelVaultActionRequest)
-	registerConnectorAdapterRoutes(s.mux, s)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

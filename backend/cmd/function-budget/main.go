@@ -17,21 +17,12 @@ const (
 	defaultMaxComplexity = 35
 )
 
-type budget struct {
-	lines      int
-	complexity int
-}
-
 type finding struct {
 	path       string
 	function   string
 	metric     string
 	actual     int
 	configured int
-}
-
-var overrides = map[string]budget{
-	"internal/api/routes.go:Server.routes": {lines: 191, complexity: defaultMaxComplexity},
 }
 
 func main() {
@@ -53,7 +44,6 @@ func main() {
 func inspectTree(root string) ([]finding, error) {
 	fileSet := token.NewFileSet()
 	findings := []finding{}
-	seenOverrides := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -70,15 +60,10 @@ func inspectTree(root string) ([]finding, error) {
 			if !ok || function.Body == nil {
 				continue
 			}
-			inspectFunction(fileSet, filepath.ToSlash(path), functionName(function), function, function.Body, seenOverrides, &findings)
+			inspectFunction(fileSet, filepath.ToSlash(path), functionName(function), function, function.Body, &findings)
 		}
 		return nil
 	})
-	for key := range overrides {
-		if !seenOverrides[key] {
-			findings = append(findings, finding{path: key, function: "override", metric: "matches", actual: 0, configured: 1})
-		}
-	}
 	sort.Slice(findings, func(i, j int) bool {
 		left := findings[i].path + findings[i].function + findings[i].metric
 		right := findings[j].path + findings[j].function + findings[j].metric
@@ -87,29 +72,14 @@ func inspectTree(root string) ([]finding, error) {
 	return findings, err
 }
 
-func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, seenOverrides map[string]bool, findings *[]finding) {
-	key := path + ":" + name
-	configured := budget{lines: defaultMaxLines, complexity: defaultMaxComplexity}
-	if value, ok := overrides[key]; ok {
-		configured = value
-		seenOverrides[key] = true
-	}
+func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, findings *[]finding) {
 	lines := fileSet.Position(node.End()).Line - fileSet.Position(node.Pos()).Line + 1
 	complexity := cyclomaticComplexity(body)
-	if _, ok := overrides[key]; ok {
-		expectedLines := max(defaultMaxLines, lines)
-		expectedComplexity := max(defaultMaxComplexity, complexity)
-		if configured.lines != expectedLines || configured.complexity != expectedComplexity {
-			*findings = append(*findings, finding{
-				path: path, function: name, metric: "override budget", actual: max(configured.lines, configured.complexity), configured: max(expectedLines, expectedComplexity),
-			})
-		}
+	if lines > defaultMaxLines {
+		*findings = append(*findings, finding{path: path, function: name, metric: "lines", actual: lines, configured: defaultMaxLines})
 	}
-	if lines > configured.lines {
-		*findings = append(*findings, finding{path: path, function: name, metric: "lines", actual: lines, configured: configured.lines})
-	}
-	if complexity > configured.complexity {
-		*findings = append(*findings, finding{path: path, function: name, metric: "complexity", actual: complexity, configured: configured.complexity})
+	if complexity > defaultMaxComplexity {
+		*findings = append(*findings, finding{path: path, function: name, metric: "complexity", actual: complexity, configured: defaultMaxComplexity})
 	}
 
 	closures := []*ast.FuncLit{}
@@ -122,7 +92,7 @@ func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.
 		return false
 	})
 	for index, closure := range closures {
-		inspectFunction(fileSet, path, fmt.Sprintf("%s$closure%d", name, index+1), closure, closure.Body, seenOverrides, findings)
+		inspectFunction(fileSet, path, fmt.Sprintf("%s$closure%d", name, index+1), closure, closure.Body, findings)
 	}
 }
 
