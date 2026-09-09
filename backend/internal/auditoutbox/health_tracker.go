@@ -1,22 +1,15 @@
-package api
+package auditoutbox
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
-
-	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
-const auditPendingGracePeriod = 30 * time.Second
+const pendingGracePeriod = 30 * time.Second
 
-type auditHealthState struct {
-	mu            sync.RWMutex
-	failureCount  uint64
-	lastFailureAt string
-}
-
-type auditHealthResponse struct {
+type HealthSnapshot struct {
 	Status              string `json:"status"`
 	FailureCount        uint64 `json:"failure_count"`
 	LastFailureAt       string `json:"last_failure_at,omitempty"`
@@ -29,13 +22,28 @@ type auditHealthResponse struct {
 	LastDeliverySuccess string `json:"last_delivery_success_at,omitempty"`
 }
 
-func (s *Server) auditHealthSnapshot(ctx context.Context) auditHealthResponse {
-	response := s.auditHealth.snapshot()
-	runtime := s.activeRuntime()
-	if runtime == nil || runtime.database == nil {
+type HealthTracker struct {
+	mu            sync.RWMutex
+	failureCount  uint64
+	lastFailureAt string
+}
+
+func (t *HealthTracker) RecordFailure(now time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failureCount++
+	t.lastFailureAt = now.UTC().Format(time.RFC3339Nano)
+}
+
+func (t *HealthTracker) Snapshot(ctx context.Context, database *sql.DB) HealthSnapshot {
+	response := t.memorySnapshot()
+	if database == nil {
 		return response
 	}
-	durable, err := (auditoutbox.Store{}).Health(ctx, runtime.database)
+	durable, err := (Store{}).Health(ctx, database)
 	if err != nil {
 		response.Status = "degraded"
 		response.LastDeliveryError = err.Error()
@@ -54,13 +62,30 @@ func (s *Server) auditHealthSnapshot(ctx context.Context) auditHealthResponse {
 	if response.LastFailureAt != "" && !timestampAfter(response.LastFailureAt, durable.LastDeliverySuccess) {
 		response.Status = "ok"
 	}
-	if durable.DeadLetterCount > 0 || pendingAuditBacklogIsStale(durable.OldestPendingAt, time.Now().UTC()) || timestampAfter(durable.LastDeliveryErrorAt, durable.LastDeliverySuccess) {
+	if durable.DeadLetterCount > 0 || pendingBacklogIsStale(durable.OldestPendingAt, time.Now().UTC()) || timestampAfter(durable.LastDeliveryErrorAt, durable.LastDeliverySuccess) {
 		response.Status = "degraded"
 	}
 	return response
 }
 
-func pendingAuditBacklogIsStale(oldestPendingAt string, now time.Time) bool {
+func (t *HealthTracker) memorySnapshot() HealthSnapshot {
+	if t == nil {
+		return HealthSnapshot{Status: "ok"}
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	status := "ok"
+	if t.failureCount > 0 {
+		status = "degraded"
+	}
+	return HealthSnapshot{
+		Status:        status,
+		FailureCount:  t.failureCount,
+		LastFailureAt: t.lastFailureAt,
+	}
+}
+
+func pendingBacklogIsStale(oldestPendingAt string, now time.Time) bool {
 	if oldestPendingAt == "" {
 		return false
 	}
@@ -68,7 +93,7 @@ func pendingAuditBacklogIsStale(oldestPendingAt string, now time.Time) bool {
 	if err != nil {
 		return true
 	}
-	return !oldest.After(now.Add(-auditPendingGracePeriod))
+	return !oldest.After(now.Add(-pendingGracePeriod))
 }
 
 func timestampAfter(value string, baseline string) bool {
@@ -84,31 +109,4 @@ func timestampAfter(value string, baseline string) bool {
 		return value > baseline
 	}
 	return valueTime.After(baselineTime)
-}
-
-func (state *auditHealthState) recordFailure(now time.Time) {
-	if state == nil {
-		return
-	}
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	state.failureCount++
-	state.lastFailureAt = now.UTC().Format(time.RFC3339Nano)
-}
-
-func (state *auditHealthState) snapshot() auditHealthResponse {
-	if state == nil {
-		return auditHealthResponse{Status: "ok"}
-	}
-	state.mu.RLock()
-	defer state.mu.RUnlock()
-	status := "ok"
-	if state.failureCount > 0 {
-		status = "degraded"
-	}
-	return auditHealthResponse{
-		Status:        status,
-		FailureCount:  state.failureCount,
-		LastFailureAt: state.lastFailureAt,
-	}
 }

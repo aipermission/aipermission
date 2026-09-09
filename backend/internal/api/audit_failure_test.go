@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 )
 
 func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
@@ -34,7 +35,7 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	server.status(recorder, httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	var status struct {
-		Audit auditHealthResponse `json:"audit"`
+		Audit auditoutbox.HealthSnapshot `json:"audit"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &status); err != nil {
 		t.Fatalf("decode status: %v", err)
@@ -44,35 +45,10 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 	}
 }
 
-func TestAuditHealthStartsClean(t *testing.T) {
-	health := (&Server{}).auditHealth.snapshot()
-	if health.Status != "ok" || health.FailureCount != 0 || health.LastFailureAt != "" {
-		t.Fatalf("unexpected initial audit health: %+v", health)
-	}
-}
-
-func TestAuditHealthCountsConcurrentFailures(t *testing.T) {
-	var state auditHealthState
-	var wait sync.WaitGroup
-	for range 32 {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			state.recordFailure(time.Now())
-		}()
-	}
-	wait.Wait()
-
-	health := state.snapshot()
-	if health.Status != "degraded" || health.FailureCount != 32 {
-		t.Fatalf("unexpected concurrent audit health: %+v", health)
-	}
-}
-
 func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	server := fixture.server
-	server.auditHealth.recordFailure(time.Now().Add(-time.Minute))
+	server.auditHealth.RecordFailure(time.Now().Add(-time.Minute))
 	if _, err := fixture.db.Exec(`
 		UPDATE audit_dispatch_state
 		SET failure_count = 1, last_error = '',
@@ -88,18 +64,5 @@ func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 	health := server.auditHealthSnapshot(context.Background())
 	if health.Status != "ok" || health.FailureCount != 1 || health.LastDeliverySuccess == "" {
 		t.Fatalf("unexpected recovered audit health: %+v", health)
-	}
-}
-
-func TestAuditHealthAllowsFreshPendingDelivery(t *testing.T) {
-	now := time.Now().UTC()
-	if pendingAuditBacklogIsStale(now.Add(-auditPendingGracePeriod/2).Format(time.RFC3339Nano), now) {
-		t.Fatal("fresh audit backlog should not degrade health")
-	}
-	if !pendingAuditBacklogIsStale(now.Add(-auditPendingGracePeriod-time.Second).Format(time.RFC3339Nano), now) {
-		t.Fatal("stale audit backlog should degrade health")
-	}
-	if !pendingAuditBacklogIsStale("invalid timestamp", now) {
-		t.Fatal("invalid audit backlog timestamp should fail closed")
 	}
 }

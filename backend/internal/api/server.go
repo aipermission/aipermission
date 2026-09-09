@@ -48,7 +48,7 @@ type Server struct {
 	vaultRequestLimiter  *runtimecontrol.Window
 	uiSessionMu          sync.RWMutex
 	uiSessions           map[string]uiSessionRecord
-	auditHealth          auditHealthState
+	auditHealth          auditoutbox.HealthTracker
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)

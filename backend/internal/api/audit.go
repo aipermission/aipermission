@@ -15,6 +15,14 @@ import (
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
 
+func (s *Server) auditHealthSnapshot(ctx context.Context) auditoutbox.HealthSnapshot {
+	runtime := s.activeRuntime()
+	if runtime == nil {
+		return s.auditHealth.Snapshot(ctx, nil)
+	}
+	return s.auditHealth.Snapshot(ctx, runtime.database)
+}
+
 func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -101,7 +109,7 @@ func (s *Server) writeObservationAudit(ctx context.Context, runtime *databaseRun
 func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntime, actorType string, tokenID *int64, runtimeID int64, action string, payload any) (err error) {
 	defer func() {
 		if err != nil && s != nil {
-			s.auditHealth.recordFailure(time.Now())
+			s.auditHealth.RecordFailure(time.Now())
 		}
 	}()
 	if runtime == nil || runtime.database == nil {
@@ -127,7 +135,7 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 		return nil
 	}
 	if _, dispatchErr := dispatcher.DispatchOnce(ctx); dispatchErr != nil {
-		s.auditHealth.recordFailure(time.Now())
+		s.auditHealth.RecordFailure(time.Now())
 		log.Printf("audit projection failed action=%q error=%v", action, dispatchErr)
 		dispatcher.Notify()
 	}
@@ -225,7 +233,7 @@ func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntim
 		return
 	}
 	if _, err := dispatcher.DispatchOnce(ctx); err != nil {
-		s.auditHealth.recordFailure(time.Now())
+		s.auditHealth.RecordFailure(time.Now())
 		log.Printf("audit projection failed error=%v", err)
 	}
 	dispatcher.Notify()

@@ -14,7 +14,7 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	audit := h.auditHealthSnapshot(r.Context())
+	audit := h.auditHealth.Snapshot(r.Context(), runtime.database)
 	report, err := diagnostics.Collect(r.Context(), diagnostics.CollectInput{
 		Database:               runtime.database,
 		Registry:               runtime.connectorRegistry(),
