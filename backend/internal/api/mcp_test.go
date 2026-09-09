@@ -24,6 +24,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
@@ -77,6 +78,7 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 	}, database, secretVault, tokenStore,
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
+		WithMaintenanceConsole(maintenanceconsole.NewRuntime()),
 	)
 	if err != nil {
 		t.Fatalf("new server: %v", err)

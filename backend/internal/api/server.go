@@ -18,7 +18,6 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -40,7 +39,7 @@ type Server struct {
 	mux                  *http.ServeMux
 	mu                   sync.RWMutex
 	lifecycleMu          sync.RWMutex
-	maintenanceConsole   *maintenanceconsole.Runtime
+	maintenanceConsole   console.MaintenanceConsoleRuntime
 	authLimiter          *runtimecontrol.Auth
 	mcpIPAuthLimiter     *runtimecontrol.Auth
 	mcpTokenAuthLimiter  *runtimecontrol.Auth
@@ -101,6 +100,7 @@ type databaseRuntime struct {
 type serverOptions struct {
 	registry                   *connectors.Registry
 	adapterRegistry            *connectorapi.Registry
+	maintenanceConsole         console.MaintenanceConsoleRuntime
 	runtimeInstanceIDGenerator func() (string, error)
 }
 
@@ -115,6 +115,12 @@ func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
 func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
 	return func(options *serverOptions) {
 		options.adapterRegistry = registry
+	}
+}
+
+func WithMaintenanceConsole(runtime console.MaintenanceConsoleRuntime) ServerOption {
+	return func(options *serverOptions) {
+		options.maintenanceConsole = runtime
 	}
 }
 
@@ -163,7 +169,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		registry:             registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
-		maintenanceConsole:   maintenanceconsole.NewRuntime(),
+		maintenanceConsole:   resolved.maintenanceConsole,
 		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
 		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
 		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
@@ -225,7 +231,7 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		registry:             resolved.registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
-		maintenanceConsole:   maintenanceconsole.NewRuntime(),
+		maintenanceConsole:   resolved.maintenanceConsole,
 		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
 		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
 		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),

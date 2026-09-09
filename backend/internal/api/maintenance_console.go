@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"time"
-
-	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 )
 
 func (h maintenanceConsoleHandlers) status(w http.ResponseWriter, r *http.Request) {
@@ -13,21 +11,29 @@ func (h maintenanceConsoleHandlers) status(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	sessionStatus := "closed"
-	shell := maintenanceconsole.Shell()
+	shell := ""
+	enabled := false
+	maxInputBytes := 0
+	maxTranscriptBytes := 0
 	if h.maintenanceConsole != nil {
+		descriptor := h.maintenanceConsole.Descriptor()
+		enabled = descriptor.Supported
+		shell = descriptor.Shell
+		maxInputBytes = descriptor.MaxInputBytes
+		maxTranscriptBytes = descriptor.MaxTranscriptBytes
 		if snapshot, ok := h.maintenanceConsole.Snapshot(); ok {
 			sessionStatus = snapshot.Status
 			shell = snapshot.Shell
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":              maintenanceconsole.Supported(),
+		"enabled":              enabled,
 		"scope":                "local-ui-only",
 		"mode":                 "realtime-pty",
 		"shell":                shell,
 		"status":               sessionStatus,
-		"max_input_bytes":      maintenanceconsole.MaxInputBytes,
-		"max_transcript_bytes": maintenanceconsole.MaxTranscriptBytes,
+		"max_input_bytes":      maxInputBytes,
+		"max_transcript_bytes": maxTranscriptBytes,
 	})
 }
 
@@ -36,16 +42,15 @@ func (h maintenanceConsoleHandlers) open(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if !maintenanceconsole.Supported() {
+	if h.maintenanceConsole == nil || !h.maintenanceConsole.Descriptor().Supported {
 		writeError(w, http.StatusNotImplemented, "maintenance console is not supported on this platform")
 		return
 	}
-	session, err := h.maintenanceConsole.Open()
+	snapshot, err := h.maintenanceConsole.Open()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "maintenance console failed to start")
 		return
 	}
-	snapshot := session.Snapshot()
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "maintenance_console.opened", map[string]any{
 		"scope": "local-ui-only",
 		"mode":  "realtime-pty",
@@ -84,12 +89,11 @@ func (h maintenanceConsoleHandlers) attach(w http.ResponseWriter, r *http.Reques
 	if _, ok := h.activeRuntimeOrLocked(w); !ok {
 		return
 	}
-	if !maintenanceconsole.Supported() {
+	if h.maintenanceConsole == nil || !h.maintenanceConsole.Descriptor().Supported {
 		writeError(w, http.StatusNotImplemented, "maintenance console is not supported on this platform")
 		return
 	}
-	session := h.maintenanceConsole.Active()
-	if session == nil {
+	if !h.maintenanceConsole.Active() {
 		writeError(w, http.StatusConflict, "maintenance console is not open")
 		return
 	}
@@ -97,18 +101,16 @@ func (h maintenanceConsoleHandlers) attach(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
-	session.Attach(ws)
+	h.maintenanceConsole.Attach(ws)
 }
 
 func (s *Server) closeMaintenanceConsoleForLifecycle(reason string) bool {
 	if s == nil || s.maintenanceConsole == nil {
 		return false
 	}
-	session := s.maintenanceConsole.Detach()
-	if session == nil {
+	if !s.maintenanceConsole.Close() {
 		return false
 	}
-	session.Close()
 	runtime := s.activeRuntime()
 	if runtime != nil {
 		s.writeObservationAudit(context.Background(), runtime, "system", nil, 0, "maintenance_console.closed", map[string]any{

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
@@ -64,10 +65,17 @@ func NewRuntime() *Runtime {
 	return &Runtime{}
 }
 
-type Snapshot struct {
-	Status     string
-	Shell      string
-	Transcript string
+type Snapshot = console.MaintenanceConsoleSnapshot
+
+var _ console.MaintenanceConsoleRuntime = (*Runtime)(nil)
+
+func (m *Runtime) Descriptor() console.MaintenanceConsoleDescriptor {
+	return console.MaintenanceConsoleDescriptor{
+		Supported:          Supported(),
+		Shell:              Shell(),
+		MaxInputBytes:      MaxInputBytes,
+		MaxTranscriptBytes: MaxTranscriptBytes,
+	}
 }
 
 func (m *Runtime) Snapshot() (Snapshot, bool) {
@@ -83,7 +91,7 @@ func (m *Runtime) Snapshot() (Snapshot, bool) {
 	return session.Snapshot(), true
 }
 
-func (m *Runtime) Active() *Session {
+func (m *Runtime) activeSession() *Session {
 	if m == nil {
 		return nil
 	}
@@ -95,15 +103,15 @@ func (m *Runtime) Active() *Session {
 	return m.session
 }
 
-func (m *Runtime) Open() (*Session, error) {
+func (m *Runtime) Open() (Snapshot, error) {
 	if m == nil {
-		return nil, fmt.Errorf("maintenance console runtime is not initialized")
+		return Snapshot{}, fmt.Errorf("maintenance console runtime is not initialized")
 	}
 	m.mu.Lock()
 	if m.session != nil && m.session.isLive() {
 		session := m.session
 		m.mu.Unlock()
-		return session, nil
+		return session.Snapshot(), nil
 	}
 	if m.session != nil {
 		m.session.Close()
@@ -112,15 +120,28 @@ func (m *Runtime) Open() (*Session, error) {
 	session, err := startMaintenanceConsoleSession()
 	if err != nil {
 		m.mu.Unlock()
-		return nil, err
+		return Snapshot{}, err
 	}
 	m.session = session
 	m.mu.Unlock()
-	return session, nil
+	return session.Snapshot(), nil
+}
+
+func (m *Runtime) Active() bool {
+	return m.activeSession() != nil
+}
+
+func (m *Runtime) Attach(ws *websocket.Conn) {
+	session := m.activeSession()
+	if session == nil {
+		_ = ws.Close()
+		return
+	}
+	session.Attach(ws)
 }
 
 func (m *Runtime) Close() bool {
-	session := m.Detach()
+	session := m.detach()
 	if session == nil {
 		return false
 	}
@@ -128,7 +149,7 @@ func (m *Runtime) Close() bool {
 	return true
 }
 
-func (m *Runtime) Detach() *Session {
+func (m *Runtime) detach() *Session {
 	if m == nil {
 		return nil
 	}

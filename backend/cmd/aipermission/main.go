@@ -52,6 +52,7 @@ func runGatewayServer(ctx context.Context) error {
 		cfg,
 		api.WithConnectorRegistry(catalog.Connectors),
 		api.WithConnectorAdapterRegistry(catalog.Adapters),
+		api.WithMaintenanceConsole(maintenanceconsole.NewRuntime()),
 	)
 	defer server.Close()
 
