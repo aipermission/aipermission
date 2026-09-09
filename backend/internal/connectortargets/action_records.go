@@ -156,7 +156,7 @@ func NewActionRequestFilter(status, targetRef, actionName, active string) (Actio
 		filter.Active = true
 	}
 	if targetRef = strings.TrimSpace(targetRef); targetRef != "" {
-		kind, targetID, profileID, valid := ParseConnectorTargetRef(targetRef)
+		kind, targetID, profileID, valid := connectors.ParseTargetRef(targetRef)
 		if !valid {
 			return ActionRequestFilter{}, ValidationError("target_ref is invalid")
 		}

@@ -70,7 +70,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected one target/profile, got %#v", items)
 	}
-	if items[0].TargetRef != connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID) {
+	if items[0].TargetRef != connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID) {
 		t.Fatalf("target ref = %q", items[0].TargetRef)
 	}
 	if len(items[0].Actions) != 1 || items[0].Actions[0].Name != postgresconnector.ActionGetSchemas {
@@ -80,7 +80,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		t.Fatalf("expected connector hints")
 	}
 
-	actionsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID), token.TokenValue, nil)
+	actionsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID), token.TokenValue, nil)
 	if actionsResponse.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", actionsResponse.Code, actionsResponse.Body.String())
 	}
@@ -265,7 +265,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("disabled project should be hidden: %d %s", hidden.Code, hidden.Body.String())
 	}
 	action := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef:      connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:      connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName:     postgresconnector.ActionGetSchemas,
 		Reason:         "verify disabled project scope",
 		IdempotencyKey: "disabled-project-scope",
@@ -292,7 +292,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 		t.Fatalf("set permission: %v", err)
 	}
 	request := mcpConnectorActionCallRequest{
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionGetSchemas, Reason: "inspect schema",
 		IdempotencyKey: "connector-request-1",
 	}
@@ -416,7 +416,7 @@ func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t
 		t.Fatalf("set read permission: %v", err)
 	}
 	readResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef: connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID), ActionName: postgresconnector.ActionGetSchemas,
+		TargetRef: connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID), ActionName: postgresconnector.ActionGetSchemas,
 	})
 	if readResponse.Code != http.StatusOK || !strings.Contains(readResponse.Body.String(), `"status":"approval_pending"`) {
 		t.Fatalf("legacy read without idempotency key = %d %s", readResponse.Code, readResponse.Body.String())

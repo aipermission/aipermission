@@ -38,7 +38,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
@@ -60,7 +60,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
-	targetRef := connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID)
 	activeResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?target_ref="+targetRef+"&action_name=query_readonly&active=true", "", nil)
 	if activeResponse.Code != http.StatusOK || !strings.Contains(activeResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list active scoped connector approvals failed: %d %s", activeResponse.Code, activeResponse.Body.String())
@@ -124,7 +124,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 'password=super-secret' as value"},
 		Reason:     "smoke",
@@ -169,7 +169,7 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
@@ -218,7 +218,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
@@ -364,7 +364,7 @@ func TestConnectorActionApprovalRunRejectsRetryPolicyDrift(t *testing.T) {
 	}
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
 		Source: commandRequestSourceMCP, TokenID: token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "retry policy"}, Reason: "verify retry policy drift",
 	})
 	if err != nil {
@@ -524,7 +524,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 				Source:     commandRequestSourceMCP,
 				TokenID:    token.ID,
-				TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+				TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 				ActionName: postgresconnector.ActionQueryReadonly,
 				Input:      map[string]any{"sql": "select 1"},
 				Reason:     "smoke",
@@ -610,7 +610,7 @@ func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "fail"},
 		Reason:     "approval failure transition test",
@@ -708,7 +708,7 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "approved"},
 		Reason:     "approval transition test",

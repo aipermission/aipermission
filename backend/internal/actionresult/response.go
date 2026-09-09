@@ -43,7 +43,7 @@ func FromRequest(request connectortargets.ActionRequest, runningHint string) Res
 	response := Response{
 		Status:        string(request.Status),
 		RequestID:     request.ID,
-		TargetRef:     connectortargets.ConnectorTargetRef(request.ConnectorKind, request.TargetID, request.ProfileID),
+		TargetRef:     connectors.FormatTargetRef(request.ConnectorKind, request.TargetID, request.ProfileID),
 		TargetName:    request.TargetName,
 		ConnectorKind: request.ConnectorKind,
 		ProfileLabel:  request.ProfileLabel,

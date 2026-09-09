@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -121,7 +122,7 @@ func profileToSummary(profile connectortargets.CredentialProfile) profileSummary
 	return profileSummary{
 		ID:            profile.ID,
 		TargetID:      profile.TargetID,
-		Ref:           connectortargets.ConnectorTargetRef(profile.ConnectorKind, profile.TargetID, profile.ID),
+		Ref:           connectors.FormatTargetRef(profile.ConnectorKind, profile.TargetID, profile.ID),
 		ConnectorKind: profile.ConnectorKind,
 		Kind:          profile.Kind,
 		Label:         profile.Label,

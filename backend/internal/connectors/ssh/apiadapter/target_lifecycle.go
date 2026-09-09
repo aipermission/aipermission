@@ -297,7 +297,7 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w
 		handleTargetError(w, err)
 		return
 	}
-	targetRef := connectortargets.TargetProfileRef(sshconnector.Kind, target.ID, profileID)
+	targetRef := connectors.FormatTargetRef(sshconnector.Kind, target.ID, profileID)
 	runtimeID, err := runtimeIDForTargetRef(r.Context(), runtime, targetRef)
 	if err != nil {
 		handleTargetError(w, err)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func TestResolverMapsGenericConnectorRefToConnectorViews(t *testing.T) {
@@ -14,7 +15,7 @@ func TestResolverMapsGenericConnectorRefToConnectorViews(t *testing.T) {
 	store := NewStore(database)
 	target, profile := createPostgresTargetProfile(t, context.Background(), store)
 
-	resolved, err := NewResolver(database).ResolveActionTarget(context.Background(), ConnectorTargetRef("postgres", target.ID, profile.ID))
+	resolved, err := NewResolver(database).ResolveActionTarget(context.Background(), connectors.FormatTargetRef("postgres", target.ID, profile.ID))
 	if err != nil {
 		t.Fatalf("resolve generic connector target: %v", err)
 	}
@@ -22,7 +23,7 @@ func TestResolverMapsGenericConnectorRefToConnectorViews(t *testing.T) {
 		t.Fatalf("unexpected resolved target/profile: %#v", resolved)
 	}
 
-	_, err = NewResolver(database).ResolveActionTarget(context.Background(), ConnectorTargetRef("postgres", target.ID, profile.ID+100))
+	_, err = NewResolver(database).ResolveActionTarget(context.Background(), connectors.FormatTargetRef("postgres", target.ID, profile.ID+100))
 	if !errors.Is(err, actions.ErrTargetNotFound) {
 		t.Fatalf("missing generic profile error = %v", err)
 	}

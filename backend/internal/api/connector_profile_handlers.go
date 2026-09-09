@@ -279,7 +279,7 @@ func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseW
 		handleConnectorTargetError(w, err)
 		return
 	}
-	target, profile, err := store.ResolveConnectorActionTarget(r.Context(), connectortargets.ConnectorTargetRef(loadedTarget.ConnectorKind, targetID, profileID))
+	target, profile, err := store.ResolveConnectorActionTarget(r.Context(), connectors.FormatTargetRef(loadedTarget.ConnectorKind, targetID, profileID))
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return

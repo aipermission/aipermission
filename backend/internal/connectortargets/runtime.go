@@ -43,18 +43,6 @@ func NewResolver(db *sql.DB) *Resolver {
 	return &Resolver{db: db}
 }
 
-func TargetProfileRef(kind string, targetID int64, profileID int64) string {
-	return ConnectorTargetRef(kind, targetID, profileID)
-}
-
-func ParseTargetProfileRef(kind string, ref string) (int64, int64, bool) {
-	parsedKind, targetID, profileID, ok := ParseConnectorTargetRef(ref)
-	if !ok || parsedKind != kind {
-		return 0, 0, false
-	}
-	return targetID, profileID, true
-}
-
 func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (actions.ResolvedTarget, error) {
 	target, profile, err := NewStore(r.db).ResolveConnectorActionTarget(ctx, targetRef)
 	if err == nil {
@@ -198,7 +186,7 @@ func (s *Store) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, RuntimeSurface{}, err
 	}
-	target, profile, err := s.ResolveConnectorActionTarget(ctx, ConnectorTargetRef(surface.ConnectorKind, surface.TargetID, surface.ProfileID))
+	target, profile, err := s.ResolveConnectorActionTarget(ctx, connectors.FormatTargetRef(surface.ConnectorKind, surface.TargetID, surface.ProfileID))
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, RuntimeSurface{}, err
 	}

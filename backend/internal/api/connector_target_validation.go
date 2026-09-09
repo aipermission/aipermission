@@ -46,7 +46,7 @@ func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *co
 	if err := store.ValidateTransportProject(ctx, projectID, transportTargetRef); err != nil {
 		return err
 	}
-	kind, _, _, ok := connectortargets.ParseConnectorTargetRef(transportTargetRef)
+	kind, _, _, ok := connectors.ParseTargetRef(transportTargetRef)
 	if !ok {
 		return connectortargets.ErrInvalidTargetRef
 	}

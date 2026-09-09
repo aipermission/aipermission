@@ -57,7 +57,7 @@ func (s connectorTargetHandlers) listConnectorTargetInventory(w http.ResponseWri
 		for _, profile := range profiles {
 			targetView := connectors.TargetView{
 				ID:            target.ID,
-				Ref:           connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID),
+				Ref:           connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID),
 				ConnectorKind: target.ConnectorKind,
 				Name:          target.Name,
 				Config:        target.Config,

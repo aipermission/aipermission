@@ -261,7 +261,7 @@ func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, run
 		reason := "connector approval integrity data is invalid; ask the AI to send a fresh request"
 		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "request_integrity")
 	}
-	targetRef := connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
+	targetRef := connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
 	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
 		Source:     commandRequestSourceMCP,
 		TargetRef:  targetRef,
@@ -564,7 +564,7 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 		TokenName:           item.TokenName,
 		TargetID:            item.TargetID,
 		TargetName:          item.TargetName,
-		TargetRef:           connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
+		TargetRef:           connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
 		ProfileID:           item.ProfileID,
 		ProfileLabel:        item.ProfileLabel,
 		ConnectorKind:       item.ConnectorKind,

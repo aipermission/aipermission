@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -74,7 +75,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		item.Ref = connectortargets.ConnectorTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
+		item.Ref = connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
 		config, err := decodeTargetObject(configJSON)
 		if err != nil {
 			writeInternalError(w)

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
@@ -36,8 +37,8 @@ func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, err
 }
 
 func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, targetRef string) (int64, error) {
-	targetID, profileID, ok := connectortargets.ParseTargetProfileRef(sshconnector.Kind, targetRef)
-	if !ok {
+	kind, targetID, profileID, ok := connectors.ParseTargetRef(targetRef)
+	if !ok || kind != sshconnector.Kind {
 		return 0, connectortargets.ErrInvalidTargetRef
 	}
 	target, profile, err := runtime.ResolveConnectorActionTarget(ctx, targetRef)

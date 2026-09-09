@@ -5,33 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
-
-const connectorTargetRefSeparator = ":"
-
-func ConnectorTargetRef(connectorKind string, targetID int64, profileID int64) string {
-	return fmt.Sprintf("%s%s%d%s%d", connectorKind, connectorTargetRefSeparator, targetID, connectorTargetRefSeparator, profileID)
-}
-
-func ParseConnectorTargetRef(ref string) (string, int64, int64, bool) {
-	parts := strings.Split(strings.TrimSpace(ref), connectorTargetRefSeparator)
-	if len(parts) != 3 || !connectors.ValidIdentifier(parts[0]) {
-		return "", 0, 0, false
-	}
-	targetID, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil || targetID < 1 {
-		return "", 0, 0, false
-	}
-	profileID, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil || profileID < 1 {
-		return "", 0, 0, false
-	}
-	return parts[0], targetID, profileID, true
-}
 
 // ValidateTransportProject ensures a connector can only route through a
 // transport target in the same project. This keeps project boundaries in the
@@ -63,7 +39,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 	if s == nil || s.db == nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, fmt.Errorf("connector target store is not configured")
 	}
-	connectorKind, targetID, profileID, ok := ParseConnectorTargetRef(targetRef)
+	connectorKind, targetID, profileID, ok := connectors.ParseTargetRef(targetRef)
 	if !ok {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, ErrInvalidTargetRef
 	}
@@ -112,7 +88,7 @@ func (s *Store) ResolveConnectorActionTarget(ctx context.Context, targetRef stri
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
 	}
-	target.Ref = ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID)
+	target.Ref = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
 	target.Config, err = parseJSONObject(targetConfigJSON)
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, fmt.Errorf("decode target config: %w", err)

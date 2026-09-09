@@ -157,7 +157,7 @@ func connectorActionIdempotencyIdentityHash(runtime *databaseRuntime, tokenID *i
 		runtime,
 		tokenID,
 		prepared.Requested.Source,
-		connectortargets.ConnectorTargetRef(prepared.Target.ConnectorKind, prepared.Target.ID, prepared.Profile.ID),
+		connectors.FormatTargetRef(prepared.Target.ConnectorKind, prepared.Target.ID, prepared.Profile.ID),
 		prepared.Action.ActionName,
 		input,
 		prepared.Requested.Reason,
@@ -172,7 +172,7 @@ func connectorActionCallIdentityHash(runtime *databaseRuntime, tokenID *int64, s
 	if input == nil {
 		input = map[string]any{}
 	}
-	connectorKind, targetID, profileID, ok := connectortargets.ParseConnectorTargetRef(targetRef)
+	connectorKind, targetID, profileID, ok := connectors.ParseTargetRef(targetRef)
 	if !ok {
 		return "", connectortargets.ErrInvalidTargetRef
 	}

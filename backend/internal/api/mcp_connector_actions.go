@@ -69,7 +69,7 @@ func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Requ
 		if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
 			continue
 		}
-		ref := connectortargets.ConnectorTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID)
+		ref := connectors.FormatTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID)
 		item := itemsByRef[ref]
 		if item == nil {
 			item = &mcpConnectorTargetItem{

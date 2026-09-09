@@ -337,7 +337,7 @@ func requireCompletedCredentialCleanup(result connectors.ActionResult, err error
 func connectorTargetViewForProfile(target connectortargets.Target, profileID int64) connectors.TargetView {
 	return connectors.TargetView{
 		ID:            target.ID,
-		Ref:           connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profileID),
+		Ref:           connectors.FormatTargetRef(target.ConnectorKind, target.ID, profileID),
 		ConnectorKind: target.ConnectorKind,
 		Name:          target.Name,
 		Config:        cloneMapAny(target.Config),

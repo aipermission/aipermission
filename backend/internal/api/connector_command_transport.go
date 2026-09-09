@@ -50,7 +50,7 @@ func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Conte
 	if targetRef == "" {
 		return connectors.CommandRunResult{}, fmt.Errorf("transport target ref is required for command mode %q", mode)
 	}
-	kind, _, _, ok := connectortargets.ParseConnectorTargetRef(targetRef)
+	kind, _, _, ok := connectors.ParseTargetRef(targetRef)
 	if !ok {
 		return connectors.CommandRunResult{}, connectortargets.ErrInvalidTargetRef
 	}

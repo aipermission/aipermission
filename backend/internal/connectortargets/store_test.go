@@ -4,26 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
-
-func TestConnectorTargetRefRoundTrip(t *testing.T) {
-	ref := ConnectorTargetRef("postgres", 42, 7)
-	if ref != "postgres:42:7" {
-		t.Fatalf("ref = %q", ref)
-	}
-	kind, targetID, profileID, ok := ParseConnectorTargetRef(ref)
-	if !ok || kind != "postgres" || targetID != 42 || profileID != 7 {
-		t.Fatalf("parse = %q %d %d ok=%v", kind, targetID, profileID, ok)
-	}
-}
-
-func TestParseConnectorTargetRefRejectsInvalidRefs(t *testing.T) {
-	for _, ref := range []string{"", "ssh:1", "postgres", "Postgres:1:2", "postgres:0:2", "postgres:1:0", "postgres:x:2"} {
-		if _, _, _, ok := ParseConnectorTargetRef(ref); ok {
-			t.Fatalf("expected %q to be rejected", ref)
-		}
-	}
-}
 
 func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 	database := openTargetTestDB(t)
@@ -67,12 +50,12 @@ func TestStoreCreatesAndResolvesConnectorTargetProfile(t *testing.T) {
 		t.Fatalf("unexpected profile: %#v", gotProfile)
 	}
 
-	resolvedTarget, resolvedProfile, err := store.ResolveConnectorActionTarget(ctx, ConnectorTargetRef("postgres", target.ID, profile.ID))
+	resolvedTarget, resolvedProfile, err := store.ResolveConnectorActionTarget(ctx, connectors.FormatTargetRef("postgres", target.ID, profile.ID))
 	if err != nil {
 		t.Fatalf("resolve connector target: %v", err)
 	}
 
-	if resolvedTarget.Ref != ConnectorTargetRef("postgres", target.ID, profile.ID) {
+	if resolvedTarget.Ref != connectors.FormatTargetRef("postgres", target.ID, profile.ID) {
 		t.Fatalf("target ref = %q", resolvedTarget.Ref)
 	}
 	if resolvedTarget.ConnectorKind != "postgres" || resolvedTarget.Name != "main-db" {
@@ -121,8 +104,8 @@ func TestStoreValidatesTransportProjectBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create transport profile: %v", err)
 	}
-	transportRef := ConnectorTargetRef("ssh", transport.ID, transportProfile.ID)
-	if err := store.ValidateTransportTarget(ctx, ConnectorTargetRef("postgres", source.ID, sourceProfile.ID), transportRef); err != nil {
+	transportRef := connectors.FormatTargetRef("ssh", transport.ID, transportProfile.ID)
+	if err := store.ValidateTransportTarget(ctx, connectors.FormatTargetRef("postgres", source.ID, sourceProfile.ID), transportRef); err != nil {
 		t.Fatalf("validate same-project transport: %v", err)
 	}
 
@@ -154,7 +137,7 @@ func TestStoreValidatesTransportProjectBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create cross-project profile: %v", err)
 	}
-	err = store.ValidateTransportProject(ctx, source.ProjectID, ConnectorTargetRef("ssh", otherTarget.ID, otherProfile.ID))
+	err = store.ValidateTransportProject(ctx, source.ProjectID, connectors.FormatTargetRef("ssh", otherTarget.ID, otherProfile.ID))
 	if err == nil || err.Error() != "transport target must belong to the same project" {
 		t.Fatalf("cross-project transport error = %v", err)
 	}

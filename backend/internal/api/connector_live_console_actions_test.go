@@ -123,7 +123,7 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetRef := connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID)
 	if err := runtime.adapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{ref: targetRef}); err != nil {
 		t.Fatal(err)
 	}

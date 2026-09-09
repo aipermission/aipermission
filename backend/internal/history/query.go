@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -122,7 +121,7 @@ func (s *QueryStore) Targets(ctx context.Context) ([]TargetFacet, error) {
 		item.TargetID = nullableInt64(targetID)
 		item.ProfileID = nullableInt64(profileID)
 		if targetID.Valid && profileID.Valid {
-			item.Ref = fmt.Sprintf("%s:%d:%d", item.ConnectorKind, targetID.Int64, profileID.Int64)
+			item.Ref = connectors.FormatTargetRef(item.ConnectorKind, targetID.Int64, profileID.Int64)
 		} else if runtimeID.Valid {
 			item.Ref = "runtime:" + strconv.FormatInt(runtimeID.Int64, 10)
 		}

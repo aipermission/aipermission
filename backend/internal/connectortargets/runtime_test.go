@@ -9,28 +9,10 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
 )
-
-func TestTargetProfileRefRoundTrip(t *testing.T) {
-	ref := TargetProfileRef("ssh", 42, 7)
-	if ref != "ssh:42:7" {
-		t.Fatalf("ref = %q", ref)
-	}
-	targetID, profileID, ok := ParseTargetProfileRef("ssh", ref)
-	if !ok || targetID != 42 || profileID != 7 {
-		t.Fatalf("parse = %d %d ok=%v", targetID, profileID, ok)
-	}
-}
-
-func TestParseTargetProfileRefRejectsInvalidRefs(t *testing.T) {
-	for _, ref := range []string{"", "server:1:2", "ssh:", "ssh:0:1", "ssh:1:0", "ssh:not-number", "ssh:1"} {
-		if _, _, ok := ParseTargetProfileRef("ssh", ref); ok {
-			t.Fatalf("expected %q to be rejected", ref)
-		}
-	}
-}
 
 func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 	database := openTargetTestDB(t)
@@ -38,18 +20,14 @@ func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 	keyID := insertTargetTestSSHKey(t, database, "main")
 	store := NewStore(database)
 	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
-	targetRef := TargetProfileRef("ssh", target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef("ssh", target.ID, profile.ID)
 
 	resolved, err := NewResolver(database).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
 		t.Fatalf("resolve target: %v", err)
 	}
 
-	targetID, profileID, ok := ParseTargetProfileRef("ssh", targetRef)
-	if !ok {
-		t.Fatalf("invalid ssh target ref: %q", targetRef)
-	}
-	if resolved.Target.ID != targetID || resolved.Target.Ref != targetRef {
+	if resolved.Target.ID != target.ID || resolved.Target.Ref != targetRef {
 		t.Fatalf("unexpected target identity: %#v", resolved.Target)
 	}
 	if resolved.Target.ConnectorKind != sshconnector.Kind {
@@ -62,7 +40,7 @@ func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 		t.Fatalf("startup input missing: %#v", resolved.Target.Config)
 	}
 
-	if resolved.Profile.ID != profileID || resolved.Profile.TargetID != targetID {
+	if resolved.Profile.ID != profile.ID || resolved.Profile.TargetID != target.ID {
 		t.Fatalf("unexpected profile identity: %#v", resolved.Profile)
 	}
 	if resolved.Profile.ConnectorKind != sshconnector.Kind || resolved.Profile.Kind != "private_key" {

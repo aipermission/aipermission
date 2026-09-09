@@ -35,7 +35,7 @@ func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.Li
 	if surface.ConnectorKind != kubernetesconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
 		return "", connectortargets.ErrRuntimeSurfaceNotFound
 	}
-	return connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
+	return connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
 }
 
 func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {

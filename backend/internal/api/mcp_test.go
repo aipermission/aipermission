@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
@@ -179,7 +180,7 @@ func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *
 		Port:      22,
 		Username:  "root",
 		SSHKeyID:  key.ID,
-		TargetRef: connectortargets.TargetProfileRef("ssh", target.ID, profile.ID),
+		TargetRef: connectors.FormatTargetRef("ssh", target.ID, profile.ID),
 	}
 }
 
@@ -391,7 +392,7 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 		t.Fatalf("set blocked connector permission: %v", err)
 	}
 
-	targetRef := connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID)
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+url.QueryEscape(targetRef), token.TokenValue, nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("get connector actions failed: %d %s", response.Code, response.Body.String())

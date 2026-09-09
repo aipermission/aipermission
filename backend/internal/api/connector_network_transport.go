@@ -48,7 +48,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	if targetRef == "" {
 		return nil, fmt.Errorf("transport target ref is required for connection mode %q", mode)
 	}
-	kind, _, _, ok := connectortargets.ParseConnectorTargetRef(targetRef)
+	kind, _, _, ok := connectors.ParseTargetRef(targetRef)
 	if !ok {
 		return nil, connectortargets.ErrInvalidTargetRef
 	}

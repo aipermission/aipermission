@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
@@ -450,7 +450,7 @@ func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
 		actionRequestID = int64FromAny(values["request_id"])
 	}
 	if (connectorKind == "" || targetID == 0 || profileID == 0) && values["target_ref"] != nil {
-		kind, parsedTargetID, parsedProfileID, ok := connectortargets.ParseConnectorTargetRef(fmt.Sprint(values["target_ref"]))
+		kind, parsedTargetID, parsedProfileID, ok := connectors.ParseTargetRef(fmt.Sprint(values["target_ref"]))
 		if ok {
 			if connectorKind == "" {
 				connectorKind = kind

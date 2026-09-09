@@ -39,7 +39,7 @@ func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	result, err := server.callConnectorAction(context.Background(), runtime, connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    tokenID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
@@ -76,7 +76,7 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	result, err := server.callConnectorAction(context.Background(), runtime, connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    tokenID,
-		TargetRef:  connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
 		ActionName: postgresconnector.ActionQueryReadonly,
 		Input:      map[string]any{"sql": "select 1", "max_rows": 5},
 		Reason:     "inspect one row",
@@ -131,7 +131,7 @@ func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) 
 	}
 	pending, err := server.callConnectorAction(t.Context(), runtime, connectorActionCall{
 		Source: commandRequestSourceMCP, TokenID: tokenID,
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "safe-preview"}, Reason: "verify integrity",
 	})
 	if err != nil {
@@ -201,7 +201,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 
 	result, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "hello"},
 		Reason:     "manual console smoke",
@@ -231,7 +231,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 
 	completedWithHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "with-handle"},
 		Reason:     "capture completed session handle",
@@ -246,7 +246,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 
 	incompleteHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "incomplete-handle"},
 		Reason:     "reject incomplete session handle",
@@ -261,7 +261,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	}
 
 	classifiedFailure, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "classified-error"},
 		Reason:     "preserve a stable connector error code",
@@ -294,7 +294,7 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "retry smoke",
 		IdempotencyKey: "local-request-1",
 	}
@@ -333,7 +333,7 @@ func TestRunLocalConnectorMutationRequiresIdempotencyKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "mutate", Input: map[string]any{"value": "write"}, Reason: "mutation without retry identity",
 	})
 	if err == nil || !strings.Contains(err.Error(), "idempotency_key is required") {
@@ -384,7 +384,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 		t.Fatal(err)
 	}
 	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "must-not-run"},
 		Reason:     "dispatch ownership race",
@@ -518,7 +518,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 		t.Fatal(err)
 	}
 	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
-		Source: commandRequestSourceMCP, TargetRef: connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		Source: commandRequestSourceMCP, TargetRef: connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "authorization race", CreatedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -597,7 +597,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 		t.Fatal(err)
 	}
 	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
-		Source: commandRequestSourceMCP, TargetRef: connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		Source: commandRequestSourceMCP, TargetRef: connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "MCP stop race", CreatedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -681,7 +681,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 		t.Fatal(err)
 	}
 	call := connectorActionCall{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "persistence retry smoke",
 		IdempotencyKey: "local-persistence-request-1",
 	}
@@ -735,7 +735,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 		t.Fatalf("create local profile: %v", err)
 	}
 	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
-		TargetRef:  connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "hello"},
 	})
@@ -770,7 +770,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
-	targetView, profileView, err := store.ResolveConnectorActionTarget(context.Background(), connectortargets.ConnectorTargetRef(postgresconnector.Kind, target.ID, profile.ID))
+	targetView, profileView, err := store.ResolveConnectorActionTarget(context.Background(), connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID))
 	if err != nil {
 		t.Fatalf("resolve target/profile: %v", err)
 	}

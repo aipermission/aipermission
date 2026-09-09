@@ -162,7 +162,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		}
 	}
 
-	targetRef := connectortargets.ConnectorTargetRef(secretLeakCanaryConnectorKind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(secretLeakCanaryConnectorKind, target.ID, profile.ID)
 	callResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
 		TargetRef: targetRef, ActionName: "emit_secret",
 		Input: map[string]any{"payload": secretLeakInputCanaryValue}, Reason: "exercise secret canary boundaries",

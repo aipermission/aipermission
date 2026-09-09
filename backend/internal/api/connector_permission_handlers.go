@@ -255,7 +255,7 @@ func connectorTargetProfileViews(ctx context.Context, store *connectortargets.St
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, err
 	}
-	ref := connectortargets.ConnectorTargetRef(target.ConnectorKind, target.ID, profile.ID)
+	ref := connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
 	return connectors.TargetView{
 		ID:            target.ID,
 		Ref:           ref,
@@ -312,7 +312,7 @@ func connectorPermissionResponses(permissions []connectortargets.ActionPermissio
 			TargetName:     permission.TargetName,
 			ProfileID:      permission.ProfileID,
 			ProfileLabel:   permission.ProfileLabel,
-			TargetRef:      connectortargets.ConnectorTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID),
+			TargetRef:      connectors.FormatTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID),
 			ConnectorKind:  permission.ConnectorKind,
 			ProfileKind:    permission.ProfileKind,
 			ActionName:     permission.ActionName,

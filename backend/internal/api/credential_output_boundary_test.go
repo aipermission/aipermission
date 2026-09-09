@@ -95,7 +95,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	mcpTargetsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	assertOKWithoutCredential("MCP target discovery response", mcpTargetsResponse.Body.String(), mcpTargetsResponse.Code)
 	actionResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef:      connectortargets.ConnectorTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+		TargetRef:      connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName:     "echo",
 		Input:          map[string]any{"value": "reflect-credential"},
 		Reason:         "verify connector credential output boundary",
