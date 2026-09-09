@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -239,7 +240,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		t.Fatalf("list canary audit: %d %s", auditResponse.Code, auditResponse.Body.String())
 	}
 	assertCanaryAbsent("audit list", auditResponse.Body.String())
-	auditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, auditResponse.Body.Bytes())
+	auditPage := decodeRouteResponse[pageResponse[auditoutbox.Record]](t, auditResponse.Body.Bytes())
 	if len(auditPage.Items) == 0 {
 		t.Fatal("expected canary audit events")
 	}

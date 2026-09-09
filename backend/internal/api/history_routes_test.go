@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
@@ -472,7 +473,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if auditResponse.Code != http.StatusOK {
 		t.Fatalf("audit search failed: %d %s", auditResponse.Code, auditResponse.Body.String())
 	}
-	auditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, auditResponse.Body.Bytes())
+	auditPage := decodeRouteResponse[pageResponse[auditoutbox.Record]](t, auditResponse.Body.Bytes())
 	if auditPage.Total != 1 || len(auditPage.Items) != 1 || auditPage.Items[0].Action != "docker.audit" {
 		t.Fatalf("unexpected audit page: %#v", auditPage)
 	}
@@ -490,7 +491,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if runtimeAuditResponse.Code != http.StatusOK {
 		t.Fatalf("runtime audit search failed: %d %s", runtimeAuditResponse.Code, runtimeAuditResponse.Body.String())
 	}
-	runtimeAuditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, runtimeAuditResponse.Body.Bytes())
+	runtimeAuditPage := decodeRouteResponse[pageResponse[auditoutbox.Record]](t, runtimeAuditResponse.Body.Bytes())
 	if runtimeAuditPage.Total != 1 || len(runtimeAuditPage.Items) != 1 || runtimeAuditPage.Items[0].TargetName != "worker-1" {
 		t.Fatalf("runtime audit target metadata missing: %#v", runtimeAuditPage)
 	}
@@ -505,7 +506,7 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if connectorAuditResponse.Code != http.StatusOK {
 		t.Fatalf("connector audit filter failed: %d %s", connectorAuditResponse.Code, connectorAuditResponse.Body.String())
 	}
-	connectorAuditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, connectorAuditResponse.Body.Bytes())
+	connectorAuditPage := decodeRouteResponse[pageResponse[auditoutbox.Record]](t, connectorAuditResponse.Body.Bytes())
 	if connectorAuditPage.Total != 1 || len(connectorAuditPage.Items) != 1 {
 		t.Fatalf("unexpected connector audit page: %#v", connectorAuditPage)
 	}

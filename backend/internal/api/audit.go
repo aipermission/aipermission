@@ -13,29 +13,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
-
-type auditLogRecord struct {
-	ID              int64  `json:"id"`
-	EventVersion    int    `json:"event_version"`
-	ActorType       string `json:"actor_type"`
-	TokenID         *int64 `json:"token_id,omitempty"`
-	TokenName       string `json:"token_name,omitempty"`
-	ProjectID       *int64 `json:"project_id,omitempty"`
-	ProjectName     string `json:"project_name,omitempty"`
-	RuntimeID       *int64 `json:"runtime_id,omitempty"`
-	ConnectorKind   string `json:"connector_kind,omitempty"`
-	TargetID        *int64 `json:"target_id,omitempty"`
-	TargetName      string `json:"target_name,omitempty"`
-	ProfileID       *int64 `json:"profile_id,omitempty"`
-	ActionRequestID *int64 `json:"action_request_id,omitempty"`
-	Action          string `json:"action"`
-	LifecyclePhase  string `json:"lifecycle_phase"`
-	PayloadJSON     string `json:"payload_json"`
-	CreatedAt       string `json:"created_at"`
-}
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
 
@@ -50,12 +29,6 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	where := []string{"1 = 1"}
-	args := []any{}
-	if actor != "" {
-		where = append(where, "a.actor_type = ?")
-		args = append(args, actor)
-	}
 	var runtimeID int64
 	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
 		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
@@ -64,10 +37,6 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		runtimeID = id
 	}
-	if runtimeID != 0 {
-		where = append(where, "a.runtime_id = ?")
-		args = append(args, runtimeID)
-	}
 	var projectID int64
 	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
 		id, ok := parseInt64Query(w, rawProjectID, "project_id")
@@ -75,14 +44,8 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projectID = id
-		where = append(where, "a.project_id = ?")
-		args = append(args, projectID)
 	}
 	connectorKind := strings.TrimSpace(r.URL.Query().Get("connector_kind"))
-	if connectorKind != "" {
-		where = append(where, "a.connector_kind = ?")
-		args = append(args, connectorKind)
-	}
 	var targetID int64
 	if rawTargetID := strings.TrimSpace(r.URL.Query().Get("target_id")); rawTargetID != "" {
 		id, ok := parseInt64Query(w, rawTargetID, "target_id")
@@ -90,78 +53,22 @@ func (s auditHandlers) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		targetID = id
-		where = append(where, "a.target_id = ?")
-		args = append(args, targetID)
 	}
-	if page.Query != "" {
-		like := "%" + page.Query + "%"
-		if ftsQuery := history.FTS(page.Query); ftsQuery != "" {
-			where = append(where, `(a.id IN (SELECT rowid FROM audit_logs_fts WHERE audit_logs_fts MATCH ?) OR COALESCE(t.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
-			args = append(args, ftsQuery, like, like, like, like)
-		} else {
-			where = append(where, `(a.action LIKE ? OR a.actor_type LIKE ? OR a.payload_json LIKE ? OR a.connector_kind LIKE ? OR COALESCE(t.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ? OR COALESCE(profile_ct.name, '') LIKE ? OR COALESCE(ct.name, '') LIKE ?)`)
-			args = append(args, like, like, like, like, like, like, like, like)
-		}
-	}
-	whereSQL := strings.Join(where, " AND ")
-	countJoins := ""
-	if page.Query != "" {
-		countJoins = `
-			LEFT JOIN api_tokens t ON t.id = a.token_id
-			LEFT JOIN projects project ON project.id = a.project_id
-			LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
-			LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
-			LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
-			LEFT JOIN connector_targets ct ON ct.id = a.target_id`
-	}
-	var total int
-	if err := runtime.database.QueryRowContext(r.Context(), `
-			SELECT COUNT(*)
-			FROM audit_logs a`+countJoins+`
-			WHERE `+whereSQL,
-		args...,
-	).Scan(&total); err != nil {
-		writeInternalError(w)
-		return
-	}
-
-	queryArgs := append(append([]any{}, args...), page.Limit, page.Offset)
-	rows, err := runtime.database.QueryContext(r.Context(), `
-		SELECT a.id, a.event_version, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
-			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
-			a.action, a.lifecycle_phase, substr(a.payload_json, 1, 500), a.created_at
-		FROM audit_logs a
-		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN projects project ON project.id = a.project_id
-		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
-		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
-		LEFT JOIN connector_targets ct ON ct.id = a.target_id
-		WHERE `+whereSQL+`
-		ORDER BY a.created_at DESC, a.id DESC
-		LIMIT ? OFFSET ?`,
-		queryArgs...,
-	)
+	result, err := auditoutbox.NewQueryStore(runtime.database).List(r.Context(), auditoutbox.QueryFilter{
+		Actor:         actor,
+		RuntimeID:     runtimeID,
+		ProjectID:     projectID,
+		ConnectorKind: connectorKind,
+		TargetID:      targetID,
+		Query:         page.Query,
+		Limit:         page.Limit,
+		Offset:        page.Offset,
+	})
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	defer rows.Close()
-
-	items := []auditLogRecord{}
-	for rows.Next() {
-		item, err := scanAuditLog(rows)
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, makePageResponse(items, total, page))
+	writeJSON(w, http.StatusOK, makePageResponse(result.Items, result.Total, page))
 }
 
 func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
@@ -173,21 +80,7 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row := runtime.database.QueryRowContext(r.Context(), `
-		SELECT a.id, a.event_version, a.actor_type, a.token_id, COALESCE(t.name, ''), a.project_id, COALESCE(project.name, ''), a.runtime_id,
-			COALESCE(ct.name, profile_ct.name, ''), a.connector_kind, a.target_id, a.profile_id, a.action_request_id,
-			a.action, a.lifecycle_phase, a.payload_json, a.created_at
-		FROM audit_logs a
-		LEFT JOIN api_tokens t ON t.id = a.token_id
-		LEFT JOIN projects project ON project.id = a.project_id
-		LEFT JOIN connector_runtime_surfaces profile_rs ON profile_rs.id = a.runtime_id
-		LEFT JOIN connector_credential_profiles profile_cp ON profile_cp.id = profile_rs.profile_id AND profile_cp.target_id = profile_rs.target_id AND profile_cp.connector_kind = profile_rs.connector_kind
-		LEFT JOIN connector_targets profile_ct ON profile_ct.id = profile_cp.target_id
-		LEFT JOIN connector_targets ct ON ct.id = a.target_id
-		WHERE a.id = ?`,
-		id,
-	)
-	item, err := scanAuditLog(row)
+	item, err := auditoutbox.NewQueryStore(runtime.database).Get(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "audit log not found")
 		return
@@ -197,58 +90,6 @@ func (s auditHandlers) getAuditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
-}
-
-func scanAuditLog(scanner interface {
-	Scan(dest ...any) error
-}) (auditLogRecord, error) {
-	var item auditLogRecord
-	var tokenID sql.NullInt64
-	var projectID sql.NullInt64
-	var runtimeID sql.NullInt64
-	var targetID sql.NullInt64
-	var profileID sql.NullInt64
-	var actionRequestID sql.NullInt64
-	if err := scanner.Scan(
-		&item.ID,
-		&item.EventVersion,
-		&item.ActorType,
-		&tokenID,
-		&item.TokenName,
-		&projectID,
-		&item.ProjectName,
-		&runtimeID,
-		&item.TargetName,
-		&item.ConnectorKind,
-		&targetID,
-		&profileID,
-		&actionRequestID,
-		&item.Action,
-		&item.LifecyclePhase,
-		&item.PayloadJSON,
-		&item.CreatedAt,
-	); err != nil {
-		return auditLogRecord{}, err
-	}
-	if tokenID.Valid {
-		item.TokenID = &tokenID.Int64
-	}
-	if projectID.Valid {
-		item.ProjectID = &projectID.Int64
-	}
-	if runtimeID.Valid {
-		item.RuntimeID = &runtimeID.Int64
-	}
-	if targetID.Valid {
-		item.TargetID = &targetID.Int64
-	}
-	if profileID.Valid {
-		item.ProfileID = &profileID.Int64
-	}
-	if actionRequestID.Valid {
-		item.ActionRequestID = &actionRequestID.Int64
-	}
-	return item, nil
 }
 
 // writeObservationAudit records telemetry that is not the durable proof of a

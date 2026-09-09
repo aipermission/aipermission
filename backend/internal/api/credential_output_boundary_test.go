@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -122,7 +123,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 
 	auditResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/audit-logs?connector_kind="+localActionTestConnectorKind+"&target_id="+strconv.FormatInt(target.ID, 10), "", nil)
 	assertOKWithoutCredential("audit list response", auditResponse.Body.String(), auditResponse.Code)
-	auditPage := decodeRouteResponse[pageResponse[auditLogRecord]](t, auditResponse.Body.Bytes())
+	auditPage := decodeRouteResponse[pageResponse[auditoutbox.Record]](t, auditResponse.Body.Bytes())
 	if len(auditPage.Items) < 3 {
 		t.Fatalf("expected connector request lifecycle audit items, got %#v", auditPage)
 	}

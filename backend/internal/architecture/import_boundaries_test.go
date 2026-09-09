@@ -72,6 +72,7 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	packages := []string{
 		modulePath + "/internal/actionresult",
 		modulePath + "/internal/actions",
+		modulePath + "/internal/auditoutbox",
 		modulePath + "/internal/console/terminaltext",
 		modulePath + "/internal/databasecatalog",
 		modulePath + "/internal/history",
