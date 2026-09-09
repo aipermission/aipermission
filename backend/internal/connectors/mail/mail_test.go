@@ -15,6 +15,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/emersion/go-imap"
 )
 
@@ -415,11 +416,11 @@ func TestIMAPBeforeCriterionIncludesTheWholeBoundaryDayForExactPostFilter(t *tes
 }
 
 func TestSinglePartBodyFetchUsesTextSpecifier(t *testing.T) {
-	section := textBodySection(bodyPart{Structure: &imap.BodyStructure{MIMEType: "text", MIMESubType: "plain"}})
+	section := textBodySection(mailcontent.BodyPart{Structure: &imap.BodyStructure{MIMEType: "text", MIMESubType: "plain"}})
 	if got := string(section.FetchItem()); !strings.HasPrefix(got, "BODY.PEEK[TEXT]") {
 		t.Fatalf("single-part body fetch = %q, want BODY.PEEK[TEXT]", got)
 	}
-	section = textBodySection(bodyPart{Path: []int{1}, Structure: &imap.BodyStructure{MIMEType: "text", MIMESubType: "plain"}})
+	section = textBodySection(mailcontent.BodyPart{Path: []int{1}, Structure: &imap.BodyStructure{MIMEType: "text", MIMESubType: "plain"}})
 	if got := string(section.FetchItem()); !strings.HasPrefix(got, "BODY.PEEK[1]") {
 		t.Fatalf("multipart body fetch = %q, want BODY.PEEK[1]", got)
 	}

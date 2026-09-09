@@ -1,4 +1,4 @@
-package mailconnector
+package mailcontent
 
 import (
 	"bufio"
@@ -18,13 +18,17 @@ import (
 )
 
 const (
-	maxMIMEDepth      = 10
-	maxMIMEParts      = 100
-	maxAttachmentRows = 50
-	maxFilenameBytes  = 255
+	MaxWireBodyBytes = 1 << 20
+	MaxHTMLBodyBytes = 128 << 10
+
+	MaxAttachmentRows = 50
+
+	maxMIMEDepth     = 10
+	maxMIMEParts     = 100
+	maxFilenameBytes = 255
 )
 
-type bodyPart struct {
+type BodyPart struct {
 	Path      []int
 	Structure *imap.BodyStructure
 }
@@ -37,10 +41,10 @@ const (
 	bodyWalkStop
 )
 
-func preferredTextParts(root *imap.BodyStructure) []bodyPart {
-	var plain *bodyPart
-	var htmlPart *bodyPart
-	walkBodyStructure(root, nil, func(part bodyPart, _ int) bodyWalkDecision {
+func PreferredTextParts(root *imap.BodyStructure) []BodyPart {
+	var plain *BodyPart
+	var htmlPart *BodyPart
+	walkBodyStructure(root, nil, func(part BodyPart, _ int) bodyWalkDecision {
 		structure := part.Structure
 		if structure == nil {
 			return bodyWalkContinue
@@ -63,7 +67,7 @@ func preferredTextParts(root *imap.BodyStructure) []bodyPart {
 		}
 		return bodyWalkContinue
 	})
-	parts := make([]bodyPart, 0, 2)
+	parts := make([]BodyPart, 0, 2)
 	if plain != nil {
 		parts = append(parts, *plain)
 	}
@@ -73,12 +77,12 @@ func preferredTextParts(root *imap.BodyStructure) []bodyPart {
 	return parts
 }
 
-func attachmentRows(root *imap.BodyStructure) ([]map[string]any, bool, bool, bool) {
+func AttachmentRows(root *imap.BodyStructure) ([]map[string]any, bool, bool, bool) {
 	rows := make([]map[string]any, 0)
 	encrypted := false
 	signed := false
 	rowLimitReached := false
-	structureLimitReached := walkBodyStructure(root, nil, func(part bodyPart, _ int) bodyWalkDecision {
+	structureLimitReached := walkBodyStructure(root, nil, func(part BodyPart, _ int) bodyWalkDecision {
 		structure := part.Structure
 		if structure == nil {
 			return bodyWalkContinue
@@ -95,18 +99,18 @@ func attachmentRows(root *imap.BodyStructure) ([]map[string]any, bool, bool, boo
 		if !isAttachment {
 			return bodyWalkContinue
 		}
-		if len(rows) >= maxAttachmentRows {
+		if len(rows) >= MaxAttachmentRows {
 			rowLimitReached = true
 			return bodyWalkContinue
 		}
 		rows = append(rows, map[string]any{
-			"part_id":             partID(part.Path),
+			"part_id":             PartID(part.Path),
 			"filename":            safeFilename(filename),
 			"content_type":        contentType,
 			"declared_size_bytes": structure.Size,
 			"decoded_size_bytes":  nil,
 			"disposition":         strings.ToLower(structure.Disposition),
-			"content_id":          boundedText(structure.Id, 1000),
+			"content_id":          BoundedText(structure.Id, 1000),
 		})
 		if len(structure.Parts) > 0 {
 			return bodyWalkSkipChildren
@@ -124,7 +128,7 @@ func isAttachmentPart(structure *imap.BodyStructure) bool {
 	return strings.EqualFold(structure.Disposition, "attachment") || filename != "" || (!strings.EqualFold(structure.MIMEType, "text") && len(structure.Parts) == 0)
 }
 
-func walkBodyStructure(root *imap.BodyStructure, path []int, visit func(bodyPart, int) bodyWalkDecision) bool {
+func walkBodyStructure(root *imap.BodyStructure, path []int, visit func(BodyPart, int) bodyWalkDecision) bool {
 	count := 0
 	limitReached := false
 	stopped := false
@@ -143,7 +147,7 @@ func walkBodyStructure(root *imap.BodyStructure, path []int, visit func(bodyPart
 			return false
 		}
 		count++
-		part := bodyPart{Path: append([]int(nil), currentPath...), Structure: structure}
+		part := BodyPart{Path: append([]int(nil), currentPath...), Structure: structure}
 		switch visit(part, depth) {
 		case bodyWalkStop:
 			stopped = true
@@ -163,11 +167,11 @@ func walkBodyStructure(root *imap.BodyStructure, path []int, visit func(bodyPart
 	return limitReached
 }
 
-func decodeTextPart(input io.Reader, structure *imap.BodyStructure, maxBytes int) (string, int, bool, bool, error) {
+func DecodeTextPart(input io.Reader, structure *imap.BodyStructure, maxBytes int) (string, int, bool, bool, error) {
 	if structure == nil {
 		return "", 0, false, false, fmt.Errorf("message text part metadata is missing")
 	}
-	reader := io.LimitReader(input, maxWireBodyBytes+1)
+	reader := io.LimitReader(input, MaxWireBodyBytes+1)
 	switch strings.ToLower(structure.Encoding) {
 	case "base64":
 		reader = base64.NewDecoder(base64.StdEncoding, reader)
@@ -197,7 +201,7 @@ func decodeTextPart(input io.Reader, structure *imap.BodyStructure, maxBytes int
 	}
 	text := strings.ToValidUTF8(string(data), "�")
 	if strings.EqualFold(structure.MIMESubType, "html") {
-		text, err = htmlToText(text)
+		text, err = HTMLToText(text)
 		if err != nil {
 			return "", decodedBytes, truncated, decodedSizeComplete, err
 		}
@@ -209,8 +213,8 @@ func decodeTextPart(input io.Reader, structure *imap.BodyStructure, maxBytes int
 	return text, decodedBytes, truncated, decodedSizeComplete, nil
 }
 
-func htmlToText(source string) (string, error) {
-	document, err := html.Parse(io.LimitReader(strings.NewReader(source), maxHTMLBodyBytes+1))
+func HTMLToText(source string) (string, error) {
+	document, err := html.Parse(io.LimitReader(strings.NewReader(source), MaxHTMLBodyBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("parse HTML mail body: %w", err)
 	}
@@ -247,10 +251,10 @@ func htmlToText(source string) (string, error) {
 	}
 	walk(document)
 	_ = writer.Flush()
-	return normalizeBodyWhitespace(output.String()), nil
+	return NormalizeBodyWhitespace(output.String()), nil
 }
 
-func normalizeBodyWhitespace(value string) string {
+func NormalizeBodyWhitespace(value string) string {
 	lines := strings.Split(strings.ReplaceAll(value, "\r", ""), "\n")
 	result := make([]string, 0, len(lines))
 	blank := false
@@ -270,12 +274,28 @@ func normalizeBodyWhitespace(value string) string {
 	return strings.TrimSpace(strings.Join(result, "\n"))
 }
 
+func BoundedText(value string, limit int) string {
+	value = strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || r == '\t' {
+			return ' '
+		}
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(value, "�"))
+	if len(value) <= limit {
+		return value
+	}
+	return strings.ToValidUTF8(value[:limit], "")
+}
+
 func allowedLinkScheme(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "mailto:")
 }
 
-func partID(path []int) string {
+func PartID(path []int) string {
 	if len(path) == 0 {
 		return "1"
 	}
@@ -288,7 +308,7 @@ func partID(path []int) string {
 
 func safeFilename(value string) string {
 	value = filepath.Base(strings.ReplaceAll(value, "\\", "/"))
-	value = boundedText(value, maxFilenameBytes)
+	value = BoundedText(value, maxFilenameBytes)
 	if value == "." || value == "/" {
 		return ""
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 )
@@ -124,7 +125,7 @@ func listFolders(ctx context.Context, imapClient *client.Client, profile profile
 		folders = append(folders, map[string]any{
 			"name":         name,
 			"display_name": name,
-			"delimiter":    boundedText(mailbox.Delimiter, maxFolderDelimiterBytes),
+			"delimiter":    mailcontent.BoundedText(mailbox.Delimiter, maxFolderDelimiterBytes),
 			"attributes":   boundedServerStrings(mailbox.Attributes),
 			"selectable":   !containsFold(mailbox.Attributes, "\\Noselect"),
 			"role":         folderRole(mailbox, profile),
@@ -365,7 +366,7 @@ func getMessage(ctx context.Context, imapClient *client.Client, profile profileC
 	if message.Envelope == nil || message.BodyStructure == nil {
 		return nil, fmt.Errorf("message was not found or has incomplete envelope/body metadata")
 	}
-	attachments, encrypted, signed, attachmentsTruncated := attachmentRows(message.BodyStructure)
+	attachments, encrypted, signed, attachmentsTruncated := mailcontent.AttachmentRows(message.BodyStructure)
 	result := envelopeRow(ref.Folder, ref.UIDValidity, message)
 	result["attachments"] = attachments
 	result["attachment_count"] = len(attachments)
@@ -376,14 +377,14 @@ func getMessage(ctx context.Context, imapClient *client.Client, profile profileC
 	if !includeBody {
 		return result, nil
 	}
-	parts := preferredTextParts(message.BodyStructure)
+	parts := mailcontent.PreferredTextParts(message.BodyStructure)
 	if len(parts) == 0 {
 		result["body"] = ""
 		result["body_available"] = false
 		result["body_truncated"] = false
 		return result, nil
 	}
-	var selected bodyPart
+	var selected mailcontent.BodyPart
 	var body string
 	var decodedBytes int
 	var truncated bool
@@ -401,7 +402,7 @@ func getMessage(ctx context.Context, imapClient *client.Client, profile profileC
 		if literal == nil {
 			return nil, fmt.Errorf("message body section was not returned")
 		}
-		body, decodedBytes, truncated, decodedSizeComplete, err = decodeTextPart(literal, part.Structure, maxBodyBytes)
+		body, decodedBytes, truncated, decodedSizeComplete, err = mailcontent.DecodeTextPart(literal, part.Structure, maxBodyBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -414,10 +415,10 @@ func getMessage(ctx context.Context, imapClient *client.Client, profile profileC
 	result["body_available"] = true
 	sourceContentType := strings.ToLower(selected.Structure.MIMEType + "/" + selected.Structure.MIMESubType)
 	setBodyProjectionMetadata(result, sourceContentType)
-	result["body_truncated"] = truncated || selected.Structure.Size > maxWireBodyBytes
+	result["body_truncated"] = truncated || selected.Structure.Size > mailcontent.MaxWireBodyBytes
 	result["body_declared_bytes"] = selected.Structure.Size
 	result["body_decoded_bytes_observed"] = decodedBytes
-	decodedSizeComplete = decodedSizeComplete && selected.Structure.Size <= maxWireBodyBytes
+	decodedSizeComplete = decodedSizeComplete && selected.Structure.Size <= mailcontent.MaxWireBodyBytes
 	result["body_decoded_size_complete"] = decodedSizeComplete
 	if decodedSizeComplete {
 		result["body_decoded_bytes"] = decodedBytes
@@ -435,12 +436,12 @@ func setBodyProjectionMetadata(result map[string]any, sourceContentType string) 
 	}
 }
 
-func textBodySection(part bodyPart) *imap.BodySectionName {
+func textBodySection(part mailcontent.BodyPart) *imap.BodySectionName {
 	name := imap.BodyPartName{Path: part.Path}
 	if len(part.Path) == 0 {
 		name.Specifier = imap.TextSpecifier
 	}
-	return &imap.BodySectionName{BodyPartName: name, Peek: true, Partial: []int{0, maxWireBodyBytes}}
+	return &imap.BodySectionName{BodyPartName: name, Peek: true, Partial: []int{0, mailcontent.MaxWireBodyBytes}}
 }
 
 func fetchOneMessage(ctx context.Context, imapClient *client.Client, uid uint32, items []imap.FetchItem, section *imap.BodySectionName) (*imap.Message, error) {
@@ -543,8 +544,8 @@ func envelopeRow(folder string, uidValidity uint32, message *imap.Message) map[s
 	return map[string]any{
 		"message_ref": messageRef{Folder: folder, UIDValidity: uidValidity, UID: message.Uid}.mapValue(),
 		"uid":         message.Uid,
-		"subject":     boundedText(envelope.Subject, maxSubjectBytes),
-		"message_id":  boundedText(envelope.MessageId, 1000),
+		"subject":     mailcontent.BoundedText(envelope.Subject, maxSubjectBytes),
+		"message_id":  mailcontent.BoundedText(envelope.MessageId, 1000),
 		"from":        addressRows(envelope.From),
 		"to":          addressRows(envelope.To),
 		"cc":          addressRows(envelope.Cc),
@@ -566,7 +567,7 @@ func addressRows(addresses []*imap.Address) []map[string]any {
 		if address == nil {
 			continue
 		}
-		rows = append(rows, map[string]any{"name": boundedText(address.PersonalName, 512), "address": boundedText(address.Address(), maxAddressBytes)})
+		rows = append(rows, map[string]any{"name": mailcontent.BoundedText(address.PersonalName, 512), "address": mailcontent.BoundedText(address.Address(), maxAddressBytes)})
 	}
 	return rows
 }
@@ -719,29 +720,13 @@ func formatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339)
 }
 
-func boundedText(value string, limit int) string {
-	value = strings.Map(func(r rune) rune {
-		if r == '\r' || r == '\n' || r == '\t' {
-			return ' '
-		}
-		if r < 32 || r == 127 {
-			return -1
-		}
-		return r
-	}, strings.ToValidUTF8(value, "�"))
-	if len(value) <= limit {
-		return value
-	}
-	return strings.ToValidUTF8(value[:limit], "")
-}
-
 func boundedServerStrings(values []string) []string {
 	if len(values) > maxServerMetadataRows {
 		values = values[:maxServerMetadataRows]
 	}
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		result = append(result, boundedText(value, maxServerMetadataBytes))
+		result = append(result, mailcontent.BoundedText(value, maxServerMetadataBytes))
 	}
 	return result
 }

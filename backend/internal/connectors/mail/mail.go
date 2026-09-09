@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-message/charset"
 )
@@ -40,14 +41,12 @@ const (
 	defaultMessageRows      = 50
 	maxMessageRows          = 100
 	maxBodyBytes            = 128 << 10
-	maxWireBodyBytes        = 1 << 20
 	maxResultBytes          = 512 << 10
 	maxRecipients           = 20
 	maxAddressBytes         = 320
 	maxDisplayNameBytes     = 512
 	maxSubjectBytes         = 512
 	maxTextBodyBytes        = 64 << 10
-	maxHTMLBodyBytes        = 128 << 10
 	maxFolderNameBytes      = 1024
 	maxCursorBytes          = 5500
 	maxProtocolReadBytes    = 4 << 20
@@ -164,7 +163,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{Name: ActionCheckMailbox, Label: "Check mailbox", Description: "Read bounded newest or unread message envelopes without changing Seen state.", Category: "mailbox", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{folder, {Name: "unread_only", Label: "Unread only", Type: connectors.FieldBoolean, Default: true}, {Name: "since", Label: "Since", Type: connectors.FieldString}, {Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultMailboxRows}, {Name: "cursor", Label: "Cursor", Type: connectors.FieldString}}}, OutputHint: readJSON},
 		{Name: ActionSearchMessages, Label: "Search messages", Description: "Search one allowed folder with structured bounded criteria.", Category: "mailbox", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{folder, {Name: "unread_only", Label: "Unread only", Type: connectors.FieldBoolean, Default: false}, {Name: "sender", Label: "Sender", Type: connectors.FieldString}, {Name: "recipient", Label: "Recipient", Type: connectors.FieldString}, {Name: "subject", Label: "Subject", Type: connectors.FieldString}, {Name: "since", Label: "Since", Type: connectors.FieldString}, {Name: "before", Label: "Before", Type: connectors.FieldString}, {Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultMessageRows}, {Name: "cursor", Label: "Cursor", Type: connectors.FieldString}}}, OutputHint: readJSON},
 		{Name: ActionGetMessage, Label: "Read message", Description: "Read one exact bounded message without changing Seen state.", Category: "message", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxResultBytes}},
-		{Name: ActionListAttachments, Label: "List attachments", Description: "List bounded attachment metadata without downloading content.", Category: "message", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxAttachmentRows, MaxBytes: maxBodyBytes}},
+		{Name: ActionListAttachments, Label: "List attachments", Description: "List bounded attachment metadata without downloading content.", Category: "message", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: mailcontent.MaxAttachmentRows, MaxBytes: maxBodyBytes}},
 		{Name: ActionMarkRead, Label: "Mark read", Description: "Add only the Seen flag to one exact message.", Category: "message", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDisplayTextBytes}},
 		{Name: ActionMarkUnread, Label: "Mark unread", Description: "Remove only the Seen flag from one exact message.", Category: "message", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDisplayTextBytes}},
 		{Name: ActionMoveMessage, Label: "Move message", Description: "Move one exact message to one allowed existing folder.", Category: "message", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{messageRef, {Name: "destination_folder", Label: "Destination folder", Type: connectors.FieldString, Required: true}}}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxMutationResultBytes}},

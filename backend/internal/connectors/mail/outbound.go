@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -41,14 +42,14 @@ func prepareOutboundAction(req connectors.ActionRequest, target targetConfig, pr
 		"sanitized_html_bytes": len(outbound.HTMLBody),
 	}
 	if outbound.HTMLBody != "" {
-		projection, err := htmlToText(outbound.HTMLBody)
+		projection, err := mailcontent.HTMLToText(outbound.HTMLBody)
 		if err != nil {
 			return connectors.PreparedAction{}, err
 		}
 		if len(projection) > maxTextBodyBytes {
 			return connectors.PreparedAction{}, fmt.Errorf("formatted message text projection exceeds %d bytes; shorten the HTML before approval", maxTextBodyBytes)
 		}
-		matchesFallback := normalizeBodyWhitespace(projection) == normalizeBodyWhitespace(outbound.TextBody)
+		matchesFallback := mailcontent.NormalizeBodyWhitespace(projection) == mailcontent.NormalizeBodyWhitespace(outbound.TextBody)
 		preview["formatted_text_matches_fallback"] = matchesFallback
 		if !matchesFallback {
 			preview["formatted_text_body"] = projection
@@ -121,15 +122,15 @@ func normalizeOutbound(actionName string, input map[string]any, target targetCon
 	sanitizedHTML := ""
 	htmlNormalized := false
 	if htmlSource != "" {
-		if len(htmlSource) > maxHTMLBodyBytes {
-			return outboundMessage{}, nil, fmt.Errorf("html_body exceeds %d bytes", maxHTMLBodyBytes)
+		if len(htmlSource) > mailcontent.MaxHTMLBodyBytes {
+			return outboundMessage{}, nil, fmt.Errorf("html_body exceeds %d bytes", mailcontent.MaxHTMLBodyBytes)
 		}
 		sanitizedHTML = sanitizeOutboundHTML(htmlSource)
 		if sanitizedHTML == "" {
 			return outboundMessage{}, nil, fmt.Errorf("html_body contains no supported formatted content")
 		}
-		if len(sanitizedHTML) > maxHTMLBodyBytes {
-			return outboundMessage{}, nil, fmt.Errorf("sanitized html_body exceeds %d bytes", maxHTMLBodyBytes)
+		if len(sanitizedHTML) > mailcontent.MaxHTMLBodyBytes {
+			return outboundMessage{}, nil, fmt.Errorf("sanitized html_body exceeds %d bytes", mailcontent.MaxHTMLBodyBytes)
 		}
 		htmlNormalized = sanitizedHTML != htmlSource
 	}

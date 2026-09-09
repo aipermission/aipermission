@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/emersion/go-imap"
 	messagemail "github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -294,7 +295,7 @@ func submitSMTPMessage(client smtpSubmissionClient, from string, outbound outbou
 	}
 	statusText := ""
 	if response != nil {
-		statusText = boundedText(response.StatusText, 1000)
+		statusText = mailcontent.BoundedText(response.StatusText, 1000)
 	}
 	output := map[string]any{"submission_status": "accepted", "message_id": messageID, "recipient_count": len(recipients), "message_content_transmitted": true, "server_status": statusText, "delivery_guaranteed": false}
 	addUntrustedContentMetadata(output)

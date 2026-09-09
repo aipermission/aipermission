@@ -8,6 +8,8 @@ import (
 	stdmail "net/mail"
 	"strings"
 	"testing"
+
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -134,7 +136,7 @@ func TestPreparedOutboundPreviewRemainsInsideGenericEnvelope(t *testing.T) {
 			"to":        []any{"user@example.com"},
 			"subject":   "Bounded preview",
 			"text_body": strings.Repeat("\n", maxTextBodyBytes),
-			"html_body": strings.Repeat("<br>", maxHTMLBodyBytes/4),
+			"html_body": strings.Repeat("<br>", mailcontent.MaxHTMLBodyBytes/4),
 		},
 	}
 	prepared, err := (Connector{}).PrepareAction(t.Context(), request)
@@ -162,7 +164,7 @@ func TestPrepareOutboundRejectsHTMLProjectionThatCannotBeFullyApproved(t *testin
 			"to":        []any{"user@example.com"},
 			"subject":   "Bounded approval",
 			"text_body": "Fallback body",
-			"html_body": strings.Repeat(link, maxHTMLBodyBytes/len(link)),
+			"html_body": strings.Repeat(link, mailcontent.MaxHTMLBodyBytes/len(link)),
 		},
 	}
 	_, err := (Connector{}).PrepareAction(t.Context(), request)
@@ -319,7 +321,7 @@ func TestParseThreadingHeadersRejectsTruncatedHeaderBlocks(t *testing.T) {
 func FuzzSanitizeOutboundHTML(f *testing.F) {
 	f.Add(`<p>Hello</p><img src=x onerror=alert(1)>`)
 	f.Fuzz(func(t *testing.T, source string) {
-		if len(source) > maxHTMLBodyBytes {
+		if len(source) > mailcontent.MaxHTMLBodyBytes {
 			t.Skip()
 		}
 		result := strings.ToLower(sanitizeOutboundHTML(source))
@@ -336,7 +338,7 @@ func TestSanitizeOutboundHTMLPreservesContentEditableBlockBoundaries(t *testing.
 	if !strings.Contains(sanitized, "<div>First line</div><div>Second line</div>") {
 		t.Fatalf("contentEditable blocks were removed: %q", sanitized)
 	}
-	text, err := htmlToText(sanitized)
+	text, err := mailcontent.HTMLToText(sanitized)
 	if err != nil {
 		t.Fatalf("project sanitized HTML: %v", err)
 	}
