@@ -23,6 +23,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -224,20 +225,19 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		runtimeInstanceID:  runtimeInstanceID,
 		actionIdentityKey:  actionIdentityKey,
 		vaultLeases:        vaultsessions.NewStore(),
+		securityPolicy:     securitypolicy.NewService(database),
 	}
 	runtime.finalization = transferjobs.NewFinalizationLifetime()
 	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
 	}
-	settings, err := readSecuritySettingsFromDB(context.Background(), runtime)
+	settings, err := runtime.securityPolicy.ReadSettings(context.Background())
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	runtime.runtimeState.SetMCPStarted(settings.MCPStartEnabled)
-	runtime.securitySettings = settings
-	runtime.securityLoaded = true
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	s.configureVaultSessionRuntime(runtime)
 	s.configureAuditDispatcher(runtime)

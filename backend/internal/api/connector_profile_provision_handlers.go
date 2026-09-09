@@ -15,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
 
 type provisionConnectorCredentialProfileRequest struct {
@@ -390,7 +391,7 @@ func provisionErrorMessage(boundary connectorCredentialBoundary, err error) stri
 	if err == nil {
 		return ""
 	}
-	return boundary.Redact(redactBasic(err.Error()))
+	return boundary.Redact(securitypolicy.RedactBasic(err.Error()))
 }
 
 func handleConnectorProvisionError(w http.ResponseWriter, err error, safeMessage string) {

@@ -11,13 +11,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/retention"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
 
 type tokenHandlers struct{ *Server }
 type credentialHandlers struct{ *Server }
 type consoleHandlers struct{ *Server }
-type securityHandlers struct{ *Server }
-type redactionRuleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
@@ -45,24 +44,23 @@ func (s *Server) routes() {
 }
 
 func (s *Server) registerSystemRoutes() {
-	security := securityHandlers{s}
+	securityHandlers := securitypolicy.NewHTTPHandlers(s.securityPolicyHTTPScope)
 	retentionHandlers := retention.NewHTTPHandlers(s.retentionHTTPScope)
-	redactionRules := redactionRuleHandlers{s}
 	maintenanceConsole := maintenanceConsoleHandlers{s}
 	diagnostics := diagnosticsHandlers{s}
 	unlock := unlockHandlers{s}
 
 	s.mux.HandleFunc("GET /health", s.health)
 	s.mux.HandleFunc("GET /api/status", s.status)
-	s.mux.HandleFunc("GET /api/settings/security", security.getSecuritySettings)
-	s.mux.HandleFunc("PUT /api/settings/security", security.updateSecuritySettings)
+	s.mux.HandleFunc("GET /api/settings/security", securityHandlers.GetSettings)
+	s.mux.HandleFunc("PUT /api/settings/security", securityHandlers.UpdateSettings)
 	s.mux.HandleFunc("GET /api/settings/retention", retentionHandlers.Get)
 	s.mux.HandleFunc("PUT /api/settings/retention", retentionHandlers.Update)
 	s.mux.HandleFunc("POST /api/settings/retention/purge", retentionHandlers.Purge)
-	s.mux.HandleFunc("GET /api/settings/redaction-rules", redactionRules.listRedactionRules)
-	s.mux.HandleFunc("POST /api/settings/redaction-rules", redactionRules.createRedactionRule)
-	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", redactionRules.updateRedactionRule)
-	s.mux.HandleFunc("DELETE /api/settings/redaction-rules/{id}", redactionRules.deleteRedactionRule)
+	s.mux.HandleFunc("GET /api/settings/redaction-rules", securityHandlers.ListRules)
+	s.mux.HandleFunc("POST /api/settings/redaction-rules", securityHandlers.CreateRule)
+	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", securityHandlers.UpdateRule)
+	s.mux.HandleFunc("DELETE /api/settings/redaction-rules/{id}", securityHandlers.DeleteRule)
 	s.mux.HandleFunc("GET /api/settings/maintenance-console/status", maintenanceConsole.status)
 	s.mux.HandleFunc("POST /api/settings/maintenance-console/open", maintenanceConsole.open)
 	s.mux.HandleFunc("GET /api/settings/maintenance-console/attach", maintenanceConsole.attach)

@@ -6,43 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
-
-func TestRedactBasicMasksCommonSecretShapes(t *testing.T) {
-	input := strings.Join([]string{
-		"password=super-secret",
-		"Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
-		"token: ghp_abcdefghijklmnopqrstuvwxyz123456",
-		"-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
-	}, "\n")
-	output := redactBasic(input)
-	for _, secret := range []string{"super-secret", "abcdefghijklmnopqrstuvwxyz123456", "abc\n-----END"} {
-		if strings.Contains(output, secret) {
-			t.Fatalf("secret fragment %q was not redacted: %s", secret, output)
-		}
-	}
-	if !strings.Contains(output, "[REDACTED]") {
-		t.Fatalf("expected redaction marker: %s", output)
-	}
-}
-
-func TestRedactBasicKeepsShellPWDOutput(t *testing.T) {
-	output := redactBasic("PWD=/home/hakan/workspace\npwd=super-secret\nPASSWORD=another-secret")
-	if !strings.Contains(output, "PWD=/home/hakan/workspace") {
-		t.Fatalf("shell PWD output should not be redacted: %s", output)
-	}
-	for _, secret := range []string{"super-secret", "another-secret"} {
-		if strings.Contains(output, secret) {
-			t.Fatalf("secret %q was not redacted: %s", secret, output)
-		}
-	}
-}
 
 func TestCustomRedactionRulesApplyOnlyInBasicMode(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	if _, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
+	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name:    "internal token",
 		Pattern: `internal_[a-z0-9]+`,
 		Enabled: true,
@@ -55,7 +26,7 @@ func TestCustomRedactionRulesApplyOnlyInBasicMode(t *testing.T) {
 		t.Fatalf("custom rule should redact in basic mode: %s", redacted)
 	}
 
-	if err := writeSecuritySettings(t.Context(), runtime, securitySettingsResponse{RedactionMode: redactionModeOff}); err != nil {
+	if err := setSecurityPolicySettings(t.Context(), runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
 		t.Fatalf("disable redaction: %v", err)
 	}
 	unredacted := fixture.server.redactForPersistence(t.Context(), runtime, "value=internal_abc123")
@@ -68,7 +39,7 @@ func TestRedactionRuleEndpointsValidateAndPersistRules(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
 
-	response := performJSON(handler, http.MethodPost, "/api/settings/redaction-rules", "", redactionRuleRequest{
+	response := performJSON(handler, http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
 		Name:    "bad",
 		Pattern: "[",
 		Enabled: true,
@@ -77,7 +48,7 @@ func TestRedactionRuleEndpointsValidateAndPersistRules(t *testing.T) {
 		t.Fatalf("invalid regex should fail, got %d %s", response.Code, response.Body.String())
 	}
 
-	response = performJSON(handler, http.MethodPost, "/api/settings/redaction-rules", "", redactionRuleRequest{
+	response = performJSON(handler, http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
 		Name:    "internal",
 		Pattern: `internal_[a-z0-9]+`,
 		Enabled: true,
@@ -164,34 +135,5 @@ func TestConnectorInputRedactionRemovesLargeSensitivePayloadBeforeProjectionLimi
 		"content_text": largeUpload,
 	}, nil); err == nil {
 		t.Fatal("large non-sensitive projection should retain strict display limits")
-	}
-}
-
-func TestRedactionRuleCacheInvalidatesOnUpdate(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	runtime := fixture.server.activeRuntime()
-	item, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
-		Name:    "first",
-		Pattern: `alpha_[a-z0-9]+`,
-		Enabled: true,
-	})
-	if err != nil {
-		t.Fatalf("insert custom rule: %v", err)
-	}
-	if redacted := fixture.server.redactForPersistence(t.Context(), runtime, "value=alpha_secret"); strings.Contains(redacted, "alpha_secret") {
-		t.Fatalf("expected first custom rule to redact: %s", redacted)
-	}
-
-	if _, err := updateRedactionRuleRecord(t.Context(), runtime, item.ID, redactionRuleRequest{
-		Name:    "second",
-		Pattern: `beta_[a-z0-9]+`,
-		Enabled: true,
-	}); err != nil {
-		t.Fatalf("update custom rule: %v", err)
-	}
-	fixture.server.invalidateRedactionRules(runtime)
-	redacted := fixture.server.redactForPersistence(t.Context(), runtime, "value=alpha_secret beta_secret")
-	if !strings.Contains(redacted, "alpha_secret") || strings.Contains(redacted, "beta_secret") {
-		t.Fatalf("expected cache refresh to use updated rule: %s", redacted)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/observability"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
@@ -48,17 +49,10 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 }
 
 func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRuntime) func(string) string {
-	if s.redactionMode(ctx, runtime) == redactionModeOff {
-		return func(value string) string { return value }
+	if runtime == nil || runtime.securityPolicy == nil {
+		return securitypolicy.RedactBasic
 	}
-	rules, _ := s.compiledRedactionRules(ctx, runtime)
-	return func(value string) string {
-		value = redactBasic(value)
-		for _, rule := range rules {
-			value = rule.Regex.ReplaceAllString(value, "[REDACTED]")
-		}
-		return value
-	}
+	return runtime.securityPolicy.PrepareRedactor(ctx)
 }
 
 type auditAppender = observability.Appender

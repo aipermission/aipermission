@@ -1,4 +1,4 @@
-package api
+package securitypolicy
 
 import (
 	"crypto/sha256"
@@ -27,11 +27,11 @@ func FuzzBasicRedaction(f *testing.F) {
 			"%s\npassword=%s\nAuthorization: Bearer %s\n%s\n%s\n%s\n%s",
 			string(input), secret, secret, commonToken, privateKeyBegin, secret, privateKeyEnd,
 		)
-		redacted := redactBasic(value)
+		redacted := RedactBasic(value)
 		if strings.Contains(redacted, secret) || strings.Contains(redacted, commonToken) {
 			t.Fatalf("synthetic secret survived redaction")
 		}
-		if repeated := redactBasic(redacted); repeated != redacted {
+		if repeated := RedactBasic(redacted); repeated != redacted {
 			t.Fatalf("basic redaction is not idempotent")
 		}
 		if len(redacted) > len(value)*4+1024 {

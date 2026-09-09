@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -96,7 +97,7 @@ Host *
 		assertSensitiveResponseHeaders(t, response)
 	}
 
-	settingsResponse := performJSON(handler, http.MethodPut, "/api/settings/security", "", updateSecuritySettingsRequest{ReusableTokens: true})
+	settingsResponse := performJSON(handler, http.MethodPut, "/api/settings/security", "", securitypolicy.Settings{ReusableTokens: true})
 	if settingsResponse.Code != http.StatusOK || !strings.Contains(settingsResponse.Body.String(), `"reusable_tokens":true`) {
 		t.Fatalf("enable reusable token copy failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}

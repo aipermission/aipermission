@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -65,7 +66,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector action permission: %v", err)
 	}
-	if err := writeSecuritySettings(ctx, runtime, securitySettingsResponse{RedactionMode: redactionModeOff}); err != nil {
+	if err := setSecurityPolicySettings(ctx, runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
 		t.Fatalf("disable operator-configured redaction: %v", err)
 	}
 

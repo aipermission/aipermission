@@ -31,6 +31,13 @@ func (s tokenHandlers) listTokens(w http.ResponseWriter, r *http.Request) {
 	writeSensitiveJSON(w, http.StatusOK, items)
 }
 
+func stripReusableTokenValues(items []tokens.Token) []tokens.Token {
+	for index := range items {
+		items[index].TokenValue = ""
+	}
+	return items
+}
+
 func (s tokenHandlers) createToken(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {

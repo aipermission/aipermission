@@ -80,7 +80,14 @@ type Store struct {
 
 type storeDB = sqldb.Executor
 
-type MutationHook func(context.Context, sqldb.Executor, Request) error
+// Executor is the narrow persistence capability supplied to mutation hooks.
+type Executor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type MutationHook func(context.Context, Executor, Request) error
 
 func NewStore(db *sql.DB) *Store   { return &Store{db: db} }
 func NewTxStore(tx *sql.Tx) *Store { return &Store{db: tx} }

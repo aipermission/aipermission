@@ -20,6 +20,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -69,12 +70,7 @@ type databaseRuntime struct {
 	fileTransfers      *filetransfer.Store
 	consoleSessions    *console.Manager
 	transferJobs       transferjobs.Registry
-	securityMu         sync.RWMutex
-	securitySettings   securitySettingsResponse
-	securityLoaded     bool
-	redactionMu        sync.RWMutex
-	redactionRules     []compiledRedactionRule
-	redactionLoaded    bool
+	securityPolicy     *securitypolicy.Service
 	credBoundaryMu     sync.RWMutex
 	credBoundaries     map[int64]connectorCredentialBoundary
 	runtimeState       runtimecontrol.State
@@ -186,6 +182,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		registry:        registry,
 		adapterRegistry: resolved.adapterRegistry,
 		fileTransfers:   filetransfer.NewStore(database),
+		securityPolicy:  securitypolicy.NewService(database),
 		credBoundaries:  map[int64]connectorCredentialBoundary{},
 		vaultLeases:     vaultsessions.NewStore(),
 	}

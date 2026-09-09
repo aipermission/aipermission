@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -50,9 +52,33 @@ func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vau
 		registry:          testConnectorRegistry(t),
 		workspaceUUID:     connectorActionTestWorkspaceID,
 		actionIdentityKey: identityKey,
+		securityPolicy:    securitypolicy.NewService(database),
 	}
 	runtime.setMCPStarted(true)
 	return runtime
+}
+
+func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
+	return func(ctx context.Context, _ string, _ func() any, mutate func(*sql.Tx) error) error {
+		tx, err := database.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := mutate(tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+}
+
+func createSecurityPolicyRule(ctx context.Context, runtime *databaseRuntime, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
+	return runtime.securityPolicy.CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.database))
+}
+
+func setSecurityPolicySettings(ctx context.Context, runtime *databaseRuntime, settings securitypolicy.Settings) error {
+	_, err := runtime.securityPolicy.UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.database))
+	return err
 }
 
 func connectorActionTestIdentityKey(t *testing.T) []byte {

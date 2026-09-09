@@ -17,6 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -762,7 +763,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
-	if _, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
+	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "approval preview token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
 		t.Fatalf("insert custom redaction rule: %v", err)
@@ -944,7 +945,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
-	if _, err := insertRedactionRule(t.Context(), runtime, redactionRuleRequest{
+	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "typed output token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
 		t.Fatalf("insert custom redaction rule: %v", err)

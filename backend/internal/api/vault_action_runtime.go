@@ -10,13 +10,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
-	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor sqldb.Executor, item vaultrequests.Request) error {
+	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
 		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
 			ActorType: "gateway",
 			TokenID:   int64Ptr(item.TokenID),

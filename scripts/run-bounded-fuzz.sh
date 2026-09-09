@@ -52,7 +52,7 @@ run_fuzz() {
 }
 
 run_fuzz ./internal/actions FuzzApprovalContextHash
-run_fuzz ./internal/api FuzzBasicRedaction
+run_fuzz ./internal/securitypolicy FuzzBasicRedaction
 run_fuzz ./internal/api FuzzTransferPathNormalization
 run_fuzz ./internal/connectors/sqlsafe FuzzValidateReadOnly
 run_fuzz ./internal/connectors/redis FuzzReadRESPValue

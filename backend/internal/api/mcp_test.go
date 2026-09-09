@@ -26,6 +26,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
@@ -341,7 +342,7 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("metadata should be hidden by default: %#v", items)
 	}
 
-	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "", updateSecuritySettingsRequest{ExposeMCPServerMetadata: true})
+	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "", securitypolicy.Settings{ExposeMCPServerMetadata: true})
 	if settingsResponse.Code != http.StatusOK {
 		t.Fatalf("enable metadata setting failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}
