@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -381,14 +382,7 @@ func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime 
 			if item.TokenID == nil {
 				return errors.New("connector approval token is missing")
 			}
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO message_queue (token_id, direction, message, created_at)
-				VALUES (?, 'user_to_ai', ?, ?)`,
-				*item.TokenID,
-				"Operator approved the connector action with note: "+userNote,
-				time.Now().UTC().Format(time.RFC3339),
-			)
-			return err
+			return messagequeue.EnqueueUserNote(ctx, tx, *item.TokenID, "Operator approved the connector action with note: "+userNote)
 		},
 	); err != nil {
 		return connectortargets.ActionRequest{}, err

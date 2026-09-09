@@ -282,6 +282,15 @@ func (m *Manager) Get(ctx context.Context, id int64) (Record, error) {
 	return record, nil
 }
 
+func (m *Manager) RuntimeID(ctx context.Context, sessionID int64) (int64, error) {
+	if m == nil || m.db == nil {
+		return 0, errors.New("console session manager is unavailable")
+	}
+	var runtimeID int64
+	err := m.db.QueryRowContext(ctx, `SELECT runtime_id FROM console_sessions WHERE id = ?`, sessionID).Scan(&runtimeID)
+	return runtimeID, err
+}
+
 func (m *Manager) ActiveSnapshot(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (Record, error) {
 	session := m.activeForRuntime(runtimeID)
 	if session == nil {

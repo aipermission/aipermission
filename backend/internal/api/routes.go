@@ -7,6 +7,7 @@ import (
 	"time"
 
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 )
 
@@ -20,7 +21,6 @@ type auditHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
-type messageHandlers struct{ *Server }
 type vaultItemHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
 type connectorHandlers struct{ *Server }
@@ -241,12 +241,12 @@ func (s *Server) registerConnectorRoutes() {
 }
 
 func (s *Server) registerMessageAndAuditRoutes() {
-	messages := messageHandlers{s}
+	messages := messagequeue.NewHTTPHandlers(s.messageQueueScope)
 	audit := auditHandlers{s}
 
-	s.mux.HandleFunc("GET /api/messages", messages.listMessages)
-	s.mux.HandleFunc("POST /api/messages", messages.createMessage)
-	s.mux.HandleFunc("POST /api/messages/read", messages.markMessagesRead)
+	s.mux.HandleFunc("GET /api/messages", messages.List)
+	s.mux.HandleFunc("POST /api/messages", messages.Create)
+	s.mux.HandleFunc("POST /api/messages/read", messages.MarkRead)
 	s.mux.HandleFunc("GET /api/audit-logs", audit.listAuditLogs)
 	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.getAuditLog)
 }

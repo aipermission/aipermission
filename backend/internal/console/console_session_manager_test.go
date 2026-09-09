@@ -393,6 +393,10 @@ func TestConsoleSessionManagerListGetAndCloseRuntime(t *testing.T) {
 	if item.ID != sessionID || item.Status != "connected" {
 		t.Fatalf("unexpected session: %#v", item)
 	}
+	gotRuntimeID, err := manager.RuntimeID(context.Background(), sessionID)
+	if err != nil || gotRuntimeID != runtimeID {
+		t.Fatalf("session runtime id=%d, want %d: %v", gotRuntimeID, runtimeID, err)
+	}
 	if err := manager.CloseRuntime(context.Background(), testExecutionPrincipal(), runtimeID); err != nil {
 		t.Fatalf("close server sessions: %v", err)
 	}

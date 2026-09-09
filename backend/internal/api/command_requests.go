@@ -73,7 +73,7 @@ func (s *Server) insertCommandRequestWithExecutor(ctx context.Context, runtime *
 	result, err := executor.ExecContext(ctx, `
 		INSERT INTO command_requests (token_id, runtime_id, source, command, encrypted_command, reason, status, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		nullableInt64(request.TokenID),
+		nullableCommandTokenID(request.TokenID),
 		request.RuntimeID,
 		request.Source,
 		request.storedCommand,
@@ -100,6 +100,13 @@ func (s *Server) insertCommandRequestWithExecutor(ctx context.Context, runtime *
 		return 0, err
 	}
 	return id, nil
+}
+
+func nullableCommandTokenID(tokenID *int64) any {
+	if tokenID == nil || *tokenID == 0 {
+		return nil
+	}
+	return *tokenID
 }
 
 func (s *Server) commandRequestExecutionCommand(ctx context.Context, runtime *databaseRuntime, id int64) (string, error) {

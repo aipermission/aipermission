@@ -192,7 +192,7 @@ func (s consoleHandlers) inputConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	if runtimeID, err := consoleSessionRuntimeID(r.Context(), runtime, id); err == nil {
+	if runtimeID, err := runtime.consoleSessions.RuntimeID(r.Context(), id); err == nil {
 		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.input", map[string]any{
 			"session_id": id,
 			"bytes":      len(request.Data),
@@ -223,7 +223,7 @@ func (s consoleHandlers) closeConsoleSession(w http.ResponseWriter, r *http.Requ
 		writeInternalError(w)
 		return
 	}
-	if runtimeID, err := consoleSessionRuntimeID(r.Context(), runtime, id); err == nil {
+	if runtimeID, err := runtime.consoleSessions.RuntimeID(r.Context(), id); err == nil {
 		s.writeObservationAudit(r.Context(), runtime, "user", nil, runtimeID, "console.session.closed_observed", map[string]any{
 			"session_id": id,
 		})

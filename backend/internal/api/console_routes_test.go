@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"golang.org/x/crypto/ssh"
 )
@@ -23,7 +24,7 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
 
-	createMessageResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/messages", "", createMessageRequest{TokenID: token.ID, RuntimeID: &server.ID, Message: "hello agent"})
+	createMessageResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/messages", "", messagequeue.CreateRequest{TokenID: token.ID, RuntimeID: &server.ID, Message: "hello agent"})
 	if createMessageResponse.Code != http.StatusCreated {
 		t.Fatalf("create message failed: %d %s", createMessageResponse.Code, createMessageResponse.Body.String())
 	}
