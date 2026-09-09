@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 )
 
 type transientBackupServiceRequest struct {
@@ -108,7 +109,7 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusRequestEntityTooLarge, "remote backup is too large to restore through the gateway")
 		return
 	}
-	tmpPath, err := reserveDatabaseTempPath(s.config.DataPath, "first-run-restore-*.aipdb")
+	tmpPath, err := databasecatalog.ReserveTempPath(s.config.DataPath, "first-run-restore-*.aipdb")
 	if err != nil {
 		handleBackupServiceError(w, err)
 		return

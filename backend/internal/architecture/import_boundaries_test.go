@@ -70,7 +70,7 @@ func TestBuiltInConnectorCorePackagesStayIndependentFromGatewayState(t *testing.
 
 func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	packages := []string{
-		modulePath + "/internal/actionresponse",
+		modulePath + "/internal/actionresult",
 		modulePath + "/internal/actions",
 		modulePath + "/internal/runtimecontrol",
 		modulePath + "/internal/transferjobs",

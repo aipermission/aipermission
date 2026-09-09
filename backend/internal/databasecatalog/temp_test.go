@@ -1,4 +1,4 @@
-package api
+package databasecatalog
 
 import (
 	"os"
@@ -42,7 +42,7 @@ func TestScavengeDatabaseTempPathsRemovesOnlyStaleTemporaryFiles(t *testing.T) {
 	if err := os.Chtimes(unowned, now.Add(-25*time.Hour), now.Add(-25*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	scavengeDatabaseTempPaths(defaultPath, now)
+	ScavengeTempPaths(defaultPath, now)
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("stale temporary file remains: %v", err)
 	}

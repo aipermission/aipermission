@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	"github.com/aipermission/aipermission/backend/internal/legacymigration"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
@@ -39,8 +40,8 @@ type migrationInfo struct {
 }
 
 type statusResponse struct {
-	Migrations []migrationInfo   `json:"migrations"`
-	Databases  []db.DatabaseInfo `json:"databases"`
+	Migrations []migrationInfo                `json:"migrations"`
+	Databases  []databasecatalog.DatabaseInfo `json:"databases"`
 }
 
 type migrateRequest struct {
@@ -128,7 +129,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) status(w http.ResponseWriter, _ *http.Request) {
-	databases, err := db.ListDatabases(s.config.DataPath, "")
+	databases, err := databasecatalog.ListDatabases(s.config.DataPath, "")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
@@ -161,7 +162,7 @@ func (s *Server) migrate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "unsupported migration"})
 		return
 	}
-	result, err := MigrateLegacy010To020(r.Context(), Legacy010To020Request{
+	result, err := legacymigration.MigrateLegacy010To020(r.Context(), legacymigration.Legacy010To020Request{
 		DataPath:         s.config.DataPath,
 		FallbackSecret:   s.config.GatewaySecret,
 		SourceDatabaseID: request.SourceDatabaseID,
@@ -171,7 +172,7 @@ func (s *Server) migrate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, ErrTargetExists) {
+		if errors.Is(err, legacymigration.ErrTargetExists) {
 			status = http.StatusConflict
 		}
 		writeJSON(w, status, errorResponse{Error: err.Error()})

@@ -1,4 +1,4 @@
-package db
+package databasecatalog
 
 import (
 	"crypto/rand"
@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/aipermission/aipermission/backend/internal/db"
 )
 
 var ErrDatabaseExists = errors.New("database name already exists")
@@ -38,7 +40,7 @@ func ListDatabases(defaultPath string, currentPath string) ([]DatabaseInfo, erro
 	if err := recoverDatabaseDeleteQuarantines(filepath.Dir(defaultPath)); err != nil {
 		return nil, err
 	}
-	if Exists(defaultPath) {
+	if db.Exists(defaultPath) {
 		items = append(items, databaseInfo(DefaultDatabaseID(defaultPath), DefaultDatabaseName(defaultPath), defaultPath, currentPath))
 	}
 
@@ -76,14 +78,14 @@ func DatabasePath(defaultPath string, id string) (string, error) {
 		return "", fmt.Errorf("invalid database id")
 	}
 	namedPath := filepath.Join(DatabasesDir(defaultPath), id+".db")
-	if id == "default" && !Exists(namedPath) {
+	if id == "default" && !db.Exists(namedPath) {
 		return defaultPath, nil
 	}
 	return namedPath, nil
 }
 
 func DefaultDatabaseID(defaultPath string) string {
-	if Exists(filepath.Join(DatabasesDir(defaultPath), "default.db")) {
+	if db.Exists(filepath.Join(DatabasesDir(defaultPath), "default.db")) {
 		return "local-default"
 	}
 	return "default"
@@ -106,10 +108,10 @@ func NewDatabasePath(defaultPath string, name string) (string, string, error) {
 		return "", "", fmt.Errorf("create databases directory: %w", err)
 	}
 	path := filepath.Join(dir, id+".db")
-	for i := 2; Exists(path); i++ {
+	for i := 2; db.Exists(path); i++ {
 		nextID := fmt.Sprintf("%s-%d", id, i)
 		path = filepath.Join(dir, nextID+".db")
-		if !Exists(path) {
+		if !db.Exists(path) {
 			id = nextID
 			break
 		}
@@ -136,7 +138,7 @@ func NewDatabasePathExact(defaultPath string, name string) (string, string, erro
 		return "", "", fmt.Errorf("create databases directory: %w", err)
 	}
 	path := filepath.Join(dir, id+".db")
-	if Exists(path) {
+	if db.Exists(path) {
 		return "", "", ErrDatabaseExists
 	}
 	return id, path, nil
@@ -162,7 +164,7 @@ func RenameDatabaseTarget(defaultPath string, currentPath string, name string) (
 	if currentPath == targetPath {
 		return "", "", fmt.Errorf("database already has this name")
 	}
-	if Exists(targetPath) {
+	if db.Exists(targetPath) {
 		return "", "", fmt.Errorf("database name already exists")
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
@@ -188,7 +190,7 @@ func MoveDatabase(currentPath string, targetPath string) error {
 func DeleteDatabase(path string) error {
 	databaseRecoveryMu.Lock()
 	defer databaseRecoveryMu.Unlock()
-	ownership, err := AcquireDatabaseOwnership(path)
+	ownership, err := db.AcquireDatabaseOwnership(path)
 	if err != nil {
 		return err
 	}
@@ -358,7 +360,7 @@ func databaseDeleteQuarantineSuffix() (string, error) {
 }
 
 func recoverDatabaseDeleteQuarantines(dir string) error {
-	return recoverDatabaseDeleteQuarantinesWithPublish(dir, PublishFileNoReplace)
+	return recoverDatabaseDeleteQuarantinesWithPublish(dir, db.PublishFileNoReplace)
 }
 
 func recoverDatabaseDeleteQuarantinesWithPublish(dir string, publish func(string, string) error) error {
@@ -399,8 +401,8 @@ func recoverDatabaseDeleteQuarantinesWithPublish(dir string, publish func(string
 		if databasePath == "" {
 			return fmt.Errorf("incomplete database delete quarantine has no database file")
 		}
-		ownership, err := AcquireDatabaseOwnership(databasePath)
-		if errors.Is(err, ErrDatabaseInUse) {
+		ownership, err := db.AcquireDatabaseOwnership(databasePath)
+		if errors.Is(err, db.ErrDatabaseInUse) {
 			continue
 		}
 		if err != nil {
@@ -465,7 +467,7 @@ func DatabasesDir(defaultPath string) string {
 
 func databaseInfo(id string, name string, path string, currentPath string) DatabaseInfo {
 	state := "locked"
-	if LooksLikePlainSQLite(path) {
+	if db.LooksLikePlainSQLite(path) {
 		state = "unsupported_plaintext"
 	}
 	return DatabaseInfo{

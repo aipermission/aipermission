@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 )
 
@@ -22,13 +23,13 @@ type setupUnlockRequest struct {
 }
 
 type unlockStatusResponse struct {
-	State                  string            `json:"state"`
-	DataPath               string            `json:"data_path,omitempty"`
-	DatabaseID             string            `json:"database_id"`
-	DatabaseName           string            `json:"database_name"`
-	DatabaseSizeBytes      int64             `json:"database_size_bytes,omitempty"`
-	UISessionAuthenticated bool              `json:"ui_session_authenticated"`
-	Databases              []db.DatabaseInfo `json:"databases"`
+	State                  string                         `json:"state"`
+	DataPath               string                         `json:"data_path,omitempty"`
+	DatabaseID             string                         `json:"database_id"`
+	DatabaseName           string                         `json:"database_name"`
+	DatabaseSizeBytes      int64                          `json:"database_size_bytes,omitempty"`
+	UISessionAuthenticated bool                           `json:"ui_session_authenticated"`
+	Databases              []databasecatalog.DatabaseInfo `json:"databases"`
 }
 
 func (s unlockHandlers) unlockStatus(w http.ResponseWriter, r *http.Request) {

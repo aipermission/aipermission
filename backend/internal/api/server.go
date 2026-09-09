@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -146,8 +147,8 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 }
 
 func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
-	scavengeDatabaseTempPaths(cfg.DataPath, time.Now())
-	activeID := dbpkg.DefaultDatabaseID(cfg.DataPath)
+	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
+	activeID := databasecatalog.DefaultDatabaseID(cfg.DataPath)
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
 	server := &Server{
@@ -213,12 +214,12 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 }
 
 func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
-	scavengeDatabaseTempPaths(cfg.DataPath, time.Now())
+	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
 	resolved := resolveServerOptions(options)
 	server := &Server{
 		config:               cfg,
 		activeDataPath:       cfg.DataPath,
-		activeDatabase:       dbpkg.DefaultDatabaseID(cfg.DataPath),
+		activeDatabase:       databasecatalog.DefaultDatabaseID(cfg.DataPath),
 		workspaces:           map[string]*databaseRuntime{},
 		registry:             resolved.registry,
 		adapterRegistry:      resolved.adapterRegistry,

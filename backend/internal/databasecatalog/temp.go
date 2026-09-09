@@ -1,4 +1,4 @@
-package api
+package databasecatalog
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 const databaseTempDirectoryName = ".aipermission-temp"
 
-func reserveDatabaseTempPath(databasePath, pattern string) (string, error) {
+func ReserveTempPath(databasePath, pattern string) (string, error) {
 	directory := filepath.Join(filepath.Dir(databasePath), databaseTempDirectoryName)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", fmt.Errorf("create database temporary directory: %w", err)
@@ -31,7 +31,7 @@ func reserveDatabaseTempPath(databasePath, pattern string) (string, error) {
 	return path, nil
 }
 
-func scavengeDatabaseTempPaths(defaultPath string, now time.Time) {
+func ScavengeTempPaths(defaultPath string, now time.Time) {
 	directories := []string{
 		filepath.Dir(defaultPath),
 		filepath.Join(filepath.Dir(defaultPath), "databases"),

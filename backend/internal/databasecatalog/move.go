@@ -1,4 +1,4 @@
-package db
+package databasecatalog
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/db"
 )
 
 const (
@@ -41,7 +43,7 @@ type databaseMoveOps struct {
 
 func defaultDatabaseMoveOps() databaseMoveOps {
 	return databaseMoveOps{
-		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: PublishFileNoReplace, publish: PublishFileNoReplace,
+		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: db.PublishFileNoReplace, publish: db.PublishFileNoReplace,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
@@ -246,7 +248,7 @@ func recoverDatabaseMoveJournals(root string) error {
 			return err
 		}
 		ownerships, err := acquireDatabaseOwnershipSet(manifest.SourceBase, manifest.TargetBase)
-		if errors.Is(err, ErrDatabaseInUse) {
+		if errors.Is(err, db.ErrDatabaseInUse) {
 			continue
 		}
 		if err != nil {
@@ -312,14 +314,14 @@ func removeIncompleteMoveJournal(root, journalDir string) error {
 }
 
 func recoverDatabaseMoveJournal(manifest databaseMoveManifest) error {
-	return recoverDatabaseMoveJournalWithPublish(manifest, PublishFileNoReplace)
+	return recoverDatabaseMoveJournalWithPublish(manifest, db.PublishFileNoReplace)
 }
 
 func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publish func(string, string) error) error {
 	restore := make([]databaseMove, 0, len(manifest.Moves))
 	for index := len(manifest.Moves) - 1; index >= 0; index-- {
 		item := manifest.Moves[index]
-		sourceExists, targetExists := Exists(item.Source), Exists(item.Target)
+		sourceExists, targetExists := db.Exists(item.Source), db.Exists(item.Target)
 		switch {
 		case sourceExists && !targetExists:
 			continue

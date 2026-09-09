@@ -31,8 +31,7 @@ type finding struct {
 }
 
 var overrides = map[string]budget{
-	"internal/api/routes.go:Server.routes":                      {lines: 191, complexity: defaultMaxComplexity},
-	"internal/migration/legacy_010_to_020.go:migrateLegacyRows": {lines: 208, complexity: defaultMaxComplexity},
+	"internal/api/routes.go:Server.routes": {lines: 191, complexity: defaultMaxComplexity},
 }
 
 func main() {

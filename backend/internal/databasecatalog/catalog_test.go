@@ -1,4 +1,4 @@
-package db
+package databasecatalog
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/db"
 )
 
 func TestNewDatabasePathExactRejectsCollisions(t *testing.T) {
@@ -89,7 +91,7 @@ func TestNewRenameDeleteAndListDatabases(t *testing.T) {
 	if renamedID != "renamed-database" {
 		t.Fatalf("unexpected renamed id: %s", renamedID)
 	}
-	if Exists(path) || !Exists(renamedPath) {
+	if db.Exists(path) || !db.Exists(renamedPath) {
 		t.Fatalf("rename did not move database")
 	}
 
@@ -104,7 +106,7 @@ func TestNewRenameDeleteAndListDatabases(t *testing.T) {
 	if err := DeleteDatabase(renamedPath); err != nil {
 		t.Fatalf("delete database: %v", err)
 	}
-	if Exists(renamedPath) {
+	if db.Exists(renamedPath) {
 		t.Fatalf("database should be deleted")
 	}
 }
@@ -126,7 +128,7 @@ func TestMoveDatabasePreservesSidecarsAndRecoveryArtifactsDurably(t *testing.T) 
 		t.Fatal(err)
 	}
 	for _, suffix := range suffixes {
-		if Exists(currentPath+suffix) || !Exists(targetPath+suffix) {
+		if db.Exists(currentPath+suffix) || !db.Exists(targetPath+suffix) {
 			t.Fatalf("artifact suffix %q was not moved", suffix)
 		}
 	}
@@ -154,11 +156,11 @@ func TestMoveDatabaseRollsBackPartialArtifactMove(t *testing.T) {
 		t.Fatalf("expected move failure, got %v", err)
 	}
 	for _, path := range []string{currentPath, currentPath + "-wal"} {
-		if !Exists(path) {
+		if !db.Exists(path) {
 			t.Fatalf("rollback did not restore %q", path)
 		}
 	}
-	if Exists(targetPath) {
+	if db.Exists(targetPath) {
 		t.Fatal("rollback retained target database")
 	}
 }
@@ -191,13 +193,13 @@ func TestMoveDatabasePreservesCompletedTargetWhenMarkerCannotBeRemoved(t *testin
 		!strings.Contains(err.Error(), "injected marker removal failure") {
 		t.Fatalf("expected uncertain completion failure, got %v", err)
 	}
-	if Exists(currentPath) || !Exists(targetPath) {
+	if db.Exists(currentPath) || !db.Exists(targetPath) {
 		t.Fatal("durably marked target must remain authoritative")
 	}
 	if err := recoverDatabaseMoveJournals(root); err != nil {
 		t.Fatalf("recover durably completed move: %v", err)
 	}
-	if Exists(currentPath) || !Exists(targetPath) {
+	if db.Exists(currentPath) || !db.Exists(targetPath) {
 		t.Fatal("startup recovery did not preserve completed target")
 	}
 }
@@ -236,10 +238,10 @@ func TestDatabaseCatalogRecoversInterruptedMoveJournal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list databases after interrupted move: %v", err)
 	}
-	if len(items) != 1 || !Exists(defaultPath) || !Exists(defaultPath+"-wal") {
+	if len(items) != 1 || !db.Exists(defaultPath) || !db.Exists(defaultPath+"-wal") {
 		t.Fatalf("interrupted move was not rolled back: items=%#v", items)
 	}
-	if Exists(targetPath) || Exists(journalDir) {
+	if db.Exists(targetPath) || db.Exists(journalDir) {
 		t.Fatal("interrupted move recovery retained target or journal")
 	}
 }
@@ -260,7 +262,7 @@ func TestMoveRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.T)
 	if err := recoverDatabaseMoveJournal(manifest); err == nil || !strings.Contains(err.Error(), "duplicate artifact state") {
 		t.Fatalf("recovery error = %v", err)
 	}
-	if Exists(source+"-wal") || !Exists(target+"-wal") {
+	if db.Exists(source+"-wal") || !db.Exists(target+"-wal") {
 		t.Fatal("conflicting move recovery partially restored the WAL")
 	}
 }
@@ -289,7 +291,7 @@ func TestMoveRecoveryRollsBackPartialPublishFailure(t *testing.T) {
 	if err := recoverDatabaseMoveJournalWithPublish(manifest, publish); err == nil || !strings.Contains(err.Error(), "injected recovery publish failure") {
 		t.Fatalf("recovery error = %v", err)
 	}
-	if Exists(source) || Exists(source+"-wal") || !Exists(target) || !Exists(target+"-wal") {
+	if db.Exists(source) || db.Exists(source+"-wal") || !db.Exists(target) || !db.Exists(target+"-wal") {
 		t.Fatal("failed move recovery left a partially restored artifact set")
 	}
 }
@@ -323,10 +325,10 @@ func TestDatabaseCatalogRecoversInterruptedNamedDatabaseMoveJournal(t *testing.T
 	if err != nil {
 		t.Fatalf("list databases after interrupted named move: %v", err)
 	}
-	if len(items) != 1 || items[0].ID != "source" || !Exists(sourcePath) {
+	if len(items) != 1 || items[0].ID != "source" || !db.Exists(sourcePath) {
 		t.Fatalf("interrupted named move was not rolled back: items=%#v", items)
 	}
-	if Exists(targetPath) || Exists(journalDir) {
+	if db.Exists(targetPath) || db.Exists(journalDir) {
 		t.Fatal("interrupted named move recovery retained target or journal")
 	}
 }
@@ -358,7 +360,7 @@ func TestDatabaseCatalogFinishesCompletedMoveJournalCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list databases after completed move: %v", err)
 	}
-	if len(items) != 1 || !items[0].Current || !Exists(targetPath) || Exists(journalDir) {
+	if len(items) != 1 || !items[0].Current || !db.Exists(targetPath) || db.Exists(journalDir) {
 		t.Fatalf("completed move cleanup mismatch: items=%#v", items)
 	}
 }
@@ -380,7 +382,7 @@ func TestDatabaseCatalogDiscardsUnpublishedMoveJournal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("truncated unpublished journal blocked catalog: %v", err)
 	}
-	if len(items) != 1 || !Exists(defaultPath) || Exists(journalDir) {
+	if len(items) != 1 || !db.Exists(defaultPath) || db.Exists(journalDir) {
 		t.Fatalf("unpublished journal recovery mismatch: items=%#v", items)
 	}
 }
@@ -402,7 +404,7 @@ func TestDatabaseCatalogRejectsCorruptPublishedMoveJournal(t *testing.T) {
 	if _, err := ListDatabases(defaultPath, defaultPath); err == nil || !strings.Contains(err.Error(), "decode database move journal") {
 		t.Fatalf("expected corrupt published journal to fail closed, got %v", err)
 	}
-	if _, err := os.Stat(journalDir); !Exists(defaultPath) || err != nil {
+	if _, err := os.Stat(journalDir); !db.Exists(defaultPath) || err != nil {
 		t.Fatal("failed recovery must preserve the database and journal for manual inspection")
 	}
 }
@@ -429,7 +431,7 @@ func TestDatabaseCatalogCompletedMoveJournalDoesNotOwnLaterTargetState(t *testin
 	if _, err := ListDatabases(defaultPath, ""); err != nil {
 		t.Fatalf("stale completed journal blocked catalog: %v", err)
 	}
-	if Exists(journalDir) {
+	if db.Exists(journalDir) {
 		t.Fatal("stale completed journal was not removed")
 	}
 }
@@ -455,7 +457,7 @@ func TestDatabaseCatalogCompletedMoveJournalDoesNotRequireManifest(t *testing.T)
 	if err != nil {
 		t.Fatalf("completed move journal with corrupt manifest blocked catalog: %v", err)
 	}
-	if len(items) != 1 || !Exists(defaultPath) || Exists(journalDir) {
+	if len(items) != 1 || !db.Exists(defaultPath) || db.Exists(journalDir) {
 		t.Fatalf("completed move journal cleanup mismatch: items=%#v", items)
 	}
 }
@@ -477,7 +479,7 @@ func TestDatabaseCatalogRejectsInvalidMoveCompletionMarker(t *testing.T) {
 	if _, err := ListDatabases(defaultPath, defaultPath); err == nil || !strings.Contains(err.Error(), "invalid completion marker") {
 		t.Fatalf("expected invalid completion marker to fail closed, got %v", err)
 	}
-	if _, err := os.Stat(journalDir); !Exists(defaultPath) || err != nil {
+	if _, err := os.Stat(journalDir); !db.Exists(defaultPath) || err != nil {
 		t.Fatal("failed recovery must preserve the database and journal for manual inspection")
 	}
 }
@@ -538,7 +540,7 @@ func TestDeleteDatabaseDefersFailedQuarantineCleanup(t *testing.T) {
 	if err := deleteDatabaseWithOps(path, ops); err != nil {
 		t.Fatalf("completed quarantine should be a successful logical delete: %v", err)
 	}
-	if Exists(path) {
+	if db.Exists(path) {
 		t.Fatalf("database should no longer be addressable after quarantine")
 	}
 	quarantined, err := filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
@@ -571,7 +573,7 @@ func TestDeleteDatabaseRemovesMigrationRecoveryArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, candidate := range candidates {
-		if Exists(candidate) {
+		if db.Exists(candidate) {
 			t.Fatalf("database delete retained recovery artifact %q", candidate)
 		}
 	}
@@ -592,7 +594,7 @@ func TestDeleteDatabaseRollsBackWhenCompletionMarkerFails(t *testing.T) {
 		t.Fatalf("expected marker failure, got %v", err)
 	}
 	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
-		if !Exists(candidate) {
+		if !db.Exists(candidate) {
 			t.Fatalf("marker failure did not restore %q", candidate)
 		}
 	}
@@ -613,7 +615,7 @@ func TestDeleteDatabaseRollsBackWhenQuarantineDurabilityFails(t *testing.T) {
 	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected file sync failure") {
 		t.Fatalf("expected sync failure, got %v", err)
 	}
-	if !Exists(path) {
+	if !db.Exists(path) {
 		t.Fatal("sync failure did not restore the database")
 	}
 	quarantines, err := filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
@@ -682,7 +684,7 @@ func TestDeleteDatabasePreservesQuarantineWhenRollbackRenameFails(t *testing.T) 
 	if err := deleteDatabaseWithOps(path, ops); err == nil || !strings.Contains(err.Error(), "injected rollback failure") {
 		t.Fatalf("expected rollback failure, got %v", err)
 	}
-	if Exists(path) {
+	if db.Exists(path) {
 		t.Fatal("failed rollback should leave the database in quarantine")
 	}
 	quarantines, err := filepath.Glob(filepath.Join(directory, databaseDeleteQuarantinePrefix+"*"))
@@ -693,7 +695,7 @@ func TestDeleteDatabasePreservesQuarantineWhenRollbackRenameFails(t *testing.T) 
 		t.Fatalf("recover retained rollback quarantine: %v", err)
 	}
 	for _, candidate := range []string{path, walPath} {
-		if !Exists(candidate) {
+		if !db.Exists(candidate) {
 			t.Fatalf("recovery did not restore %q", candidate)
 		}
 	}
@@ -723,7 +725,7 @@ func TestDeleteRecoveryRollsBackPartialPublishFailure(t *testing.T) {
 		t.Fatalf("recovery error = %v", err)
 	}
 	for _, candidate := range []string{path, path + "-wal"} {
-		if Exists(candidate) || !Exists(filepath.Join(quarantineDir, filepath.Base(candidate))) {
+		if db.Exists(candidate) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(candidate))) {
 			t.Fatalf("failed recovery left a partially restored artifact set for %q", candidate)
 		}
 	}
@@ -757,13 +759,13 @@ func TestDeleteDatabaseRemovesMarkerBeforeFailedDurabilityRollback(t *testing.T)
 	if err != nil || len(quarantines) != 1 {
 		t.Fatalf("expected retained recovery quarantine: paths=%v err=%v", quarantines, err)
 	}
-	if Exists(filepath.Join(quarantines[0], databaseDeleteCompleteMarker)) {
+	if db.Exists(filepath.Join(quarantines[0], databaseDeleteCompleteMarker)) {
 		t.Fatal("failed rollback retained a completion marker that could destroy recoverable data")
 	}
 	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
 		t.Fatalf("recover durability rollback quarantine: %v", err)
 	}
-	if !Exists(path) {
+	if !db.Exists(path) {
 		t.Fatal("recovery did not restore the database")
 	}
 }
@@ -784,10 +786,10 @@ func TestDatabaseCatalogRecoversInterruptedDeleteQuarantine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list databases after interrupted delete: %v", err)
 	}
-	if len(items) != 1 || !Exists(defaultPath) || !Exists(defaultPath+"-wal") {
+	if len(items) != 1 || !db.Exists(defaultPath) || !db.Exists(defaultPath+"-wal") {
 		t.Fatalf("interrupted delete was not rolled back: items=%#v", items)
 	}
-	if Exists(quarantineDir) {
+	if db.Exists(quarantineDir) {
 		t.Fatalf("recovered quarantine directory should be removed")
 	}
 }
@@ -810,7 +812,7 @@ func TestDeleteRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.
 	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
 		t.Fatalf("recover conflict: %v", err)
 	}
-	if Exists(databasePath) || !Exists(filepath.Join(quarantineDir, filepath.Base(databasePath))) {
+	if db.Exists(databasePath) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(databasePath))) {
 		t.Fatal("conflicting delete recovery partially restored the database")
 	}
 }

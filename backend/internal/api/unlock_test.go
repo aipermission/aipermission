@@ -19,6 +19,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -81,18 +82,18 @@ func TestDatabaseUnlockErrorsSeparateAuthenticationFromInitialization(t *testing
 func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
 	cfg := fixtureConfigForLockedTest(t)
 	firstServer := NewLockedServer(cfg)
-	first, err := firstServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	first, err := firstServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
 	if err != nil {
 		t.Fatalf("open first runtime: %v", err)
 	}
 	secondServer := NewLockedServer(cfg)
-	if _, err := secondServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
+	if _, err := secondServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
 		t.Fatalf("second runtime error = %v, want ErrDatabaseInUse", err)
 	}
 	if err := firstServer.closeRuntime(first); err != nil {
 		t.Fatalf("close first runtime: %v", err)
 	}
-	second, err := secondServer.openRuntime(cfg.DataPath, dbpkg.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	second, err := secondServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
 	if err != nil {
 		t.Fatalf("reopen after ownership release: %v", err)
 	}
@@ -428,7 +429,7 @@ func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 	if response := performJSON(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"unlocked"`) {
 		t.Fatalf("failed rename should preserve the UI session, got %d %s", response.Code, response.Body.String())
 	}
-	if _, renamedPath, err := dbpkg.RenameDatabaseTarget(server.config.DataPath, oldPath, "Renamed Project"); err != nil {
+	if _, renamedPath, err := databasecatalog.RenameDatabaseTarget(server.config.DataPath, oldPath, "Renamed Project"); err != nil {
 		t.Fatalf("resolve renamed path: %v", err)
 	} else if dbpkg.Exists(renamedPath) {
 		t.Fatalf("failed rename should not leave the target database path")
@@ -484,7 +485,7 @@ func TestUnlockReportsUnsupportedPre02Database(t *testing.T) {
 	handler := server.Handler()
 	defer server.Close()
 
-	id, path, err := dbpkg.NewDatabasePath(server.config.DataPath, "Legacy Database")
+	id, path, err := databasecatalog.NewDatabasePath(server.config.DataPath, "Legacy Database")
 	if err != nil {
 		t.Fatalf("database path: %v", err)
 	}
@@ -516,7 +517,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	handler := server.Handler()
 	defer server.Close()
 
-	id, path, err := dbpkg.NewDatabasePath(server.config.DataPath, "Old Preview")
+	id, path, err := databasecatalog.NewDatabasePath(server.config.DataPath, "Old Preview")
 	if err != nil {
 		t.Fatalf("database path: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestSwitchDatabaseRejectsMissingDatabaseWithoutCreatingIt(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 
-	missingPath, err := dbpkg.DatabasePath(server.config.DataPath, "missing-project")
+	missingPath, err := databasecatalog.DatabasePath(server.config.DataPath, "missing-project")
 	if err != nil {
 		t.Fatalf("database path: %v", err)
 	}
@@ -601,7 +602,7 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 		t.Fatalf("expected project-one runtime, got %#v", projectOne)
 	}
 
-	projectTwoID, projectTwoPath, err := dbpkg.NewDatabasePath(server.config.DataPath, "Project Two")
+	projectTwoID, projectTwoPath, err := databasecatalog.NewDatabasePath(server.config.DataPath, "Project Two")
 	if err != nil {
 		t.Fatalf("project two path: %v", err)
 	}
@@ -713,7 +714,7 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 
 	server := newLockedAPITestServer(t)
 	defer server.Close()
-	_, importedTargetPath, err := dbpkg.NewDatabasePathExact(server.config.DataPath, "Imported Project")
+	_, importedTargetPath, err := databasecatalog.NewDatabasePathExact(server.config.DataPath, "Imported Project")
 	if err != nil {
 		t.Fatalf("resolve import staging path: %v", err)
 	}
@@ -757,7 +758,7 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	if importedRetryIdentity := server.activeRuntime().uiRetryIdentity; importedRetryIdentity == "" || importedRetryIdentity == sourceRetryIdentity {
 		t.Fatalf("import did not rotate retry identity: source=%q imported=%q", sourceRetryIdentity, importedRetryIdentity)
 	}
-	importedPath, err := dbpkg.DatabasePath(server.config.DataPath, "imported-project")
+	importedPath, err := databasecatalog.DatabasePath(server.config.DataPath, "imported-project")
 	if err != nil {
 		t.Fatalf("resolve imported database path: %v", err)
 	}
@@ -826,7 +827,7 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if err := previousRuntime.database.PingContext(t.Context()); err != nil {
 		t.Fatalf("previous workspace should remain queryable: %v", err)
 	}
-	importedPath, err := dbpkg.DatabasePath(server.config.DataPath, "imported-project")
+	importedPath, err := databasecatalog.DatabasePath(server.config.DataPath, "imported-project")
 	if err != nil {
 		t.Fatalf("resolve imported database path: %v", err)
 	}
@@ -869,7 +870,7 @@ func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 	if response.Code != http.StatusConflict {
 		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())
 	}
-	targetPath, err := dbpkg.DatabasePath(server.config.DataPath, "partial-import")
+	targetPath, err := databasecatalog.DatabasePath(server.config.DataPath, "partial-import")
 	if err != nil {
 		t.Fatal(err)
 	}

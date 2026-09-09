@@ -1,4 +1,4 @@
-package actionresponse
+package actionresult
 
 import (
 	"strings"

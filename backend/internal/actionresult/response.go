@@ -1,7 +1,7 @@
-// Package actionresponse owns the public projection of persisted connector
+// Package actionresult owns the canonical and public projection of connector
 // action requests. Transport handlers decide whether a response may be
 // delivered; this package decides how the safe projection is represented.
-package actionresponse
+package actionresult
 
 import (
 	"strings"

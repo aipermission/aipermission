@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 )
 
@@ -67,7 +68,7 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 	}
 
 	oldPath := s.activeDataPath
-	id, path, err := dbpkg.RenameDatabaseTarget(s.config.DataPath, oldPath, request.DatabaseName)
+	id, path, err := databasecatalog.RenameDatabaseTarget(s.config.DataPath, oldPath, request.DatabaseName)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -160,13 +161,13 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		writeInternalError(w)
 		return
 	}
-	if err := dbpkg.DeleteDatabase(path); err != nil {
+	if err := databasecatalog.DeleteDatabase(path); err != nil {
 		writeInternalError(w)
 		return
 	}
 	if s.database == nil {
 		s.activeDataPath = s.config.DataPath
-		s.activeDatabase = dbpkg.DefaultDatabaseID(s.config.DataPath)
+		s.activeDatabase = databasecatalog.DefaultDatabaseID(s.config.DataPath)
 	}
 	state := "locked"
 	if s.database != nil {
@@ -246,13 +247,13 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		return
 	}
 	attempt.success()
-	if err := dbpkg.DeleteDatabase(targetPath); err != nil {
+	if err := databasecatalog.DeleteDatabase(targetPath); err != nil {
 		writeInternalError(w)
 		return
 	}
 	if s.activeDatabase == targetID {
 		s.activeDataPath = s.config.DataPath
-		s.activeDatabase = dbpkg.DefaultDatabaseID(s.config.DataPath)
+		s.activeDatabase = databasecatalog.DefaultDatabaseID(s.config.DataPath)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "deleted",
@@ -420,7 +421,7 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	items, err := dbpkg.ListDatabases(s.config.DataPath, s.activeDataPath)
+	items, err := databasecatalog.ListDatabases(s.config.DataPath, s.activeDataPath)
 	if err != nil {
 		return s.activeDatabase
 	}

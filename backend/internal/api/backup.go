@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -78,7 +79,7 @@ func createDatabaseSnapshot(ctx context.Context, runtime *databaseRuntime) (data
 	}
 	createdAt := time.Now().UTC()
 	databaseID := runtime.id
-	snapshotPath, err := reserveDatabaseTempPath(runtime.path, "snapshot-"+databaseID+"-*.aipdb")
+	snapshotPath, err := databasecatalog.ReserveTempPath(runtime.path, "snapshot-"+databaseID+"-*.aipdb")
 	if err != nil {
 		return databaseSnapshot{}, fmt.Errorf("reserve database snapshot path: %w", err)
 	}
@@ -193,9 +194,9 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	targetID, targetPath, err := dbpkg.NewDatabasePathExact(s.config.DataPath, databaseName)
+	targetID, targetPath, err := databasecatalog.NewDatabasePathExact(s.config.DataPath, databaseName)
 	if err != nil {
-		if errors.Is(err, dbpkg.ErrDatabaseExists) {
+		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
@@ -203,11 +204,11 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 	// Remove staging files left by builds that used the former fixed import path.
-	if err := dbpkg.DeleteDatabase(targetPath + ".import"); err != nil {
+	if err := databasecatalog.DeleteDatabase(targetPath + ".import"); err != nil {
 		writeInternalError(w)
 		return
 	}
-	tmpPath, err := reserveDatabaseTempPath(targetPath, "import-*.aipdb")
+	tmpPath, err := databasecatalog.ReserveTempPath(targetPath, "import-*.aipdb")
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -216,7 +217,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeInternalError(w)
 		return
 	}
-	if err := dbpkg.DeleteDatabase(tmpPath); err != nil {
+	if err := databasecatalog.DeleteDatabase(tmpPath); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -337,5 +338,5 @@ func cleanupImportCandidate(path string) {
 }
 
 func rollbackImportedDatabase(targetPath string) error {
-	return dbpkg.DeleteDatabase(targetPath)
+	return databasecatalog.DeleteDatabase(targetPath)
 }

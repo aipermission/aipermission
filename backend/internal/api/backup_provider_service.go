@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
@@ -233,7 +234,7 @@ func downloadServiceRecordToTemp(ctx context.Context, runtime *databaseRuntime, 
 	if record.SizeBytes < 1 || record.SizeBytes > maxImportBodyBytes {
 		return "", backups.ValidationError("backup is too large to download through the gateway")
 	}
-	tmpPath, err := reserveDatabaseTempPath(runtime.path, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
+	tmpPath, err := databasecatalog.ReserveTempPath(runtime.path, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
 	if err != nil {
 		return "", err
 	}

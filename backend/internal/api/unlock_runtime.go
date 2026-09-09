@@ -17,6 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -48,7 +49,7 @@ func (s *Server) currentUnlockStatus() (unlockStatusResponse, error) {
 }
 
 func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
-	databases, err := db.ListDatabases(s.config.DataPath, s.activeDataPath)
+	databases, err := databasecatalog.ListDatabases(s.config.DataPath, s.activeDataPath)
 	if err != nil {
 		return unlockStatusResponse{}, fmt.Errorf("list encrypted databases: %w", err)
 	}
@@ -58,7 +59,7 @@ func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
 		}
 	}
 	activeID := s.activeDatabase
-	activeName := db.DefaultDatabaseName(s.config.DataPath)
+	activeName := databasecatalog.DefaultDatabaseName(s.config.DataPath)
 	for _, item := range databases {
 		if item.Path == s.activeDataPath {
 			activeID = item.ID
@@ -122,7 +123,7 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 	if s.databaseMove != nil {
 		return s.databaseMove(currentPath, targetPath)
 	}
-	return db.MoveDatabase(currentPath, targetPath)
+	return databasecatalog.MoveDatabase(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
@@ -319,15 +320,15 @@ func (s *Server) setupTargetPathLocked(databaseID string, databaseName string) (
 	databaseID = strings.TrimSpace(databaseID)
 	databaseName = strings.TrimSpace(databaseName)
 	if databaseName != "" {
-		id, path, err := db.NewDatabasePath(s.config.DataPath, databaseName)
+		id, path, err := databasecatalog.NewDatabasePath(s.config.DataPath, databaseName)
 		return path, id, err
 	}
-	path, err := db.DatabasePath(s.config.DataPath, databaseID)
+	path, err := databasecatalog.DatabasePath(s.config.DataPath, databaseID)
 	if err != nil {
 		return "", "", err
 	}
 	if databaseID == "" {
-		databaseID = db.DefaultDatabaseID(s.config.DataPath)
+		databaseID = databasecatalog.DefaultDatabaseID(s.config.DataPath)
 	}
 	return path, databaseID, nil
 }
@@ -337,12 +338,12 @@ func (s *Server) unlockTargetPathLocked(databaseID string) (string, string, erro
 	if databaseID == "" {
 		databaseID = s.activeDatabase
 	}
-	path, err := db.DatabasePath(s.config.DataPath, databaseID)
+	path, err := databasecatalog.DatabasePath(s.config.DataPath, databaseID)
 	if err != nil {
 		return "", "", err
 	}
 	if databaseID == "" {
-		databaseID = db.DefaultDatabaseID(s.config.DataPath)
+		databaseID = databasecatalog.DefaultDatabaseID(s.config.DataPath)
 	}
 	return path, databaseID, nil
 }

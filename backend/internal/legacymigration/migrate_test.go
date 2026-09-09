@@ -1,4 +1,4 @@
-package migration
+package legacymigration
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -64,7 +65,7 @@ func TestLegacyOptionalColumnProbeUsesFallbackWhenColumnIsAbsent(t *testing.T) {
 func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) {
 	ctx := context.Background()
 	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
-	sourceID, sourcePath, err := db.NewDatabasePath(dataPath, "Legacy")
+	sourceID, sourcePath, err := databasecatalog.NewDatabasePath(dataPath, "Legacy")
 	if err != nil {
 		t.Fatalf("source path: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) 
 		t.Fatalf("unexpected migration counts: %+v", result)
 	}
 
-	targetPath, err := db.DatabasePath(dataPath, result.TargetDatabaseID)
+	targetPath, err := databasecatalog.DatabasePath(dataPath, result.TargetDatabaseID)
 	if err != nil {
 		t.Fatalf("target path: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) 
 func TestMigrateLegacy010To020KeepsOldSourcePasswordButRequiresStrongNewPassword(t *testing.T) {
 	ctx := context.Background()
 	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
-	sourceID, sourcePath, err := db.NewDatabasePath(dataPath, "Legacy")
+	sourceID, sourcePath, err := databasecatalog.NewDatabasePath(dataPath, "Legacy")
 	if err != nil {
 		t.Fatalf("source path: %v", err)
 	}
@@ -176,7 +177,7 @@ func TestMigrateLegacy010To020KeepsOldSourcePasswordButRequiresStrongNewPassword
 func TestRecoveryDrillLegacyMigrationCanRetryAfterSecretFailure(t *testing.T) {
 	ctx := context.Background()
 	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
-	sourceID, sourcePath, err := db.NewDatabasePath(dataPath, "Legacy Retry")
+	sourceID, sourcePath, err := databasecatalog.NewDatabasePath(dataPath, "Legacy Retry")
 	if err != nil {
 		t.Fatalf("source path: %v", err)
 	}
@@ -210,7 +211,7 @@ func TestRecoveryDrillLegacyMigrationCanRetryAfterSecretFailure(t *testing.T) {
 	if _, err := MigrateLegacy010To020(ctx, request); err == nil {
 		t.Fatal("migration with an incorrect fallback gateway secret should fail")
 	}
-	targetPath, err := db.DatabasePath(dataPath, "recovered-migration")
+	targetPath, err := databasecatalog.DatabasePath(dataPath, "recovered-migration")
 	if err != nil {
 		t.Fatalf("target path: %v", err)
 	}

@@ -1,4 +1,4 @@
-package migration
+package legacymigration
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -106,14 +106,14 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	if request.TargetName == "" {
 		return Legacy010To020Result{}, fmt.Errorf("new database name is required")
 	}
-	sourcePath, err := db.DatabasePath(request.DataPath, request.SourceDatabaseID)
+	sourcePath, err := databasecatalog.DatabasePath(request.DataPath, request.SourceDatabaseID)
 	if err != nil {
 		return Legacy010To020Result{}, err
 	}
 	if !db.Exists(sourcePath) {
 		return Legacy010To020Result{}, fmt.Errorf("source database is not initialized")
 	}
-	targetID, targetPath, err := db.NewDatabasePath(request.DataPath, request.TargetName)
+	targetID, targetPath, err := databasecatalog.NewDatabasePath(request.DataPath, request.TargetName)
 	if err != nil {
 		return Legacy010To020Result{}, err
 	}
@@ -214,181 +214,26 @@ func migrateLegacyRows(ctx context.Context, sourceDB *sql.DB, targetDB *sql.DB, 
 		return Legacy010To020Result{}, fmt.Errorf("begin target migration: %w", err)
 	}
 	defer tx.Rollback()
-	txStore := connectortargets.NewTxStore(tx)
 
 	result := Legacy010To020Result{}
-	settings, err := legacySettings(ctx, sourceDB)
+	if result.Settings, err = copyLegacySettings(ctx, sourceDB, tx); err != nil {
+		return Legacy010To020Result{}, err
+	}
+	keys, keyIDMap, err := copyLegacySSHKeys(ctx, sourceDB, tx, sourceVault, targetVault)
 	if err != nil {
 		return Legacy010To020Result{}, err
 	}
-	for _, setting := range settings {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO settings (key, value, updated_at)
-			VALUES (?, ?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-			setting.Key,
-			setting.Value,
-			setting.UpdatedAt,
-		); err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("copy setting %q: %w", setting.Key, err)
-		}
-		result.Settings++
-	}
-
-	keyIDMap := map[int64]int64{}
-	keys, err := legacySSHKeys(ctx, sourceDB)
+	result.SSHKeys = len(keyIDMap)
+	targetProfiles, targetCount, err := copyLegacyTargets(ctx, sourceDB, tx, keys, keyIDMap)
 	if err != nil {
 		return Legacy010To020Result{}, err
 	}
-	for _, key := range keys {
-		var secret privateKeySecret
-		if err := sourceVault.DecryptJSON(key.EncryptedPrivateKey, &secret); err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("decrypt ssh key %q: %w", key.Name, err)
-		}
-		encrypted, err := targetVault.EncryptJSON(secret)
-		if err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("encrypt ssh key %q: %w", key.Name, err)
-		}
-		inserted, err := tx.ExecContext(ctx, `
-			INSERT INTO connector_credential_resources (
-				connector_kind, resource_kind, name, resource_type, public_data,
-				encrypted_secret, fingerprint, created_at, updated_at
-			)
-			VALUES ('ssh', 'private_key', ?, ?, ?, ?, ?, ?, ?)`,
-			key.Name,
-			key.KeyType,
-			key.PublicKey,
-			encrypted,
-			key.Fingerprint,
-			key.CreatedAt,
-			key.UpdatedAt,
-		)
-		if err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("copy ssh key %q: %w", key.Name, err)
-		}
-		id, err := inserted.LastInsertId()
-		if err != nil {
-			return Legacy010To020Result{}, err
-		}
-		keyIDMap[key.ID] = id
-		result.SSHKeys++
-	}
-
-	targetProfileByLegacyServer := map[int64]struct {
-		TargetID  int64
-		ProfileID int64
-	}{}
-	servers, err := legacyServers(ctx, sourceDB)
-	if err != nil {
+	result.Targets = targetCount
+	if result.Tokens, err = copyLegacyTokens(ctx, sourceDB, tx); err != nil {
 		return Legacy010To020Result{}, err
 	}
-	for _, server := range servers {
-		keyID := keyIDMap[server.SSHKeyID]
-		if keyID == 0 {
-			return Legacy010To020Result{}, fmt.Errorf("server %q references missing ssh key %d", server.Name, server.SSHKeyID)
-		}
-		key, err := sshKeyByID(keys, server.SSHKeyID)
-		if err != nil {
-			return Legacy010To020Result{}, err
-		}
-		target, err := txStore.CreateTarget(ctx, connectortargets.CreateTargetInput{
-			ConnectorKind: "ssh",
-			Name:          server.Name,
-			Config: map[string]any{
-				"host":                        server.Host,
-				"port":                        server.Port,
-				"description":                 server.Description,
-				"startup_input_after_connect": server.StartupInputAfterConnect,
-				"force_shell_command":         server.ForceShellCommand,
-			},
-		})
-		if err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("create ssh connector target %q: %w", server.Name, err)
-		}
-		profile, err := txStore.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
-			TargetID:      target.ID,
-			ConnectorKind: "ssh",
-			Kind:          "private_key",
-			Label:         server.Username,
-			Public: map[string]any{
-				"username":    server.Username,
-				"ssh_key_id":  keyID,
-				"key_name":    key.Name,
-				"key_type":    key.KeyType,
-				"fingerprint": key.Fingerprint,
-			},
-		})
-		if err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("create ssh credential profile %q: %w", server.Name, err)
-		}
-		if _, err := txStore.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
-			ConnectorKind:  "ssh",
-			TargetID:       target.ID,
-			ProfileID:      profile.ID,
-			CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
-			Label:          profile.Label,
-		}); err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("create ssh runtime surface %q: %w", server.Name, err)
-		}
-		targetProfileByLegacyServer[server.ID] = struct {
-			TargetID  int64
-			ProfileID int64
-		}{TargetID: target.ID, ProfileID: profile.ID}
-		result.Targets++
-	}
-
-	tokens, err := legacyTokens(ctx, sourceDB)
-	if err != nil {
+	if result.Permissions, err = copyLegacyPermissions(ctx, sourceDB, tx, targetProfiles); err != nil {
 		return Legacy010To020Result{}, err
-	}
-	for _, token := range tokens {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO api_tokens (
-				id, name, token_hash, token_prefix, token_value, revoked_at,
-				expires_at, created_at, updated_at
-			)
-			VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?)`,
-			token.ID,
-			token.Name,
-			token.TokenHash,
-			token.TokenPrefix,
-			token.TokenValue,
-			token.RevokedAt,
-			token.ExpiresAt,
-			token.CreatedAt,
-			token.UpdatedAt,
-		); err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("copy token %q: %w", token.Name, err)
-		}
-		result.Tokens++
-	}
-
-	permissions, err := legacyPermissions(ctx, sourceDB)
-	if err != nil {
-		return Legacy010To020Result{}, err
-	}
-	for _, permission := range permissions {
-		targetProfile := targetProfileByLegacyServer[permission.ServerID]
-		if targetProfile.TargetID == 0 || targetProfile.ProfileID == 0 {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO token_connector_action_permissions (
-				token_id, target_id, profile_id, action_name, execution_rule,
-				expires_at, created_at, updated_at
-			)
-			VALUES (?, ?, ?, 'exec', ?, NULLIF(?, ''), ?, ?)`,
-			permission.TokenID,
-			targetProfile.TargetID,
-			targetProfile.ProfileID,
-			permission.ExecutionRule,
-			permission.ExpiresAt,
-			permission.CreatedAt,
-			permission.UpdatedAt,
-		); err != nil {
-			return Legacy010To020Result{}, fmt.Errorf("copy token permission: %w", err)
-		}
-		result.Permissions++
 	}
 
 	copied, err := copyRedactionRules(ctx, sourceDB, tx)

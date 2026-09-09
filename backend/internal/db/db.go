@@ -235,8 +235,19 @@ func rollbackNoReplacePublication(sourcePath, targetPath string, replace bool, c
 	if err := os.Remove(targetPath); err != nil {
 		return errors.Join(cause, fmt.Errorf("remove rolled back published target: %w", err))
 	}
-	for _, directoryPath := range uniqueDatabaseDirs(sourcePath, targetPath) {
-		if err := syncDatabaseDeletePath(directoryPath); err != nil {
+	directories := []string{filepath.Dir(sourcePath)}
+	if targetDirectory := filepath.Dir(targetPath); targetDirectory != directories[0] {
+		directories = append(directories, targetDirectory)
+	}
+	for _, directoryPath := range directories {
+		directory, err := os.Open(directoryPath)
+		if err == nil {
+			err = directory.Sync()
+			if closeErr := directory.Close(); err == nil {
+				err = closeErr
+			}
+		}
+		if err != nil {
 			return errors.Join(cause, fmt.Errorf("sync publication rollback directory: %w", err))
 		}
 	}
