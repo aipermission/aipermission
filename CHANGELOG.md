@@ -9,6 +9,41 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.47] - 2026-09-09
+
+### Changed
+
+- Permission retries and database lifecycle mutations now rebuild from current
+  authoritative state instead of stale frontend snapshots.
+- File transfer history, audit projections, batch finalization, and terminal cleanup now
+  commit through durable lifecycle boundaries.
+- RabbitMQ publish ownership and request retirement now remain consistent across
+  concurrent completion and vhost changes.
+
+### Fixed
+
+- Transfer replays, cancellation, portable filenames, and supported filename identities
+  remain correct across cleanup and restart paths.
+- Postgres read-only SQL validation now resolves dialect-sensitive statements and blocks
+  ambiguous or mutating forms.
+- Malformed permission expiry values fail closed, and unlock lifecycle ownership remains
+  stable during concurrent transitions.
+
+### Security
+
+- Local API preflight and migration browser access now enforce the local-only boundary
+  before processing requests.
+- Windows MCP private-file validation now verifies exact ACL identities and permissions.
+- Security documentation now states the redaction guarantees and their limits
+  explicitly.
+
+### Maintenance
+
+- Frontend behavior coverage now ratchets the permission, lifecycle, and strict expiry
+  paths changed in this release.
+- CI history checks now fail closed when the Git history required for validation cannot
+  be read.
+
 ## [0.2.46] - 2026-09-08
 
 ### Maintenance
