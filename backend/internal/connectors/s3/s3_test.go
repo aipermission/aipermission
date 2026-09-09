@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 func TestNewS3ClientPropagatesOptionalSessionTokenFailure(t *testing.T) {
@@ -747,7 +748,7 @@ func TestS3URLPreservesRawPathEscaping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	canonical, signedHeaders := canonicalRequest(req, emptySHA256Hex)
+	canonical, signedHeaders := sigv4.CanonicalRequest(req, sigv4.EmptyPayloadHash)
 	if signedHeaders != "host;x-amz-content-sha256;x-amz-date" {
 		t.Fatalf("signed headers = %q", signedHeaders)
 	}
@@ -763,7 +764,7 @@ func TestCanonicalRequestSignsConditionalHeaders(t *testing.T) {
 	}
 	req.Header.Set("If-Match", `"etag"`)
 	req.Header.Set("If-None-Match", "*")
-	canonical, signedHeaders := canonicalRequest(req, emptySHA256Hex)
+	canonical, signedHeaders := sigv4.CanonicalRequest(req, sigv4.EmptyPayloadHash)
 	if signedHeaders != "host;if-match;if-none-match;x-amz-content-sha256;x-amz-date" {
 		t.Fatalf("signed headers = %q", signedHeaders)
 	}
@@ -786,11 +787,11 @@ func TestSigV4MatchesAWSGetBucketLifecycleReferenceVector(t *testing.T) {
 	}
 	client.signAt(req, nil, time.Date(2013, time.May, 24, 0, 0, 0, 0, time.UTC))
 
-	canonical, signedHeaders := canonicalRequest(req, emptySHA256Hex)
+	canonical, signedHeaders := sigv4.CanonicalRequest(req, sigv4.EmptyPayloadHash)
 	if signedHeaders != "host;x-amz-content-sha256;x-amz-date" {
 		t.Fatalf("signed headers = %q", signedHeaders)
 	}
-	if got := sha256Hex([]byte(canonical)); got != "9766c798316ff2757b517bc739a67f6213b4ab36dd5da2f94eaebf79c77395ca" {
+	if got := sigv4.SHA256Hex([]byte(canonical)); got != "9766c798316ff2757b517bc739a67f6213b4ab36dd5da2f94eaebf79c77395ca" {
 		t.Fatalf("AWS canonical request hash = %q", got)
 	}
 	wantAuthorization := "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543"

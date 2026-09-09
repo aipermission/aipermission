@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 const (
@@ -92,13 +93,13 @@ func (client *s3Client) buildPresignedObjectUnchecked(method string, key string,
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
 	credentialScope := dateStamp + "/" + client.region + "/s3/aws4_request"
-	canonicalHeaderValues := map[string]string{"host": canonicalHeaderValue(client.URL(key, nil).Host)}
+	canonicalHeaderValues := map[string]string{"host": sigv4.CanonicalHeaderValue(client.URL(key, nil).Host)}
 	for name, value := range requiredHeaders {
 		normalizedName := strings.ToLower(strings.TrimSpace(name))
 		if normalizedName == "" || normalizedName == "host" {
 			continue
 		}
-		canonicalHeaderValues[normalizedName] = canonicalHeaderValue(value)
+		canonicalHeaderValues[normalizedName] = sigv4.CanonicalHeaderValue(value)
 	}
 	signedHeaderNames := sortedHeaderNames(canonicalHeaderValues)
 	var canonicalHeaders strings.Builder
@@ -123,7 +124,7 @@ func (client *s3Client) buildPresignedObjectUnchecked(method string, key string,
 	canonicalRequest := strings.Join([]string{
 		method,
 		u.EscapedPath(),
-		canonicalQuery(u.Query()),
+		sigv4.CanonicalQuery(u.Query()),
 		canonicalHeaders.String(),
 		signedHeaders,
 		presignedPayloadHash,
@@ -132,11 +133,11 @@ func (client *s3Client) buildPresignedObjectUnchecked(method string, key string,
 		"AWS4-HMAC-SHA256",
 		amzDate,
 		credentialScope,
-		sha256Hex([]byte(canonicalRequest)),
+		sigv4.SHA256Hex([]byte(canonicalRequest)),
 	}, "\n")
-	signature := hmacSHA256Hex(awsSigningKey(client.secretKey, dateStamp, client.region), stringToSign)
+	signature := sigv4.HMACSHA256Hex(sigv4.SigningKey(client.secretKey, dateStamp, client.region), stringToSign)
 	query.Set("X-Amz-Signature", signature)
-	u.RawQuery = canonicalQuery(query)
+	u.RawQuery = sigv4.CanonicalQuery(query)
 	return u.String(), now.Add(time.Duration(expiresSeconds) * time.Second), nil
 }
 

@@ -3,10 +3,7 @@ package s3connector
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -14,12 +11,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 type s3Client struct {
@@ -230,10 +227,10 @@ func (client *s3Client) URL(key string, query url.Values) *url.URL {
 	rawPath := ""
 	if client.pathStyle {
 		path = "/" + client.bucket
-		rawPath = "/" + awsPathEscape(client.bucket)
+		rawPath = "/" + sigv4.PathEscape(client.bucket)
 		if key != "" {
 			path += "/" + key
-			rawPath += "/" + awsPathEscape(key)
+			rawPath += "/" + sigv4.PathEscape(key)
 		}
 	} else {
 		host = client.bucket + "." + host
@@ -241,7 +238,7 @@ func (client *s3Client) URL(key string, query url.Values) *url.URL {
 		rawPath = "/"
 		if key != "" {
 			path += key
-			rawPath += awsPathEscape(key)
+			rawPath += sigv4.PathEscape(key)
 		}
 	}
 	u := &url.URL{Scheme: client.scheme, Host: host, Path: path}
@@ -249,7 +246,7 @@ func (client *s3Client) URL(key string, query url.Values) *url.URL {
 		u.RawPath = rawPath
 	}
 	if len(query) > 0 {
-		u.RawQuery = canonicalQuery(query)
+		u.RawQuery = sigv4.CanonicalQuery(query)
 	}
 	return u
 }
@@ -262,22 +259,22 @@ func (client *s3Client) signAt(req *http.Request, payload []byte, now time.Time)
 	now = now.UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
-	payloadHash := sha256Hex(payload)
+	payloadHash := sigv4.SHA256Hex(payload)
 	req.Header.Set("X-Amz-Date", amzDate)
 	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
 	if client.sessionToken != "" {
 		req.Header.Set("X-Amz-Security-Token", client.sessionToken)
 	}
-	canonicalRequest, signedHeaders := canonicalRequest(req, payloadHash)
+	canonicalRequest, signedHeaders := sigv4.CanonicalRequest(req, payloadHash)
 	credentialScope := dateStamp + "/" + client.region + "/s3/aws4_request"
 	stringToSign := strings.Join([]string{
 		"AWS4-HMAC-SHA256",
 		amzDate,
 		credentialScope,
-		sha256Hex([]byte(canonicalRequest)),
+		sigv4.SHA256Hex([]byte(canonicalRequest)),
 	}, "\n")
-	signingKey := awsSigningKey(client.secretKey, dateStamp, client.region)
-	signature := hmacSHA256Hex(signingKey, stringToSign)
+	signingKey := sigv4.SigningKey(client.secretKey, dateStamp, client.region)
+	signature := sigv4.HMACSHA256Hex(signingKey, stringToSign)
 	authorization := fmt.Sprintf(
 		"AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
 		client.accessKey,
@@ -322,113 +319,6 @@ type s3Object struct {
 
 type s3CommonPrefix struct {
 	Prefix string `xml:"Prefix"`
-}
-
-func canonicalRequest(req *http.Request, payloadHash string) (string, string) {
-	host := req.Host
-	if host == "" {
-		host = req.URL.Host
-	}
-	headers := map[string]string{
-		"host":                 host,
-		"x-amz-content-sha256": payloadHash,
-		"x-amz-date":           req.Header.Get("X-Amz-Date"),
-	}
-	for name, values := range req.Header {
-		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "x-amz-") || lower == "content-type" || lower == "if-match" || lower == "if-none-match" {
-			headers[lower] = strings.Join(values, ",")
-		}
-	}
-	keys := make([]string, 0, len(headers))
-	for key := range headers {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var canonicalHeaders strings.Builder
-	for _, key := range keys {
-		canonicalHeaders.WriteString(key)
-		canonicalHeaders.WriteByte(':')
-		canonicalHeaders.WriteString(canonicalHeaderValue(headers[key]))
-		canonicalHeaders.WriteByte('\n')
-	}
-	signedHeaders := strings.Join(keys, ";")
-	canonicalURI := req.URL.EscapedPath()
-	if canonicalURI == "" {
-		canonicalURI = "/"
-	}
-	return strings.Join([]string{
-		req.Method,
-		canonicalURI,
-		canonicalQuery(req.URL.Query()),
-		canonicalHeaders.String(),
-		signedHeaders,
-		payloadHash,
-	}, "\n"), signedHeaders
-}
-
-func awsSigningKey(secret string, dateStamp string, region string) []byte {
-	dateKey := hmacSHA256([]byte("AWS4"+secret), dateStamp)
-	regionKey := hmacSHA256(dateKey, region)
-	serviceKey := hmacSHA256(regionKey, "s3")
-	return hmacSHA256(serviceKey, "aws4_request")
-}
-
-func hmacSHA256(key []byte, data string) []byte {
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(data))
-	return mac.Sum(nil)
-}
-
-func hmacSHA256Hex(key []byte, data string) string {
-	return hex.EncodeToString(hmacSHA256(key, data))
-}
-
-func sha256Hex(data []byte) string {
-	if len(data) == 0 {
-		return emptySHA256Hex
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func canonicalQuery(values url.Values) string {
-	if len(values) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0)
-	for _, key := range keys {
-		rawValues := append([]string(nil), values[key]...)
-		sort.Strings(rawValues)
-		for _, value := range rawValues {
-			parts = append(parts, awsQueryEscape(key)+"="+awsQueryEscape(value))
-		}
-	}
-	return strings.Join(parts, "&")
-}
-
-func awsPathEscape(value string) string {
-	segments := strings.Split(value, "/")
-	for i, segment := range segments {
-		segments[i] = awsQueryEscape(segment)
-	}
-	return strings.Join(segments, "/")
-}
-
-func awsQueryEscape(value string) string {
-	escaped := url.QueryEscape(value)
-	escaped = strings.ReplaceAll(escaped, "+", "%20")
-	escaped = strings.ReplaceAll(escaped, "%7E", "~")
-	return escaped
-}
-
-func canonicalHeaderValue(value string) string {
-	return strings.Join(strings.Fields(value), " ")
 }
 
 func objectMetadataOutput(bucket string, key string, headers http.Header) map[string]any {

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 const (
@@ -188,7 +189,7 @@ func (client *s3Client) ListObjectVersions(ctx context.Context, key string, curs
 
 func (client *s3Client) CopyObjectVersion(ctx context.Context, key string, versionID string, expectedCurrentETag string, expectedCurrentAbsent bool) error {
 	headers := http.Header{}
-	headers.Set("X-Amz-Copy-Source", "/"+awsPathEscape(client.bucket)+"/"+awsPathEscape(key)+"?versionId="+awsQueryEscape(versionID))
+	headers.Set("X-Amz-Copy-Source", "/"+sigv4.PathEscape(client.bucket)+"/"+sigv4.PathEscape(key)+"?versionId="+sigv4.QueryEscape(versionID))
 	if expectedCurrentAbsent {
 		headers.Set("If-None-Match", "*")
 	} else {

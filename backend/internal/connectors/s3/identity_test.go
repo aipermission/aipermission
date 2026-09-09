@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 var identityKeys = []string{"invoice", "invoice ", " invoice", "/invoice", "a//b", "a/../b", "a/./b", "caf\u00e9", "cafe\u0301", " ", "a%2Fb", "a+b?#", "a\\b"}
@@ -36,7 +37,7 @@ func TestExactObjectIdentityThroughPreparedActions(t *testing.T) {
 				}
 			}
 			for i, method := range []string{"HEAD", "GET", "DELETE"} {
-				want := method + " /test-bucket/" + awsPathEscape(key)
+				want := method + " /test-bucket/" + sigv4.PathEscape(key)
 				if targets[i] != want {
 					t.Fatalf("target = %q, want %q", targets[i], want)
 				}

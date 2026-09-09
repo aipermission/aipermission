@@ -47,7 +47,6 @@ const (
 	maxS3ResponseBytes = 2 << 20
 	maxS3ReasonBytes   = 2000
 	s3HTTPTimeout      = 30 * time.Second
-	emptySHA256Hex     = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 )
 
 var (

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/s3/sigv4"
 )
 
 func TestExactIdentityPresignAndVersions(t *testing.T) {
@@ -27,7 +28,7 @@ func TestExactIdentityPresignAndVersions(t *testing.T) {
 					t.Errorf("object path = %q", r.URL.Path)
 				}
 				if r.Method == http.MethodPut {
-					want := "/test-bucket/" + awsPathEscape(key) + "?versionId=" + awsQueryEscape(versionID)
+					want := "/test-bucket/" + sigv4.PathEscape(key) + "?versionId=" + sigv4.QueryEscape(versionID)
 					if r.Header.Get("X-Amz-Copy-Source") != want {
 						t.Errorf("copy source = %q", r.Header.Get("X-Amz-Copy-Source"))
 					}
