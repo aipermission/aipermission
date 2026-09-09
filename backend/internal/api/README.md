@@ -13,7 +13,9 @@ Do not put long-running runtime loops in this package. If code owns sockets, PTY
 
 The local maintenance shell is one example: `internal/maintenanceconsole` owns
 its process supervisor, PTY, clients, and transcript. This package owns only
-the authenticated HTTP handlers and lifecycle audit adapter.
+the authenticated HTTP handlers and lifecycle audit adapter. The executable
+composition root injects that runtime through the console-domain port; API code
+must not construct or import the concrete process implementation.
 
 Current contributor map:
 

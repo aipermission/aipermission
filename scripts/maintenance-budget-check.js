@@ -22,9 +22,13 @@ const sourceBudgetOverrides = new Map();
 const connectorSourceBudget = 850;
 const backendPackageBudget = 3500;
 const backendPackageBudgetOverrides = new Map([
-  // The HTTP composition root is being decomposed release by release. Keep
-  // this ceiling below its pre-v0.2.44 size and ratchet it down after moves.
-  ["backend/internal/api", 22750],
+  // Keep decomposed ownership boundaries from silently growing back toward
+  // the global package ceiling.
+  ["backend/internal/api", 22400],
+  ["backend/internal/db", 2700],
+  ["backend/internal/connectors/mail", 3200],
+  ["backend/internal/console", 3300],
+  ["backend/internal/connectors/s3", 3250],
 ]);
 const suppressionBudget = 0;
 const criticalSuppressionPaths = [

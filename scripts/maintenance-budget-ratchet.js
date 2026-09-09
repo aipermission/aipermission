@@ -94,9 +94,26 @@ function budgetMap(checkSource, name) {
 
 function budgetIncreases(base, current) {
   return Object.entries(current).flatMap(([name, value]) => {
-    if (!Object.hasOwn(base, name)) return [`${name} is a new unreviewed budget (${value})`];
+    if (!Object.hasOwn(base, name)) {
+      const inherited = inheritedBudget(base, name);
+      if (inherited !== undefined && value <= inherited) return [];
+      return [`${name} is a new unreviewed budget (${value})`];
+    }
     return value > base[name] ? [`${name} increased from ${base[name]} to ${value}`] : [];
   });
+}
+
+function inheritedBudget(base, name) {
+  if (name.startsWith("backend.package.")) return base.backendPackageBudget;
+  if (!name.startsWith("source.override.")) return undefined;
+  const file = name.slice("source.override.".length);
+  if (file.startsWith("frontend/src/")) return base["frontend.maxProductionModuleLines"];
+  if (file.startsWith("packages/mcp/src/")) return base["source.mcp.maxLines"];
+  if (file.startsWith("backend/internal/connectors/")) {
+    return Math.min(base["source.backend.maxLines"], base.connectorSourceBudget);
+  }
+  if (file.startsWith("backend/")) return base["source.backend.maxLines"];
+  return undefined;
 }
 
 function git(...args) {

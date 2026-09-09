@@ -72,6 +72,10 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	packages := []string{
 		modulePath + "/internal/actionresult",
 		modulePath + "/internal/actions",
+		modulePath + "/internal/console/terminaltext",
+		modulePath + "/internal/databasecatalog",
+		modulePath + "/internal/legacymigration",
+		modulePath + "/internal/maintenanceconsole",
 		modulePath + "/internal/runtimecontrol",
 		modulePath + "/internal/transferjobs",
 		modulePath + "/internal/vaultrequests",
@@ -80,6 +84,13 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 		if importsPackageOrSubpackage(packageDependencies(t, pkg), modulePath+"/internal/api") {
 			t.Errorf("%s must not depend on the HTTP/API composition root", pkg)
 		}
+	}
+}
+
+func TestAPIDependsOnMaintenanceConsolePort(t *testing.T) {
+	implementation := modulePath + "/internal/maintenanceconsole"
+	if importsPackageOrSubpackage(packageDependencies(t, modulePath+"/internal/api"), implementation) {
+		t.Fatalf("internal/api must use the console-domain runtime port instead of importing %s", implementation)
 	}
 }
 
@@ -148,7 +159,7 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 	overrides := map[string]int{
 		// Composition roots are explicit exceptions. These ceilings match the
 		// post-decomposition graph and must ratchet down after dependencies move.
-		modulePath + "/internal/api":                       29,
+		modulePath + "/internal/api":                       28,
 		modulePath + "/internal/connectors/builtin":        16,
 		modulePath + "/internal/connectors/ssh/apiadapter": 14,
 	}

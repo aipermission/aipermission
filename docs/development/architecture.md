@@ -138,9 +138,11 @@ place.
   contract enforcement. Permission persistence and audit transaction ownership
   remain in the gateway application layer.
 - `internal/actionresult`: transport-neutral connector action response
-  projection and output-withholding representation. The API decides whether a
-  token/session may receive output and fences the response write; the facade
-  decides how the already-safe request/result is represented.
+  projection, credential-boundary redaction, and output-withholding
+  representation. The API decides whether a token/session may receive output
+  and fences the response write; the package decides how the safe result is
+  represented and prevents delivered connector credentials from crossing a
+  response or persistence boundary.
 - `internal/api/connector_api_adapters.go`: generic gateway resolution for
   connector-owned capability adapters. API handlers ask the resolved adapter
   whether a connector supports live-console runtime ids, draft tests, target
@@ -148,10 +150,17 @@ place.
   not branch on a connector kind directly.
 - `internal/history`: unified history projection for command, action, and file
   transfer activity.
-- `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.
+- `internal/console`: persistent connector console sessions, PTY websocket
+  attach, AI command execution inside a shell session, transcript display
+  cleanup, and transcript redaction before persistence. Terminal text parsing
+  lives in `internal/console/terminaltext`; transport-neutral maintenance
+  console contracts live at the console boundary. Console persistence uses a
+  bounded session snapshot plus append-only transcript chunks so long-running
+  sessions do not rewrite one large transcript row on every flush.
 - `internal/maintenanceconsole`: the local maintenance-shell process
-  supervisor, PTY lifecycle, websocket clients, and bounded transcript. API
-  handlers only authorize and audit this runtime.
+  supervisor, PTY lifecycle, websocket clients, and bounded transcript. The
+  executable composition root injects it through the console-domain runtime
+  port; API handlers only authorize and audit it.
 - `internal/db`: SQLCipher open and schema migrations.
 - `internal/databasecatalog`: encrypted database catalog, temporary-path
   cleanup, move ownership, and database lifecycle filesystem operations.

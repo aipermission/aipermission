@@ -31,17 +31,20 @@ test("extracts every mutable maintenance ceiling", () => {
   });
 });
 
-test("rejects raised and newly introduced ceilings while allowing tighter budgets", () => {
+test("rejects raised ceilings while allowing tighter inherited package budgets", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
   assert.deepEqual(budgetIncreases(base, { ...base, connectorSourceBudget: 849 }), []);
   assert.deepEqual(budgetIncreases(base, { ...base, connectorSourceBudget: 851 }), ["connectorSourceBudget increased from 850 to 851"]);
-  assert.deepEqual(budgetIncreases(base, { ...base, "backend.package.backend/internal/new": 100 }), [
-    "backend.package.backend/internal/new is a new unreviewed budget (100)",
+  assert.deepEqual(budgetIncreases(base, { ...base, "backend.package.backend/internal/new": 100 }), []);
+  assert.deepEqual(budgetIncreases(base, { ...base, "backend.package.backend/internal/new": 3600 }), [
+    "backend.package.backend/internal/new is a new unreviewed budget (3600)",
   ]);
 });
 
 test("rejects a source-file exception introduced by the same change", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
+  const tighter = checkSource.replace("const sourceBudgetOverrides = new Map();", 'const sourceBudgetOverrides = new Map([["frontend/src/small.jsx", 500]]);');
+  assert.deepEqual(budgetIncreases(base, budgetSnapshot(tighter, architectureSource)), []);
   const changed = checkSource.replace("const sourceBudgetOverrides = new Map();", 'const sourceBudgetOverrides = new Map([["frontend/src/large.jsx", 900]]);');
   assert.deepEqual(budgetIncreases(base, budgetSnapshot(changed, architectureSource)), [
     "source.override.frontend/src/large.jsx is a new unreviewed budget (900)",
