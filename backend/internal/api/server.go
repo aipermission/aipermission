@@ -18,6 +18,7 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -39,7 +40,7 @@ type Server struct {
 	mux                  *http.ServeMux
 	mu                   sync.RWMutex
 	lifecycleMu          sync.RWMutex
-	maintenanceConsole   *maintenanceConsoleRuntime
+	maintenanceConsole   *maintenanceconsole.Runtime
 	authLimiter          *runtimecontrol.Auth
 	mcpIPAuthLimiter     *runtimecontrol.Auth
 	mcpTokenAuthLimiter  *runtimecontrol.Auth
@@ -162,7 +163,7 @@ func NewServer(cfg config.Config, database *sql.DB, secretVault *vault.Vault, to
 		registry:             registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
-		maintenanceConsole:   newMaintenanceConsoleRuntime(),
+		maintenanceConsole:   maintenanceconsole.NewRuntime(),
 		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
 		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
 		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
@@ -224,7 +225,7 @@ func NewLockedServer(cfg config.Config, options ...ServerOption) *Server {
 		registry:             resolved.registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
-		maintenanceConsole:   newMaintenanceConsoleRuntime(),
+		maintenanceConsole:   maintenanceconsole.NewRuntime(),
 		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
 		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
 		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),

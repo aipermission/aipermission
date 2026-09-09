@@ -1,6 +1,6 @@
 //go:build linux
 
-package api
+package maintenanceconsole
 
 import (
 	"os/exec"
@@ -12,6 +12,6 @@ func configureMaintenanceConsoleProcess(command *exec.Cmd) error {
 	return nil
 }
 
-func maintenanceConsoleSupported() bool {
+func Supported() bool {
 	return true
 }

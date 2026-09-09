@@ -1,4 +1,4 @@
-package api
+package maintenanceconsole
 
 import (
 	"fmt"

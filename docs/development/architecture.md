@@ -137,7 +137,7 @@ place.
   snapshots and drift comparison, connector dispatch, and execution-result
   contract enforcement. Permission persistence and audit transaction ownership
   remain in the gateway application layer.
-- `internal/actionresponse`: transport-neutral connector action response
+- `internal/actionresult`: transport-neutral connector action response
   projection and output-withholding representation. The API decides whether a
   token/session may receive output and fences the response write; the facade
   decides how the already-safe request/result is represented.
@@ -149,7 +149,12 @@ place.
 - `internal/history`: unified history projection for command, action, and file
   transfer activity.
 - `internal/console`: persistent SSH console sessions, PTY websocket attach, AI command execution inside a shell session, transcript display cleanup, and transcript redaction before persistence. Console persistence uses a bounded session snapshot plus append-only transcript chunks so long-running sessions do not rewrite one large transcript row on every flush.
-- `internal/db`: SQLCipher open, schema migrations, database catalog, encrypted database lifecycle.
+- `internal/maintenanceconsole`: the local maintenance-shell process
+  supervisor, PTY lifecycle, websocket clients, and bounded transcript. API
+  handlers only authorize and audit this runtime.
+- `internal/db`: SQLCipher open and schema migrations.
+- `internal/databasecatalog`: encrypted database catalog, temporary-path
+  cleanup, move ownership, and database lifecycle filesystem operations.
 - `internal/tokens`: API token create/hash/revoke/permission storage.
 - `internal/connectors/ssh/sshkeys`: gateway-owned SSH key generation, explicit private key import, and vault-backed private key storage used by the SSH connector.
 - `internal/connectors/ssh/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.

@@ -24,7 +24,7 @@ const backendPackageBudget = 3500;
 const backendPackageBudgetOverrides = new Map([
   // The HTTP composition root is being decomposed release by release. Keep
   // this ceiling below its pre-v0.2.44 size and ratchet it down after moves.
-  ["backend/internal/api", 23500],
+  ["backend/internal/api", 22750],
 ]);
 const suppressionBudget = 0;
 const criticalSuppressionPaths = [

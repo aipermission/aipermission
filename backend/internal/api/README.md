@@ -11,6 +11,10 @@
 
 Do not put long-running runtime loops in this package. If code owns sockets, PTYs, connector session lifecycle, or background goroutines, prefer the relevant connector/runtime package and keep API handlers thin.
 
+The local maintenance shell is one example: `internal/maintenanceconsole` owns
+its process supervisor, PTY, clients, and transcript. This package owns only
+the authenticated HTTP handlers and lifecycle audit adapter.
+
 Current contributor map:
 
 - `routes.go`: route surface, handler group wiring, and health/status handlers

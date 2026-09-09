@@ -15,13 +15,14 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/api"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
+	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/migration"
 )
 
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	if handled, status := api.RunMaintenanceConsoleSupervisorIfRequested(os.Args[1:]); handled {
+	if handled, status := maintenanceconsole.RunMaintenanceConsoleSupervisorIfRequested(os.Args[1:]); handled {
 		os.Exit(status)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

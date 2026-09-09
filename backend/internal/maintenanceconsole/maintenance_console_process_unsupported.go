@@ -1,6 +1,6 @@
 //go:build !linux
 
-package api
+package maintenanceconsole
 
 import (
 	"errors"
@@ -11,6 +11,6 @@ func configureMaintenanceConsoleProcess(_ *exec.Cmd) error {
 	return errors.New("maintenance console is supported only on Linux")
 }
 
-func maintenanceConsoleSupported() bool {
+func Supported() bool {
 	return false
 }
