@@ -17,10 +17,14 @@ import (
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
 	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor sqldb.Executor, item vaultrequests.Request) error {
-		event, err := s.buildAuditEventWithRedactor(
-			ctx, executor, "gateway", int64Ptr(item.TokenID), valueOrZero(item.RuntimeID),
-			"vault.action_request."+item.Status, vaultActionAuditPayload(item, item.UserNote), redact,
-		)
+		event, err := auditoutbox.BuildEvent(ctx, executor, auditoutbox.BuildInput{
+			ActorType: "gateway",
+			TokenID:   int64Ptr(item.TokenID),
+			RuntimeID: valueOrZero(item.RuntimeID),
+			Action:    "vault.action_request." + item.Status,
+			Payload:   vaultActionAuditPayload(item, item.UserNote),
+			Redact:    redact,
+		})
 		if err != nil {
 			return err
 		}

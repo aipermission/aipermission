@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,8 +11,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/auditoutbox"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
@@ -110,7 +107,14 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 	if runtime == nil || runtime.database == nil {
 		return fmt.Errorf("audit database is unavailable")
 	}
-	event, err := s.buildAuditEvent(ctx, runtime, runtime.database, actorType, tokenID, runtimeID, action, payload)
+	event, err := auditoutbox.BuildEvent(ctx, runtime.database, auditoutbox.BuildInput{
+		ActorType: actorType,
+		TokenID:   tokenID,
+		RuntimeID: runtimeID,
+		Action:    action,
+		Payload:   payload,
+		Redact:    s.prepareAuditRedactor(ctx, runtime),
+	})
 	if err != nil {
 		return err
 	}
@@ -128,52 +132,6 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 		dispatcher.Notify()
 	}
 	return nil
-}
-
-func (s *Server) buildAuditEvent(
-	ctx context.Context,
-	runtime *databaseRuntime,
-	executor sqldb.Executor,
-	actorType string,
-	tokenID *int64,
-	runtimeID int64,
-	action string,
-	payload any,
-) (auditoutbox.Event, error) {
-	redact := s.prepareAuditRedactor(ctx, runtime)
-	return s.buildAuditEventWithRedactor(ctx, executor, actorType, tokenID, runtimeID, action, payload, redact)
-}
-
-func (s *Server) buildAuditEventWithRedactor(
-	ctx context.Context,
-	executor sqldb.Executor,
-	actorType string,
-	tokenID *int64,
-	runtimeID int64,
-	action string,
-	payload any,
-	redact func(string) string,
-) (auditoutbox.Event, error) {
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return auditoutbox.Event{}, fmt.Errorf("marshal audit payload: %w", err)
-	}
-	payloadJSON := redact(string(payloadBytes))
-	connectorKind, projectID, targetID, profileID, actionRequestID := auditConnectorMetadata(payload)
-	projectID = resolveAuditProjectID(ctx, executor, projectID, targetID, runtimeID)
-	return auditoutbox.Event{
-		ActorType:       actorType,
-		TokenID:         tokenID,
-		ProjectID:       projectID,
-		RuntimeID:       runtimeID,
-		ConnectorKind:   connectorKind,
-		TargetID:        targetID,
-		ProfileID:       profileID,
-		ActionRequestID: actionRequestID,
-		Action:          action,
-		LifecyclePhase:  auditLifecyclePhase(action),
-		PayloadJSON:     payloadJSON,
-	}, nil
 }
 
 func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRuntime) func(string) string {
@@ -195,7 +153,14 @@ type auditAppender func(*sql.Tx, string, *int64, int64, string, any) error
 func (s *Server) prepareAuditAppender(ctx context.Context, runtime *databaseRuntime) auditAppender {
 	redact := s.prepareAuditRedactor(ctx, runtime)
 	return func(tx *sql.Tx, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
-		event, err := s.buildAuditEventWithRedactor(ctx, tx, actorType, tokenID, runtimeID, action, payload, redact)
+		event, err := auditoutbox.BuildEvent(ctx, tx, auditoutbox.BuildInput{
+			ActorType: actorType,
+			TokenID:   tokenID,
+			RuntimeID: runtimeID,
+			Action:    action,
+			Payload:   payload,
+			Redact:    redact,
+		})
 		if err != nil {
 			return err
 		}
@@ -264,87 +229,6 @@ func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntim
 		log.Printf("audit projection failed error=%v", err)
 	}
 	dispatcher.Notify()
-}
-
-func auditLifecyclePhase(action string) string {
-	action = strings.TrimSpace(action)
-	if index := strings.LastIndexByte(action, '.'); index >= 0 && index+1 < len(action) {
-		switch phase := action[index+1:]; phase {
-		case "requested", "approval_pending", "started", "running", "completed", "failed", "declined", "canceled", "stale", "expired", "blocked", "outcome_unknown", "updated", "created", "deleted", "archived", "closed", "connected", "connecting", "paused", "pending":
-			return phase
-		}
-	}
-	return "observed"
-}
-
-func auditConnectorMetadata(payload any) (string, int64, int64, int64, int64) {
-	values, ok := payload.(map[string]any)
-	if !ok {
-		return "", 0, 0, 0, 0
-	}
-	connectorKind := strings.TrimSpace(fmt.Sprint(values["connector_kind"]))
-	projectID := int64FromAny(values["project_id"])
-	targetID := int64FromAny(values["target_id"])
-	profileID := int64FromAny(values["profile_id"])
-	actionRequestID := int64FromAny(values["action_request_id"])
-	if actionRequestID == 0 {
-		actionRequestID = int64FromAny(values["request_id"])
-	}
-	if (connectorKind == "" || targetID == 0 || profileID == 0) && values["target_ref"] != nil {
-		kind, parsedTargetID, parsedProfileID, ok := connectors.ParseTargetRef(fmt.Sprint(values["target_ref"]))
-		if ok {
-			if connectorKind == "" {
-				connectorKind = kind
-			}
-			if targetID == 0 {
-				targetID = parsedTargetID
-			}
-			if profileID == 0 {
-				profileID = parsedProfileID
-			}
-		}
-	}
-	return connectorKind, projectID, targetID, profileID, actionRequestID
-}
-
-func resolveAuditProjectID(ctx context.Context, executor sqldb.Executor, projectID int64, targetID int64, runtimeID int64) int64 {
-	if projectID > 0 || executor == nil {
-		return projectID
-	}
-	if targetID > 0 {
-		_ = executor.QueryRowContext(ctx, `SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID)
-		if projectID > 0 {
-			return projectID
-		}
-	}
-	if runtimeID > 0 {
-		_ = executor.QueryRowContext(ctx, `
-			SELECT ct.project_id
-			FROM connector_runtime_surfaces rs
-			JOIN connector_targets ct ON ct.id = rs.target_id
-			WHERE rs.id = ?`, runtimeID).Scan(&projectID)
-	}
-	return projectID
-}
-
-func int64FromAny(value any) int64 {
-	switch typed := value.(type) {
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	case float64:
-		return int64(typed)
-	case json.Number:
-		parsed, _ := typed.Int64()
-		return parsed
-	case string:
-		var parsed int64
-		if _, err := fmt.Sscan(strings.TrimSpace(typed), &parsed); err == nil {
-			return parsed
-		}
-	}
-	return 0
 }
 
 func int64Ptr(value int64) *int64 {
