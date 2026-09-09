@@ -2,6 +2,8 @@ package api
 
 import (
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 const (
@@ -40,10 +42,4 @@ type commandRequestRecord struct {
 	PolicyWarnings    []commandPolicyWarning `json:"policy_warnings,omitempty"`
 }
 
-type historyLabelRecord struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Color     string `json:"color"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-}
+type historyLabelRecord = history.Label

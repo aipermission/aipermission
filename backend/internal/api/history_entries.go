@@ -1,93 +1,23 @@
 package api
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
-type historyEntryFilter struct {
-	ProjectID     int64
-	ConnectorKind string
-	ActivityType  string
-	Status        string
-	Source        string
-	RuntimeID     int64
-	TargetID      int64
-	ProfileID     int64
-	LabelID       int64
-	Query         string
-	Limit         int
-	Cursor        *historyCursor
-}
-
-type historyEntryRecord struct {
-	ID               int64                `json:"id"`
-	SourceRefType    string               `json:"source_ref_type"`
-	SourceRefID      int64                `json:"source_ref_id"`
-	ConnectorKind    string               `json:"connector_kind"`
-	ActivityType     string               `json:"activity_type"`
-	TokenID          *int64               `json:"token_id,omitempty"`
-	TokenName        string               `json:"token_name,omitempty"`
-	ProjectID        *int64               `json:"project_id,omitempty"`
-	ProjectName      string               `json:"project_name,omitempty"`
-	RuntimeID        *int64               `json:"runtime_id,omitempty"`
-	TargetID         *int64               `json:"target_id,omitempty"`
-	ProfileID        *int64               `json:"profile_id,omitempty"`
-	TargetName       string               `json:"target_name"`
-	ProfileLabel     string               `json:"profile_label,omitempty"`
-	Source           string               `json:"source"`
-	Status           string               `json:"status"`
-	ActionName       string               `json:"action_name"`
-	Title            string               `json:"title"`
-	Summary          string               `json:"summary"`
-	PreviewJSON      string               `json:"preview_json,omitempty"`
-	InputText        string               `json:"input_text,omitempty"`
-	InputJSON        string               `json:"input_json,omitempty"`
-	OutputText       string               `json:"output_text,omitempty"`
-	OutputJSON       string               `json:"output_json,omitempty"`
-	Error            string               `json:"error,omitempty"`
-	RetryPolicyJSON  string               `json:"retry_policy_json,omitempty"`
-	ExitCode         *int                 `json:"exit_code,omitempty"`
-	ProgressCurrent  int64                `json:"progress_current"`
-	ProgressTotal    int64                `json:"progress_total"`
-	BytesDone        int64                `json:"bytes_done"`
-	BytesTotal       int64                `json:"bytes_total"`
-	ApprovalRequired bool                 `json:"approval_required"`
-	UserNote         string               `json:"user_note,omitempty"`
-	CreatedAt        string               `json:"created_at"`
-	StartedAt        *string              `json:"started_at,omitempty"`
-	CompletedAt      *string              `json:"completed_at,omitempty"`
-	UpdatedAt        string               `json:"updated_at"`
-	Labels           []historyLabelRecord `json:"labels"`
-}
-
-type historyTargetFacetRecord struct {
-	Ref           string `json:"ref"`
-	ProjectID     *int64 `json:"project_id,omitempty"`
-	ProjectName   string `json:"project_name,omitempty"`
-	ConnectorKind string `json:"connector_kind"`
-	RuntimeID     *int64 `json:"runtime_id,omitempty"`
-	TargetID      *int64 `json:"target_id,omitempty"`
-	ProfileID     *int64 `json:"profile_id,omitempty"`
-	TargetName    string `json:"target_name"`
-	ProfileLabel  string `json:"profile_label,omitempty"`
-	LastSeenAt    string `json:"last_seen_at"`
-}
+type historyEntryRecord = history.Entry
+type historyTargetFacetRecord = history.TargetFacet
 
 func (s historyEntryHandlers) listHistoryTargetFacets(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
-	items, err := s.listHistoryTargets(r.Context(), runtime)
+	items, err := history.NewQueryStore(runtime.database).Targets(r.Context())
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -105,62 +35,52 @@ func (s historyEntryHandlers) listHistoryEntries(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	filter := historyEntryFilter{
+	filter := history.QueryFilter{
 		ConnectorKind: strings.TrimSpace(r.URL.Query().Get("connector_kind")),
 		ActivityType:  strings.TrimSpace(r.URL.Query().Get("activity_type")),
 		Status:        strings.TrimSpace(r.URL.Query().Get("status")),
 		Source:        strings.TrimSpace(r.URL.Query().Get("source")),
 		Query:         page.Query,
 		Limit:         page.Limit,
-		Cursor:        page.Cursor,
 	}
-	if rawRuntimeID := strings.TrimSpace(r.URL.Query().Get("runtime_id")); rawRuntimeID != "" {
-		id, ok := parseInt64Query(w, rawRuntimeID, "runtime_id")
-		if !ok {
+	if page.Cursor != nil {
+		filter.BeforeTime = page.Cursor.CreatedAt
+		filter.BeforeID = page.Cursor.ID
+	}
+	queryIDs := []struct {
+		raw   string
+		label string
+		set   func(int64)
+	}{
+		{r.URL.Query().Get("runtime_id"), "runtime_id", func(id int64) { filter.RuntimeID = id }},
+		{r.URL.Query().Get("project_id"), "project_id", func(id int64) { filter.ProjectID = id }},
+		{r.URL.Query().Get("target_id"), "target_id", func(id int64) { filter.TargetID = id }},
+		{r.URL.Query().Get("profile_id"), "profile_id", func(id int64) { filter.ProfileID = id }},
+		{r.URL.Query().Get("label_id"), "label_id", func(id int64) { filter.LabelID = id }},
+	}
+	for _, field := range queryIDs {
+		if strings.TrimSpace(field.raw) == "" {
+			continue
+		}
+		id, valid := parseInt64Query(w, field.raw, field.label)
+		if !valid {
 			return
 		}
-		filter.RuntimeID = id
+		field.set(id)
 	}
-	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
-		id, ok := parseInt64Query(w, rawProjectID, "project_id")
-		if !ok {
-			return
-		}
-		filter.ProjectID = id
-	}
-	if rawTargetID := strings.TrimSpace(r.URL.Query().Get("target_id")); rawTargetID != "" {
-		id, ok := parseInt64Query(w, rawTargetID, "target_id")
-		if !ok {
-			return
-		}
-		filter.TargetID = id
-	}
-	if rawProfileID := strings.TrimSpace(r.URL.Query().Get("profile_id")); rawProfileID != "" {
-		id, ok := parseInt64Query(w, rawProfileID, "profile_id")
-		if !ok {
-			return
-		}
-		filter.ProfileID = id
-	}
-	if rawLabelID := strings.TrimSpace(r.URL.Query().Get("label_id")); rawLabelID != "" {
-		id, ok := parseInt64Query(w, rawLabelID, "label_id")
-		if !ok {
-			return
-		}
-		filter.LabelID = id
-	}
+	store := history.NewQueryStore(runtime.database)
 	var total *int
 	if page.IncludeTotal {
 		countFilter := filter
-		countFilter.Cursor = nil
-		count, err := s.countHistoryEntrySummaries(r.Context(), runtime, countFilter)
+		countFilter.BeforeTime, countFilter.BeforeID = "", 0
+		count, err := store.Count(r.Context(), countFilter)
 		if err != nil {
 			writeInternalError(w)
 			return
 		}
 		total = &count
 	}
-	items, hasMore, err := s.listHistoryEntrySummaries(r.Context(), runtime, filter)
+	items, hasMore, err := store.List(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -182,7 +102,7 @@ func (s historyEntryHandlers) getHistoryEntry(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	item, err := s.getHistoryEntryRecord(r.Context(), runtime, id)
+	item, err := history.NewQueryStore(runtime.database).Get(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "history entry not found")
 		return
@@ -192,380 +112,4 @@ func (s historyEntryHandlers) getHistoryEntry(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
-}
-
-func (s *Server) listHistoryTargets(ctx context.Context, runtime *databaseRuntime) ([]historyTargetFacetRecord, error) {
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT
-			he.connector_kind,
-			he.project_id,
-			COALESCE(project.name, '') AS project_name,
-			he.runtime_id,
-			he.target_id,
-			he.profile_id,
-			COALESCE(NULLIF(he.target_name, ''), 'Unknown connector') AS target_name,
-			COALESCE(he.profile_label, '') AS profile_label,
-			MAX(he.created_at) AS last_seen_at
-		FROM history_entries he
-		LEFT JOIN projects project ON project.id = he.project_id
-		WHERE he.target_id IS NOT NULL OR he.runtime_id IS NOT NULL
-		GROUP BY he.connector_kind, he.project_id, project.name, he.runtime_id, he.target_id, he.profile_id, he.target_name, he.profile_label
-		ORDER BY lower(project_name), lower(target_name), lower(profile_label), he.connector_kind`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []historyTargetFacetRecord{}
-	for rows.Next() {
-		var item historyTargetFacetRecord
-		var projectID sql.NullInt64
-		var runtimeID sql.NullInt64
-		var targetID sql.NullInt64
-		var profileID sql.NullInt64
-		if err := rows.Scan(
-			&item.ConnectorKind,
-			&projectID,
-			&item.ProjectName,
-			&runtimeID,
-			&targetID,
-			&profileID,
-			&item.TargetName,
-			&item.ProfileLabel,
-			&item.LastSeenAt,
-		); err != nil {
-			return nil, err
-		}
-		if projectID.Valid {
-			value := projectID.Int64
-			item.ProjectID = &value
-		}
-		if runtimeID.Valid {
-			value := runtimeID.Int64
-			item.RuntimeID = &value
-		}
-		if targetID.Valid {
-			value := targetID.Int64
-			item.TargetID = &value
-		}
-		if profileID.Valid {
-			value := profileID.Int64
-			item.ProfileID = &value
-		}
-		if targetID.Valid && profileID.Valid {
-			item.Ref = connectortargets.ConnectorTargetRef(item.ConnectorKind, targetID.Int64, profileID.Int64)
-		} else if runtimeID.Valid {
-			item.Ref = "runtime:" + strconv.FormatInt(runtimeID.Int64, 10)
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-func (s *Server) countHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) (int, error) {
-	where, args := historyEntryWhere(filter)
-	countJoins := ""
-	if filter.Query != "" {
-		countJoins = `
-			LEFT JOIN api_tokens tok ON tok.id = he.token_id
-			LEFT JOIN projects project ON project.id = he.project_id`
-	}
-	var total int
-	if err := runtime.database.QueryRowContext(ctx, `
-			SELECT COUNT(*)
-			FROM history_entries he`+countJoins+`
-			WHERE `+where,
-		args...,
-	).Scan(&total); err != nil {
-		return 0, err
-	}
-	return total, nil
-}
-
-func (s *Server) listHistoryEntrySummaries(ctx context.Context, runtime *databaseRuntime, filter historyEntryFilter) ([]historyEntryRecord, bool, error) {
-	where, args := historyEntryWhere(filter)
-	queryArgs := append(append([]any{}, args...), filter.Limit+1)
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
-		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
-		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, '' AS output_text,
-		       '{}' AS output_json, he.error, he.retry_policy_json, he.exit_code, he.progress_current,
-		       he.progress_total, he.bytes_done, he.bytes_total, he.approval_required,
-		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
-		FROM history_entries he
-		LEFT JOIN api_tokens tok ON tok.id = he.token_id
-		LEFT JOIN projects project ON project.id = he.project_id
-		WHERE `+where+`
-		ORDER BY he.created_at DESC, he.id DESC
-		LIMIT ?`,
-		queryArgs...,
-	)
-	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-	items := []historyEntryRecord{}
-	for rows.Next() {
-		item, err := scanHistoryEntry(rows)
-		if err != nil {
-			return nil, false, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, err
-	}
-	hasMore := len(items) > filter.Limit
-	if hasMore {
-		items = items[:filter.Limit]
-	}
-	if err := s.attachLabelsToHistoryEntries(ctx, runtime, items); err != nil {
-		return nil, false, err
-	}
-	return items, hasMore, nil
-}
-
-func (s *Server) getHistoryEntryRecord(ctx context.Context, runtime *databaseRuntime, id int64) (historyEntryRecord, error) {
-	row := runtime.database.QueryRowContext(ctx, `
-		SELECT he.id, he.source_ref_type, he.source_ref_id, he.connector_kind, he.activity_type,
-		       he.token_id, COALESCE(tok.name, ''), he.project_id, COALESCE(project.name, ''), he.runtime_id, he.target_id, he.profile_id,
-		       he.target_name, he.profile_label, he.source, he.status, he.action_name,
-		       he.title, he.summary, he.preview_json, he.input_text, he.input_json, he.output_text,
-		       he.output_json, he.error, he.retry_policy_json, he.exit_code, he.progress_current,
-		       he.progress_total, he.bytes_done, he.bytes_total, he.approval_required,
-		       he.user_note, he.created_at, he.started_at, he.completed_at, he.updated_at
-		FROM history_entries he
-		LEFT JOIN api_tokens tok ON tok.id = he.token_id
-		LEFT JOIN projects project ON project.id = he.project_id
-		WHERE he.id = ?`,
-		id,
-	)
-	item, err := scanHistoryEntry(row)
-	if err != nil {
-		return historyEntryRecord{}, err
-	}
-	labels, err := s.labelsForHistoryEntry(ctx, runtime, item.ID)
-	if err != nil {
-		return historyEntryRecord{}, err
-	}
-	item.Labels = labels
-	return item, nil
-}
-
-func historyEntryWhere(filter historyEntryFilter) (string, []any) {
-	where := []string{"1 = 1"}
-	args := []any{}
-	if filter.ProjectID != 0 {
-		where = append(where, "he.project_id = ?")
-		args = append(args, filter.ProjectID)
-	}
-	if filter.ConnectorKind != "" {
-		where = append(where, "he.connector_kind = ?")
-		args = append(args, filter.ConnectorKind)
-	}
-	if filter.ActivityType != "" {
-		where = append(where, "he.activity_type = ?")
-		args = append(args, filter.ActivityType)
-	}
-	if filter.Status != "" {
-		where = append(where, "he.status = ?")
-		args = append(args, filter.Status)
-	}
-	if filter.Source != "" {
-		where = append(where, "he.source = ?")
-		args = append(args, filter.Source)
-	}
-	if filter.RuntimeID != 0 {
-		where = append(where, "he.runtime_id = ?")
-		args = append(args, filter.RuntimeID)
-	}
-	if filter.TargetID != 0 {
-		where = append(where, "(he.target_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE target_id = ? AND status = 'active'))")
-		args = append(args, filter.TargetID, filter.TargetID)
-	}
-	if filter.ProfileID != 0 {
-		where = append(where, "(he.profile_id = ? OR he.runtime_id IN (SELECT id FROM connector_runtime_surfaces WHERE profile_id = ? AND status = 'active'))")
-		args = append(args, filter.ProfileID, filter.ProfileID)
-	}
-	if filter.LabelID != 0 {
-		where = append(where, `he.id IN (SELECT history_entry_id FROM history_entry_labels WHERE label_id = ?)`)
-		args = append(args, filter.LabelID)
-	}
-	if filter.Query != "" {
-		like := "%" + filter.Query + "%"
-		where = append(where, `(he.title LIKE ? OR he.summary LIKE ? OR he.preview_json LIKE ? OR he.input_text LIKE ? OR he.input_json LIKE ? OR he.output_text LIKE ? OR he.output_json LIKE ? OR he.error LIKE ? OR he.target_name LIKE ? OR he.profile_label LIKE ? OR he.action_name LIKE ? OR COALESCE(tok.name, '') LIKE ? OR COALESCE(project.name, '') LIKE ?)`)
-		args = append(args, like, like, like, like, like, like, like, like, like, like, like, like, like)
-	}
-	if filter.Cursor != nil {
-		where = append(where, "(he.created_at, he.id) < (?, ?)")
-		args = append(args, filter.Cursor.CreatedAt, filter.Cursor.ID)
-	}
-	return strings.Join(where, " AND "), args
-}
-
-func scanHistoryEntry(scanner interface {
-	Scan(dest ...any) error
-}) (historyEntryRecord, error) {
-	var item historyEntryRecord
-	var tokenID sql.NullInt64
-	var projectID sql.NullInt64
-	var runtimeID sql.NullInt64
-	var targetID sql.NullInt64
-	var profileID sql.NullInt64
-	var exitCode sql.NullInt64
-	var startedAt sql.NullString
-	var completedAt sql.NullString
-	var approvalRequired int
-	err := scanner.Scan(
-		&item.ID,
-		&item.SourceRefType,
-		&item.SourceRefID,
-		&item.ConnectorKind,
-		&item.ActivityType,
-		&tokenID,
-		&item.TokenName,
-		&projectID,
-		&item.ProjectName,
-		&runtimeID,
-		&targetID,
-		&profileID,
-		&item.TargetName,
-		&item.ProfileLabel,
-		&item.Source,
-		&item.Status,
-		&item.ActionName,
-		&item.Title,
-		&item.Summary,
-		&item.PreviewJSON,
-		&item.InputText,
-		&item.InputJSON,
-		&item.OutputText,
-		&item.OutputJSON,
-		&item.Error,
-		&item.RetryPolicyJSON,
-		&exitCode,
-		&item.ProgressCurrent,
-		&item.ProgressTotal,
-		&item.BytesDone,
-		&item.BytesTotal,
-		&approvalRequired,
-		&item.UserNote,
-		&item.CreatedAt,
-		&startedAt,
-		&completedAt,
-		&item.UpdatedAt,
-	)
-	if err != nil {
-		return historyEntryRecord{}, err
-	}
-	if tokenID.Valid {
-		value := tokenID.Int64
-		item.TokenID = &value
-	}
-	if projectID.Valid {
-		value := projectID.Int64
-		item.ProjectID = &value
-	}
-	if runtimeID.Valid {
-		value := runtimeID.Int64
-		item.RuntimeID = &value
-	}
-	if targetID.Valid {
-		value := targetID.Int64
-		item.TargetID = &value
-	}
-	if profileID.Valid {
-		value := profileID.Int64
-		item.ProfileID = &value
-	}
-	if exitCode.Valid {
-		value := int(exitCode.Int64)
-		item.ExitCode = &value
-	}
-	if startedAt.Valid {
-		item.StartedAt = stringPtr(startedAt.String)
-	}
-	if completedAt.Valid {
-		item.CompletedAt = stringPtr(completedAt.String)
-	}
-	if item.SourceRefType == "connector_action_request" {
-		var policy connectors.RetryPolicy
-		if err := json.Unmarshal([]byte(item.RetryPolicyJSON), &policy); err != nil {
-			return historyEntryRecord{}, err
-		}
-		policy = connectors.NormalizePersistedRetryPolicy(policy)
-		encoded, err := json.Marshal(policy)
-		if err != nil {
-			return historyEntryRecord{}, err
-		}
-		item.RetryPolicyJSON = string(encoded)
-	} else {
-		item.RetryPolicyJSON = ""
-	}
-	item.ApprovalRequired = approvalRequired != 0
-	item.Labels = []historyLabelRecord{}
-	return item, nil
-}
-
-func (s *Server) labelsForHistoryEntry(ctx context.Context, runtime *databaseRuntime, entryID int64) ([]historyLabelRecord, error) {
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT hl.id, hl.name, hl.color, hl.created_at, hl.updated_at
-		FROM history_labels hl
-		JOIN history_entry_labels hel ON hel.label_id = hl.id
-		WHERE hel.history_entry_id = ?
-		ORDER BY lower(hl.name), hl.id`,
-		entryID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	labels := []historyLabelRecord{}
-	for rows.Next() {
-		var label historyLabelRecord
-		if err := rows.Scan(&label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt); err != nil {
-			return nil, err
-		}
-		labels = append(labels, label)
-	}
-	return labels, rows.Err()
-}
-
-func (s *Server) attachLabelsToHistoryEntries(ctx context.Context, runtime *databaseRuntime, items []historyEntryRecord) error {
-	if len(items) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(items))
-	args := make([]any, 0, len(items))
-	byID := map[int64]int{}
-	for index := range items {
-		items[index].Labels = []historyLabelRecord{}
-		ids = append(ids, "?")
-		args = append(args, items[index].ID)
-		byID[items[index].ID] = index
-	}
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT hel.history_entry_id, hl.id, hl.name, hl.color, hl.created_at, hl.updated_at
-		FROM history_entry_labels hel
-		JOIN history_labels hl ON hl.id = hel.label_id
-		WHERE hel.history_entry_id IN (`+strings.Join(ids, ",")+`)
-		ORDER BY lower(hl.name), hl.id`,
-		args...,
-	)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var entryID int64
-		var label historyLabelRecord
-		if err := rows.Scan(&entryID, &label.ID, &label.Name, &label.Color, &label.CreatedAt, &label.UpdatedAt); err != nil {
-			return err
-		}
-		if index, ok := byID[entryID]; ok {
-			items[index].Labels = append(items[index].Labels, label)
-		}
-	}
-	return rows.Err()
 }
