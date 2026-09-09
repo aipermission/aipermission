@@ -18,6 +18,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
@@ -51,7 +52,6 @@ type Server struct {
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
-	retentionInterval    time.Duration
 	backupOperationMu    sync.Mutex
 	backupOperations     chan struct{}
 }
@@ -88,9 +88,7 @@ type databaseRuntime struct {
 	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
 	auditDispatcher    *observability.Dispatcher
-	retentionMu        sync.Mutex
-	retentionCancel    context.CancelFunc
-	retentionDone      chan struct{}
+	retention          *retention.Service
 	actionRecovery     connectorActionRecoveryWorker
 	databaseOwnership  *dbpkg.DatabaseOwnership
 	finalization       transferjobs.FinalizationLifetime
@@ -177,7 +175,6 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
-		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	runtime := &databaseRuntime{
 		id:              activeID,
@@ -240,7 +237,6 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           map[string]uiSessionRecord{},
-		retentionInterval:    defaultRetentionCleanupInterval,
 	}
 	server.routes()
 	return server

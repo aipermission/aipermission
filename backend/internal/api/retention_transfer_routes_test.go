@@ -15,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -88,7 +89,7 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 		t.Fatalf("insert old message: %v", err)
 	}
 
-	updateResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/retention", "", updateRetentionSettingsRequest{
+	updateResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/retention", "", retention.Settings{
 		HistoryDays: 7,
 		AuditDays:   7,
 		ConsoleDays: 7,
@@ -113,7 +114,7 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 		t.Fatalf("retention settings audit count = %d, want 1", settingsAuditCount)
 	}
 
-	purgeResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "audit", Days: 0})
+	purgeResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", retention.PurgeRequest{Target: "audit", Days: 0})
 	if purgeResponse.Code != http.StatusBadRequest {
 		t.Fatalf("manual purge should reject zero days, got %d %s", purgeResponse.Code, purgeResponse.Body.String())
 	}
@@ -147,19 +148,19 @@ func TestRetentionDisabledKeepsOldRecordsAndManualPurgeDeletes(t *testing.T) {
 		t.Fatalf("insert old audit log: %v", err)
 	}
 
-	updateResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/retention", "", updateRetentionSettingsRequest{})
+	updateResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/retention", "", retention.Settings{})
 	if updateResponse.Code != http.StatusOK {
 		t.Fatalf("disable retention failed: %d %s", updateResponse.Code, updateResponse.Body.String())
 	}
 	assertTableCount(t, fixture.db, "command_requests", 1)
 
-	purgeResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "history", Days: 7})
+	purgeResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", retention.PurgeRequest{Target: "history", Days: 7})
 	if purgeResponse.Code != http.StatusOK || !strings.Contains(purgeResponse.Body.String(), `"deleted":1`) {
 		t.Fatalf("manual history purge failed: %d %s", purgeResponse.Code, purgeResponse.Body.String())
 	}
 	assertTableCount(t, fixture.db, "command_requests", 0)
 
-	badTargetResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "unknown", Days: 7})
+	badTargetResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", retention.PurgeRequest{Target: "unknown", Days: 7})
 	if badTargetResponse.Code != http.StatusBadRequest || !strings.Contains(badTargetResponse.Body.String(), "invalid retention target") {
 		t.Fatalf("invalid purge target should fail: %d %s", badTargetResponse.Code, badTargetResponse.Body.String())
 	}
@@ -176,57 +177,12 @@ func TestRetentionPurgeHidesDatabaseErrors(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'private sqlite failure detail'); END`); err != nil {
 		t.Fatal(err)
 	}
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "audit", Days: 7})
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", retention.PurgeRequest{Target: "audit", Days: 7})
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	if strings.Contains(response.Body.String(), "private sqlite failure detail") {
 		t.Fatalf("response leaked database error: %s", response.Body.String())
-	}
-}
-
-func TestAuditRetentionPurgesTerminalOutboxRowsOnly(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339Nano)
-	for _, row := range []struct {
-		eventID        string
-		deliveredAt    any
-		deadLetteredAt any
-	}{
-		{eventID: "delivered-old", deliveredAt: old},
-		{eventID: "dead-letter-old", deadLetteredAt: old},
-		{eventID: "pending-old"},
-	} {
-		if _, err := fixture.db.Exec(`
-			INSERT INTO audit_outbox (
-				event_id, event_version, actor_type, action, payload_json,
-				occurred_at, created_at, delivered_at, dead_lettered_at
-			) VALUES (?, 1, 'user', 'test.audit', '{}', ?, ?, ?, ?)`,
-			row.eventID, old, old, row.deliveredAt, row.deadLetteredAt,
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
-	deleted, err := purgeRetentionTarget(context.Background(), fixture.server.activeRuntime(), "audit", 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if deleted != 0 {
-		t.Fatalf("visible audit log deletions=%d, want 0", deleted)
-	}
-	var terminal int
-	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id IN ('delivered-old', 'dead-letter-old')`).Scan(&terminal); err != nil {
-		t.Fatal(err)
-	}
-	if terminal != 0 {
-		t.Fatalf("terminal outbox rows retained=%d", terminal)
-	}
-	var pending int
-	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox WHERE event_id = 'pending-old'`).Scan(&pending); err != nil {
-		t.Fatal(err)
-	}
-	if pending != 1 {
-		t.Fatal("audit retention removed a pending outbox event")
 	}
 }
 
@@ -256,7 +212,7 @@ func TestHistoryRetentionSummarizesFileTransferDeletionWithoutPerRowAudit(t *tes
 		t.Fatal(err)
 	}
 
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", purgeRetentionRequest{Target: "history", Days: 7})
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/retention/purge", "", retention.PurgeRequest{Target: "history", Days: 7})
 	if response.Code != http.StatusOK {
 		t.Fatalf("history purge failed: %d %s", response.Code, response.Body.String())
 	}

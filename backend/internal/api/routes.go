@@ -10,13 +10,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
+	"github.com/aipermission/aipermission/backend/internal/retention"
 )
 
 type tokenHandlers struct{ *Server }
 type credentialHandlers struct{ *Server }
 type consoleHandlers struct{ *Server }
 type securityHandlers struct{ *Server }
-type retentionHandlers struct{ *Server }
 type redactionRuleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
@@ -46,7 +46,7 @@ func (s *Server) routes() {
 
 func (s *Server) registerSystemRoutes() {
 	security := securityHandlers{s}
-	retention := retentionHandlers{s}
+	retentionHandlers := retention.NewHTTPHandlers(s.retentionHTTPScope)
 	redactionRules := redactionRuleHandlers{s}
 	maintenanceConsole := maintenanceConsoleHandlers{s}
 	diagnostics := diagnosticsHandlers{s}
@@ -56,9 +56,9 @@ func (s *Server) registerSystemRoutes() {
 	s.mux.HandleFunc("GET /api/status", s.status)
 	s.mux.HandleFunc("GET /api/settings/security", security.getSecuritySettings)
 	s.mux.HandleFunc("PUT /api/settings/security", security.updateSecuritySettings)
-	s.mux.HandleFunc("GET /api/settings/retention", retention.getRetentionSettings)
-	s.mux.HandleFunc("PUT /api/settings/retention", retention.updateRetentionSettings)
-	s.mux.HandleFunc("POST /api/settings/retention/purge", retention.purgeRetention)
+	s.mux.HandleFunc("GET /api/settings/retention", retentionHandlers.Get)
+	s.mux.HandleFunc("PUT /api/settings/retention", retentionHandlers.Update)
+	s.mux.HandleFunc("POST /api/settings/retention/purge", retentionHandlers.Purge)
 	s.mux.HandleFunc("GET /api/settings/redaction-rules", redactionRules.listRedactionRules)
 	s.mux.HandleFunc("POST /api/settings/redaction-rules", redactionRules.createRedactionRule)
 	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", redactionRules.updateRedactionRule)
