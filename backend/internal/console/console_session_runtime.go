@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
 )
@@ -403,7 +404,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	}
 	displayData := data
 	if automationActive || postAutomationFilter {
-		displayData = cleanConsoleDisplayOutput(data, keepShellPrompt)
+		displayData = terminaltext.CleanDisplayOutput(data, keepShellPrompt)
 	}
 	if displayData != "" {
 		s.transcript = limitConsoleTranscript(s.transcript + displayData)
@@ -493,7 +494,7 @@ func (s *managedConsoleSession) flushTranscript() {
 		s.persistTimer.Stop()
 		s.persistTimer = nil
 	}
-	snapshot := TailStringByBytes(s.transcript, maxConsoleSnapshotLength)
+	snapshot := terminaltext.TailStringByBytes(s.transcript, maxConsoleSnapshotLength)
 	pending := s.pendingOutput
 	s.pendingOutput = ""
 	s.mu.Unlock()

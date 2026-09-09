@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
 
 const restoreTerminalInputCommand = "stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true\n"
@@ -82,7 +84,7 @@ func (s *managedConsoleSession) execCommand(
 		s.clearActiveCommand(marker)
 		return ExecResult{}, writeErr
 	}
-	s.appendDisplayOutput(formatAutomationCommand(command))
+	s.appendDisplayOutput(terminaltext.FormatAutomationCommand(command))
 
 	output, exitCode, err := s.waitForCommandResult(ctx, startOffset, marker)
 	if err != nil {
@@ -241,7 +243,7 @@ func (s *managedConsoleSession) checkCommandResult(startOffset int, marker strin
 	markerNeedle := "\n" + marker + ":"
 	markerIndex := strings.Index(segment, markerNeedle)
 	if markerIndex >= 0 {
-		output := cleanConsoleCommandResultOutput(segment[:markerIndex])
+		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
 		afterMarker := segment[markerIndex+len(markerNeedle):]
 		lineEnd := strings.IndexAny(afterMarker, "\r\n")
 		exitText := afterMarker

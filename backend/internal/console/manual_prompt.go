@@ -1,6 +1,10 @@
 package console
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
+)
 
 func (s *managedConsoleSession) clearManualPauseIfPromptReturnedLocked() {
 	if s == nil || s.manualPause == nil {
@@ -33,7 +37,7 @@ func manualActiveIsHistoryRecall(active *consoleSessionManualCapture) bool {
 }
 
 func manualSegmentHasPrompt(segment string) bool {
-	plain := ansiSequencePattern.ReplaceAllString(segment, "")
+	plain := terminaltext.StripANSI(segment)
 	plain = strings.ReplaceAll(plain, "\r\n", "\n")
 	plain = strings.ReplaceAll(plain, "\r", "\n")
 	plain = strings.TrimRight(plain, " \t\n")
@@ -42,7 +46,7 @@ func manualSegmentHasPrompt(segment string) bool {
 	}
 	lines := strings.Split(plain, "\n")
 	last := strings.TrimRight(lines[len(lines)-1], " \t")
-	return bareShellPromptPattern.MatchString(last)
+	return terminaltext.IsBareShellPrompt(last)
 }
 
 func lastManualShellPrompt(transcript string) string {
@@ -68,7 +72,7 @@ func manualTranscriptEndsWithPrompt(transcript string, prompt string) bool {
 	}
 	lines := strings.Split(plain, "\n")
 	last := strings.TrimRight(lines[len(lines)-1], " \t")
-	if !bareShellPromptPattern.MatchString(last) {
+	if !terminaltext.IsBareShellPrompt(last) {
 		return false
 	}
 	return prompt == "" || last == prompt
@@ -79,10 +83,10 @@ func manualPromptPrefix(line string) string {
 	if line == "" {
 		return ""
 	}
-	if bareShellPromptPattern.MatchString(line) {
+	if terminaltext.IsBareShellPrompt(line) {
 		return line
 	}
-	if !shellPromptPattern.MatchString(line) {
+	if !terminaltext.IsShellPrompt(line) {
 		return ""
 	}
 	hashIndex := strings.LastIndex(line, "# ")
@@ -112,20 +116,20 @@ func manualCapturedOutput(segment string, command string) (string, bool) {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	if len(lines) > 0 && bareShellPromptPattern.MatchString(strings.TrimRight(lines[len(lines)-1], " \t")) {
+	if len(lines) > 0 && terminaltext.IsBareShellPrompt(strings.TrimRight(lines[len(lines)-1], " \t")) {
 		lines = lines[:len(lines)-1]
 	}
 	output := strings.Join(lines, "\n")
 	truncated := false
 	if len(output) > maxManualCapturedOutputBytes {
-		output = TailStringByBytes(output, maxManualCapturedOutputBytes)
+		output = terminaltext.TailStringByBytes(output, maxManualCapturedOutputBytes)
 		truncated = true
 	}
 	return output, truncated
 }
 
 func normalizedPlainTerminalText(value string) string {
-	value = ansiSequencePattern.ReplaceAllString(value, "")
+	value = terminaltext.StripANSI(value)
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	value = strings.ReplaceAll(value, "\r", "\n")
 	return value
@@ -158,7 +162,7 @@ func lineContainsCommandEcho(line string, command string) bool {
 	if line == command {
 		return true
 	}
-	if bareShellPromptPattern.MatchString(line) || !shellPromptPattern.MatchString(line) {
+	if terminaltext.IsBareShellPrompt(line) || !terminaltext.IsShellPrompt(line) {
 		return false
 	}
 	if index := strings.LastIndex(line, "# "); index >= 0 {

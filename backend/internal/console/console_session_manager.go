@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/gorilla/websocket"
 )
@@ -299,7 +300,7 @@ func (m *Manager) ActiveSnapshot(ctx context.Context, principal executionprincip
 
 func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int, fallback string) string {
 	if m == nil || m.db == nil || sessionID < 1 {
-		return TailStringByBytes(fallback, limit)
+		return terminaltext.TailStringByBytes(fallback, limit)
 	}
 	if limit < 1 {
 		limit = maxConsoleTranscriptLength
@@ -314,7 +315,7 @@ func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int
 		(limit/maxConsoleChunkLength)+2,
 	)
 	if err != nil {
-		return TailStringByBytes(fallback, limit)
+		return terminaltext.TailStringByBytes(fallback, limit)
 	}
 	defer rows.Close()
 
@@ -323,7 +324,7 @@ func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int
 	for rows.Next() {
 		var data string
 		if err := rows.Scan(&data); err != nil {
-			return TailStringByBytes(fallback, limit)
+			return terminaltext.TailStringByBytes(fallback, limit)
 		}
 		if data == "" {
 			continue
@@ -335,14 +336,14 @@ func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int
 		}
 	}
 	if err := rows.Err(); err != nil || len(chunks) == 0 {
-		return TailStringByBytes(fallback, limit)
+		return terminaltext.TailStringByBytes(fallback, limit)
 	}
 
 	var builder strings.Builder
 	for index := len(chunks) - 1; index >= 0; index-- {
 		builder.WriteString(chunks[index])
 	}
-	return TailStringByBytes(builder.String(), limit)
+	return terminaltext.TailStringByBytes(builder.String(), limit)
 }
 
 func (m *Manager) Input(ctx context.Context, principal executionprincipal.Principal, id int64, data string) error {

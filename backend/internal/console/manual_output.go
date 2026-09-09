@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
@@ -194,7 +195,7 @@ func (s *managedConsoleSession) manualActiveHasOutputLocked() bool {
 		startOffset = 0
 	}
 	stdout, _ := manualCapturedOutput(s.rawTranscript[startOffset:], active.Command)
-	return strings.TrimSpace(PlainOutput(stdout)) != ""
+	return strings.TrimSpace(terminaltext.PlainOutput(stdout)) != ""
 }
 
 func (s *managedConsoleSession) downgradeManualOutputCaptureLocked(reason string, captureOutput bool) *manualOutputCompletion {
@@ -228,7 +229,7 @@ func (s *managedConsoleSession) finishManualOutputCapture(completion *manualOutp
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	stdout := s.redactForPersistence(PlainOutput(completion.Stdout))
+	stdout := s.redactForPersistence(terminaltext.PlainOutput(completion.Stdout))
 	errorText := s.redactForPersistence(completion.Error)
 	trackingReason := s.redactForPersistence(completion.TrackingReason)
 	outputTruncated := 0

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
 
 func TestManagedConsoleSessionExecRejectsConcurrentAutomationCommand(t *testing.T) {
@@ -197,7 +199,7 @@ func TestCleanConsoleDisplayOutputRemovesInternalExecNoise(t *testing.T) {
 		"\r\n\r\n" +
 		"--- after prompt ---\r\n"
 
-	output := cleanConsoleDisplayOutput(input, false)
+	output := terminaltext.CleanDisplayOutput(input, false)
 	for _, forbidden := range []string{"root@worker", "__aipermission", "PS2=", "stty -echo", "stty sane", "__AIPERMISSION_EXIT", "\r\n\r\n"} {
 		if strings.Contains(output, forbidden) {
 			t.Fatalf("display output should remove %q noise: %q", forbidden, output)
@@ -316,7 +318,7 @@ func TestAppendOutputKeepsManualOutputAfterFilterWindow(t *testing.T) {
 }
 
 func TestFormatAutomationCommandShowsCommandLines(t *testing.T) {
-	output := formatAutomationCommand("set -e\n\ndocker ps\n")
+	output := terminaltext.FormatAutomationCommand("set -e\n\ndocker ps\n")
 	if !strings.Contains(output, "[AI command]") ||
 		!strings.Contains(output, "$ set -e") ||
 		!strings.Contains(output, "$ docker ps") {
@@ -331,7 +333,7 @@ func TestAppendDisplayOutputSeparatesAutomationCommandFromPrompt(t *testing.T) {
 	session := &managedConsoleSession{
 		transcript: "root@worker:~# ",
 	}
-	session.appendDisplayOutput(formatAutomationCommand("pwd"))
+	session.appendDisplayOutput(terminaltext.FormatAutomationCommand("pwd"))
 
 	if !strings.Contains(session.transcript, "root@worker:~# \r\n[AI command]") {
 		t.Fatalf("automation command should start after the current prompt line: %q", session.transcript)
