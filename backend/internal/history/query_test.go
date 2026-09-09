@@ -2,7 +2,9 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -171,4 +173,57 @@ func TestLabelStoreNormalizesAndReusesLabels(t *testing.T) {
 	if _, _, err := store.CreateOrGet(context.Background(), "", ""); err == nil {
 		t.Fatal("expected empty label name to fail")
 	}
+}
+
+func TestLabelStoreOwnsEntryRelationships(t *testing.T) {
+	database := openTestDB(t)
+	store := NewLabelStore(database)
+	label, _, err := store.CreateOrGet(t.Context(), "Production", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryID := insertHistoryEntryForLabelTest(t, database)
+	exists, err := store.EntryExists(t.Context(), entryID)
+	if err != nil || !exists {
+		t.Fatalf("entry exists = %v, err = %v", exists, err)
+	}
+	if attached, err := store.Attach(t.Context(), entryID, label.ID); err != nil || !attached {
+		t.Fatalf("first attach = %v, err = %v", attached, err)
+	}
+	if attached, err := store.Attach(t.Context(), entryID, label.ID); err != nil || attached {
+		t.Fatalf("duplicate attach = %v, err = %v", attached, err)
+	}
+	if err := store.Detach(t.Context(), entryID, label.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Detach(t.Context(), entryID, label.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing detach error = %v", err)
+	}
+	if err := store.Delete(t.Context(), label.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(t.Context(), label.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing delete error = %v", err)
+	}
+	exists, err = store.EntryExists(t.Context(), entryID+1000)
+	if err != nil || exists {
+		t.Fatalf("missing entry exists = %v, err = %v", exists, err)
+	}
+}
+
+func insertHistoryEntryForLabelTest(t *testing.T, database *sql.DB) int64 {
+	t.Helper()
+	result, err := database.Exec(`
+		INSERT INTO history_entries (
+			source_ref_type, source_ref_id, connector_kind, activity_type,
+			status, title, created_at, updated_at
+		) VALUES ('label_test', 1, 'test', 'action', 'completed', 'label test', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }

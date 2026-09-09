@@ -2,8 +2,6 @@ package api
 
 import (
 	"time"
-
-	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 const (
@@ -41,5 +39,3 @@ type commandRequestRecord struct {
 	AssistantHint     string                 `json:"assistant_hint,omitempty"`
 	PolicyWarnings    []commandPolicyWarning `json:"policy_warnings,omitempty"`
 }
-
-type historyLabelRecord = history.Label

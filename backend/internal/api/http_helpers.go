@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -20,6 +21,15 @@ func parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id < 1 {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return 0, false
+	}
+	return id, true
+}
+
+func parsePathInt64(w http.ResponseWriter, r *http.Request, key string, label string) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(r.PathValue(key)), 10, 64)
+	if err != nil || id < 1 {
+		writeError(w, http.StatusBadRequest, label+" is required")
 		return 0, false
 	}
 	return id, true

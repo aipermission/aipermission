@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"regexp"
 	"strings"
@@ -82,9 +83,50 @@ func labelByName(ctx context.Context, executor sqldb.Executor, name string) (Lab
 	return label, err
 }
 
-func (s *LabelStore) EntryExists(ctx context.Context, id int64) bool {
+func (s *LabelStore) EntryExists(ctx context.Context, id int64) (bool, error) {
 	var exists int
-	return s.database.QueryRowContext(ctx, `SELECT 1 FROM history_entries WHERE id = ?`, id).Scan(&exists) == nil
+	err := s.database.QueryRowContext(ctx, `SELECT 1 FROM history_entries WHERE id = ?`, id).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (s *LabelStore) Delete(ctx context.Context, id int64) error {
+	result, err := s.database.ExecContext(ctx, `DELETE FROM history_labels WHERE id = ?`, id)
+	return requireChanged(result, err)
+}
+
+func (s *LabelStore) Attach(ctx context.Context, entryID, labelID int64) (bool, error) {
+	result, err := s.database.ExecContext(ctx, `
+		INSERT OR IGNORE INTO history_entry_labels (history_entry_id, label_id, created_at)
+		VALUES (?, ?, datetime('now'))`, entryID, labelID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
+}
+
+func (s *LabelStore) Detach(ctx context.Context, entryID, labelID int64) error {
+	result, err := s.database.ExecContext(ctx, `
+		DELETE FROM history_entry_labels
+		WHERE history_entry_id = ? AND label_id = ?`, entryID, labelID)
+	return requireChanged(result, err)
+}
+
+func requireChanged(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func normalizeLabelName(name string) (string, error) {

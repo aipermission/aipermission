@@ -5,6 +5,8 @@ package api
 import (
 	"net/http"
 	"time"
+
+	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 )
 
 type tokenHandlers struct{ *Server }
@@ -18,8 +20,6 @@ type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type messageHandlers struct{ *Server }
-type historyEntryHandlers struct{ *Server }
-type historyLabelHandlers struct{ *Server }
 type projectHandlers struct{ *Server }
 type vaultItemHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
@@ -134,8 +134,7 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	console := consoleHandlers{s}
 	connectorApprovals := connectorActionApprovalHandlers{s}
 	connectorActions := connectorActionHandlers{s}
-	historyEntries := historyEntryHandlers{s}
-	historyLabels := historyLabelHandlers{s}
+	historyHandlers := historyhttp.New(s.historyHTTPScope)
 
 	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)
 	s.mux.HandleFunc("GET /api/console/sessions", console.listConsoleSessions)
@@ -152,14 +151,14 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.declineConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.runLocalConnectorAction)
-	s.mux.HandleFunc("GET /api/history/targets", historyEntries.listHistoryTargetFacets)
-	s.mux.HandleFunc("GET /api/history", historyEntries.listHistoryEntries)
-	s.mux.HandleFunc("GET /api/history/{id}", historyEntries.getHistoryEntry)
-	s.mux.HandleFunc("POST /api/history/{id}/labels", historyLabels.attachHistoryEntryLabel)
-	s.mux.HandleFunc("DELETE /api/history/{id}/labels/{label_id}", historyLabels.detachHistoryEntryLabel)
-	s.mux.HandleFunc("GET /api/history-labels", historyLabels.listHistoryLabels)
-	s.mux.HandleFunc("POST /api/history-labels", historyLabels.createHistoryLabel)
-	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyLabels.deleteHistoryLabel)
+	s.mux.HandleFunc("GET /api/history/targets", historyHandlers.ListTargetFacets)
+	s.mux.HandleFunc("GET /api/history", historyHandlers.ListEntries)
+	s.mux.HandleFunc("GET /api/history/{id}", historyHandlers.GetEntry)
+	s.mux.HandleFunc("POST /api/history/{id}/labels", historyHandlers.AttachEntryLabel)
+	s.mux.HandleFunc("DELETE /api/history/{id}/labels/{label_id}", historyHandlers.DetachEntryLabel)
+	s.mux.HandleFunc("GET /api/history-labels", historyHandlers.ListLabels)
+	s.mux.HandleFunc("POST /api/history-labels", historyHandlers.CreateLabel)
+	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyHandlers.DeleteLabel)
 }
 
 func (s *Server) registerProjectAndVaultRoutes() {
