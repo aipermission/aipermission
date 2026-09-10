@@ -13,28 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
-func (s connectorTargetHandlers) listConnectorCredentialProfiles(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	targetID, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	store := connectortargets.NewStore(runtime.database)
-	if _, err := store.GetTarget(r.Context(), targetID); err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	profiles, err := store.ListCredentialProfiles(r.Context(), targetID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": connectormanagement.ProfileSummaries(profiles)})
-}
-
 func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -360,37 +338,4 @@ func redactedMapValue(value any) map[string]any {
 		return typed
 	}
 	return map[string]any{"value": value}
-}
-
-func (s connectorTargetHandlers) listConnectorCredentialProfileActions(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	targetID, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	profileID, ok := parsePathInt64(w, r, "profile_id", "profile_id")
-	if !ok {
-		return
-	}
-	store := connectortargets.NewStore(runtime.database)
-	target, profile, err := store.ResolveTargetProfileViews(r.Context(), targetID, profileID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	registry := runtime.connectorRegistry()
-	connector, ok := registry.Get(target.ConnectorKind)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported connector kind")
-		return
-	}
-	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": actions})
 }

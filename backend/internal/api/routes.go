@@ -235,7 +235,7 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/with-profile/{profile_id}", connectorTargets.updateConnectorTargetWithProfile)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}", connectorTargets.updateConnectorTarget)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}", connectorTargets.deleteConnectorTarget)
-	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles", connectorTargets.listConnectorCredentialProfiles)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles", queries.ListCredentialProfiles)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles", connectorTargets.createConnectorCredentialProfile)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/provision", connectorTargets.provisionConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/backup", connectorTargets.downloadConnectorProfileBackup)
@@ -243,7 +243,7 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.updateConnectorCredentialProfile)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.deleteConnectorCredentialProfile)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
-	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", connectorTargets.listConnectorCredentialProfileActions)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", queries.ListCredentialProfileActions)
 }
 
 func (s *Server) registerMessageAndAuditRoutes() {

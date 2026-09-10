@@ -129,6 +129,59 @@ func (h *HTTPHandlers) GetTarget(w http.ResponseWriter, r *http.Request) {
 	httptransport.WriteJSON(w, http.StatusOK, TargetToResponse(target, profiles))
 }
 
+func (h *HTTPHandlers) ListCredentialProfiles(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireDatabase)
+	if !ok {
+		return
+	}
+	targetID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
+	if !ok {
+		return
+	}
+	store := connectortargets.NewStore(scope.Database)
+	if _, err := store.GetTarget(r.Context(), targetID); err != nil {
+		writeTargetError(w, err)
+		return
+	}
+	profiles, err := store.ListCredentialProfiles(r.Context(), targetID)
+	if err != nil {
+		writeTargetError(w, err)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": ProfileSummaries(profiles)})
+}
+
+func (h *HTTPHandlers) ListCredentialProfileActions(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireDatabase|requireRegistry)
+	if !ok {
+		return
+	}
+	targetID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
+	if !ok {
+		return
+	}
+	profileID, ok := httptransport.ParsePathInt64(w, r, "profile_id", "profile_id is required")
+	if !ok {
+		return
+	}
+	target, profile, err := connectortargets.NewStore(scope.Database).ResolveTargetProfileViews(r.Context(), targetID, profileID)
+	if err != nil {
+		writeTargetError(w, err)
+		return
+	}
+	connector, exists := scope.Registry.Get(target.ConnectorKind)
+	if !exists {
+		httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
+		return
+	}
+	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": actions})
+}
+
 func writeTargetError(w http.ResponseWriter, err error) {
 	var validation connectortargets.ValidationError
 	switch {

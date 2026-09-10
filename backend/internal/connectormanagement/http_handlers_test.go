@@ -114,6 +114,8 @@ func newManagementHTTPFixture(t *testing.T) *managementHTTPFixture {
 	mux.HandleFunc("GET /connector-targets", handlers.ListTargets)
 	mux.HandleFunc("GET /connector-targets/inventory", handlers.ListTargetInventory)
 	mux.HandleFunc("GET /connector-targets/{id}", handlers.GetTarget)
+	mux.HandleFunc("GET /connector-targets/{id}/profiles", handlers.ListCredentialProfiles)
+	mux.HandleFunc("GET /connector-targets/{id}/profiles/{profile_id}/actions", handlers.ListCredentialProfileActions)
 	return &managementHTTPFixture{
 		mux: mux, target: target, profile: profile,
 		liveSurface: liveSurface, transferSurface: transferSurface,
@@ -188,6 +190,27 @@ func TestTargetQueryHandlersOwnProfilesInventoryAndLookup(t *testing.T) {
 	}
 	if response := performManagementRequest(fixture.mux, "/connector-targets/999999"); response.Code != http.StatusNotFound {
 		t.Fatalf("missing target status = %d", response.Code)
+	}
+
+	profiles := performManagementRequest(fixture.mux, "/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10)+"/profiles")
+	var profilesBody struct {
+		Items []ProfileSummary `json:"items"`
+	}
+	decodeManagementResponse(t, profiles, &profilesBody)
+	if profiles.Code != http.StatusOK || len(profilesBody.Items) != 1 || profilesBody.Items[0].ID != fixture.profile.ID {
+		t.Fatalf("credential profiles: %d %s", profiles.Code, profiles.Body.String())
+	}
+
+	actions := performManagementRequest(
+		fixture.mux,
+		"/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10)+"/profiles/"+strconv.FormatInt(fixture.profile.ID, 10)+"/actions",
+	)
+	var actionsBody struct {
+		Items []connectors.ActionDefinition `json:"items"`
+	}
+	decodeManagementResponse(t, actions, &actionsBody)
+	if actions.Code != http.StatusOK || len(actionsBody.Items) != 1 || actionsBody.Items[0].Name != "inspect" {
+		t.Fatalf("credential profile actions: %d %s", actions.Code, actions.Body.String())
 	}
 }
 
