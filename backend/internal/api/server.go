@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -53,8 +54,7 @@ type Server struct {
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
-	backupOperationMu    sync.Mutex
-	backupOperations     chan struct{}
+	backupOperations     backups.OperationLimiter
 }
 
 type databaseRuntime struct {

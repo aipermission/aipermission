@@ -54,7 +54,10 @@ func TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret(t *testing.T)
 		VALUES ('recovery_drill_marker', 'preserved', datetime('now'))`); err != nil {
 		t.Fatalf("insert recovery marker: %v", err)
 	}
-	snapshot, err := createDatabaseSnapshot(t.Context(), server.activeRuntime())
+	runtime := server.activeRuntime()
+	snapshot, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
+		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+	})
 	if err != nil {
 		t.Fatalf("create encrypted recovery snapshot: %v", err)
 	}
@@ -116,12 +119,17 @@ func TestDatabaseSnapshotsUseUniqueTemporaryPaths(t *testing.T) {
 		t.Fatalf("setup snapshot source: %d %s", setup.Code, setup.Body.String())
 	}
 
-	first, err := createDatabaseSnapshot(t.Context(), server.activeRuntime())
+	runtime := server.activeRuntime()
+	first, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
+		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(first.Path)
-	second, err := createDatabaseSnapshot(t.Context(), server.activeRuntime())
+	second, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
+		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

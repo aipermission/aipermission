@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
@@ -21,23 +20,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
-const (
-	maxConcurrentDatabaseBackups = 2
-)
-
 type importDatabaseRequest struct {
 	DatabaseName     string `json:"database_name"`
 	DatabasePassword string `json:"database_password"`
 }
 
-type databaseSnapshot struct {
-	Path      string
-	Filename  string
-	CreatedAt time.Time
-}
-
 func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request) {
-	releaseBackup, err := s.acquireBackupOperation(r.Context())
+	releaseBackup, err := s.backupOperations.Acquire(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "database backup was canceled")
 		return
@@ -56,7 +45,9 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 		s.lifecycleMu.RUnlock()
 		return
 	}
-	snapshot, err := createDatabaseSnapshot(r.Context(), runtime)
+	snapshot, err := backups.CreateDatabaseSnapshot(r.Context(), backups.SnapshotSource{
+		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+	})
 	if err != nil {
 		s.lifecycleMu.RUnlock()
 		writeInternalError(w)
@@ -67,62 +58,6 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 
 	httpattachment.SetHeaders(w, snapshot.Filename, "application/octet-stream")
 	http.ServeFile(w, r, snapshot.Path)
-}
-
-func createDatabaseSnapshot(ctx context.Context, runtime *databaseRuntime) (databaseSnapshot, error) {
-	info, err := os.Stat(runtime.path)
-	if err != nil {
-		return databaseSnapshot{}, fmt.Errorf("inspect database before snapshot: %w", err)
-	}
-	if info.Size() > backups.MaxDatabaseTransferBytes {
-		return databaseSnapshot{}, fmt.Errorf("database is too large to snapshot through the gateway: %d bytes", info.Size())
-	}
-	createdAt := time.Now().UTC()
-	databaseID := runtime.id
-	snapshotPath, err := databasecatalog.ReserveTempPath(runtime.path, "snapshot-"+databaseID+"-*.aipdb")
-	if err != nil {
-		return databaseSnapshot{}, fmt.Errorf("reserve database snapshot path: %w", err)
-	}
-	if err := dbpkg.SnapshotContext(ctx, runtime.database, snapshotPath); err != nil {
-		return databaseSnapshot{}, err
-	}
-	info, err = os.Stat(snapshotPath)
-	if err != nil {
-		_ = os.Remove(snapshotPath)
-		return databaseSnapshot{}, fmt.Errorf("inspect completed database snapshot: %w", err)
-	}
-	if info.Size() > backups.MaxDatabaseTransferBytes {
-		_ = os.Remove(snapshotPath)
-		return databaseSnapshot{}, fmt.Errorf("database snapshot exceeds the gateway limit: %d bytes", info.Size())
-	}
-	filename := strings.Trim(databaseID, "-")
-	if filename == "" {
-		filename = "aipermission"
-	}
-	return databaseSnapshot{
-		Path:      snapshotPath,
-		Filename:  filename + "-" + createdAt.Format("20060102-150405") + ".aipdb",
-		CreatedAt: createdAt,
-	}, nil
-}
-
-func (s backupHandlers) acquireBackupOperation(ctx context.Context) (func(), error) {
-	if s.Server == nil {
-		return nil, errors.New("database runtime is not available")
-	}
-	s.backupOperationMu.Lock()
-	if s.backupOperations == nil {
-		s.backupOperations = make(chan struct{}, maxConcurrentDatabaseBackups)
-	}
-	operations := s.backupOperations
-	s.backupOperationMu.Unlock()
-	select {
-	case operations <- struct{}{}:
-		var once sync.Once
-		return func() { once.Do(func() { <-operations }) }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
 }
 
 func (s backupHandlers) importDatabase(w http.ResponseWriter, r *http.Request) {
