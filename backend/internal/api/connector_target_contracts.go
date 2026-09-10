@@ -4,23 +4,11 @@ import "github.com/aipermission/aipermission/backend/internal/connectormanagemen
 
 type createConnectorTargetRequest = connectormanagement.CreateTargetRequest
 
-type createConnectorCredentialProfileRequest struct {
-	Kind      string         `json:"kind"`
-	Label     string         `json:"label"`
-	Public    map[string]any `json:"public,omitempty"`
-	Secret    map[string]any `json:"secret,omitempty"`
-	RiskLabel string         `json:"risk_label,omitempty"`
-}
+type createConnectorCredentialProfileRequest = connectormanagement.CredentialProfileInput
 
 type updateConnectorTargetRequest = connectormanagement.UpdateTargetRequest
 
-type updateConnectorCredentialProfileRequest struct {
-	Kind      string         `json:"kind"`
-	Label     string         `json:"label"`
-	Public    map[string]any `json:"public,omitempty"`
-	Secret    map[string]any `json:"secret,omitempty"`
-	RiskLabel string         `json:"risk_label,omitempty"`
-}
+type updateConnectorCredentialProfileRequest = connectormanagement.CredentialProfileInput
 
 type createConnectorTargetWithProfileRequest struct {
 	Target  createConnectorTargetRequest            `json:"target"`

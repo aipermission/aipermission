@@ -172,7 +172,10 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		profile, err = s.updatePreparedCredentialProfile(r.Context(), runtime, tx, target, existingProfile, preparedProfile)
+		profile, err = connectormanagement.UpdatePreparedCredentialProfile(
+			r.Context(), txStore, target, existingProfile, preparedProfile,
+			s.connectorCredentialPreparationPorts(runtime), s.ensureConnectorRuntimeSurfacesForProfile,
+		)
 		if err != nil {
 			return err
 		}

@@ -221,6 +221,7 @@ func (s *Server) registerConnectorRoutes() {
 	queries := connectormanagement.NewHTTPHandlers(s.connectorManagementScope)
 	hostPing := connectormanagement.NewHostPingHTTPHandler(s.connectorPingHTTPScope)
 	targetMutations := connectormanagement.NewTargetMutationHTTPHandler(s.connectorTargetMutationHTTPScope)
+	profileMutations := connectormanagement.NewProfileMutationHTTPHandler(s.connectorProfileMutationHTTPScope)
 	connectorTargets := connectorTargetHandlers{s}
 
 	s.mux.HandleFunc("GET /api/connectors", queries.ListConnectors)
@@ -237,11 +238,11 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}", targetMutations.Update)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}", connectorTargets.deleteConnectorTarget)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles", queries.ListCredentialProfiles)
-	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles", connectorTargets.createConnectorCredentialProfile)
+	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles", profileMutations.Create)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/provision", connectorTargets.provisionConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/backup", connectorTargets.downloadConnectorProfileBackup)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/restore", connectorTargets.restoreConnectorProfileBackup)
-	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.updateConnectorCredentialProfile)
+	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", profileMutations.Update)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.deleteConnectorCredentialProfile)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", queries.ListCredentialProfileActions)

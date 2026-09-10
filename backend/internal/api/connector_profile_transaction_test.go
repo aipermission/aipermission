@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
@@ -56,7 +57,10 @@ func TestPreparedCredentialUpdateFailsAtomically(t *testing.T) {
 				if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{"target_id": target.ID}); err != nil {
 					return err
 				}
-				_, err = (connectorTargetHandlers{fixture.server}).updatePreparedCredentialProfile(t.Context(), runtime, tx, changed, stale, prepared)
+				_, err = connectormanagement.UpdatePreparedCredentialProfile(
+					t.Context(), connectortargets.NewTxStore(tx), changed, stale, prepared,
+					fixture.server.connectorCredentialPreparationPorts(runtime), fixture.server.ensureConnectorRuntimeSurfacesForProfile,
+				)
 				return err
 			})
 			if err == nil {
