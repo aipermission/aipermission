@@ -25,6 +25,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
+	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
@@ -274,7 +275,7 @@ func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
-	var items []mcpConnectorTargetItem
+	var items []mcpconnector.TargetItem
 	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -330,7 +331,7 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list connector targets failed: %d %s", response.Code, response.Body.String())
 	}
-	var items []mcpConnectorTargetItem
+	var items []mcpconnector.TargetItem
 	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
 		t.Fatalf("decode connector targets: %v", err)
 	}

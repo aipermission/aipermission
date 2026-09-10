@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
@@ -267,12 +268,13 @@ func (s *Server) registerMessageAndAuditRoutes() {
 
 func (s *Server) registerMCPRoutes() {
 	mcp := mcpHandlers{s}
+	connectorReads := mcpconnector.NewHTTPHandlers(mcp.mcpConnectorReadScope)
 
 	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
 	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
-	s.mux.HandleFunc("GET /api/mcp/connector-targets", mcp.mcpListConnectorTargets)
-	s.mux.HandleFunc("GET /api/mcp/connector-help", mcp.mcpGetConnectorHelp)
-	s.mux.HandleFunc("GET /api/mcp/connector-actions", mcp.mcpGetConnectorActions)
+	s.mux.HandleFunc("GET /api/mcp/connector-targets", connectorReads.ListTargets)
+	s.mux.HandleFunc("GET /api/mcp/connector-help", connectorReads.GetHelp)
+	s.mux.HandleFunc("GET /api/mcp/connector-actions", connectorReads.GetActions)
 	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", mcp.mcpCallConnectorAction)
 	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", mcp.mcpGetConnectorActionRequest)
 	s.mux.HandleFunc("GET /api/mcp/vault-items", mcp.mcpListVaultItems)

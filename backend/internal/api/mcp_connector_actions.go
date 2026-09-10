@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -16,28 +15,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
-
-type mcpConnectorTargetItem struct {
-	TargetRef     string                    `json:"target_ref"`
-	ProjectID     int64                     `json:"project_id"`
-	ProjectName   string                    `json:"project_name"`
-	ProjectSlug   string                    `json:"project_slug"`
-	TargetID      int64                     `json:"target_id"`
-	TargetName    string                    `json:"target_name"`
-	ConnectorKind string                    `json:"connector_kind"`
-	ProfileID     int64                     `json:"profile_id"`
-	ProfileLabel  string                    `json:"profile_label"`
-	ProfileKind   string                    `json:"profile_kind"`
-	Metadata      map[string]any            `json:"metadata,omitempty"`
-	Actions       []mcpConnectorActionGrant `json:"actions"`
-	Hints         []string                  `json:"hints,omitempty"`
-}
-
-type mcpConnectorActionGrant struct {
-	Name          string `json:"name"`
-	ExecutionRule string `json:"execution_rule"`
-	ExpiresAt     string `json:"expires_at,omitempty"`
-}
 
 type mcpConnectorActionCallRequest struct {
 	TargetRef      string         `json:"target_ref"`
@@ -48,120 +25,6 @@ type mcpConnectorActionCallRequest struct {
 }
 
 type mcpConnectorActionResponse = actions.Response
-
-func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.authenticateMCP(w, r)
-	if !ok {
-		return
-	}
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	settings, err := readSecuritySettings(r.Context(), auth.runtime)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	store := connectortargets.NewStore(auth.runtime.database)
-	itemsByRef := map[string]*mcpConnectorTargetItem{}
-	order := []string{}
-	for _, permission := range permissions {
-		if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
-			continue
-		}
-		ref := connectors.FormatTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID)
-		item := itemsByRef[ref]
-		if item == nil {
-			item = &mcpConnectorTargetItem{
-				TargetRef:     ref,
-				ProjectID:     permission.ProjectID,
-				ProjectName:   permission.ProjectName,
-				ProjectSlug:   permission.ProjectSlug,
-				TargetID:      permission.TargetID,
-				TargetName:    permission.TargetName,
-				ConnectorKind: permission.ConnectorKind,
-				ProfileID:     permission.ProfileID,
-				ProfileLabel:  permission.ProfileLabel,
-				ProfileKind:   permission.ProfileKind,
-				Hints:         connectorTargetHints(permission.ConnectorKind),
-			}
-			if settings.ExposeMCPServerMetadata {
-				target, profile, err := store.ResolveTargetProfileViews(r.Context(), permission.TargetID, permission.ProfileID)
-				if err != nil {
-					handleConnectorTargetError(w, err)
-					return
-				}
-				item.Metadata = s.connectorMCPMetadata(target, profile)
-			}
-			itemsByRef[ref] = item
-			order = append(order, ref)
-		}
-		item.Actions = append(item.Actions, mcpConnectorActionGrant{
-			Name:          permission.ActionName,
-			ExecutionRule: string(permission.ExecutionRule),
-			ExpiresAt:     permission.ExpiresAt,
-		})
-	}
-	items := make([]mcpConnectorTargetItem, 0, len(order))
-	for _, ref := range order {
-		items = append(items, *itemsByRef[ref])
-	}
-	writeJSON(w, http.StatusOK, items)
-}
-
-func (s mcpHandlers) connectorMCPMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
-	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
-		return adapter.LiveConsoleTargetMetadata(target, profile)
-	}
-	return nil
-}
-
-func (s mcpHandlers) mcpGetConnectorHelp(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.authenticateMCP(w, r)
-	if !ok {
-		return
-	}
-	target, _, connector, ok := s.resolveMCPConnectorTarget(w, r, auth)
-	if !ok {
-		return
-	}
-	help, err := connector.GetHelp(r.Context(), target)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, help)
-}
-
-func (s mcpHandlers) mcpGetConnectorActions(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.authenticateMCP(w, r)
-	if !ok {
-		return
-	}
-	target, profile, connector, ok := s.resolveMCPConnectorTarget(w, r, auth)
-	if !ok {
-		return
-	}
-	actions, err := connectors.GetActionDefinitions(r.Context(), connector, target, profile)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	allowed, err := permittedConnectorActions(r.Context(), auth.runtime, auth.TokenID, target.ID, profile.ID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	filtered := make([]connectors.ActionDefinition, 0, len(actions))
-	for _, action := range actions {
-		if allowed[action.Name] {
-			filtered = append(filtered, action)
-		}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": filtered})
-}
 
 func (s mcpHandlers) mcpCallConnectorAction(w http.ResponseWriter, r *http.Request) {
 	auth, ok := s.authenticateMCP(w, r)
@@ -358,59 +221,6 @@ func connectorActionVaultPollAuthorizedLocked(ctx context.Context, runtime *data
 	)
 }
 
-func (s mcpHandlers) resolveMCPConnectorTarget(w http.ResponseWriter, r *http.Request, auth mcpAuthContext) (connectors.TargetView, connectors.CredentialProfileView, connectors.Connector, bool) {
-	targetRef := strings.TrimSpace(r.URL.Query().Get("target_ref"))
-	if targetRef == "" {
-		writeError(w, http.StatusBadRequest, "target_ref is required")
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	target, profile, err := connectortargets.NewStore(auth.runtime.database).ResolveConnectorActionTarget(r.Context(), targetRef)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	allowed := false
-	for _, permission := range permissions {
-		if permission.TargetID == target.ID && permission.ProfileID == profile.ID && permission.ExecutionRule != connectortargets.ActionPermissionBlocked {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		writeError(w, http.StatusForbidden, "token has no active connector actions for this target/profile")
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	connector, ok := auth.runtime.connectorRegistry().Get(target.ConnectorKind)
-	if !ok {
-		writeError(w, http.StatusNotFound, "connector not found")
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
-	}
-	return target, profile, connector, true
-}
-
-func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, tokenID int64, targetID int64, profileID int64) (map[string]bool, error) {
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(ctx, runtime.database, runtime.connectorRegistry(), tokenID)
-	if err != nil {
-		return nil, err
-	}
-	allowed := map[string]bool{}
-	for _, permission := range permissions {
-		if permission.TargetID != targetID || permission.ProfileID != profileID {
-			continue
-		}
-		if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
-			continue
-		}
-		allowed[permission.ActionName] = true
-	}
-	return allowed, nil
-}
-
 func connectorActionToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
 	return actions.FromResult(request, result, connectorActionResponseRunningHint(adapterRegistry, request))
 }
@@ -434,11 +244,4 @@ func connectorActionRunningHintForRequest(adapterRegistry *connectorapi.Registry
 		}
 	}
 	return "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
-}
-
-func connectorTargetHints(_ string) []string {
-	return []string{
-		"Use get_connector_help and get_connector_actions before calling connector actions for the first time.",
-		"Target, credential profile, and token action permission decide what the connector can do; prefer approval_required until the workflow is trusted.",
-	}
 }

@@ -18,6 +18,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -64,7 +65,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
-	var items []mcpConnectorTargetItem
+	var items []mcpconnector.TargetItem
 	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
