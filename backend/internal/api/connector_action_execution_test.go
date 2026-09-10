@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -865,10 +864,10 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if exactApproval.Preview["body"] != "password=visible-for-approval internal_abc123" {
 		t.Fatalf("pending approval preview must match the exact prepared action: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["opaque_message"] != actionresult.CredentialRedactionMarker {
+	if exactApproval.Preview["opaque_message"] != actions.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a declared sensitive value: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["client_secret"] != actionresult.CredentialRedactionMarker {
+	if exactApproval.Preview["client_secret"] != actions.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a normalized sensitive value: %#v", exactApproval.Preview)
 	}
 	redactedApproval := connectorActionApprovalItemFromRequest(request)
@@ -1012,9 +1011,9 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	_, err := (&Server{}).redactConnectorActionResult(t.Context(), runtime, connectors.ActionResult{
-		Output: []typedConnectorResultItem{{Message: strings.Repeat("x", actionresult.MaxStringBytes+1)}},
+		Output: []typedConnectorResultItem{{Message: strings.Repeat("x", actions.MaxStringBytes+1)}},
 	})
-	if !errors.Is(err, actionresult.ErrInvalidOutput) {
+	if !errors.Is(err, actions.ErrInvalidOutput) {
 		t.Fatalf("oversized typed output error = %v", err)
 	}
 	if status := connectorActionExecutionFailureStatus(err); status != connectors.ResultOutcomeUnknown {

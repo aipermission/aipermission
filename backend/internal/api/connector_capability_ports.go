@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -27,7 +27,7 @@ func (p connectorTargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() 
 
 func connectorRuntimeScope(runtime *databaseRuntime, kind string) *connectorruntime.Scope {
 	return connectorRuntimeScopeWithSecretAccessor(runtime, kind, func(secrets map[string]any) connectors.SecretAccessor {
-		return connectorSecretAccessor{values: secrets, boundary: actionresult.NewCredentialBoundary(secrets)}
+		return connectorSecretAccessor{values: secrets, boundary: actions.NewCredentialBoundary(secrets)}
 	})
 }
 

@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
-func (s *Server) connectorActionRedactor(runtime *databaseRuntime) (*actionresult.Redactor, error) {
-	return actionresult.NewRedactor(
+func (s *Server) connectorActionRedactor(runtime *databaseRuntime) (*actions.Redactor, error) {
+	return actions.NewRedactor(
 		func(ctx context.Context, value string) string { return s.redactForPersistence(ctx, runtime, value) },
 		func(ctx context.Context, value string) string { return s.redactCustom(ctx, runtime, value) },
 		connectorActionJSONBodyBytes,
@@ -56,5 +56,5 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *data
 }
 
 func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
-	return actionresult.SensitiveOutputFields(hints...)
+	return actions.SensitiveOutputFields(hints...)
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -47,7 +47,7 @@ type mcpConnectorActionCallRequest struct {
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 }
 
-type mcpConnectorActionResponse = actionresult.Response
+type mcpConnectorActionResponse = actions.Response
 
 func (s mcpHandlers) mcpListConnectorTargets(w http.ResponseWriter, r *http.Request) {
 	auth, ok := s.authenticateMCP(w, r)
@@ -267,7 +267,7 @@ func (s mcpHandlers) mcpGetConnectorActionRequest(w http.ResponseWriter, r *http
 func connectorActionResponseForToken(ctx context.Context, adapterRegistry *connectorapi.Registry, runtime *databaseRuntime, tokenID int64, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
 	response := connectorActionToMCPResponse(adapterRegistry, request, result)
 	if !connectorActionVaultPollAuthorized(ctx, runtime, tokenID, request) {
-		actionresult.Withhold(&response)
+		actions.Withhold(&response)
 	}
 	return response
 }
@@ -291,7 +291,7 @@ func (s mcpHandlers) writeMCPConnectorActionResponse(
 	}
 	defer release()
 	if !connectorActionVaultPollAuthorizedLocked(r.Context(), runtime, tokenID, request) {
-		actionresult.Withhold(&response)
+		actions.Withhold(&response)
 		encoded, err = json.Marshal(response)
 		if err != nil {
 			writeInternalError(w)
@@ -412,11 +412,11 @@ func permittedConnectorActions(ctx context.Context, runtime *databaseRuntime, to
 }
 
 func connectorActionToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) mcpConnectorActionResponse {
-	return actionresult.FromResult(request, result, connectorActionResponseRunningHint(adapterRegistry, request))
+	return actions.FromResult(request, result, connectorActionResponseRunningHint(adapterRegistry, request))
 }
 
 func connectorActionRequestToMCPResponse(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) mcpConnectorActionResponse {
-	return actionresult.FromRequest(request, connectorActionResponseRunningHint(adapterRegistry, request))
+	return actions.FromRequest(request, connectorActionResponseRunningHint(adapterRegistry, request))
 }
 
 func connectorActionResponseRunningHint(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) string {

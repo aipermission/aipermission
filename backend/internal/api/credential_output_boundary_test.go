@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/observability"
@@ -105,7 +105,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	})
 	assertOKWithoutCredential("MCP connector action response", actionResponse.Body.String(), actionResponse.Code)
 	actionResult := decodeRouteResponse[mcpConnectorActionResponse](t, actionResponse.Body.Bytes())
-	if actionResult.Status != string(connectors.ResultCompleted) || !strings.Contains(actionResult.DisplayText, targetOutput) || !strings.Contains(actionResult.DisplayText, actionresult.CredentialRedactionMarker) {
+	if actionResult.Status != string(connectors.ResultCompleted) || !strings.Contains(actionResult.DisplayText, targetOutput) || !strings.Contains(actionResult.DisplayText, actions.CredentialRedactionMarker) {
 		t.Fatalf("permitted target output should remain visible to the caller: %#v", actionResult)
 	}
 

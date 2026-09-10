@@ -107,6 +107,15 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	}
 }
 
+func TestAPIUsesActionApplicationBoundary(t *testing.T) {
+	implementation := modulePath + "/internal/actionresult"
+	for _, imported := range allPackageImports(t)[modulePath+"/internal/api"] {
+		if imported == implementation || strings.HasPrefix(imported, implementation+"/") {
+			t.Fatalf("internal/api must consume safe action projections through internal/actions instead of %s", implementation)
+		}
+	}
+}
+
 func TestFileTransferOwnershipBoundary(t *testing.T) {
 	for _, imported := range allPackageImports(t)[modulePath+"/internal/api"] {
 		if imported == modulePath+"/internal/filetransfer" {
