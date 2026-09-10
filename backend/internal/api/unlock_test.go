@@ -26,6 +26,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
@@ -119,7 +120,7 @@ func TestDatabaseInitializationFailureDoesNotConsumePasswordAttempts(t *testing.
 	}
 }
 
-func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
+func TestActionWorkflowMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
@@ -133,14 +134,18 @@ func TestRuntimeCloseMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
+	workflow, err := server.connectorActionWorkflow(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workflow.MarkRunningOutcomeUnknown(t.Context(), runtimeoutcome.ConnectorActionUnknown); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := store.GetActionRequest(t.Context(), request.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finished.Status != connectors.ResultOutcomeUnknown || finished.Error != dbpkg.ConnectorActionOutcomeUnknownMessage {
+	if finished.Status != connectors.ResultOutcomeUnknown || finished.Error != runtimeoutcome.ConnectorActionUnknown {
 		t.Fatalf("running request was not closed safely: %#v", finished)
 	}
 	var auditCount int

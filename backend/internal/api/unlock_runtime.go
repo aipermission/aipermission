@@ -2,22 +2,18 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
+	runtimeshutdown "github.com/aipermission/aipermission/backend/internal/workspaceruntime/shutdown"
 )
-
-const fileTransferShutdownWait = 10 * time.Second
 
 func (s *Server) isUnlocked() bool {
 	if s.workspaces == nil {
@@ -94,8 +90,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 }
 
 func (s *Server) discardOpeningRuntime(runtime *databaseRuntime) {
-	runtime.Operations.TransferLifecycle.Stop()
-	if err := closeRuntimeStorage(runtime); err != nil {
+	if err := runtimeshutdown.Discard(runtime); err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.ID, err)
 	}
 }
@@ -124,75 +119,9 @@ func (s *Server) activeRuntime() *databaseRuntime {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) error {
-	s.stopRetention(runtime)
-	s.stopConnectorActionRecoveryWorker(runtime)
-	if runtime.Security.VaultLeases != nil {
-		runtime.Security.VaultLeases.Clear()
-	}
-	if runtime.Connectors.ConsoleSessions != nil {
-		runtime.Connectors.ConsoleSessions.CloseAll()
-	}
-	if runtime.Operations.CommandRequests != nil {
-		if err := runtime.Operations.CommandRequests.CancelRunning(context.Background(), "workspace locked while command was running"); err != nil {
-			log.Printf("mark running command requests failed workspace=%s error=%v", runtime.ID, err)
-		}
-	}
-	if err := s.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
-		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.ID, err)
-	}
-	if runtime.Operations.FileTransfers == nil {
-		runtime.Operations.TransferLifecycle.Stop()
-		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.ID)
-	} else {
-		drained, err := s.fileTransferHTTPHandlers().ShutdownRuntime(
-			runtime.Operations.FileTransfers,
-			fileTransferShutdownWait,
-			"workspace locked while file transfer was running",
-			"workspace locked while file transfer queue was running",
-		)
-		if err != nil {
-			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.ID, err)
-		}
-		if !drained {
-			go func() {
-				runtime.Operations.TransferLifecycle.Wait(context.Background())
-				if err := closeRuntimeStorage(runtime); err != nil {
-					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.ID, err)
-				}
-			}()
-			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", fileTransferShutdownWait)
-		}
-	}
-	return closeRuntimeStorage(runtime)
-}
-
-func closeRuntimeStorage(runtime *databaseRuntime) error {
-	if runtime.Observation.AuditDispatcher != nil {
-		runtime.Observation.AuditDispatcher.Stop()
-	}
-	actions.ClearIdentityKey(runtime.ActionIdentityKey)
-	runtime.ActionIdentityKey = nil
-	var closeErrors []error
-	if runtime.Storage.Database != nil {
-		if err := runtime.Storage.Database.Close(); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("close encrypted database runtime %q: %w", runtime.ID, err))
-		}
-	}
-	if runtime.Storage.Ownership != nil {
-		if err := runtime.Storage.Ownership.Close(); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("release encrypted database runtime %q ownership: %w", runtime.ID, err))
-		}
-		runtime.Storage.Ownership = nil
-	}
-	return errors.Join(closeErrors...)
-}
-
-func (s *Server) markRunningConnectorActionsOutcomeUnknown(runtime *databaseRuntime) error {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err != nil {
-		return err
-	}
-	return workflow.MarkRunningOutcomeUnknown(context.Background(), db.ConnectorActionOutcomeUnknownMessage)
+	return runtimeshutdown.Close(runtime, func() (runtimeshutdown.ActionWorkflow, error) {
+		return s.connectorActionWorkflow(runtime)
+	})
 }
 
 func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {

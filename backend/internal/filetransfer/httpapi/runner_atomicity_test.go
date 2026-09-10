@@ -219,7 +219,7 @@ func TestShutdownRuntimeOwnsWorkerAndTerminalStateLifecycle(t *testing.T) {
 		t.Fatalf("mark batch running: changed=%t err=%v", changed, err)
 	}
 
-	drained, err := fixture.handlers.ShutdownRuntime(fixture.runtime, time.Second, "transfer interrupted", "batch interrupted")
+	drained, err := fixture.runtime.Shutdown(time.Second, "transfer interrupted", "batch interrupted")
 	if err != nil || !drained {
 		t.Fatalf("shutdown: drained=%t err=%v", drained, err)
 	}

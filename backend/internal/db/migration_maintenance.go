@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 )
 
 func requireGloballyUniqueVaultItemNames(tx *sql.Tx) error {
@@ -90,8 +92,6 @@ func syncHistoryProjections(database *sql.DB) error {
 	return nil
 }
 
-const ConnectorActionOutcomeUnknownMessage = "gateway restarted while the connector action was running; inspect the target state before retrying because the remote outcome is unknown"
-
 func runMigrationMaintenance(database *sql.DB) error {
 	tx, err := database.Begin()
 	if err != nil {
@@ -102,13 +102,13 @@ func runMigrationMaintenance(database *sql.DB) error {
 	for _, statement := range []string{
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('connecting', 'connected')`,
 		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
-		`UPDATE connector_action_requests SET status = 'outcome_unknown', error = '` + ConnectorActionOutcomeUnknownMessage + `', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
+		`UPDATE connector_action_requests SET status = 'outcome_unknown', error = '` + runtimeoutcome.ConnectorActionUnknown + `', completed_at = COALESCE(completed_at, datetime('now')) WHERE status = 'running'`,
 		`UPDATE vault_action_requests SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status = 'running'`,
 		`UPDATE vault_session_leases SET status = 'revoked', updated_at = datetime('now') WHERE status = 'active'`,
 		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', failure_kind = 'interrupted', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', failure_kind = 'interrupted', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE status IN ('pending', 'pending_approval', 'running', 'paused')`,
 		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'command_request' AND status = 'running'`,
-		`UPDATE history_entries SET status = 'outcome_unknown', error = '` + ConnectorActionOutcomeUnknownMessage + `', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
+		`UPDATE history_entries SET status = 'outcome_unknown', error = '` + runtimeoutcome.ConnectorActionUnknown + `', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'vault_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while file transfer was running', preview_json = json_object('failure_kind', 'interrupted'), completed_at = COALESCE(completed_at, datetime('now')), updated_at = datetime('now') WHERE source_ref_type = 'file_transfer' AND status IN ('pending', 'pending_approval', 'running', 'paused')`,
 	} {

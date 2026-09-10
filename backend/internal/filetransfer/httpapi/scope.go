@@ -95,9 +95,9 @@ func NewHandlers(dependencies Dependencies) *Handlers {
 	}
 }
 
-// ShutdownRuntime cancels transfer workers, persists an interrupted terminal
-// state for active transfers, and closes their finalization lifetime.
-func (h Handlers) ShutdownRuntime(runtime *Runtime, timeout time.Duration, runningMessage string, batchMessage string) (bool, error) {
+// Shutdown cancels transfer workers, persists an interrupted terminal state
+// for active transfers, and closes the finalization lifetime.
+func (runtime *Runtime) Shutdown(timeout time.Duration, runningMessage string, batchMessage string) (bool, error) {
 	if runtime == nil {
 		return true, nil
 	}

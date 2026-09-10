@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 )
 
 func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
@@ -1222,7 +1224,7 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	if status != "outcome_unknown" {
 		t.Fatalf("expected restarted connector action outcome to be unknown, got %q", status)
 	}
-	if message != ConnectorActionOutcomeUnknownMessage {
+	if message != runtimeoutcome.ConnectorActionUnknown {
 		t.Fatalf("unexpected error message: %q", message)
 	}
 	if err := reopened.QueryRow(`SELECT status, error FROM history_entries WHERE source_ref_type = 'connector_action_request' LIMIT 1`).Scan(&status, &message); err != nil {
@@ -1231,7 +1233,7 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	if status != "outcome_unknown" {
 		t.Fatalf("expected restarted connector action history outcome to be unknown, got %q", status)
 	}
-	if message != ConnectorActionOutcomeUnknownMessage {
+	if message != runtimeoutcome.ConnectorActionUnknown {
 		t.Fatalf("unexpected history entry error message: %q", message)
 	}
 }
