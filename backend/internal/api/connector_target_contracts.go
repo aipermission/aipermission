@@ -2,13 +2,7 @@ package api
 
 import "github.com/aipermission/aipermission/backend/internal/connectormanagement"
 
-type createConnectorTargetRequest struct {
-	ProjectID     int64          `json:"project_id"`
-	ConnectorKind string         `json:"connector_kind"`
-	Name          string         `json:"name"`
-	Config        map[string]any `json:"config,omitempty"`
-	Profile       map[string]any `json:"profile,omitempty"`
-}
+type createConnectorTargetRequest = connectormanagement.CreateTargetRequest
 
 type createConnectorCredentialProfileRequest struct {
 	Kind      string         `json:"kind"`
@@ -18,11 +12,7 @@ type createConnectorCredentialProfileRequest struct {
 	RiskLabel string         `json:"risk_label,omitempty"`
 }
 
-type updateConnectorTargetRequest struct {
-	ProjectID int64          `json:"project_id"`
-	Name      string         `json:"name"`
-	Config    map[string]any `json:"config,omitempty"`
-}
+type updateConnectorTargetRequest = connectormanagement.UpdateTargetRequest
 
 type updateConnectorCredentialProfileRequest struct {
 	Kind      string         `json:"kind"`

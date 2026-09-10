@@ -93,9 +93,3 @@ func TestTransportConfigRejectsTargetsWithoutReviewedTCPAdapter(t *testing.T) {
 		t.Fatalf("transport validation error = %v", err)
 	}
 }
-
-func TestConnectorTargetConfigRunsConnectorSemanticValidator(t *testing.T) {
-	if err := validateConnectorTargetConfig(localActionTestConnector{}, map[string]any{"semantic_error": true}); err == nil || !strings.Contains(err.Error(), "semantic validation fixture") {
-		t.Fatalf("expected semantic target validation error, got %v", err)
-	}
-}

@@ -6,68 +6,8 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
-
-func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	var request createConnectorTargetRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	registry := runtime.connectorRegistry()
-	connector, ok := registry.Get(strings.TrimSpace(request.ConnectorKind))
-	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported connector kind")
-		return
-	}
-	if err := validateConnectorTargetSchema(connector); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	request.Config = config
-	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	store := connectortargets.NewStore(runtime.database)
-	if err := s.validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	var target connectortargets.Target
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "connector.target.created",
-		func() any {
-			return map[string]any{
-				"project_id": target.ProjectID, "target_id": target.ID,
-				"connector_kind": target.ConnectorKind, "name": target.Name,
-			}
-		},
-		func(tx *sql.Tx) error {
-			var err error
-			target, err = connectortargets.NewTxStore(tx).CreateTarget(r.Context(), connectortargets.CreateTargetInput{
-				ProjectID: request.ProjectID, ConnectorKind: strings.TrimSpace(request.ConnectorKind),
-				Name: request.Name, Config: request.Config,
-			})
-			return err
-		},
-	)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, connectormanagement.TargetToResponse(target, nil))
-}
 
 func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
@@ -84,20 +24,12 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if err := validateConnectorTargetSchema(connector); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	targetConfig, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Target.Config)
+	targetConfig, err := connectormanagement.NormalizeTargetConfig(connector, request.Target.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	request.Target.Config = targetConfig
-	if err := validateConnectorTargetConfig(connector, request.Target.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.Target.ProjectID, request.Target.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
@@ -167,101 +99,6 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 	writeJSON(w, http.StatusCreated, connectormanagement.TargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
-func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	var request updateConnectorTargetRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "connector target update was canceled")
-		return
-	}
-	defer release()
-	store := connectortargets.NewStore(runtime.database)
-	existing, err := store.GetTarget(r.Context(), id)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	registry := runtime.connectorRegistry()
-	connector, ok := registry.Get(existing.ConnectorKind)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported connector kind")
-		return
-	}
-	if err := validateConnectorTargetSchema(connector); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	config, err := normalizeConnectorTargetUpdate(connector, existing.Config, request.Config)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	request.Config = config
-	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if request.ProjectID == 0 {
-		request.ProjectID = existing.ProjectID
-	}
-	if err := s.validateConnectorTransportConfig(r.Context(), store, request.ProjectID, request.Config); err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	var target connectortargets.Target
-	var profiles []connectortargets.CredentialProfile
-	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-		txStore := connectortargets.NewTxStore(tx)
-		var err error
-		target, err = txStore.UpdateTarget(r.Context(), connectortargets.UpdateTargetInput{
-			ID:                id,
-			ProjectID:         request.ProjectID,
-			Name:              request.Name,
-			Config:            request.Config,
-			ExpectedUpdatedAt: existing.UpdatedAt,
-		})
-		if err != nil {
-			return err
-		}
-		profiles, err = txStore.ListCredentialProfiles(r.Context(), target.ID)
-		if err != nil {
-			return err
-		}
-		for _, profile := range profiles {
-			if err := s.ensureConnectorRuntimeSurfacesForProfile(r.Context(), txStore, target, profile); err != nil {
-				return err
-			}
-		}
-		return appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{
-			"project_id": target.ProjectID, "target_id": target.ID, "connector_kind": target.ConnectorKind, "name": target.Name,
-		})
-	})
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	if err := s.afterConnectorCredentialLifecycleChange(
-		r.Context(), runtime, target.ID, 0,
-		"connector target changed; send a fresh Vault request",
-		"connector target was updated; ask the AI to send a fresh request", false,
-	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, connectormanagement.TargetToResponse(target, profiles))
-}
-
 func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
@@ -297,20 +134,12 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if err := validateConnectorTargetSchema(connector); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	targetConfig, err := normalizeConnectorTargetUpdate(connector, existing.Config, request.Target.Config)
+	targetConfig, err := connectormanagement.NormalizeTargetUpdate(connector, existing.Config, request.Target.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	request.Target.Config = targetConfig
-	if err := validateConnectorTargetConfig(connector, request.Target.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if request.Target.ProjectID == 0 {
 		request.Target.ProjectID = existing.ProjectID
 	}

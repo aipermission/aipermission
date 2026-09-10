@@ -2,6 +2,7 @@ package connectormanagement
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,8 @@ func (managementTestConnector) ExecuteAction(context.Context, connectors.Runtime
 
 type managementHTTPFixture struct {
 	mux             *http.ServeMux
+	database        *sql.DB
+	registry        *connectors.Registry
 	target          connectortargets.Target
 	profile         connectortargets.CredentialProfile
 	liveSurface     connectortargets.RuntimeSurface
@@ -117,7 +120,7 @@ func newManagementHTTPFixture(t *testing.T) *managementHTTPFixture {
 	mux.HandleFunc("GET /connector-targets/{id}/profiles", handlers.ListCredentialProfiles)
 	mux.HandleFunc("GET /connector-targets/{id}/profiles/{profile_id}/actions", handlers.ListCredentialProfileActions)
 	return &managementHTTPFixture{
-		mux: mux, target: target, profile: profile,
+		mux: mux, database: database, registry: registry, target: target, profile: profile,
 		liveSurface: liveSurface, transferSurface: transferSurface,
 	}
 }
@@ -223,6 +226,157 @@ func TestConnectorManagementScopeFailsClosed(t *testing.T) {
 	}
 }
 
+func TestTargetMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
+	fixture := newManagementHTTPFixture(t)
+	auditActions := []string{}
+	acquired := 0
+	released := 0
+	ensuredProfiles := []int64{}
+	lifecycleChanges := []TargetLifecycleChange{}
+	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
+		return TargetMutationScope{
+			Database: fixture.database,
+			Registry: fixture.registry,
+			ValidateTransport: func(_ context.Context, projectID int64, config map[string]any) error {
+				if projectID < 1 || config["endpoint"] == "" {
+					return connectortargets.ValidationError("invalid transport fixture")
+				}
+				return nil
+			},
+			AcquireExclusive: func(context.Context) (func(), error) {
+				acquired++
+				return func() { released++ }, nil
+			},
+			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
+				tx, err := fixture.database.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback()
+				appendAudit := func(_ *sql.Tx, _ string, _ *int64, _ int64, action string, _ any) error {
+					auditActions = append(auditActions, action)
+					return nil
+				}
+				if err := mutate(tx, appendAudit); err != nil {
+					return err
+				}
+				return tx.Commit()
+			},
+			EnsureRuntimeSurfaces: func(_ context.Context, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+				ensuredProfiles = append(ensuredProfiles, profile.ID)
+				return nil
+			},
+			AfterLifecycleChange: func(_ context.Context, change TargetLifecycleChange) error {
+				lifecycleChanges = append(lifecycleChanges, change)
+				return nil
+			},
+		}, true
+	})
+
+	create := performManagementJSON(t, handler.Create, "/connector-targets", CreateTargetRequest{
+		ProjectID: fixture.target.ProjectID, ConnectorKind: managementTestConnectorKind,
+		Name: "Secondary target", Config: map[string]any{"endpoint": "secondary"},
+	})
+	var created TargetResponse
+	decodeManagementResponse(t, create, &created)
+	if create.Code != http.StatusCreated || created.ID < 1 || created.Name != "Secondary target" {
+		t.Fatalf("create target: %d %s", create.Code, create.Body.String())
+	}
+
+	updateRequest := UpdateTargetRequest{Name: "Primary renamed", Config: map[string]any{"endpoint": "updated"}}
+	update := performManagementJSON(t, handler.Update, "/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10), updateRequest)
+	var updated TargetResponse
+	decodeManagementResponse(t, update, &updated)
+	if update.Code != http.StatusOK || updated.Name != "Primary renamed" || updated.ProjectID != fixture.target.ProjectID {
+		t.Fatalf("update target: %d %s", update.Code, update.Body.String())
+	}
+	if acquired != 1 || released != 1 || len(ensuredProfiles) != 1 || ensuredProfiles[0] != fixture.profile.ID {
+		t.Fatalf("acquired=%d released=%d ensured=%v", acquired, released, ensuredProfiles)
+	}
+	if len(lifecycleChanges) != 1 || lifecycleChanges[0].TargetID != fixture.target.ID || lifecycleChanges[0].ProfileID != 0 {
+		t.Fatalf("lifecycle changes = %#v", lifecycleChanges)
+	}
+	if strings.Join(auditActions, ",") != "connector.target.created,connector.target.updated" {
+		t.Fatalf("audit actions = %v", auditActions)
+	}
+}
+
+func TestTargetMutationHandlersFailClosedBeforeWriting(t *testing.T) {
+	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
+		return TargetMutationScope{}, true
+	})
+	response := performManagementJSON(t, handler.Create, "/connector-targets", CreateTargetRequest{
+		ConnectorKind: managementTestConnectorKind, Name: "Never created",
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("incomplete scope status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTargetCreateRequiresOnlyCreateCapabilities(t *testing.T) {
+	fixture := newManagementHTTPFixture(t)
+	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
+		return TargetMutationScope{
+			Database:          fixture.database,
+			Registry:          fixture.registry,
+			ValidateTransport: func(context.Context, int64, map[string]any) error { return nil },
+			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
+				tx, err := fixture.database.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback()
+				if err := mutate(tx, func(*sql.Tx, string, *int64, int64, string, any) error { return nil }); err != nil {
+					return err
+				}
+				return tx.Commit()
+			},
+		}, true
+	})
+	response := performManagementJSON(t, handler.Create, "/connector-targets", CreateTargetRequest{
+		ProjectID: fixture.target.ProjectID, ConnectorKind: managementTestConnectorKind,
+		Name: "Create-only target", Config: map[string]any{"endpoint": "create-only"},
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create-only scope status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestTargetCreateRejectsMissingAuditAppenderWithoutPersisting(t *testing.T) {
+	fixture := newManagementHTTPFixture(t)
+	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
+		return TargetMutationScope{
+			Database:          fixture.database,
+			Registry:          fixture.registry,
+			ValidateTransport: func(context.Context, int64, map[string]any) error { return nil },
+			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
+				tx, err := fixture.database.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback()
+				return mutate(tx, nil)
+			},
+		}, true
+	})
+	response := performManagementJSON(t, handler.Create, "/connector-targets", CreateTargetRequest{
+		ProjectID: fixture.target.ProjectID, ConnectorKind: managementTestConnectorKind,
+		Name: "Missing audit target", Config: map[string]any{"endpoint": "missing-audit"},
+	})
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("missing appender status = %d: %s", response.Code, response.Body.String())
+	}
+	targets, err := connectortargets.NewStore(fixture.database).ListTargets(t.Context(), connectortargets.ListTargetsFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if target.Name == "Missing audit target" {
+			t.Fatal("target persisted without an audit appender")
+		}
+	}
+}
+
 func performManagementRequest(handler http.Handler, path string) *httptest.ResponseRecorder {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
@@ -234,4 +388,20 @@ func decodeManagementResponse(t *testing.T, response *httptest.ResponseRecorder,
 	if err := json.Unmarshal(response.Body.Bytes(), destination); err != nil {
 		t.Fatalf("decode response: %v: %s", err, response.Body.String())
 	}
+}
+
+func performManagementJSON(t *testing.T, handler http.HandlerFunc, path string, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	if strings.Contains(path, "/connector-targets/") {
+		request.SetPathValue("id", strings.TrimPrefix(path, "/connector-targets/"))
+	}
+	response := httptest.NewRecorder()
+	handler(response, request)
+	return response
 }

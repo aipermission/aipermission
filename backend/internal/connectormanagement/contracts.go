@@ -2,6 +2,20 @@ package connectormanagement
 
 import "github.com/aipermission/aipermission/backend/internal/connectors"
 
+type CreateTargetRequest struct {
+	ProjectID     int64          `json:"project_id"`
+	ConnectorKind string         `json:"connector_kind"`
+	Name          string         `json:"name"`
+	Config        map[string]any `json:"config,omitempty"`
+	Profile       map[string]any `json:"profile,omitempty"`
+}
+
+type UpdateTargetRequest struct {
+	ProjectID int64          `json:"project_id"`
+	Name      string         `json:"name"`
+	Config    map[string]any `json:"config,omitempty"`
+}
+
 type TargetResponse struct {
 	ID            int64            `json:"id"`
 	ProjectID     int64            `json:"project_id"`

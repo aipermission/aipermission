@@ -13,25 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
-func validateConnectorTargetSchema(connector connectors.Connector) error {
-	return connectors.ValidateNonSecretSchema(connector.TargetSchema(), connector.Kind()+" target")
-}
-
-func validateConnectorTargetConfig(connector connectors.Connector, config map[string]any) error {
-	validator, ok := connector.(connectors.TargetConfigValidator)
-	if !ok {
-		return nil
-	}
-	return validator.ValidateTargetConfig(config)
-}
-
-func normalizeConnectorTargetUpdate(connector connectors.Connector, existing, submitted map[string]any) (map[string]any, error) {
-	if normalizer, ok := connector.(connectors.TargetConfigUpdateNormalizer); ok {
-		submitted = normalizer.NormalizeTargetConfigUpdate(existing, submitted)
-	}
-	return connectors.NormalizeSchemaValues(connector.TargetSchema(), submitted)
-}
-
 func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
 	mode, _ := config["connection_mode"].(string)
 	mode = strings.TrimSpace(mode)

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -23,20 +23,12 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if err := validateConnectorTargetSchema(connector); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	config, err := connectors.NormalizeSchemaValues(connector.TargetSchema(), request.Config)
+	config, err := connectormanagement.NormalizeTargetConfig(connector, request.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	request.Config = config
-	if err := validateConnectorTargetConfig(connector, request.Config); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
