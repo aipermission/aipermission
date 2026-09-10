@@ -22,6 +22,27 @@ func (r *Runtime) validateAuthorization(
 	if !r.mcpStarted() {
 		return accesscontrol.Capability{}, staleContext("MCP execution stopped; send a fresh request after it starts")
 	}
+	capability, err := r.validateCapabilityAuthorization(ctx, request, approval)
+	if err != nil {
+		return accesscontrol.Capability{}, err
+	}
+	if request.ActionName != vaultrequests.ActionRestartSession {
+		if approval.ExecutionRule != approval.CapabilityExecutionRule {
+			return accesscontrol.Capability{}, staleContext("Vault execution rule changed; send a fresh request")
+		}
+		return capability, nil
+	}
+	if err := r.validateRestartAuthorization(ctx, request.TokenID, approval, capability); err != nil {
+		return accesscontrol.Capability{}, err
+	}
+	return capability, nil
+}
+
+func (r *Runtime) validateCapabilityAuthorization(
+	ctx context.Context,
+	request vaultrequests.Request,
+	approval vaultrequests.ApprovalContext,
+) (accesscontrol.Capability, error) {
 	token, err := r.tokens.Get(ctx, request.TokenID)
 	if err != nil || !tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) ||
 		token.ExpiresAt != approval.TokenExpiresAt || token.UpdatedAt != approval.TokenUpdatedAt {
@@ -42,44 +63,47 @@ func (r *Runtime) validateAuthorization(
 	if err != nil || scopeHash != approval.ProjectScopeHash {
 		return accesscontrol.Capability{}, staleContext("Vault project scope changed; send a fresh request")
 	}
-	if request.ActionName != vaultrequests.ActionRestartSession {
-		if approval.ExecutionRule != approval.CapabilityExecutionRule {
-			return accesscontrol.Capability{}, staleContext("Vault execution rule changed; send a fresh request")
-		}
-		return capability, nil
-	}
+	return capability, nil
+}
+
+func (r *Runtime) validateRestartAuthorization(
+	ctx context.Context,
+	tokenID int64,
+	approval vaultrequests.ApprovalContext,
+	capability accesscontrol.Capability,
+) error {
 	permission, actionName, err := r.connector.LiveConsolePermission(
-		ctx, request.TokenID, approval.TargetID, approval.ProfileID, approval.ConnectorKind,
+		ctx, tokenID, approval.TargetID, approval.ProfileID, approval.ConnectorKind,
 	)
 	if err != nil || actionName != approval.ConnectorActionName ||
 		string(permission.ExecutionRule) != approval.ConnectorExecutionRule ||
 		permission.ExpiresAt != approval.ConnectorPermissionExpiresAt ||
 		permission.UpdatedAt != approval.ConnectorPermissionUpdatedAt ||
 		effectiveExecutionRule(capability.ExecutionRule, permission.ExecutionRule) != approval.ExecutionRule {
-		return accesscontrol.Capability{}, staleContext("connector action permission changed; send a fresh request")
+		return staleContext("connector action permission changed; send a fresh request")
 	}
 	surface, err := connectortargets.NewStore(r.database).GetRuntimeSurface(ctx, approval.RuntimeID)
 	if err != nil || surface.TargetID != approval.TargetID || surface.ProfileID != approval.ProfileID ||
 		surface.ConnectorKind != approval.ConnectorKind ||
 		surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole ||
 		surface.UpdatedAt != approval.RuntimeSurfaceUpdatedAt {
-		return accesscontrol.Capability{}, staleContext("connector runtime changed; send a fresh request")
+		return staleContext("connector runtime changed; send a fresh request")
 	}
 	version, err := r.connector.SessionEnvironmentVersion(ctx, approval.RuntimeID)
 	if err != nil || version != approval.RuntimeCapabilityVersion {
-		return accesscontrol.Capability{}, staleContext("connector Vault capability changed; send a fresh request")
+		return staleContext("connector Vault capability changed; send a fresh request")
 	}
 	targetHash, err := r.targetContextHash(ctx, approval.TargetID, approval.ProfileID)
 	if err != nil || targetHash != approval.TargetContextHash {
-		return accesscontrol.Capability{}, staleContext("target or credential profile changed; send a fresh request")
+		return staleContext("target or credential profile changed; send a fresh request")
 	}
 	peerExpectation, err := r.connector.ExpectedPeerIdentities(ctx, surface)
 	peers := normalizeIdentities(peerExpectation.Items)
 	if err != nil || (peerExpectation.Required && len(peers) == 0) ||
 		!equalStrings(peers, approval.ExpectedPeerIdentities) {
-		return accesscontrol.Capability{}, staleContext("connector peer trust changed; send a fresh request")
+		return staleContext("connector peer trust changed; send a fresh request")
 	}
-	return capability, nil
+	return nil
 }
 
 func (r *Runtime) ValidateAuthorization(
