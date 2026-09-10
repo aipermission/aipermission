@@ -3,18 +3,10 @@ package api
 import (
 	"database/sql"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 )
-
-type transientBackupServiceRequest struct {
-	BaseURL  string `json:"base_url"`
-	Token    string `json:"token"`
-	StreamID string `json:"stream_id,omitempty"`
-}
 
 type transientBackupRestoreRequest struct {
 	BaseURL          string `json:"base_url"`
@@ -23,58 +15,6 @@ type transientBackupRestoreRequest struct {
 	BackupID         string `json:"backup_id"`
 	DatabaseName     string `json:"database_name"`
 	DatabasePassword string `json:"database_password"`
-}
-
-type transientBackupStreamResponse struct {
-	ID           string                  `json:"id"`
-	DatabaseName string                  `json:"database_name"`
-	Backups      []backups.ServiceBackup `json:"backups"`
-}
-
-func (s backupHandlers) listTransientRemoteBackups(w http.ResponseWriter, r *http.Request) {
-	var request transientBackupServiceRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	defer clearStringReferences(&request.Token)
-	client, err := backups.NewServiceClient(request.BaseURL, request.Token)
-	if err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	if _, err := client.Info(r.Context()); err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	streams, err := client.ListStreams(r.Context())
-	if err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	if len(streams) > 100 {
-		writeError(w, http.StatusBadGateway, "backup service returned too many streams for first-run restore")
-		return
-	}
-	items := make([]transientBackupStreamResponse, 0, len(streams))
-	for _, stream := range streams {
-		if request.StreamID != "" && stream.ID != strings.TrimSpace(request.StreamID) {
-			continue
-		}
-		var versions []backups.ServiceBackup
-		if request.StreamID != "" {
-			versions, err = client.ListBackups(r.Context(), stream.ID)
-			if err != nil {
-				backups.WriteServiceHTTPError(w, err)
-				return
-			}
-		}
-		items = append(items, transientBackupStreamResponse{ID: stream.ID, DatabaseName: stream.DatabaseName, Backups: versions})
-	}
-	if request.StreamID != "" && len(items) == 0 {
-		writeError(w, http.StatusNotFound, "remote backup stream was not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *http.Request) {
@@ -91,64 +31,15 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadRequest, "database name is required")
 		return
 	}
-	client, err := backups.NewServiceClient(request.BaseURL, request.Token)
-	if err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	if _, err := client.Info(r.Context()); err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	stream, version, err := findTransientRemoteBackup(r, client, request.StreamID, request.BackupID)
-	if err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	if version.SizeBytes > backups.MaxDatabaseTransferBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "remote backup is too large to restore through the gateway")
-		return
-	}
-	tmpPath, err := databasecatalog.ReserveTempPath(s.config.DataPath, "first-run-restore-*.aipdb")
-	if err != nil {
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	downloaded, err := client.Download(r.Context(), stream.ID, version.ID, tmpPath, backups.MaxDatabaseTransferBytes)
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		backups.WriteServiceHTTPError(w, err)
-		return
-	}
-	defer os.Remove(tmpPath)
-	if downloaded.SizeBytes != version.SizeBytes || !strings.EqualFold(downloaded.SHA256, version.SHA256) {
-		writeError(w, http.StatusBadGateway, "remote backup metadata changed while restoring; refresh versions and try again")
-		return
-	}
-	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(tmpPath), func(database *sql.DB) error {
-		return backups.WriteServiceBaseline(r.Context(), database, request.BaseURL, stream.ID, version)
+	prepared, err := backups.PrepareTransientRestore(r.Context(), s.config.DataPath, backups.TransientRestoreSelection{
+		BaseURL: request.BaseURL, Token: request.Token, StreamID: request.StreamID, BackupID: request.BackupID,
 	})
-}
-
-func findTransientRemoteBackup(r *http.Request, client *backups.ServiceClient, streamID, backupID string) (backups.ServiceStream, backups.ServiceBackup, error) {
-	streams, err := client.ListStreams(r.Context())
 	if err != nil {
-		return backups.ServiceStream{}, backups.ServiceBackup{}, err
+		backups.WriteServiceHTTPError(w, err)
+		return
 	}
-	for _, stream := range streams {
-		if stream.ID != strings.TrimSpace(streamID) {
-			continue
-		}
-		versions, err := client.ListBackups(r.Context(), stream.ID)
-		if err != nil {
-			return backups.ServiceStream{}, backups.ServiceBackup{}, err
-		}
-		for _, version := range versions {
-			if version.ID == strings.TrimSpace(backupID) {
-				return stream, version, nil
-			}
-		}
-		return backups.ServiceStream{}, backups.ServiceBackup{}, backups.ServiceError{StatusCode: http.StatusNotFound}
-	}
-	return backups.ServiceStream{}, backups.ServiceBackup{}, backups.ServiceError{StatusCode: http.StatusNotFound}
+	defer prepared.Remove()
+	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
+		return prepared.RecordBaseline(r.Context(), database)
+	})
 }

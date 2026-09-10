@@ -344,6 +344,14 @@ func WriteProviderHTTPError(w http.ResponseWriter, err error) {
 }
 
 func handleBackupServiceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrTransientBackupTooLarge):
+		httptransport.WriteError(w, http.StatusRequestEntityTooLarge, err.Error())
+		return
+	case errors.Is(err, ErrTransientBackupChanged):
+		httptransport.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
 	var validation ValidationError
 	if errors.As(err, &validation) {
 		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())

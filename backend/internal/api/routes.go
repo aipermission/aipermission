@@ -100,11 +100,12 @@ func (s *Server) registerAccessRoutes() {
 func (s *Server) registerBackupRoutes() {
 	backup := backupHandlers{s}
 	providers := backups.NewHTTPHandlers(s.backupProviderHTTPScope)
+	transient := backups.NewTransientHTTPHandlers()
 	databases := databaseHandlers{s}
 
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
-	s.mux.HandleFunc("POST /api/backup/remote/list", backup.listTransientRemoteBackups)
+	s.mux.HandleFunc("POST /api/backup/remote/list", transient.List)
 	s.mux.HandleFunc("POST /api/backup/remote/restore", backup.restoreTransientRemoteBackup)
 	s.mux.HandleFunc("GET /api/backup/providers/catalog", providers.ProviderCatalog)
 	s.mux.HandleFunc("GET /api/backup/providers", providers.ListProviders)

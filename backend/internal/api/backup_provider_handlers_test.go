@@ -283,13 +283,13 @@ func TestFirstRunRemoteRestoreKeepsCredentialsTransient(t *testing.T) {
 		GatewaySecret: "first-run-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
 	})
 	t.Cleanup(server.Close)
-	list := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", transientBackupServiceRequest{
+	list := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", backups.TransientServiceRequest{
 		BaseURL: remote.server.URL, Token: backupAPITestToken,
 	})
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "Recovered Project") || strings.Contains(list.Body.String(), backupAPITestToken) {
 		t.Fatalf("transient list failed or leaked token: %d %s", list.Code, list.Body.String())
 	}
-	versions := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", transientBackupServiceRequest{
+	versions := performJSON(server.Handler(), http.MethodPost, "/api/backup/remote/list", "", backups.TransientServiceRequest{
 		BaseURL: remote.server.URL, Token: backupAPITestToken, StreamID: "workspace-restore",
 	})
 	if versions.Code != http.StatusOK || !strings.Contains(versions.Body.String(), "bkp_restore") || strings.Contains(versions.Body.String(), backupAPITestToken) {
