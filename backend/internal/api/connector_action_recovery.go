@@ -1,18 +1,11 @@
 package api
 
+import applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
+
 func (s *Server) startConnectorActionRecoveryWorker(runtime *databaseRuntime) {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err == nil {
-		workflow.StartRecovery()
-	}
+	s.connectorActionApplication().StartRecovery(runtime)
 }
 
 func (s *Server) stopConnectorActionRecoveryWorker(runtime *databaseRuntime) {
-	if runtime == nil {
-		return
-	}
-	workflow := runtime.Operations.ActionWorkflow()
-	if workflow != nil {
-		workflow.StopRecovery()
-	}
+	applicationactions.StopRecovery(runtime)
 }

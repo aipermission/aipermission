@@ -8,11 +8,7 @@ import (
 )
 
 func (s *Server) connectorActionRedactor(runtime *databaseRuntime) (*actions.Redactor, error) {
-	return actions.NewRedactor(
-		func(ctx context.Context, value string) string { return s.redactForPersistence(ctx, runtime, value) },
-		func(ctx context.Context, value string) string { return s.redactCustom(ctx, runtime, value) },
-		connectorActionJSONBodyBytes,
-	)
+	return s.connectorActionApplication().Redactor(runtime)
 }
 
 func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {

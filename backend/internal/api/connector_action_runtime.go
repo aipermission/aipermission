@@ -2,10 +2,10 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -28,36 +28,22 @@ type connectorSecretAccessor struct {
 	boundary connectorCredentialBoundary
 }
 
-func (a connectorSecretAccessor) GetSecret(_ context.Context, name string) (string, error) {
-	value, ok := a.values[name]
-	if !ok || value == nil {
-		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
-	}
-	text := fmt.Sprint(value)
-	a.boundary.Add(text)
-	return text, nil
+func (accessor connectorSecretAccessor) GetSecret(ctx context.Context, name string) (string, error) {
+	return (applicationactions.SecretAccessor{Values: accessor.values, Boundary: accessor.boundary}).GetSecret(ctx, name)
 }
 
-func (a connectorSecretAccessor) RegisterSensitiveValue(value string) { a.boundary.Add(value) }
+func (accessor connectorSecretAccessor) RegisterSensitiveValue(value string) {
+	accessor.boundary.Add(value)
+}
 
-type noopConnectorEventSink struct{}
-
-func (noopConnectorEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
+type noopConnectorEventSink = applicationactions.NoopEventSink
 
 func (s *Server) callConnectorAction(ctx context.Context, runtime *databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err != nil {
-		return connectorActionCallResult{}, err
-	}
-	return workflow.Call(ctx, call)
+	return s.connectorActionApplication().Call(ctx, runtime, call)
 }
 
 func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err != nil {
-		return connectorActionCallResult{}, err
-	}
-	return workflow.RunLocal(ctx, call)
+	return s.connectorActionApplication().RunLocal(ctx, runtime, call)
 }
 
 func (s *Server) finishActiveConnectorActionRequest(runtime *databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
@@ -77,9 +63,5 @@ func (s *Server) connectorActionSupportsRunning(prepared actions.PreparedRequest
 }
 
 func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	return workflow.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
+	return s.connectorActionApplication().Finish(ctx, runtime, requestID, status, output, displayText, errorText, hints...)
 }

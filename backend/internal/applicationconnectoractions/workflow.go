@@ -36,6 +36,27 @@ type Component struct{ dependencies Dependencies }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
 
+type SecretAccessor struct {
+	Values   map[string]any
+	Boundary actions.CredentialBoundary
+}
+
+func (accessor SecretAccessor) GetSecret(_ context.Context, name string) (string, error) {
+	value, ok := accessor.Values[name]
+	if !ok || value == nil {
+		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
+	}
+	text := fmt.Sprint(value)
+	accessor.Boundary.Add(text)
+	return text, nil
+}
+
+func (accessor SecretAccessor) RegisterSensitiveValue(value string) { accessor.Boundary.Add(value) }
+
+type NoopEventSink struct{}
+
+func (NoopEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
+
 type tokenReader struct{ runtime *workspaceruntime.Runtime }
 
 func (reader tokenReader) Get(ctx context.Context, id int64, now time.Time) (actions.AuthorizationToken, error) {
@@ -173,6 +194,56 @@ func (component *Component) Workflow(runtime *workspaceruntime.Runtime) (*action
 		}
 		return workflow, nil
 	})
+}
+
+func (component *Component) Call(ctx context.Context, runtime *workspaceruntime.Runtime, call actions.Call) (actions.CallResult, error) {
+	workflow, err := component.Workflow(runtime)
+	if err != nil {
+		return actions.CallResult{}, err
+	}
+	return workflow.Call(ctx, call)
+}
+
+func (component *Component) RunLocal(ctx context.Context, runtime *workspaceruntime.Runtime, call actions.Call) (actions.CallResult, error) {
+	workflow, err := component.Workflow(runtime)
+	if err != nil {
+		return actions.CallResult{}, err
+	}
+	return workflow.RunLocal(ctx, call)
+}
+
+func (component *Component) Finish(ctx context.Context, runtime *workspaceruntime.Runtime, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
+	workflow, err := component.Workflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	return workflow.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
+}
+
+func (component *Component) StartRecovery(runtime *workspaceruntime.Runtime) {
+	if workflow, err := component.Workflow(runtime); err == nil {
+		workflow.StartRecovery()
+	}
+}
+
+func StopRecovery(runtime *workspaceruntime.Runtime) {
+	if runtime != nil {
+		if workflow := runtime.Operations.ActionWorkflow(); workflow != nil {
+			workflow.StopRecovery()
+		}
+	}
+}
+
+func (component *Component) Redactor(runtime *workspaceruntime.Runtime) (*actions.Redactor, error) {
+	return actions.NewRedactor(
+		func(ctx context.Context, value string) string {
+			return component.dependencies.RedactBasic(ctx, runtime, value)
+		},
+		func(ctx context.Context, value string) string {
+			return component.dependencies.RedactCustom(ctx, runtime, value)
+		},
+		component.dependencies.MaxJSONBytes,
+	)
 }
 
 func Prepare(runtime *workspaceruntime.Runtime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
