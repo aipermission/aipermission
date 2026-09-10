@@ -132,7 +132,7 @@ func (s *Server) registerConsoleAndActivityRoutes(observation applicationobserva
 	bulkConsole := commandrequests.NewBulkHTTPHandlers(s.bulkCommandHTTPScope)
 	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
 	connectorApprovals := connectorapproval.NewHTTPHandlers(s.connectorApprovalHTTPScope)
-	connectorActions := connectorActionHandlers{s}
+	connectorActions := s.localConnectorActionHTTP()
 
 	s.mux.HandleFunc("POST /api/console/bulk-exec", bulkConsole.Run)
 	s.mux.HandleFunc("GET /api/console/sessions", console.List)
@@ -148,7 +148,7 @@ func (s *Server) registerConsoleAndActivityRoutes(observation applicationobserva
 	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.Get)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.Run)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.Decline)
-	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.runLocalConnectorAction)
+	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.Run)
 	s.mux.HandleFunc("GET /api/history/targets", observation.History.ListTargetFacets)
 	s.mux.HandleFunc("GET /api/history", observation.History.ListEntries)
 	s.mux.HandleFunc("GET /api/history/{id}", observation.History.GetEntry)

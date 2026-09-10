@@ -6,6 +6,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
@@ -76,7 +77,7 @@ func mcpConnectorOutputAuthorization(runtime *databaseRuntime) *mcpconnector.Out
 	}
 	return &mcpconnector.OutputAuthorization{
 		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens, Leases: runtime.Security.VaultLeases,
-		Delivery: actionDeliveryGate{runtime: runtime}, MCPStarted: runtime.IsMCPStarted,
+		Delivery: applicationactions.Delivery(runtime), MCPStarted: runtime.IsMCPStarted,
 		Principal: func(tokenID int64) (executionprincipal.Principal, error) {
 			return tokenExecutionPrincipal(runtime, tokenID)
 		},

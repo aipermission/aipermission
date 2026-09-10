@@ -3,101 +3,37 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
+	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 )
 
-type connectorActionHandlers struct{ *Server }
+type localConnectorActionRequest = applicationactions.LocalRequest
 
-type localConnectorActionRequest struct {
-	TargetRef      string         `json:"target_ref"`
-	ActionName     string         `json:"action_name"`
-	Input          map[string]any `json:"input,omitempty"`
-	Reason         string         `json:"reason,omitempty"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-}
-
-func (s connectorActionHandlers) runLocalConnectorAction(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	var request localConnectorActionRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	request.TargetRef = strings.TrimSpace(request.TargetRef)
-	request.ActionName = strings.TrimSpace(request.ActionName)
-	request.Reason = strings.TrimSpace(request.Reason)
-	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
-	if request.TargetRef == "" {
-		writeError(w, http.StatusBadRequest, "target_ref is required")
-		return
-	}
-	if !connectors.ValidIdentifier(request.ActionName) {
-		writeError(w, http.StatusBadRequest, "invalid action_name")
-		return
-	}
-	if err := validateTextLimit("reason", request.Reason, maxReasonBytes); err != nil {
-		writeError(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), runtime, err.Error()))
-		return
-	}
-	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
-		writeError(w, http.StatusBadRequest, "idempotency_key is too long")
-		return
-	}
-	result, err := s.Server.runLocalConnectorAction(r.Context(), runtime, connectorActionCall{
-		Source:         commandRequestSourceManual,
-		TargetRef:      request.TargetRef,
-		ActionName:     request.ActionName,
-		Input:          request.Input,
-		Reason:         request.Reason,
-		IdempotencyKey: request.IdempotencyKey,
+func (s *Server) localConnectorActionHTTP() applicationactions.LocalHTTPHandlers {
+	return s.connectorActionApplication().LocalHTTP(applicationactions.LocalHTTPDependencies{
+		ActiveRuntime: s.activeRuntimeOrLocked, DecodeJSON: decodeJSON,
+		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
+		HandleTargetError: handleConnectorTargetError,
+		Response: func(request connectortargets.ActionRequest, result connectors.ActionResult, replayed bool) any {
+			response := mcpconnector.ResponseFromResult(s.connectorAdapterRegistry(), request, result)
+			response.Replayed = replayed
+			return response
+		},
 	})
-	if err != nil {
-		if writeConnectorActionTerminalPersistenceError(w, err) {
-			return
-		}
-		if errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		if errors.Is(err, connectortargets.ErrInvalidTargetRef) || errors.Is(err, connectortargets.ErrTargetProfileNotFound) {
-			handleConnectorTargetError(w, err)
-			return
-		}
-		writeErrorWithCode(w, http.StatusBadRequest, s.redactForPersistence(r.Context(), runtime, err.Error()), connectors.ErrorCode(err))
-		return
-	}
-	auditAction := "connector_action.manual." + string(result.Result.Status)
-	if result.Replayed {
-		auditAction = "connector_action.manual.replayed"
-	}
-	s.writeObservationAudit(r.Context(), runtime, "user", nil, 0, auditAction, map[string]any{
-		"request_id":     result.Request.ID,
-		"target_ref":     request.TargetRef,
-		"connector_kind": result.Request.ConnectorKind,
-		"action_name":    request.ActionName,
-		"replayed":       result.Replayed,
-	})
-	response := mcpconnector.ResponseFromResult(s.connectorAdapterRegistry(), result.Request, result.Result)
-	response.Replayed = result.Replayed
-	writeJSON(w, http.StatusOK, response)
 }
 
 func writeConnectorActionTerminalPersistenceError(w http.ResponseWriter, err error) bool {
-	var persistenceErr *connectorActionTerminalPersistenceError
-	if !errors.As(err, &persistenceErr) {
+	var persistence *actions.TerminalPersistenceError
+	if !errors.As(err, &persistence) {
 		return false
 	}
 	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-		"status":         connectors.ResultOutcomeUnknown,
-		"code":           "connector_action_persistence_unknown",
-		"request_id":     persistenceErr.RequestID,
-		"error":          connectorActionPersistenceError,
+		"status": connectors.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown",
+		"request_id": persistence.RequestID, "error": actions.TerminalPersistenceErrorText,
 		"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
 	})
 	return true
