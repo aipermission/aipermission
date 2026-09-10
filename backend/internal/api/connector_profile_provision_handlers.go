@@ -367,10 +367,7 @@ func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseW
 }
 
 func validateProvisionedCredentialProfile(connector connectors.Connector, profile connectors.ProvisionedCredentialProfile) error {
-	if !credentialKindSupported(connector, profile.Kind) {
-		return connectortargets.ValidationError("unsupported credential kind")
-	}
-	schema, ok := credentialSchemaForKind(connector, profile.Kind)
+	schema, ok := connectormanagement.CredentialSchemaForKind(connector, profile.Kind)
 	if !ok {
 		return connectortargets.ValidationError("unsupported credential kind")
 	}

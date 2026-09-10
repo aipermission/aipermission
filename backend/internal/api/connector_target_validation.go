@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
 func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any) error {
@@ -37,22 +37,8 @@ func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *co
 	return nil
 }
 
-type preparedConnectorCredentialProfileInput struct {
-	Kind          string
-	Label         string
-	Public        map[string]any
-	Secret        map[string]any
-	SecretChanged bool
-	RiskLabel     string
-}
-
-type connectorCredentialProfilePayload struct {
-	Kind      string
-	Label     string
-	Public    map[string]any
-	Secret    map[string]any
-	RiskLabel string
-}
+type preparedConnectorCredentialProfileInput = connectormanagement.PreparedCredentialProfile
+type connectorCredentialProfilePayload = connectormanagement.CredentialProfileInput
 
 func createProfileAdapterRequest(request createConnectorCredentialProfileRequest) connectorCredentialProfilePayload {
 	return connectorCredentialProfilePayload{
@@ -84,137 +70,29 @@ func (s connectorTargetHandlers) prepareConnectorCredentialProfileInput(
 	previous *connectors.CredentialProfileView,
 	previousEncryptedSecret string,
 ) (preparedConnectorCredentialProfileInput, bool) {
-	kind := strings.TrimSpace(request.Kind)
-	if !credentialKindSupported(connector, kind) {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	schema, ok := credentialSchemaForKind(connector, kind)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "unsupported credential kind")
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	secret, err := mergeConnectorCredentialSecrets(runtime, previous, previousEncryptedSecret, request.Secret)
-	if err != nil {
-		writeInternalError(w)
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, secret, secretRequired); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	public, err := s.canonicalCredentialPublic(r.Context(), runtime, connector.Kind(), kind, request.Public)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, secret, secretRequired); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return preparedConnectorCredentialProfileInput{}, false
-	}
-	if validator, ok := connector.(connectors.CredentialProfileValidator); ok {
-		if err := validator.ValidateCredentialProfile(kind, public, secret, previous); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return preparedConnectorCredentialProfileInput{}, false
-		}
-	}
-	prepared := preparedConnectorCredentialProfileInput{
-		Kind:      kind,
-		Label:     request.Label,
-		Public:    public,
-		RiskLabel: request.RiskLabel,
-	}
-	if secretRequired {
-		if secret == nil {
-			secret = map[string]any{}
-		}
-		prepared.Secret = secret
-		prepared.SecretChanged = true
+	prepared, err := connectormanagement.PrepareCredentialProfile(
+		r.Context(), connector, request, secretRequired, previous, previousEncryptedSecret,
+		s.connectorCredentialPreparationPorts(runtime),
+	)
+	if err == nil {
 		return prepared, true
 	}
-	if request.Secret != nil {
-		prepared.Secret = secret
-		prepared.SecretChanged = true
+	var inputErr connectormanagement.CredentialInputError
+	switch {
+	case errors.As(err, &inputErr):
+		writeError(w, http.StatusBadRequest, inputErr.Error())
+	case errors.Is(err, connectormanagement.ErrCredentialSecretDecode):
+		writeInternalError(w)
+	default:
+		handleConnectorTargetError(w, err)
 	}
-	return prepared, true
+	return preparedConnectorCredentialProfileInput{}, false
 }
 
-func mergeConnectorCredentialSecrets(runtime *databaseRuntime, previous *connectors.CredentialProfileView, previousEncrypted string, updates map[string]any) (map[string]any, error) {
-	if updates == nil && previousEncrypted == "" {
-		return nil, nil
-	}
-	merged := map[string]any{}
-	if previousEncrypted != "" {
-		if previous == nil || previous.ID < 1 {
-			return nil, fmt.Errorf("previous credential profile identity is required")
-		}
-		if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, previous.ID, previousEncrypted, &merged); err != nil {
-			return nil, err
-		}
-	}
-	for key, value := range updates {
-		if value == nil {
-			delete(merged, key)
-			continue
-		}
-		merged[key] = value
-	}
-	return merged, nil
-}
-
-func encryptPreparedCredentialSecret(runtime *databaseRuntime, profileID int64, prepared preparedConnectorCredentialProfileInput) (*string, error) {
-	if !prepared.SecretChanged {
-		return nil, nil
-	}
-	encrypted, err := recordcrypto.EncryptJSON(
-		runtime.vault,
-		runtime.workspaceUUID,
-		recordcrypto.ConnectorCredentialProfile,
-		profileID,
-		prepared.Secret,
+func (s *Server) encryptPreparedCredentialSecret(ctx context.Context, runtime *databaseRuntime, profileID int64, prepared preparedConnectorCredentialProfileInput) (*string, error) {
+	return connectormanagement.EncryptPreparedCredentialSecret(
+		ctx, profileID, prepared, s.connectorCredentialPreparationPorts(runtime),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("encrypt connector credential profile: %w", err)
-	}
-	return &encrypted, nil
-}
-
-func (s connectorTargetHandlers) canonicalCredentialPublic(ctx context.Context, runtime *databaseRuntime, connectorKind string, credentialKind string, public map[string]any) (map[string]any, error) {
-	if adapter := s.connectorCredentialCanonicalizerFor(connectorKind); adapter != nil {
-		return adapter.CanonicalCredentialPublic(ctx, connectorDataRuntimePort(runtime, connectorKind), credentialKind, public)
-	}
-	if public == nil {
-		return map[string]any{}, nil
-	}
-	copied := make(map[string]any, len(public))
-	for key, value := range public {
-		copied[key] = value
-	}
-	return copied, nil
-}
-
-func credentialKindSupported(connector connectors.Connector, kind string) bool {
-	if !connectors.ValidIdentifier(kind) {
-		return false
-	}
-	for _, schema := range connector.CredentialSchemas() {
-		if schema.Kind == kind {
-			return true
-		}
-	}
-	return false
-}
-
-func credentialSchemaForKind(connector connectors.Connector, kind string) (connectors.CredentialSchema, bool) {
-	if !connectors.ValidIdentifier(kind) {
-		return connectors.CredentialSchema{}, false
-	}
-	for _, schema := range connector.CredentialSchemas() {
-		if schema.Kind == kind {
-			return schema, true
-		}
-	}
-	return connectors.CredentialSchema{}, false
 }
 
 func handleConnectorTargetError(w http.ResponseWriter, err error) {

@@ -16,7 +16,7 @@ func (s connectorTargetHandlers) updatePreparedCredentialProfile(
 	existing connectortargets.CredentialProfile,
 	prepared preparedConnectorCredentialProfileInput,
 ) (connectortargets.CredentialProfile, error) {
-	encrypted, err := encryptPreparedCredentialSecret(runtime, existing.ID, prepared)
+	encrypted, err := s.encryptPreparedCredentialSecret(ctx, runtime, existing.ID, prepared)
 	if err != nil {
 		return connectortargets.CredentialProfile{}, err
 	}

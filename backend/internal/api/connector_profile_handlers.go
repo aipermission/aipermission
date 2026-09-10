@@ -63,7 +63,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		if err != nil {
 			return err
 		}
-		encrypted, err := encryptPreparedCredentialSecret(runtime, profile.ID, preparedProfile)
+		encrypted, err := s.encryptPreparedCredentialSecret(r.Context(), runtime, profile.ID, preparedProfile)
 		if err != nil {
 			return err
 		}
