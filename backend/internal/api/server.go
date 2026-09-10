@@ -15,7 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/retention"
@@ -67,8 +67,8 @@ type databaseRuntime struct {
 	registry           *connectors.Registry
 	adapterRegistry    *connectorapi.Registry
 	connectorResources connectorruntime.ResourceScopes
-	fileTransfers      *filetransfer.Store
 	consoleSessions    *console.Manager
+	fileTransfers      *filetransferhttp.Runtime
 	transferJobs       transferjobs.Registry
 	securityPolicy     *securitypolicy.Service
 	credBoundaryMu     sync.RWMutex
@@ -181,7 +181,6 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		tokens:          tokenStore,
 		registry:        registry,
 		adapterRegistry: resolved.adapterRegistry,
-		fileTransfers:   filetransfer.NewStore(database),
 		securityPolicy:  securitypolicy.NewService(database),
 		credBoundaries:  map[int64]connectorCredentialBoundary{},
 		vaultLeases:     vaultsessions.NewStore(),
@@ -206,6 +205,9 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize runtime identity: %w", err)
 	}
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
+	if err := server.initializeFileTransferRuntime(runtime); err != nil {
+		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
+	}
 	server.configureVaultSessionRuntime(runtime)
 	server.configureAuditDispatcher(runtime)
 	server.workspaces[activeID] = runtime

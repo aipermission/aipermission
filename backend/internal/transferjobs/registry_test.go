@@ -183,6 +183,45 @@ func TestShutdownWaitsForAcceptedRunnerAndRejectsLateLaunch(t *testing.T) {
 	}
 }
 
+func TestTryLaunchDistinguishesDuplicateFromClosedRegistry(t *testing.T) {
+	var registry Registry
+	started := make(chan struct{})
+	release := make(chan struct{})
+	_, cancel := context.WithCancel(t.Context())
+	if got := registry.Files.TryLaunch(1, cancel, func() {
+		close(started)
+		<-release
+	}); got != LaunchAccepted {
+		t.Fatalf("first launch result = %v, want %v", got, LaunchAccepted)
+	}
+	<-started
+
+	duplicateCtx, duplicateCancel := context.WithCancel(t.Context())
+	if got := registry.Files.TryLaunch(1, duplicateCancel, func() {
+		t.Error("duplicate runner executed")
+	}); got != LaunchAlreadyRunning {
+		t.Fatalf("duplicate launch result = %v, want %v", got, LaunchAlreadyRunning)
+	}
+	if duplicateCtx.Err() == nil {
+		t.Fatal("duplicate runner context was not canceled")
+	}
+
+	close(release)
+	if !registry.Wait(t.Context()) {
+		t.Fatal("accepted runner did not drain")
+	}
+	registry.Files.beginClose()
+	closedCtx, closedCancel := context.WithCancel(t.Context())
+	if got := registry.Files.TryLaunch(2, closedCancel, func() {
+		t.Error("closed runner executed")
+	}); got != LaunchRejectedClosed {
+		t.Fatalf("closed launch result = %v, want %v", got, LaunchRejectedClosed)
+	}
+	if closedCtx.Err() == nil {
+		t.Fatal("closed runner context was not canceled")
+	}
+}
+
 func TestShutdownDeadlineKeepsRunnerVisibleToWait(t *testing.T) {
 	var registry Registry
 	ctx, cancel := context.WithCancel(t.Context())

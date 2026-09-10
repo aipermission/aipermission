@@ -39,6 +39,12 @@ type credentialBoundaryState struct {
 	values []string
 }
 
+// Valid reports whether the boundary was initialized. An initialized boundary
+// may be empty when a credential profile contains no secret values.
+func (r CredentialBoundary) Valid() bool {
+	return r.state != nil
+}
+
 func NewCredentialBoundary(secrets map[string]any) CredentialBoundary {
 	unique := map[string]struct{}{}
 	collectConnectorCredentialStrings(secrets, unique)

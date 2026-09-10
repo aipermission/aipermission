@@ -240,7 +240,7 @@ func (s *Server) runBulkConsoleCommand(runtime *databaseRuntime, requestID int64
 	result, err := runtime.consoleSessions.Exec(ctx, principal, runtimeID, command)
 	if err != nil {
 		adapter := s.consoleErrorPresenter(context.Background(), runtime, runtimeID)
-		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorErrorMessage(adapter, "command execution failed", err))
+		_ = s.finishCommandRequest(context.Background(), runtime, requestID, "error", 0, "", "", 0, connectorapi.PresentedErrorMessage(adapter, "command execution failed", err))
 		return
 	}
 	if result.Running {

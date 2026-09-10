@@ -11,6 +11,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -48,7 +49,7 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 	if e.server == nil || e.runtime == nil {
 		return connectors.ActionResult{}, fmt.Errorf("ssh runtime is not available")
 	}
-	runtimeID, err := runtimeIDForTargetRef(ctx, e.runtime, action.TargetRef)
+	runtimeID, err := runtimeIDForTargetRefCapability(ctx, e.runtime, action.TargetRef, runtimeCapabilityForAction(action.ActionName))
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -63,9 +64,18 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 	case sshconnector.ActionBrowseRemoteFiles:
 		return e.browseRemoteFiles(ctx, runtimeID, action)
 	case sshconnector.ActionStartFileDownload:
-		return e.startFileDownload(ctx, runtimeID, action)
+		return e.startFileDownload(ctx, runtimeContext, runtimeID, action)
 	default:
 		return connectors.ActionResult{}, fmt.Errorf("%w: %s", sshconnector.ErrUnsupportedAction, action.ActionName)
+	}
+}
+
+func runtimeCapabilityForAction(actionName string) string {
+	switch actionName {
+	case sshconnector.ActionBrowseRemoteFiles, sshconnector.ActionStartFileDownload:
+		return connectortargets.RuntimeCapabilityFileTransfer
+	default:
+		return connectortargets.RuntimeCapabilityLiveConsole
 	}
 }
 
@@ -230,7 +240,7 @@ func (e runtimeExecutor) browseRemoteFiles(ctx context.Context, runtimeID int64,
 	}, nil
 }
 
-func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeContext connectors.RuntimeContext, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	remotePaths := stringSlicePayload(action.Payload, "remote_paths")
 	if len(remotePaths) == 0 {
 		return connectors.ActionResult{}, fmt.Errorf("remote_paths is required")
@@ -238,18 +248,25 @@ func (e runtimeExecutor) startFileDownload(ctx context.Context, runtimeID int64,
 	archiveName := stringPayload(action.Payload, "archive_name")
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	batch, err := e.server.ConnectorCreateDownloadBatch(ctx, runtimeID, remotePaths, archiveName, filetransfer.SourceMCP, filetransfer.StatusPending)
+	batch, err := e.server.ConnectorCreateAndRunDownloadBatch(ctx, connectorapi.TransferAuthorization{
+		ConnectorKind:         runtimeContext.Target.ConnectorKind,
+		TargetID:              runtimeContext.Target.ID,
+		TargetRef:             runtimeContext.Target.Ref,
+		TargetUpdatedAt:       runtimeContext.Target.UpdatedAt,
+		ProfileID:             runtimeContext.Profile.ID,
+		ProfileUpdatedAt:      runtimeContext.Profile.UpdatedAt,
+		ProfileSecretRevision: runtimeContext.Profile.SecretRevision,
+	}, runtimeID, remotePaths, archiveName, filetransfer.SourceMCP)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	go e.server.ConnectorRunTransferBatch(batch.ID, false)
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
 			"runtime_id": runtimeID,
 			"batch_id":   batch.ID,
 			"status":     batch.Status,
-			"items":      len(batch.Items),
+			"items":      batch.ItemCount,
 		},
 		DisplayText: "SSH download queue started.",
 		Handles: connectors.ActionHandles{

@@ -80,7 +80,7 @@ func TestS3SingleWhitespaceKeyDownloadUsesFallbackLocalName(t *testing.T) {
 	if !fixture.server.activeRuntime().transferJobs.Wait(waitCtx) {
 		t.Fatal("single download did not finish")
 	}
-	completed, err := fixture.server.activeRuntime().fileTransfers.Get(context.Background(), started.ID)
+	completed, err := filetransfer.NewStore(fixture.server.activeRuntime().database).Get(context.Background(), started.ID)
 	if err != nil || completed.Status != filetransfer.StatusCompleted {
 		t.Fatalf("completed transfer = %#v, %v", completed, err)
 	}
@@ -106,7 +106,7 @@ func TestS3SingleWhitespaceKeyDownloadUsesFallbackLocalName(t *testing.T) {
 
 func TestS3TransferAPIExactIdentity(t *testing.T) {
 	keys := []string{"invoice", "invoice ", " invoice", " ", "/invoice", "a//b", "a/../b", "a/./b", "caf\u00e9", "cafe\u0301", "a%2Fb", "a\\b"}
-	for _, key := range keys {
+	for index, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			requests := make(chan string, 8)
 			objectStore := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,11 +137,16 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			if err := json.Unmarshal(browse.Body.Bytes(), &page); err != nil || browse.Code != http.StatusOK || len(page.Entries) != 1 || page.Entries[0].Path != "/"+key || page.Parent != "/a/" {
 				t.Fatalf("browse: %d %s", browse.Code, browse.Body.String())
 			}
-			// Approval persistence and execution must retain the selected locator.
-			handlers := fileTransferHandlers{fixture.server}
+			// Transfer persistence and execution must retain the selected locator.
 			runtime := fixture.server.activeRuntime()
-			batch, _, err := handlers.createDownloadBatch(context.Background(), runtime, id, []string{page.Entries[0].Path}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval, "")
-			if err != nil {
+			started := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download-batch", "", startDownloadBatchRequest{
+				RuntimeID: id, RemotePaths: []string{page.Entries[0].Path}, IdempotencyKey: "exact-identity-" + strconv.Itoa(index),
+			})
+			if started.Code != http.StatusAccepted {
+				t.Fatalf("start batch: %d %s", started.Code, started.Body.String())
+			}
+			var batch filetransfer.BatchRecord
+			if err := json.Unmarshal(started.Body.Bytes(), &batch); err != nil {
 				t.Fatal(err)
 			}
 			if batch.Items[0].RemotePath != "/"+key {
@@ -150,12 +155,13 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			if key == " " && batch.Items[0].FileName != "aipermission-file" {
 				t.Fatalf("whitespace key local filename = %q", batch.Items[0].FileName)
 			}
-			_, _, err = runtime.fileTransfers.ApproveBatch(context.Background(), batch.ID, filetransfer.BatchApprovalRequest{ApprovedItemIDs: []int64{batch.Items[0].ID}})
-			if err != nil {
-				t.Fatal(err)
+			waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if !runtime.transferJobs.Wait(waitCtx) {
+				cancel()
+				t.Fatal("transfer batch did not finish")
 			}
-			handlers.runTransferBatch(context.Background(), runtime, batch.ID, false)
-			item, err := runtime.fileTransfers.Get(context.Background(), batch.Items[0].ID)
+			cancel()
+			item, err := filetransfer.NewStore(runtime.database).Get(context.Background(), batch.Items[0].ID)
 			if err != nil || item.Status != filetransfer.StatusCompleted {
 				t.Fatalf("transfer = %#v, %v", item, err)
 			}
@@ -163,7 +169,7 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 			if err != nil || string(data) != "data" {
 				t.Fatalf("bytes = %q, %v", data, err)
 			}
-			for _, method := range []string{"HEAD", "GET"} {
+			for _, method := range []string{"HEAD", "HEAD", "GET"} {
 				select {
 				case got := <-requests:
 					if got != method+" /identity-bucket/"+key {
@@ -229,7 +235,7 @@ func TestS3CompletedDownloadBatchReplayPreservesArtifact(t *testing.T) {
 	if !runtime.transferJobs.Wait(waitCtx) {
 		t.Fatal("download batch did not finish")
 	}
-	completed, err := runtime.fileTransfers.GetBatch(context.Background(), started.ID)
+	completed, err := filetransfer.NewStore(runtime.database).GetBatch(context.Background(), started.ID)
 	if err != nil || completed.Status != filetransfer.StatusCompleted || len(completed.Items) != 1 {
 		t.Fatalf("completed batch = %#v, %v", completed, err)
 	}
@@ -249,9 +255,5 @@ func TestS3CompletedDownloadBatchReplayPreservesArtifact(t *testing.T) {
 	}
 	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {
 		t.Fatalf("artifact after replay = %q, %v", data, err)
-	}
-	fileTransferHandlers{fixture.server}.runTransferBatch(context.Background(), runtime, completed.ID, false)
-	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {
-		t.Fatalf("artifact after terminal runner replay = %q, %v", data, err)
 	}
 }

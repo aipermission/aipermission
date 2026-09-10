@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
@@ -23,7 +24,6 @@ type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type vaultItemHandlers struct{ *Server }
-type fileTransferHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type vaultActionApprovalHandlers struct{ *Server }
@@ -187,27 +187,31 @@ func (s *Server) registerProjectAndVaultRoutes() {
 }
 
 func (s *Server) registerTransferRoutes() {
-	fileTransfers := fileTransferHandlers{s}
+	fileTransfers := s.fileTransferHTTPHandlers()
 
-	s.mux.HandleFunc("GET /api/file-transfers", fileTransfers.listFileTransfers)
-	s.mux.HandleFunc("GET /api/file-transfers/{id}", fileTransfers.getFileTransfer)
-	s.mux.HandleFunc("GET /api/file-transfers/{id}/download", fileTransfers.downloadTransferredFile)
-	s.mux.HandleFunc("POST /api/file-transfers/{id}/cancel", fileTransfers.cancelFileTransfer)
-	s.mux.HandleFunc("GET /api/file-transfer-batches", fileTransfers.listFileTransferBatches)
-	s.mux.HandleFunc("GET /api/file-transfer-batches/{id}", fileTransfers.getFileTransferBatch)
-	s.mux.HandleFunc("GET /api/file-transfer-batches/{id}/download", fileTransfers.downloadFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/pause", fileTransfers.pauseFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/resume", fileTransfers.resumeFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/cancel", fileTransfers.cancelFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/queue", fileTransfers.updateFileTransferBatchQueue)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/approve", fileTransfers.approveFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfer-batches/{id}/decline", fileTransfers.declineFileTransferBatch)
-	s.mux.HandleFunc("POST /api/file-transfers/browse", fileTransfers.browseRemoteFiles)
-	s.mux.HandleFunc("POST /api/file-transfers/expand", fileTransfers.expandRemoteFiles)
-	s.mux.HandleFunc("POST /api/file-transfers/upload", fileTransfers.startUpload)
-	s.mux.HandleFunc("POST /api/file-transfers/upload-batch", fileTransfers.startUploadBatch)
-	s.mux.HandleFunc("POST /api/file-transfers/download", fileTransfers.startDownload)
-	s.mux.HandleFunc("POST /api/file-transfers/download-batch", fileTransfers.startDownloadBatch)
+	registerFileTransferRoutes(s.mux, fileTransfers)
+}
+
+func registerFileTransferRoutes(mux *http.ServeMux, handlers *filetransferhttp.Handlers) {
+	mux.HandleFunc("GET /api/file-transfers", handlers.ListFileTransfers)
+	mux.HandleFunc("GET /api/file-transfers/{id}", handlers.GetFileTransfer)
+	mux.HandleFunc("GET /api/file-transfers/{id}/download", handlers.DownloadTransferredFile)
+	mux.HandleFunc("POST /api/file-transfers/{id}/cancel", handlers.CancelFileTransfer)
+	mux.HandleFunc("GET /api/file-transfer-batches", handlers.ListFileTransferBatches)
+	mux.HandleFunc("GET /api/file-transfer-batches/{id}", handlers.GetFileTransferBatch)
+	mux.HandleFunc("GET /api/file-transfer-batches/{id}/download", handlers.DownloadFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/pause", handlers.PauseFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/resume", handlers.ResumeFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/cancel", handlers.CancelFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/queue", handlers.UpdateFileTransferBatchQueue)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/approve", handlers.ApproveFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfer-batches/{id}/decline", handlers.DeclineFileTransferBatch)
+	mux.HandleFunc("POST /api/file-transfers/browse", handlers.BrowseRemoteFiles)
+	mux.HandleFunc("POST /api/file-transfers/expand", handlers.ExpandRemoteFiles)
+	mux.HandleFunc("POST /api/file-transfers/upload", handlers.StartUpload)
+	mux.HandleFunc("POST /api/file-transfers/upload-batch", handlers.StartUploadBatch)
+	mux.HandleFunc("POST /api/file-transfers/download", handlers.StartDownload)
+	mux.HandleFunc("POST /api/file-transfers/download-batch", handlers.StartDownloadBatch)
 }
 
 func (s *Server) registerConnectorRoutes() {

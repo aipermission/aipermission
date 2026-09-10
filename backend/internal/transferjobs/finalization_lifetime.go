@@ -14,6 +14,11 @@ func NewFinalizationLifetime() FinalizationLifetime {
 	return FinalizationLifetime{ctx: ctx, cancel: cancel}
 }
 
+// Valid reports whether the lifetime owns a cancellable workspace context.
+func (l FinalizationLifetime) Valid() bool {
+	return l.ctx != nil && l.cancel != nil
+}
+
 func (l FinalizationLifetime) Context() context.Context {
 	if l.ctx == nil {
 		return context.Background()

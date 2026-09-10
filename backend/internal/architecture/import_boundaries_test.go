@@ -80,6 +80,7 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 		modulePath + "/internal/retention/sqlstore",
 		modulePath + "/internal/console/terminaltext",
 		modulePath + "/internal/databasecatalog",
+		modulePath + "/internal/filetransfer/httpapi",
 		modulePath + "/internal/history",
 		modulePath + "/internal/legacymigration",
 		modulePath + "/internal/maintenanceconsole",
@@ -91,6 +92,14 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	for _, pkg := range packages {
 		if importsPackageOrSubpackage(packageDependencies(t, pkg), modulePath+"/internal/api") {
 			t.Errorf("%s must not depend on the HTTP/API composition root", pkg)
+		}
+	}
+}
+
+func TestFileTransferOwnershipBoundary(t *testing.T) {
+	for _, imported := range allPackageImports(t)[modulePath+"/internal/api"] {
+		if imported == modulePath+"/internal/filetransfer" {
+			t.Fatal("internal/api must use the file transfer owner instead of importing its store directly")
 		}
 	}
 }

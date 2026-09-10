@@ -33,26 +33,41 @@ type Group struct {
 	waiters []chan struct{}
 }
 
+type LaunchResult uint8
+
+const (
+	LaunchAccepted LaunchResult = iota
+	LaunchAlreadyRunning
+	LaunchRejectedClosed
+	LaunchRejectedInvalid
+)
+
 // Launch registers a job before its goroutine starts so shutdown can reject
 // late work and wait for every accepted runner to finish using runtime state.
 func (g *Group) Launch(id int64, cancel context.CancelFunc, run func()) bool {
+	return g.TryLaunch(id, cancel, run) == LaunchAccepted
+}
+
+// TryLaunch reports why a runner was not started. In particular, an
+// idempotent replay of an already-running job is not a shutdown rejection.
+func (g *Group) TryLaunch(id int64, cancel context.CancelFunc, run func()) LaunchResult {
 	if cancel == nil || run == nil {
 		if cancel != nil {
 			cancel()
 		}
-		return false
+		return LaunchRejectedInvalid
 	}
 	g.mu.Lock()
 	if g.closed {
 		g.mu.Unlock()
 		cancel()
-		return false
+		return LaunchRejectedClosed
 	}
 	entry := g.jobs[id]
 	if entry.running {
 		g.mu.Unlock()
 		cancel()
-		return false
+		return LaunchAlreadyRunning
 	}
 	entry.cancel = cancel
 	entry.running = true
@@ -64,7 +79,7 @@ func (g *Group) Launch(id int64, cancel context.CancelFunc, run func()) bool {
 		defer g.finish(id)
 		run()
 	}()
-	return true
+	return LaunchAccepted
 }
 
 func (g *Group) RegisterCancel(id int64, cancel context.CancelFunc) {

@@ -18,7 +18,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-var ErrInvalidRuntime = errors.New("invalid connector runtime")
+var (
+	ErrInvalidRuntime = errors.New("invalid connector runtime")
+)
 
 type SecretAccessorFactory func(map[string]any) connectors.SecretAccessor
 
@@ -179,17 +181,20 @@ func (s *Scope) managerFor(ctx context.Context, runtimeID int64) (*console.Manag
 }
 
 func (s *Scope) resolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectortargets.RuntimeSurface, error) {
-	target, profile, surface, err := s.targetProfileByRuntimeID(ctx, runtimeID)
+	store, err := s.store()
 	if err != nil {
 		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, err
+	}
+	target, storedProfile, surface, err := store.RuntimeContextByRuntimeID(ctx, runtimeID)
+	if err != nil {
+		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, err
+	}
+	profile := connectortargets.CredentialProfileView(storedProfile)
+	if target.ConnectorKind != s.kind || profile.ConnectorKind != s.kind || surface.ConnectorKind != s.kind {
+		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	if surface.CapabilityKind != strings.TrimSpace(capabilityKind) {
 		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
-	}
-	store, _ := s.store()
-	storedProfile, err := store.GetCredentialProfile(ctx, surface.TargetID, surface.ProfileID)
-	if err != nil {
-		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, err
 	}
 	secrets := map[string]any{}
 	if storedProfile.EncryptedSecretJSON != "" {

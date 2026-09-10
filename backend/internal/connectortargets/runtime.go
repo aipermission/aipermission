@@ -182,13 +182,36 @@ func (s *Store) ListRuntimeSurfacesForTarget(ctx context.Context, targetID int64
 }
 
 func (s *Store) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, RuntimeSurface, error) {
-	surface, err := s.GetRuntimeSurface(ctx, runtimeID)
+	target, profile, surface, err := s.RuntimeContextByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, RuntimeSurface{}, err
 	}
-	target, profile, err := s.ResolveConnectorActionTarget(ctx, connectors.FormatTargetRef(surface.ConnectorKind, surface.TargetID, surface.ProfileID))
+	return target, CredentialProfileView(profile), surface, nil
+}
+
+// RuntimeContextByRuntimeID resolves the surface, target, and full credential
+// profile from one database snapshot so connector execution cannot observe a
+// mixed set of revisions.
+func (s *Store) RuntimeContextByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, CredentialProfile, RuntimeSurface, error) {
+	if s == nil || s.db == nil {
+		return connectors.TargetView{}, CredentialProfile{}, RuntimeSurface{}, fmt.Errorf("connector target store is not configured")
+	}
+	executor, commit, rollback, err := s.transaction(ctx, "resolve connector runtime context")
 	if err != nil {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, RuntimeSurface{}, err
+		return connectors.TargetView{}, CredentialProfile{}, RuntimeSurface{}, err
+	}
+	defer rollback()
+	snapshot := &Store{db: executor}
+	surface, err := snapshot.GetRuntimeSurface(ctx, runtimeID)
+	if err != nil {
+		return connectors.TargetView{}, CredentialProfile{}, RuntimeSurface{}, err
+	}
+	target, profile, err := snapshot.resolveTargetProfile(ctx, surface.TargetID, surface.ProfileID, surface.ConnectorKind)
+	if err != nil {
+		return connectors.TargetView{}, CredentialProfile{}, RuntimeSurface{}, err
+	}
+	if err := commit(); err != nil {
+		return connectors.TargetView{}, CredentialProfile{}, RuntimeSurface{}, fmt.Errorf("commit connector runtime context snapshot: %w", err)
 	}
 	return target, profile, surface, nil
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -92,10 +93,10 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		return
 	} else if err != nil {
 		adapter := s.consoleErrorPresenter(r.Context(), runtime, request.RuntimeID)
-		if writeConnectorError(w, adapter, err) {
+		if connectorapi.WritePresentedError(w, adapter, err) {
 			return
 		}
-		writeError(w, http.StatusBadRequest, connectorErrorMessage(adapter, "console session failed", err))
+		writeError(w, http.StatusBadRequest, connectorapi.PresentedErrorMessage(adapter, "console session failed", err))
 		return
 	}
 	s.writeObservationAudit(r.Context(), runtime, "user", nil, item.RuntimeID, "console.session.created_observed", map[string]any{

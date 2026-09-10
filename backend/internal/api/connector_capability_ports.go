@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
 type connectorTargetLifecycleRuntimePort struct {
@@ -27,6 +26,12 @@ func (p connectorTargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() 
 }
 
 func connectorRuntimeScope(runtime *databaseRuntime, kind string) *connectorruntime.Scope {
+	return connectorRuntimeScopeWithSecretAccessor(runtime, kind, func(secrets map[string]any) connectors.SecretAccessor {
+		return connectorSecretAccessor{values: secrets, boundary: actionresult.NewCredentialBoundary(secrets)}
+	})
+}
+
+func connectorRuntimeScopeWithSecretAccessor(runtime *databaseRuntime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
 	if runtime == nil {
 		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{})
 	}
@@ -36,9 +41,7 @@ func connectorRuntimeScope(runtime *databaseRuntime, kind string) *connectorrunt
 		WorkspaceID:     runtime.workspaceUUID,
 		Resources:       runtime.connectorResources,
 		ConsoleSessions: runtime.consoleSessions,
-		SecretAccessor: func(secrets map[string]any) connectors.SecretAccessor {
-			return connectorSecretAccessor{values: secrets, boundary: actionresult.NewCredentialBoundary(secrets)}
-		},
+		SecretAccessor:  accessor,
 	})
 }
 
@@ -52,10 +55,6 @@ func connectorLiveRuntime(runtime *databaseRuntime, kind string) connectorapi.Li
 
 func connectorActionRuntime(runtime *databaseRuntime, kind string) connectorapi.ActionRuntime {
 	return connectorRuntimeScope(runtime, kind).ActionRuntime()
-}
-
-func connectorTransferRuntime(runtime *databaseRuntime, kind string) connectorapi.TransferRuntime {
-	return connectorRuntimeScope(runtime, kind).TransferRuntime()
 }
 
 func connectorTargetLifecycleRuntime(runtime *databaseRuntime, kind string) connectorapi.TargetLifecycleRuntime {
@@ -140,26 +139,18 @@ func (p connectorRuntimeActionGatewayPort) ConnectorRestartConsoleSession(ctx co
 	return connectorapi.ConsoleRestartResult{ClosedSessionIDs: result.ClosedSessionIDs, CanceledRunningRequests: result.CanceledRunningRequests}, nil
 }
 
-func (p connectorRuntimeActionGatewayPort) ConnectorCreateDownloadBatch(ctx context.Context, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error) {
+func (p connectorRuntimeActionGatewayPort) ConnectorCreateAndRunDownloadBatch(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, remotePaths []string, archiveName string, source string) (connectorapi.TransferBatch, error) {
 	if p.server == nil {
-		return filetransfer.BatchRecord{}, errInvalidConnectorRuntime
+		return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 	}
 	if err := connectorRuntimeIDBelongsToKind(ctx, p.runtime, p.kind, runtimeID); err != nil {
-		return filetransfer.BatchRecord{}, err
+		return connectorapi.TransferBatch{}, err
 	}
-	batch, _, err := fileTransferHandlers{p.server}.createDownloadBatch(ctx, p.runtime, runtimeID, remotePaths, archiveName, source, status, "")
-	return batch, err
-}
-
-func (p connectorRuntimeActionGatewayPort) ConnectorRunTransferBatch(batchID int64, overwrite bool) {
-	if p.server == nil || p.runtime == nil || p.runtime.fileTransfers == nil {
-		return
+	if p.runtime == nil || p.runtime.fileTransfers == nil {
+		return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 	}
-	batch, err := p.runtime.fileTransfers.GetBatch(context.Background(), batchID)
-	if err != nil || connectorRuntimeIDBelongsToKind(context.Background(), p.runtime, p.kind, batch.RuntimeID) != nil {
-		return
-	}
-	fileTransferHandlers{p.server}.launchTransferBatch(p.runtime, batchID, overwrite)
+	batch, err := p.server.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, p.runtime.fileTransfers, authorization, runtimeID, remotePaths, archiveName, source)
+	return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
 }
 
 type connectorActionFinishGatewayPort struct {
@@ -247,24 +238,6 @@ func connectorRuntimeIDBelongsToKind(ctx context.Context, runtime *databaseRunti
 
 func connectorRuntimeIDBelongsToTarget(ctx context.Context, runtime *databaseRuntime, kind string, targetID int64, runtimeID int64) error {
 	return connectorRuntimeScope(runtime, kind).RequireTargetRuntimeID(ctx, targetID, runtimeID)
-}
-
-type connectorFileTransferPorts struct {
-	gateway connectorapi.FileTransferGateway
-	runtime connectorapi.TransferRuntime
-}
-
-func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) connectorFileTransferPorts {
-	kind := ""
-	if runtime != nil && runtime.database != nil {
-		if target, _, _, err := connectortargets.NewStore(runtime.database).TargetProfileByRuntimeID(ctx, runtimeID); err == nil {
-			kind = target.ConnectorKind
-		}
-	}
-	return connectorFileTransferPorts{
-		gateway: connectorFileTransferGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: server}, runtime: runtime, kind: kind},
-		runtime: connectorTransferRuntime(runtime, kind),
-	}
 }
 
 var _ connectorapi.RouteGateway = connectorRouteGatewayPort{}

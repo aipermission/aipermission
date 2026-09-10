@@ -102,6 +102,16 @@ func TestStoreTargetProfileByRuntimeIDUsesRuntimeSurface(t *testing.T) {
 	if gotProfile.Public["username"] != "admin" || gotProfile.Public["ssh_key_id"].(float64) != float64(keyID) {
 		t.Fatalf("unexpected credential metadata: %#v", gotProfile.Public)
 	}
+	contextTarget, contextProfile, contextSurface, err := store.RuntimeContextByRuntimeID(ctx, surface.ID)
+	if err != nil {
+		t.Fatalf("runtime context snapshot: %v", err)
+	}
+	if contextTarget.ID != target.ID || contextProfile.ID != profile.ID || contextSurface.ID != surface.ID {
+		t.Fatalf("unexpected runtime snapshot: target=%#v profile=%#v surface=%#v", contextTarget, contextProfile, contextSurface)
+	}
+	if contextProfile.EncryptedSecretJSON != profile.EncryptedSecretJSON || contextProfile.CreatedAt == "" {
+		t.Fatalf("runtime snapshot omitted full credential state: %#v", contextProfile)
+	}
 }
 
 func TestEnsureRuntimeSurfacePreservesRevisionWhenUnchanged(t *testing.T) {

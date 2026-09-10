@@ -1,4 +1,4 @@
-package api
+package filetransferhttp
 
 import (
 	"crypto/sha256"

@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func TestCredentialBoundaryValidityDistinguishesZeroAndEmptyInitializedValues(t *testing.T) {
+	if (CredentialBoundary{}).Valid() {
+		t.Fatal("zero credential boundary reported valid")
+	}
+	if boundary := NewCredentialBoundary(nil); !boundary.Valid() || !boundary.Empty() {
+		t.Fatalf("initialized empty boundary validity=%t empty=%t", boundary.Valid(), boundary.Empty())
+	}
+}
+
 func TestCredentialBoundaryRedactsEncodedVariants(t *testing.T) {
 	boundary := NewCredentialBoundary(map[string]any{
 		"password": "credential+/value",

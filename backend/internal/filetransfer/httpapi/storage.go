@@ -1,4 +1,4 @@
-package api
+package filetransferhttp
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 )
 
-func (s fileTransferHandlers) stageUploadFile(reader io.Reader) (string, int64, string, error) {
+func (s Handlers) stageUploadFile(reader io.Reader) (string, int64, string, error) {
 	root, err := s.ensureFileTransferTempRoot()
 	if err != nil {
 		return "", 0, "", err
@@ -22,7 +22,7 @@ func (s fileTransferHandlers) stageUploadFile(reader io.Reader) (string, int64, 
 	return filetransfer.StageUpload(root, reader)
 }
 
-func (s fileTransferHandlers) reserveDownloadTempFile() (string, error) {
+func (s Handlers) reserveDownloadTempFile() (string, error) {
 	root, err := s.ensureFileTransferTempRoot()
 	if err != nil {
 		return "", err
@@ -30,15 +30,32 @@ func (s fileTransferHandlers) reserveDownloadTempFile() (string, error) {
 	return filetransfer.ReserveDownload(root)
 }
 
-func (s fileTransferHandlers) removeTransferTemp(runtime *databaseRuntime, transferID int64) {
-	item, err := runtime.fileTransfers.Get(context.Background(), transferID)
-	if err == nil && item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
-		_ = os.Remove(item.TempPath)
+func (s Handlers) removeTransferTemp(runtime *Runtime, transferID int64) {
+	item, err := runtime.store.Get(context.Background(), transferID)
+	if err == nil {
+		s.removeTransferTempPath(item.TempPath)
 	}
 }
 
-func (s fileTransferHandlers) cleanupBatchTemps(runtime *databaseRuntime, batchID int64) {
-	batch, err := runtime.fileTransfers.GetBatch(context.Background(), batchID)
+func (s Handlers) removeTransferTempPath(value string) {
+	if value != "" && s.tempPathAllowed(value) {
+		_ = os.Remove(value)
+	}
+}
+
+func (s Handlers) transferTerminalDurable(runtime *Runtime, transferID int64) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), fileTransferPersistenceAttemptTimeout)
+	defer cancel()
+	item, err := runtime.store.Get(ctx, transferID)
+	return err == nil && fileTransferTerminal(item.Status)
+}
+
+func fileTransferTerminal(status string) bool {
+	return status == filetransfer.StatusCompleted || status == filetransfer.StatusFailed || status == filetransfer.StatusCanceled
+}
+
+func (s Handlers) cleanupBatchTemps(runtime *Runtime, batchID int64) {
+	batch, err := runtime.store.GetBatch(context.Background(), batchID)
 	if err != nil {
 		return
 	}
@@ -53,19 +70,19 @@ func (s fileTransferHandlers) cleanupBatchTemps(runtime *databaseRuntime, batchI
 		}
 	}
 }
-func (s fileTransferHandlers) cleanupBatchTempsIfDurable(runtime *databaseRuntime, batchID int64, durable bool) {
+func (s Handlers) cleanupBatchTempsIfDurable(runtime *Runtime, batchID int64, durable bool) {
 	if durable {
 		s.cleanupBatchTemps(runtime, batchID)
 	}
 }
-func (s fileTransferHandlers) scheduleBatchTempCleanup(batch filetransfer.BatchRecord) {
+func (s Handlers) scheduleBatchTempCleanup(batch filetransfer.BatchRecord) {
 	s.scheduleTransferTempCleanup(batch.ArchivePath)
 	for _, item := range batch.Items {
 		s.scheduleTransferTempCleanup(item.TempPath)
 	}
 }
 
-func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchRecord) (string, error) {
+func (s Handlers) createDownloadArchive(batch filetransfer.BatchRecord) (string, error) {
 	root, err := s.ensureFileTransferTempRoot()
 	if err != nil {
 		return "", err
@@ -73,16 +90,12 @@ func (s fileTransferHandlers) createDownloadArchive(batch filetransfer.BatchReco
 	return filetransfer.CreateDownloadArchive(root, batch)
 }
 
-func relativeArchiveEntryPath(remotePath, archiveRoot string) string {
-	return filetransfer.RelativeArchiveEntryPath(remotePath, archiveRoot)
-}
-
 func setDownloadHeaders(w http.ResponseWriter, fileName string) {
 	contentType := mime.TypeByExtension(filepath.Ext(fileName))
 	httpattachment.SetHeaders(w, fileName, contentType)
 }
 
-func (s fileTransferHandlers) ensureFileTransferTempRoot() (string, error) {
+func (s Handlers) ensureFileTransferTempRoot() (string, error) {
 	root := s.fileTransferTempRoot()
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("create file transfer temp directory: %w", err)
@@ -90,26 +103,22 @@ func (s fileTransferHandlers) ensureFileTransferTempRoot() (string, error) {
 	return root, nil
 }
 
-func (s fileTransferHandlers) fileTransferTempRoot() string {
-	return filepath.Join(filepath.Dir(s.config.DataPath), "file-transfers")
+func (s Handlers) fileTransferTempRoot() string {
+	return filepath.Join(filepath.Dir(s.dataPath), "file-transfers")
 }
 
 func cleanupTempPaths(paths []string) {
 	filetransfer.CleanupPaths(paths)
 }
 
-func joinRemoteFilePath(remoteDir, fileName string) string {
-	return filetransfer.JoinRemoteFilePath(remoteDir, fileName)
-}
-
 func transferSpeedAndETA(transferred, total int64, elapsed time.Duration) (int64, int64) {
 	return filetransfer.SpeedAndETA(transferred, total, elapsed)
 }
 
-func (s fileTransferHandlers) tempPathAllowed(value string) bool {
+func (s Handlers) tempPathAllowed(value string) bool {
 	return filetransfer.TempPathAllowed(s.fileTransferTempRoot(), value)
 }
 
-func (s fileTransferHandlers) scheduleTransferTempCleanup(value string) {
+func (s Handlers) scheduleTransferTempCleanup(value string) {
 	filetransfer.ScheduleTempCleanup(s.fileTransferTempRoot(), value, fileTransferTempTTL)
 }

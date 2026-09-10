@@ -21,7 +21,7 @@ func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
 		{name: "peer gateway", value: connectorPeerGatewayPort{}, methods: []string{"ConnectorTrustStorePath"}},
 		{name: "live console gateway", value: connectorLiveConsoleGatewayPort{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
 		{name: "route gateway", value: connectorRouteGatewayPort{}, methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
-		{name: "runtime action gateway", value: connectorRuntimeActionGatewayPort{}, methods: []string{"ConnectorCreateDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorRunTransferBatch", "ConnectorTrustStorePath"}},
+		{name: "runtime action gateway", value: connectorRuntimeActionGatewayPort{}, methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
 		{name: "action finish gateway", value: connectorActionFinishGatewayPort{}, methods: []string{"ConnectorFinishActionRequest"}},
 		{name: "file transfer gateway", value: connectorFileTransferGatewayPort{}, methods: []string{"ConnectorRuntimeCapabilities", "ConnectorTrustStorePath"}},
 		{name: "target deletion gateway", value: connectorTargetDeletionGatewayPort{}, methods: []string{"ConnectorDeleteTargetRecord", "ConnectorFinalizeDeletedTarget", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},

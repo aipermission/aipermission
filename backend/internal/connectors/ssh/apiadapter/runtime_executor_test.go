@@ -7,9 +7,28 @@ import (
 	"testing"
 	"time"
 
+	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
+
+func TestRuntimeCapabilityForActionSeparatesConsoleAndFileTransfers(t *testing.T) {
+	for _, testCase := range []struct {
+		action string
+		want   string
+	}{
+		{action: sshconnector.ActionExec, want: connectortargets.RuntimeCapabilityLiveConsole},
+		{action: sshconnector.ActionReadConsole, want: connectortargets.RuntimeCapabilityLiveConsole},
+		{action: sshconnector.ActionRestartConsoleSession, want: connectortargets.RuntimeCapabilityLiveConsole},
+		{action: sshconnector.ActionBrowseRemoteFiles, want: connectortargets.RuntimeCapabilityFileTransfer},
+		{action: sshconnector.ActionStartFileDownload, want: connectortargets.RuntimeCapabilityFileTransfer},
+	} {
+		if got := runtimeCapabilityForAction(testCase.action); got != testCase.want {
+			t.Fatalf("capability for %s = %q, want %q", testCase.action, got, testCase.want)
+		}
+	}
+}
 
 type delayedConsoleCommandSessions struct {
 	readyDelay time.Duration

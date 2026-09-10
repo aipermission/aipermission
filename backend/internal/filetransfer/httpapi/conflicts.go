@@ -1,4 +1,4 @@
-package api
+package filetransferhttp
 
 import (
 	"context"
@@ -9,20 +9,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
-func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeID int64, remotePath string, overwrite bool, tempPath string) bool {
+func (s Handlers) checkUploadOverwrite(w http.ResponseWriter, r *http.Request, execution transferExecution, remotePath string, overwrite bool, tempPath string) bool {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
+	status, err := execution.adapter.StatRemotePath(ctx, execution.gateway, execution.runtime, execution.runtimeID, remotePath)
 	if err != nil {
 		_ = os.Remove(tempPath)
-		handleConnectorTargetRuntimeError(w, err)
-		return false
-	}
-	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, runtimeID)
-	status, err := adapter.StatRemotePath(ctx, ports.gateway, ports.runtime, runtimeID, remotePath)
-	if err != nil {
-		_ = os.Remove(tempPath)
-		s.writeCredentialSafeConnectorError(w, ctx, runtime, runtimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
+		s.writeCredentialSafeConnectorError(w, execution, http.StatusBadGateway, "remote path check failed", err)
 		return false
 	}
 	if !status.Exists {
@@ -53,22 +46,15 @@ func (s fileTransferHandlers) checkUploadOverwrite(w http.ResponseWriter, r *htt
 	return true
 }
 
-func (s fileTransferHandlers) checkUploadBatchOverwrite(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, runtimeID int64, requests []filetransfer.CreateRequest, overwrite bool, tempPaths []string) ([]remoteFileConflict, bool) {
+func (s Handlers) checkUploadBatchOverwrite(w http.ResponseWriter, r *http.Request, execution transferExecution, requests []filetransfer.CreateRequest, overwrite bool, tempPaths []string) ([]remoteFileConflict, bool) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
-	if err != nil {
-		cleanupTempPaths(tempPaths)
-		handleConnectorTargetRuntimeError(w, err)
-		return nil, false
-	}
 	var conflicts []remoteFileConflict
-	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, runtimeID)
 	for _, item := range requests {
-		status, err := adapter.StatRemotePath(ctx, ports.gateway, ports.runtime, runtimeID, item.RemotePath)
+		status, err := execution.adapter.StatRemotePath(ctx, execution.gateway, execution.runtime, execution.runtimeID, item.RemotePath)
 		if err != nil {
 			cleanupTempPaths(tempPaths)
-			s.writeCredentialSafeConnectorError(w, ctx, runtime, runtimeID, adapter, http.StatusBadGateway, "remote path check failed", err)
+			s.writeCredentialSafeConnectorError(w, execution, http.StatusBadGateway, "remote path check failed", err)
 			return nil, false
 		}
 		if !status.Exists {

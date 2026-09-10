@@ -18,7 +18,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
 var (
@@ -185,8 +184,25 @@ type ActionFinishGateway interface {
 
 // TransferBatchGateway owns creation and execution of connector download jobs.
 type TransferBatchGateway interface {
-	ConnectorCreateDownloadBatch(ctx context.Context, runtimeID int64, remotePaths []string, archiveName string, source string, status string) (filetransfer.BatchRecord, error)
-	ConnectorRunTransferBatch(batchID int64, overwrite bool)
+	ConnectorCreateAndRunDownloadBatch(ctx context.Context, authorization TransferAuthorization, runtimeID int64, remotePaths []string, archiveName string, source string) (TransferBatch, error)
+}
+
+// TransferAuthorization binds an asynchronous transfer to the immutable
+// target/profile snapshot that passed connector action authorization.
+type TransferAuthorization struct {
+	ConnectorKind         string
+	TargetID              int64
+	TargetRef             string
+	TargetUpdatedAt       string
+	ProfileID             int64
+	ProfileUpdatedAt      string
+	ProfileSecretRevision string
+}
+
+type TransferBatch struct {
+	ID        int64
+	Status    string
+	ItemCount int
 }
 
 // RuntimeCapabilityGateway exposes connector-owned runtime capabilities to

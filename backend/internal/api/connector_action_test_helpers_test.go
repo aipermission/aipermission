@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -54,6 +55,8 @@ func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vau
 		actionIdentityKey: identityKey,
 		securityPolicy:    securitypolicy.NewService(database),
 	}
+	runtime.finalization = transferjobs.NewFinalizationLifetime()
+	t.Cleanup(runtime.finalization.Stop)
 	runtime.setMCPStarted(true)
 	return runtime
 }

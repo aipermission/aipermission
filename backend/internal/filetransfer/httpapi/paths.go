@@ -1,4 +1,4 @@
-package api
+package filetransferhttp
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -35,9 +36,20 @@ func writeTransferPathError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, err.Error())
 }
 
-func (s fileTransferHandlers) normalizeTransferPath(ctx context.Context, runtime *databaseRuntime, runtimeID int64, value string, directory bool) (string, error) {
-	adapter, err := s.fileTransferAdapter(ctx, runtime, runtimeID)
+func (s Handlers) resolveAndNormalizeTransferPath(ctx context.Context, runtime *Runtime, runtimeID int64, value string, directory bool) (string, transferExecution, error) {
+	if err := validateTransferPathSyntax(value); err != nil {
+		return "", transferExecution{}, err
+	}
+	execution, err := s.resolveTransferExecution(ctx, runtime, runtimeID)
 	if err != nil {
+		return "", transferExecution{}, err
+	}
+	normalized, err := normalizeTransferPathForAdapter(execution.adapter, value, directory)
+	return normalized, execution, err
+}
+
+func normalizeTransferPathForAdapter(adapter connectorapi.FileTransferAdapter, value string, directory bool) (string, error) {
+	if err := validateTransferPathSyntax(value); err != nil {
 		return "", err
 	}
 	if policy, ok := adapter.(connectorapi.FileTransferPathPolicy); ok {
@@ -47,6 +59,14 @@ func (s fileTransferHandlers) normalizeTransferPath(ctx context.Context, runtime
 		return normalizeRemoteDirectoryPath(value)
 	}
 	return normalizeRemoteFilePath(value)
+}
+
+func validateTransferPathSyntax(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && !strings.HasPrefix(trimmed, "/") && !strings.HasPrefix(trimmed, "~") {
+		return errors.New("remote path must be absolute")
+	}
+	return nil
 }
 
 func transferParent(adapter any, value string) string {

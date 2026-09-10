@@ -171,7 +171,11 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	runtime.id = "transfer-shutdown"
-	runtime.fileTransfers = filetransfer.NewStore(database)
+	server := &Server{}
+	if err := server.initializeFileTransferRuntime(runtime); err != nil {
+		t.Fatalf("initialize transfer runtime: %v", err)
+	}
+	transferStore := filetransfer.NewStore(runtime.database)
 	store := connectortargets.NewStore(database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
@@ -184,7 +188,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := runtime.fileTransfers.Create(t.Context(), filetransfer.CreateRequest{
+	record, err := transferStore.Create(t.Context(), filetransfer.CreateRequest{
 		RuntimeID:  surface.ID,
 		Direction:  filetransfer.DirectionUpload,
 		Source:     filetransfer.SourceUI,
@@ -197,21 +201,21 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := runtime.fileTransfers.MarkRunning(t.Context(), record.ID); err != nil || !ok {
+	if ok, err := transferStore.MarkRunning(t.Context(), record.ID); err != nil || !ok {
 		t.Fatalf("mark running: ok=%v err=%v", ok, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	workerDone := make(chan filetransfer.Record, 1)
 	if !runtime.transferJobs.Files.Launch(record.ID, cancel, func() {
 		<-ctx.Done()
-		_, _ = runtime.fileTransfers.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
-		finished, _ := runtime.fileTransfers.Get(context.Background(), record.ID)
+		_, _ = transferStore.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
+		finished, _ := transferStore.Get(context.Background(), record.ID)
 		workerDone <- finished
 	}) {
 		t.Fatal("transfer runner was not accepted")
 	}
 
-	if err := (&Server{}).closeRuntime(runtime); err != nil {
+	if err := server.closeRuntime(runtime); err != nil {
 		t.Fatalf("close runtime: %v", err)
 	}
 	select {

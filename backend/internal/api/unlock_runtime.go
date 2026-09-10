@@ -20,7 +20,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -218,7 +217,6 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		registry:           s.connectorRegistry(),
 		adapterRegistry:    s.connectorAdapterRegistry(),
 		connectorResources: connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
-		fileTransfers:      filetransfer.NewStore(database),
 		credBoundaries:     map[int64]connectorCredentialBoundary{},
 		workspaceUUID:      workspaceUUID,
 		uiRetryIdentity:    uiRetryIdentity,
@@ -239,6 +237,12 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 	}
 	runtime.runtimeState.SetMCPStarted(settings.MCPStartEnabled)
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	if err := s.initializeFileTransferRuntime(runtime); err != nil {
+		runtime.finalization.Stop()
+		clearBytes(actionIdentityKey)
+		_ = database.Close()
+		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
+	}
 	s.configureVaultSessionRuntime(runtime)
 	s.configureAuditDispatcher(runtime)
 	return runtime, nil
@@ -467,14 +471,19 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 	if err := s.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
 		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.id, err)
 	}
-	if runtime.fileTransfers != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), fileTransferShutdownWait)
-		drained := runtime.transferJobs.Shutdown(shutdownCtx)
-		cancel()
-		if err := runtime.fileTransfers.FailActive(context.Background(), "workspace locked while file transfer was running", "workspace locked while file transfer queue was running"); err != nil {
+	if runtime.fileTransfers == nil {
+		runtime.finalization.Stop()
+		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.id)
+	} else {
+		drained, err := s.fileTransferHTTPHandlers().ShutdownRuntime(
+			runtime.fileTransfers,
+			fileTransferShutdownWait,
+			"workspace locked while file transfer was running",
+			"workspace locked while file transfer queue was running",
+		)
+		if err != nil {
 			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.id, err)
 		}
-		runtime.finalization.Stop()
 		if !drained {
 			go func() {
 				runtime.transferJobs.Wait(context.Background())
@@ -485,7 +494,6 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", fileTransferShutdownWait)
 		}
 	}
-	runtime.finalization.Stop()
 	return closeRuntimeStorage(runtime)
 }
 

@@ -1,4 +1,4 @@
-package api
+package filetransfer
 
 import (
 	"path"
@@ -24,11 +24,11 @@ func FuzzTransferPathNormalization(f *testing.F) {
 		)
 		switch kind % 3 {
 		case 0:
-			normalized, err = normalizeRemoteFilePath(input)
+			normalized, err = NormalizeRemoteFilePath(input)
 		case 1:
-			normalized, err = normalizeRemoteDirectoryPath(input)
+			normalized, err = NormalizeRemoteDirectoryPath(input)
 		default:
-			normalized, err = normalizeRelativeTransferPath(input)
+			normalized, err = NormalizeRelativeTransferPath(input)
 		}
 		if err != nil {
 			return

@@ -164,10 +164,15 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("oversized download status=%d body=%s", oversizedDownload.Code, oversizedDownload.Body.String())
 	}
 	runtime := fixture.server.activeRuntime()
-	handlers := fileTransferHandlers{fixture.server}
-	pendingBatch, _, err := handlers.createDownloadBatch(context.Background(), runtime, payload.Items[0].TransferRuntimeID, []string{
-		"/batch/a.bin", "/batch/b.bin", "/batch/c.bin",
-	}, "", filetransfer.SourceMCP, filetransfer.StatusPendingApproval, "")
+	pendingBatch, err := filetransfer.NewStore(runtime.database).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
+		RuntimeID: payload.Items[0].TransferRuntimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceMCP,
+		Status: filetransfer.StatusPendingApproval,
+		Items: []filetransfer.CreateRequest{
+			{RemotePath: "/batch/a.bin", FileName: "a.bin"},
+			{RemotePath: "/batch/b.bin", FileName: "b.bin"},
+			{RemotePath: "/batch/c.bin", FileName: "c.bin"},
+		},
+	})
 	if err != nil {
 		t.Fatalf("create pending approval download batch: %v", err)
 	}
@@ -175,14 +180,19 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	for _, item := range pendingBatch.Items {
 		approvedIDs = append(approvedIDs, item.ID)
 	}
-	approvedBatch, _, err := runtime.fileTransfers.ApproveBatch(context.Background(), pendingBatch.ID, filetransfer.BatchApprovalRequest{ApprovedItemIDs: approvedIDs})
-	if err != nil {
-		t.Fatalf("approve download batch: %v", err)
+	approved := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfer-batches/"+strconv.FormatInt(pendingBatch.ID, 10)+"/approve", "", map[string]any{"item_ids": approvedIDs})
+	if approved.Code != http.StatusOK {
+		t.Fatalf("approve download batch: %d %s", approved.Code, approved.Body.String())
 	}
-	if err := handlers.validateDownloadBatchBeforeRun(context.Background(), runtime, approvedBatch); err == nil {
-		t.Fatal("expected approved download batch to be revalidated against the 1 GiB limit")
+	waitCtx, cancelOversizedBatch := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelOversizedBatch()
+	if !runtime.transferJobs.Wait(waitCtx) {
+		t.Fatal("oversized approved download batch did not settle")
 	}
-	handlers.cleanupBatchTemps(runtime, pendingBatch.ID)
+	rejectedBatch, err := filetransfer.NewStore(runtime.database).GetBatch(context.Background(), pendingBatch.ID)
+	if err != nil || rejectedBatch.Status != filetransfer.StatusFailed {
+		t.Fatalf("oversized approved batch = %#v, %v", rejectedBatch, err)
+	}
 
 	body, contentType := multipartUploadBody(t, map[string]string{
 		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),

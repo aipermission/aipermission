@@ -1,8 +1,7 @@
-package api
+package filetransferhttp
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,58 +10,22 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
-func (s fileTransferHandlers) fileTransferAdapter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (connectorapi.FileTransferAdapter, error) {
-	store := connectortargets.NewStore(runtime.database)
-	target, _, _, err := store.TargetProfileByRuntimeID(ctx, runtimeID)
-	if err != nil {
-		return nil, err
-	}
-	adapter := s.connectorFileTransferAdapterFor(target.ConnectorKind)
-	if adapter == nil {
-		return nil, connectortargets.ErrInvalidTargetRef
-	}
-	return adapter, nil
-}
-
-func writeConnectorError(w http.ResponseWriter, adapter any, err error) bool {
-	presenter, _ := adapter.(connectorapi.ErrorPresenter)
-	if presenter == nil {
-		return false
-	}
-	return presenter.WriteConnectorError(w, err)
-}
-
-func connectorErrorMessage(adapter any, prefix string, err error) string {
-	presenter, _ := adapter.(connectorapi.ErrorPresenter)
-	if presenter != nil {
-		return presenter.ConnectorErrorMessage(prefix, err)
-	}
-	if err == nil {
-		return prefix
-	}
-	return prefix + ": " + strings.TrimSpace(err.Error())
-}
-
-func (s fileTransferHandlers) writeCredentialSafeConnectorError(
+func (s Handlers) writeCredentialSafeConnectorError(
 	w http.ResponseWriter,
-	ctx context.Context,
-	runtime *databaseRuntime,
-	runtimeID int64,
-	adapter any,
+	execution transferExecution,
 	status int,
 	prefix string,
 	err error,
 ) {
-	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, runtimeID)
-	if boundaryErr != nil || err == nil || boundary.Redact(err.Error()) != err.Error() {
+	boundary := execution.boundary
+	if err == nil || boundary.Redact(err.Error()) != err.Error() {
 		writeError(w, status, prefix)
 		return
 	}
-	presenter, _ := adapter.(connectorapi.ErrorPresenter)
+	presenter, _ := execution.adapter.(connectorapi.ErrorPresenter)
 	if presenter != nil {
 		response := httptest.NewRecorder()
 		if presenter.WriteConnectorError(response, err) {
@@ -80,7 +43,7 @@ func (s fileTransferHandlers) writeCredentialSafeConnectorError(
 			return
 		}
 	}
-	message := connectorErrorMessage(adapter, prefix, err)
+	message := connectorapi.PresentedErrorMessage(execution.adapter, prefix, err)
 	if boundary.Redact(message) != message {
 		message = prefix
 	}
@@ -117,15 +80,15 @@ func connectorValueContainsCredential(boundary connectorCredentialBoundary, valu
 	return boundary.Redact(string(encoded)) != string(encoded)
 }
 
-func credentialSafeFileTransferErrorMessage(ctx context.Context, runtime *databaseRuntime, runtimeID int64, prefix string, adapter any, err error) string {
-	if err == nil {
+func credentialSafeFileTransferErrorMessage(execution *transferExecution, prefix string, err error) string {
+	if err == nil || execution == nil {
 		return prefix
 	}
-	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, runtimeID)
-	if boundaryErr != nil || boundary.Redact(err.Error()) != err.Error() {
+	boundary := execution.boundary
+	if boundary.Redact(err.Error()) != err.Error() {
 		return prefix
 	}
-	message := connectorErrorMessage(adapter, prefix, err)
+	message := connectorapi.PresentedErrorMessage(execution.adapter, prefix, err)
 	if boundary.Redact(message) != message {
 		return prefix
 	}

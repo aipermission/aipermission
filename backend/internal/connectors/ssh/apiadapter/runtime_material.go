@@ -37,6 +37,10 @@ func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, err
 }
 
 func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, targetRef string) (int64, error) {
+	return runtimeIDForTargetRefCapability(ctx, runtime, targetRef, connectortargets.RuntimeCapabilityLiveConsole)
+}
+
+func runtimeIDForTargetRefCapability(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetRef string, capabilityKind string) (int64, error) {
 	kind, targetID, profileID, ok := connectors.ParseTargetRef(targetRef)
 	if !ok || kind != sshconnector.Kind {
 		return 0, connectortargets.ErrInvalidTargetRef
@@ -49,7 +53,7 @@ func runtimeIDForTargetRef(ctx context.Context, runtime connectorapi.LiveConsole
 		ConnectorKind:  sshconnector.Kind,
 		TargetID:       targetID,
 		ProfileID:      profileID,
-		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		CapabilityKind: capabilityKind,
 		Label:          profile.Label,
 	})
 	if err != nil {

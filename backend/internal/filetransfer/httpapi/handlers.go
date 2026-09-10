@@ -1,4 +1,4 @@
-package api
+package filetransferhttp
 
 import (
 	"context"
@@ -122,8 +122,8 @@ func newFileTransferStartError(status int, message string) error {
 }
 
 type fileTransferConnectorError struct {
-	Adapter connectorapi.FileTransferAdapter
-	Err     error
+	Execution transferExecution
+	Err       error
 }
 
 func (err *fileTransferConnectorError) Error() string {
@@ -133,11 +133,11 @@ func (err *fileTransferConnectorError) Error() string {
 	return err.Err.Error()
 }
 
-func newFileTransferConnectorError(adapter connectorapi.FileTransferAdapter, err error) error {
-	return &fileTransferConnectorError{Adapter: adapter, Err: err}
+func newFileTransferConnectorError(execution transferExecution, err error) error {
+	return &fileTransferConnectorError{Execution: execution, Err: err}
 }
 
-func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.Request) {
+func (s Handlers) ListFileTransfers(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
@@ -170,7 +170,7 @@ func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.R
 		filter.RuntimeID = id
 	}
 
-	items, total, err := runtime.fileTransfers.List(r.Context(), filter)
+	items, total, err := runtime.store.List(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -178,7 +178,7 @@ func (s fileTransferHandlers) listFileTransfers(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, makePageResponse(items, total, page))
 }
 
-func (s fileTransferHandlers) getFileTransfer(w http.ResponseWriter, r *http.Request) {
+func (s Handlers) GetFileTransfer(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -187,7 +187,7 @@ func (s fileTransferHandlers) getFileTransfer(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	item, err := runtime.fileTransfers.Get(r.Context(), id)
+	item, err := runtime.store.Get(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer not found")
 		return
@@ -199,7 +199,7 @@ func (s fileTransferHandlers) getFileTransfer(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.Request) {
+func (s Handlers) BrowseRemoteFiles(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
@@ -212,33 +212,27 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
-	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
+	remotePath, execution, err := s.resolveAndNormalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
 	if err != nil {
 		writeTransferPathError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	adapter, err := s.fileTransferAdapter(ctx, runtime, request.RuntimeID)
-	if err != nil {
-		handleConnectorTargetRuntimeError(w, err)
-		return
-	}
 	page := connectorapi.RemoteFilePage{}
-	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, request.RuntimeID)
-	if paginated, ok := adapter.(connectorapi.PaginatedFileTransferAdapter); ok {
-		page, err = paginated.BrowseRemoteFilesPage(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
+	if paginated, ok := execution.adapter.(connectorapi.PaginatedFileTransferAdapter); ok {
+		page, err = paginated.BrowseRemoteFilesPage(ctx, execution.gateway, execution.runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
 	} else if strings.TrimSpace(request.Cursor) != "" {
 		writeError(w, http.StatusBadRequest, "this connector does not support paginated file browsing")
 		return
 	} else {
-		page.Entries, err = adapter.BrowseRemoteFiles(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath)
+		page.Entries, err = execution.adapter.BrowseRemoteFiles(ctx, execution.gateway, execution.runtime, request.RuntimeID, remotePath)
 	}
 	if err != nil {
-		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, adapter, http.StatusBadGateway, "remote file browse failed", err)
+		s.writeCredentialSafeConnectorError(w, execution, http.StatusBadGateway, "remote file browse failed", err)
 		return
 	}
-	parent := transferParent(adapter, remotePath)
+	parent := transferParent(execution.adapter, remotePath)
 	response := browseRemoteFilesResponse{
 		Path:       remotePath,
 		Parent:     parent,
@@ -246,15 +240,14 @@ func (s fileTransferHandlers) browseRemoteFiles(w http.ResponseWriter, r *http.R
 		NextCursor: page.NextCursor,
 		HasMore:    page.HasMore,
 	}
-	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, request.RuntimeID)
-	if boundaryErr != nil || connectorValueContainsCredential(boundary, response) {
+	if connectorValueContainsCredential(execution.boundary, response) {
 		writeError(w, http.StatusBadGateway, "remote file browse violated the credential boundary")
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.Request) {
+func (s Handlers) ExpandRemoteFiles(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
@@ -267,35 +260,29 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
-	remotePath, err := s.normalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
+	remotePath, execution, err := s.resolveAndNormalizeTransferPath(r.Context(), runtime, request.RuntimeID, request.Path, true)
 	if err != nil {
 		writeTransferPathError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	baseAdapter, err := s.fileTransferAdapter(ctx, runtime, request.RuntimeID)
-	if err != nil {
-		handleConnectorTargetRuntimeError(w, err)
-		return
-	}
-	adapter, ok := baseAdapter.(connectorapi.RecursiveFileTransferAdapter)
+	adapter, ok := execution.adapter.(connectorapi.RecursiveFileTransferAdapter)
 	if !ok {
 		writeError(w, http.StatusConflict, "this connector does not support recursive file selection")
 		return
 	}
-	ports := connectorFileTransferPortsForID(ctx, s.Server, runtime, request.RuntimeID)
-	entries, err := adapter.ListRecursiveFiles(ctx, ports.gateway, ports.runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
+	entries, err := adapter.ListRecursiveFiles(ctx, execution.gateway, execution.runtime, request.RuntimeID, remotePath, maxFileTransferBatchItems, maxFileTransferObjectBytes, maxFileTransferBatchBytes)
 	if err != nil {
 		if errors.Is(err, connectorapi.ErrRemotePathNotFound) {
-			s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusNotFound, "remote path was not found", err)
+			s.writeCredentialSafeConnectorError(w, execution, http.StatusNotFound, "remote path was not found", err)
 			return
 		}
 		if errors.Is(err, connectorapi.ErrTransferLimit) {
-			s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusRequestEntityTooLarge, "recursive file selection exceeded its limit", err)
+			s.writeCredentialSafeConnectorError(w, execution, http.StatusRequestEntityTooLarge, "recursive file selection exceeded its limit", err)
 			return
 		}
-		s.writeCredentialSafeConnectorError(w, ctx, runtime, request.RuntimeID, baseAdapter, http.StatusBadGateway, "recursive file selection failed", err)
+		s.writeCredentialSafeConnectorError(w, execution, http.StatusBadGateway, "recursive file selection failed", err)
 		return
 	}
 	var totalBytes int64
@@ -303,15 +290,14 @@ func (s fileTransferHandlers) expandRemoteFiles(w http.ResponseWriter, r *http.R
 		totalBytes += entry.Size
 	}
 	response := expandRemoteFilesResponse{Path: remotePath, Entries: entries, TotalBytes: totalBytes}
-	boundary, boundaryErr := connectorCredentialBoundaryForRuntimeID(ctx, runtime, request.RuntimeID)
-	if boundaryErr != nil || connectorValueContainsCredential(boundary, response) {
+	if connectorValueContainsCredential(execution.boundary, response) {
 		writeError(w, http.StatusBadGateway, "recursive file selection violated the credential boundary")
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.Request) {
+func (s Handlers) CancelFileTransfer(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
@@ -320,7 +306,7 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	item, err := runtime.fileTransfers.Get(r.Context(), id)
+	item, err := runtime.store.Get(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer not found")
 		return
@@ -333,16 +319,16 @@ func (s fileTransferHandlers) cancelFileTransfer(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusConflict, "file transfer is not running")
 		return
 	}
-	changed, err := runtime.fileTransfers.Cancel(context.Background(), id, "canceled by local user")
+	changed, err := runtime.store.Cancel(context.Background(), id, "canceled by local user")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	if changed {
-		runtime.transferJobs.Files.Cancel(id)
+		runtime.jobs.Files.Cancel(id)
 		s.removeTransferTemp(runtime, id)
 	}
-	updated, err := runtime.fileTransfers.Get(r.Context(), id)
+	updated, err := runtime.store.Get(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
