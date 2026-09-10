@@ -23,6 +23,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -47,8 +48,7 @@ type Server struct {
 	vaultRevealLimiter   *runtimecontrol.Window
 	vaultGenerateLimiter *runtimecontrol.Window
 	vaultRequestLimiter  *runtimecontrol.Window
-	uiSessionMu          sync.RWMutex
-	uiSessions           map[string]uiSessionRecord
+	uiSessions           *uisession.Manager
 	auditHealth          observability.HealthTracker
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
@@ -168,7 +168,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
 		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
-		uiSessions:           map[string]uiSessionRecord{},
+		uiSessions:           uisession.New(cfg.FrontendPort),
 	}
 	runtime := &databaseRuntime{
 		id:              activeID,
@@ -235,7 +235,7 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
 		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
-		uiSessions:           map[string]uiSessionRecord{},
+		uiSessions:           uisession.New(cfg.FrontendPort),
 	}
 	server.routes()
 	return server

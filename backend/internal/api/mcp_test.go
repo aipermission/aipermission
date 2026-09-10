@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -28,6 +27,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
@@ -51,7 +51,6 @@ type testSSHConnectorProfile struct {
 	TargetRef string
 }
 
-const testUISessionToken = "test-ui-session"
 const testUICSRFToken = "test-ui-csrf"
 
 var (
@@ -224,20 +223,17 @@ func performJSONWithOptions(handler http.Handler, method string, path string, to
 }
 
 func authorizeTestUISession(srv *Server) {
-	expires := time.Now().UTC().Add(uiSessionMaxAge)
-	srv.uiSessionMu.Lock()
 	if srv.uiSessions == nil {
-		srv.uiSessions = map[string]uiSessionRecord{}
+		srv.uiSessions = uisession.New(srv.config.FrontendPort)
 	}
-	srv.uiSessions[hashUISessionToken(testUISessionToken)] = uiSessionRecord{Expires: expires, DatabaseID: srv.activeDatabase}
-	srv.uiSessionMu.Unlock()
-	recordTestUICookies([]*http.Cookie{{
-		Name:    uiSessionCookieName,
-		Value:   testUISessionToken,
-		Path:    "/",
-		Expires: expires,
-		MaxAge:  int(uiSessionMaxAge.Seconds()),
-	}})
+	response := httptest.NewRecorder()
+	srv.mu.Lock()
+	err := srv.issueUISessionLocked(response)
+	srv.mu.Unlock()
+	if err != nil {
+		panic("issue test UI session: " + err.Error())
+	}
+	recordTestUICookies(response.Result().Cookies())
 }
 
 func currentTestUICookie() *http.Cookie {

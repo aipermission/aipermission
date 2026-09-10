@@ -308,7 +308,10 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		writeInternalError(w)
 		return
 	}
-	s.issuePreparedUISessionLocked(w, preparedSession)
+	if err := s.issuePreparedUISessionLocked(w, preparedSession); err != nil {
+		writeInternalError(w)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "imported",

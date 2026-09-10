@@ -70,9 +70,9 @@ func TestMaintenanceConsoleLockClosesAttachedSession(t *testing.T) {
 	}
 	httpServer := httptest.NewServer(handler)
 	defer httpServer.Close()
-	header := http.Header{
-		"Cookie": {uiSessionCookieName + "=" + testUISessionToken},
-		"Origin": {"http://localhost:3001"},
+	header := http.Header{"Origin": {"http://localhost:3001"}}
+	if cookie := currentTestUICookie(); cookie != nil {
+		header.Set("Cookie", cookie.String())
 	}
 	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/api/settings/maintenance-console/attach"
 	ws, response, err := websocket.DefaultDialer.Dial(wsURL, header)
