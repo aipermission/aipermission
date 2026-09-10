@@ -91,3 +91,100 @@ func TestServiceFailedSwitchPreservesActiveRuntime(t *testing.T) {
 		t.Fatalf("active runtime changed: %#v", current)
 	}
 }
+
+func TestServiceRenameFailureReopensOriginalRuntime(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "aipermission.db")
+	const password = "DatabasePassword123"
+	database, err := db.OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	registry.Activate(runtime)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(path, id, password string) (*serviceRuntime, error) {
+			database, err := db.OpenEncrypted(path, password)
+			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: database}, err
+		},
+		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		Move:  func(string, string) error { return errors.New("injected move failure") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Rename(t.Context(), "Renamed", password); err == nil || !CredentialWasVerified(err) {
+		t.Fatalf("rename error=%v verified=%t", err, CredentialWasVerified(err))
+	}
+	reopened, ok := service.Active()
+	if !ok || reopened.identity.ID != "default" || reopened.identity.Path != path {
+		t.Fatalf("original runtime was not restored: %#v", reopened)
+	}
+	if err := reopened.database.PingContext(t.Context()); err != nil {
+		t.Fatalf("reopened database is unusable: %v", err)
+	}
+	if err := service.CloseAll(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServiceDeleteConfirmationFailsBeforeClosingRuntime(t *testing.T) {
+	registry := NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	runtime := &serviceRuntime{identity: Identity{ID: "default", Path: "/data/default.db"}}
+	registry.Activate(runtime)
+	closed := false
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db", Registry: registry,
+		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(*serviceRuntime) error { closed = true; return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.DeleteCurrent(t.Context(), "wrong", "Password123456"); !errors.Is(err, ErrNameConfirmation) {
+		t.Fatalf("delete error=%v", err)
+	}
+	if closed || !service.IsUnlocked() {
+		t.Fatalf("confirmation failure changed runtime: closed=%t unlocked=%t", closed, service.IsUnlocked())
+	}
+}
+
+func TestServiceDeleteCloseFailureStillPromotesRemainingRuntime(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	firstDB, err := db.OpenEncrypted(defaultPath, "Password123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "databases", "second.db")
+	secondDB, err := db.OpenEncrypted(secondPath, "Password123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer firstDB.Close()
+	defer secondDB.Close()
+	registry := NewRegistry(defaultPath, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	first := &serviceRuntime{identity: Identity{ID: "default", Path: defaultPath}, database: firstDB}
+	second := &serviceRuntime{identity: Identity{ID: "second", Path: secondPath}, database: secondDB}
+	registry.Activate(second)
+	registry.Activate(first)
+	var activated *serviceRuntime
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: defaultPath, Registry: registry,
+		Open:        func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close:       func(*serviceRuntime) error { return errors.New("close failed") },
+		Validate:    func(string, string) error { return nil },
+		OnActivated: func(runtime *serviceRuntime) { activated = runtime },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.DeleteCurrent(t.Context(), "Default", "Password123456"); err == nil {
+		t.Fatal("expected close failure")
+	}
+	if active, ok := service.Active(); !ok || active != second || activated != second {
+		t.Fatalf("remaining runtime was not fully promoted: active=%#v activated=%#v", active, activated)
+	}
+}

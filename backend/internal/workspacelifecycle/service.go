@@ -1,6 +1,7 @@
 package workspacelifecycle
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,33 +20,43 @@ var (
 	ErrPlaintext        = errors.New("plaintext SQLite databases are not supported")
 	ErrInvalidScope     = errors.New("scope must be current or all")
 	ErrCredential       = errors.New("database credential rejected")
+	ErrNameRequired     = errors.New("database name is required")
+	ErrNameConfirmation = errors.New("database name confirmation does not match")
+	ErrRuntimeUnlocked  = errors.New("database is currently unlocked")
+	ErrInvalidRequest   = errors.New("invalid workspace lifecycle request")
+	ErrPasswordPolicy   = errors.New("database password policy rejected")
 )
 
 type Runtime interface {
 	WorkspaceIdentity() Identity
 	WorkspaceDatabase() *sql.DB
-	WorkspaceGatewaySecret() string
 }
 
 type Dependencies[T Runtime] struct {
-	DataPath    string
-	Registry    *Registry[T]
-	Open        func(path, id, password string) (T, error)
-	Close       func(T) error
-	OnActivated func(T)
-	OnOpened    func(T)
-	Validate    func(path, password string) error
+	DataPath            string
+	Registry            *Registry[T]
+	Open                func(path, id, password string) (T, error)
+	Close               func(T) error
+	OnActivated         func(T)
+	OnOpened            func(T)
+	Validate            func(path, password string) error
+	Move                func(currentPath, targetPath string) error
+	Delete              func(path string) error
+	ValidateNewPassword func(context.Context, *sql.DB, string, string) error
 }
 
 type Service[T Runtime] struct {
-	mu          sync.RWMutex
-	dataPath    string
-	registry    *Registry[T]
-	open        func(path, id, password string) (T, error)
-	close       func(T) error
-	onActivated func(T)
-	onOpened    func(T)
-	validate    func(path, password string) error
+	mu                  sync.RWMutex
+	dataPath            string
+	registry            *Registry[T]
+	open                func(path, id, password string) (T, error)
+	close               func(T) error
+	onActivated         func(T)
+	onOpened            func(T)
+	validate            func(path, password string) error
+	move                func(currentPath, targetPath string) error
+	delete              func(path string) error
+	validateNewPassword func(context.Context, *sql.DB, string, string) error
 }
 
 type Status struct {
@@ -64,6 +75,38 @@ type Transition[T Runtime] struct {
 	Opened   bool
 }
 
+type verifiedCredentialError struct{ err error }
+
+func (e verifiedCredentialError) Error() string { return e.err.Error() }
+func (e verifiedCredentialError) Unwrap() error { return e.err }
+
+func CredentialWasVerified(err error) bool {
+	var verified verifiedCredentialError
+	return errors.As(err, &verified)
+}
+
+func afterCredential(err error) error {
+	if err == nil {
+		return nil
+	}
+	return verifiedCredentialError{err: err}
+}
+
+type classifiedError struct {
+	kind error
+	err  error
+}
+
+func (e classifiedError) Error() string { return e.err.Error() }
+func (e classifiedError) Unwrap() error { return e.err }
+func (e classifiedError) Is(target error) bool {
+	return target == e.kind || errors.Is(e.err, target)
+}
+
+func classify(kind, err error) error { return classifiedError{kind: kind, err: err} }
+
+func PasswordPolicyError(err error) error { return classify(ErrPasswordPolicy, err) }
+
 func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	if strings.TrimSpace(dependencies.DataPath) == "" || dependencies.Registry == nil ||
 		dependencies.Open == nil || dependencies.Close == nil {
@@ -73,11 +116,20 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	if validate == nil {
 		validate = db.ValidateEncrypted
 	}
+	move := dependencies.Move
+	if move == nil {
+		move = databasecatalog.MoveDatabase
+	}
+	deleteDatabase := dependencies.Delete
+	if deleteDatabase == nil {
+		deleteDatabase = databasecatalog.DeleteDatabase
+	}
 	return &Service[T]{
 		dataPath: dependencies.DataPath, registry: dependencies.Registry,
 		open: dependencies.Open, close: dependencies.Close,
 		onActivated: dependencies.OnActivated, onOpened: dependencies.OnOpened,
-		validate: validate,
+		validate: validate, move: move, delete: deleteDatabase,
+		validateNewPassword: dependencies.ValidateNewPassword,
 	}, nil
 }
 
@@ -297,6 +349,174 @@ func (s *Service[T]) activateLocked(runtime T) {
 
 func (s *Service[T]) transition(status string, runtime T, opened bool) Transition[T] {
 	return Transition[T]{Status: status, State: "unlocked", Identity: runtime.WorkspaceIdentity(), Runtime: runtime, Opened: opened}
+}
+
+func (s *Service[T]) Rename(ctx context.Context, databaseName, currentPassword string) (Transition[T], error) {
+	databaseName = strings.TrimSpace(databaseName)
+	if databaseName == "" {
+		return Transition[T]{}, ErrNameRequired
+	}
+	if currentPassword == "" {
+		return Transition[T]{}, ErrPasswordRequired
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	runtime, ok := s.registry.Active()
+	if !ok {
+		return Transition[T]{}, ErrLocked
+	}
+	identity := runtime.WorkspaceIdentity()
+	newID, newPath, err := databasecatalog.RenameDatabaseTarget(s.dataPath, identity.Path, databaseName)
+	if err != nil {
+		return Transition[T]{}, classify(ErrInvalidRequest, err)
+	}
+	if err := s.validate(identity.Path, currentPassword); err != nil {
+		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+	}
+	if err := db.CheckpointForFilesystemMutation(ctx, runtime.WorkspaceDatabase()); err != nil {
+		return Transition[T]{}, afterCredential(err)
+	}
+	closeErr := s.close(runtime)
+	s.registry.Remove(identity.ID, false)
+	if closeErr != nil {
+		s.registry.Select(identity)
+		s.reopenBestEffort(identity, currentPassword)
+		return Transition[T]{}, afterCredential(closeErr)
+	}
+	if err := s.move(identity.Path, newPath); err != nil {
+		s.registry.Select(identity)
+		s.reopenBestEffort(identity, currentPassword)
+		return Transition[T]{}, afterCredential(err)
+	}
+	identity = Identity{ID: newID, Path: newPath}
+	s.registry.Select(identity)
+	return Transition[T]{Status: "renamed", State: "locked", Identity: identity}, nil
+}
+
+func (s *Service[T]) DeleteCurrent(ctx context.Context, confirmName, currentPassword string) (Transition[T], error) {
+	if currentPassword == "" {
+		return Transition[T]{}, ErrPasswordRequired
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	runtime, ok := s.registry.Active()
+	if !ok {
+		return Transition[T]{}, ErrLocked
+	}
+	identity := runtime.WorkspaceIdentity()
+	if strings.TrimSpace(confirmName) != s.databaseNameLocked(identity) {
+		return Transition[T]{}, ErrNameConfirmation
+	}
+	if err := s.validate(identity.Path, currentPassword); err != nil {
+		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+	}
+	if err := db.CheckpointForFilesystemMutation(ctx, runtime.WorkspaceDatabase()); err != nil {
+		return Transition[T]{}, afterCredential(err)
+	}
+	closeErr := s.close(runtime)
+	_, _, promoted, promotedOK := s.registry.Remove(identity.ID, true)
+	if promotedOK {
+		s.activateLocked(promoted)
+	}
+	if closeErr != nil {
+		return Transition[T]{}, afterCredential(closeErr)
+	}
+	if err := s.delete(identity.Path); err != nil {
+		return Transition[T]{}, afterCredential(err)
+	}
+	if promotedOK {
+		return s.transition("deleted", promoted, false), nil
+	}
+	s.registry.ResetSelection(databasecatalog.DefaultDatabaseID(s.dataPath))
+	return Transition[T]{Status: "deleted", State: "locked", Identity: s.registry.Selection()}, nil
+}
+
+func (s *Service[T]) DeleteLocked(databaseID, password string) (Transition[T], error) {
+	if strings.TrimSpace(databaseID) == "" {
+		return Transition[T]{}, fmt.Errorf("database id is required")
+	}
+	if password == "" {
+		return Transition[T]{}, ErrPasswordRequired
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	identity, err := s.unlockTarget(databaseID)
+	if err != nil {
+		return Transition[T]{}, classify(ErrInvalidRequest, err)
+	}
+	if _, ok := s.registry.Lookup(identity.ID); ok {
+		return Transition[T]{}, ErrRuntimeUnlocked
+	}
+	if !db.Exists(identity.Path) {
+		return Transition[T]{}, ErrNotInitialized
+	}
+	if db.LooksLikePlainSQLite(identity.Path) {
+		return Transition[T]{}, classify(ErrPlaintext, fmt.Errorf("plaintext SQLite databases are not supported; remove this file manually"))
+	}
+	if err := s.validate(identity.Path, password); err != nil {
+		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+	}
+	if err := s.delete(identity.Path); err != nil {
+		return Transition[T]{}, afterCredential(err)
+	}
+	if s.registry.Selection().ID == identity.ID {
+		s.registry.ResetSelection(databasecatalog.DefaultDatabaseID(s.dataPath))
+	}
+	return Transition[T]{Status: "deleted", State: "locked", Identity: identity}, nil
+}
+
+func (s *Service[T]) ChangePassword(ctx context.Context, currentPassword, newPassword string) error {
+	if currentPassword == "" || newPassword == "" {
+		return ErrPasswordRequired
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	runtime, ok := s.registry.Active()
+	if !ok || runtime.WorkspaceDatabase() == nil {
+		return ErrLocked
+	}
+	identity := runtime.WorkspaceIdentity()
+	if s.validateNewPassword != nil {
+		if err := s.validateNewPassword(ctx, runtime.WorkspaceDatabase(), s.databaseNameLocked(identity), newPassword); err != nil {
+			return err
+		}
+	}
+	if err := s.validate(identity.Path, currentPassword); err != nil {
+		return fmt.Errorf("%w: %v", ErrCredential, err)
+	}
+	_ = db.CheckpointFull(ctx, runtime.WorkspaceDatabase())
+	if err := db.Rekey(runtime.WorkspaceDatabase(), newPassword); err != nil {
+		return afterCredential(err)
+	}
+	_ = db.CheckpointFull(ctx, runtime.WorkspaceDatabase())
+	if err := s.validate(identity.Path, newPassword); err != nil {
+		return afterCredential(fmt.Errorf("database password changed but verification reopen failed: %w", err))
+	}
+	return nil
+}
+
+func (s *Service[T]) databaseNameLocked(identity Identity) string {
+	items, err := databasecatalog.ListDatabases(s.dataPath, identity.Path)
+	if err != nil {
+		return identity.ID
+	}
+	for _, item := range items {
+		if item.Path == identity.Path || item.ID == identity.ID {
+			return item.Name
+		}
+	}
+	return identity.ID
+}
+
+func (s *Service[T]) reopenBestEffort(identity Identity, password string) {
+	runtime, err := s.open(identity.Path, identity.ID, password)
+	if err != nil {
+		return
+	}
+	s.activateLocked(runtime)
+	if s.onOpened != nil {
+		s.onOpened(runtime)
+	}
 }
 
 func (s *Service[T]) setupTarget(databaseID, databaseName string) (Identity, error) {

@@ -1,13 +1,13 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 type renameDatabaseRequest struct {
@@ -56,52 +56,29 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	runtime := s.activeRuntime()
-	if runtime == nil {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-
-	oldPath := runtime.path
-	id, path, err := databasecatalog.RenameDatabaseTarget(s.config.DataPath, oldPath, request.DatabaseName)
+	transition, err := s.workspaceLifecycle.Rename(r.Context(), request.DatabaseName, request.CurrentPassword)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := dbpkg.ValidateEncrypted(oldPath, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid current database password")
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
+			writeError(w, http.StatusUnauthorized, "invalid current database password")
+			return
+		}
+		if workspacelifecycle.CredentialWasVerified(err) {
+			attempt.success()
+		}
+		if s.activeRuntime() == nil {
+			s.clearUISessions(w)
+		}
+		writeWorkspaceMutationError(w, err)
 		return
 	}
 	attempt.success()
-	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), runtime.database); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := s.closeUnlockedResources(); err != nil {
-		s.workspaces.Select(workspaceIdentity(runtime.id, oldPath))
-		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
-			s.clearUISessions(w)
-		}
-		writeInternalError(w)
-		return
-	}
-
-	if err := s.moveDatabase(oldPath, path); err != nil {
-		s.workspaces.Select(workspaceIdentity(runtime.id, oldPath))
-		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
-			s.clearUISessions(w)
-		}
-		writeInternalError(w)
-		return
-	}
-	s.workspaces.Select(workspaceIdentity(id, path))
 	s.clearUISessions(w)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "renamed",
 		"state":       "locked",
-		"database_id": id,
+		"database_id": transition.Identity.ID,
 		"renamed_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -122,47 +99,21 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	runtime := s.activeRuntime()
-	if runtime == nil {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-
-	expectedName := s.currentDatabaseNameLocked()
-	if request.ConfirmName != expectedName {
-		writeError(w, http.StatusBadRequest, "database name confirmation does not match")
-		return
-	}
-	if runtime.database == nil {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid current database password")
+	transition, err := s.workspaceLifecycle.DeleteCurrent(r.Context(), request.ConfirmName, request.CurrentPassword)
+	if err != nil {
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
+			writeError(w, http.StatusUnauthorized, "invalid current database password")
+			return
+		}
+		if workspacelifecycle.CredentialWasVerified(err) {
+			attempt.success()
+		}
+		writeWorkspaceMutationError(w, err)
 		return
 	}
 	attempt.success()
-
-	path := runtime.path
-	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), runtime.database); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := s.closeActiveRuntimeLocked(true); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := databasecatalog.DeleteDatabase(path); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if s.activeRuntime() == nil {
-		s.workspaces.ResetSelection(databasecatalog.DefaultDatabaseID(s.config.DataPath))
-	}
-	state := "locked"
-	if s.activeRuntime() != nil {
-		state = "unlocked"
+	if transition.State == "unlocked" {
 		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
@@ -173,8 +124,8 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "deleted",
-		"state":       state,
-		"database_id": s.workspaces.Selection().ID,
+		"state":       transition.State,
+		"database_id": transition.Identity.ID,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -199,40 +150,24 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
+	transition, err := s.workspaceLifecycle.DeleteLocked(request.DatabaseID, request.CurrentPassword)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
-		writeError(w, http.StatusConflict, "database is currently unlocked; lock it before deleting from the unlock screen")
-		return
-	}
-	if !dbpkg.Exists(targetPath) {
-		writeError(w, http.StatusNotFound, "encrypted database is not initialized")
-		return
-	}
-	if dbpkg.LooksLikePlainSQLite(targetPath) {
-		writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; remove this file manually")
-		return
-	}
-	if err := dbpkg.ValidateEncrypted(targetPath, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid database password")
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
+			writeError(w, http.StatusUnauthorized, "invalid database password")
+			return
+		}
+		if workspacelifecycle.CredentialWasVerified(err) {
+			attempt.success()
+		}
+		writeWorkspaceMutationError(w, err)
 		return
 	}
 	attempt.success()
-	if err := databasecatalog.DeleteDatabase(targetPath); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if s.workspaces.Selection().ID == targetID {
-		s.workspaces.ResetSelection(databasecatalog.DefaultDatabaseID(s.config.DataPath))
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "deleted",
 		"state":       "locked",
-		"database_id": targetID,
+		"database_id": transition.Identity.ID,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -300,48 +235,42 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 		return
 	}
 
-	runtime := s.activeRuntime()
-	if runtime == nil || runtime.database == nil {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-	backupStore := backups.NewStore(runtime.database)
-	hasActiveRemoteBackup, err := backupStore.HasActiveProvider(r.Context())
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if hasActiveRemoteBackup {
-		if err := backups.ValidateRemoteBackupPassword(request.NewPassword, s.currentDatabaseNameLocked()); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+	if err := s.workspaceLifecycle.ChangePassword(r.Context(), request.CurrentPassword, request.NewPassword); err != nil {
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
+			writeError(w, http.StatusUnauthorized, "invalid current database password")
 			return
 		}
-	}
-
-	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid current database password")
+		if workspacelifecycle.CredentialWasVerified(err) {
+			attempt.success()
+		}
+		writeWorkspaceMutationError(w, err)
 		return
 	}
 	attempt.success()
-
-	_ = dbpkg.CheckpointFull(r.Context(), runtime.database)
-	if err := dbpkg.Rekey(runtime.database, request.NewPassword); err != nil {
-		writeInternalError(w)
-		return
-	}
-	_ = dbpkg.CheckpointFull(r.Context(), runtime.database)
-
-	if err := dbpkg.ValidateEncrypted(runtime.path, request.NewPassword); err != nil {
-		writeError(w, http.StatusInternalServerError, "database password changed but verification reopen failed")
-		return
-	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":     "password_changed",
 		"state":      "unlocked",
 		"changed_at": time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func writeWorkspaceMutationError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, workspacelifecycle.ErrLocked):
+		writeError(w, http.StatusLocked, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrNameRequired), errors.Is(err, workspacelifecycle.ErrNameConfirmation),
+		errors.Is(err, workspacelifecycle.ErrPasswordRequired), errors.Is(err, workspacelifecycle.ErrInvalidRequest),
+		errors.Is(err, workspacelifecycle.ErrPasswordPolicy):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrNotInitialized):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrPlaintext), errors.Is(err, workspacelifecycle.ErrRuntimeUnlocked):
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		writeInternalError(w)
+	}
 }
 
 func (s *Server) currentDatabaseNameLocked() string {

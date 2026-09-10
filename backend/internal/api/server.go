@@ -247,20 +247,30 @@ func (runtime *databaseRuntime) WorkspaceIdentity() workspacelifecycle.Identity 
 
 func (runtime *databaseRuntime) WorkspaceDatabase() *sql.DB { return runtime.database }
 
-func (runtime *databaseRuntime) WorkspaceGatewaySecret() string { return runtime.gatewaySecret }
-
 func (s *Server) initializeWorkspaceLifecycle() error {
 	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
 		DataPath: s.config.DataPath,
 		Registry: s.workspaces,
 		Open:     s.openRuntimeForLifecycle,
 		Close:    s.closeRuntime,
+		Move:     s.moveDatabase,
+		Delete:   databasecatalog.DeleteDatabase,
 		OnActivated: func(runtime *databaseRuntime) {
 			if runtime != nil && runtime.gatewaySecret != "" {
 				s.config.GatewaySecret = runtime.gatewaySecret
 			}
 		},
 		OnOpened: s.initializeRetention,
+		ValidateNewPassword: func(ctx context.Context, database *sql.DB, databaseName, password string) error {
+			hasActiveRemoteBackup, err := backups.NewStore(database).HasActiveProvider(ctx)
+			if err != nil || !hasActiveRemoteBackup {
+				return err
+			}
+			if err := backups.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+				return workspacelifecycle.PasswordPolicyError(err)
+			}
+			return nil
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("initialize workspace lifecycle: %w", err)
