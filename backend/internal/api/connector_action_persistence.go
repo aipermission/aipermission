@@ -196,7 +196,7 @@ func connectorActionCallIdentityHash(runtime *databaseRuntime, tokenID *int64, s
 	if runtime == nil {
 		return "", fmt.Errorf("connector action runtime is unavailable")
 	}
-	return connectorActionIdentityTag(runtime.actionIdentityKey, encoded)
+	return actions.IdentityTag(runtime.actionIdentityKey, encoded)
 }
 
 func replayConnectorActionCall(ctx context.Context, runtime *databaseRuntime, tokenID *int64, call connectorActionCall) (connectorActionCallResult, bool, error) {

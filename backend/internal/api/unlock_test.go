@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
@@ -268,7 +269,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("server should be unlocked after setup")
 	}
 	runtime := server.activeRuntime()
-	identityBeforePasswordChange, err := connectorActionIdentityTag(runtime.actionIdentityKey, []byte("stable-retry-identity"))
+	identityBeforePasswordChange, err := actions.IdentityTag(runtime.actionIdentityKey, []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity before password change: %v", err)
 	}
@@ -363,7 +364,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{DatabaseID: "renamed-database", Password: "ChangedPassword123"}); response.Code != http.StatusOK {
 		t.Fatalf("unlock renamed database failed: %d %s", response.Code, response.Body.String())
 	}
-	identityAfterPasswordChange, err := connectorActionIdentityTag(server.activeRuntime().actionIdentityKey, []byte("stable-retry-identity"))
+	identityAfterPasswordChange, err := actions.IdentityTag(server.activeRuntime().actionIdentityKey, []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity after password change: %v", err)
 	}

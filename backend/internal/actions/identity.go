@@ -1,4 +1,4 @@
-package api
+package actions
 
 import (
 	"crypto/hkdf"
@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-const connectorActionIdentityVersion = "h1:"
+const identityVersion = "h1:"
 
-func deriveConnectorActionIdentityKey(gatewaySecret, workspaceID string) ([]byte, error) {
+func DeriveIdentityKey(gatewaySecret, workspaceID string) ([]byte, error) {
 	if gatewaySecret == "" || strings.TrimSpace(workspaceID) == "" {
 		return nil, fmt.Errorf("connector action identity requires gateway secret and workspace identity")
 	}
@@ -28,17 +28,17 @@ func deriveConnectorActionIdentityKey(gatewaySecret, workspaceID string) ([]byte
 	return key, nil
 }
 
-func connectorActionIdentityTag(key, canonical []byte) (string, error) {
+func IdentityTag(key, canonical []byte) (string, error) {
 	if len(key) != 32 {
 		return "", fmt.Errorf("connector action identity key is unavailable")
 	}
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte("aipermission-connector-action-call-v1\x00"))
 	_, _ = mac.Write(canonical)
-	return connectorActionIdentityVersion + hex.EncodeToString(mac.Sum(nil)), nil
+	return identityVersion + hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-func clearBytes(value []byte) {
+func ClearIdentityKey(value []byte) {
 	for index := range value {
 		value[index] = 0
 	}

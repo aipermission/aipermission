@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -196,14 +197,14 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, fmt.Errorf("migrate encrypted records: %w", err)
 	}
-	actionIdentityKey, err := deriveConnectorActionIdentityKey(gatewaySecret, workspaceUUID)
+	actionIdentityKey, err := actions.DeriveIdentityKey(gatewaySecret, workspaceUUID)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	runtimeInstanceID, err := executionprincipal.NewRuntimeInstanceID()
 	if err != nil {
-		clearBytes(actionIdentityKey)
+		actions.ClearIdentityKey(actionIdentityKey)
 		_ = database.Close()
 		return nil, err
 	}
@@ -239,7 +240,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeFileTransferRuntime(runtime); err != nil {
 		runtime.finalization.Stop()
-		clearBytes(actionIdentityKey)
+		actions.ClearIdentityKey(actionIdentityKey)
 		_ = database.Close()
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
@@ -501,7 +502,7 @@ func closeRuntimeStorage(runtime *databaseRuntime) error {
 	if runtime.auditDispatcher != nil {
 		runtime.auditDispatcher.Stop()
 	}
-	clearBytes(runtime.actionIdentityKey)
+	actions.ClearIdentityKey(runtime.actionIdentityKey)
 	runtime.actionIdentityKey = nil
 	var closeErrors []error
 	if runtime.database != nil {

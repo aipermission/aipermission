@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -42,7 +43,7 @@ func openAPITestDB(t *testing.T) *sql.DB {
 
 func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
 	t.Helper()
-	identityKey, err := deriveConnectorActionIdentityKey("test-password", connectorActionTestWorkspaceID)
+	identityKey, err := actions.DeriveIdentityKey("test-password", connectorActionTestWorkspaceID)
 	if err != nil {
 		t.Fatalf("derive connector action identity key: %v", err)
 	}
@@ -86,7 +87,7 @@ func setSecurityPolicySettings(ctx context.Context, runtime *databaseRuntime, se
 
 func connectorActionTestIdentityKey(t *testing.T) []byte {
 	t.Helper()
-	key, err := deriveConnectorActionIdentityKey("test-password", connectorActionTestWorkspaceID)
+	key, err := actions.DeriveIdentityKey("test-password", connectorActionTestWorkspaceID)
 	if err != nil {
 		t.Fatalf("derive connector action identity key: %v", err)
 	}

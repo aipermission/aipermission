@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -195,7 +196,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err != nil {
 		return nil, fmt.Errorf("initialize UI retry identity: %w", err)
 	}
-	runtime.actionIdentityKey, err = deriveConnectorActionIdentityKey(cfg.GatewaySecret, runtime.workspaceUUID)
+	runtime.actionIdentityKey, err = actions.DeriveIdentityKey(cfg.GatewaySecret, runtime.workspaceUUID)
 	if err != nil {
 		return nil, fmt.Errorf("initialize connector action identity: %w", err)
 	}
