@@ -71,11 +71,10 @@ type Status struct {
 	Databases         []databasecatalog.DatabaseInfo
 }
 
-type Transition[T Runtime] struct {
+type Transition struct {
 	Status   string
 	State    string
 	Identity Identity
-	Runtime  T
 	Opened   bool
 }
 
@@ -198,7 +197,7 @@ func (s *Service[T]) statusLocked() (Status, error) {
 		DatabaseName: selected.Name, Databases: databases}, nil
 }
 
-func (s *Service[T]) Setup(databaseID, databaseName, password string) (Transition[T], error) {
+func (s *Service[T]) Setup(databaseID, databaseName, password string) (Transition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if runtime, ok := s.registry.Active(); ok {
@@ -206,40 +205,40 @@ func (s *Service[T]) Setup(databaseID, databaseName, password string) (Transitio
 	}
 	identity, err := s.setupTarget(databaseID, databaseName)
 	if err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if db.Exists(identity.Path) {
 		if db.LooksLikePlainSQLite(identity.Path) {
-			return Transition[T]{}, ErrPlaintext
+			return Transition{}, ErrPlaintext
 		}
-		return Transition[T]{}, fmt.Errorf("encrypted database already exists; unlock it or create a new database")
+		return Transition{}, fmt.Errorf("encrypted database already exists; unlock it or create a new database")
 	}
 	s.registry.Select(identity)
 	return s.openAndActivateLocked(identity, password, "unlocked")
 }
 
-func (s *Service[T]) Unlock(databaseID, password string) (Transition[T], error) {
+func (s *Service[T]) Unlock(databaseID, password string) (Transition, error) {
 	if password == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	identity, err := s.unlockTarget(databaseID)
 	if err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if runtime, ok := s.registry.Lookup(identity.ID); ok && runtime.WorkspaceIdentity().Path == identity.Path {
 		if err := s.validate(identity.Path, password); err != nil {
-			return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+			return Transition{}, fmt.Errorf("%w: %v", ErrCredential, err)
 		}
 		s.activateLocked(runtime)
 		return s.transition("unlocked", runtime, false), nil
 	}
 	if !db.Exists(identity.Path) {
-		return Transition[T]{}, ErrNotInitialized
+		return Transition{}, ErrNotInitialized
 	}
 	if db.LooksLikePlainSQLite(identity.Path) {
-		return Transition[T]{}, ErrPlaintext
+		return Transition{}, ErrPlaintext
 	}
 	previous := s.registry.Selection()
 	s.registry.Select(identity)
@@ -250,15 +249,15 @@ func (s *Service[T]) Unlock(databaseID, password string) (Transition[T], error) 
 	return transition, err
 }
 
-func (s *Service[T]) Switch(databaseID, password string) (Transition[T], error) {
+func (s *Service[T]) Switch(databaseID, password string) (Transition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.registry.IsUnlocked() {
-		return Transition[T]{}, ErrLocked
+		return Transition{}, ErrLocked
 	}
 	identity, err := s.unlockTarget(databaseID)
 	if err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if active, ok := s.registry.Active(); ok {
 		activeIdentity := active.WorkspaceIdentity()
@@ -271,13 +270,13 @@ func (s *Service[T]) Switch(databaseID, password string) (Transition[T], error) 
 		return s.transition("switched", runtime, false), nil
 	}
 	if password == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	if !db.Exists(identity.Path) {
-		return Transition[T]{}, ErrNotInitialized
+		return Transition{}, ErrNotInitialized
 	}
 	if db.LooksLikePlainSQLite(identity.Path) {
-		return Transition[T]{}, ErrPlaintext
+		return Transition{}, ErrPlaintext
 	}
 	previous := s.registry.Selection()
 	s.registry.Select(identity)
@@ -337,10 +336,10 @@ func (s *Service[T]) CloseAll() error {
 	return errors.Join(closeErrors...)
 }
 
-func (s *Service[T]) openAndActivateLocked(identity Identity, password, status string) (Transition[T], error) {
+func (s *Service[T]) openAndActivateLocked(identity Identity, password, status string) (Transition, error) {
 	runtime, err := s.open(identity.Path, identity.ID, password)
 	if err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	s.activateLocked(runtime)
 	if s.onOpened != nil {
@@ -356,71 +355,71 @@ func (s *Service[T]) activateLocked(runtime T) {
 	}
 }
 
-func (s *Service[T]) transition(status string, runtime T, opened bool) Transition[T] {
-	return Transition[T]{Status: status, State: "unlocked", Identity: runtime.WorkspaceIdentity(), Runtime: runtime, Opened: opened}
+func (s *Service[T]) transition(status string, runtime T, opened bool) Transition {
+	return Transition{Status: status, State: "unlocked", Identity: runtime.WorkspaceIdentity(), Opened: opened}
 }
 
-func (s *Service[T]) Rename(ctx context.Context, databaseName, currentPassword string) (Transition[T], error) {
+func (s *Service[T]) Rename(ctx context.Context, databaseName, currentPassword string) (Transition, error) {
 	databaseName = strings.TrimSpace(databaseName)
 	if databaseName == "" {
-		return Transition[T]{}, ErrNameRequired
+		return Transition{}, ErrNameRequired
 	}
 	if currentPassword == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	runtime, ok := s.registry.Active()
 	if !ok {
-		return Transition[T]{}, ErrLocked
+		return Transition{}, ErrLocked
 	}
 	identity := runtime.WorkspaceIdentity()
 	newID, newPath, err := databasecatalog.RenameDatabaseTarget(s.dataPath, identity.Path, databaseName)
 	if err != nil {
-		return Transition[T]{}, classify(ErrInvalidRequest, err)
+		return Transition{}, classify(ErrInvalidRequest, err)
 	}
 	if err := s.validate(identity.Path, currentPassword); err != nil {
-		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+		return Transition{}, fmt.Errorf("%w: %v", ErrCredential, err)
 	}
 	if err := db.CheckpointForFilesystemMutation(ctx, runtime.WorkspaceDatabase()); err != nil {
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	closeErr := s.close(runtime)
 	s.registry.Remove(identity.ID, false)
 	if closeErr != nil {
 		s.registry.Select(identity)
 		s.reopenBestEffort(identity, currentPassword)
-		return Transition[T]{}, afterCredential(closeErr)
+		return Transition{}, afterCredential(closeErr)
 	}
 	if err := s.move(identity.Path, newPath); err != nil {
 		s.registry.Select(identity)
 		s.reopenBestEffort(identity, currentPassword)
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	identity = Identity{ID: newID, Path: newPath}
 	s.registry.Select(identity)
-	return Transition[T]{Status: "renamed", State: "locked", Identity: identity}, nil
+	return Transition{Status: "renamed", State: "locked", Identity: identity}, nil
 }
 
-func (s *Service[T]) DeleteCurrent(ctx context.Context, confirmName, currentPassword string) (Transition[T], error) {
+func (s *Service[T]) DeleteCurrent(ctx context.Context, confirmName, currentPassword string) (Transition, error) {
 	if currentPassword == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	runtime, ok := s.registry.Active()
 	if !ok {
-		return Transition[T]{}, ErrLocked
+		return Transition{}, ErrLocked
 	}
 	identity := runtime.WorkspaceIdentity()
 	if strings.TrimSpace(confirmName) != s.databaseNameLocked(identity) {
-		return Transition[T]{}, ErrNameConfirmation
+		return Transition{}, ErrNameConfirmation
 	}
 	if err := s.validate(identity.Path, currentPassword); err != nil {
-		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+		return Transition{}, fmt.Errorf("%w: %v", ErrCredential, err)
 	}
 	if err := db.CheckpointForFilesystemMutation(ctx, runtime.WorkspaceDatabase()); err != nil {
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	closeErr := s.close(runtime)
 	_, _, promoted, promotedOK := s.registry.Remove(identity.ID, true)
@@ -428,50 +427,50 @@ func (s *Service[T]) DeleteCurrent(ctx context.Context, confirmName, currentPass
 		s.activateLocked(promoted)
 	}
 	if closeErr != nil {
-		return Transition[T]{}, afterCredential(closeErr)
+		return Transition{}, afterCredential(closeErr)
 	}
 	if err := s.delete(identity.Path); err != nil {
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	if promotedOK {
 		return s.transition("deleted", promoted, false), nil
 	}
 	s.registry.ResetSelection(databasecatalog.DefaultDatabaseID(s.dataPath))
-	return Transition[T]{Status: "deleted", State: "locked", Identity: s.registry.Selection()}, nil
+	return Transition{Status: "deleted", State: "locked", Identity: s.registry.Selection()}, nil
 }
 
-func (s *Service[T]) DeleteLocked(databaseID, password string) (Transition[T], error) {
+func (s *Service[T]) DeleteLocked(databaseID, password string) (Transition, error) {
 	if strings.TrimSpace(databaseID) == "" {
-		return Transition[T]{}, fmt.Errorf("database id is required")
+		return Transition{}, fmt.Errorf("database id is required")
 	}
 	if password == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	identity, err := s.unlockTarget(databaseID)
 	if err != nil {
-		return Transition[T]{}, classify(ErrInvalidRequest, err)
+		return Transition{}, classify(ErrInvalidRequest, err)
 	}
 	if _, ok := s.registry.Lookup(identity.ID); ok {
-		return Transition[T]{}, ErrRuntimeUnlocked
+		return Transition{}, ErrRuntimeUnlocked
 	}
 	if !db.Exists(identity.Path) {
-		return Transition[T]{}, ErrNotInitialized
+		return Transition{}, ErrNotInitialized
 	}
 	if db.LooksLikePlainSQLite(identity.Path) {
-		return Transition[T]{}, classify(ErrPlaintext, fmt.Errorf("plaintext SQLite databases are not supported; remove this file manually"))
+		return Transition{}, classify(ErrPlaintext, fmt.Errorf("plaintext SQLite databases are not supported; remove this file manually"))
 	}
 	if err := s.validate(identity.Path, password); err != nil {
-		return Transition[T]{}, fmt.Errorf("%w: %v", ErrCredential, err)
+		return Transition{}, fmt.Errorf("%w: %v", ErrCredential, err)
 	}
 	if err := s.delete(identity.Path); err != nil {
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	if s.registry.Selection().ID == identity.ID {
 		s.registry.ResetSelection(databasecatalog.DefaultDatabaseID(s.dataPath))
 	}
-	return Transition[T]{Status: "deleted", State: "locked", Identity: identity}, nil
+	return Transition{Status: "deleted", State: "locked", Identity: identity}, nil
 }
 
 func (s *Service[T]) ChangePassword(ctx context.Context, currentPassword, newPassword string) error {

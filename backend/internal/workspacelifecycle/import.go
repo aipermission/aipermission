@@ -28,16 +28,16 @@ type ImportInput struct {
 	BeforePublish func() error
 }
 
-func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition[T], error) {
+func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition, error) {
 	input.DatabaseName = strings.TrimSpace(input.DatabaseName)
 	if input.DatabaseName == "" {
-		return Transition[T]{}, ErrNameRequired
+		return Transition{}, ErrNameRequired
 	}
 	if input.Password == "" {
-		return Transition[T]{}, ErrPasswordRequired
+		return Transition{}, ErrPasswordRequired
 	}
 	if input.Write == nil {
-		return Transition[T]{}, fmt.Errorf("database import writer is required")
+		return Transition{}, fmt.Errorf("database import writer is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -45,59 +45,59 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition[
 	targetID, targetPath, err := databasecatalog.NewDatabasePathExact(s.dataPath, input.DatabaseName)
 	if err != nil {
 		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
-			return Transition[T]{}, ErrDatabaseExists
+			return Transition{}, ErrDatabaseExists
 		}
-		return Transition[T]{}, classify(ErrInvalidRequest, err)
+		return Transition{}, classify(ErrInvalidRequest, err)
 	}
 	if err := databasecatalog.DeleteDatabase(targetPath + ".import"); err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	tmpPath, err := databasecatalog.ReserveTempPath(targetPath, "import-*.aipdb")
 	if err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if err := databasecatalog.DeleteDatabase(tmpPath); err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	defer cleanupImportCandidate(tmpPath)
 	if err := input.Write(tmpPath); err != nil {
-		return Transition[T]{}, err
+		return Transition{}, err
 	}
 	if db.LooksLikePlainSQLite(tmpPath) {
-		return Transition[T]{}, classify(ErrPlaintext, fmt.Errorf("plaintext SQLite imports are not supported; import an encrypted .aipdb database"))
+		return Transition{}, classify(ErrPlaintext, fmt.Errorf("plaintext SQLite imports are not supported; import an encrypted .aipdb database"))
 	}
 	candidate, err := db.OpenEncryptedImportCandidate(tmpPath, input.Password)
 	if err != nil {
 		if message := db.UnsupportedSchemaMessage(err); message != "" {
-			return Transition[T]{}, afterCredential(classify(ErrUnsupportedSchema, errors.New(message)))
+			return Transition{}, afterCredential(classify(ErrUnsupportedSchema, errors.New(message)))
 		}
-		return Transition[T]{}, fmt.Errorf("%w: invalid database password or database file", ErrCredential)
+		return Transition{}, fmt.Errorf("%w: invalid database password or database file", ErrCredential)
 	}
 	if err := s.prepareImportCandidate(ctx, candidate, input.Mutate); err != nil {
 		if closeErr := closeImportCandidate(candidate); closeErr != nil {
 			log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
 		}
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	if err := closeImportCandidate(candidate); err != nil {
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	if db.Exists(targetPath) {
-		return Transition[T]{}, afterCredential(ErrDatabaseExists)
+		return Transition{}, afterCredential(ErrDatabaseExists)
 	}
 	if input.BeforePublish != nil {
 		if err := input.BeforePublish(); err != nil {
-			return Transition[T]{}, afterCredential(err)
+			return Transition{}, afterCredential(err)
 		}
 	}
 	if err := s.publish(tmpPath, targetPath); err != nil {
 		if errors.Is(err, db.ErrPublishTargetExists) {
-			return Transition[T]{}, afterCredential(ErrDatabaseExists)
+			return Transition{}, afterCredential(ErrDatabaseExists)
 		}
-		return Transition[T]{}, afterCredential(err)
+		return Transition{}, afterCredential(err)
 	}
 	previous := s.registry.Selection()
 	identity := Identity{ID: targetID, Path: targetPath}
@@ -113,7 +113,7 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition[
 	if cleanupErr := databasecatalog.DeleteDatabase(targetPath); cleanupErr != nil {
 		log.Printf("failed imported database cleanup path=%q error=%v", targetPath, cleanupErr)
 	}
-	return Transition[T]{}, afterCredential(err)
+	return Transition{}, afterCredential(err)
 }
 
 func (s *Service[T]) prepareImportCandidate(ctx context.Context, candidate *sql.DB, mutate func(*sql.DB) error) error {
