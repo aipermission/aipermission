@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
@@ -38,7 +38,7 @@ type Server struct {
 	vaultGenerateLimiter *runtimecontrol.Window
 	vaultRequestLimiter  *runtimecontrol.Window
 	uiSessions           *uisession.Manager
-	auditHealth          observability.HealthTracker
+	observation          applicationobservation.Component
 	databaseMove         func(string, string) error
 	databasePublish      func(string, string) error
 	runtimeOpen          func(string, string, string) (*databaseRuntime, error)

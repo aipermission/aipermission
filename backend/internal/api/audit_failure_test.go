@@ -48,7 +48,7 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	server := fixture.server
-	server.auditHealth.RecordFailure(time.Now().Add(-time.Minute))
+	server.observation.RecordFailure(time.Now().Add(-time.Minute))
 	if _, err := fixture.db.Exec(`
 		UPDATE audit_dispatch_state
 		SET failure_count = 1, last_error = '',
@@ -61,7 +61,7 @@ func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	health := server.auditHealthSnapshot(context.Background())
+	health := server.observation.HealthSnapshot(context.Background(), server.activeRuntime())
 	if health.Status != "ok" || health.FailureCount != 1 || health.LastDeliverySuccess == "" {
 		t.Fatalf("unexpected recovered audit health: %+v", health)
 	}

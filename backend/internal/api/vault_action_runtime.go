@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/aipermission/aipermission/backend/internal/history"
-	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -47,22 +45,7 @@ func (p vaultRequestMutationPort) Observe(
 }
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
-	redact := s.prepareAuditRedactor(ctx, runtime)
-	return vaultrequests.NewStore(runtime.Storage.Database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
-		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
-			ActorType: "gateway",
-			TokenID:   int64Ptr(item.TokenID),
-			RuntimeID: vaultRuntimeIDOrZero(item.RuntimeID),
-			Action:    "vault.action_request." + item.Status,
-			Payload:   vaultrequests.RequestAuditPayload(item, item.UserNote),
-			Redact:    redact,
-		})
-		if err != nil {
-			return err
-		}
-		_, err = (observability.Store{}).Append(ctx, executor, event)
-		return err
-	})
+	return s.observation.VaultRequestStore(ctx, runtime)
 }
 
 func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (vaultrequests.HTTPScope, bool) {
@@ -76,13 +59,6 @@ func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (vaultrequests.HTT
 			return s.vaultRequestRuntime(ctx, runtime)
 		},
 	}, true
-}
-
-func vaultRuntimeIDOrZero(value *int64) int64 {
-	if value == nil {
-		return 0
-	}
-	return *value
 }
 
 func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRuntime) (*vaultrequests.Runtime, error) {
@@ -106,7 +82,7 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 		Execute:    actions.Execute,
 		Compensate: actions.Compensate,
 		RepairProjection: func(ctx context.Context, id int64) error {
-			if err := history.NewStore(runtime.Storage.Database).SyncVaultActionRequest(ctx, id); err != nil {
+			if err := s.observation.SyncVaultActionRequest(ctx, runtime, id); err != nil {
 				log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 			}
 			return nil

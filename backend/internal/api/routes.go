@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
@@ -14,13 +15,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
-	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
-	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -33,21 +31,21 @@ type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
-	s.registerSystemRoutes()
+	observation := s.observation.HTTPHandlers(s.activeRuntimeOrLocked)
+	s.registerSystemRoutes(observation)
 	s.registerAccessRoutes()
 	s.registerBackupRoutes()
-	s.registerConsoleAndActivityRoutes()
+	s.registerConsoleAndActivityRoutes(observation)
 	s.registerProjectAndVaultRoutes()
 	s.registerTransferRoutes()
 	s.registerConnectorRoutes()
-	s.registerMessageAndAuditRoutes()
+	s.registerMessageAndAuditRoutes(observation)
 	s.registerMCPRoutes()
 	registerConnectorAdapterRoutes(s.mux, s)
 }
 
-func (s *Server) registerSystemRoutes() {
+func (s *Server) registerSystemRoutes(observation applicationobservation.HTTPHandlers) {
 	securityHandlers := securitypolicy.NewHTTPHandlers(s.securityPolicyHTTPScope)
-	retentionHandlers := retention.NewHTTPHandlers(s.retentionHTTPScope)
 	maintenanceConsole := consolehttp.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope)
 	diagnostics := diagnosticsHandlers{s}
 	workspaces := s.workspaceLifecycleHTTPHandlers()
@@ -56,9 +54,9 @@ func (s *Server) registerSystemRoutes() {
 	s.mux.HandleFunc("GET /api/status", s.status)
 	s.mux.HandleFunc("GET /api/settings/security", securityHandlers.GetSettings)
 	s.mux.HandleFunc("PUT /api/settings/security", securityHandlers.UpdateSettings)
-	s.mux.HandleFunc("GET /api/settings/retention", retentionHandlers.Get)
-	s.mux.HandleFunc("PUT /api/settings/retention", retentionHandlers.Update)
-	s.mux.HandleFunc("POST /api/settings/retention/purge", retentionHandlers.Purge)
+	s.mux.HandleFunc("GET /api/settings/retention", observation.Retention.Get)
+	s.mux.HandleFunc("PUT /api/settings/retention", observation.Retention.Update)
+	s.mux.HandleFunc("POST /api/settings/retention/purge", observation.Retention.Purge)
 	s.mux.HandleFunc("GET /api/settings/redaction-rules", securityHandlers.ListRules)
 	s.mux.HandleFunc("POST /api/settings/redaction-rules", securityHandlers.CreateRule)
 	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", securityHandlers.UpdateRule)
@@ -132,13 +130,12 @@ func (s *Server) registerBackupRoutes() {
 	s.mux.HandleFunc("POST /api/databases/change-password", workspaces.ChangePassword)
 }
 
-func (s *Server) registerConsoleAndActivityRoutes() {
+func (s *Server) registerConsoleAndActivityRoutes(observation applicationobservation.HTTPHandlers) {
 	console := connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope)
 	bulkConsole := commandrequests.NewBulkHTTPHandlers(s.bulkCommandHTTPScope)
 	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
 	connectorApprovals := connectorapproval.NewHTTPHandlers(s.connectorApprovalHTTPScope)
 	connectorActions := connectorActionHandlers{s}
-	historyHandlers := historyhttp.New(s.historyHTTPScope)
 
 	s.mux.HandleFunc("POST /api/console/bulk-exec", bulkConsole.Run)
 	s.mux.HandleFunc("GET /api/console/sessions", console.List)
@@ -155,14 +152,14 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.Run)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.Decline)
 	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.runLocalConnectorAction)
-	s.mux.HandleFunc("GET /api/history/targets", historyHandlers.ListTargetFacets)
-	s.mux.HandleFunc("GET /api/history", historyHandlers.ListEntries)
-	s.mux.HandleFunc("GET /api/history/{id}", historyHandlers.GetEntry)
-	s.mux.HandleFunc("POST /api/history/{id}/labels", historyHandlers.AttachEntryLabel)
-	s.mux.HandleFunc("DELETE /api/history/{id}/labels/{label_id}", historyHandlers.DetachEntryLabel)
-	s.mux.HandleFunc("GET /api/history-labels", historyHandlers.ListLabels)
-	s.mux.HandleFunc("POST /api/history-labels", historyHandlers.CreateLabel)
-	s.mux.HandleFunc("DELETE /api/history-labels/{id}", historyHandlers.DeleteLabel)
+	s.mux.HandleFunc("GET /api/history/targets", observation.History.ListTargetFacets)
+	s.mux.HandleFunc("GET /api/history", observation.History.ListEntries)
+	s.mux.HandleFunc("GET /api/history/{id}", observation.History.GetEntry)
+	s.mux.HandleFunc("POST /api/history/{id}/labels", observation.History.AttachEntryLabel)
+	s.mux.HandleFunc("DELETE /api/history/{id}/labels/{label_id}", observation.History.DetachEntryLabel)
+	s.mux.HandleFunc("GET /api/history-labels", observation.History.ListLabels)
+	s.mux.HandleFunc("POST /api/history-labels", observation.History.CreateLabel)
+	s.mux.HandleFunc("DELETE /api/history-labels/{id}", observation.History.DeleteLabel)
 }
 
 func (s *Server) registerProjectAndVaultRoutes() {
@@ -255,15 +252,14 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", queries.ListCredentialProfileActions)
 }
 
-func (s *Server) registerMessageAndAuditRoutes() {
+func (s *Server) registerMessageAndAuditRoutes(observation applicationobservation.HTTPHandlers) {
 	messages := messagequeue.NewHTTPHandlers(s.messageQueueScope)
-	audit := observability.NewHTTPHandlers(s.auditHTTPScope)
 
 	s.mux.HandleFunc("GET /api/messages", messages.List)
 	s.mux.HandleFunc("POST /api/messages", messages.Create)
 	s.mux.HandleFunc("POST /api/messages/read", messages.MarkRead)
-	s.mux.HandleFunc("GET /api/audit-logs", audit.List)
-	s.mux.HandleFunc("GET /api/audit-logs/{id}", audit.Get)
+	s.mux.HandleFunc("GET /api/audit-logs", observation.Audit.List)
+	s.mux.HandleFunc("GET /api/audit-logs/{id}", observation.Audit.Get)
 }
 
 func (s *Server) registerMCPRoutes() {
@@ -297,7 +293,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "aipermission",
 		"status":  "running",
-		"audit":   s.auditHealthSnapshot(r.Context()),
+		"audit":   s.observation.HealthSnapshot(r.Context(), s.activeRuntime()),
 		"config":  s.config.PublicStatusMinimal(),
 		"features": []string{
 			"local-docker-runtime",
