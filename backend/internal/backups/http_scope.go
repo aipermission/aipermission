@@ -26,6 +26,7 @@ type OperationLease func(context.Context) (release func(), err error)
 type Snapshotter func(context.Context) (DatabaseSnapshot, error)
 type RequiredAudit func(context.Context, string, any) error
 type ObservationAudit func(context.Context, string, any)
+type DatabasePasswordAuthorizer func(http.ResponseWriter, *http.Request, string) bool
 
 // HTTPScope contains only the active workspace capabilities needed by backup
 // provider HTTP operations. Cross-domain database installation stays at the
@@ -43,6 +44,7 @@ type HTTPScope struct {
 	Observe              ObservationAudit
 	AcquireOperation     OperationLease
 	CreateSnapshot       Snapshotter
+	AuthorizePassword    DatabasePasswordAuthorizer
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)
@@ -67,6 +69,7 @@ const (
 	requireObservation
 	requireOperation
 	requireSnapshot
+	requirePasswordAuthorization
 )
 
 func (h *HTTPHandlers) resolve(w http.ResponseWriter, requirements scopeRequirements) (HTTPScope, bool) {
@@ -96,5 +99,6 @@ func scopeSupports(scope HTTPScope, requirements scopeRequirements) bool {
 	valid = valid && (requirements&requireRequiredAudit == 0 || scope.AuditRequired != nil)
 	valid = valid && (requirements&requireObservation == 0 || scope.Observe != nil)
 	valid = valid && (requirements&requireOperation == 0 || scope.AcquireOperation != nil)
-	return valid && (requirements&requireSnapshot == 0 || scope.CreateSnapshot != nil)
+	valid = valid && (requirements&requireSnapshot == 0 || scope.CreateSnapshot != nil)
+	return valid && (requirements&requirePasswordAuthorization == 0 || scope.AuthorizePassword != nil)
 }

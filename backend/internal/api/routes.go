@@ -113,7 +113,7 @@ func (s *Server) registerBackupRoutes() {
 	s.mux.HandleFunc("POST /api/backup/providers", providers.CreateProvider)
 	s.mux.HandleFunc("PUT /api/backup/providers/{id}", providers.UpdateProvider)
 	s.mux.HandleFunc("DELETE /api/backup/providers/{id}", providers.DeleteProvider)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/enable", backup.enableProvider)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/enable", providers.EnableProvider)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/test", providers.TestProvider)
 	s.mux.HandleFunc("GET /api/backup/providers/{id}/records", providers.ListProviderRecords)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/upload", providers.UploadProviderBackup)

@@ -61,51 +61,20 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 			})
 			return backups.DatabaseSnapshot{Path: snapshot.Path}, err
 		},
+		AuthorizePassword: func(response http.ResponseWriter, request *http.Request, password string) bool {
+			attempt, ok := s.beginDatabasePasswordAttempt(response, request)
+			if !ok {
+				return false
+			}
+			if err := dbpkg.ValidateEncrypted(runtime.path, password); err != nil {
+				attempt.failure()
+				writeError(response, http.StatusUnauthorized, "invalid current database password")
+				return false
+			}
+			attempt.success()
+			return true
+		},
 	}, true
-}
-
-type enableBackupProviderRequest struct {
-	CurrentPassword string `json:"current_password"`
-}
-
-func (s backupHandlers) enableProvider(w http.ResponseWriter, r *http.Request) {
-	scope, ok := s.backupProviderHTTPScope(w)
-	if !ok {
-		return
-	}
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	var request enableBackupProviderRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	defer clearStringReferences(&request.CurrentPassword)
-	if request.CurrentPassword == "" {
-		writeError(w, http.StatusBadRequest, "current database password is required")
-		return
-	}
-	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
-	if !ok {
-		return
-	}
-	if err := dbpkg.ValidateEncrypted(scope.DatabasePath, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid current database password")
-		return
-	}
-	attempt.success()
-	if err := backups.ValidateRemoteBackupPassword(request.CurrentPassword, scope.DatabaseName); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	item, err := backups.EnableProvider(r.Context(), scope, id)
-	if err != nil {
-		backups.WriteProviderHTTPError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, backups.ProviderToResponse(item))
 }
 
 type restoreBackupRecordRequest struct {

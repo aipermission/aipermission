@@ -34,6 +34,10 @@ type deleteBackupRecordsRequest struct {
 	RecordIDs []int64 `json:"record_ids"`
 }
 
+type enableBackupProviderRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 type backupProviderCatalogItem struct {
 	ProviderType string   `json:"provider_type"`
 	Label        string   `json:"label"`
@@ -304,6 +308,39 @@ func (h *HTTPHandlers) TestProvider(w http.ResponseWriter, r *http.Request) {
 		"ok": true, "checked_at": checkedAt.Format(time.RFC3339), "service_version": info.Version,
 		"protocol_version": info.ProtocolVersion, "max_upload_bytes": info.MaxUploadBytes,
 	})
+}
+
+func (h *HTTPHandlers) EnableProvider(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase|requireProviderIdentity|requireSecrets|requireMutation|requirePasswordAuthorization)
+	if !ok {
+		return
+	}
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
+	if !ok {
+		return
+	}
+	var request enableBackupProviderRequest
+	if !httptransport.DecodeJSON(w, r, &request, maxBackupProviderJSONBytes) {
+		return
+	}
+	defer func() { request.CurrentPassword = "" }()
+	if request.CurrentPassword == "" {
+		httptransport.WriteError(w, http.StatusBadRequest, "current database password is required")
+		return
+	}
+	if !runtime.AuthorizePassword(w, r, request.CurrentPassword) {
+		return
+	}
+	if err := ValidateRemoteBackupPassword(request.CurrentPassword, runtime.DatabaseName); err != nil {
+		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := EnableProvider(r.Context(), runtime, id)
+	if err != nil {
+		WriteProviderHTTPError(w, err)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, ProviderToResponse(item))
 }
 
 func (h *HTTPHandlers) DeleteProvider(w http.ResponseWriter, r *http.Request) {

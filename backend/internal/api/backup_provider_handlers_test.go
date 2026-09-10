@@ -86,11 +86,11 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if testResponse.Code != http.StatusOK || !strings.Contains(testResponse.Body.String(), `"protocol_version":"`+backups.ServiceProtocol+`"`) {
 		t.Fatalf("provider test failed: %d %s", testResponse.Code, testResponse.Body.String())
 	}
-	wrongPassword := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", enableBackupProviderRequest{CurrentPassword: "wrong-password"})
+	wrongPassword := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", map[string]any{"current_password": "wrong-password"})
 	if wrongPassword.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong enable password should fail: %d %s", wrongPassword.Code, wrongPassword.Body.String())
 	}
-	enable := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", enableBackupProviderRequest{CurrentPassword: backupAPITestPassword})
+	enable := performJSON(handler, http.MethodPost, providerPath(created.ID, "/enable"), "", map[string]any{"current_password": backupAPITestPassword})
 	if enable.Code != http.StatusOK || !strings.Contains(enable.Body.String(), `"status":"active"`) {
 		t.Fatalf("enable failed: %d %s", enable.Code, enable.Body.String())
 	}

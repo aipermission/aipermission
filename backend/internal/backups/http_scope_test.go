@@ -29,6 +29,20 @@ func TestProviderHandlersFailClosedWhenRequiredScopePortsAreMissing(t *testing.T
 	}
 }
 
+func TestEnableProviderFailsClosedWithoutPasswordAuthorizationPort(t *testing.T) {
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
+		return HTTPScope{}, true
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/enable", strings.NewReader(`{"current_password":"secret"}`))
+	request.SetPathValue("id", "1")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handlers.EnableProvider(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+}
+
 func TestProviderOperationsRejectIncompleteCompositionScope(t *testing.T) {
 	if _, err := EnableProvider(context.Background(), HTTPScope{}, 1); !strings.Contains(err.Error(), "scope is incomplete") {
 		t.Fatalf("enable error = %v", err)
