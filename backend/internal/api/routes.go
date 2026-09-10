@@ -215,15 +215,16 @@ func registerFileTransferRoutes(mux *http.ServeMux, handlers *filetransferhttp.H
 }
 
 func (s *Server) registerConnectorRoutes() {
-	queries := connectormanagement.NewHTTPHandlers(s.connectorManagementScope)
-	hostPing := connectormanagement.NewHostPingHTTPHandler(s.connectorPingHTTPScope)
-	targetMutations := connectormanagement.NewTargetMutationHTTPHandler(s.connectorTargetMutationHTTPScope)
-	profileMutations := connectormanagement.NewProfileMutationHTTPHandler(s.connectorProfileMutationHTTPScope)
-	profileDeletion := connectormanagement.NewProfileDeletionHTTPHandler(s.connectorProfileDeletionHTTPScope)
-	profileProvisioning := connectormanagement.NewProvisioningHTTPHandler(s.connectorProfileProvisioningHTTPScope)
-	profileTesting := connectormanagement.NewProfileTestingHTTPHandler(s.connectorProfileTestingHTTPScope)
-	profileBackup := connectormanagement.NewProfileBackupHTTPHandler(s.connectorProfileBackupHTTPScope)
-	combinedMutations := connectormanagement.NewCombinedMutationHTTPHandler(s.connectorCombinedMutationHTTPScope)
+	application := s.connectorManagementApplication()
+	queries := connectormanagement.NewHTTPHandlers(application.QueryScope)
+	hostPing := connectormanagement.NewHostPingHTTPHandler(application.HostPingScope)
+	targetMutations := connectormanagement.NewTargetMutationHTTPHandler(application.TargetMutationScope)
+	profileMutations := connectormanagement.NewProfileMutationHTTPHandler(application.ProfileMutationScope)
+	profileDeletion := connectormanagement.NewProfileDeletionHTTPHandler(application.ProfileDeletionScope)
+	profileProvisioning := connectormanagement.NewProvisioningHTTPHandler(application.ProvisioningScope)
+	profileTesting := connectormanagement.NewProfileTestingHTTPHandler(application.ProfileTestingScope)
+	profileBackup := connectormanagement.NewProfileBackupHTTPHandler(application.ProfileBackupScope)
+	combinedMutations := connectormanagement.NewCombinedMutationHTTPHandler(application.CombinedMutationScope)
 	connectorTargets := connectorTargetHandlers{s}
 
 	s.mux.HandleFunc("GET /api/connectors", queries.ListConnectors)
