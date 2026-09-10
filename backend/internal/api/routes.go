@@ -225,6 +225,7 @@ func (s *Server) registerConnectorRoutes() {
 	profileMutations := connectormanagement.NewProfileMutationHTTPHandler(s.connectorProfileMutationHTTPScope)
 	profileDeletion := connectormanagement.NewProfileDeletionHTTPHandler(s.connectorProfileDeletionHTTPScope)
 	profileProvisioning := connectormanagement.NewProvisioningHTTPHandler(s.connectorProfileProvisioningHTTPScope)
+	profileTesting := connectormanagement.NewProfileTestingHTTPHandler(s.connectorProfileTestingHTTPScope)
 	combinedMutations := connectormanagement.NewCombinedMutationHTTPHandler(s.connectorCombinedMutationHTTPScope)
 	connectorTargets := connectorTargetHandlers{s}
 
@@ -248,7 +249,7 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/restore", connectorTargets.restoreConnectorProfileBackup)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", profileMutations.Update)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", profileDeletion.Delete)
-	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
+	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", profileTesting.Test)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", queries.ListCredentialProfileActions)
 }
 
