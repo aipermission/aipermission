@@ -30,7 +30,7 @@ type ProfileTestingScope struct {
 	Registry      *connectors.Registry
 	Runtime       CredentialRuntimePorts
 	SpecialTest   func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
-	RedactDetails func(context.Context, map[string]any, actionresult.CredentialBoundary) (map[string]any, error)
+	RedactDetails func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 }
 
 type ProfileTestingScopeProvider func(http.ResponseWriter) (ProfileTestingScope, bool)

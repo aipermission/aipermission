@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -17,6 +16,21 @@ type ActionGrant struct {
 	Name          string `json:"name"`
 	ExecutionRule string `json:"execution_rule"`
 	ExpiresAt     string `json:"expires_at,omitempty"`
+}
+
+type Permission struct {
+	ProjectID     int64
+	ProjectName   string
+	ProjectSlug   string
+	TargetID      int64
+	TargetName    string
+	ProfileID     int64
+	ProfileLabel  string
+	ConnectorKind string
+	ProfileKind   string
+	ActionName    string
+	ExecutionRule connectortargets.ActionPermissionRule
+	ExpiresAt     string
 }
 
 type TargetItem struct {
@@ -39,6 +53,7 @@ type Scope struct {
 	Database        *sql.DB
 	Registry        *connectors.Registry
 	TokenID         int64
+	Permissions     func(context.Context) ([]Permission, error)
 	MetadataEnabled func(context.Context) (bool, error)
 	Metadata        func(connectors.TargetView, connectors.CredentialProfileView) map[string]any
 }
@@ -54,7 +69,7 @@ func (h *HTTPHandlers) ListTargets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), scope.Database, scope.Registry, scope.TokenID)
+	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
 		writeTargetError(w, err)
 		return
@@ -156,7 +171,8 @@ func (h *HTTPHandlers) resolve(w http.ResponseWriter, r *http.Request) (Scope, b
 	if !ok {
 		return Scope{}, false
 	}
-	if scope.Database == nil || scope.Registry == nil || scope.TokenID < 1 || scope.MetadataEnabled == nil || scope.Metadata == nil {
+	if scope.Database == nil || scope.Registry == nil || scope.TokenID < 1 || scope.Permissions == nil ||
+		scope.MetadataEnabled == nil || scope.Metadata == nil {
 		httptransport.WriteInternalError(w)
 		return Scope{}, false
 	}
@@ -174,7 +190,7 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, scope Scope) (connect
 		writeTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), scope.Database, scope.Registry, scope.TokenID)
+	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
 		writeTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
@@ -194,7 +210,7 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, scope Scope) (connect
 }
 
 func permittedActions(r *http.Request, scope Scope, targetID, profileID int64) (map[string]bool, error) {
-	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(r.Context(), scope.Database, scope.Registry, scope.TokenID)
+	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
 		return nil, err
 	}

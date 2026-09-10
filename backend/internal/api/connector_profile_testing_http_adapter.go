@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -29,7 +28,7 @@ func (s *Server) connectorProfileTestingHTTPScope(w http.ResponseWriter) (connec
 			)
 			return true
 		},
-		RedactDetails: func(ctx context.Context, details map[string]any, boundary actionresult.CredentialBoundary) (map[string]any, error) {
+		RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormanagement.CredentialBoundary) (map[string]any, error) {
 			redacted, err := s.redactedConnectorValueWithCredentialBoundary(
 				ctx, runtime, details, connectorSensitiveOutputFields(), nil, boundary,
 			)

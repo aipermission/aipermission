@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -17,14 +16,14 @@ func (s *Server) connectorCredentialRuntimePorts(runtime *databaseRuntime) conne
 			err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
 			return secret, err
 		},
-		RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary actionresult.CredentialBoundary) connectors.RuntimeContext {
+		RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary connectormanagement.CredentialBoundary) connectors.RuntimeContext {
 			return connectors.RuntimeContext{
 				Target: connectorTargetViewForProfile(target, profile.ID), Profile: connectortargets.CredentialProfileView(profile),
 				Secrets: connectorSecretAccessor{values: secrets, boundary: boundary}, Events: noopConnectorEventSink{},
 				Capabilities: connectorRuntimeCapabilitiesFor(target.ConnectorKind, s, runtime),
 			}
 		},
-		RedactResult: func(ctx context.Context, result connectors.ActionResult, boundary actionresult.CredentialBoundary) (connectors.ActionResult, error) {
+		RedactResult: func(ctx context.Context, result connectors.ActionResult, boundary connectormanagement.CredentialBoundary) (connectors.ActionResult, error) {
 			return s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, boundary)
 		},
 		RedactText: func(ctx context.Context, value string) string {

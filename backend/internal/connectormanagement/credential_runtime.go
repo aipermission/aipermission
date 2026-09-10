@@ -13,8 +13,8 @@ import (
 
 type CredentialRuntimePorts struct {
 	DecryptSecret  func(context.Context, int64, string) (map[string]any, error)
-	RuntimeContext func(connectortargets.Target, connectortargets.CredentialProfile, map[string]any, actionresult.CredentialBoundary) connectors.RuntimeContext
-	RedactResult   func(context.Context, connectors.ActionResult, actionresult.CredentialBoundary) (connectors.ActionResult, error)
+	RuntimeContext func(connectortargets.Target, connectortargets.CredentialProfile, map[string]any, CredentialBoundary) connectors.RuntimeContext
+	RedactResult   func(context.Context, connectors.ActionResult, CredentialBoundary) (connectors.ActionResult, error)
 	RedactText     func(context.Context, string) string
 }
 

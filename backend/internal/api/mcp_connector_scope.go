@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -17,6 +18,25 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 	}
 	return mcpconnector.Scope{
 		Database: auth.runtime.database, Registry: auth.runtime.connectorRegistry(), TokenID: auth.TokenID,
+		Permissions: func(ctx context.Context) ([]mcpconnector.Permission, error) {
+			permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(
+				ctx, auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID,
+			)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]mcpconnector.Permission, 0, len(permissions))
+			for _, permission := range permissions {
+				result = append(result, mcpconnector.Permission{
+					ProjectID: permission.ProjectID, ProjectName: permission.ProjectName, ProjectSlug: permission.ProjectSlug,
+					TargetID: permission.TargetID, TargetName: permission.TargetName,
+					ProfileID: permission.ProfileID, ProfileLabel: permission.ProfileLabel,
+					ConnectorKind: permission.ConnectorKind, ProfileKind: permission.ProfileKind,
+					ActionName: permission.ActionName, ExecutionRule: permission.ExecutionRule, ExpiresAt: permission.ExpiresAt,
+				})
+			}
+			return result, nil
+		},
 		MetadataEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := readSecuritySettings(ctx, auth.runtime)
 			return settings.ExposeMCPServerMetadata, err
