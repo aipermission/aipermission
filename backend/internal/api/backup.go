@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
@@ -21,7 +22,6 @@ import (
 )
 
 const (
-	maxImportBodyBytes           = 256 << 20
 	maxConcurrentDatabaseBackups = 2
 )
 
@@ -74,7 +74,7 @@ func createDatabaseSnapshot(ctx context.Context, runtime *databaseRuntime) (data
 	if err != nil {
 		return databaseSnapshot{}, fmt.Errorf("inspect database before snapshot: %w", err)
 	}
-	if info.Size() > maxImportBodyBytes {
+	if info.Size() > backups.MaxDatabaseTransferBytes {
 		return databaseSnapshot{}, fmt.Errorf("database is too large to snapshot through the gateway: %d bytes", info.Size())
 	}
 	createdAt := time.Now().UTC()
@@ -91,7 +91,7 @@ func createDatabaseSnapshot(ctx context.Context, runtime *databaseRuntime) (data
 		_ = os.Remove(snapshotPath)
 		return databaseSnapshot{}, fmt.Errorf("inspect completed database snapshot: %w", err)
 	}
-	if info.Size() > maxImportBodyBytes {
+	if info.Size() > backups.MaxDatabaseTransferBytes {
 		_ = os.Remove(snapshotPath)
 		return databaseSnapshot{}, fmt.Errorf("database snapshot exceeds the gateway limit: %d bytes", info.Size())
 	}
@@ -134,7 +134,7 @@ func (s backupHandlers) importDatabase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s backupHandlers) importDatabaseMultipart(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImportBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {

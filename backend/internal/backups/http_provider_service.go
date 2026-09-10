@@ -1,4 +1,4 @@
-package api
+package backups
 
 import (
 	"context"
@@ -14,115 +14,109 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-func (s backupHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request) (*databaseRuntime, backups.Provider, *backups.ServiceClient, bool) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request, requirements scopeRequirements) (HTTPScope, Provider, *ServiceClient, bool) {
+	runtime, ok := h.resolve(w, requireDatabase|requireSecrets|requirements)
 	if !ok {
-		return nil, backups.Provider{}, nil, false
+		return HTTPScope{}, Provider{}, nil, false
 	}
-	id, ok := parseID(w, r)
+	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
+	return runtime, provider, client, ok
+}
+
+func activeBackupServiceProviderFromScope(w http.ResponseWriter, r *http.Request, runtime HTTPScope) (Provider, *ServiceClient, bool) {
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
-		return nil, backups.Provider{}, nil, false
+		return Provider{}, nil, false
 	}
-	provider, err := backups.NewStore(runtime.database).GetProvider(r.Context(), id)
+	provider, err := NewStore(runtime.Database).GetProvider(r.Context(), id)
 	if err != nil {
 		handleBackupProviderError(w, err)
-		return nil, backups.Provider{}, nil, false
+		return Provider{}, nil, false
 	}
 	if provider.Status != "active" {
-		writeError(w, http.StatusConflict, "backup provider is disabled")
-		return nil, backups.Provider{}, nil, false
+		httptransport.WriteError(w, http.StatusConflict, "backup provider is disabled")
+		return Provider{}, nil, false
 	}
 	client, err := backupServiceClient(runtime, provider)
 	if err != nil {
 		handleBackupProviderError(w, err)
-		return nil, backups.Provider{}, nil, false
+		return Provider{}, nil, false
 	}
-	return runtime, provider, client, true
+	return provider, client, true
 }
 
-func (s backupHandlers) resolveBackupServiceRecord(w http.ResponseWriter, r *http.Request) (*databaseRuntime, backups.Provider, backups.Record, *backups.ServiceClient, bool) {
-	runtime, provider, client, ok := s.activeBackupServiceProvider(w, r)
+func resolveBackupServiceRecordFromScope(w http.ResponseWriter, r *http.Request, runtime HTTPScope, provider Provider) (Record, bool) {
+	recordID, ok := httptransport.ParsePathInt64(w, r, "record_id", "backup record id is required")
 	if !ok {
-		return nil, backups.Provider{}, backups.Record{}, nil, false
+		return Record{}, false
 	}
-	recordID, ok := parsePathInt64(w, r, "record_id", "backup record id")
-	if !ok {
-		return nil, backups.Provider{}, backups.Record{}, nil, false
-	}
-	record, err := backups.NewStore(runtime.database).GetRecord(r.Context(), provider.ID, recordID)
+	record, err := NewStore(runtime.Database).GetRecord(r.Context(), provider.ID, recordID)
 	if err != nil {
 		handleBackupProviderError(w, err)
-		return nil, backups.Provider{}, backups.Record{}, nil, false
+		return Record{}, false
 	}
-	return runtime, provider, record, client, true
+	return record, true
 }
 
-func (s backupHandlers) normalizeServiceProviderPublic(runtime *databaseRuntime, submitted, existing map[string]any) (map[string]any, error) {
+func normalizeServiceProviderPublic(runtime HTTPScope, submitted, existing map[string]any) (map[string]any, error) {
 	baseURL := stringFromMap(submitted, "base_url")
 	if baseURL == "" {
 		baseURL = stringFromMap(existing, "base_url")
 	}
-	normalizedURL, err := backups.ValidateServiceURL(baseURL)
+	normalizedURL, err := ValidateServiceURL(baseURL)
 	if err != nil {
 		return nil, err
 	}
 	databaseName := stringFromMap(existing, "database_name")
 	if databaseName == "" {
-		databaseName = s.activeDatabaseDisplayName()
+		databaseName = runtime.DatabaseName
 	}
 	return map[string]any{
 		"base_url":         normalizedURL,
-		"stream_id":        runtime.workspaceUUID,
+		"stream_id":        runtime.WorkspaceUUID,
 		"database_name":    databaseName,
-		"protocol_version": backups.ServiceProtocol,
+		"protocol_version": ServiceProtocol,
 	}, nil
-}
-
-func (s backupHandlers) activeDatabaseDisplayName() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.currentDatabaseNameLocked()
 }
 
 func backupServiceTokenSecret(secret map[string]any, required bool) (map[string]any, error) {
 	token := stringFromMap(secret, "token")
 	if token == "" {
 		if required {
-			return nil, backups.ValidationError("backup service token is required")
+			return nil, ValidationError("backup service token is required")
 		}
 		return nil, nil
 	}
-	if err := backups.ValidateServiceToken(token); err != nil {
+	if err := ValidateServiceToken(token); err != nil {
 		return nil, err
 	}
 	return map[string]any{"token": token}, nil
 }
 
-func decryptBackupProviderSecret(runtime *databaseRuntime, provider backups.Provider) (map[string]any, error) {
+func decryptBackupProviderSecret(runtime HTTPScope, provider Provider) (map[string]any, error) {
 	if provider.EncryptedSecretJSON == "" {
 		return map[string]any{}, nil
 	}
-	secrets := map[string]any{}
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, provider.ID, provider.EncryptedSecretJSON, &secrets); err != nil {
+	secrets, err := runtime.Secrets.DecryptProviderSecret(provider)
+	if err != nil {
 		return nil, err
 	}
 	return secrets, nil
 }
 
-func backupServiceClient(runtime *databaseRuntime, provider backups.Provider) (*backups.ServiceClient, error) {
-	if provider.ProviderType != backups.ServiceProviderType {
-		return nil, backups.ValidationError("unsupported backup provider type")
+func backupServiceClient(runtime HTTPScope, provider Provider) (*ServiceClient, error) {
+	if provider.ProviderType != ServiceProviderType {
+		return nil, ValidationError("unsupported backup provider type")
 	}
 	secrets, err := decryptBackupProviderSecret(runtime, provider)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt backup provider secret: %w", err)
 	}
-	return backups.NewServiceClient(stringFromMap(provider.Public, "base_url"), stringFromMap(secrets, "token"))
+	return NewServiceClient(stringFromMap(provider.Public, "base_url"), stringFromMap(secrets, "token"))
 }
 
 func validateBackupProviderPayload(w http.ResponseWriter, public, secret map[string]any) bool {
@@ -132,27 +126,27 @@ func validateBackupProviderPayload(w http.ResponseWriter, public, secret map[str
 		}
 		encoded, err := json.Marshal(value)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid "+label+" json")
+			httptransport.WriteError(w, http.StatusBadRequest, "invalid "+label+" json")
 			return false
 		}
 		if len(encoded) > maxBackupProviderJSONBytes {
-			writeError(w, http.StatusBadRequest, label+" json is too large")
+			httptransport.WriteError(w, http.StatusBadRequest, label+" json is too large")
 			return false
 		}
 	}
 	return true
 }
 
-func backupProviderToResponse(item backups.Provider) backupProviderResponse {
-	return backupProviderResponse{
+func ProviderToResponse(item Provider) ProviderResponse {
+	return ProviderResponse{
 		ID: item.ID, ProviderType: item.ProviderType, Name: item.Name, Status: item.Status,
 		Public: item.Public, HasSecret: item.EncryptedSecretJSON != "", LastCheckedAt: item.LastCheckedAt,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 	}
 }
 
-func backupRecordToResponse(item backups.Record) backupRecordResponse {
-	return backupRecordResponse{
+func RecordToResponse(item Record) RecordResponse {
+	return RecordResponse{
 		ID: item.ID, ProviderID: item.ProviderID, DatabaseID: item.DatabaseID, DatabaseName: item.DatabaseName,
 		ProviderFileID: item.ProviderFileID, Filename: item.Filename, SourceMachine: item.SourceMachine,
 		SizeBytes: item.SizeBytes, ChecksumSHA256: item.ChecksumSHA256, BackupCreatedAt: item.BackupCreatedAt,
@@ -161,10 +155,10 @@ func backupRecordToResponse(item backups.Record) backupRecordResponse {
 	}
 }
 
-func syncBackupServiceRecords(ctx context.Context, runtime *databaseRuntime, store *backups.Store, provider backups.Provider) (backupSyncResult, error) {
+func syncBackupServiceRecords(ctx context.Context, runtime HTTPScope, store *Store, provider Provider) (backupSyncResult, error) {
 	baseURL := stringFromMap(provider.Public, "base_url")
 	streamID := stringFromMap(provider.Public, "stream_id")
-	baseline, err := backups.ReadServiceBaseline(ctx, runtime.database, baseURL, streamID)
+	baseline, err := ReadServiceBaseline(ctx, runtime.Database, baseURL, streamID)
 	if err != nil {
 		return backupSyncResult{}, err
 	}
@@ -203,7 +197,7 @@ func syncBackupServiceRecords(ctx context.Context, runtime *databaseRuntime, sto
 	return result, nil
 }
 
-func remoteBackupIsNewer(remote backups.ServiceBackup, baseline *backups.ServiceBaseline) bool {
+func remoteBackupIsNewer(remote ServiceBackup, baseline *ServiceBaseline) bool {
 	if remote.ID == "" {
 		return false
 	}
@@ -221,36 +215,36 @@ func remoteBackupIsNewer(remote backups.ServiceBackup, baseline *backups.Service
 	return !remoteAt.Before(knownAt)
 }
 
-func upsertServiceBackupRecord(ctx context.Context, runtime *databaseRuntime, store *backups.Store, provider backups.Provider, item backups.ServiceBackup) (backups.Record, error) {
-	return store.UpsertRecord(ctx, backups.CreateRecordRequest{
-		ProviderID: provider.ID, DatabaseID: runtime.id, DatabaseName: item.DatabaseName,
+func upsertServiceBackupRecord(ctx context.Context, runtime HTTPScope, store *Store, provider Provider, item ServiceBackup) (Record, error) {
+	return store.UpsertRecord(ctx, CreateRecordRequest{
+		ProviderID: provider.ID, DatabaseID: runtime.DatabaseID, DatabaseName: item.DatabaseName,
 		ProviderFileID: item.ID, Filename: item.Filename, SourceMachine: item.SourceInstallationID,
 		SizeBytes: item.SizeBytes, ChecksumSHA256: item.SHA256, BackupCreatedAt: item.CreatedAt, UploadedAt: item.CreatedAt,
 		Metadata: map[string]any{"provider_type": provider.ProviderType, "stream_id": item.StreamID},
 	})
 }
 
-func downloadServiceRecordToTemp(ctx context.Context, runtime *databaseRuntime, provider backups.Provider, record backups.Record, client *backups.ServiceClient) (string, error) {
-	if record.SizeBytes < 1 || record.SizeBytes > maxImportBodyBytes {
-		return "", backups.ValidationError("backup is too large to download through the gateway")
+func downloadServiceRecordToTemp(ctx context.Context, runtime HTTPScope, provider Provider, record Record, client *ServiceClient) (string, error) {
+	if record.SizeBytes < 1 || record.SizeBytes > MaxDatabaseTransferBytes {
+		return "", ValidationError("backup is too large to download through the gateway")
 	}
-	tmpPath, err := databasecatalog.ReserveTempPath(runtime.path, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
+	tmpPath, err := databasecatalog.ReserveTempPath(runtime.DatabasePath, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
 	if err != nil {
 		return "", err
 	}
-	downloaded, err := client.Download(ctx, stringFromMap(provider.Public, "stream_id"), record.ProviderFileID, tmpPath, maxImportBodyBytes)
+	downloaded, err := client.Download(ctx, stringFromMap(provider.Public, "stream_id"), record.ProviderFileID, tmpPath, MaxDatabaseTransferBytes)
 	if err != nil {
 		_ = os.Remove(tmpPath)
-		return "", err
+		return "", remoteOperationError{err: err}
 	}
 	if downloaded.SizeBytes != record.SizeBytes || !strings.EqualFold(downloaded.SHA256, record.ChecksumSHA256) {
 		_ = os.Remove(tmpPath)
-		return "", errors.New("remote backup metadata changed since it was listed; refresh versions and try again")
+		return "", remoteOperationError{err: errors.New("remote backup metadata changed since it was listed; refresh versions and try again")}
 	}
 	return tmpPath, nil
 }
 
-func copyBackupFile(sourcePath string) func(string) error {
+func CopyBackupFile(sourcePath string) func(string) error {
 	return func(targetPath string) error {
 		source, err := os.Open(sourcePath)
 		if err != nil {
@@ -288,6 +282,14 @@ func backupSourceInstallationID(dataPath string) string {
 	return "install_" + hex.EncodeToString(digest[:12])
 }
 
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
 func safeBackupDownloadFilename(filename, databaseName string) string {
 	filename = strings.TrimSpace(filename)
 	filename = strings.ReplaceAll(filename, "\\", "/")
@@ -315,52 +317,67 @@ func stringFromMap(values map[string]any, key string) string {
 }
 
 func handleBackupProviderError(w http.ResponseWriter, err error) {
+	var remoteErr remoteOperationError
+	if errors.As(err, &remoteErr) {
+		handleBackupServiceError(w, remoteErr.err)
+		return
+	}
 	switch {
-	case errors.Is(err, backups.ErrNotFound):
-		writeError(w, http.StatusNotFound, "backup provider not found")
-	case errors.Is(err, backups.ErrRecordNotFound):
-		writeError(w, http.StatusNotFound, "backup record not found")
+	case errors.Is(err, ErrProviderDisabled):
+		httptransport.WriteError(w, http.StatusConflict, ErrProviderDisabled.Error())
+	case errors.Is(err, ErrNotFound):
+		httptransport.WriteError(w, http.StatusNotFound, "backup provider not found")
+	case errors.Is(err, ErrRecordNotFound):
+		httptransport.WriteError(w, http.StatusNotFound, "backup record not found")
 	default:
-		var validation backups.ValidationError
+		var validation ValidationError
 		if errors.As(err, &validation) {
-			writeError(w, http.StatusBadRequest, validation.Error())
+			httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 			return
 		}
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 	}
 }
 
+func WriteProviderHTTPError(w http.ResponseWriter, err error) {
+	handleBackupProviderError(w, err)
+}
+
 func handleBackupServiceError(w http.ResponseWriter, err error) {
-	var validation backups.ValidationError
+	var validation ValidationError
 	if errors.As(err, &validation) {
-		writeError(w, http.StatusBadRequest, validation.Error())
+		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 		return
 	}
-	var serviceError backups.ServiceError
+	var serviceError ServiceError
 	if errors.As(err, &serviceError) {
 		switch serviceError.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
-			writeError(w, http.StatusBadGateway, "backup service rejected its access token")
+			httptransport.WriteError(w, http.StatusBadGateway, "backup service rejected its access token")
 		case http.StatusNotFound:
 			if serviceError.Code == "backup_not_found" || serviceError.Code == "stream_not_found" {
-				writeError(w, http.StatusNotFound, "backup service stream or version was not found")
+				httptransport.WriteError(w, http.StatusNotFound, "backup service stream or version was not found")
 			} else {
-				writeError(w, http.StatusConflict, "backup service does not support this operation; upgrade AIPermission Backup")
+				httptransport.WriteError(w, http.StatusConflict, "backup service does not support this operation; upgrade AIPermission Backup")
 			}
 		case http.StatusRequestEntityTooLarge:
-			writeError(w, http.StatusRequestEntityTooLarge, "backup exceeds the remote service upload limit")
+			httptransport.WriteError(w, http.StatusRequestEntityTooLarge, "backup exceeds the remote service upload limit")
 		case http.StatusInsufficientStorage:
-			writeError(w, http.StatusInsufficientStorage, "backup service storage quota is full")
+			httptransport.WriteError(w, http.StatusInsufficientStorage, "backup service storage quota is full")
 		case http.StatusUpgradeRequired:
-			writeError(w, http.StatusConflict, "backup service protocol is incompatible with this AIPermission version")
+			httptransport.WriteError(w, http.StatusConflict, "backup service protocol is incompatible with this AIPermission version")
 		default:
-			writeError(w, http.StatusBadGateway, "backup service request failed")
+			httptransport.WriteError(w, http.StatusBadGateway, "backup service request failed")
 		}
 		return
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		writeError(w, http.StatusGatewayTimeout, "backup service request timed out")
+		httptransport.WriteError(w, http.StatusGatewayTimeout, "backup service request timed out")
 		return
 	}
-	writeError(w, http.StatusBadGateway, "backup service request failed")
+	httptransport.WriteError(w, http.StatusBadGateway, "backup service request failed")
+}
+
+func WriteServiceHTTPError(w http.ResponseWriter, err error) {
+	handleBackupServiceError(w, err)
 }

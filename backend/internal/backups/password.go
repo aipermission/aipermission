@@ -1,4 +1,4 @@
-package api
+package backups
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 const remoteBackupPasswordMinimumLength = 18
 
-func validateRemoteBackupPassword(password, databaseName string) error {
+func ValidateRemoteBackupPassword(password, databaseName string) error {
 	if len(password) < remoteBackupPasswordMinimumLength {
 		return fmt.Errorf("remote backup requires a database password of at least %d characters", remoteBackupPasswordMinimumLength)
 	}

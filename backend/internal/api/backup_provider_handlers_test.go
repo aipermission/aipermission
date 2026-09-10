@@ -70,7 +70,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create failed: %d %s", create.Code, create.Body.String())
 	}
-	created := decodeRouteResponse[backupProviderResponse](t, create.Body.Bytes())
+	created := decodeRouteResponse[backups.ProviderResponse](t, create.Body.Bytes())
 	if created.Status != "disabled" || !created.HasSecret || strings.Contains(create.Body.String(), backupAPITestToken) {
 		t.Fatalf("provider did not start safely or leaked token: %s", create.Body.String())
 	}
@@ -99,7 +99,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if upload.Code != http.StatusCreated {
 		t.Fatalf("upload failed: %d %s", upload.Code, upload.Body.String())
 	}
-	record := decodeRouteResponse[backupRecordResponse](t, upload.Body.Bytes())
+	record := decodeRouteResponse[backups.RecordResponse](t, upload.Body.Bytes())
 	if record.ProviderFileID == "" || record.ChecksumSHA256 == "" || record.SizeBytes < 1 {
 		t.Fatalf("upload metadata incomplete: %#v", record)
 	}
@@ -107,7 +107,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	baseline, err := backups.ReadServiceBaseline(context.Background(), fixture.db, remote.server.URL, stringFromMap(provider.Public, "stream_id"))
+	baseline, err := backups.ReadServiceBaseline(context.Background(), fixture.db, remote.server.URL, testStringMapValue(provider.Public, "stream_id"))
 	if err != nil || baseline == nil || baseline.BackupID != record.ProviderFileID {
 		t.Fatalf("upload did not advance the encrypted local baseline: %#v err=%v", baseline, err)
 	}
@@ -136,7 +136,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if invalid := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 0}); invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid retention preview status = %d body=%s", invalid.Code, invalid.Body.String())
 	}
-	if invalid := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", updateBackupRetentionRequest{Enabled: false, KeepLatest: 1}); invalid.Code != http.StatusBadRequest {
+	if invalid := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", map[string]any{"enabled": false, "keep_latest": 1}); invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid disabled retention status = %d body=%s", invalid.Code, invalid.Body.String())
 	}
 	preview := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 1})
@@ -147,8 +147,8 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if retentionPreview.KeepLatest != 1 || retentionPreview.RetainCount != 1 || retentionPreview.DeleteCount != 0 {
 		t.Fatalf("unexpected retention preview: %#v", retentionPreview)
 	}
-	update := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", updateBackupRetentionRequest{
-		Enabled: true, KeepLatest: 1, ApplyNow: true,
+	update := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", map[string]any{
+		"enabled": true, "keep_latest": 1, "apply_now": true,
 	})
 	if update.Code != http.StatusOK {
 		t.Fatalf("retention update failed: %d %s", update.Code, update.Body.String())
@@ -157,7 +157,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if !retentionUpdate.Policy.Enabled || retentionUpdate.Policy.KeepLatest != 1 || retentionUpdate.DeletedCount != 0 {
 		t.Fatalf("unexpected retention update: %#v", retentionUpdate)
 	}
-	prune := performJSON(handler, http.MethodPost, providerPath(created.ID, "/prune"), "", pruneBackupProviderRequest{KeepLatest: 1})
+	prune := performJSON(handler, http.MethodPost, providerPath(created.ID, "/prune"), "", map[string]any{"keep_latest": 1})
 	if prune.Code != http.StatusOK {
 		t.Fatalf("prune failed: %d %s", prune.Code, prune.Body.String())
 	}
@@ -172,7 +172,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	remote.mu.Lock()
 	listCallsBeforeDelete := remote.listCalls
 	remote.mu.Unlock()
-	deleteRecords := performJSON(handler, http.MethodPost, providerPath(created.ID, "/records/delete"), "", deleteBackupRecordsRequest{RecordIDs: []int64{record.ID}})
+	deleteRecords := performJSON(handler, http.MethodPost, providerPath(created.ID, "/records/delete"), "", map[string]any{"record_ids": []int64{record.ID}})
 	if deleteRecords.Code != http.StatusOK {
 		t.Fatalf("selected delete failed: %d %s", deleteRecords.Code, deleteRecords.Body.String())
 	}
@@ -189,7 +189,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	assertAuditActionCount(t, fixture.db, "backup.provider.records.deleted", 1)
 	list = performJSON(handler, http.MethodGet, providerPath(created.ID, "/records"), "", nil)
 	listed := decodeRouteResponse[struct {
-		Items []backupRecordResponse `json:"items"`
+		Items []backups.RecordResponse `json:"items"`
 	}](t, list.Body.Bytes())
 	if list.Code != http.StatusOK || len(listed.Items) != 0 {
 		t.Fatalf("deleted record was not reconciled: %d %s", list.Code, list.Body.String())
@@ -217,25 +217,6 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	}
 	if encrypted != "" {
 		t.Fatal("archived provider retained its encrypted token")
-	}
-}
-
-func TestRemoteBackupFreshnessUsesKnownVersionAndTimestamp(t *testing.T) {
-	remote := backups.ServiceBackup{ID: "bkp_new", CreatedAt: "2026-07-31T12:00:00Z"}
-	if !remoteBackupIsNewer(remote, nil) {
-		t.Fatal("a remote version without a local baseline should be reported")
-	}
-	baseline := &backups.ServiceBaseline{BackupID: "bkp_old", CreatedAt: "2026-07-31T11:00:00Z"}
-	if !remoteBackupIsNewer(remote, baseline) {
-		t.Fatal("newer remote version was not reported")
-	}
-	baseline = &backups.ServiceBaseline{BackupID: "bkp_new", CreatedAt: "2026-07-31T12:00:00Z"}
-	if remoteBackupIsNewer(remote, baseline) {
-		t.Fatal("the known remote version should not be reported as newer")
-	}
-	baseline = &backups.ServiceBaseline{BackupID: "bkp_future", CreatedAt: "2026-07-31T13:00:00Z"}
-	if remoteBackupIsNewer(remote, baseline) {
-		t.Fatal("an older remote version should not be reported as newer")
 	}
 }
 
@@ -387,7 +368,7 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 					"storage_usage",
 					"automatic_retention",
 				},
-				MaxUploadBytes: maxImportBodyBytes,
+				MaxUploadBytes: backups.MaxDatabaseTransferBytes,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/streams":
 			items := []backups.ServiceStream{}
@@ -475,6 +456,11 @@ func testBoolToInt64(value bool) int64 {
 
 func providerPath(id int64, suffix string) string {
 	return "/api/backup/providers/" + strconv.FormatInt(id, 10) + suffix
+}
+
+func testStringMapValue(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
 }
 
 func writeFakeServiceError(w http.ResponseWriter, status int, code string) {

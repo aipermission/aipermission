@@ -388,7 +388,7 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 		return
 	}
 	if hasActiveRemoteBackup {
-		if err := validateRemoteBackupPassword(request.NewPassword, s.currentDatabaseNameLocked()); err != nil {
+		if err := backups.ValidateRemoteBackupPassword(request.NewPassword, s.currentDatabaseNameLocked()); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

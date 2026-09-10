@@ -39,16 +39,16 @@ func (s backupHandlers) listTransientRemoteBackups(w http.ResponseWriter, r *htt
 	defer clearStringReferences(&request.Token)
 	client, err := backups.NewServiceClient(request.BaseURL, request.Token)
 	if err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	if _, err := client.Info(r.Context()); err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	streams, err := client.ListStreams(r.Context())
 	if err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	if len(streams) > 100 {
@@ -64,7 +64,7 @@ func (s backupHandlers) listTransientRemoteBackups(w http.ResponseWriter, r *htt
 		if request.StreamID != "" {
 			versions, err = client.ListBackups(r.Context(), stream.ID)
 			if err != nil {
-				handleBackupServiceError(w, err)
+				backups.WriteServiceHTTPError(w, err)
 				return
 			}
 		}
@@ -93,31 +93,31 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 	}
 	client, err := backups.NewServiceClient(request.BaseURL, request.Token)
 	if err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	if _, err := client.Info(r.Context()); err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	stream, version, err := findTransientRemoteBackup(r, client, request.StreamID, request.BackupID)
 	if err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
-	if version.SizeBytes > maxImportBodyBytes {
+	if version.SizeBytes > backups.MaxDatabaseTransferBytes {
 		writeError(w, http.StatusRequestEntityTooLarge, "remote backup is too large to restore through the gateway")
 		return
 	}
 	tmpPath, err := databasecatalog.ReserveTempPath(s.config.DataPath, "first-run-restore-*.aipdb")
 	if err != nil {
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
-	downloaded, err := client.Download(r.Context(), stream.ID, version.ID, tmpPath, maxImportBodyBytes)
+	downloaded, err := client.Download(r.Context(), stream.ID, version.ID, tmpPath, backups.MaxDatabaseTransferBytes)
 	if err != nil {
 		_ = os.Remove(tmpPath)
-		handleBackupServiceError(w, err)
+		backups.WriteServiceHTTPError(w, err)
 		return
 	}
 	defer os.Remove(tmpPath)
@@ -125,7 +125,7 @@ func (s backupHandlers) restoreTransientRemoteBackup(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadGateway, "remote backup metadata changed while restoring; refresh versions and try again")
 		return
 	}
-	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, copyBackupFile(tmpPath), func(database *sql.DB) error {
+	s.installImportedDatabaseWithMutator(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(tmpPath), func(database *sql.DB) error {
 		return backups.WriteServiceBaseline(r.Context(), database, request.BaseURL, stream.ID, version)
 	})
 }

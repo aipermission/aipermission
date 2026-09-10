@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
@@ -96,29 +97,30 @@ func (s *Server) registerAccessRoutes() {
 
 func (s *Server) registerBackupRoutes() {
 	backup := backupHandlers{s}
+	providers := backups.NewHTTPHandlers(s.backupProviderHTTPScope)
 	databases := databaseHandlers{s}
 
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
 	s.mux.HandleFunc("POST /api/backup/remote/list", backup.listTransientRemoteBackups)
 	s.mux.HandleFunc("POST /api/backup/remote/restore", backup.restoreTransientRemoteBackup)
-	s.mux.HandleFunc("GET /api/backup/providers/catalog", backup.providerCatalog)
-	s.mux.HandleFunc("GET /api/backup/providers", backup.listProviders)
-	s.mux.HandleFunc("GET /api/backup/freshness", backup.backupFreshness)
-	s.mux.HandleFunc("POST /api/backup/providers", backup.createProvider)
-	s.mux.HandleFunc("PUT /api/backup/providers/{id}", backup.updateProvider)
-	s.mux.HandleFunc("DELETE /api/backup/providers/{id}", backup.deleteProvider)
+	s.mux.HandleFunc("GET /api/backup/providers/catalog", providers.ProviderCatalog)
+	s.mux.HandleFunc("GET /api/backup/providers", providers.ListProviders)
+	s.mux.HandleFunc("GET /api/backup/freshness", providers.BackupFreshness)
+	s.mux.HandleFunc("POST /api/backup/providers", providers.CreateProvider)
+	s.mux.HandleFunc("PUT /api/backup/providers/{id}", providers.UpdateProvider)
+	s.mux.HandleFunc("DELETE /api/backup/providers/{id}", providers.DeleteProvider)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/enable", backup.enableProvider)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/test", backup.testProvider)
-	s.mux.HandleFunc("GET /api/backup/providers/{id}/records", backup.listProviderRecords)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/upload", backup.uploadProviderBackup)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/prune", backup.pruneProviderBackups)
-	s.mux.HandleFunc("GET /api/backup/providers/{id}/storage", backup.backupProviderStorage)
-	s.mux.HandleFunc("GET /api/backup/providers/{id}/retention", backup.backupProviderRetention)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/retention/preview", backup.previewBackupProviderRetention)
-	s.mux.HandleFunc("PUT /api/backup/providers/{id}/retention", backup.updateBackupProviderRetention)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/delete", backup.deleteProviderBackupRecords)
-	s.mux.HandleFunc("GET /api/backup/providers/{id}/records/{record_id}/download", backup.downloadProviderRecord)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/test", providers.TestProvider)
+	s.mux.HandleFunc("GET /api/backup/providers/{id}/records", providers.ListProviderRecords)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/upload", providers.UploadProviderBackup)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/prune", providers.PruneProviderBackups)
+	s.mux.HandleFunc("GET /api/backup/providers/{id}/storage", providers.BackupProviderStorage)
+	s.mux.HandleFunc("GET /api/backup/providers/{id}/retention", providers.BackupProviderRetention)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/retention/preview", providers.PreviewBackupProviderRetention)
+	s.mux.HandleFunc("PUT /api/backup/providers/{id}/retention", providers.UpdateBackupProviderRetention)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/delete", providers.DeleteProviderBackupRecords)
+	s.mux.HandleFunc("GET /api/backup/providers/{id}/records/{record_id}/download", providers.DownloadProviderRecord)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/{record_id}/restore", backup.restoreProviderRecord)
 	s.mux.HandleFunc("POST /api/databases/rename", databases.renameDatabase)
 	s.mux.HandleFunc("POST /api/databases/delete", databases.deleteDatabase)

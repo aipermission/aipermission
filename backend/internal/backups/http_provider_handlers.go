@@ -1,4 +1,4 @@
-package api
+package backups
 
 import (
 	"database/sql"
@@ -7,9 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/backups"
-	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const maxBackupProviderJSONBytes = 16 << 10
@@ -20,15 +18,6 @@ type backupProviderRequest struct {
 	Status       string         `json:"status,omitempty"`
 	Public       map[string]any `json:"public,omitempty"`
 	Secret       map[string]any `json:"secret,omitempty"`
-}
-
-type enableBackupProviderRequest struct {
-	CurrentPassword string `json:"current_password"`
-}
-
-type restoreBackupRecordRequest struct {
-	DatabaseName     string `json:"database_name"`
-	DatabasePassword string `json:"database_password"`
 }
 
 type pruneBackupProviderRequest struct {
@@ -52,7 +41,7 @@ type backupProviderCatalogItem struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-type backupProviderResponse struct {
+type ProviderResponse struct {
 	ID            int64          `json:"id"`
 	ProviderType  string         `json:"provider_type"`
 	Name          string         `json:"name"`
@@ -64,7 +53,7 @@ type backupProviderResponse struct {
 	UpdatedAt     string         `json:"updated_at"`
 }
 
-type backupRecordResponse struct {
+type RecordResponse struct {
 	ID              int64          `json:"id"`
 	ProviderID      int64          `json:"provider_id"`
 	DatabaseID      string         `json:"database_id"`
@@ -97,10 +86,10 @@ type backupSyncResult struct {
 	Freshness backupFreshnessResponse
 }
 
-func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+func (h *HTTPHandlers) ProviderCatalog(w http.ResponseWriter, _ *http.Request) {
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{
 		"items": []backupProviderCatalogItem{{
-			ProviderType: backups.ServiceProviderType,
+			ProviderType: ServiceProviderType,
 			Label:        "AIPermission Backup",
 			Status:       "available",
 			Capabilities: []string{"encrypted_database_upload", "immutable_versions", "prune_versions", "delete_versions", "storage_usage", "automatic_retention", "first_run_restore", "self_hosted"},
@@ -108,40 +97,40 @@ func (s backupHandlers) providerCatalog(w http.ResponseWriter, _ *http.Request) 
 	})
 }
 
-func (s backupHandlers) listProviders(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) ListProviders(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase)
 	if !ok {
 		return
 	}
-	items, err := backups.NewStore(runtime.database).ListProviders(r.Context())
+	items, err := NewStore(runtime.Database).ListProviders(r.Context())
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	responses := make([]backupProviderResponse, 0, len(items))
+	responses := make([]ProviderResponse, 0, len(items))
 	for _, item := range items {
-		responses = append(responses, backupProviderToResponse(item))
+		responses = append(responses, ProviderToResponse(item))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": responses})
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": responses})
 }
 
-func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) CreateProvider(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase|requireProviderIdentity|requireSecrets|requireMutation)
 	if !ok {
 		return
 	}
 	var request backupProviderRequest
-	if !decodeJSON(w, r, &request) {
+	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
 	if !validateBackupProviderPayload(w, request.Public, request.Secret) {
 		return
 	}
-	if strings.TrimSpace(request.ProviderType) != backups.ServiceProviderType {
-		writeError(w, http.StatusBadRequest, "unsupported backup provider type")
+	if strings.TrimSpace(request.ProviderType) != ServiceProviderType {
+		httptransport.WriteError(w, http.StatusBadRequest, "unsupported backup provider type")
 		return
 	}
-	public, err := s.normalizeServiceProviderPublic(runtime, request.Public, nil)
+	public, err := normalizeServiceProviderPublic(runtime, request.Public, nil)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
@@ -151,21 +140,21 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		handleBackupProviderError(w, err)
 		return
 	}
-	var item backups.Provider
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.created",
+	var item Provider
+	err = runtime.Mutate(
+		r.Context(), "backup.provider.created",
 		func() any { return backupProviderAuditPayload(item) },
 		func(tx *sql.Tx) error {
-			store := backups.NewTxStore(tx)
+			store := NewTxStore(tx)
 			var err error
-			item, err = store.CreateProvider(r.Context(), backups.CreateProviderRequest{
-				ProviderType: backups.ServiceProviderType, Name: strings.TrimSpace(request.Name),
+			item, err = store.CreateProvider(r.Context(), CreateProviderRequest{
+				ProviderType: ServiceProviderType, Name: strings.TrimSpace(request.Name),
 				Status: "disabled", Public: public, Encrypted: "",
 			})
 			if err != nil {
 				return err
 			}
-			encrypted, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, item.ID, secret)
+			encrypted, err := runtime.Secrets.EncryptProviderSecret(item.ID, secret)
 			if err != nil {
 				return fmt.Errorf("encrypt backup provider secret: %w", err)
 			}
@@ -180,32 +169,32 @@ func (s backupHandlers) createProvider(w http.ResponseWriter, r *http.Request) {
 		handleBackupProviderError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, backupProviderToResponse(item))
+	httptransport.WriteJSON(w, http.StatusCreated, ProviderToResponse(item))
 }
 
-func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) UpdateProvider(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase|requireProviderIdentity|requireSecrets|requireMutation)
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
 	}
 	var request backupProviderRequest
-	if !decodeJSON(w, r, &request) {
+	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
 	if !validateBackupProviderPayload(w, request.Public, request.Secret) {
 		return
 	}
-	store := backups.NewStore(runtime.database)
+	store := NewStore(runtime.Database)
 	existing, err := store.GetProvider(r.Context(), id)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	public, err := s.normalizeServiceProviderPublic(runtime, request.Public, existing.Public)
+	public, err := normalizeServiceProviderPublic(runtime, request.Public, existing.Public)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
@@ -215,7 +204,7 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 		status = existing.Status
 	}
 	if existing.Status != "active" && status == "active" {
-		writeError(w, http.StatusConflict, "enable this provider with the explicit enable action")
+		httptransport.WriteError(w, http.StatusConflict, "enable this provider with the explicit enable action")
 		return
 	}
 	name := strings.TrimSpace(request.Name)
@@ -229,9 +218,9 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 			handleBackupProviderError(w, err)
 			return
 		}
-		value, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.BackupProvider, existing.ID, secret)
+		value, err := runtime.Secrets.EncryptProviderSecret(existing.ID, secret)
 		if err != nil {
-			writeInternalError(w)
+			httptransport.WriteInternalError(w)
 			return
 		}
 		encrypted = &value
@@ -252,13 +241,13 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var item backups.Provider
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.updated",
+	var item Provider
+	err = runtime.Mutate(
+		r.Context(), "backup.provider.updated",
 		func() any { return backupProviderAuditPayload(item) },
 		func(tx *sql.Tx) error {
 			var err error
-			item, err = backups.NewTxStore(tx).UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
+			item, err = NewTxStore(tx).UpdateProvider(r.Context(), id, UpdateProviderRequest{
 				Name: name, Status: status, Public: public, Encrypted: encrypted,
 			})
 			return err
@@ -268,101 +257,19 @@ func (s backupHandlers) updateProvider(w http.ResponseWriter, r *http.Request) {
 		handleBackupProviderError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, backupProviderToResponse(item))
+	httptransport.WriteJSON(w, http.StatusOK, ProviderToResponse(item))
 }
 
-func (s backupHandlers) enableProvider(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) TestProvider(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase|requireSecrets|requireMutation)
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
 	}
-	var request enableBackupProviderRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	defer clearStringReferences(&request.CurrentPassword)
-	if request.CurrentPassword == "" {
-		writeError(w, http.StatusBadRequest, "current database password is required")
-		return
-	}
-	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
-	if !ok {
-		return
-	}
-	if err := dbpkg.ValidateEncrypted(runtime.path, request.CurrentPassword); err != nil {
-		attempt.failure()
-		writeError(w, http.StatusUnauthorized, "invalid current database password")
-		return
-	}
-	attempt.success()
-	if err := validateRemoteBackupPassword(request.CurrentPassword, s.activeDatabaseDisplayName()); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	store := backups.NewStore(runtime.database)
-	provider, err := store.GetProvider(r.Context(), id)
-	if err != nil {
-		handleBackupProviderError(w, err)
-		return
-	}
-	client, err := backupServiceClient(runtime, provider)
-	if err != nil {
-		handleBackupProviderError(w, err)
-		return
-	}
-	info, err := client.Info(r.Context())
-	if err != nil {
-		handleBackupServiceError(w, err)
-		return
-	}
-	public := cloneJSONMap(provider.Public)
-	public["service_version"] = info.Version
-	public["protocol_version"] = info.ProtocolVersion
-	var item backups.Provider
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.enabled",
-		func() any {
-			payload := backupProviderAuditPayload(item)
-			payload["service_version"] = info.Version
-			return payload
-		},
-		func(tx *sql.Tx) error {
-			txStore := backups.NewTxStore(tx)
-			var err error
-			item, err = txStore.UpdateProvider(r.Context(), id, backups.UpdateProviderRequest{
-				Name: provider.Name, Status: "active", Public: public,
-			})
-			if err != nil {
-				return err
-			}
-			if err := txStore.UpdateLastChecked(r.Context(), id, time.Now()); err != nil {
-				return err
-			}
-			item, err = txStore.GetProvider(r.Context(), id)
-			return err
-		},
-	)
-	if err != nil {
-		handleBackupProviderError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, backupProviderToResponse(item))
-}
-
-func (s backupHandlers) testProvider(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	id, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	store := backups.NewStore(runtime.database)
+	store := NewStore(runtime.Database)
 	provider, err := store.GetProvider(r.Context(), id)
 	if err != nil {
 		handleBackupProviderError(w, err)
@@ -379,39 +286,39 @@ func (s backupHandlers) testProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	checkedAt := time.Now().UTC()
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.tested",
+	err = runtime.Mutate(
+		r.Context(), "backup.provider.tested",
 		func() any {
 			return map[string]any{
 				"provider_id": provider.ID, "provider_type": provider.ProviderType,
 				"service_version": info.Version,
 			}
 		},
-		func(tx *sql.Tx) error { return backups.NewTxStore(tx).UpdateLastChecked(r.Context(), id, checkedAt) },
+		func(tx *sql.Tx) error { return NewTxStore(tx).UpdateLastChecked(r.Context(), id, checkedAt) },
 	)
 	if err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "checked_at": checkedAt.Format(time.RFC3339), "service_version": info.Version,
 		"protocol_version": info.ProtocolVersion, "max_upload_bytes": info.MaxUploadBytes,
 	})
 }
 
-func (s backupHandlers) deleteProvider(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) DeleteProvider(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.resolve(w, requireDatabase|requireMutation)
 	if !ok {
 		return
 	}
-	id, ok := parseID(w, r)
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
 	}
-	err := s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "backup.provider.archived",
+	err := runtime.Mutate(
+		r.Context(), "backup.provider.archived",
 		func() any { return map[string]any{"provider_id": id} },
-		func(tx *sql.Tx) error { return backups.NewTxStore(tx).ArchiveProvider(r.Context(), id) },
+		func(tx *sql.Tx) error { return NewTxStore(tx).ArchiveProvider(r.Context(), id) },
 	)
 	if err != nil {
 		handleBackupProviderError(w, err)
@@ -420,7 +327,7 @@ func (s backupHandlers) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func backupProviderAuditPayload(item backups.Provider) map[string]any {
+func backupProviderAuditPayload(item Provider) map[string]any {
 	return map[string]any{
 		"provider_id": item.ID, "provider_type": item.ProviderType,
 		"name": item.Name, "status": item.Status,
