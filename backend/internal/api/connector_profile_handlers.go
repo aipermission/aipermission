@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"time"
 
@@ -11,77 +10,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
-
-func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return
-	}
-	targetID, ok := parseID(w, r)
-	if !ok {
-		return
-	}
-	profileID, ok := parsePathInt64(w, r, "profile_id", "profile_id")
-	if !ok {
-		return
-	}
-	store := connectortargets.NewStore(runtime.database)
-	target, err := store.GetTarget(r.Context(), targetID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	profile, err := store.GetCredentialProfile(r.Context(), targetID, profileID)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "connector credential profile deletion was canceled")
-		return
-	}
-	defer release()
-	cleanup, err := s.cleanupProvisionedCredentialProfileIfNeeded(r.Context(), runtime, target, profile)
-	if err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-		gateway := connectorRuntimeActionGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: s.Server}, runtime: runtime, kind: target.ConnectorKind}
-		if err := adapter.BeforeDeleteCredentialProfile(r.Context(), gateway, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile); err != nil {
-			handleConnectorTargetError(w, err)
-			return
-		}
-	}
-	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "connector.profile.deleted", func() any {
-		payload := map[string]any{
-			"target_id": target.ID, "profile_id": profile.ID, "connector_kind": target.ConnectorKind,
-			"kind": profile.Kind, "label": profile.Label,
-		}
-		if cleanup.Required {
-			payload["external_cleanup"] = map[string]any{
-				"status": cleanup.Result.Status,
-				"output": cleanup.Result.Output,
-			}
-		}
-		return payload
-	}, func(tx *sql.Tx) error {
-		return connectortargets.NewTxStore(tx).DeleteCredentialProfile(r.Context(), targetID, profileID)
-	}); err != nil {
-		handleConnectorTargetError(w, err)
-		return
-	}
-	if err := s.afterConnectorCredentialLifecycleChange(
-		r.Context(), runtime, targetID, profileID,
-		"connector credential profile was deleted; send a fresh Vault request",
-		"connector credential profile was deleted; ask the AI to send a fresh request", true,
-	); err != nil {
-		writeInternalError(w)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
 
 func (s connectorTargetHandlers) testConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)

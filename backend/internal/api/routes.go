@@ -222,6 +222,7 @@ func (s *Server) registerConnectorRoutes() {
 	hostPing := connectormanagement.NewHostPingHTTPHandler(s.connectorPingHTTPScope)
 	targetMutations := connectormanagement.NewTargetMutationHTTPHandler(s.connectorTargetMutationHTTPScope)
 	profileMutations := connectormanagement.NewProfileMutationHTTPHandler(s.connectorProfileMutationHTTPScope)
+	profileDeletion := connectormanagement.NewProfileDeletionHTTPHandler(s.connectorProfileDeletionHTTPScope)
 	connectorTargets := connectorTargetHandlers{s}
 
 	s.mux.HandleFunc("GET /api/connectors", queries.ListConnectors)
@@ -243,7 +244,7 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/backup", connectorTargets.downloadConnectorProfileBackup)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/restore", connectorTargets.restoreConnectorProfileBackup)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/profiles/{profile_id}", profileMutations.Update)
-	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", connectorTargets.deleteConnectorCredentialProfile)
+	s.mux.HandleFunc("DELETE /api/connector-targets/{id}/profiles/{profile_id}", profileDeletion.Delete)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/profiles/{profile_id}/test", connectorTargets.testConnectorCredentialProfile)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}/profiles/{profile_id}/actions", queries.ListCredentialProfileActions)
 }
