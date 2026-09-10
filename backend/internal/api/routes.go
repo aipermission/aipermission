@@ -23,7 +23,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
-type credentialHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
@@ -71,16 +70,16 @@ func (s *Server) registerSystemRoutes(observation applicationobservation.HTTPHan
 }
 
 func (s *Server) registerAccessRoutes() {
-	credentials := credentialHandlers{s}
+	credentials := s.connectorManagementApplication().CredentialResources(s.connectorCredentialResourceDependencies())
 	connectorTargets := connectorTargetHandlers{s}
 	tokenAccess := accesscontrol.NewHTTPHandlers(s.accessControlScope)
 
-	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials", credentials.listCredentials)
-	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials", credentials.createCredential)
-	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials/import", credentials.importCredential)
-	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials/{id}", credentials.getCredential)
-	s.mux.HandleFunc("PUT /api/connectors/{kind}/credentials/{id}", credentials.updateCredential)
-	s.mux.HandleFunc("DELETE /api/connectors/{kind}/credentials/{id}", credentials.deleteCredential)
+	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials", credentials.List)
+	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials", credentials.Create)
+	s.mux.HandleFunc("POST /api/connectors/{kind}/credentials/import", credentials.Import)
+	s.mux.HandleFunc("GET /api/connectors/{kind}/credentials/{id}", credentials.Get)
+	s.mux.HandleFunc("PUT /api/connectors/{kind}/credentials/{id}", credentials.Update)
+	s.mux.HandleFunc("DELETE /api/connectors/{kind}/credentials/{id}", credentials.Delete)
 	s.mux.HandleFunc("POST /api/connector-targets/{id}/operations/{operation}", connectorTargets.runConnectorTargetOperation)
 	s.mux.HandleFunc("GET /api/tokens", tokenAccess.ListTokens)
 	s.mux.HandleFunc("POST /api/tokens", tokenAccess.CreateToken)

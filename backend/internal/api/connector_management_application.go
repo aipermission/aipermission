@@ -16,6 +16,13 @@ import (
 
 type provisionConnectorCredentialProfileRequest = connectormanagement.ProvisionRequest
 
+func (s *Server) connectorCredentialResourceDependencies() applicationmanagement.CredentialResourceDependencies {
+	return applicationmanagement.CredentialResourceDependencies{
+		Adapter:    s.connectorCredentialResourceAdapterFor,
+		WriteError: writeError,
+	}
+}
+
 func (s *Server) connectorManagementApplication() *applicationmanagement.Component {
 	return applicationmanagement.New(applicationmanagement.Dependencies{
 		ActiveRuntime: s.activeRuntimeOrLocked,
