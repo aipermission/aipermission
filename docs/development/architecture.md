@@ -181,7 +181,10 @@ place.
   channel so canceled waiters do not accumulate while a batch remains paused.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 - `internal/projectvault`: Project Vault item metadata, encrypted values,
-  project sharing, default session bindings, and exact-session item tracking.
+  project sharing, default session bindings, exact-session item tracking, and
+  local-operator item lifecycle. Its runtime owns mutation fencing, generated
+  preview state, required audit calls, and affected-session invalidation;
+  `internal/api` maps HTTP input and status codes through narrow ports.
 - `internal/sessionenv`: framed one-time session environment envelopes and
   acknowledgement parsing. It never persists plaintext values.
 - `internal/vaultrequests`: tracked Prompt/Always Project Vault action request

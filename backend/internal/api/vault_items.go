@@ -1,9 +1,7 @@
 package api
 
 import (
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -65,23 +63,13 @@ type generateVaultItemPreviewRequest struct {
 	GeneratorKind string `json:"generator_kind"`
 }
 
-type generatedVaultItemPreview struct {
-	ItemID               int64          `json:"item_id"`
-	ExpectedValueVersion int64          `json:"expected_value_version"`
-	GeneratorKind        string         `json:"generator_kind"`
-	GeneratorParameters  map[string]any `json:"generator_parameters"`
-	Value                string         `json:"value"`
-	ExpiresAtUnix        int64          `json:"expires_at_unix"`
-	Nonce                string         `json:"nonce"`
-}
-
 type deleteVaultItemRequest struct {
 	ExpectedValueVersion     int64 `json:"expected_value_version"`
 	ExpectedMetadataRevision int64 `json:"expected_metadata_revision"`
 }
 
 func (s vaultItemHandlers) listVaultItems(w http.ResponseWriter, r *http.Request) {
-	_, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -110,7 +98,7 @@ func (s vaultItemHandlers) listVaultItems(w http.ResponseWriter, r *http.Request
 		}
 		filter.Offset = value
 	}
-	items, total, err := store.List(r.Context(), filter)
+	items, total, err := owner.List(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -119,7 +107,7 @@ func (s vaultItemHandlers) listVaultItems(w http.ResponseWriter, r *http.Request
 }
 
 func (s vaultItemHandlers) createVaultItem(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -135,15 +123,11 @@ func (s vaultItemHandlers) createVaultItem(w http.ResponseWriter, r *http.Reques
 		Source: request.Source, GeneratorKind: request.GeneratorKind, Tags: request.Tags,
 		UsageNotes: vaultUsageNotes(request.UsageNotes),
 	}
-	var item projectvault.Item
-	err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.created", func() any {
-		return vaultItemAuditPayload(item)
-	}, func(tx *sql.Tx) error {
-		var createErr error
-		item, createErr = store.WithTx(tx).Create(r.Context(), input)
-		return createErr
-	})
+	item, err := owner.Create(r.Context(), input)
 	if err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault item creation was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
 		return
 	}
@@ -151,7 +135,7 @@ func (s vaultItemHandlers) createVaultItem(w http.ResponseWriter, r *http.Reques
 }
 
 func (s vaultItemHandlers) getVaultItem(w http.ResponseWriter, r *http.Request) {
-	_, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -159,7 +143,7 @@ func (s vaultItemHandlers) getVaultItem(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	item, err := store.Get(r.Context(), id)
+	item, err := owner.Get(r.Context(), id)
 	if err != nil {
 		handleVaultItemError(w, err)
 		return
@@ -168,7 +152,7 @@ func (s vaultItemHandlers) getVaultItem(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -180,27 +164,6 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "Vault item update was canceled")
-		return
-	}
-	defer release()
-	current, err := store.Get(r.Context(), id)
-	if err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	if current.MetadataRevision != request.ExpectedMetadataRevision {
-		handleVaultItemError(w, projectvault.ErrStale)
-		return
-	}
-	scope := projectvault.SessionMutationScope{ItemID: id}
-	sessions, err := store.ActiveSessionsForMutation(r.Context(), scope)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
 	input := projectvault.UpdateMetadataInput{
 		ID: id, ExpectedMetadataRevision: request.ExpectedMetadataRevision, Name: request.Name,
 		OwnerProjectID: request.OwnerProjectID, SharedProjectIDs: request.SharedProjectIDs,
@@ -209,27 +172,19 @@ func (s vaultItemHandlers) updateVaultItem(w http.ResponseWriter, r *http.Reques
 		ExpiryWarningDays: request.ExpiryWarningDays, Tags: request.Tags,
 		UsageNotes: vaultUsageNotes(request.UsageNotes),
 	}
-	var item projectvault.Item
-	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.updated", func() any {
-		return vaultItemAuditPayload(item)
-	}, func(tx *sql.Tx) error {
-		var updateErr error
-		item, updateErr = store.WithTx(tx).UpdateMetadata(r.Context(), input)
-		return updateErr
-	})
+	item, err := owner.UpdateMetadata(r.Context(), input)
 	if err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault item update was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
-		return
-	}
-	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
-		writeInternalError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
 }
 
 func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -241,90 +196,22 @@ func (s vaultItemHandlers) replaceVaultItemValue(w http.ResponseWriter, r *http.
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	request.Source = strings.TrimSpace(request.Source)
-	request.GeneratorKind = strings.TrimSpace(request.GeneratorKind)
-	if request.Source == "" {
-		request.Source = "imported"
-	}
-	if request.Source == "generated" {
-		if request.Value != "" {
-			writeError(w, http.StatusBadRequest, "generated replacement cannot include an imported value")
-			return
-		}
-		if request.PreviewToken == "" {
-			writeError(w, http.StatusBadRequest, "generated replacement preview is required")
-			return
-		}
-		if err := projectvault.ValidateGeneratorKind(request.GeneratorKind); err != nil {
-			handleVaultItemError(w, err)
-			return
-		}
-	} else if request.Source != "imported" || request.GeneratorKind != "" || request.PreviewToken != "" {
-		writeError(w, http.StatusBadRequest, "source must select an imported value or a supported generator")
-		return
-	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "Vault value replacement was canceled")
-		return
-	}
-	defer release()
-	current, err := store.Get(r.Context(), id)
-	if err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	if current.ValueVersion != request.ExpectedValueVersion {
-		handleVaultItemError(w, projectvault.ErrStale)
-		return
-	}
-	var generatedPreview generatedVaultItemPreview
-	if request.Source == "generated" {
-		aad := vaultItemPreviewAAD(runtime.workspaceUUID, id, request.ExpectedValueVersion)
-		if runtime.vault == nil || runtime.vault.DecryptJSONWithAAD(request.PreviewToken, &generatedPreview, aad) != nil ||
-			generatedPreview.ItemID != id ||
-			generatedPreview.ExpectedValueVersion != request.ExpectedValueVersion ||
-			generatedPreview.GeneratorKind != request.GeneratorKind ||
-			generatedPreview.ExpiresAtUnix <= time.Now().UTC().Unix() ||
-			!runtime.vaultPreviewCurrent(id, generatedPreview.Nonce) {
-			writeError(w, http.StatusBadRequest, "generated replacement preview is invalid or expired")
-			return
-		}
-		request.Value = generatedPreview.Value
-	}
-	scope := projectvault.SessionMutationScope{ItemID: id}
-	sessions, err := store.ActiveSessionsForMutation(r.Context(), scope)
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	input := projectvault.ReplaceValueInput{
+	item, err := owner.ReplaceValue(r.Context(), projectvault.ReplaceRuntimeValueInput{
 		ID: id, Value: request.Value, Source: request.Source, GeneratorKind: request.GeneratorKind,
-		GeneratorParams:      generatedPreview.GeneratorParameters,
-		ExpectedValueVersion: request.ExpectedValueVersion,
-	}
-	var item projectvault.Item
-	err = s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.value_replaced", func() any {
-		return vaultItemAuditPayload(item)
-	}, func(tx *sql.Tx) error {
-		var replaceErr error
-		item, replaceErr = store.WithTx(tx).ReplaceValue(r.Context(), input)
-		return replaceErr
+		PreviewToken: request.PreviewToken, ExpectedValueVersion: request.ExpectedValueVersion,
 	})
 	if err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault value replacement was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
 		return
 	}
-	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, scope); err != nil {
-		writeInternalError(w)
-		return
-	}
-	runtime.clearVaultPreview(id)
 	writeJSON(w, http.StatusOK, item)
 }
 
 func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	runtime, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -336,109 +223,29 @@ func (s vaultItemHandlers) generateVaultItemPreview(w http.ResponseWriter, r *ht
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	request.GeneratorKind = strings.TrimSpace(request.GeneratorKind)
-	if err := projectvault.ValidateGeneratorKind(request.GeneratorKind); err != nil {
+	result, err := owner.GeneratePreview(
+		r.Context(), id, request.GeneratorKind,
+		runtimecontrol.Key(r, fmt.Sprintf("vault-preview:%s:%d", runtime.id, id)),
+	)
+	if errors.Is(err, projectvault.ErrGenerateRateLimited) {
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
+	if err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault item preview generation was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquireDelivery(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "Vault item preview generation was canceled")
-		return
-	}
-	defer release()
-	item, err := store.Get(r.Context(), id)
-	if err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	if s.vaultGenerateLimiter == nil || !s.vaultGenerateLimiter.Allow(runtimecontrol.Key(r, fmt.Sprintf("vault-preview:%s:%d", runtime.id, id))) {
-		writeError(w, http.StatusTooManyRequests, "too many generated previews; wait before trying again")
-		return
-	}
-	value, parameters, err := projectvault.Generate(request.GeneratorKind)
-	if err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	expiresAt := time.Now().UTC().Add(5 * time.Minute)
-	nonce, err := newVaultPreviewNonce()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	preview := generatedVaultItemPreview{
-		ItemID: id, ExpectedValueVersion: item.ValueVersion, GeneratorKind: request.GeneratorKind,
-		GeneratorParameters: parameters, Value: value, ExpiresAtUnix: expiresAt.Unix(), Nonce: nonce,
-	}
-	if runtime.vault == nil {
-		writeInternalError(w)
-		return
-	}
-	previewToken, err := runtime.vault.EncryptJSONWithAAD(preview, vaultItemPreviewAAD(runtime.workspaceUUID, id, item.ValueVersion))
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "vault.item.value_preview.generated", map[string]any{
-		"project_id": item.OwnerProjectID, "vault_item_id": id,
-		"expected_value_version": item.ValueVersion, "generator_kind": request.GeneratorKind,
-		"expires_at": expiresAt.Format(time.RFC3339),
-	}); err != nil {
-		writeInternalError(w)
-		return
-	}
-	runtime.setVaultPreview(id, nonce)
 	writeSensitiveJSON(w, http.StatusOK, map[string]any{
-		"value": value, "preview_token": previewToken, "generator_kind": request.GeneratorKind,
-		"expires_at": expiresAt.Format(time.RFC3339),
+		"value": result.Value, "preview_token": result.PreviewToken, "generator_kind": result.GeneratorKind,
+		"expires_at": result.ExpiresAt.Format(time.RFC3339),
 	})
 }
 
-func vaultItemPreviewAAD(workspaceUUID string, itemID, valueVersion int64) []byte {
-	return []byte(fmt.Sprintf("project-vault-value-preview:v1:%s:%d:%d", workspaceUUID, itemID, valueVersion))
-}
-
-func newVaultPreviewNonce() (string, error) {
-	value := make([]byte, 16)
-	if _, err := rand.Read(value); err != nil {
-		return "", fmt.Errorf("generate Vault preview nonce: %w", err)
-	}
-	return hex.EncodeToString(value), nil
-}
-
-func (runtime *databaseRuntime) setVaultPreview(itemID int64, nonce string) {
-	if runtime == nil || itemID < 1 || nonce == "" {
-		return
-	}
-	runtime.vaultPreviewMu.Lock()
-	defer runtime.vaultPreviewMu.Unlock()
-	if runtime.vaultPreviewNonces == nil {
-		runtime.vaultPreviewNonces = map[int64]string{}
-	}
-	runtime.vaultPreviewNonces[itemID] = nonce
-}
-
-func (runtime *databaseRuntime) vaultPreviewCurrent(itemID int64, nonce string) bool {
-	if runtime == nil || itemID < 1 || nonce == "" {
-		return false
-	}
-	runtime.vaultPreviewMu.Lock()
-	defer runtime.vaultPreviewMu.Unlock()
-	return runtime.vaultPreviewNonces[itemID] == nonce
-}
-
-func (runtime *databaseRuntime) clearVaultPreview(itemID int64) {
-	if runtime == nil || itemID < 1 {
-		return
-	}
-	runtime.vaultPreviewMu.Lock()
-	defer runtime.vaultPreviewMu.Unlock()
-	delete(runtime.vaultPreviewNonces, itemID)
-}
-
 func (s vaultItemHandlers) revealVaultItem(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	runtime, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -446,29 +253,23 @@ func (s vaultItemHandlers) revealVaultItem(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if s.vaultRevealLimiter == nil || !s.vaultRevealLimiter.Allow(runtimecontrol.Key(r, fmt.Sprintf("vault-reveal:%s:%d", runtime.id, id))) {
-		writeError(w, http.StatusTooManyRequests, "too many reveal requests; wait before trying again")
+	value, err := owner.Reveal(r.Context(), id, runtimecontrol.Key(r, fmt.Sprintf("vault-reveal:%s:%d", runtime.id, id)))
+	if errors.Is(err, projectvault.ErrRevealRateLimited) {
+		writeError(w, http.StatusTooManyRequests, err.Error())
 		return
 	}
-	item, err := store.Get(r.Context(), id)
 	if err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault item reveal was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
-		return
-	}
-	value, err := store.Reveal(r.Context(), id)
-	if err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	if err := s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, "vault.item.revealed", vaultItemAuditPayload(item)); err != nil {
-		writeInternalError(w)
 		return
 	}
 	writeSensitiveJSON(w, http.StatusOK, map[string]any{"value": value})
 }
 
 func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Request) {
-	runtime, store, ok := s.store(w, r)
+	_, owner, ok := s.owner(w, r)
 	if !ok {
 		return
 	}
@@ -480,39 +281,13 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
-	if err != nil {
-		writeError(w, http.StatusRequestTimeout, "Vault item deletion was canceled")
-		return
-	}
-	defer release()
-	item, err := store.Get(r.Context(), id)
-	if err != nil {
+	if err := owner.Delete(r.Context(), id, request.ExpectedValueVersion, request.ExpectedMetadataRevision); err != nil {
+		if writeVaultDeliveryCancellation(w, err, "Vault item deletion was canceled") {
+			return
+		}
 		handleVaultItemError(w, err)
 		return
 	}
-	if item.ValueVersion != request.ExpectedValueVersion || item.MetadataRevision != request.ExpectedMetadataRevision {
-		handleVaultItemError(w, projectvault.ErrStale)
-		return
-	}
-	sessions, err := store.ActiveSessionsForMutation(r.Context(), projectvault.SessionMutationScope{ItemID: item.ID})
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := s.withAuditedMutation(r.Context(), runtime, "user", nil, 0, "vault.item.deleted", func() any {
-		return vaultItemAuditPayload(item)
-	}, func(tx *sql.Tx) error {
-		return store.WithTx(tx).Delete(r.Context(), id, request.ExpectedValueVersion, request.ExpectedMetadataRevision)
-	}); err != nil {
-		handleVaultItemError(w, err)
-		return
-	}
-	if err := s.invalidateVaultMutationAfterCommit(r.Context(), runtime, sessions, projectvault.SessionMutationScope{ItemID: item.ID}); err != nil {
-		writeInternalError(w)
-		return
-	}
-	runtime.clearVaultPreview(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -534,8 +309,17 @@ func (s vaultItemHandlers) store(w http.ResponseWriter, r *http.Request) (*datab
 	return runtime, store, true
 }
 
-func (s vaultItemHandlers) writeRequiredVaultAudit(r *http.Request, runtime *databaseRuntime, action string, payload map[string]any) error {
-	return s.writeAuditRequired(r.Context(), runtime, "user", nil, 0, action, payload)
+func (s vaultItemHandlers) owner(w http.ResponseWriter, r *http.Request) (*databaseRuntime, *projectvault.Runtime, bool) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return nil, nil, false
+	}
+	owner, err := s.projectVaultRuntime(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return nil, nil, false
+	}
+	return runtime, owner, true
 }
 
 func vaultUsageNotes(values []vaultUsageNoteRequest) []projectvault.UsageNote {
@@ -546,14 +330,12 @@ func vaultUsageNotes(values []vaultUsageNoteRequest) []projectvault.UsageNote {
 	return output
 }
 
-func vaultItemAuditPayload(item projectvault.Item) map[string]any {
-	return map[string]any{
-		"project_id":        item.OwnerProjectID,
-		"vault_item_id":     item.ID,
-		"name":              item.Name,
-		"value_version":     item.ValueVersion,
-		"metadata_revision": item.MetadataRevision,
+func writeVaultDeliveryCancellation(w http.ResponseWriter, err error, message string) bool {
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		return false
 	}
+	writeError(w, http.StatusRequestTimeout, message)
+	return true
 }
 
 func handleVaultItemError(w http.ResponseWriter, err error) {

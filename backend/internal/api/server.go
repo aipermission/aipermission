@@ -74,6 +74,8 @@ type databaseRuntime struct {
 	securityPolicy     *securitypolicy.Service
 	actionWorkflowMu   sync.Mutex
 	actionWorkflow     *actions.Runtime
+	projectVaultMu     sync.Mutex
+	projectVault       *projectvault.Runtime
 	runtimeState       runtimecontrol.State
 	workspaceUUID      string
 	uiRetryIdentity    string
@@ -81,8 +83,6 @@ type databaseRuntime struct {
 	actionIdentityKey  []byte
 	vaultLeases        *vaultsessions.Store
 	vaultDelivery      vaultDeliveryCoordinator
-	vaultPreviewMu     sync.Mutex
-	vaultPreviewNonces map[int64]string
 	identityMu         sync.Mutex
 	auditDispatcher    *observability.Dispatcher
 	retention          *retention.Service
