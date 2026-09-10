@@ -253,72 +253,26 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if !s.workspaces.IsUnlocked() {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-
-	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
+	transition, err := s.workspaceLifecycle.Switch(request.DatabaseID, request.Password)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	selection := s.workspaces.Selection()
-	if s.activeRuntime() != nil && (targetID == selection.ID || targetPath == selection.Path) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":      "current",
-			"state":       "unlocked",
-			"database_id": selection.ID,
-		})
-		return
-	}
-	if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil && runtime.path == targetPath {
-		s.applyRuntimeLocked(runtime)
-		if err := s.issueUISessionLocked(w); err != nil {
-			writeInternalError(w)
-			return
+		if request.Password != "" {
+			recordDatabaseUnlockAttempt(attempt, err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":      "switched",
-			"state":       "unlocked",
-			"database_id": targetID,
-			"switched_at": time.Now().UTC().Format(time.RFC3339),
-		})
+		writeWorkspaceLifecycleError(w, err)
 		return
 	}
-	if request.Password == "" {
-		writeError(w, http.StatusBadRequest, "database password is required")
-		return
+	if request.Password != "" {
+		attempt.success()
 	}
-	if !dbpkg.Exists(targetPath) {
-		writeError(w, http.StatusNotFound, "encrypted database is not initialized")
-		return
-	}
-	if dbpkg.LooksLikePlainSQLite(targetPath) {
-		writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")
-		return
-	}
-
-	runtime, err := s.openRuntime(targetPath, targetID, request.Password)
-	if err != nil {
-		recordDatabaseUnlockAttempt(attempt, err)
-		writeDatabaseUnlockError(w, err)
-		return
-	}
-	attempt.success()
-
-	s.config.GatewaySecret = runtime.gatewaySecret
-	s.applyRuntimeLocked(runtime)
-	s.initializeRetention(runtime)
 	if err := s.issueUISessionLocked(w); err != nil {
 		writeInternalError(w)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":      "switched",
+		"status":      transition.Status,
 		"state":       "unlocked",
-		"database_id": targetID,
+		"database_id": transition.Identity.ID,
 		"switched_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

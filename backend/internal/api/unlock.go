@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 type unlockRequest struct {
@@ -95,7 +96,12 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.activeRuntime() != nil {
+	transition, err := s.workspaceLifecycle.Setup(request.DatabaseID, request.DatabaseName, request.Password)
+	if err != nil {
+		writeWorkspaceLifecycleError(w, err)
+		return
+	}
+	if transition.Status == "current" {
 		status, err := s.currentUnlockStatusLocked()
 		if err != nil {
 			writeInternalError(w)
@@ -105,25 +111,6 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetPath, targetID, err := s.setupTargetPathLocked(request.DatabaseID, request.DatabaseName)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
-
-	if db.Exists(targetPath) {
-		if rejectPlaintextDatabase(w, targetPath) {
-			return
-		}
-		writeError(w, http.StatusConflict, "encrypted database already exists; unlock it or create a new database")
-		return
-	}
-
-	if err := s.openUnlockedLocked(request.Password); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	if err := s.issueUISessionLocked(w); err != nil {
 		writeInternalError(w)
 		return
@@ -142,84 +129,20 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer clearStringReferences(&request.Password)
-	if request.Password == "" {
-		writeError(w, http.StatusBadRequest, "password is required")
-		return
-	}
 	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
 	if !ok {
 		return
 	}
 
-	if s.activeRuntime() != nil {
-		targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
-			targetPath = runtime.path
-		} else {
-			s.workspaces.Select(workspaceIdentity(targetID, targetPath))
-			if err := s.openUnlockedLocked(request.Password); err != nil {
-				recordDatabaseUnlockAttempt(attempt, err)
-				writeDatabaseUnlockError(w, err)
-				return
-			}
-			attempt.success()
-			if err := s.issueUISessionLocked(w); err != nil {
-				writeInternalError(w)
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{
-				"status":      "unlocked",
-				"state":       "unlocked",
-				"unlocked_at": time.Now().UTC().Format(time.RFC3339),
-			})
-			return
-		}
-		if err := db.ValidateEncrypted(targetPath, request.Password); err != nil {
-			if db.UnsupportedSchemaMessage(err) == "" {
-				attempt.failure()
-			} else {
-				attempt.success()
-			}
+	transition, err := s.workspaceLifecycle.Unlock(request.DatabaseID, request.Password)
+	if err != nil {
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
 			writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
 			return
 		}
-		if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
-			s.applyRuntimeLocked(runtime)
-		}
-		attempt.success()
-		if err := s.issueUISessionLocked(w); err != nil {
-			writeInternalError(w)
-			return
-		}
-		status, err := s.currentUnlockStatusLocked()
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		writeJSON(w, http.StatusOK, status)
-		return
-	}
-	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
-
-	if !db.Exists(targetPath) {
-		writeError(w, http.StatusNotFound, "encrypted database is not initialized")
-		return
-	}
-	if rejectPlaintextDatabase(w, targetPath) {
-		return
-	}
-	if err := s.openUnlockedLocked(request.Password); err != nil {
 		recordDatabaseUnlockAttempt(attempt, err)
-		writeDatabaseUnlockError(w, err)
+		writeWorkspaceLifecycleError(w, err)
 		return
 	}
 	attempt.success()
@@ -228,11 +151,18 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":      "unlocked",
-		"state":       "unlocked",
-		"unlocked_at": time.Now().UTC().Format(time.RFC3339),
-	})
+	if transition.Opened {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "unlocked", "state": "unlocked", "unlocked_at": time.Now().UTC().Format(time.RFC3339),
+		})
+		return
+	}
+	status, err := s.currentUnlockStatusLocked()
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
@@ -248,40 +178,48 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 	if request.Scope == "" {
 		request.Scope = "current"
 	}
-	if request.Scope != "current" && request.Scope != "all" {
-		writeError(w, http.StatusBadRequest, "scope must be current or all")
-		return
-	}
-	if request.Scope == "all" || s.currentLockLeavesNoUnlockedRuntime() {
+	if s.workspaceLifecycle.WillLockAll(request.Scope) {
 		s.closeMaintenanceConsoleForLifecycle("database_lock_" + request.Scope)
 	}
-
-	if request.Scope == "all" {
-		if err := s.closeAllUnlockedResources(); err != nil {
+	status, err := s.workspaceLifecycle.Lock(request.Scope)
+	if err != nil {
+		if errors.Is(err, workspacelifecycle.ErrInvalidScope) {
+			writeError(w, http.StatusBadRequest, err.Error())
+		} else {
 			writeInternalError(w)
-			return
 		}
+		return
+	}
+	if request.Scope == "all" {
 		s.clearUISessions(w)
 	} else {
-		if err := s.closeActiveRuntimeLocked(true); err != nil {
-			writeInternalError(w)
-			return
-		}
-		if s.activeRuntime() == nil {
+		if status.State != "unlocked" {
 			s.clearUISessions(w)
 		} else if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
 			return
 		}
 	}
-	status, err := s.currentUnlockStatusLocked()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, status)
+	writeJSON(w, http.StatusOK, unlockStatusFromLifecycle(status))
 }
 
 func (s *Server) currentLockLeavesNoUnlockedRuntime() bool {
-	return s.workspaces.Len() <= 1
+	return s.workspaceLifecycle.WillLockAll("current")
+}
+
+func writeWorkspaceLifecycleError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, workspacelifecycle.ErrLocked):
+		writeError(w, http.StatusLocked, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrNotInitialized):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrPasswordRequired):
+		writeError(w, http.StatusBadRequest, "password is required")
+	case errors.Is(err, workspacelifecycle.ErrPlaintext):
+		writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")
+	case errors.Is(err, errDatabaseAuthentication), errors.Is(err, errDatabaseInitialization), errors.Is(err, db.ErrDatabaseInUse):
+		writeDatabaseUnlockError(w, err)
+	default:
+		writeError(w, http.StatusBadRequest, err.Error())
+	}
 }

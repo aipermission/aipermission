@@ -34,6 +34,7 @@ import (
 type Server struct {
 	config               serverConfig
 	workspaces           *workspacelifecycle.Registry[*databaseRuntime]
+	workspaceLifecycle   *workspacelifecycle.Service[*databaseRuntime]
 	registry             *connectors.Registry
 	adapterRegistry      *connectorapi.Registry
 	mux                  *http.ServeMux
@@ -162,6 +163,9 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           uisession.New(cfg.FrontendPort),
 	}
+	if err := server.initializeWorkspaceLifecycle(); err != nil {
+		return nil, err
+	}
 	runtime := &databaseRuntime{
 		id:              activeID,
 		path:            cfg.DataPath,
@@ -230,8 +234,39 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:           uisession.New(cfg.FrontendPort),
 	}
+	if err := server.initializeWorkspaceLifecycle(); err != nil {
+		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))
+	}
 	server.routes()
 	return server
+}
+
+func (runtime *databaseRuntime) WorkspaceIdentity() workspacelifecycle.Identity {
+	return describeDatabaseRuntime(runtime)
+}
+
+func (runtime *databaseRuntime) WorkspaceDatabase() *sql.DB { return runtime.database }
+
+func (runtime *databaseRuntime) WorkspaceGatewaySecret() string { return runtime.gatewaySecret }
+
+func (s *Server) initializeWorkspaceLifecycle() error {
+	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
+		DataPath: s.config.DataPath,
+		Registry: s.workspaces,
+		Open:     s.openRuntimeForLifecycle,
+		Close:    s.closeRuntime,
+		OnActivated: func(runtime *databaseRuntime) {
+			if runtime != nil && runtime.gatewaySecret != "" {
+				s.config.GatewaySecret = runtime.gatewaySecret
+			}
+		},
+		OnOpened: s.initializeRetention,
+	})
+	if err != nil {
+		return fmt.Errorf("initialize workspace lifecycle: %w", err)
+	}
+	s.workspaceLifecycle = lifecycle
+	return nil
 }
 
 func describeDatabaseRuntime(runtime *databaseRuntime) workspacelifecycle.Identity {

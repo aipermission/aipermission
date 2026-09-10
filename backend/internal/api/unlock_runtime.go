@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -57,60 +56,23 @@ func (s *Server) workspaceSelection() workspacelifecycle.Identity {
 }
 
 func (s *Server) currentUnlockStatus() (unlockStatusResponse, error) {
-	return s.currentUnlockStatusLocked()
+	status, err := s.workspaceLifecycle.Status()
+	if err != nil {
+		return unlockStatusResponse{}, err
+	}
+	return unlockStatusFromLifecycle(status), nil
 }
 
 func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
-	selection := s.workspaceSelection()
-	databases, err := databasecatalog.ListDatabases(s.config.DataPath, selection.Path)
-	if err != nil {
-		return unlockStatusResponse{}, fmt.Errorf("list encrypted databases: %w", err)
-	}
-	for i := range databases {
-		if runtime, ok := s.workspaces.Lookup(databases[i].ID); ok && runtime != nil && runtime.path == databases[i].Path {
-			databases[i].Unlocked = true
-		}
-	}
-	activeID := selection.ID
-	activeName := databasecatalog.DefaultDatabaseName(s.config.DataPath)
-	for _, item := range databases {
-		if item.Path == selection.Path {
-			activeID = item.ID
-			activeName = item.Name
-			break
-		}
-		if item.ID == activeID {
-			activeName = item.Name
-		}
-	}
-	if _, ok := s.workspaces.Active(); ok {
-		return unlockStatusResponse{State: "unlocked", DataPath: selection.Path, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(selection.Path), UISessionAuthenticated: true, Databases: databases}, nil
-	}
-	if len(databases) == 0 {
-		return unlockStatusResponse{State: "setup_required", DataPath: selection.Path, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}, nil
-	}
-	selected := databases[0]
-	for _, item := range databases {
-		if item.ID == activeID {
-			selected = item
-			break
-		}
-	}
-	return unlockStatusResponse{
-		State:        selected.State,
-		DataPath:     selected.Path,
-		DatabaseID:   selected.ID,
-		DatabaseName: selected.Name,
-		Databases:    databases,
-	}, nil
+	return s.currentUnlockStatus()
 }
 
-func fileSize(path string) int64 {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
+func unlockStatusFromLifecycle(status workspacelifecycle.Status) unlockStatusResponse {
+	return unlockStatusResponse{
+		State: status.State, DataPath: status.Identity.Path, DatabaseID: status.Identity.ID,
+		DatabaseName: status.DatabaseName, DatabaseSizeBytes: status.DatabaseSizeBytes,
+		UISessionAuthenticated: status.State == "unlocked", Databases: status.Databases,
 	}
-	return info.Size()
 }
 
 func (s *Server) openUnlockedLocked(password string) error {
