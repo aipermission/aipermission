@@ -25,6 +25,8 @@ var (
 	ErrRuntimeUnlocked  = errors.New("database is currently unlocked")
 	ErrInvalidRequest   = errors.New("invalid workspace lifecycle request")
 	ErrPasswordPolicy   = errors.New("database password policy rejected")
+	ErrAuthentication   = errors.New("database authentication failed")
+	ErrInitialization   = errors.New("database initialization failed")
 )
 
 type Runtime interface {
@@ -109,6 +111,30 @@ func (e classifiedError) Is(target error) bool {
 func classify(kind, err error) error { return classifiedError{kind: kind, err: err} }
 
 func PasswordPolicyError(err error) error { return classify(ErrPasswordPolicy, err) }
+
+func ValidatePassword(password, confirmation string) error {
+	if len(password) < 14 {
+		return fmt.Errorf("password must be at least 14 characters")
+	}
+	if password != confirmation {
+		return fmt.Errorf("password confirmation does not match")
+	}
+	var hasUpper, hasLower, hasDigit bool
+	for _, char := range password {
+		switch {
+		case char >= 'A' && char <= 'Z':
+			hasUpper = true
+		case char >= 'a' && char <= 'z':
+			hasLower = true
+		case char >= '0' && char <= '9':
+			hasDigit = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit {
+		return fmt.Errorf("password must include uppercase letters, lowercase letters, and numbers")
+	}
+	return nil
+}
 
 func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	if strings.TrimSpace(dependencies.DataPath) == "" || dependencies.Registry == nil ||

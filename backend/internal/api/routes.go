@@ -28,8 +28,6 @@ import (
 
 type credentialHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
-type databaseHandlers struct{ *Server }
-type unlockHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
@@ -52,7 +50,7 @@ func (s *Server) registerSystemRoutes() {
 	retentionHandlers := retention.NewHTTPHandlers(s.retentionHTTPScope)
 	maintenanceConsole := consolehttp.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope)
 	diagnostics := diagnosticsHandlers{s}
-	unlock := unlockHandlers{s}
+	workspaces := s.workspaceLifecycleHTTPHandlers()
 
 	s.mux.HandleFunc("GET /health", s.health)
 	s.mux.HandleFunc("GET /api/status", s.status)
@@ -70,10 +68,10 @@ func (s *Server) registerSystemRoutes() {
 	s.mux.HandleFunc("GET /api/settings/maintenance-console/attach", maintenanceConsole.Attach)
 	s.mux.HandleFunc("POST /api/settings/maintenance-console/close", maintenanceConsole.Close)
 	s.mux.HandleFunc("GET /api/settings/diagnostics", diagnostics.download)
-	s.mux.HandleFunc("GET /api/unlock/status", unlock.unlockStatus)
-	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
-	s.mux.HandleFunc("POST /api/unlock", unlock.unlock)
-	s.mux.HandleFunc("POST /api/lock", unlock.lock)
+	s.mux.HandleFunc("GET /api/unlock/status", workspaces.Status)
+	s.mux.HandleFunc("POST /api/unlock/setup", workspaces.Setup)
+	s.mux.HandleFunc("POST /api/unlock", workspaces.Unlock)
+	s.mux.HandleFunc("POST /api/lock", workspaces.Lock)
 }
 
 func (s *Server) registerAccessRoutes() {
@@ -103,7 +101,7 @@ func (s *Server) registerBackupRoutes() {
 	backup := backupHandlers{s}
 	providers := backups.NewHTTPHandlers(s.backupProviderHTTPScope)
 	transient := backups.NewTransientHTTPHandlers()
-	databases := databaseHandlers{s}
+	workspaces := s.workspaceLifecycleHTTPHandlers()
 
 	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
 	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
@@ -127,11 +125,11 @@ func (s *Server) registerBackupRoutes() {
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/delete", providers.DeleteProviderBackupRecords)
 	s.mux.HandleFunc("GET /api/backup/providers/{id}/records/{record_id}/download", providers.DownloadProviderRecord)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/{record_id}/restore", backup.restoreProviderRecord)
-	s.mux.HandleFunc("POST /api/databases/rename", databases.renameDatabase)
-	s.mux.HandleFunc("POST /api/databases/delete", databases.deleteDatabase)
-	s.mux.HandleFunc("POST /api/databases/delete-locked", databases.deleteLockedDatabase)
-	s.mux.HandleFunc("POST /api/databases/switch", databases.switchDatabase)
-	s.mux.HandleFunc("POST /api/databases/change-password", databases.changeDatabasePassword)
+	s.mux.HandleFunc("POST /api/databases/rename", workspaces.Rename)
+	s.mux.HandleFunc("POST /api/databases/delete", workspaces.Delete)
+	s.mux.HandleFunc("POST /api/databases/delete-locked", workspaces.DeleteLocked)
+	s.mux.HandleFunc("POST /api/databases/switch", workspaces.Switch)
+	s.mux.HandleFunc("POST /api/databases/change-password", workspaces.ChangePassword)
 }
 
 func (s *Server) registerConsoleAndActivityRoutes() {

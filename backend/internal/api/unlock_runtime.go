@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	errDatabaseAuthentication = errors.New("database authentication failed")
-	errDatabaseInitialization = errors.New("database initialization failed")
+	errDatabaseAuthentication = workspacelifecycle.ErrAuthentication
+	errDatabaseInitialization = workspacelifecycle.ErrInitialization
 )
 
 const fileTransferShutdownWait = 10 * time.Second
@@ -48,26 +48,6 @@ func (s *Server) workspaceSelection() workspacelifecycle.Identity {
 		}
 	}
 	return s.workspaces.Selection()
-}
-
-func (s *Server) currentUnlockStatus() (unlockStatusResponse, error) {
-	status, err := s.workspaceLifecycle.Status()
-	if err != nil {
-		return unlockStatusResponse{}, err
-	}
-	return unlockStatusFromLifecycle(status), nil
-}
-
-func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
-	return s.currentUnlockStatus()
-}
-
-func unlockStatusFromLifecycle(status workspacelifecycle.Status) unlockStatusResponse {
-	return unlockStatusResponse{
-		State: status.State, DataPath: status.Identity.Path, DatabaseID: status.Identity.ID,
-		DatabaseName: status.DatabaseName, DatabaseSizeBytes: status.DatabaseSizeBytes,
-		UISessionAuthenticated: status.State == "unlocked", Databases: status.Databases,
-	}
 }
 
 func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*databaseRuntime, error) {
@@ -362,45 +342,4 @@ func isAllowedWhileLocked(path string) bool {
 	default:
 		return false
 	}
-}
-
-func validateUnlockPassword(password string, confirm string) error {
-	if len(password) < 14 {
-		return fmt.Errorf("password must be at least 14 characters")
-	}
-	if password != confirm {
-		return errPasswordMismatch{}
-	}
-	var hasUpper, hasLower, hasDigit bool
-	for _, char := range password {
-		switch {
-		case char >= 'A' && char <= 'Z':
-			hasUpper = true
-		case char >= 'a' && char <= 'z':
-			hasLower = true
-		case char >= '0' && char <= '9':
-			hasDigit = true
-		}
-	}
-	if !hasUpper || !hasLower || !hasDigit {
-		return fmt.Errorf("password must include uppercase letters, lowercase letters, and numbers")
-	}
-	return nil
-}
-
-func clearStringReferences(values ...*string) {
-	for _, value := range values {
-		if value != nil {
-			// Best-effort reference clearing only. Go strings are immutable, so
-			// this does not guarantee heap zeroization of already-decoded JSON
-			// input; it prevents keeping extra request references alive.
-			*value = ""
-		}
-	}
-}
-
-type errPasswordMismatch struct{}
-
-func (errPasswordMismatch) Error() string {
-	return "password confirmation does not match"
 }
