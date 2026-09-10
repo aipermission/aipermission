@@ -13,7 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
 	gatewaycatalog "github.com/aipermission/aipermission/backend/internal/gatewaystate/catalog"
 	gatewaycontrols "github.com/aipermission/aipermission/backend/internal/gatewaystate/controls"
 	gatewayworkspaces "github.com/aipermission/aipermission/backend/internal/gatewaystate/workspaces"
@@ -35,75 +35,37 @@ type Server struct {
 
 type databaseRuntime = workspaceruntime.Runtime
 
-type serverOptions struct {
-	registry                   *connectors.Registry
-	adapterRegistry            *connectorapi.Registry
-	maintenanceConsole         console.MaintenanceConsoleRuntime
-	runtimeInstanceIDGenerator func() (string, error)
-}
-
-type ServerOption func(*serverOptions)
+type ServerOption = gatewayoptions.Option
 
 func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
-	return func(options *serverOptions) {
-		options.registry = registry
-	}
+	return gatewayoptions.WithConnectorRegistry(registry)
 }
 
 func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
-	return func(options *serverOptions) {
-		options.adapterRegistry = registry
-	}
+	return gatewayoptions.WithConnectorAdapterRegistry(registry)
 }
 
 func WithMaintenanceConsole(runtime console.MaintenanceConsoleRuntime) ServerOption {
-	return func(options *serverOptions) {
-		options.maintenanceConsole = runtime
-	}
+	return gatewayoptions.WithMaintenanceConsole(runtime)
 }
 
 func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOption {
-	return func(options *serverOptions) {
-		options.runtimeInstanceIDGenerator = generator
-	}
-}
-
-func resolveServerOptions(options []ServerOption) serverOptions {
-	resolved := serverOptions{
-		registry:                   connectors.NewRegistry(),
-		adapterRegistry:            connectorapi.NewRegistry(),
-		runtimeInstanceIDGenerator: executionprincipal.NewRuntimeInstanceID,
-	}
-	for _, option := range options {
-		if option != nil {
-			option(&resolved)
-		}
-	}
-	if resolved.registry == nil {
-		resolved.registry = connectors.NewRegistry()
-	}
-	if resolved.adapterRegistry == nil {
-		resolved.adapterRegistry = connectorapi.NewRegistry()
-	}
-	if resolved.runtimeInstanceIDGenerator == nil {
-		resolved.runtimeInstanceIDGenerator = executionprincipal.NewRuntimeInstanceID
-	}
-	return resolved
+	return gatewayoptions.WithRuntimeInstanceIDGenerator(generator)
 }
 
 func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
 	activeID := databasecatalog.DefaultDatabaseID(cfg.DataPath)
-	resolved := resolveServerOptions(options)
-	registry := resolved.registry
+	resolved := gatewayoptions.Resolve(options)
+	registry := resolved.Registry
 	server := &Server{
 		config: cfg,
 		workspaceState: gatewayworkspaces.State{
 			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
 		},
-		connectorState: gatewaycatalog.New(registry, resolved.adapterRegistry),
-		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.maintenanceConsole),
+		connectorState: gatewaycatalog.New(registry, resolved.AdapterRegistry),
+		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.MaintenanceConsole),
 		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
@@ -112,8 +74,8 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	foundationState, err := foundation.Adopt(context.Background(), foundation.AdoptInput{
 		ID: activeID, Path: cfg.DataPath, Database: database, Vault: secretVault,
 		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
-		Registry: registry, AdapterRegistry: resolved.adapterRegistry,
-		RuntimeInstanceID: resolved.runtimeInstanceIDGenerator,
+		Registry: registry, AdapterRegistry: resolved.AdapterRegistry,
+		RuntimeInstanceID: resolved.RuntimeInstanceIDGenerator,
 	})
 	if err != nil {
 		return nil, err
@@ -140,14 +102,14 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
-	resolved := resolveServerOptions(options)
+	resolved := gatewayoptions.Resolve(options)
 	server := &Server{
 		config: cfg,
 		workspaceState: gatewayworkspaces.State{
 			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), describeDatabaseRuntime),
 		},
-		connectorState: gatewaycatalog.New(resolved.registry, resolved.adapterRegistry),
-		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.maintenanceConsole),
+		connectorState: gatewaycatalog.New(resolved.Registry, resolved.AdapterRegistry),
+		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.MaintenanceConsole),
 		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
