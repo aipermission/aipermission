@@ -1,7 +1,6 @@
 package api
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -41,26 +40,15 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	tokenHash := tokens.HashToken(tokenValue)
 	now := time.Now().UTC()
 	for _, runtime := range runtimes {
-		var auth mcpAuthContext
-		var expiresAt string
-		err := runtime.database.QueryRowContext(r.Context(), `
-			SELECT id, name, COALESCE(expires_at, '')
-			FROM api_tokens
-			WHERE token_hash = ?
-				AND COALESCE(revoked_at, '') = ''`,
-			tokenHash,
-		).Scan(&auth.TokenID, &auth.Name, &expiresAt)
-		if errors.Is(err, sql.ErrNoRows) {
+		authenticated, err := runtime.tokens.AuthenticateHash(r.Context(), tokenHash, now)
+		if errors.Is(err, tokens.ErrNotFound) {
 			continue
 		}
 		if err != nil {
 			writeInternalError(w)
 			return mcpAuthContext{}, false
 		}
-		if !tokens.Active("", expiresAt, now) {
-			continue
-		}
-		auth.runtime = runtime
+		auth := mcpAuthContext{TokenID: authenticated.ID, Name: authenticated.Name, runtime: runtime}
 		matches = append(matches, auth)
 	}
 	if len(matches) > 1 {

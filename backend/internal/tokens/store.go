@@ -43,6 +43,11 @@ type CreateResponse struct {
 	Token
 }
 
+type Authentication struct {
+	ID   int64
+	Name string
+}
+
 func Active(revokedAt string, expiresAt string, now time.Time) bool {
 	return revokedAt == "" && expirypolicy.Active(expiresAt, now)
 }
@@ -125,6 +130,29 @@ func (s *Store) Get(ctx context.Context, id int64) (Token, error) {
 		return Token{}, err
 	}
 	return item, nil
+}
+
+func (s *Store) AuthenticateHash(ctx context.Context, tokenHash string, now time.Time) (Authentication, error) {
+	if s == nil || s.db == nil || strings.TrimSpace(tokenHash) == "" {
+		return Authentication{}, ErrNotFound
+	}
+	var authentication Authentication
+	var revokedAt, expiresAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, name, COALESCE(revoked_at, ''), COALESCE(expires_at, '')
+		FROM api_tokens
+		WHERE token_hash = ?`, strings.TrimSpace(tokenHash),
+	).Scan(&authentication.ID, &authentication.Name, &revokedAt, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Authentication{}, ErrNotFound
+	}
+	if err != nil {
+		return Authentication{}, fmt.Errorf("authenticate token hash: %w", err)
+	}
+	if !Active(revokedAt, expiresAt, now) {
+		return Authentication{}, ErrNotFound
+	}
+	return authentication, nil
 }
 
 func (s *Store) Create(ctx context.Context, request CreateRequest, options ...CreateOptions) (CreateResponse, error) {

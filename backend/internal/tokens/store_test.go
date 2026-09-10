@@ -29,6 +29,42 @@ func TestActiveFailsClosedForRevokedExpiredAndMalformedTokens(t *testing.T) {
 	}
 }
 
+func TestAuthenticateHashFailsClosedForInactiveTokens(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "tokens.db"), "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewStore(database)
+	now := time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
+	insert := func(name, hash, revokedAt, expiresAt string) {
+		t.Helper()
+		if _, err := database.ExecContext(t.Context(), `
+			INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, revoked_at, expires_at, created_at, updated_at)
+			VALUES (?, ?, 'aip_test', '', NULLIF(?, ''), NULLIF(?, ''), ?, ?)`,
+			name, hash, revokedAt, expiresAt, now.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("active", "sha256:active", "", now.Add(time.Hour).Format(time.RFC3339))
+	insert("revoked", "sha256:revoked", now.Add(-time.Minute).Format(time.RFC3339), "")
+	insert("expired", "sha256:expired", "", now.Add(-time.Minute).Format(time.RFC3339))
+	insert("malformed", "sha256:malformed", "", "not-a-timestamp")
+
+	authenticated, err := store.AuthenticateHash(t.Context(), "sha256:active", now)
+	if err != nil || authenticated.Name != "active" || authenticated.ID < 1 {
+		t.Fatalf("active authentication = %#v, %v", authenticated, err)
+	}
+	for _, hash := range []string{"sha256:revoked", "sha256:expired", "sha256:malformed", "sha256:missing", ""} {
+		if _, err := store.AuthenticateHash(t.Context(), hash, now); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("AuthenticateHash(%q) error = %v", hash, err)
+		}
+	}
+	if _, err := (*Store)(nil).AuthenticateHash(t.Context(), "sha256:active", now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("nil store authentication error = %v", err)
+	}
+}
+
 func openTokenTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
