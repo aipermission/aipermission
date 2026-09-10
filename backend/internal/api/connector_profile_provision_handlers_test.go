@@ -335,17 +335,6 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 	}
 }
 
-func TestProfileLabelExistsFailsClosedOnStoreError(t *testing.T) {
-	database := openAPITestDB(t)
-	store := connectortargets.NewStore(database)
-	if err := database.Close(); err != nil {
-		t.Fatalf("close database: %v", err)
-	}
-	if exists, err := profileLabelExists(t.Context(), store, 1, "generated-profile"); err == nil || exists {
-		t.Fatalf("exists=%t err=%v, want a closed-store error", exists, err)
-	}
-}
-
 func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{cleanupStatus: connectors.ResultFailed}
