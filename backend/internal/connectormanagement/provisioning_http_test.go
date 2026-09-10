@@ -56,3 +56,11 @@ func TestRequireCompletedCredentialCleanupRejectsNonTerminalSuccess(t *testing.T
 		t.Fatal("running cleanup result was accepted")
 	}
 }
+
+func TestManagedCredentialCleanupRejectsIncompleteRuntime(t *testing.T) {
+	if _, err := CleanupProvisionedCredentialProfileIfNeeded(
+		t.Context(), ManagedCredentialCleanupScope{}, connectortargets.Target{}, connectortargets.CredentialProfile{},
+	); !errors.Is(err, errProfileDeletionRuntimeUnavailable) {
+		t.Fatalf("error = %v", err)
+	}
+}

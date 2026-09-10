@@ -35,11 +35,8 @@ type ProvisionResponse struct {
 type ProvisioningScope struct {
 	Database              *sql.DB
 	Registry              *connectors.Registry
-	DecryptSecret         func(context.Context, int64, string) (map[string]any, error)
+	Runtime               CredentialRuntimePorts
 	EncryptSecret         func(context.Context, int64, json.RawMessage) (string, error)
-	RuntimeContext        func(connectortargets.Target, connectortargets.CredentialProfile, map[string]any, actionresult.CredentialBoundary) connectors.RuntimeContext
-	RedactResult          func(context.Context, connectors.ActionResult, actionresult.CredentialBoundary) (connectors.ActionResult, error)
-	RedactText            func(context.Context, string) string
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
 	AuditRequired         func(context.Context, string, any) error
@@ -105,17 +102,17 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteError(w, http.StatusBadRequest, "connector does not support credential provisioning")
 		return
 	}
-	secrets, err := decryptProvisioningSecrets(r.Context(), adminProfile, scope.DecryptSecret)
+	secrets, err := decryptCredentialSecrets(r.Context(), adminProfile, scope.Runtime.DecryptSecret)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
 	boundary := actionresult.NewCredentialBoundary(secrets)
 	provisioned, err := provisioner.ProvisionCredentialProfile(
-		r.Context(), scope.RuntimeContext(target, adminProfile, secrets, boundary), request.Input,
+		r.Context(), scope.Runtime.RuntimeContext(target, adminProfile, secrets, boundary), request.Input,
 	)
 	if err != nil {
-		writeProvisionError(w, err, boundary.Redact(scope.RedactText(r.Context(), err.Error())))
+		writeProvisionError(w, err, boundary.Redact(scope.Runtime.RedactText(r.Context(), err.Error())))
 		return
 	}
 	boundary.AddStructured(provisioned.Secret)
@@ -123,7 +120,7 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		h.failProvisioned(r.Context(), w, scope, provisioner, target, adminProfile, secrets, provisioned, "validation", err, provisionFailureTarget)
 		return
 	}
-	redactedResult, err := scope.RedactResult(r.Context(), provisioned.Result, boundary)
+	redactedResult, err := scope.Runtime.RedactResult(r.Context(), provisioned.Result, boundary)
 	if err != nil {
 		h.failProvisioned(r.Context(), w, scope, provisioner, target, adminProfile, secrets, provisioned, "result_redaction", err, provisionFailureInternal)
 		return
@@ -219,7 +216,7 @@ func (h *ProvisioningHTTPHandler) failProvisioned(
 		return
 	}
 	boundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
-	writeProvisionFailureCause(w, cause, boundary.Redact(scope.RedactText(ctx, cause.Error())))
+	writeProvisionFailureCause(w, cause, boundary.Redact(scope.Runtime.RedactText(ctx, cause.Error())))
 }
 
 func compensateProvisioned(
@@ -239,7 +236,7 @@ func compensateProvisioned(
 	boundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
 	cleanupResult, cleanupErr := provisioner.CleanupProvisionedCredentialProfile(
 		cleanupCtx,
-		scope.RuntimeContext(target, adminProfile, secrets, boundary),
+		scope.Runtime.RuntimeContext(target, adminProfile, secrets, boundary),
 		connectors.CredentialProfileView{
 			TargetID: target.ID, ConnectorKind: target.ConnectorKind,
 			Kind: provisioned.Kind, Label: provisioned.Label,
@@ -302,13 +299,6 @@ func validateProvisionedCredentialProfile(connector connectors.Connector, profil
 	return nil
 }
 
-func decryptProvisioningSecrets(ctx context.Context, profile connectortargets.CredentialProfile, decrypt func(context.Context, int64, string) (map[string]any, error)) (map[string]any, error) {
-	if profile.EncryptedSecretJSON == "" {
-		return map[string]any{}, nil
-	}
-	return decrypt(ctx, profile.ID, profile.EncryptedSecretJSON)
-}
-
 func safeProvisionError(boundary actionresult.CredentialBoundary, err error) string {
 	if err == nil {
 		return ""
@@ -355,9 +345,7 @@ func (h *ProvisioningHTTPHandler) resolve(w http.ResponseWriter) (ProvisioningSc
 	if !ok {
 		return ProvisioningScope{}, false
 	}
-	valid := scope.Database != nil && scope.Registry != nil &&
-		scope.DecryptSecret != nil && scope.EncryptSecret != nil &&
-		scope.RuntimeContext != nil && scope.RedactResult != nil && scope.RedactText != nil &&
+	valid := scope.Database != nil && scope.Registry != nil && scope.Runtime.valid() && scope.EncryptSecret != nil &&
 		scope.WithTransaction != nil && scope.EnsureRuntimeSurfaces != nil && scope.AuditRequired != nil
 	if !valid {
 		httptransport.WriteInternalError(w)

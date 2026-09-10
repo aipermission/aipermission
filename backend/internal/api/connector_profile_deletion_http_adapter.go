@@ -18,10 +18,9 @@ func (s *Server) connectorProfileDeletionHTTPScope(w http.ResponseWriter) (conne
 		Database:         runtime.database,
 		AcquireExclusive: runtime.vaultDelivery.acquireExclusive,
 		Cleanup: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) (connectormanagement.ProfileCleanupOutcome, error) {
-			outcome, err := (connectorTargetHandlers{s}).cleanupProvisionedCredentialProfileIfNeeded(ctx, runtime, target, profile)
-			return connectormanagement.ProfileCleanupOutcome{
-				Required: outcome.Required, Status: string(outcome.Result.Status), Output: outcome.Result.Output,
-			}, err
+			return connectormanagement.CleanupProvisionedCredentialProfileIfNeeded(ctx, connectormanagement.ManagedCredentialCleanupScope{
+				Database: runtime.database, Registry: runtime.connectorRegistry(), Runtime: s.connectorCredentialRuntimePorts(runtime),
+			}, target, profile)
 		},
 		BeforeDelete: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
