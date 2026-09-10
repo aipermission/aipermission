@@ -126,9 +126,6 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	targetID, targetPath, err := databasecatalog.NewDatabasePathExact(s.config.DataPath, databaseName)
 	if err != nil {
 		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
@@ -227,14 +224,11 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 
-	previousDataPath := s.activeDataPath
-	previousDatabase := s.activeDatabase
-	s.activeDataPath = targetPath
-	s.activeDatabase = targetID
+	previous := s.workspaces.Selection()
+	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
 	if err := s.openUnlockedLocked(databasePassword); err != nil {
-		s.activeDataPath = previousDataPath
-		s.activeDatabase = previousDatabase
-		if runtime := s.workspaces[previousDatabase]; runtime != nil {
+		s.workspaces.Select(previous)
+		if runtime, exists := s.workspaces.Lookup(previous.ID); exists && runtime != nil {
 			s.applyRuntimeLocked(runtime)
 		}
 		if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {

@@ -228,9 +228,7 @@ func authorizeTestUISession(srv *Server) {
 		srv.uiSessions = uisession.New(srv.config.FrontendPort)
 	}
 	response := httptest.NewRecorder()
-	srv.mu.Lock()
 	err := srv.issueUISessionLocked(response)
-	srv.mu.Unlock()
 	if err != nil {
 		panic("issue test UI session: " + err.Error())
 	}

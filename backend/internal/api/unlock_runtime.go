@@ -26,6 +26,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 var (
@@ -33,34 +34,47 @@ var (
 	errDatabaseInitialization = errors.New("database initialization failed")
 )
 
+func workspaceIdentity(id, path string) workspacelifecycle.Identity {
+	return workspacelifecycle.Identity{ID: id, Path: path}
+}
+
 const fileTransferShutdownWait = 10 * time.Second
 
 func (s *Server) isUnlocked() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.workspaces) > 0
+	if s.workspaces == nil {
+		return false
+	}
+	return s.workspaces.IsUnlocked()
+}
+
+func (s *Server) workspaceSelection() workspacelifecycle.Identity {
+	if s.workspaces == nil {
+		return workspacelifecycle.Identity{
+			ID: databasecatalog.DefaultDatabaseID(s.config.DataPath), Path: s.config.DataPath,
+		}
+	}
+	return s.workspaces.Selection()
 }
 
 func (s *Server) currentUnlockStatus() (unlockStatusResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.currentUnlockStatusLocked()
 }
 
 func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
-	databases, err := databasecatalog.ListDatabases(s.config.DataPath, s.activeDataPath)
+	selection := s.workspaceSelection()
+	databases, err := databasecatalog.ListDatabases(s.config.DataPath, selection.Path)
 	if err != nil {
 		return unlockStatusResponse{}, fmt.Errorf("list encrypted databases: %w", err)
 	}
 	for i := range databases {
-		if runtime := s.workspaces[databases[i].ID]; runtime != nil && runtime.path == databases[i].Path {
+		if runtime, ok := s.workspaces.Lookup(databases[i].ID); ok && runtime != nil && runtime.path == databases[i].Path {
 			databases[i].Unlocked = true
 		}
 	}
-	activeID := s.activeDatabase
+	activeID := selection.ID
 	activeName := databasecatalog.DefaultDatabaseName(s.config.DataPath)
 	for _, item := range databases {
-		if item.Path == s.activeDataPath {
+		if item.Path == selection.Path {
 			activeID = item.ID
 			activeName = item.Name
 			break
@@ -69,11 +83,11 @@ func (s *Server) currentUnlockStatusLocked() (unlockStatusResponse, error) {
 			activeName = item.Name
 		}
 	}
-	if s.database != nil {
-		return unlockStatusResponse{State: "unlocked", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(s.activeDataPath), UISessionAuthenticated: true, Databases: databases}, nil
+	if _, ok := s.workspaces.Active(); ok {
+		return unlockStatusResponse{State: "unlocked", DataPath: selection.Path, DatabaseID: activeID, DatabaseName: activeName, DatabaseSizeBytes: fileSize(selection.Path), UISessionAuthenticated: true, Databases: databases}, nil
 	}
 	if len(databases) == 0 {
-		return unlockStatusResponse{State: "setup_required", DataPath: s.activeDataPath, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}, nil
+		return unlockStatusResponse{State: "setup_required", DataPath: selection.Path, DatabaseID: activeID, DatabaseName: activeName, Databases: databases}, nil
 	}
 	selected := databases[0]
 	for _, item := range databases {
@@ -100,12 +114,12 @@ func fileSize(path string) int64 {
 }
 
 func (s *Server) openUnlockedLocked(password string) error {
-	runtime, err := s.openRuntimeForLifecycle(s.activeDataPath, s.activeDatabase, password)
+	selection := s.workspaces.Selection()
+	runtime, err := s.openRuntimeForLifecycle(selection.Path, selection.ID, password)
 	if err != nil {
 		return err
 	}
 	s.config.GatewaySecret = runtime.gatewaySecret
-	s.workspaces[runtime.id] = runtime
 	s.applyRuntimeLocked(runtime)
 	s.initializeRetention(runtime)
 	return nil
@@ -293,9 +307,7 @@ func workspaceUUIDFromDatabase(ctx context.Context, database *sql.DB, bindingReq
 }
 
 func (s *Server) currentDataPath() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.activeDataPath
+	return s.workspaceSelection().Path
 }
 
 func (s *Server) setupTargetPathLocked(databaseID string, databaseName string) (string, string, error) {
@@ -318,7 +330,7 @@ func (s *Server) setupTargetPathLocked(databaseID string, databaseName string) (
 func (s *Server) unlockTargetPathLocked(databaseID string) (string, string, error) {
 	databaseID = strings.TrimSpace(databaseID)
 	if databaseID == "" {
-		databaseID = s.activeDatabase
+		databaseID = s.workspaces.Selection().ID
 	}
 	path, err := databasecatalog.DatabasePath(s.config.DataPath, databaseID)
 	if err != nil {
@@ -331,23 +343,15 @@ func (s *Server) unlockTargetPathLocked(databaseID string) (string, string, erro
 }
 
 func (s *Server) closeActiveRuntimeLocked(promote bool) error {
-	activeID := s.activeDatabase
+	activeID := s.workspaces.Selection().ID
 	var closeErr error
 	if activeID != "" {
-		if runtime := s.workspaces[activeID]; runtime != nil {
+		if runtime, ok := s.workspaces.Lookup(activeID); ok && runtime != nil {
 			closeErr = s.closeRuntime(runtime)
 		}
-		delete(s.workspaces, activeID)
-	}
-	s.database = nil
-	s.vault = nil
-	s.tokens = nil
-	if promote {
-		for _, runtime := range s.workspaces {
-			if runtime != nil {
-				s.applyRuntimeLocked(runtime)
-				return closeErr
-			}
+		_, _, promoted, promotedOK := s.workspaces.Remove(activeID, promote)
+		if promotedOK && promoted != nil {
+			s.applyRuntimeLocked(promoted)
 		}
 	}
 	return closeErr
@@ -360,7 +364,7 @@ func (s *Server) closeUnlockedResources() error {
 func (s *Server) closeAllUnlockedResources() error {
 	seen := map[*databaseRuntime]bool{}
 	var closeErrors []error
-	for _, runtime := range s.workspaces {
+	for _, runtime := range s.workspaces.Clear(databasecatalog.DefaultDatabaseID(s.config.DataPath)) {
 		if runtime == nil || seen[runtime] {
 			continue
 		}
@@ -369,69 +373,39 @@ func (s *Server) closeAllUnlockedResources() error {
 			closeErrors = append(closeErrors, err)
 		}
 	}
-	s.workspaces = map[string]*databaseRuntime{}
-	s.database = nil
-	s.vault = nil
-	s.tokens = nil
 	return errors.Join(closeErrors...)
 }
 
 func (s *Server) closeRuntimeByIDLocked(id string) error {
-	runtime := s.workspaces[id]
-	if runtime == nil {
+	runtime, ok := s.workspaces.Lookup(id)
+	if !ok || runtime == nil {
 		return nil
 	}
 	closeErr := s.closeRuntime(runtime)
-	delete(s.workspaces, id)
-	if s.activeDatabase == id {
-		s.database = nil
-		s.vault = nil
-		s.tokens = nil
-	}
+	s.workspaces.Remove(id, false)
 	return closeErr
 }
 
 func (s *Server) unlockedRuntimeSnapshot() []*databaseRuntime {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	runtimes := []*databaseRuntime{}
-	seen := map[*databaseRuntime]bool{}
-	if runtime := s.workspaces[s.activeDatabase]; runtime != nil {
-		runtimes = append(runtimes, runtime)
-		seen[runtime] = true
-	}
-	for _, runtime := range s.workspaces {
-		if runtime == nil || seen[runtime] {
-			continue
-		}
-		runtimes = append(runtimes, runtime)
-		seen[runtime] = true
-	}
-	return runtimes
+	return s.workspaces.Snapshot()
 }
 
 func (s *Server) activeRuntime() *databaseRuntime {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.workspaces[s.activeDatabase]
+	if s.workspaces == nil {
+		return nil
+	}
+	runtime, _ := s.workspaces.Active()
+	return runtime
 }
 
 func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
 	if runtime == nil {
-		s.database = nil
-		s.vault = nil
-		s.tokens = nil
 		return
 	}
-	s.activeDatabase = runtime.id
-	s.activeDataPath = runtime.path
+	s.workspaces.Activate(runtime)
 	if strings.TrimSpace(runtime.gatewaySecret) != "" {
 		s.config.GatewaySecret = runtime.gatewaySecret
 	}
-	s.database = runtime.database
-	s.vault = runtime.vault
-	s.tokens = runtime.tokens
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) error {

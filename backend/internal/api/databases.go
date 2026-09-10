@@ -56,14 +56,13 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.database == nil {
+	runtime := s.activeRuntime()
+	if runtime == nil {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
 	}
 
-	oldPath := s.activeDataPath
+	oldPath := runtime.path
 	id, path, err := databasecatalog.RenameDatabaseTarget(s.config.DataPath, oldPath, request.DatabaseName)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -75,12 +74,12 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	attempt.success()
-	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), s.database); err != nil {
+	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), runtime.database); err != nil {
 		writeInternalError(w)
 		return
 	}
 	if err := s.closeUnlockedResources(); err != nil {
-		s.activeDataPath = oldPath
+		s.workspaces.Select(workspaceIdentity(runtime.id, oldPath))
 		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
 			s.clearUISessions(w)
 		}
@@ -89,15 +88,14 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := s.moveDatabase(oldPath, path); err != nil {
-		s.activeDataPath = oldPath
+		s.workspaces.Select(workspaceIdentity(runtime.id, oldPath))
 		if reopenErr := s.openUnlockedLocked(request.CurrentPassword); reopenErr != nil {
 			s.clearUISessions(w)
 		}
 		writeInternalError(w)
 		return
 	}
-	s.activeDataPath = path
-	s.activeDatabase = id
+	s.workspaces.Select(workspaceIdentity(id, path))
 	s.clearUISessions(w)
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -124,9 +122,8 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.database == nil {
+	runtime := s.activeRuntime()
+	if runtime == nil {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
 	}
@@ -136,8 +133,7 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "database name confirmation does not match")
 		return
 	}
-	runtime := s.workspaces[s.activeDatabase]
-	if runtime == nil || runtime.database == nil {
+	if runtime.database == nil {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
 	}
@@ -148,8 +144,8 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	}
 	attempt.success()
 
-	path := s.activeDataPath
-	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), s.database); err != nil {
+	path := runtime.path
+	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), runtime.database); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -161,12 +157,11 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		writeInternalError(w)
 		return
 	}
-	if s.database == nil {
-		s.activeDataPath = s.config.DataPath
-		s.activeDatabase = databasecatalog.DefaultDatabaseID(s.config.DataPath)
+	if s.activeRuntime() == nil {
+		s.workspaces.ResetSelection(databasecatalog.DefaultDatabaseID(s.config.DataPath))
 	}
 	state := "locked"
-	if s.database != nil {
+	if s.activeRuntime() != nil {
 		state = "unlocked"
 		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
@@ -179,7 +174,7 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "deleted",
 		"state":       state,
-		"database_id": s.activeDatabase,
+		"database_id": s.workspaces.Selection().ID,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -204,14 +199,12 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if runtime := s.workspaces[targetID]; runtime != nil {
+	if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
 		writeError(w, http.StatusConflict, "database is currently unlocked; lock it before deleting from the unlock screen")
 		return
 	}
@@ -233,9 +226,8 @@ func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Re
 		writeInternalError(w)
 		return
 	}
-	if s.activeDatabase == targetID {
-		s.activeDataPath = s.config.DataPath
-		s.activeDatabase = databasecatalog.DefaultDatabaseID(s.config.DataPath)
+	if s.workspaces.Selection().ID == targetID {
+		s.workspaces.ResetSelection(databasecatalog.DefaultDatabaseID(s.config.DataPath))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "deleted",
@@ -261,9 +253,7 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.workspaces) == 0 {
+	if !s.workspaces.IsUnlocked() {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
 	}
@@ -273,15 +263,16 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if s.database != nil && (targetID == s.activeDatabase || targetPath == s.activeDataPath) {
+	selection := s.workspaces.Selection()
+	if s.activeRuntime() != nil && (targetID == selection.ID || targetPath == selection.Path) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":      "current",
 			"state":       "unlocked",
-			"database_id": s.activeDatabase,
+			"database_id": selection.ID,
 		})
 		return
 	}
-	if runtime := s.workspaces[targetID]; runtime != nil && runtime.path == targetPath {
+	if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil && runtime.path == targetPath {
 		s.applyRuntimeLocked(runtime)
 		if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
@@ -317,7 +308,6 @@ func (s databaseHandlers) switchDatabase(w http.ResponseWriter, r *http.Request)
 	attempt.success()
 
 	s.config.GatewaySecret = runtime.gatewaySecret
-	s.workspaces[targetID] = runtime
 	s.applyRuntimeLocked(runtime)
 	s.initializeRetention(runtime)
 	if err := s.issueUISessionLocked(w); err != nil {
@@ -356,9 +346,7 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	runtime := s.workspaces[s.activeDatabase]
+	runtime := s.activeRuntime()
 	if runtime == nil || runtime.database == nil {
 		writeError(w, http.StatusLocked, "database is locked")
 		return
@@ -403,14 +391,15 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	items, err := databasecatalog.ListDatabases(s.config.DataPath, s.activeDataPath)
+	selection := s.workspaces.Selection()
+	items, err := databasecatalog.ListDatabases(s.config.DataPath, selection.Path)
 	if err != nil {
-		return s.activeDatabase
+		return selection.ID
 	}
 	for _, item := range items {
-		if item.Path == s.activeDataPath || item.ID == s.activeDatabase {
+		if item.Path == selection.Path || item.ID == selection.ID {
 			return item.Name
 		}
 	}
-	return s.activeDatabase
+	return selection.ID
 }

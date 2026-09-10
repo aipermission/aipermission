@@ -6,20 +6,25 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
+	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
-func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
-	srv := &Server{
-		activeDatabase: "default",
-		workspaces:     map[string]*databaseRuntime{},
-		uiSessions:     uisession.New(""),
+func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
+	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
+	registry := workspacelifecycle.NewRegistry(configuration.DataPath, databaseID, describeDatabaseRuntime)
+	if retryIdentity != "" {
+		registry.Activate(&databaseRuntime{id: databaseID, path: configuration.DataPath, uiRetryIdentity: retryIdentity})
 	}
+	return &Server{config: configuration, workspaces: registry, uiSessions: uisession.New(port)}
+}
+
+func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
+	srv := uiSessionTestServer("", databasecatalog.DefaultDatabaseID(""), "")
 
 	issueResponse := httptest.NewRecorder()
-	srv.mu.Lock()
 	err := srv.issueUISessionLocked(issueResponse)
-	srv.mu.Unlock()
 	if err != nil {
 		t.Fatalf("issue ui session: %v", err)
 	}
@@ -39,30 +44,16 @@ func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
 }
 
 func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
-	first := &Server{
-		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3210"}),
-		activeDatabase: "default",
-		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-one"}},
-		uiSessions:     uisession.New("3210"),
-	}
-	second := &Server{
-		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3212"}),
-		activeDatabase: "default",
-		workspaces:     map[string]*databaseRuntime{"default": {uiRetryIdentity: "retry-two"}},
-		uiSessions:     uisession.New("3212"),
-	}
+	first := uiSessionTestServer("3210", "default", "retry-one")
+	second := uiSessionTestServer("3212", "default", "retry-two")
 
 	firstResponse := httptest.NewRecorder()
-	first.mu.Lock()
 	err := first.issueUISessionLocked(firstResponse)
-	first.mu.Unlock()
 	if err != nil {
 		t.Fatalf("issue first ui session: %v", err)
 	}
 	secondResponse := httptest.NewRecorder()
-	second.mu.Lock()
 	err = second.issueUISessionLocked(secondResponse)
-	second.mu.Unlock()
 	if err != nil {
 		t.Fatalf("issue second ui session: %v", err)
 	}
@@ -114,12 +105,7 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 }
 
 func TestEnsureUIWorkspaceCookieReplacesStaleDatabaseIdentity(t *testing.T) {
-	srv := &Server{
-		config:         snapshotRuntimeConfiguration(config.Config{FrontendPort: "3212"}),
-		activeDatabase: "second",
-		workspaces:     map[string]*databaseRuntime{"second": {uiRetryIdentity: "current-retry"}},
-		uiSessions:     uisession.New("3212"),
-	}
+	srv := uiSessionTestServer("3212", "second", "current-retry")
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	request.AddCookie(&http.Cookie{Name: "aipermission_workspace_3212", Value: "old-workspace"})
 	recorder := httptest.NewRecorder()

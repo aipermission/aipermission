@@ -263,7 +263,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK {
 		t.Fatalf("post-setup unlock status failed: %d %s", response.Code, response.Body.String())
-	} else if strings.Contains(response.Body.String(), "data_path") || strings.Contains(response.Body.String(), server.activeDataPath) || strings.Contains(response.Body.String(), `"path"`) {
+	} else if strings.Contains(response.Body.String(), "data_path") || strings.Contains(response.Body.String(), server.currentDataPath()) || strings.Contains(response.Body.String(), `"path"`) {
 		t.Fatalf("unlock status should omit local database paths: %s", response.Body.String())
 	}
 	if !server.isUnlocked() {
@@ -415,7 +415,7 @@ func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 	if setup.Code != http.StatusOK {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
-	oldPath := server.activeDataPath
+	oldPath := server.currentDataPath()
 	server.databaseMove = func(string, string) error { return errors.New("injected move failure") }
 
 	response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{

@@ -33,24 +33,19 @@ func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared pr
 func (s *Server) clearUISessions(w http.ResponseWriter) { s.uiSessions.Clear(w) }
 
 func (s *Server) hasValidUISession(r *http.Request) bool {
-	s.mu.RLock()
-	activeDatabase := s.activeDatabase
-	s.mu.RUnlock()
-	return s.uiSessions.Valid(r, activeDatabase)
+	return s.uiSessions.Valid(r, s.workspaceSelection().ID)
 }
 
 func (s *Server) hasValidUICSRF(r *http.Request) bool { return s.uiSessions.ValidCSRF(r) }
 
 func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
 	_, retryIdentity := s.activeUIWorkspaceLocked()
-	s.mu.RUnlock()
 	s.uiSessions.EnsureWorkspaceCookie(w, r, retryIdentity)
 }
 
 func (s *Server) activeUIWorkspaceLocked() (string, string) {
-	databaseID := s.activeDatabase
-	if runtime := s.workspaces[databaseID]; runtime != nil {
+	databaseID := s.workspaceSelection().ID
+	if runtime, ok := s.workspaces.Lookup(databaseID); ok && runtime != nil {
 		return databaseID, runtime.uiRetryIdentity
 	}
 	return databaseID, ""

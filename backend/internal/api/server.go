@@ -28,20 +28,15 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 type Server struct {
 	config               serverConfig
-	activeDataPath       string
-	activeDatabase       string
-	workspaces           map[string]*databaseRuntime
-	database             *sql.DB
-	vault                *vault.Vault
-	tokens               *tokens.Store
+	workspaces           *workspacelifecycle.Registry[*databaseRuntime]
 	registry             *connectors.Registry
 	adapterRegistry      *connectorapi.Registry
 	mux                  *http.ServeMux
-	mu                   sync.RWMutex
 	lifecycleMu          sync.RWMutex
 	maintenanceConsole   console.MaintenanceConsoleRuntime
 	authLimiter          *runtimecontrol.Auth
@@ -154,12 +149,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	registry := resolved.registry
 	server := &Server{
 		config:               cfg,
-		activeDataPath:       cfg.DataPath,
-		activeDatabase:       activeID,
-		workspaces:           map[string]*databaseRuntime{},
-		database:             database,
-		vault:                secretVault,
-		tokens:               tokenStore,
+		workspaces:           workspacelifecycle.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
 		registry:             registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
@@ -215,7 +205,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)
-	server.workspaces[activeID] = runtime
+	server.workspaces.Activate(runtime)
 	server.initializeRetention(runtime)
 	server.routes()
 	return server, nil
@@ -227,9 +217,7 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	resolved := resolveServerOptions(options)
 	server := &Server{
 		config:               cfg,
-		activeDataPath:       cfg.DataPath,
-		activeDatabase:       databasecatalog.DefaultDatabaseID(cfg.DataPath),
-		workspaces:           map[string]*databaseRuntime{},
+		workspaces:           workspacelifecycle.NewRegistry(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), describeDatabaseRuntime),
 		registry:             resolved.registry,
 		adapterRegistry:      resolved.adapterRegistry,
 		mux:                  http.NewServeMux(),
@@ -244,6 +232,15 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	}
 	server.routes()
 	return server
+}
+
+func describeDatabaseRuntime(runtime *databaseRuntime) workspacelifecycle.Identity {
+	if runtime == nil {
+		return workspacelifecycle.Identity{}
+	}
+	return workspacelifecycle.Identity{
+		ID: runtime.id, Path: runtime.path, RetryIdentity: runtime.uiRetryIdentity,
+	}
 }
 
 func (s *Server) connectorRegistry() *connectors.Registry {

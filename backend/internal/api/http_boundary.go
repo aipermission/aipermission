@@ -35,9 +35,9 @@ func (s *Server) withLocalHTTPBoundary(next http.Handler) http.Handler {
 }
 
 func (s *Server) Close() {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := s.closeAllUnlockedResources(); err != nil {
 		log.Printf("close unlocked database resources failed: %v", err)
 	}

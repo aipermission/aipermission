@@ -31,7 +31,7 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 	if statusResponse.Code != http.StatusOK {
 		t.Fatalf("status failed: %d %s", statusResponse.Code, statusResponse.Body.String())
 	}
-	if strings.Contains(statusResponse.Body.String(), "data_path") || strings.Contains(statusResponse.Body.String(), fixture.server.activeDataPath) {
+	if strings.Contains(statusResponse.Body.String(), "data_path") || strings.Contains(statusResponse.Body.String(), fixture.server.currentDataPath()) {
 		t.Fatalf("status should not expose local database paths: %s", statusResponse.Body.String())
 	}
 

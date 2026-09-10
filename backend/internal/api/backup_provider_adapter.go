@@ -37,9 +37,7 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 	if !ok {
 		return backups.HTTPScope{}, false
 	}
-	s.mu.RLock()
 	databaseName := s.currentDatabaseNameLocked()
-	s.mu.RUnlock()
 	return backups.HTTPScope{
 		Database: runtime.database, DatabaseID: runtime.id, DatabaseName: databaseName,
 		DatabasePath: runtime.path, WorkspaceUUID: runtime.workspaceUUID,

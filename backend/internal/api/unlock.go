@@ -95,10 +95,7 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.database != nil {
+	if s.activeRuntime() != nil {
 		status, err := s.currentUnlockStatusLocked()
 		if err != nil {
 			writeInternalError(w)
@@ -113,8 +110,7 @@ func (s unlockHandlers) setupUnlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.activeDataPath = targetPath
-	s.activeDatabase = targetID
+	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
 
 	if db.Exists(targetPath) {
 		if rejectPlaintextDatabase(w, targetPath) {
@@ -155,20 +151,16 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.database != nil {
+	if s.activeRuntime() != nil {
 		targetPath, targetID, err := s.unlockTargetPathLocked(request.DatabaseID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if runtime := s.workspaces[targetID]; runtime != nil {
+		if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
 			targetPath = runtime.path
 		} else {
-			s.activeDataPath = targetPath
-			s.activeDatabase = targetID
+			s.workspaces.Select(workspaceIdentity(targetID, targetPath))
 			if err := s.openUnlockedLocked(request.Password); err != nil {
 				recordDatabaseUnlockAttempt(attempt, err)
 				writeDatabaseUnlockError(w, err)
@@ -195,7 +187,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
 			return
 		}
-		if runtime := s.workspaces[targetID]; runtime != nil {
+		if runtime, exists := s.workspaces.Lookup(targetID); exists && runtime != nil {
 			s.applyRuntimeLocked(runtime)
 		}
 		attempt.success()
@@ -216,8 +208,7 @@ func (s unlockHandlers) unlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.activeDataPath = targetPath
-	s.activeDatabase = targetID
+	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
 
 	if !db.Exists(targetPath) {
 		writeError(w, http.StatusNotFound, "encrypted database is not initialized")
@@ -265,8 +256,6 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 		s.closeMaintenanceConsoleForLifecycle("database_lock_" + request.Scope)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if request.Scope == "all" {
 		if err := s.closeAllUnlockedResources(); err != nil {
 			writeInternalError(w)
@@ -278,7 +267,7 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		if s.database == nil {
+		if s.activeRuntime() == nil {
 			s.clearUISessions(w)
 		} else if err := s.issueUISessionLocked(w); err != nil {
 			writeInternalError(w)
@@ -294,7 +283,5 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) currentLockLeavesNoUnlockedRuntime() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.workspaces) <= 1
+	return s.workspaces.Len() <= 1
 }
