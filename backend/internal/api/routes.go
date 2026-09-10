@@ -270,6 +270,7 @@ func (s *Server) registerMCPRoutes() {
 	mcp := mcpHandlers{s}
 	connectorReads := mcpconnector.NewHTTPHandlers(mcp.mcpConnectorReadScope)
 	connectorActions := mcpconnector.NewActionHTTPHandlers(mcp.mcpConnectorActionScope)
+	vaultActions := vaultrequests.NewMCPHTTPHandlers(mcp.mcpVaultScope)
 
 	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
 	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
@@ -278,10 +279,10 @@ func (s *Server) registerMCPRoutes() {
 	s.mux.HandleFunc("GET /api/mcp/connector-actions", connectorReads.GetActions)
 	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", connectorActions.Call)
 	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", connectorActions.GetRequest)
-	s.mux.HandleFunc("GET /api/mcp/vault-items", mcp.mcpListVaultItems)
-	s.mux.HandleFunc("POST /api/mcp/vault-actions/call", mcp.mcpCallVaultAction)
-	s.mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", mcp.mcpGetVaultActionRequest)
-	s.mux.HandleFunc("POST /api/mcp/vault-action-requests/{id}/cancel", mcp.mcpCancelVaultActionRequest)
+	s.mux.HandleFunc("GET /api/mcp/vault-items", vaultActions.ListItems)
+	s.mux.HandleFunc("POST /api/mcp/vault-actions/call", vaultActions.Call)
+	s.mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", vaultActions.GetRequest)
+	s.mux.HandleFunc("POST /api/mcp/vault-action-requests/{id}/cancel", vaultActions.CancelRequest)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

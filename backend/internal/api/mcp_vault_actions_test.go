@@ -27,6 +27,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
+type mcpVaultActionCallRequest = vaultrequests.MCPActionCallRequest
+
 func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
@@ -48,7 +50,7 @@ func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	for index := 0; index < maxMCPVaultItems; index++ {
+	for index := 0; index < vaultrequests.MaxMCPVaultItems; index++ {
 		if _, err := fixture.db.ExecContext(ctx, `
 			INSERT INTO vault_items (
 				name, owner_project_id, secret_type, last_value_replaced_at, source, created_at, updated_at
@@ -72,7 +74,7 @@ func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Count != maxMCPVaultItems || body.Truncated {
+	if body.Count != vaultrequests.MaxMCPVaultItems || body.Truncated {
 		t.Fatalf("boundary list count=%d truncated=%v", body.Count, body.Truncated)
 	}
 }
