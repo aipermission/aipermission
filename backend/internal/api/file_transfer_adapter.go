@@ -27,17 +27,18 @@ func (s *Server) initializeFileTransferRuntime(runtime *databaseRuntime) error {
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	transferRuntime, err := filetransferhttp.NewRuntime(filetransferhttp.RuntimeDependencies{
-		Database:     runtime.database,
-		Jobs:         &runtime.transferJobs,
-		Finalization: runtime.finalization,
-		Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
+	if runtime.transferLifecycle == nil {
+		return fmt.Errorf("file transfer workspace lifecycle is unavailable")
+	}
+	transferRuntime, err := runtime.transferLifecycle.NewRuntime(
+		runtime.database,
+		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},
-		ConnectorPorts: func(ctx context.Context, runtimeID int64) (filetransferhttp.ConnectorPorts, error) {
+		func(ctx context.Context, runtimeID int64) (filetransferhttp.ConnectorPorts, error) {
 			return connectorFileTransferPortsForID(ctx, s, runtime, runtimeID)
 		},
-	})
+	)
 	if err != nil {
 		return err
 	}

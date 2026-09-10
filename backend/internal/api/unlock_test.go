@@ -207,7 +207,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	workerDone := make(chan filetransfer.Record, 1)
-	if !runtime.transferJobs.Files.Launch(record.ID, cancel, func() {
+	if !runtime.transferLifecycle.Registry().Files.Launch(record.ID, cancel, func() {
 		<-ctx.Done()
 		_, _ = transferStore.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
 		finished, _ := transferStore.Get(context.Background(), record.ID)

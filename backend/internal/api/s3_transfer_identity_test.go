@@ -77,7 +77,7 @@ func TestS3SingleWhitespaceKeyDownloadUsesFallbackLocalName(t *testing.T) {
 	}
 	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if !fixture.server.activeRuntime().transferJobs.Wait(waitCtx) {
+	if !fixture.server.activeRuntime().transferLifecycle.Registry().Wait(waitCtx) {
 		t.Fatal("single download did not finish")
 	}
 	completed, err := filetransfer.NewStore(fixture.server.activeRuntime().database).Get(context.Background(), started.ID)
@@ -156,7 +156,7 @@ func TestS3TransferAPIExactIdentity(t *testing.T) {
 				t.Fatalf("whitespace key local filename = %q", batch.Items[0].FileName)
 			}
 			waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if !runtime.transferJobs.Wait(waitCtx) {
+			if !runtime.transferLifecycle.Registry().Wait(waitCtx) {
 				cancel()
 				t.Fatal("transfer batch did not finish")
 			}
@@ -232,7 +232,7 @@ func TestS3CompletedDownloadBatchReplayPreservesArtifact(t *testing.T) {
 	runtime := fixture.server.activeRuntime()
 	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if !runtime.transferJobs.Wait(waitCtx) {
+	if !runtime.transferLifecycle.Registry().Wait(waitCtx) {
 		t.Fatal("download batch did not finish")
 	}
 	completed, err := filetransfer.NewStore(runtime.database).GetBatch(context.Background(), started.ID)
@@ -250,7 +250,7 @@ func TestS3CompletedDownloadBatchReplayPreservesArtifact(t *testing.T) {
 	}
 	waitCtx, cancelReplay := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelReplay()
-	if !runtime.transferJobs.Wait(waitCtx) {
+	if !runtime.transferLifecycle.Registry().Wait(waitCtx) {
 		t.Fatal("replayed download batch did not settle")
 	}
 	if data, err := os.ReadFile(artifactPath); err != nil || string(data) != "data" {

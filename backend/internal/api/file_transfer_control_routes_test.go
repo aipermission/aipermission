@@ -29,8 +29,8 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	control := &transferjobs.Control{}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.transferJobs.Batches.RegisterControl(batch.ID, control)
-	runtime.transferJobs.Batches.RegisterCancel(batch.ID, cancel)
+	runtime.transferLifecycle.Registry().Batches.RegisterControl(batch.ID, control)
+	runtime.transferLifecycle.Registry().Batches.RegisterCancel(batch.ID, cancel)
 	request := func(action string, wantCode int, wantStatus string) {
 		t.Helper()
 		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
@@ -93,8 +93,8 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.transferJobs.Files.RegisterCancel(item.ID, cancel)
-	defer runtime.transferJobs.Files.UnregisterCancel(item.ID)
+	runtime.transferLifecycle.Registry().Files.RegisterCancel(item.ID, cancel)
+	defer runtime.transferLifecycle.Registry().Files.UnregisterCancel(item.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -139,8 +139,8 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.transferJobs.Batches.RegisterCancel(batch.ID, cancel)
-	defer runtime.transferJobs.Batches.UnregisterCancel(batch.ID)
+	runtime.transferLifecycle.Registry().Batches.RegisterCancel(batch.ID, cancel)
+	defer runtime.transferLifecycle.Registry().Batches.UnregisterCancel(batch.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {

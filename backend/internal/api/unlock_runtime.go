@@ -19,11 +19,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -223,7 +223,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		vaultLeases:        vaultsessions.NewStore(),
 		securityPolicy:     securitypolicy.NewService(database),
 	}
-	runtime.finalization = transferjobs.NewFinalizationLifetime()
+	runtime.transferLifecycle = filetransferhttp.NewLifecycle()
 	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
@@ -236,7 +236,7 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 	runtime.runtimeState.SetMCPStarted(settings.MCPStartEnabled)
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeFileTransferRuntime(runtime); err != nil {
-		runtime.finalization.Stop()
+		runtime.transferLifecycle.Stop()
 		actions.ClearIdentityKey(actionIdentityKey)
 		_ = database.Close()
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
@@ -470,7 +470,7 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.id, err)
 	}
 	if runtime.fileTransfers == nil {
-		runtime.finalization.Stop()
+		runtime.transferLifecycle.Stop()
 		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.id)
 	} else {
 		drained, err := s.fileTransferHTTPHandlers().ShutdownRuntime(
@@ -484,7 +484,7 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 		}
 		if !drained {
 			go func() {
-				runtime.transferJobs.Wait(context.Background())
+				runtime.transferLifecycle.Wait(context.Background())
 				if err := closeRuntimeStorage(runtime); err != nil {
 					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.id, err)
 				}

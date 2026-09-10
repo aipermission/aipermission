@@ -23,7 +23,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -70,7 +69,7 @@ type databaseRuntime struct {
 	connectorResources connectorruntime.ResourceScopes
 	consoleSessions    *console.Manager
 	fileTransfers      *filetransferhttp.Runtime
-	transferJobs       transferjobs.Registry
+	transferLifecycle  *filetransferhttp.Lifecycle
 	securityPolicy     *securitypolicy.Service
 	actionWorkflowMu   sync.Mutex
 	actionWorkflow     *actions.Runtime
@@ -87,7 +86,6 @@ type databaseRuntime struct {
 	auditDispatcher    *observability.Dispatcher
 	retention          *retention.Service
 	databaseOwnership  *dbpkg.DatabaseOwnership
-	finalization       transferjobs.FinalizationLifetime
 }
 
 type serverOptions struct {
@@ -184,7 +182,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		securityPolicy:  securitypolicy.NewService(database),
 		vaultLeases:     vaultsessions.NewStore(),
 	}
-	runtime.finalization = transferjobs.NewFinalizationLifetime()
+	runtime.transferLifecycle = filetransferhttp.NewLifecycle()
 	var err error
 	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
 	if err != nil {

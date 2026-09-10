@@ -186,7 +186,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	}
 	waitCtx, cancelOversizedBatch := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelOversizedBatch()
-	if !runtime.transferJobs.Wait(waitCtx) {
+	if !runtime.transferLifecycle.Registry().Wait(waitCtx) {
 		t.Fatal("oversized approved download batch did not settle")
 	}
 	rejectedBatch, err := filetransfer.NewStore(runtime.database).GetBatch(context.Background(), pendingBatch.ID)
