@@ -29,10 +29,10 @@ secret-history-check:
 	npm run security:history
 
 rest-contract:
-	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json
+	cd backend && go run ./cmd/openapi -routes internal/gatewayroutes/routes.go -output ../docs/api/openapi.json
 
 rest-contract-check:
-	cd backend && go run ./cmd/openapi -routes internal/api/routes.go -output ../docs/api/openapi.json -check
+	cd backend && go run ./cmd/openapi -routes internal/gatewayroutes/routes.go -output ../docs/api/openapi.json -check
 
 backend-test:
 	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1 && go run ./cmd/coveragecheck -profile "$$coverage"
