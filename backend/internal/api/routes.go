@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
@@ -30,7 +31,6 @@ type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
-type maintenanceConsoleHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
@@ -49,7 +49,7 @@ func (s *Server) routes() {
 func (s *Server) registerSystemRoutes() {
 	securityHandlers := securitypolicy.NewHTTPHandlers(s.securityPolicyHTTPScope)
 	retentionHandlers := retention.NewHTTPHandlers(s.retentionHTTPScope)
-	maintenanceConsole := maintenanceConsoleHandlers{s}
+	maintenanceConsole := consolehttp.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope)
 	diagnostics := diagnosticsHandlers{s}
 	unlock := unlockHandlers{s}
 
@@ -64,10 +64,10 @@ func (s *Server) registerSystemRoutes() {
 	s.mux.HandleFunc("POST /api/settings/redaction-rules", securityHandlers.CreateRule)
 	s.mux.HandleFunc("PUT /api/settings/redaction-rules/{id}", securityHandlers.UpdateRule)
 	s.mux.HandleFunc("DELETE /api/settings/redaction-rules/{id}", securityHandlers.DeleteRule)
-	s.mux.HandleFunc("GET /api/settings/maintenance-console/status", maintenanceConsole.status)
-	s.mux.HandleFunc("POST /api/settings/maintenance-console/open", maintenanceConsole.open)
-	s.mux.HandleFunc("GET /api/settings/maintenance-console/attach", maintenanceConsole.attach)
-	s.mux.HandleFunc("POST /api/settings/maintenance-console/close", maintenanceConsole.close)
+	s.mux.HandleFunc("GET /api/settings/maintenance-console/status", maintenanceConsole.Status)
+	s.mux.HandleFunc("POST /api/settings/maintenance-console/open", maintenanceConsole.Open)
+	s.mux.HandleFunc("GET /api/settings/maintenance-console/attach", maintenanceConsole.Attach)
+	s.mux.HandleFunc("POST /api/settings/maintenance-console/close", maintenanceConsole.Close)
 	s.mux.HandleFunc("GET /api/settings/diagnostics", diagnostics.download)
 	s.mux.HandleFunc("GET /api/unlock/status", unlock.unlockStatus)
 	s.mux.HandleFunc("POST /api/unlock/setup", unlock.setupUnlock)
