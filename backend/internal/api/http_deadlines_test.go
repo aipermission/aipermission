@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 )
 
 type deadlineRecorder struct {
@@ -25,7 +27,7 @@ func (w *deadlineRecorder) SetWriteDeadline(deadline time.Time) error {
 
 func TestRequestDeadlineBoundsOrdinaryRoutes(t *testing.T) {
 	deadlineObserved := make(chan bool, 1)
-	handler := withRequestDeadline(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	handler := gatewayhttp.WithRequestDeadline(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, ok := r.Context().Deadline()
 		deadlineObserved <- ok
 		<-r.Context().Done()
@@ -55,7 +57,7 @@ func TestRequestDeadlineLeavesStreamingRoutesUnbounded(t *testing.T) {
 	}
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			handler := withRequestDeadline(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			handler := gatewayhttp.WithRequestDeadline(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				if _, ok := r.Context().Deadline(); ok {
 					t.Fatalf("streaming route %s received ordinary deadline", path)
 				}
@@ -66,10 +68,10 @@ func TestRequestDeadlineLeavesStreamingRoutesUnbounded(t *testing.T) {
 }
 
 func TestUnboundedTransfersDoNotBypassLifecycleLocks(t *testing.T) {
-	if !isStreamingRoute("/api/console/sessions/12/attach") {
+	if !gatewayhttp.IsStreamingRoute("/api/console/sessions/12/attach") {
 		t.Fatal("console attach must retain its streaming lifecycle behavior")
 	}
-	if !isStreamingRoute("/api/settings/maintenance-console/attach") {
+	if !gatewayhttp.IsStreamingRoute("/api/settings/maintenance-console/attach") {
 		t.Fatal("maintenance console attach must not retain a lifecycle lock for the WebSocket lifetime")
 	}
 	for _, path := range []string{
@@ -78,39 +80,39 @@ func TestUnboundedTransfersDoNotBypassLifecycleLocks(t *testing.T) {
 		"/api/file-transfers/upload",
 		"/api/connector-targets/1/profiles/2/restore",
 	} {
-		if isStreamingRoute(path) {
+		if gatewayhttp.IsStreamingRoute(path) {
 			t.Fatalf("unbounded transfer route %s must not bypass lifecycle locking", path)
 		}
-		if !isUnboundedRequestRoute(path) {
+		if !gatewayhttp.IsUnboundedRequestRoute(path) {
 			t.Fatalf("transfer route %s must remain exempt from ordinary deadlines", path)
 		}
 	}
 }
 
 func TestRemoteBrowseKeepsItsLongerBoundedDeadline(t *testing.T) {
-	if got := requestTimeoutForPath("/api/file-transfers/expand", ordinaryRequestTimeout); got != remoteBrowseRequestTimeout {
-		t.Fatalf("remote expand timeout = %s, want %s", got, remoteBrowseRequestTimeout)
+	if got := gatewayhttp.RequestTimeoutForPath("/api/file-transfers/expand", gatewayhttp.OrdinaryRequestTimeout); got != gatewayhttp.RemoteBrowseRequestTimeout {
+		t.Fatalf("remote expand timeout = %s, want %s", got, gatewayhttp.RemoteBrowseRequestTimeout)
 	}
-	if got := requestTimeoutForPath("/api/status", ordinaryRequestTimeout); got != ordinaryRequestTimeout {
-		t.Fatalf("ordinary timeout = %s, want %s", got, ordinaryRequestTimeout)
+	if got := gatewayhttp.RequestTimeoutForPath("/api/status", gatewayhttp.OrdinaryRequestTimeout); got != gatewayhttp.OrdinaryRequestTimeout {
+		t.Fatalf("ordinary timeout = %s, want %s", got, gatewayhttp.OrdinaryRequestTimeout)
 	}
 }
 
 func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
 	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call"} {
-		if got := requestTimeoutForPath(path, ordinaryRequestTimeout); got != connectorActionRequestTimeout {
-			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, connectorActionRequestTimeout)
+		if got := gatewayhttp.RequestTimeoutForPath(path, gatewayhttp.OrdinaryRequestTimeout); got != gatewayhttp.ConnectorActionRequestTimeout {
+			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, gatewayhttp.ConnectorActionRequestTimeout)
 		}
 	}
-	if connectorActionRequestTimeout <= maxConnectorCommandTimeout {
-		t.Fatalf("connector action timeout %s must exceed command timeout %s", connectorActionRequestTimeout, maxConnectorCommandTimeout)
+	if gatewayhttp.ConnectorActionRequestTimeout <= maxConnectorCommandTimeout {
+		t.Fatalf("connector action timeout %s must exceed command timeout %s", gatewayhttp.ConnectorActionRequestTimeout, maxConnectorCommandTimeout)
 	}
 }
 
 func TestOrdinaryRouteAppliesTransportDeadlines(t *testing.T) {
 	writer := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
 	deadlineSeen := make(chan [2]time.Time, 1)
-	handler := withRequestDeadline(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	handler := gatewayhttp.WithRequestDeadline(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		deadlineSeen <- [2]time.Time{writer.readDeadline, writer.writeDeadline}
 	}), time.Second)
 	handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/api/status", nil))

@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
@@ -56,5 +57,5 @@ func uiRetryIdentity(instanceID string) string { return uisession.RetryIdentity(
 func isUISessionExempt(path string) bool { return uisession.IsExempt(path) }
 
 func requiresUICSRF(method, path string) bool {
-	return !uisession.IsExempt(path) && isStateChangingMethod(method)
+	return !uisession.IsExempt(path) && gatewayhttp.IsStateChangingMethod(method)
 }

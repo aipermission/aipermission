@@ -3,35 +3,19 @@ package api
 import (
 	"log"
 	"net/http"
-	"net/url"
-	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 )
 
 func (s *Server) Handler() http.Handler {
-	return withHTTPResponsePolicy(s.withLocalHTTPBoundary(s.withCORS(withRequestDeadline(http.HandlerFunc(s.serveHTTP), ordinaryRequestTimeout))))
-}
-
-func withHTTPResponsePolicy(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store, private")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) withLocalHTTPBoundary(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.config.IsLocalRemoteAddr(r.RemoteAddr) {
-			writeError(w, http.StatusForbidden, "remote gateway access is disabled; connect from localhost")
-			return
-		}
-		if !s.config.IsLocalhostHeader(r.Host) {
-			writeError(w, http.StatusForbidden, "remote gateway host header is disabled; use localhost")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return gatewayhttp.Boundary{
+		Routes: s.mux, Lifecycle: s.workspaceState.Lifecycle, IsUnlocked: s.isUnlocked,
+		IsLocalRemoteAddr: s.config.IsLocalRemoteAddr, IsLocalhostHeader: s.config.IsLocalhostHeader,
+		AllowsOrigin: s.config.AllowsOrigin, HasSession: s.hasValidUISession,
+		EnsureWorkspace: s.ensureUIWorkspaceCookie, HasCSRF: s.hasValidUICSRF,
+		IsSessionExempt: isUISessionExempt, RequiresCSRF: requiresUICSRF,
+		WriteError: writeError,
+	}.Handler()
 }
 
 func (s *Server) Close() {
@@ -41,140 +25,4 @@ func (s *Server) Close() {
 	if err := s.workspaceState.Lifecycle.CloseAll(); err != nil {
 		log.Printf("close unlocked database resources failed: %v", err)
 	}
-}
-
-func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if isStateChangingMethod(r.Method) && !s.hasSafeBrowserMutationSource(r) {
-		writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
-		return
-	}
-	streaming := isStreamingRoute(r.URL.Path)
-	managesLifecycle := managesLifecycleLock(r.URL.Path)
-	if !streaming && !managesLifecycle {
-		if isLifecycleMutation(r.URL.Path) {
-			release := s.workspaceState.Lifecycle.AcquireMutation()
-			defer release()
-		} else {
-			release := s.workspaceState.Lifecycle.AcquireRead()
-			defer release()
-		}
-	}
-
-	unlocked := s.isUnlocked()
-	if !unlocked && !isAllowedWhileLocked(r.URL.Path) {
-		writeError(w, http.StatusLocked, "database is locked")
-		return
-	}
-	if unlocked && !isUISessionExempt(r.URL.Path) {
-		if !s.hasValidUISession(r) {
-			writeError(w, http.StatusUnauthorized, "ui session required")
-			return
-		}
-		s.ensureUIWorkspaceCookie(w, r)
-	}
-	if unlocked && requiresUICSRF(r.Method, r.URL.Path) && !s.hasValidUICSRF(r) {
-		writeError(w, http.StatusForbidden, "csrf token required")
-		return
-	}
-	if streaming {
-		s.mux.ServeHTTP(w, r)
-		return
-	}
-	if managesLifecycle {
-		s.mux.ServeHTTP(w, r)
-		return
-	}
-	s.mux.ServeHTTP(w, r)
-}
-
-func isStateChangingMethod(method string) bool {
-	switch method {
-	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Server) hasSafeBrowserMutationSource(r *http.Request) bool {
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin != "" {
-		return s.isAllowedOrigin(origin) && isSafeFetchSite(r.Header.Get("Sec-Fetch-Site"))
-	}
-	referer := strings.TrimSpace(r.Header.Get("Referer"))
-	if referer != "" {
-		return s.isAllowedReferer(referer) && isSafeFetchSite(r.Header.Get("Sec-Fetch-Site"))
-	}
-	if looksLikeBrowserMutation(r) {
-		return false
-	}
-	return isSafeFetchSite(r.Header.Get("Sec-Fetch-Site"))
-}
-
-func isSafeFetchSite(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "same-origin", "same-site", "none":
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Server) isAllowedReferer(value string) bool {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return false
-	}
-	return s.isAllowedOrigin(parsed.Scheme + "://" + parsed.Host)
-}
-
-func looksLikeBrowserMutation(r *http.Request) bool {
-	ua := strings.ToLower(r.Header.Get("User-Agent"))
-	accept := strings.ToLower(r.Header.Get("Accept"))
-	mode := strings.ToLower(r.Header.Get("Sec-Fetch-Mode"))
-	return strings.Contains(ua, "mozilla/") || strings.Contains(accept, "text/html") || mode == "navigate" || mode == "no-cors"
-}
-
-func isLifecycleMutation(path string) bool {
-	switch path {
-	case "/api/unlock/setup", "/api/unlock", "/api/lock",
-		"/api/databases/rename", "/api/databases/delete", "/api/databases/delete-locked", "/api/databases/switch", "/api/databases/change-password",
-		"/api/backup/import", "/api/backup/remote/restore":
-		return true
-	default:
-		return false
-	}
-}
-
-func isStreamingRoute(path string) bool {
-	return path == "/api/settings/maintenance-console/attach" ||
-		(strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach"))
-}
-
-func isUnboundedRequestRoute(path string) bool {
-	if isStreamingRoute(path) {
-		return true
-	}
-	if path == "/api/backup/download" || path == "/api/backup/import" || path == "/api/backup/remote/restore" {
-		return true
-	}
-	if strings.HasPrefix(path, "/api/backup/providers/") &&
-		(strings.HasSuffix(path, "/upload") || strings.HasSuffix(path, "/download") || strings.HasSuffix(path, "/restore")) {
-		return true
-	}
-	if strings.HasPrefix(path, "/api/file-transfers/") && strings.HasSuffix(path, "/download") {
-		return true
-	}
-	if strings.HasPrefix(path, "/api/file-transfer-batches/") && strings.HasSuffix(path, "/download") {
-		return true
-	}
-	if path == "/api/file-transfers/upload" || path == "/api/file-transfers/upload-batch" {
-		return true
-	}
-	return strings.HasPrefix(path, "/api/connector-targets/") &&
-		(strings.HasSuffix(path, "/backup") || strings.HasSuffix(path, "/restore"))
-}
-
-func managesLifecycleLock(path string) bool {
-	return path == "/api/backup/download"
 }
