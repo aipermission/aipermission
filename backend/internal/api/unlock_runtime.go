@@ -166,17 +166,17 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 	if err != nil {
 		return nil, err
 	}
-	gatewaySecret, err := gatewaySecretFromDatabase(database, s.config.GatewaySecret)
+	bindingRequired, err := recordcrypto.EnvelopeMarkerPresent(context.Background(), database)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	gatewaySecret, err := projectvault.ResolveGatewaySecret(context.Background(), database, s.config.GatewaySecret)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	secretVault, err := vault.New(gatewaySecret)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	bindingRequired, err := recordcrypto.EnvelopeMarkerPresent(context.Background(), database)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
@@ -277,37 +277,6 @@ func preMigrationSnapshotSet(path string) map[string]struct{} {
 		set[match] = struct{}{}
 	}
 	return set
-}
-
-func gatewaySecretFromDatabase(database *sql.DB, fallback string) (string, error) {
-	var stored string
-	err := database.QueryRow(`SELECT value FROM settings WHERE key = 'gateway_secret'`).Scan(&stored)
-	if err == nil && strings.TrimSpace(stored) != "" {
-		return strings.TrimSpace(stored), nil
-	}
-	if err != nil && err != sql.ErrNoRows {
-		return "", fmt.Errorf("read gateway secret setting: %w", err)
-	}
-	bindingRequired, markerErr := recordcrypto.EnvelopeMarkerPresent(context.Background(), database)
-	if markerErr != nil {
-		return "", markerErr
-	}
-	if bindingRequired {
-		return "", fmt.Errorf("gateway secret is missing from an envelope-bound database")
-	}
-	if strings.TrimSpace(fallback) == "" {
-		return "", fmt.Errorf("gateway secret is missing")
-	}
-	_, err = database.Exec(`
-		INSERT INTO settings (key, value, updated_at)
-		VALUES ('gateway_secret', ?, datetime('now'))
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-		strings.TrimSpace(fallback),
-	)
-	if err != nil {
-		return "", fmt.Errorf("write gateway secret setting: %w", err)
-	}
-	return strings.TrimSpace(fallback), nil
 }
 
 func workspaceUUIDFromDatabase(ctx context.Context, database *sql.DB, bindingRequired bool) (string, error) {

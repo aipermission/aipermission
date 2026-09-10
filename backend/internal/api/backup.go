@@ -243,7 +243,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 	attempt.success()
-	if _, err := gatewaySecretFromDatabase(testDB, s.config.GatewaySecret); err != nil {
+	if _, err := projectvault.ResolveGatewaySecret(r.Context(), testDB, s.config.GatewaySecret); err != nil {
 		if closeErr := closeImportCandidate(testDB); closeErr != nil {
 			writeInternalError(w)
 			return
