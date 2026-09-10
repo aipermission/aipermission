@@ -16,38 +16,38 @@ import (
 )
 
 func (s *Server) isUnlocked() bool {
-	if s.workspaces == nil {
+	if s.workspaceState.Registry == nil {
 		return false
 	}
-	return s.workspaces.IsUnlocked()
+	return s.workspaceState.Registry.IsUnlocked()
 }
 
 func (s *Server) workspaceSelection() workspacelifecycle.Identity {
-	if s.workspaces == nil {
+	if s.workspaceState.Registry == nil {
 		return workspacelifecycle.Identity{
 			ID: databasecatalog.DefaultDatabaseID(s.config.DataPath), Path: s.config.DataPath,
 		}
 	}
-	return s.workspaces.Selection()
+	return s.workspaceState.Registry.Selection()
 }
 
 func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*databaseRuntime, error) {
-	if s.runtimeOpen != nil {
-		return s.runtimeOpen(path, id, password)
+	if s.workspaceState.OpenRuntime != nil {
+		return s.workspaceState.OpenRuntime(path, id, password)
 	}
 	return s.openRuntime(path, id, password)
 }
 
 func (s *Server) moveDatabase(currentPath string, targetPath string) error {
-	if s.databaseMove != nil {
-		return s.databaseMove(currentPath, targetPath)
+	if s.workspaceState.MoveDatabase != nil {
+		return s.workspaceState.MoveDatabase(currentPath, targetPath)
 	}
 	return databasecatalog.MoveDatabase(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
-	if s.databasePublish != nil {
-		return s.databasePublish(sourcePath, targetPath)
+	if s.workspaceState.PublishDatabase != nil {
+		return s.workspaceState.PublishDatabase(sourcePath, targetPath)
 	}
 	return db.PublishFileNoReplace(sourcePath, targetPath)
 }
@@ -100,21 +100,21 @@ func (s *Server) currentDataPath() string {
 }
 
 func (s *Server) unlockedRuntimeSnapshot() []*databaseRuntime {
-	if s.workspaceLifecycle != nil {
-		return s.workspaceLifecycle.Snapshot()
+	if s.workspaceState.Lifecycle != nil {
+		return s.workspaceState.Lifecycle.Snapshot()
 	}
-	return s.workspaces.Snapshot()
+	return s.workspaceState.Registry.Snapshot()
 }
 
 func (s *Server) activeRuntime() *databaseRuntime {
-	if s.workspaces == nil {
+	if s.workspaceState.Registry == nil {
 		return nil
 	}
-	if s.workspaceLifecycle != nil {
-		runtime, _ := s.workspaceLifecycle.Active()
+	if s.workspaceState.Lifecycle != nil {
+		runtime, _ := s.workspaceState.Lifecycle.Active()
 		return runtime
 	}
-	runtime, _ := s.workspaces.Active()
+	runtime, _ := s.workspaceState.Registry.Active()
 	return runtime
 }
 

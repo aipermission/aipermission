@@ -107,10 +107,10 @@ func (s *Server) projectVaultRuntime(runtime *databaseRuntime) (*projectvault.Ru
 			},
 			BindingTargets: projectVaultBindingTargets{server: s, runtime: runtime},
 			AllowGenerate: func(key string) bool {
-				return s.vaultGenerateLimiter != nil && s.vaultGenerateLimiter.Allow(key)
+				return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(key)
 			},
 			AllowReveal: func(key string) bool {
-				return s.vaultRevealLimiter != nil && s.vaultRevealLimiter.Allow(key)
+				return s.controlState.VaultRevealLimiter != nil && s.controlState.VaultRevealLimiter.Allow(key)
 			},
 		})
 		if err != nil {

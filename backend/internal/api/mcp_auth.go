@@ -12,7 +12,7 @@ import (
 
 func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAuthContext, bool) {
 	ipLimitKey := runtimecontrol.Key(r, "mcp")
-	if err := s.mcpIPAuthLimiter.Wait(r.Context(), ipLimitKey); err != nil {
+	if err := s.controlState.MCPIPAuthLimiter.Wait(r.Context(), ipLimitKey); err != nil {
 		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
 		return mcpAuthContext{}, false
 	}
@@ -25,12 +25,12 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		}
 	}
 	if tokenValue == "" {
-		s.mcpIPAuthLimiter.RecordFailure(ipLimitKey)
+		s.controlState.MCPIPAuthLimiter.RecordFailure(ipLimitKey)
 		writeError(w, http.StatusUnauthorized, "missing API token")
 		return mcpAuthContext{}, false
 	}
 	tokenLimitKey := mcpTokenRateLimitKey(tokenValue)
-	if err := s.mcpTokenAuthLimiter.Wait(r.Context(), tokenLimitKey); err != nil {
+	if err := s.controlState.MCPTokenAuthLimiter.Wait(r.Context(), tokenLimitKey); err != nil {
 		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
 		return mcpAuthContext{}, false
 	}
@@ -52,14 +52,14 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		matches = append(matches, auth)
 	}
 	if len(matches) > 1 {
-		s.mcpIPAuthLimiter.RecordSuccess(ipLimitKey)
-		s.mcpTokenAuthLimiter.RecordSuccess(tokenLimitKey)
+		s.controlState.MCPIPAuthLimiter.RecordSuccess(ipLimitKey)
+		s.controlState.MCPTokenAuthLimiter.RecordSuccess(tokenLimitKey)
 		writeError(w, http.StatusConflict, "API token matches multiple unlocked databases; lock or revoke duplicate token copies before using MCP")
 		return mcpAuthContext{}, false
 	}
 	if len(matches) == 1 {
-		s.mcpIPAuthLimiter.RecordSuccess(ipLimitKey)
-		s.mcpTokenAuthLimiter.RecordSuccess(tokenLimitKey)
+		s.controlState.MCPIPAuthLimiter.RecordSuccess(ipLimitKey)
+		s.controlState.MCPTokenAuthLimiter.RecordSuccess(tokenLimitKey)
 		return matches[0], true
 	}
 	if len(runtimes) == 0 {
@@ -67,8 +67,8 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		return mcpAuthContext{}, false
 	}
 
-	s.mcpIPAuthLimiter.RecordFailure(ipLimitKey)
-	s.mcpTokenAuthLimiter.RecordFailure(tokenLimitKey)
+	s.controlState.MCPIPAuthLimiter.RecordFailure(ipLimitKey)
+	s.controlState.MCPTokenAuthLimiter.RecordFailure(tokenLimitKey)
 	writeError(w, http.StatusUnauthorized, "invalid, revoked, or expired API token")
 	return mcpAuthContext{}, false
 }

@@ -17,7 +17,10 @@ func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	if retryIdentity != "" {
 		registry.Activate(&databaseRuntime{ID: databaseID, Path: configuration.DataPath, UIRetryIdentity: retryIdentity})
 	}
-	return &Server{config: configuration, workspaces: registry, uiSessions: uisession.New(port)}
+	server := &Server{config: configuration}
+	server.workspaceState.Registry = registry
+	server.controlState.UISessions = uisession.New(port)
+	return server
 }
 
 func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {

@@ -14,9 +14,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	gatewaycatalog "github.com/aipermission/aipermission/backend/internal/gatewaystate/catalog"
+	gatewaycontrols "github.com/aipermission/aipermission/backend/internal/gatewaystate/controls"
+	gatewayworkspaces "github.com/aipermission/aipermission/backend/internal/gatewaystate/workspaces"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
@@ -24,25 +25,12 @@ import (
 )
 
 type Server struct {
-	config               serverConfig
-	workspaces           *workspacelifecycle.Registry[*databaseRuntime]
-	workspaceLifecycle   *workspacelifecycle.Service[*databaseRuntime]
-	registry             *connectors.Registry
-	adapterRegistry      *connectorapi.Registry
-	mux                  *http.ServeMux
-	maintenanceConsole   console.MaintenanceConsoleRuntime
-	authLimiter          *runtimecontrol.Auth
-	mcpIPAuthLimiter     *runtimecontrol.Auth
-	mcpTokenAuthLimiter  *runtimecontrol.Auth
-	vaultRevealLimiter   *runtimecontrol.Window
-	vaultGenerateLimiter *runtimecontrol.Window
-	vaultRequestLimiter  *runtimecontrol.Window
-	uiSessions           *uisession.Manager
-	observation          applicationobservation.Component
-	databaseMove         func(string, string) error
-	databasePublish      func(string, string) error
-	runtimeOpen          func(string, string, string) (*databaseRuntime, error)
-	backupOperations     backups.OperationLimiter
+	config         serverConfig
+	workspaceState gatewayworkspaces.State
+	connectorState gatewaycatalog.State
+	controlState   gatewaycontrols.State
+	mux            *http.ServeMux
+	observation    applicationobservation.Component
 }
 
 type databaseRuntime = workspaceruntime.Runtime
@@ -110,19 +98,13 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	resolved := resolveServerOptions(options)
 	registry := resolved.registry
 	server := &Server{
-		config:               cfg,
-		workspaces:           workspacelifecycle.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
-		registry:             registry,
-		adapterRegistry:      resolved.adapterRegistry,
-		mux:                  http.NewServeMux(),
-		maintenanceConsole:   resolved.maintenanceConsole,
-		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
-		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
-		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
-		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
-		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
-		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
-		uiSessions:           uisession.New(cfg.FrontendPort),
+		config: cfg,
+		workspaceState: gatewayworkspaces.State{
+			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
+		},
+		connectorState: gatewaycatalog.New(registry, resolved.adapterRegistry),
+		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.maintenanceConsole),
+		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
@@ -149,7 +131,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)
-	server.workspaces.Activate(runtime)
+	server.workspaceState.Registry.Activate(runtime)
 	server.initializeRetention(runtime)
 	server.routes()
 	return server, nil
@@ -160,19 +142,13 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
 	resolved := resolveServerOptions(options)
 	server := &Server{
-		config:               cfg,
-		workspaces:           workspacelifecycle.NewRegistry(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), describeDatabaseRuntime),
-		registry:             resolved.registry,
-		adapterRegistry:      resolved.adapterRegistry,
-		mux:                  http.NewServeMux(),
-		maintenanceConsole:   resolved.maintenanceConsole,
-		authLimiter:          runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
-		mcpIPAuthLimiter:     runtimecontrol.NewAuth(mcpGlobalDelayFailures, mcpGlobalLockoutFailures),
-		mcpTokenAuthLimiter:  runtimecontrol.NewAuth(1, authRateLimitLockoutFailures),
-		vaultRevealLimiter:   runtimecontrol.NewWindow(8, time.Minute),
-		vaultGenerateLimiter: runtimecontrol.NewWindow(10, time.Minute),
-		vaultRequestLimiter:  runtimecontrol.NewWindow(30, time.Minute),
-		uiSessions:           uisession.New(cfg.FrontendPort),
+		config: cfg,
+		workspaceState: gatewayworkspaces.State{
+			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), describeDatabaseRuntime),
+		},
+		connectorState: gatewaycatalog.New(resolved.registry, resolved.adapterRegistry),
+		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.maintenanceConsole),
+		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))
@@ -184,7 +160,7 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 func (s *Server) initializeWorkspaceLifecycle() error {
 	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
 		DataPath:      s.config.DataPath,
-		Registry:      s.workspaces,
+		Registry:      s.workspaceState.Registry,
 		Open:          s.openRuntimeForLifecycle,
 		Close:         s.closeRuntime,
 		Move:          s.moveDatabase,
@@ -211,7 +187,7 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 	if err != nil {
 		return fmt.Errorf("initialize workspace lifecycle: %w", err)
 	}
-	s.workspaceLifecycle = lifecycle
+	s.workspaceState.Lifecycle = lifecycle
 	return nil
 }
 
@@ -223,15 +199,15 @@ func describeDatabaseRuntime(runtime *databaseRuntime) workspacelifecycle.Identi
 }
 
 func (s *Server) connectorRegistry() *connectors.Registry {
-	if s != nil && s.registry != nil {
-		return s.registry
+	if s != nil && s.connectorState.Registry != nil {
+		return s.connectorState.Registry
 	}
 	return connectors.NewRegistry()
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
-	if s != nil && s.adapterRegistry != nil {
-		return s.adapterRegistry
+	if s != nil && s.connectorState.AdapterRegistry != nil {
+		return s.connectorState.AdapterRegistry
 	}
 	return connectorapi.NewRegistry()
 }

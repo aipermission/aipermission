@@ -224,8 +224,8 @@ func performJSONWithOptions(handler http.Handler, method string, path string, to
 }
 
 func authorizeTestUISession(srv *Server) {
-	if srv.uiSessions == nil {
-		srv.uiSessions = uisession.New(srv.config.FrontendPort)
+	if srv.controlState.UISessions == nil {
+		srv.controlState.UISessions = uisession.New(srv.config.FrontendPort)
 	}
 	response := httptest.NewRecorder()
 	err := srv.issueUISessionLocked(response)

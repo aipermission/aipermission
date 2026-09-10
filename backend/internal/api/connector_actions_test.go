@@ -56,7 +56,8 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	catalog := newTestConnectorCatalog(t)
-	server := &Server{adapterRegistry: catalog.adapters}
+	server := &Server{}
+	server.connectorState.AdapterRegistry = catalog.adapters
 	runtime := &databaseRuntime{}
 	runtime.Connectors.AdapterRegistry = catalog.adapters
 	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)

@@ -20,7 +20,7 @@ type changeDatabasePasswordRequest = workspacehttp.ChangePasswordRequest
 
 func (s *Server) workspaceLifecycleHTTPHandlers() *workspacehttp.Handlers {
 	return workspacehttp.New(workspacehttp.Dependencies{
-		Lifecycle: s.workspaceLifecycle,
+		Lifecycle: s.workspaceState.Lifecycle,
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (workspacehttp.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
@@ -32,7 +32,7 @@ func (s *Server) workspaceLifecycleHTTPHandlers() *workspacehttp.Handlers {
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	status, err := s.workspaceLifecycle.Status()
+	status, err := s.workspaceState.Lifecycle.Status()
 	if err == nil && status.DatabaseName != "" {
 		return status.DatabaseName
 	}

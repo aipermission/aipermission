@@ -65,7 +65,7 @@ func TestMaintenanceConsoleLockClosesAttachedSession(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/settings/maintenance-console/open", "", map[string]any{}); response.Code != http.StatusOK {
 		t.Fatalf("open maintenance console: %d %s", response.Code, response.Body.String())
 	}
-	if !fixture.server.maintenanceConsole.Active() {
+	if !fixture.server.controlState.MaintenanceConsole.Active() {
 		t.Fatal("maintenance session is not active")
 	}
 	httpServer := httptest.NewServer(handler)

@@ -75,7 +75,7 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 		Prepare:         actions.Prepare,
 		AuthorizeOutput: actions.AuthorizeOutput,
 		AllowRequest: func(tokenID int64) bool {
-			return s.vaultRequestLimiter != nil && s.vaultRequestLimiter.Allow(
+			return s.controlState.VaultRequestLimiter != nil && s.controlState.VaultRequestLimiter.Allow(
 				"vault-request:"+runtime.ID+":"+strconv.FormatInt(tokenID, 10),
 			)
 		},

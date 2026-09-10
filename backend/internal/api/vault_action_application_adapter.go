@@ -177,7 +177,7 @@ func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*vaultactions
 		WorkspaceID:     runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
 		MCPStarted: runtime.IsMCPStarted,
 		AllowGenerate: func(tokenID int64) bool {
-			return s.vaultGenerateLimiter != nil && s.vaultGenerateLimiter.Allow(
+			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(
 				fmt.Sprintf("vault-generate:%s:%d", runtime.ID, tokenID),
 			)
 		},

@@ -20,13 +20,13 @@ type importDatabaseRequest struct {
 }
 
 func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request) {
-	releaseBackup, err := s.backupOperations.Acquire(r.Context())
+	releaseBackup, err := s.controlState.BackupOperations.Acquire(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "database backup was canceled")
 		return
 	}
 	defer releaseBackup()
-	releaseLifecycle := s.workspaceLifecycle.AcquireRead()
+	releaseLifecycle := s.workspaceState.Lifecycle.AcquireRead()
 	// This route releases the lifecycle lock before streaming the completed
 	// snapshot, so repeat the database-bound session check after acquiring it.
 	if !s.hasValidUISession(r) {
@@ -111,7 +111,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 		return
 	}
 	var preparedSession preparedUISession
-	transition, err := s.workspaceLifecycle.Import(r.Context(), workspacelifecycle.ImportInput{
+	transition, err := s.workspaceState.Lifecycle.Import(r.Context(), workspacelifecycle.ImportInput{
 		DatabaseName: databaseName, Password: databasePassword, Write: writeTemp, Mutate: mutate,
 		BeforePublish: func() error {
 			var err error

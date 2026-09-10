@@ -3,15 +3,16 @@ package api
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/gatewaystate/controls"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 const databasePasswordRateLimitScope = "database-password"
-const authRateLimitLockoutFailures = 8
+const authRateLimitLockoutFailures = controls.AuthLockoutFailures
 
 const (
-	mcpGlobalDelayFailures   = 32
-	mcpGlobalLockoutFailures = 64
+	mcpGlobalDelayFailures   = controls.MCPGlobalDelayFailures
+	mcpGlobalLockoutFailures = controls.MCPGlobalLockoutFailures
 )
 
 type databasePasswordAttempt struct {
@@ -21,7 +22,7 @@ type databasePasswordAttempt struct {
 
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
 	attempt := databasePasswordAttempt{
-		limiter: s.authLimiter,
+		limiter: s.controlState.AuthLimiter,
 		key:     runtimecontrol.Key(r, databasePasswordRateLimitScope),
 	}
 	if err := attempt.limiter.Wait(r.Context(), attempt.key); err != nil {

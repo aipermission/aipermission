@@ -52,7 +52,7 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 		Observe: func(ctx context.Context, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
-		AcquireOperation: s.backupOperations.Acquire,
+		AcquireOperation: s.controlState.BackupOperations.Acquire,
 		CreateSnapshot: func(ctx context.Context) (backups.DatabaseSnapshot, error) {
 			snapshot, err := backups.CreateDatabaseSnapshot(ctx, backups.SnapshotSource{
 				Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
