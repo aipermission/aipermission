@@ -2,25 +2,16 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/messagequeue"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
-type connectorActionApprovalHandlers struct {
-	*Server
-}
+type connectorActionApprovalHandlers struct{ *Server }
 
 type declineConnectorActionApprovalRequest struct {
 	UserNote string `json:"user_note"`
@@ -58,8 +49,8 @@ type connectorActionApprovalItem struct {
 	AssistantHint       string                 `json:"assistant_hint,omitempty"`
 }
 
-func (s connectorActionApprovalHandlers) listConnectorActionApprovals(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h connectorActionApprovalHandlers) listConnectorActionApprovals(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
@@ -81,12 +72,12 @@ func (s connectorActionApprovalHandlers) listConnectorActionApprovals(w http.Res
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s connectorActionApprovalHandlers) getConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
+func (h connectorActionApprovalHandlers) getConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
-	runtime, ok := s.activeRuntimeOrLocked(w)
+	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
@@ -99,7 +90,7 @@ func (s connectorActionApprovalHandlers) getConnectorActionApproval(w http.Respo
 		writeInternalError(w)
 		return
 	}
-	approval, err := connectorActionApprovalItemForResponse(r.Context(), runtime, item)
+	approval, err := h.connectorActionApprovalItemForResponse(r.Context(), runtime, item)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -107,12 +98,12 @@ func (s connectorActionApprovalHandlers) getConnectorActionApproval(w http.Respo
 	writeJSON(w, http.StatusOK, approval)
 }
 
-func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
+func (h connectorActionApprovalHandlers) runConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
-	runtime, ok := s.activeRuntimeOrLocked(w)
+	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
@@ -121,41 +112,31 @@ func (s connectorActionApprovalHandlers) runConnectorActionApproval(w http.Respo
 		return
 	}
 	var request runConnectorActionApprovalRequest
-	if r.ContentLength != 0 {
-		if !decodeJSON(w, r, &request) {
-			return
-		}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &request) {
+		return
 	}
 	request.UserNote = strings.TrimSpace(request.UserNote)
-	if err := validateTextLimit("user_note", request.UserNote, maxMessageBytes); err != nil {
+	if err := actions.ValidateApprovalNote(request.UserNote); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	item, err := s.runPendingConnectorAction(r.Context(), runtime, id, request.UserNote)
-	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
-		writeError(w, http.StatusNotFound, "connector action request not found")
-		return
-	}
-	if errors.Is(err, connectortargets.ErrActionRequestNotPending) {
-		writeError(w, http.StatusConflict, "connector action request is no longer pending")
+	item, err := h.runPendingConnectorAction(r.Context(), runtime, id, request.UserNote)
+	if writeKnownApprovalError(w, err) {
 		return
 	}
 	if err != nil {
-		if writeConnectorActionTerminalPersistenceError(w, err) {
-			return
-		}
-		writeError(w, http.StatusConflict, s.redactForPersistence(r.Context(), runtime, err.Error()))
+		writeError(w, http.StatusConflict, h.redactForPersistence(r.Context(), runtime, err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, connectorActionApprovalItemFromRequest(item))
 }
 
-func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
+func (h connectorActionApprovalHandlers) declineConnectorActionApproval(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
 		return
 	}
-	runtime, ok := s.activeRuntimeOrLocked(w)
+	runtime, ok := h.activeRuntimeOrLocked(w)
 	if !ok {
 		return
 	}
@@ -164,35 +145,17 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 		return
 	}
 	request.UserNote = strings.TrimSpace(request.UserNote)
-	if err := validateTextLimit("user_note", request.UserNote, maxMessageBytes); err != nil {
+	if err := actions.ValidateApprovalNote(request.UserNote); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	message := "User declined the connector action"
-	if request.UserNote != "" {
-		message = message + ": " + request.UserNote
-	}
-	message, err := s.redactConnectorActionOperatorText(r.Context(), runtime, id, message)
+	workflow, err := h.connectorActionWorkflow(runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	var item connectortargets.ActionRequest
-	err = s.withAuditedMutation(
-		r.Context(), runtime, "user", nil, 0, "connector_action.request.declined",
-		func() any { return connectorActionRequestAuditPayload(item) },
-		func(tx *sql.Tx) error {
-			var err error
-			item, err = connectortargets.NewTxStore(tx).DeclineActionRequest(r.Context(), id, message)
-			return err
-		},
-	)
-	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
-		writeError(w, http.StatusNotFound, "connector action request not found")
-		return
-	}
-	if errors.Is(err, connectortargets.ErrActionRequestNotPending) {
-		writeError(w, http.StatusConflict, "connector action request is no longer pending")
+	item, err := workflow.DeclinePending(r.Context(), id, request.UserNote)
+	if writeKnownApprovalError(w, err) {
 		return
 	}
 	if err != nil {
@@ -202,380 +165,43 @@ func (s connectorActionApprovalHandlers) declineConnectorActionApproval(w http.R
 	writeJSON(w, http.StatusOK, connectorActionApprovalItemFromRequest(item))
 }
 
-type pendingConnectorActionExecution struct {
-	request   connectortargets.ActionRequest
-	prepared  actions.PreparedRequest
-	snapshot  connectorActionExecutionSnapshot
-	principal executionprincipal.Principal
-	targetRef string
-	userNote  string
+func writeKnownApprovalError(w http.ResponseWriter, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
+		writeError(w, http.StatusNotFound, "connector action request not found")
+		return true
+	}
+	if errors.Is(err, connectortargets.ErrActionRequestNotPending) {
+		writeError(w, http.StatusConflict, "connector action request is no longer pending")
+		return true
+	}
+	if writeConnectorActionTerminalPersistenceError(w, err) {
+		return true
+	}
+	return false
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectortargets.ActionRequest, error) {
-	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
+	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	claimHeld := true
-	defer func() {
-		if claimHeld {
-			release()
-		}
-	}()
-
-	execution, err := s.preparePendingConnectorActionExecution(ctx, runtime, id, userNote)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	runtime.setConnectorCredentialBoundary(execution.request.ID, execution.snapshot.credentialBoundary)
-	if _, err := s.markPendingConnectorActionRunning(ctx, runtime, execution.request, execution.userNote); err != nil {
-		runtime.clearConnectorCredentialBoundary(execution.request.ID)
-		return connectortargets.ActionRequest{}, err
-	}
-	release()
-	claimHeld = false
-	return s.executePendingConnectorAction(ctx, runtime, execution)
-}
-
-func (s *Server) preparePendingConnectorActionExecution(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (pendingConnectorActionExecution, error) {
-	store := connectortargets.NewStore(runtime.database)
-	item, err := store.GetActionRequest(ctx, id)
-	if err != nil {
-		return pendingConnectorActionExecution{}, err
-	}
-	if item.Status != connectors.ResultApprovalPending {
-		return pendingConnectorActionExecution{}, connectortargets.ErrActionRequestNotPending
-	}
-	if strings.TrimSpace(item.EncryptedPayloadJSON) == "" ||
-		strings.TrimSpace(item.ApprovalContext) == "" ||
-		strings.TrimSpace(item.ApprovalContextHash) == "" {
-		reason := "connector approval integrity data is missing; ask the AI to send a fresh request"
-		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "request_integrity")
-	}
-	token, err := s.currentConnectorApprovalToken(ctx, runtime, item)
-	if err != nil {
-		return pendingConnectorActionExecution{}, err
-	}
-	tokenID := token.ID
-	rawInput, rawPayload, rawReason, err := connectorActionExecutionPayload(runtime, item)
-	if err != nil {
-		reason := "connector approval integrity data is invalid; ask the AI to send a fresh request"
-		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "request_integrity")
-	}
-	targetRef := connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
-	prepared, err := runtime.prepareConnectorAction(ctx, actions.PrepareRequest{
-		Source:     commandRequestSourceMCP,
-		TargetRef:  targetRef,
-		ActionName: item.ActionName,
-		Input:      rawInput,
-		Reason:     rawReason,
-		CreatedAt:  time.Now().UTC(),
-	})
-	if err != nil {
-		reason := "connector approval context changed; ask the AI to send a fresh request"
-		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "target_or_action")
-	}
-	permission, err := store.GetActionPermission(ctx, tokenID, item.TargetID, item.ProfileID, item.ActionName, time.Now().UTC())
-	if err != nil && !errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
-		return pendingConnectorActionExecution{}, err
-	}
-	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) || permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
-		reason := "connector approval context changed; ask the AI to send a fresh request"
-		if _, staleErr := s.finishStaleConnectorApproval(ctx, runtime, item.ID, reason, "permission"); staleErr != nil {
-			return pendingConnectorActionExecution{}, staleErr
-		}
-		return pendingConnectorActionExecution{}, errors.New(reason)
-	}
-	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)
-	currentContext, currentHash, err := actions.BuildApprovalContext(prepared, tokenSnapshot, permissionSnapshot, time.Now().UTC().Format(time.RFC3339))
-	if err != nil {
-		return pendingConnectorActionExecution{}, err
-	}
-	if item.ApprovalContextHash != currentHash {
-		drift := actions.ApprovalDriftReason(item.ApprovalContext, currentContext)
-		reason := "connector approval context changed; ask the AI to send a fresh request"
-		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, drift)
-	}
-	if rawPayload != nil {
-		prepared.Action.Payload = rawPayload
-	}
-	if userNote != "" {
-		userNote, err = s.redactConnectorActionOperatorText(ctx, runtime, item.ID, userNote)
-		if err != nil {
-			return pendingConnectorActionExecution{}, err
-		}
-		userNote = strings.TrimSpace(userNote)
-		if err := validateTextLimit("message", "Operator approved the connector action with note: "+userNote, maxMessageBytes); err != nil {
-			return pendingConnectorActionExecution{}, err
-		}
-	}
-	principal, err := tokenExecutionPrincipal(runtime, tokenID)
-	if err != nil {
-		return pendingConnectorActionExecution{}, err
-	}
-	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
-	if err != nil {
-		reason := "connector approval context changed; ask the AI to send a fresh request"
-		return pendingConnectorActionExecution{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "profile")
-	}
-	return pendingConnectorActionExecution{
-		request: item, prepared: prepared, snapshot: snapshot, principal: principal,
-		targetRef: targetRef, userNote: userNote,
-	}, nil
-}
-
-func (s *Server) redactConnectorActionOperatorText(ctx context.Context, runtime *databaseRuntime, requestID int64, value string) (string, error) {
-	redacted := s.redactForPersistence(ctx, runtime, value)
-	boundary, err := connectorCredentialBoundaryForActionRequest(ctx, runtime, requestID)
-	if err != nil {
-		return "", fmt.Errorf("load connector credential boundary for operator text: %w", err)
-	}
-	return boundary.Redact(redacted), nil
-}
-
-func (s *Server) currentConnectorApprovalToken(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (tokens.Token, error) {
-	if item.TokenID == nil {
-		storedReason := "connector approval token no longer exists"
-		responseReason := storedReason + "; ask the AI to send a fresh request"
-		return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, storedReason, responseReason, "token")
-	}
-	token, err := runtime.tokens.Get(ctx, *item.TokenID)
-	if err != nil && !errors.Is(err, tokens.ErrNotFound) {
-		return tokens.Token{}, err
-	}
-	if errors.Is(err, tokens.ErrNotFound) {
-		reason := "connector approval token no longer exists; ask the AI to send a fresh request"
-		return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "token")
-	}
-	if tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) {
-		return token, nil
-	}
-	reason := "connector approval token is no longer valid; ask the AI to send a fresh request"
-	if token.RevokedAt != "" {
-		reason = "connector approval token was revoked; ask the AI to send a fresh request"
-	} else {
-		reason = "connector approval token expired; ask the AI to send a fresh request"
-	}
-	return tokens.Token{}, s.staleConnectorApproval(ctx, runtime, item.ID, reason, reason, "token")
-}
-
-func (s *Server) staleConnectorApproval(ctx context.Context, runtime *databaseRuntime, requestID int64, storedReason string, responseReason string, drift string) error {
-	if _, err := s.finishStaleConnectorApproval(ctx, runtime, requestID, storedReason, drift); err != nil {
-		return err
-	}
-	return errors.New(responseReason)
-}
-
-func (s *Server) markPendingConnectorActionRunning(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest, userNote string) (connectortargets.ActionRequest, error) {
-	var running connectortargets.ActionRequest
-	if err := s.withAuditedMutation(
-		ctx, runtime, "user", item.TokenID, 0, "connector_action.request.running",
-		func() any { return connectorActionRequestAuditPayload(running) },
-		func(tx *sql.Tx) error {
-			var err error
-			running, err = connectortargets.NewTxStore(tx).MarkActionRequestRunning(
-				ctx, item.ID, runtime.runtimeInstanceID, connectorActionLeaseExpiry(time.Now().UTC()),
-			)
-			if err != nil || userNote == "" {
-				return err
-			}
-			if item.TokenID == nil {
-				return errors.New("connector approval token is missing")
-			}
-			return messagequeue.EnqueueUserNote(ctx, tx, *item.TokenID, "Operator approved the connector action with note: "+userNote)
-		},
-	); err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	return running, nil
-}
-
-func (s *Server) executePendingConnectorAction(ctx context.Context, runtime *databaseRuntime, execution pendingConnectorActionExecution) (connectortargets.ActionRequest, error) {
-	item := execution.request
-	prepared := execution.prepared
-	clearCredentialBoundary := true
-	defer func() {
-		if clearCredentialBoundary {
-			runtime.clearConnectorCredentialBoundary(item.ID)
-		}
-	}()
-	release, err := runtime.vaultDelivery.acquireDelivery(ctx)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	claimHeld := true
-	defer func() {
-		if claimHeld {
-			release()
-		}
-	}()
-	prepared, err = s.revalidatePreparedConnectorAction(ctx, runtime, item, prepared, connectortargets.ActionPermissionApprovalRequired)
-	if errors.Is(err, errConnectorAuthorizationChanged) {
-		return s.finishStaleConnectorApproval(ctx, runtime, item.ID, err.Error(), "authorization")
-	}
-	if err != nil {
-		return s.finishConnectorActionRequest(ctx, runtime, item.ID, connectors.ResultFailed, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
-	}
-	snapshot, err := s.snapshotPreparedConnectorAction(ctx, runtime, prepared)
-	if err != nil {
-		return s.finishStaleConnectorApproval(ctx, runtime, item.ID, err.Error(), "profile")
-	}
-	execution.snapshot = snapshot
-	runtime.setConnectorCredentialBoundary(item.ID, snapshot.credentialBoundary)
-	claimed, dispatched, err := s.beginConnectorActionDispatch(ctx, runtime, item.ID)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	if !dispatched {
-		return claimed, nil
-	}
-	release()
-	claimHeld = false
-	result, err := s.executePreparedConnectorAction(ctx, runtime, execution.principal, prepared, execution.snapshot)
-	if err != nil {
-		failureOutput := connectorActionFailureOutput(err)
-		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectorActionExecutionFailureStatus(err), failureOutput, "", err.Error(), prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, finishErr)
-		}
-		return finished, nil
-	}
-	status := result.Status
-	item, err = s.captureConnectorActionSessionHandleIfReturned(ctx, runtime, item, result.Handles)
-	if err != nil {
-		finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultOutcomeUnknown, nil, "", connectorActionHandleError, prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, errors.Join(err, finishErr))
-		}
-		return finished, nil
-	}
-	if status == connectors.ResultRunning {
-		if !s.connectorActionSupportsRunning(prepared) {
-			finished, finishErr := s.finishConnectorActionRequest(context.Background(), runtime, item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
-			if finishErr != nil {
-				return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, finishErr)
-			}
-			s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.error", map[string]any{
-				"request_id":     item.ID,
-				"target_ref":     execution.targetRef,
-				"connector_kind": item.ConnectorKind,
-				"action_name":    item.ActionName,
-			})
-			return finished, nil
-		}
-		result.Handles.RequestID = item.ID
-		if result.Handles.FollowupTool == "" {
-			result.Handles.FollowupTool = "get_connector_action_request"
-		}
-		go s.finishActiveConnectorActionRequest(runtime, item.ID, prepared, execution.principal, result.Handles)
-		clearCredentialBoundary = false
-		running, err := connectortargets.NewStore(runtime.database).GetActionRequest(context.Background(), item.ID)
-		if err != nil {
-			return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, err)
-		}
-		s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run.running", map[string]any{
-			"request_id":     item.ID,
-			"target_ref":     execution.targetRef,
-			"connector_kind": item.ConnectorKind,
-			"action_name":    item.ActionName,
-		})
-		return running, nil
-	}
-	if status == connectors.ResultApprovalPending {
-		status = connectors.ResultFailed
-		result.Error = "connector returned approval_pending after approval was already granted"
-	}
-	finished, err := s.finishConnectorActionRequest(
-		context.Background(), runtime, item.ID, status,
-		result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint,
-	)
-	if err != nil {
-		return connectortargets.ActionRequest{}, newConnectorActionTerminalPersistenceError(item.ID, err)
-	}
-	s.writeObservationAudit(ctx, runtime, "user", item.TokenID, 0, "connector_action.run."+string(finished.Status), map[string]any{
-		"request_id":     item.ID,
-		"target_ref":     execution.targetRef,
-		"connector_kind": item.ConnectorKind,
-		"action_name":    item.ActionName,
-		"note":           execution.userNote != "",
-	})
-	return finished, nil
-}
-
-func (s *Server) finishStaleConnectorApproval(ctx context.Context, runtime *databaseRuntime, requestID int64, reason string, drift string) (connectortargets.ActionRequest, error) {
-	var stale connectortargets.ActionRequest
-	err := s.withAuditedMutation(
-		ctx, runtime, "gateway", nil, 0, "connector_action.request.stale",
-		func() any { return connectorActionRequestAuditPayload(stale) },
-		func(tx *sql.Tx) error {
-			var err error
-			stale, err = connectortargets.NewTxStore(tx).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
-				ID: requestID, Status: connectors.ResultStale, Error: reason,
-				ApprovalDrift: drift, AllowedStatuses: connectorApprovalFinishStatuses(),
-			})
-			return err
-		},
-	)
-	if err != nil {
-		return connectortargets.ActionRequest{}, err
-	}
-	return stale, nil
-}
-
-func connectorApprovalFinishStatuses() []connectors.ResultStatus {
-	return []connectors.ResultStatus{connectors.ResultApprovalPending, connectors.ResultRunning}
-}
-
-func connectorActionExecutionPayload(runtime *databaseRuntime, item connectortargets.ActionRequest) (map[string]any, map[string]any, string, error) {
-	if strings.TrimSpace(item.EncryptedPayloadJSON) == "" {
-		return nil, nil, "", errors.New("connector action encrypted execution payload is missing")
-	}
-	var envelope connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err != nil {
-		return nil, nil, "", fmt.Errorf("decrypt connector action execution payload: %w", err)
-	}
-	if envelope.Input == nil || envelope.Payload == nil {
-		return nil, nil, "", errors.New("connector action encrypted execution payload is incomplete")
-	}
-	return cloneMapAny(envelope.Input), cloneMapAny(envelope.Payload), envelope.Reason, nil
-}
-
-func cloneMapAny(input map[string]any) map[string]any {
-	if input == nil {
-		return map[string]any{}
-	}
-	out := make(map[string]any, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
+	return workflow.RunPending(ctx, id, userNote)
 }
 
 func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest) connectorActionApprovalItem {
 	response := connectorActionApprovalItem{
-		ID:                  item.ID,
-		TokenID:             item.TokenID,
-		TokenName:           item.TokenName,
-		TargetID:            item.TargetID,
-		TargetName:          item.TargetName,
-		TargetRef:           connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
-		ProfileID:           item.ProfileID,
-		ProfileLabel:        item.ProfileLabel,
-		ConnectorKind:       item.ConnectorKind,
-		ActionName:          item.ActionName,
-		Title:               item.Title,
-		Summary:             item.Summary,
-		Preview:             item.Preview,
-		Input:               item.Input,
-		Reason:              item.Reason,
-		Status:              string(item.Status),
-		Output:              item.Output,
-		DisplayText:         item.DisplayText,
-		Error:               item.Error,
-		RetryPolicy:         item.RetryPolicy,
-		ApprovalContextHash: item.ApprovalContextHash,
-		CreatedAt:           item.CreatedAt,
-		CompletedAt:         item.CompletedAt,
+		ID: item.ID, TokenID: item.TokenID, TokenName: item.TokenName,
+		TargetID: item.TargetID, TargetName: item.TargetName,
+		TargetRef: connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID),
+		ProfileID: item.ProfileID, ProfileLabel: item.ProfileLabel,
+		ConnectorKind: item.ConnectorKind, ActionName: item.ActionName,
+		Title: item.Title, Summary: item.Summary, Preview: item.Preview, Input: item.Input,
+		Reason: item.Reason, Status: string(item.Status), Output: item.Output,
+		DisplayText: item.DisplayText, Error: item.Error, RetryPolicy: item.RetryPolicy,
+		ApprovalContextHash: item.ApprovalContextHash, CreatedAt: item.CreatedAt, CompletedAt: item.CompletedAt,
 	}
 	if item.Status == connectors.ResultApprovalPending {
 		response.RetryAfterSeconds = 3
@@ -584,25 +210,16 @@ func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest)
 	return response
 }
 
-func connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
+func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
 	response := connectorActionApprovalItemFromRequest(item)
-	if item.Status != connectors.ResultApprovalPending || item.EncryptedPayloadJSON == "" {
-		return response, nil
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectorActionApprovalItem{}, err
 	}
-	var envelope connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, item.ID, item.EncryptedPayloadJSON, &envelope); err != nil {
-		return connectorActionApprovalItem{}, fmt.Errorf("decrypt connector approval preview: %w", err)
+	preview, err := workflow.ApprovalPreview(ctx, item)
+	if err != nil {
+		return connectorActionApprovalItem{}, err
 	}
-	if envelope.ApprovalPreview != nil {
-		boundary, err := connectorCredentialBoundaryForActionRequest(ctx, runtime, item.ID)
-		if err != nil {
-			return connectorActionApprovalItem{}, fmt.Errorf("load connector approval credential boundary: %w", err)
-		}
-		redacted, ok := boundary.RedactStructured(envelope.ApprovalPreview).(map[string]any)
-		if !ok {
-			return connectorActionApprovalItem{}, errors.New("redact connector approval preview")
-		}
-		response.Preview = redacted
-	}
+	response.Preview = preview
 	return response, nil
 }

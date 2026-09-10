@@ -342,8 +342,16 @@ func connectorTargetViewForProfile(target connectortargets.Target, profileID int
 		Ref:           connectors.FormatTargetRef(target.ConnectorKind, target.ID, profileID),
 		ConnectorKind: target.ConnectorKind,
 		Name:          target.Name,
-		Config:        cloneMapAny(target.Config),
+		Config:        cloneConnectorMap(target.Config),
 	}
+}
+
+func cloneConnectorMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseWriter, runtime *databaseRuntime, profile connectortargets.CredentialProfile) (map[string]any, bool) {

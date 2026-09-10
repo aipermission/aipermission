@@ -72,8 +72,8 @@ type databaseRuntime struct {
 	fileTransfers      *filetransferhttp.Runtime
 	transferJobs       transferjobs.Registry
 	securityPolicy     *securitypolicy.Service
-	credBoundaryMu     sync.RWMutex
-	credBoundaries     map[int64]connectorCredentialBoundary
+	actionWorkflowMu   sync.Mutex
+	actionWorkflow     *actions.Runtime
 	runtimeState       runtimecontrol.State
 	workspaceUUID      string
 	uiRetryIdentity    string
@@ -86,7 +86,6 @@ type databaseRuntime struct {
 	identityMu         sync.Mutex
 	auditDispatcher    *observability.Dispatcher
 	retention          *retention.Service
-	actionRecovery     connectorActionRecoveryWorker
 	databaseOwnership  *dbpkg.DatabaseOwnership
 	finalization       transferjobs.FinalizationLifetime
 }
@@ -183,7 +182,6 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		registry:        registry,
 		adapterRegistry: resolved.adapterRegistry,
 		securityPolicy:  securitypolicy.NewService(database),
-		credBoundaries:  map[int64]connectorCredentialBoundary{},
 		vaultLeases:     vaultsessions.NewStore(),
 	}
 	runtime.finalization = transferjobs.NewFinalizationLifetime()

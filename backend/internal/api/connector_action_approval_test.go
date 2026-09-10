@@ -668,7 +668,7 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 	var requestID int64
 	observer := approvalExecutionObserverConnector{
 		beforeExecute: func(ctx context.Context) error {
-			if _, active := fixture.server.activeRuntime().connectorCredentialBoundary(requestID); !active {
+			if _, active := fixture.server.connectorCredentialBoundary(fixture.server.activeRuntime(), requestID); !active {
 				return errors.New("approved request has no active execution boundary")
 			}
 			fixture.server.recoverOrphanedConnectorActions(ctx, fixture.server.activeRuntime(), time.Now().UTC())

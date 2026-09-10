@@ -858,7 +858,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if mcpResponse.Input["opaque_message"] != "[REDACTED]" || approvalResponse.Input["opaque_message"] != "[REDACTED]" {
 		t.Fatalf("action-declared sensitive input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
-	exactApproval, err := connectorActionApprovalItemForResponse(t.Context(), runtime, request)
+	exactApproval, err := server.connectorActionApprovalItemForResponse(t.Context(), runtime, request)
 	if err != nil {
 		t.Fatalf("build exact approval response: %v", err)
 	}
@@ -897,7 +897,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if _, err := database.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = 'tampered' WHERE id = ?`, request.ID); err != nil {
 		t.Fatalf("tamper execution payload: %v", err)
 	}
-	if _, err := connectorCredentialBoundaryForActionRequest(t.Context(), runtime, request.ID); err == nil {
+	if _, err := connectorCredentialBoundaryForActionRequest(t.Context(), server, runtime, request.ID); err == nil {
 		t.Fatal("tampered execution payload was accepted as a usable redaction boundary")
 	}
 }
@@ -1308,7 +1308,9 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 		WHERE id = ?`, "live-runtime", time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano), leased.ID); err != nil {
 		t.Fatal(err)
 	}
-	runtime.setConnectorCredentialBoundary(active.ID, connectorCredentialBoundary{})
+	if err := server.trackConnectorCredentialBoundary(runtime, active.ID, connectorCredentialBoundary{}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.Exec(`UPDATE connector_action_requests SET dispatch_started_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano), orphaned.ID); err != nil {
 		t.Fatal(err)
 	}

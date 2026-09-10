@@ -15,8 +15,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
@@ -218,7 +216,6 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		registry:           s.connectorRegistry(),
 		adapterRegistry:    s.connectorAdapterRegistry(),
 		connectorResources: connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
-		credBoundaries:     map[int64]connectorCredentialBoundary{},
 		workspaceUUID:      workspaceUUID,
 		uiRetryIdentity:    uiRetryIdentity,
 		runtimeInstanceID:  runtimeInstanceID,
@@ -520,27 +517,11 @@ func closeRuntimeStorage(runtime *databaseRuntime) error {
 }
 
 func (s *Server) markRunningConnectorActionsOutcomeUnknown(runtime *databaseRuntime) error {
-	store := connectortargets.NewStore(runtime.database)
-	for {
-		requests, err := store.ListActionRequests(context.Background(), connectortargets.ActionRequestFilter{
-			Status: string(connectors.ResultRunning),
-			Limit:  100,
-		})
-		if err != nil {
-			return err
-		}
-		if len(requests) == 0 {
-			return nil
-		}
-		for _, request := range requests {
-			if _, err := s.finishConnectorActionRequest(
-				context.Background(), runtime, request.ID, connectors.ResultOutcomeUnknown,
-				nil, "", db.ConnectorActionOutcomeUnknownMessage,
-			); err != nil {
-				return err
-			}
-		}
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return err
 	}
+	return workflow.MarkRunningOutcomeUnknown(context.Background(), db.ConnectorActionOutcomeUnknownMessage)
 }
 
 func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {

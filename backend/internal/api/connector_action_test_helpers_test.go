@@ -14,6 +14,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -22,6 +23,106 @@ import (
 )
 
 const connectorActionTestWorkspaceID = "connector-action-test-workspace"
+
+const connectorActionPersistenceUnknownMessage = actions.PersistenceUnknownMessage
+const connectorActionLeaseExpiredBeforeDispatchMessage = actions.LeaseExpiredBeforeDispatchMessage
+
+type connectorActionExecutionOptions = actions.ExecutionOptions
+type connectorActionExecutionEnvelope = actions.ExecutionEnvelope
+
+func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
+	return workflow.InsertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey)
+}
+
+func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
+	return workflow.InsertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
+}
+
+func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (connectorActionCallResult, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectorActionCallResult{}, err
+	}
+	return workflow.ExecuteInserted(ctx, prepared, request, principal, options)
+}
+
+func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (actions.ExecutionSnapshot, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return actions.ExecutionSnapshot{}, err
+	}
+	return workflow.Snapshot(ctx, prepared)
+}
+
+func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Context, runtime *databaseRuntime, request connectortargets.ActionRequest, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	return workflow.CaptureSessionHandleIfReturned(ctx, request, handles)
+}
+
+func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Server, runtime *databaseRuntime, requestID int64) (connectorCredentialBoundary, error) {
+	workflow, err := server.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectorCredentialBoundary{}, err
+	}
+	return workflow.CredentialBoundaryForRequest(ctx, requestID)
+}
+
+func (s *Server) trackConnectorCredentialBoundary(runtime *databaseRuntime, requestID int64, boundary connectorCredentialBoundary) error {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return err
+	}
+	workflow.TrackCredentialBoundary(requestID, boundary)
+	return nil
+}
+
+func (s *Server) connectorCredentialBoundary(runtime *databaseRuntime, requestID int64) (connectorCredentialBoundary, bool) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectorCredentialBoundary{}, false
+	}
+	return workflow.CredentialBoundary(requestID)
+}
+
+func (s *Server) recoverOrphanedConnectorActions(ctx context.Context, runtime *databaseRuntime, now time.Time) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err == nil {
+		workflow.Recover(ctx, now)
+	}
+}
+
+func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runtime *databaseRuntime, requestID int64, now time.Time) (connectortargets.ActionRequest, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, err
+	}
+	return workflow.PersistExpiredRecovery(ctx, requestID, now)
+}
+
+func (s *Server) beginConnectorActionDispatch(ctx context.Context, runtime *databaseRuntime, requestID int64) (connectortargets.ActionRequest, bool, error) {
+	workflow, err := s.connectorActionWorkflow(runtime)
+	if err != nil {
+		return connectortargets.ActionRequest{}, false, err
+	}
+	return workflow.BeginDispatch(ctx, requestID)
+}
+
+func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {
+	return actions.ExecutionFailureStatus(err)
+}
+
+func connectorActionFailureOutput(err error) any { return actions.FailureOutput(err) }
 
 func openAPITestDB(t *testing.T) *sql.DB {
 	t.Helper()

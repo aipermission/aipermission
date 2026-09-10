@@ -1,6 +1,7 @@
-// Package actions contains the generic connector action preparation service.
+// Package actions owns the generic connector action lifecycle.
 //
-// The service resolves connector target/profile refs, delegates action
-// validation to the connector, and returns a prepared action ready for gateway
-// permission checks and approval.
+// It resolves target/profile references, prepares connector-owned actions,
+// enforces authorization immediately before dispatch, persists redacted
+// requests and results, and coordinates approval, recovery, and idempotency.
+// HTTP and gateway composition stay behind injected runtime ports.
 package actions

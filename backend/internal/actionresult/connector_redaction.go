@@ -62,14 +62,21 @@ func (r *Redactor) Result(ctx context.Context, result connectors.ActionResult, h
 	return r.ResultWithCredentialBoundary(ctx, result, CredentialBoundary{}, hints...)
 }
 
+func (r *Redactor) Text(ctx context.Context, value string, boundary CredentialBoundary) (string, error) {
+	if r == nil || r.persistText == nil {
+		return "", ErrRedactorUnavailable
+	}
+	return boundary.Redact(r.persistText(ctx, value)), nil
+}
+
 func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result connectors.ActionResult, boundary CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	if r == nil || r.persistText == nil {
 		return connectors.ActionResult{}, ErrRedactorUnavailable
 	}
 	sensitiveFields := SensitiveOutputFields(hints...)
 	capabilityFields := temporaryCapabilityFields(hints...)
-	result.DisplayText = boundary.Redact(r.persistText(ctx, result.DisplayText))
-	result.Error = boundary.Redact(r.persistText(ctx, result.Error))
+	result.DisplayText, _ = r.Text(ctx, result.DisplayText, boundary)
+	result.Error, _ = r.Text(ctx, result.Error, boundary)
 	redacted, err := r.ValueWithCredentialBoundary(ctx, result.Output, sensitiveFields, capabilityFields, boundary)
 	if err != nil {
 		return connectors.ActionResult{}, err
