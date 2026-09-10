@@ -139,6 +139,39 @@ func TestAPIDoesNotDependOnProcessConfiguration(t *testing.T) {
 	}
 }
 
+func TestAPIDependsOnlyOnGatewayBoundaries(t *testing.T) {
+	apiPackage := modulePath + "/internal/api"
+	allowed := map[string]bool{
+		modulePath + "/internal/gatewayaccess":              true,
+		modulePath + "/internal/gatewayconnectoractions":    true,
+		modulePath + "/internal/gatewayconnectorapi":        true,
+		modulePath + "/internal/gatewayconnectormanagement": true,
+		modulePath + "/internal/gatewayconnectors":          true,
+		modulePath + "/internal/gatewayinfrastructure":      true,
+		modulePath + "/internal/gatewayoperations":          true,
+		modulePath + "/internal/gatewayvault":               true,
+	}
+	for _, imported := range allPackageImports(t)[apiPackage] {
+		if strings.HasPrefix(imported, modulePath+"/internal/") && !allowed[imported] {
+			t.Errorf("internal/api imports %s directly; transport code must use an approved gateway boundary", imported)
+		}
+	}
+}
+
+func TestGatewayBoundariesStayIndependentFromAPI(t *testing.T) {
+	apiPackage := modulePath + "/internal/api"
+	for importer, imports := range allPackageImports(t) {
+		if !strings.HasPrefix(importer, modulePath+"/internal/gateway") {
+			continue
+		}
+		for _, imported := range imports {
+			if imported == apiPackage || strings.HasPrefix(imported, apiPackage+"/") {
+				t.Errorf("%s must not depend on the HTTP/API composition root", importer)
+			}
+		}
+	}
+}
+
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {
 	allowedRegistry := modulePath + "/internal/connectors/builtin"
 	builtInPackages := builtInConnectorPackages(t)
@@ -204,7 +237,6 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 	overrides := map[string]int{
 		// Composition roots are explicit exceptions. These ceilings match the
 		// post-decomposition graph and must ratchet down after dependencies move.
-		modulePath + "/internal/api":                       29,
 		modulePath + "/internal/connectors/builtin":        16,
 		modulePath + "/internal/connectors/ssh/apiadapter": 14,
 	}

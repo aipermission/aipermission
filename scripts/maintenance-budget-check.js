@@ -21,10 +21,15 @@ const sourceBudgets = [
 const sourceBudgetOverrides = new Map();
 const connectorSourceBudget = 850;
 const backendPackageBudget = 3500;
+const backendTestSourceBudget = 1800;
+const frontendTestSourceBudget = 1000;
+const mcpTestSourceBudget = 800;
+const backendTestPackageBudget = 15000;
+const frontendTestPackageBudget = 3000;
+const mcpTestPackageBudget = 1200;
 const backendPackageBudgetOverrides = new Map([
   // Keep decomposed ownership boundaries from silently growing back toward
   // the global package ceiling.
-  ["backend/internal/api", 22400],
   ["backend/internal/db", 2700],
   ["backend/internal/connectors/mail", 3200],
   ["backend/internal/console", 3300],
@@ -41,11 +46,18 @@ const criticalSuppressionPaths = [
 const failures = [];
 
 function sourceLineCount(file) {
-  return fs.readFileSync(file, "utf8").split("\n").length;
+  const source = fs.readFileSync(file, "utf8");
+  if (source.length === 0) return 0;
+  const lines = source.split("\n").length;
+  return source.endsWith("\n") ? lines - 1 : lines;
 }
 
 function isProductionSource(file) {
-  return !file.endsWith("_test.go") && !file.includes(".test.");
+	return !isTestSource(file);
+}
+
+function isTestSource(file) {
+  return file.endsWith("_test.go") || file.includes(".test.") || file.includes(".spec.");
 }
 
 function walk(directory) {
@@ -53,6 +65,48 @@ function walk(directory) {
     const entryPath = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(entryPath) : [entryPath];
   });
+}
+
+const testBudgets = [
+  {
+    directory: "backend",
+    extensions: new Set([".go"]),
+    maxSourceLines: backendTestSourceBudget,
+    maxPackageLines: backendTestPackageBudget,
+  },
+  {
+    directory: "frontend/src",
+    extensions: new Set(frontendArchitecturePolicy.sourceExtensions),
+    maxSourceLines: frontendTestSourceBudget,
+    maxPackageLines: frontendTestPackageBudget,
+  },
+  {
+    directory: "packages/mcp/src",
+    extensions: new Set([".js", ".ts"]),
+    maxSourceLines: mcpTestSourceBudget,
+    maxPackageLines: mcpTestPackageBudget,
+  },
+];
+
+for (const budget of testBudgets) {
+  const packageLines = new Map();
+  for (const file of walk(path.join(root, budget.directory))) {
+    if (!budget.extensions.has(path.extname(file)) || !isTestSource(file)) continue;
+    const lines = sourceLineCount(file);
+    const relativePath = path.relative(root, file);
+    if (lines > budget.maxSourceLines) {
+      failures.push(`${relativePath} has ${lines} test lines; budget is ${budget.maxSourceLines}`);
+    }
+    const directory = path.dirname(file);
+    packageLines.set(directory, (packageLines.get(directory) || 0) + lines);
+  }
+  for (const [directory, lines] of packageLines) {
+    if (lines > budget.maxPackageLines) {
+      failures.push(
+        `${path.relative(root, directory)} has ${lines} test lines; package test budget is ${budget.maxPackageLines}`,
+      );
+    }
+  }
 }
 
 for (const budget of sourceBudgets) {
@@ -127,5 +181,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Maintenance budgets passed: source, package, and ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`,
+	`Maintenance budgets passed: production/test source, package, and ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`,
 );

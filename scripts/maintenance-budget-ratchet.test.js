@@ -11,6 +11,12 @@ const sourceBudgets = [
 const sourceBudgetOverrides = new Map();
 const connectorSourceBudget = 850;
 const backendPackageBudget = 3500;
+const backendTestSourceBudget = 1800;
+const frontendTestSourceBudget = 1000;
+const mcpTestSourceBudget = 800;
+const backendTestPackageBudget = 15000;
+const frontendTestPackageBudget = 3000;
+const mcpTestPackageBudget = 1200;
 const backendPackageBudgetOverrides = new Map([
   ["backend/internal/api", 23500],
 ]);
@@ -24,11 +30,25 @@ test("extracts every mutable maintenance ceiling", () => {
     "frontend.maxProductionModuleLines": 550,
     connectorSourceBudget: 850,
     backendPackageBudget: 3500,
+    backendTestSourceBudget: 1800,
+    frontendTestSourceBudget: 1000,
+    mcpTestSourceBudget: 800,
+    backendTestPackageBudget: 15000,
+    frontendTestPackageBudget: 3000,
+    mcpTestPackageBudget: 1200,
     suppressionBudget: 0,
     "source.backend.maxLines": 1400,
     "source.mcp.maxLines": 800,
     "backend.package.backend/internal/api": 23500,
   });
+});
+
+test("treats newly introduced test budgets as tightening", () => {
+  const legacy = checkSource
+    .split("\n")
+    .filter((line) => !line.includes("TestSourceBudget") && !line.includes("TestPackageBudget"))
+    .join("\n");
+  assert.deepEqual(budgetIncreases(budgetSnapshot(legacy, architectureSource), budgetSnapshot(checkSource, architectureSource)), []);
 });
 
 test("rejects raised ceilings while allowing tighter inherited package budgets", () => {

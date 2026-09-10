@@ -18,6 +18,17 @@ function budgetSnapshot(checkSource, architectureSource = "", functionBudgetSour
     if (!match) throw new Error(`Could not read ${name} from maintenance-budget-check.js`);
     snapshot[name] = Number(match[1]);
   }
+  for (const name of [
+    "backendTestSourceBudget",
+    "frontendTestSourceBudget",
+    "mcpTestSourceBudget",
+    "backendTestPackageBudget",
+    "frontendTestPackageBudget",
+    "mcpTestPackageBudget",
+  ]) {
+    const match = checkSource.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)`));
+    if (match) snapshot[name] = Number(match[1]);
+  }
   for (const [directory, key] of [
     ["backend", "source.backend.maxLines"],
     ["packages/mcp/src", "source.mcp.maxLines"],
@@ -104,6 +115,7 @@ function budgetIncreases(base, current) {
 }
 
 function inheritedBudget(base, name) {
+	if (name.endsWith("TestSourceBudget") || name.endsWith("TestPackageBudget")) return Number.POSITIVE_INFINITY;
   if (name.startsWith("backend.package.")) return base.backendPackageBudget;
   if (!name.startsWith("source.override.")) return undefined;
   const file = name.slice("source.override.".length);
