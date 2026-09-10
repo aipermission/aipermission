@@ -36,6 +36,16 @@ func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 	}
 }
 
+func TestConnectorTargetStorageDoesNotDependOnActionService(t *testing.T) {
+	storage := modulePath + "/internal/connectortargets"
+	actionService := modulePath + "/internal/actions"
+	for _, imported := range allPackageImports(t)[storage] {
+		if imported == actionService || strings.HasPrefix(imported, actionService+"/") {
+			t.Fatalf("%s must satisfy action ports without depending on %s", storage, actionService)
+		}
+	}
+}
+
 func importsPackageOrSubpackage(imports map[string]bool, root string) bool {
 	for imported := range imports {
 		if imported == root || strings.HasPrefix(imported, root+"/") {

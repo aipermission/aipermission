@@ -471,7 +471,7 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 }
 
 func (s *Server) executePreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, prepared actions.PreparedRequest, snapshot connectorActionExecutionSnapshot) (connectors.ActionResult, error) {
-	service := actions.NewService(runtime.connectorRegistry(), connectortargets.NewResolver(runtime.database))
+	service := actions.NewService(runtime.connectorRegistry(), newConnectorActionTargetResolver(runtime.database))
 	result, err := service.Execute(ctx, actions.ExecutionRequest{
 		Prepared: prepared,
 		Runtime: connectors.RuntimeContext{

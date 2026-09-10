@@ -2,6 +2,7 @@ package connectortargets
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -10,6 +11,19 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
+type targetTestActionResolver struct {
+	store *Store
+}
+
+func newTargetTestActionResolver(database *sql.DB) targetTestActionResolver {
+	return targetTestActionResolver{store: NewStore(database)}
+}
+
+func (r targetTestActionResolver) ResolveActionTarget(ctx context.Context, targetRef string) (actions.ResolvedTarget, error) {
+	target, profile, err := r.store.ResolveConnectorActionTarget(ctx, targetRef)
+	return actions.ResolvedTarget{Target: target, Profile: profile}, err
+}
+
 func TestActionServicePreparesSSHExec(t *testing.T) {
 	database := openTargetTestDB(t)
 	keyID := insertTargetTestSSHKey(t, database, "main")
@@ -17,7 +31,7 @@ func TestActionServicePreparesSSHExec(t *testing.T) {
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 	targetRef := connectors.FormatTargetRef("ssh", target.ID, profile.ID)
 	registry := newTargetTestRegistry(t)
-	service := actions.NewService(registry, NewResolver(database))
+	service := actions.NewService(registry, newTargetTestActionResolver(database))
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
@@ -55,7 +69,7 @@ func TestActionServicePreparesSSHReadConsole(t *testing.T) {
 	target, profile := createTargetTestSSHProfile(t, context.Background(), store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 	targetRef := connectors.FormatTargetRef("ssh", target.ID, profile.ID)
 	registry := newTargetTestRegistry(t)
-	service := actions.NewService(registry, NewResolver(database))
+	service := actions.NewService(registry, newTargetTestActionResolver(database))
 
 	prepared, err := service.Prepare(context.Background(), actions.PrepareRequest{
 		Source:     "mcp",

@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
 )
 
-func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
+func TestStoreResolvesSSHConnectorProfileToConnectorViews(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()
 	keyID := insertTargetTestSSHKey(t, database, "main")
@@ -22,52 +21,52 @@ func TestResolverMapsSSHConnectorProfileToConnectorViews(t *testing.T) {
 	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "core-1", "admin", "10.0.0.10", 2222)
 	targetRef := connectors.FormatTargetRef("ssh", target.ID, profile.ID)
 
-	resolved, err := NewResolver(database).ResolveActionTarget(ctx, targetRef)
+	resolvedTarget, resolvedProfile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		t.Fatalf("resolve target: %v", err)
 	}
 
-	if resolved.Target.ID != target.ID || resolved.Target.Ref != targetRef {
-		t.Fatalf("unexpected target identity: %#v", resolved.Target)
+	if resolvedTarget.ID != target.ID || resolvedTarget.Ref != targetRef {
+		t.Fatalf("unexpected target identity: %#v", resolvedTarget)
 	}
-	if resolved.Target.ConnectorKind != sshconnector.Kind {
-		t.Fatalf("connector kind = %q", resolved.Target.ConnectorKind)
+	if resolvedTarget.ConnectorKind != sshconnector.Kind {
+		t.Fatalf("connector kind = %q", resolvedTarget.ConnectorKind)
 	}
-	if resolved.Target.Config["host"] != "10.0.0.10" || resolved.Target.Config["port"] != float64(2222) {
-		t.Fatalf("unexpected target config: %#v", resolved.Target.Config)
+	if resolvedTarget.Config["host"] != "10.0.0.10" || resolvedTarget.Config["port"] != float64(2222) {
+		t.Fatalf("unexpected target config: %#v", resolvedTarget.Config)
 	}
-	if resolved.Target.Config["startup_input_after_connect"] != "q" {
-		t.Fatalf("startup input missing: %#v", resolved.Target.Config)
+	if resolvedTarget.Config["startup_input_after_connect"] != "q" {
+		t.Fatalf("startup input missing: %#v", resolvedTarget.Config)
 	}
 
-	if resolved.Profile.ID != profile.ID || resolved.Profile.TargetID != target.ID {
-		t.Fatalf("unexpected profile identity: %#v", resolved.Profile)
+	if resolvedProfile.ID != profile.ID || resolvedProfile.TargetID != target.ID {
+		t.Fatalf("unexpected profile identity: %#v", resolvedProfile)
 	}
-	if resolved.Profile.ConnectorKind != sshconnector.Kind || resolved.Profile.Kind != "private_key" {
-		t.Fatalf("unexpected profile kind: %#v", resolved.Profile)
+	if resolvedProfile.ConnectorKind != sshconnector.Kind || resolvedProfile.Kind != "private_key" {
+		t.Fatalf("unexpected profile kind: %#v", resolvedProfile)
 	}
-	if resolved.Profile.Public["username"] != "admin" {
-		t.Fatalf("username public metadata missing: %#v", resolved.Profile.Public)
+	if resolvedProfile.Public["username"] != "admin" {
+		t.Fatalf("username public metadata missing: %#v", resolvedProfile.Public)
 	}
-	if resolved.Profile.Public["ssh_key_id"].(float64) != float64(keyID) {
-		t.Fatalf("ssh_key_id public metadata missing: %#v", resolved.Profile.Public)
+	if resolvedProfile.Public["ssh_key_id"].(float64) != float64(keyID) {
+		t.Fatalf("ssh_key_id public metadata missing: %#v", resolvedProfile.Public)
 	}
-	if resolved.Profile.Public["fingerprint"] != "SHA256:test" {
-		t.Fatalf("fingerprint public metadata missing: %#v", resolved.Profile.Public)
+	if resolvedProfile.Public["fingerprint"] != "SHA256:test" {
+		t.Fatalf("fingerprint public metadata missing: %#v", resolvedProfile.Public)
 	}
-	if _, exists := resolved.Profile.Public["public_key"]; exists {
-		t.Fatalf("public key should not be exposed in credential profile metadata: %#v", resolved.Profile.Public)
+	if _, exists := resolvedProfile.Public["public_key"]; exists {
+		t.Fatalf("public key should not be exposed in credential profile metadata: %#v", resolvedProfile.Public)
 	}
 }
 
-func TestResolverReturnsNotFoundForMissingOrInvalidTarget(t *testing.T) {
+func TestStoreReturnsNotFoundForMissingOrInvalidActionTarget(t *testing.T) {
 	database := openTargetTestDB(t)
-	resolver := NewResolver(database)
+	store := NewStore(database)
 
 	for _, ref := range []string{"ssh:999:1", "postgres:1", "ssh:bad"} {
-		_, err := resolver.ResolveActionTarget(context.Background(), ref)
-		if !errors.Is(err, actions.ErrTargetNotFound) {
-			t.Fatalf("ResolveActionTarget(%q) error = %v", ref, err)
+		_, _, err := store.ResolveConnectorActionTarget(context.Background(), ref)
+		if !errors.Is(err, ErrInvalidTargetRef) && !errors.Is(err, ErrTargetNotFound) && !errors.Is(err, ErrTargetProfileNotFound) {
+			t.Fatalf("ResolveConnectorActionTarget(%q) error = %v", ref, err)
 		}
 	}
 }

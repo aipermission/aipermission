@@ -6,13 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
-
-type Resolver struct {
-	db *sql.DB
-}
 
 const (
 	RuntimeCapabilityLiveConsole  = "live_console"
@@ -37,21 +32,6 @@ type EnsureRuntimeSurfaceInput struct {
 	ProfileID      int64
 	CapabilityKind string
 	Label          string
-}
-
-func NewResolver(db *sql.DB) *Resolver {
-	return &Resolver{db: db}
-}
-
-func (r *Resolver) ResolveActionTarget(ctx context.Context, targetRef string) (actions.ResolvedTarget, error) {
-	target, profile, err := NewStore(r.db).ResolveConnectorActionTarget(ctx, targetRef)
-	if err == nil {
-		return actions.ResolvedTarget{Target: target, Profile: profile}, nil
-	}
-	if errors.Is(err, ErrInvalidTargetRef) || errors.Is(err, ErrTargetNotFound) || errors.Is(err, ErrTargetProfileNotFound) {
-		return actions.ResolvedTarget{}, actions.ErrTargetNotFound
-	}
-	return actions.ResolvedTarget{}, err
 }
 
 func (s *Store) EnsureRuntimeSurface(ctx context.Context, input EnsureRuntimeSurfaceInput) (RuntimeSurface, error) {
