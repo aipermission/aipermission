@@ -810,9 +810,9 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
-	backupHandlers{server}.installImportedDatabase(response, request, "Imported Project", "ImportPassword123", func(path string) error {
+	server.backupApplication().InstallImportedDatabase(response, request, "Imported Project", "ImportPassword123", func(path string) error {
 		return os.WriteFile(path, sourceBytes, 0o600)
-	})
+	}, nil)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("injected import open failure should return 500, got %d %s", response.Code, response.Body.String())
 	}
@@ -859,9 +859,9 @@ func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
-	backupHandlers{server}.installImportedDatabase(response, request, "Partial Import", "ImportPassword123", func(path string) error {
+	server.backupApplication().InstallImportedDatabase(response, request, "Partial Import", "ImportPassword123", func(path string) error {
 		return os.WriteFile(path, sourceBytes, 0o600)
-	})
+	}, nil)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())
 	}

@@ -8,7 +8,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
-	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
@@ -25,7 +24,6 @@ import (
 )
 
 type credentialHandlers struct{ *Server }
-type backupHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
@@ -96,15 +94,15 @@ func (s *Server) registerAccessRoutes() {
 }
 
 func (s *Server) registerBackupRoutes() {
-	backup := backupHandlers{s}
-	providers := backups.NewHTTPHandlers(s.backupProviderHTTPScope)
-	transient := backups.NewTransientHTTPHandlers()
+	backup := s.backupApplication().HTTPHandlers()
+	providers := backup.Providers
+	transient := backup.Transient
 	workspaces := s.workspaceLifecycleHTTPHandlers()
 
-	s.mux.HandleFunc("GET /api/backup/download", backup.downloadDatabase)
-	s.mux.HandleFunc("POST /api/backup/import", backup.importDatabase)
+	s.mux.HandleFunc("GET /api/backup/download", backup.Download)
+	s.mux.HandleFunc("POST /api/backup/import", backup.Import)
 	s.mux.HandleFunc("POST /api/backup/remote/list", transient.List)
-	s.mux.HandleFunc("POST /api/backup/remote/restore", backup.restoreTransientRemoteBackup)
+	s.mux.HandleFunc("POST /api/backup/remote/restore", backup.RestoreRemote)
 	s.mux.HandleFunc("GET /api/backup/providers/catalog", providers.ProviderCatalog)
 	s.mux.HandleFunc("GET /api/backup/providers", providers.ListProviders)
 	s.mux.HandleFunc("GET /api/backup/freshness", providers.BackupFreshness)
@@ -122,7 +120,7 @@ func (s *Server) registerBackupRoutes() {
 	s.mux.HandleFunc("PUT /api/backup/providers/{id}/retention", providers.UpdateBackupProviderRetention)
 	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/delete", providers.DeleteProviderBackupRecords)
 	s.mux.HandleFunc("GET /api/backup/providers/{id}/records/{record_id}/download", providers.DownloadProviderRecord)
-	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/{record_id}/restore", backup.restoreProviderRecord)
+	s.mux.HandleFunc("POST /api/backup/providers/{id}/records/{record_id}/restore", backup.RestoreProvider)
 	s.mux.HandleFunc("POST /api/databases/rename", workspaces.Rename)
 	s.mux.HandleFunc("POST /api/databases/delete", workspaces.Delete)
 	s.mux.HandleFunc("POST /api/databases/delete-locked", workspaces.DeleteLocked)
