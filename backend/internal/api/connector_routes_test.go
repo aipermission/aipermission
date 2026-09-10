@@ -87,7 +87,7 @@ func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
 		t.Fatalf("parse listener port: %v", err)
 	}
 
-	response := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+	response := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectormanagement.HostPingRequest{
 		Host:     "127.0.0.1",
 		Port:     port,
 		Mode:     "direct",
@@ -96,7 +96,7 @@ func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("ping route failed: %d %s", response.Code, response.Body.String())
 	}
-	page := decodeRouteResponse[connectorTargetHostPingResponse](t, response.Body.Bytes())
+	page := decodeRouteResponse[connectormanagement.HostPingResponse](t, response.Body.Bytes())
 	if !page.OK || page.Sent != 2 || page.Received != 2 || len(page.Attempts) != 2 {
 		t.Fatalf("unexpected ping response: %#v", page)
 	}
@@ -109,7 +109,7 @@ func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
 		}
 	}
 
-	bad := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+	bad := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectormanagement.HostPingRequest{
 		Host: "",
 		Port: port,
 	})
@@ -117,7 +117,7 @@ func TestConnectorTargetHostPingRouteChecksTCPReachability(t *testing.T) {
 		t.Fatalf("missing host should be rejected, got %d %s", bad.Code, bad.Body.String())
 	}
 
-	missingProject := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectorTargetHostPingRequest{
+	missingProject := performJSON(handler, http.MethodPost, "/api/connector-targets/ping", "", connectormanagement.HostPingRequest{
 		Host:               "127.0.0.1",
 		Port:               port,
 		Mode:               "over_ssh",

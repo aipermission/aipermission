@@ -219,6 +219,7 @@ func registerFileTransferRoutes(mux *http.ServeMux, handlers *filetransferhttp.H
 
 func (s *Server) registerConnectorRoutes() {
 	queries := connectormanagement.NewHTTPHandlers(s.connectorManagementScope)
+	hostPing := connectormanagement.NewHostPingHTTPHandler(s.connectorPingHTTPScope)
 	connectorTargets := connectorTargetHandlers{s}
 
 	s.mux.HandleFunc("GET /api/connectors", queries.ListConnectors)
@@ -228,7 +229,7 @@ func (s *Server) registerConnectorRoutes() {
 	s.mux.HandleFunc("GET /api/connector-targets/inventory", queries.ListTargetInventory)
 	s.mux.HandleFunc("POST /api/connector-targets/with-profile", connectorTargets.createConnectorTargetWithProfile)
 	s.mux.HandleFunc("POST /api/connector-targets", connectorTargets.createConnectorTarget)
-	s.mux.HandleFunc("POST /api/connector-targets/ping", connectorTargets.pingConnectorTargetHost)
+	s.mux.HandleFunc("POST /api/connector-targets/ping", hostPing.Ping)
 	s.mux.HandleFunc("POST /api/connector-targets/test", connectorTargets.testConnectorTargetDraft)
 	s.mux.HandleFunc("GET /api/connector-targets/{id}", queries.GetTarget)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/with-profile/{profile_id}", connectorTargets.updateConnectorTargetWithProfile)
