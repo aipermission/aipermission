@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
@@ -131,6 +132,7 @@ func (s *Server) registerBackupRoutes() {
 
 func (s *Server) registerConsoleAndActivityRoutes() {
 	console := consoleHandlers{s}
+	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
 	connectorApprovals := connectorActionApprovalHandlers{s}
 	connectorActions := connectorActionHandlers{s}
 	historyHandlers := historyhttp.New(s.historyHTTPScope)
@@ -144,7 +146,7 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.attachConsoleSession)
 	s.mux.HandleFunc("POST /api/console/runtime-surfaces/{id}/restart", console.restartTargetConsoleSession)
 	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.restartTargetConsoleSession)
-	s.mux.HandleFunc("GET /api/console/command-requests/{id}", console.getConsoleCommandRequest)
+	s.mux.HandleFunc("GET /api/console/command-requests/{id}", commandRequests.Get)
 	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)
 	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)
 	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)

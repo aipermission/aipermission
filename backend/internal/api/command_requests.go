@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -60,6 +61,14 @@ func (s *Server) commandRequestRuntime(runtime *databaseRuntime) (*commandreques
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
 	}
 	return owner, nil
+}
+
+func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (*commandrequests.Store, bool) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return nil, false
+	}
+	return commandrequests.NewStore(runtime.database), true
 }
 
 func (s *Server) insertCommandRequest(
