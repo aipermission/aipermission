@@ -61,6 +61,11 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 
 func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*vaultactions.Runtime, error) {
 	component := s.vaultApplication()
+	s.configureVaultActions(component)
+	return component.ActionRuntime(runtime)
+}
+
+func (s *Server) configureVaultActions(component *applicationvault.Component) {
 	component.ConfigureActions(applicationvault.ActionDependencies{
 		Connector: func(runtime *workspaceruntime.Runtime) vaultactions.ConnectorPort {
 			return vaultActionConnectorPort{server: s, runtime: runtime}
@@ -72,5 +77,4 @@ func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*vaultactions
 			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.ID, tokenID))
 		},
 	})
-	return component.ActionRuntime(runtime)
 }

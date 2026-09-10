@@ -27,6 +27,7 @@ type ProjectDependencies struct {
 type Component struct {
 	projects ProjectDependencies
 	actions  ActionDependencies
+	requests RequestDependencies
 }
 
 func New(projects ProjectDependencies) *Component { return &Component{projects: projects} }
