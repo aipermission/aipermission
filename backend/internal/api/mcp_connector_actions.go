@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type mcpConnectorTargetItem struct {
@@ -344,14 +345,16 @@ func connectorActionVaultPollAuthorizedLocked(ctx context.Context, runtime *data
 	if request.SessionID == nil || request.SessionGeneration == nil {
 		return false
 	}
-	return vaultSessionObserveAuthorized(
+	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	if err != nil {
+		return false
+	}
+	return vaultsessions.NewObserver(runtime.database, runtime.vaultLeases).Authorized(
 		ctx,
-		runtime,
-		tokenID,
-		*request.SessionID,
-		*request.SessionGeneration,
-		0,
-		false,
+		principal,
+		vaultsessions.ObserveRequest{
+			SessionID: *request.SessionID, SessionGeneration: *request.SessionGeneration,
+		},
 	)
 }
 

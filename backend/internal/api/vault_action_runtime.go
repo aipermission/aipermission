@@ -3,19 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"strconv"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/observability"
-	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type vaultRequestMutationPort struct {
@@ -74,43 +68,22 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 	if s == nil || runtime == nil || runtime.database == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
+	actions, err := s.vaultActionApplication(runtime)
+	if err != nil {
+		return nil, err
+	}
 	owner, err := vaultrequests.NewRuntime(vaultrequests.RuntimeDependencies{
-		Store:     s.vaultRequestStore(ctx, runtime),
-		Mutations: vaultRequestMutationPort{server: s, runtime: runtime},
-		Prepare: func(ctx context.Context, tokenID int64, projectRef, actionName string, input map[string]any) (vaultrequests.PreparedAction, error) {
-			project, err := resolveProjectRef(ctx, runtime, projectRef)
-			if errors.Is(err, projectstore.ErrNotFound) {
-				return vaultrequests.PreparedAction{}, vaultrequests.ErrProjectNotFound
-			}
-			if err != nil {
-				return vaultrequests.PreparedAction{}, err
-			}
-			approval, contextHash, normalizedInput, err := buildVaultApprovalContext(
-				ctx, s, runtime, tokenID, project, actionName, input,
-			)
-			if err != nil {
-				return vaultrequests.PreparedAction{}, vaultrequests.PreparationError{Err: err}
-			}
-			return vaultrequests.PreparedAction{
-				ProjectID: project.ID, RuntimeID: approval.RuntimeID, Input: normalizedInput,
-				ApprovalContext: approval, ApprovalContextHash: contextHash,
-				RunImmediately: approval.ExecutionRule == accesscontrol.RuleAlwaysRun,
-			}, nil
-		},
-		AuthorizeOutput: func(ctx context.Context, item vaultrequests.Request) bool {
-			return currentVaultPollAuthorization(ctx, s, runtime, item)
-		},
+		Store:           s.vaultRequestStore(ctx, runtime),
+		Mutations:       vaultRequestMutationPort{server: s, runtime: runtime},
+		Prepare:         actions.Prepare,
+		AuthorizeOutput: actions.AuthorizeOutput,
 		AllowRequest: func(tokenID int64) bool {
 			return s.vaultRequestLimiter != nil && s.vaultRequestLimiter.Allow(
 				"vault-request:"+runtime.id+":"+strconv.FormatInt(tokenID, 10),
 			)
 		},
-		Execute: func(ctx context.Context, item vaultrequests.Request) (any, error) {
-			return executeVaultAction(ctx, s, runtime, item)
-		},
-		Compensate: func(ctx context.Context, item vaultrequests.Request, output any) error {
-			return compensateVaultActionEffect(ctx, runtime, item, output)
-		},
+		Execute:    actions.Execute,
+		Compensate: actions.Compensate,
 		RepairProjection: func(ctx context.Context, id int64) error {
 			if err := history.NewStore(runtime.database).SyncVaultActionRequest(ctx, id); err != nil {
 				log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
@@ -120,63 +93,11 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 		RedactError: func(ctx context.Context, err error) string {
 			return s.redactForPersistence(ctx, runtime, err.Error())
 		},
-		IsStale:    isVaultContextDrift,
+		IsStale:    actions.IsStale,
 		MCPStarted: runtime.isMCPStarted,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)
 	}
 	return owner, nil
-}
-
-func compensateVaultActionEffect(ctx context.Context, runtime *databaseRuntime, request vaultrequests.Request, output any) error {
-	payload, _ := output.(map[string]any)
-	switch request.ActionName {
-	case vaultrequests.ActionRestartSession:
-		sessionID := vaultJSONInt(payload["session_id"])
-		if sessionID < 1 {
-			return nil
-		}
-		runtimeID := vaultJSONInt(payload["runtime_id"])
-		generation := vaultJSONInt(payload["session_generation"])
-		if runtimeID > 0 && generation > 0 {
-			runtime.vaultLeases.RevokeSession(console.SessionHandle{
-				ID: sessionID, RuntimeID: runtimeID, Generation: generation,
-			})
-		}
-		var cleanupErrors []error
-		if generation > 0 {
-			if err := vaultsessions.NewPersistence(runtime.database).Revoke(ctx, sessionID, generation); err != nil {
-				cleanupErrors = append(cleanupErrors, err)
-			}
-		}
-		principal, err := localExecutionPrincipal(runtime)
-		if err != nil {
-			return err
-		}
-		if err := runtime.consoleSessions.Close(ctx, principal, sessionID); err != nil {
-			cleanupErrors = append(cleanupErrors, err)
-		}
-		return errors.Join(cleanupErrors...)
-	case vaultrequests.ActionGenerateItem:
-		itemPayload, _ := payload["item"].(map[string]any)
-		itemID := vaultJSONInt(itemPayload["item_id"])
-		valueVersion := vaultJSONInt(itemPayload["value_version"])
-		metadataRevision := vaultJSONInt(itemPayload["metadata_revision"])
-		if itemID < 1 || valueVersion < 1 || metadataRevision < 1 {
-			return nil
-		}
-		release, err := runtime.vaultDelivery.acquireExclusive(ctx)
-		if err != nil {
-			return err
-		}
-		defer release()
-		store, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
-		if err != nil {
-			return err
-		}
-		return store.Delete(ctx, itemID, valueVersion, metadataRevision)
-	default:
-		return nil
-	}
 }

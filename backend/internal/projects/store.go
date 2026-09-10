@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,23 @@ func (s *Store) Get(ctx context.Context, id int64) (Project, error) {
 		return Project{}, fmt.Errorf("get project: %w", err)
 	}
 	return item, nil
+}
+
+func (s *Store) ResolveRef(ctx context.Context, ref string) (Project, error) {
+	ref = strings.TrimSpace(ref)
+	if id, err := strconv.ParseInt(ref, 10, 64); err == nil && id > 0 {
+		return s.Get(ctx, id)
+	}
+	items, err := s.List(ctx)
+	if err != nil {
+		return Project{}, err
+	}
+	for _, item := range items {
+		if item.Slug == ref {
+			return item, nil
+		}
+	}
+	return Project{}, ErrNotFound
 }
 
 func (s *Store) Ungrouped(ctx context.Context) (Project, error) {

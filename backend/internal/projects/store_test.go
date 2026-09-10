@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -95,6 +96,27 @@ func TestReplaceTokenScopesReportsNoOp(t *testing.T) {
 	_, changed, err = store.ReplaceTokenScopesWithChange(ctx, token.ID, []int64{project.ID})
 	if err != nil || changed {
 		t.Fatalf("identical scope replace: changed=%v err=%v", changed, err)
+	}
+}
+
+func TestResolveRefAcceptsActiveIDOrSlug(t *testing.T) {
+	database := openProjectTestDB(t)
+	store := NewStore(database)
+	project, err := store.Create(t.Context(), "Resolve Me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{fmt.Sprintf(" %d ", project.ID), " resolve-me "} {
+		resolved, err := store.ResolveRef(t.Context(), ref)
+		if err != nil {
+			t.Fatalf("ResolveRef(%q): %v", ref, err)
+		}
+		if resolved.ID != project.ID {
+			t.Fatalf("ResolveRef(%q) ID = %d, want %d", ref, resolved.ID, project.ID)
+		}
+	}
+	if _, err := store.ResolveRef(t.Context(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing ResolveRef() error = %v", err)
 	}
 }
 

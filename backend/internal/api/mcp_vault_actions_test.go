@@ -21,7 +21,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
@@ -461,7 +463,15 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	alwaysOutput := alwaysResponse["output"].(map[string]any)
 	alwaysSessionID := int64(alwaysOutput["session_id"].(float64))
 	alwaysGeneration := int64(alwaysOutput["session_generation"].(float64))
-	if !vaultSessionObserveAuthorized(ctx, runtime, token.ID, alwaysSessionID, alwaysGeneration, target.ID, true) {
+	principal, err := tokenExecutionPrincipal(runtime, token.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer := vaultsessions.NewObserver(runtime.database, runtime.vaultLeases)
+	if !observer.Authorized(ctx, principal, vaultsessions.ObserveRequest{
+		SessionID: alwaysSessionID, SessionGeneration: alwaysGeneration,
+		ExpectedRuntimeID: target.ID, RequireEnvironment: true,
+	}) {
 		t.Fatal("Always session was not authorized for the owning token")
 	}
 	runtime.consoleSessions.Resize(alwaysSessionID, 141, 47)
@@ -505,7 +515,10 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatalf("create human Vault session: %d %s", human.Code, human.Body.String())
 	}
 	humanRecord := decodeRouteResponse[console.Record](t, human.Body.Bytes())
-	if vaultSessionObserveAuthorized(ctx, runtime, token.ID, humanRecord.ID, humanRecord.Generation, target.ID, true) {
+	if observer.Authorized(ctx, principal, vaultsessions.ObserveRequest{
+		SessionID: humanRecord.ID, SessionGeneration: humanRecord.Generation,
+		ExpectedRuntimeID: target.ID, RequireEnvironment: true,
+	}) {
 		t.Fatal("MCP token unexpectedly received access to a human Vault session")
 	}
 
@@ -587,12 +600,12 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		t.Fatalf("set Always connector permission: %v", err)
 	}
 
-	approval, _, _, err := buildVaultApprovalContext(
-		ctx,
-		fixture.server,
-		fixture.server.activeRuntime(),
-		token.ID,
-		project,
+	actions, err := fixture.server.vaultActionApplication(fixture.server.activeRuntime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := actions.Prepare(
+		ctx, token.ID, project.Slug,
 		vaultrequests.ActionRestartSession,
 		map[string]any{
 			"target_ref": target.TargetRef,
@@ -604,6 +617,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build Always session context: %v", err)
 	}
+	approval := prepared.ApprovalContext
 	if approval.ExecutionRule != accesscontrol.RuleAlwaysRun ||
 		approval.RuntimeID != target.ID || len(approval.Items) != 1 {
 		t.Fatalf("unexpected Always session context: %#v", approval)
@@ -617,17 +631,13 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("change connector permission to Prompt: %v", err)
 	}
-	if _, err := validateVaultApprovalAuthorization(ctx, fixture.server, fixture.server.activeRuntime(), vaultrequests.Request{
+	if err := actions.ValidateAuthorization(ctx, vaultrequests.Request{
 		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
-	}, approval); !isVaultContextDrift(err) {
+	}, approval); !vaultactions.IsStale(err) {
 		t.Fatalf("connector permission drift should stale the approval, got %v", err)
 	}
-	promptApproval, _, _, err := buildVaultApprovalContext(
-		ctx,
-		fixture.server,
-		fixture.server.activeRuntime(),
-		token.ID,
-		project,
+	promptPrepared, err := actions.Prepare(
+		ctx, token.ID, project.Slug,
 		vaultrequests.ActionRestartSession,
 		map[string]any{
 			"target_ref": target.TargetRef,
@@ -639,6 +649,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build Prompt session context: %v", err)
 	}
+	promptApproval := promptPrepared.ApprovalContext
 	if promptApproval.ExecutionRule != accesscontrol.RuleApprovalRequired ||
 		promptApproval.CapabilityExecutionRule != accesscontrol.RuleAlwaysRun ||
 		promptApproval.ConnectorExecutionRule != string(connectortargets.ActionPermissionApprovalRequired) {
@@ -654,9 +665,9 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if hidden.Code != http.StatusOK {
 		t.Fatalf("hide Vault source project: %d %s", hidden.Code, hidden.Body.String())
 	}
-	if _, err := validateVaultApprovalAuthorization(ctx, fixture.server, fixture.server.activeRuntime(), vaultrequests.Request{
+	if err := actions.ValidateAuthorization(ctx, vaultrequests.Request{
 		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
-	}, promptApproval); !isVaultContextDrift(err) {
+	}, promptApproval); !vaultactions.IsStale(err) {
 		t.Fatalf("project scope drift should stale the approval, got %v", err)
 	}
 }
@@ -683,7 +694,11 @@ func TestVaultActionCompensationRemovesGeneratedItemAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create generated Vault item: %v", err)
 	}
-	if err := compensateVaultActionEffect(ctx, fixture.server.activeRuntime(), vaultrequests.Request{
+	actions, err := fixture.server.vaultActionApplication(fixture.server.activeRuntime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := actions.Compensate(ctx, vaultrequests.Request{
 		ActionName: vaultrequests.ActionGenerateItem,
 	}, map[string]any{
 		"item": map[string]any{
@@ -710,7 +725,7 @@ func TestVaultActionCompensationRemovesGeneratedItemAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read compensated session id: %v", err)
 	}
-	if err := compensateVaultActionEffect(ctx, fixture.server.activeRuntime(), vaultrequests.Request{
+	if err := actions.Compensate(ctx, vaultrequests.Request{
 		ActionName: vaultrequests.ActionRestartSession,
 	}, map[string]any{"session_id": sessionID}); err != nil {
 		t.Fatalf("compensate Vault session: %v", err)

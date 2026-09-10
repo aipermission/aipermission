@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 )
 
 type createConsoleSessionRequest struct {
@@ -64,28 +65,20 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 	}
 	request.Principal = principal
 	request.WaitForStart = true
-	var snapshot vaultEnvironmentSnapshot
+	var environment vaultactions.EnvironmentPlan
 	if len(input.VaultItems) > 0 {
-		vaultStore, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
+		application, err := s.vaultActionApplication(runtime)
 		if err != nil {
 			writeInternalError(w)
 			return
 		}
-		snapshot, err = buildVaultEnvironmentSnapshot(r.Context(), s.Server, runtime, input.RuntimeID, input.VaultItems)
+		environment, err = application.BuildEnvironmentPlan(r.Context(), input.RuntimeID, input.VaultItems)
 		if err != nil {
 			handleVaultItemError(w, err)
 			return
 		}
-		finalize := func(finalizeCtx context.Context, handle console.SessionHandle) error {
-			if err := vaultStore.RecordSessionItems(finalizeCtx, handle.ID, snapshot.Items); err != nil {
-				return err
-			}
-			return vaultStore.MarkSessionItemsUsed(finalizeCtx, snapshot.Items)
-		}
-		request.PrepareEnvironment = newVaultEnvironmentPreparer(
-			s.Server, runtime, snapshot, input.VaultItems, nil, finalize,
-		)
-		request.EnvironmentContentHash = snapshot.EnvironmentContentHash
+		request.PrepareEnvironment = environment.Prepare
+		request.EnvironmentContentHash = environment.EnvironmentContentHash
 	}
 	item, err := runtime.consoleSessions.Create(r.Context(), request)
 	if errors.Is(err, console.ErrSessionLimit) {
@@ -103,8 +96,8 @@ func (s consoleHandlers) createConsoleSession(w http.ResponseWriter, r *http.Req
 		"session_id":               item.ID,
 		"name":                     item.Name,
 		"close_existing":           request.CloseExisting,
-		"vault_item_ids":           vaultSessionItemIDs(snapshot.Items),
-		"environment_content_hash": snapshot.EnvironmentContentHash,
+		"vault_item_ids":           vaultSessionItemIDs(environment.Items),
+		"environment_content_hash": environment.EnvironmentContentHash,
 	})
 	writeJSON(w, http.StatusCreated, item)
 }

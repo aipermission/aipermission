@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -46,7 +45,7 @@ func (s mcpHandlers) mcpListVaultItems(w http.ResponseWriter, r *http.Request) {
 	projectStore := projectstore.NewStore(auth.runtime.database)
 	var projects []projectstore.Project
 	if projectRef != "" {
-		project, err := resolveProjectRef(r.Context(), auth.runtime, projectRef)
+		project, err := projectStore.ResolveRef(r.Context(), projectRef)
 		if errors.Is(err, projectstore.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "project not found")
 			return
@@ -258,50 +257,4 @@ func vaultRequestMCPResponse(item vaultrequests.Request) map[string]any {
 		response["assistant_hint"] = "Wait for the local user to approve or decline, then poll get_vault_action_request."
 	}
 	return response
-}
-
-func currentVaultPollAuthorization(ctx context.Context, server *Server, runtime *databaseRuntime, item vaultrequests.Request) bool {
-	approval, err := vaultrequests.DecodeApprovalContext(item.ApprovalContext)
-	if err != nil ||
-		approval.TokenID != item.TokenID || approval.ProjectID != item.ProjectID {
-		return false
-	}
-	if _, err := validateVaultApprovalAuthorization(ctx, server, runtime, item, approval); err != nil {
-		return false
-	}
-	if item.ActionName != vaultrequests.ActionRestartSession || item.Status != vaultrequests.StatusCompleted {
-		return true
-	}
-	output, ok := item.Output.(map[string]any)
-	if !ok {
-		return false
-	}
-	sessionID := vaultJSONInt(output["session_id"])
-	generation := vaultJSONInt(output["session_generation"])
-	runtimeID := vaultJSONInt(output["runtime_id"])
-	if sessionID < 1 || generation < 1 || runtimeID != approval.RuntimeID {
-		return false
-	}
-	return vaultSessionObserveAuthorized(
-		ctx,
-		runtime,
-		item.TokenID,
-		sessionID,
-		generation,
-		runtimeID,
-		true,
-	)
-}
-
-func vaultJSONInt(value any) int64 {
-	switch typed := value.(type) {
-	case float64:
-		return int64(typed)
-	case int64:
-		return typed
-	case int:
-		return int64(typed)
-	default:
-		return 0
-	}
 }
