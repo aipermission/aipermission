@@ -21,11 +21,11 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 	project := decodeRouteResponse[projectstore.Project](t, projectResponse.Body.Bytes())
 	secretValue := "test-secret-value-that-must-not-leak"
 
-	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "VAULT_TEST_API_KEY", Value: secretValue, OwnerProjectID: project.ID,
 		SecretType: "api_key", Source: "imported", ExpiryWarningDays: 14,
 		Provider: "Test API", Tags: []string{"test"},
-		UsageNotes: []vaultUsageNoteRequest{{Location: "local test"}},
+		UsageNotes: []projectvault.UsageNoteHTTPRequest{{Location: "local test"}},
 	})
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create vault item: %d %s", create.Code, create.Body.String())
@@ -56,14 +56,14 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 		t.Fatalf("audit leaked vault secret: %s", audit.Body.String())
 	}
 
-	replace := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	replace := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Value: "replacement-secret-value-that-stays-private", ExpectedValueVersion: item.ValueVersion,
 	})
 	if replace.Code != http.StatusOK || strings.Contains(replace.Body.String(), "replacement-secret") {
 		t.Fatalf("replace vault item: %d %s", replace.Code, replace.Body.String())
 	}
 	replaced := decodeRouteResponse[projectvault.Item](t, replace.Body.Bytes())
-	preview := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/generate-preview", "", generateVaultItemPreviewRequest{
+	preview := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/generate-preview", "", projectvault.GeneratePreviewHTTPRequest{
 		GeneratorKind: "hex_secret",
 	})
 	if preview.Code != http.StatusOK || preview.Header().Get("Cache-Control") != "no-store, private" {
@@ -75,21 +75,21 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 	if len(previewValue) != 64 || previewToken == "" || strings.Contains(previewToken, previewValue) {
 		t.Fatalf("unexpected generated preview response")
 	}
-	ambiguous := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	ambiguous := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Source: "generated", Value: "must-not-be-ignored", GeneratorKind: "hex_secret",
 		PreviewToken: previewToken, ExpectedValueVersion: replaced.ValueVersion,
 	})
 	if ambiguous.Code != http.StatusBadRequest {
 		t.Fatalf("ambiguous replacement = %d %s", ambiguous.Code, ambiguous.Body.String())
 	}
-	tampered := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	tampered := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Source: "generated", GeneratorKind: "hex_secret", PreviewToken: previewToken + "x",
 		ExpectedValueVersion: replaced.ValueVersion,
 	})
 	if tampered.Code != http.StatusBadRequest {
 		t.Fatalf("tampered preview = %d %s", tampered.Code, tampered.Body.String())
 	}
-	regenerated := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/generate-preview", "", generateVaultItemPreviewRequest{
+	regenerated := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/generate-preview", "", projectvault.GeneratePreviewHTTPRequest{
 		GeneratorKind: "hex_secret",
 	})
 	if regenerated.Code != http.StatusOK {
@@ -98,7 +98,7 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 	regeneratedData := decodeRouteResponse[map[string]any](t, regenerated.Body.Bytes())
 	regeneratedValue, _ := regeneratedData["value"].(string)
 	regeneratedToken, _ := regeneratedData["preview_token"].(string)
-	superseded := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	superseded := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Source: "generated", GeneratorKind: "hex_secret", PreviewToken: previewToken,
 		ExpectedValueVersion: replaced.ValueVersion,
 	})
@@ -107,7 +107,7 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 	}
 	previewValue = regeneratedValue
 	previewToken = regeneratedToken
-	generated := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	generated := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Source: "generated", GeneratorKind: "hex_secret", PreviewToken: previewToken,
 		ExpectedValueVersion: replaced.ValueVersion,
 	})
@@ -124,7 +124,7 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 	if generatedReveal.Code != http.StatusOK || generatedValue != previewValue || strings.Contains(generated.Body.String(), generatedValue) {
 		t.Fatalf("generated replacement was invalid or leaked: %d %s", generatedReveal.Code, generated.Body.String())
 	}
-	importedAgain := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	importedAgain := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Source: "imported", Value: "final-imported-secret-value", ExpectedValueVersion: generatedItem.ValueVersion,
 	})
 	importedItem := decodeRouteResponse[projectvault.Item](t, importedAgain.Body.Bytes())
@@ -139,14 +139,14 @@ func TestVaultItemLocalRoutesKeepValuesOutOfMetadataAndAudit(t *testing.T) {
 		strings.Contains(auditAfterReplacement.Body.String(), previewToken) {
 		t.Fatalf("generated preview audit was missing or leaked secret material: %d %s", auditAfterReplacement.Code, auditAfterReplacement.Body.String())
 	}
-	stale := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", replaceVaultItemValueRequest{
+	stale := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/value", "", projectvault.ReplaceValueHTTPRequest{
 		Value: "stale-secret-value-that-stays-private", ExpectedValueVersion: item.ValueVersion,
 	})
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale replace = %d %s", stale.Code, stale.Body.String())
 	}
 
-	remove := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/delete", "", deleteVaultItemRequest{
+	remove := performJSON(handler, http.MethodPost, "/api/vault-items/"+strconv.FormatInt(item.ID, 10)+"/delete", "", projectvault.DeleteHTTPRequest{
 		ExpectedValueVersion: importedItem.ValueVersion, ExpectedMetadataRevision: importedItem.MetadataRevision,
 	})
 	if remove.Code != http.StatusNoContent {
@@ -159,7 +159,7 @@ func TestVaultRevealRateLimitIsBounded(t *testing.T) {
 	handler := fixture.server.Handler()
 	projectResponse := performJSON(handler, http.MethodPost, "/api/projects", "", projectRequest{Name: "Rate Limit"})
 	project := decodeRouteResponse[projectstore.Project](t, projectResponse.Body.Bytes())
-	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "RATE_LIMIT_SECRET", Value: "rate-limit-secret-value", OwnerProjectID: project.ID,
 		SecretType: "generic_secret", Source: "imported", ExpiryWarningDays: 14,
 	})
@@ -183,7 +183,7 @@ func TestInvalidVaultMutationDoesNotCloseActiveSession(t *testing.T) {
 		t.Fatalf("create project: %d %s", projectResponse.Code, projectResponse.Body.String())
 	}
 	project := decodeRouteResponse[projectstore.Project](t, projectResponse.Body.Bytes())
-	create := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	create := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "MUTATION_SAFE_TOKEN", Value: "mutation-safe-secret-value",
 		OwnerProjectID: project.ID, SecretType: "api_key", Source: "imported",
 	})
@@ -220,7 +220,7 @@ func TestInvalidVaultMutationDoesNotCloseActiveSession(t *testing.T) {
 		http.MethodPut,
 		"/api/vault-items/"+strconv.FormatInt(item.ID, 10),
 		"",
-		updateVaultItemRequest{
+		projectvault.UpdateHTTPRequest{
 			ExpectedMetadataRevision: item.MetadataRevision,
 			Name:                     "invalid-name",
 			OwnerProjectID:           project.ID,

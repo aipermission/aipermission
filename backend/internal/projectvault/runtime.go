@@ -46,8 +46,8 @@ type RuntimeDependencies struct {
 	Nonce              func() (string, error)
 }
 
-// Runtime owns local-operator Project Vault item workflows. HTTP request
-// parsing and response status mapping remain outside this package.
+// Runtime owns local-operator Project Vault item workflows. Transport adapters
+// in this package expose those workflows without leaking persistence details.
 type Runtime struct {
 	store              *Store
 	delivery           DeliveryGate

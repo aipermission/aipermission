@@ -369,7 +369,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatalf("trusted peer identity: %#v %v", identities, err)
 	}
 	const secretValue = "vault-session-secret-must-never-persist-123"
-	createItem := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	createItem := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "SESSION_E2E_TOKEN", Value: secretValue,
 		OwnerProjectID: project.ID, SecretType: "api_key", Source: "imported",
 	})
@@ -556,7 +556,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	}
 	target := fixture.createKeyAndServer(t, "always-vault-session")
 	fixture.trustServerHostKey(t, target)
-	createItem := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	createItem := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "SESSION_API_TOKEN", Value: "session-secret-value",
 		OwnerProjectID: project.ID, SecretType: "api_key", Source: "imported",
 	})

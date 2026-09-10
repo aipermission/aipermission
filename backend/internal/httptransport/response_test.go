@@ -22,6 +22,17 @@ func TestWriteErrorUsesStableJSONEnvelope(t *testing.T) {
 	}
 }
 
+func TestWriteSensitiveJSONPreventsCaching(t *testing.T) {
+	response := httptest.NewRecorder()
+	WriteSensitiveJSON(response, http.StatusOK, map[string]string{"value": "secret"})
+	if response.Header().Get("Cache-Control") != "no-store, private" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
+	if response.Header().Get("Pragma") != "no-cache" {
+		t.Fatalf("Pragma = %q", response.Header().Get("Pragma"))
+	}
+}
+
 func TestPositiveInt64ParsersRejectMalformedValues(t *testing.T) {
 	for _, value := range []string{"", "0", "-1", "not-a-number"} {
 		response := httptest.NewRecorder()

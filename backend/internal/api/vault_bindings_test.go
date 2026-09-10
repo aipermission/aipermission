@@ -16,7 +16,7 @@ func TestVaultDefaultBindingLocalRoutes(t *testing.T) {
 	handler := fixture.server.Handler()
 	projectResponse := performJSON(handler, http.MethodPost, "/api/projects", "", projectRequest{Name: "Bindings"})
 	project := decodeRouteResponse[projectstore.Project](t, projectResponse.Body.Bytes())
-	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "ROUTE_BINDING_SECRET", Value: "route-binding-secret-value",
 		OwnerProjectID: project.ID, SecretType: "generic_secret",
 		Source: "imported", ExpiryWarningDays: 14,
@@ -24,7 +24,7 @@ func TestVaultDefaultBindingLocalRoutes(t *testing.T) {
 	item := decodeRouteResponse[projectvault.Item](t, create.Body.Bytes())
 	target := fixture.createKeyAndServer(t, "binding-route")
 
-	save := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", saveVaultDefaultBindingRequest{
+	save := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", projectvault.SaveDefaultBindingHTTPRequest{
 		VaultItemID: item.ID, SourceProjectID: project.ID,
 		TargetID: target.TargetID, ProfileID: target.ProfileID,
 	})
@@ -32,7 +32,7 @@ func TestVaultDefaultBindingLocalRoutes(t *testing.T) {
 		t.Fatalf("save binding = %d %s", save.Code, save.Body.String())
 	}
 	binding := decodeRouteResponse[projectvault.DefaultBinding](t, save.Body.Bytes())
-	noOp := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", saveVaultDefaultBindingRequest{
+	noOp := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", projectvault.SaveDefaultBindingHTTPRequest{
 		VaultItemID: item.ID, SourceProjectID: project.ID,
 		TargetID: target.TargetID, ProfileID: target.ProfileID,
 		ExpectedBindingRevision: binding.BindingRevision,
@@ -62,7 +62,7 @@ func TestVaultDefaultBindingLocalRoutes(t *testing.T) {
 		strings.Contains(options.Body.String(), "route-binding-secret-value") {
 		t.Fatalf("session options = %d %s", options.Code, options.Body.String())
 	}
-	remove := performJSON(handler, http.MethodPost, "/api/vault-default-bindings/"+strconv.FormatInt(binding.ID, 10)+"/delete", "", deleteVaultDefaultBindingRequest{
+	remove := performJSON(handler, http.MethodPost, "/api/vault-default-bindings/"+strconv.FormatInt(binding.ID, 10)+"/delete", "", projectvault.DeleteDefaultBindingHTTPRequest{
 		ExpectedBindingRevision: binding.BindingRevision,
 	})
 	if remove.Code != http.StatusNoContent {
@@ -75,7 +75,7 @@ func TestVaultDefaultBindingRejectsProfileWithoutSessionEnvironmentCapability(t 
 	handler := fixture.server.Handler()
 	projectResponse := performJSON(handler, http.MethodPost, "/api/projects", "", projectRequest{Name: "Unsupported Binding"})
 	project := decodeRouteResponse[projectstore.Project](t, projectResponse.Body.Bytes())
-	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", createVaultItemRequest{
+	create := performJSON(handler, http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
 		Name: "UNSUPPORTED_BINDING_SECRET", Value: "unsupported-binding-secret-value",
 		OwnerProjectID: project.ID, SecretType: "generic_secret",
 		Source: "imported", ExpiryWarningDays: 14,
@@ -103,7 +103,7 @@ func TestVaultDefaultBindingRejectsProfileWithoutSessionEnvironmentCapability(t 
 		t.Fatal(err)
 	}
 
-	save := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", saveVaultDefaultBindingRequest{
+	save := performJSON(handler, http.MethodPut, "/api/vault-default-bindings", "", projectvault.SaveDefaultBindingHTTPRequest{
 		VaultItemID: item.ID, SourceProjectID: project.ID,
 		TargetID: target.ID, ProfileID: profile.ID,
 	})

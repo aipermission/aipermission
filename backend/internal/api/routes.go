@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
@@ -162,25 +163,26 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 
 func (s *Server) registerProjectAndVaultRoutes() {
 	projects := projectstore.NewHTTPHandlers(s.projectsHTTPScope)
-	vaultItems := vaultItemHandlers{s}
+	vaultItems := projectvault.NewHTTPHandlers(s.projectVaultHTTPScope)
+	vaultSessions := vaultItemHandlers{s}
 	vaultApprovals := vaultActionApprovalHandlers{s}
 
 	s.mux.HandleFunc("GET /api/projects", projects.List)
 	s.mux.HandleFunc("POST /api/projects", projects.Create)
 	s.mux.HandleFunc("PUT /api/projects/{id}", projects.Update)
 	s.mux.HandleFunc("DELETE /api/projects/{id}", projects.Archive)
-	s.mux.HandleFunc("GET /api/vault-items", vaultItems.listVaultItems)
-	s.mux.HandleFunc("POST /api/vault-items", vaultItems.createVaultItem)
-	s.mux.HandleFunc("GET /api/vault-items/{id}", vaultItems.getVaultItem)
-	s.mux.HandleFunc("PUT /api/vault-items/{id}", vaultItems.updateVaultItem)
-	s.mux.HandleFunc("POST /api/vault-items/{id}/generate-preview", vaultItems.generateVaultItemPreview)
-	s.mux.HandleFunc("POST /api/vault-items/{id}/value", vaultItems.replaceVaultItemValue)
-	s.mux.HandleFunc("POST /api/vault-items/{id}/reveal", vaultItems.revealVaultItem)
-	s.mux.HandleFunc("POST /api/vault-items/{id}/delete", vaultItems.deleteVaultItem)
-	s.mux.HandleFunc("GET /api/vault-default-bindings", vaultItems.listVaultDefaultBindings)
-	s.mux.HandleFunc("PUT /api/vault-default-bindings", vaultItems.saveVaultDefaultBinding)
-	s.mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", vaultItems.deleteVaultDefaultBinding)
-	s.mux.HandleFunc("GET /api/vault-session-options", vaultItems.vaultSessionOptions)
+	s.mux.HandleFunc("GET /api/vault-items", vaultItems.ListItems)
+	s.mux.HandleFunc("POST /api/vault-items", vaultItems.CreateItem)
+	s.mux.HandleFunc("GET /api/vault-items/{id}", vaultItems.GetItem)
+	s.mux.HandleFunc("PUT /api/vault-items/{id}", vaultItems.UpdateItem)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/generate-preview", vaultItems.GenerateItemPreview)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/value", vaultItems.ReplaceItemValue)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/reveal", vaultItems.RevealItem)
+	s.mux.HandleFunc("POST /api/vault-items/{id}/delete", vaultItems.DeleteItem)
+	s.mux.HandleFunc("GET /api/vault-default-bindings", vaultItems.ListDefaultBindings)
+	s.mux.HandleFunc("PUT /api/vault-default-bindings", vaultItems.SaveDefaultBinding)
+	s.mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", vaultItems.DeleteDefaultBinding)
+	s.mux.HandleFunc("GET /api/vault-session-options", vaultSessions.vaultSessionOptions)
 	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.list)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.run)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.decline)

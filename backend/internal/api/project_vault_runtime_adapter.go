@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -114,4 +115,17 @@ func (s *Server) projectVaultRuntime(runtime *databaseRuntime) (*projectvault.Ru
 	}
 	runtime.projectVault = owner
 	return owner, nil
+}
+
+func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (projectvault.HTTPScope, bool) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return projectvault.HTTPScope{}, false
+	}
+	owner, err := s.projectVaultRuntime(runtime)
+	if err != nil {
+		writeInternalError(w)
+		return projectvault.HTTPScope{}, false
+	}
+	return projectvault.HTTPScope{Runtime: owner, RuntimeID: runtime.id}, true
 }
