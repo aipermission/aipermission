@@ -15,7 +15,7 @@ type backupProviderSecretCodec struct{ runtime *databaseRuntime }
 
 func (codec backupProviderSecretCodec) EncryptProviderSecret(providerID int64, secret map[string]any) (string, error) {
 	return recordcrypto.EncryptJSON(
-		codec.runtime.vault, codec.runtime.workspaceUUID,
+		codec.runtime.Storage.Vault, codec.runtime.WorkspaceUUID,
 		recordcrypto.BackupProvider, providerID, secret,
 	)
 }
@@ -26,7 +26,7 @@ func (codec backupProviderSecretCodec) DecryptProviderSecret(provider backups.Pr
 	}
 	secret := map[string]any{}
 	err := recordcrypto.DecryptJSON(
-		codec.runtime.vault, codec.runtime.workspaceUUID,
+		codec.runtime.Storage.Vault, codec.runtime.WorkspaceUUID,
 		recordcrypto.BackupProvider, provider.ID, provider.EncryptedSecretJSON, &secret,
 	)
 	return secret, err
@@ -39,8 +39,8 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 	}
 	databaseName := s.currentDatabaseNameLocked()
 	return backups.HTTPScope{
-		Database: runtime.database, DatabaseID: runtime.id, DatabaseName: databaseName,
-		DatabasePath: runtime.path, WorkspaceUUID: runtime.workspaceUUID,
+		Database: runtime.Storage.Database, DatabaseID: runtime.ID, DatabaseName: databaseName,
+		DatabasePath: runtime.Path, WorkspaceUUID: runtime.WorkspaceUUID,
 		InstallationDataPath: s.config.DataPath,
 		Secrets:              backupProviderSecretCodec{runtime: runtime},
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
@@ -55,7 +55,7 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 		AcquireOperation: s.backupOperations.Acquire,
 		CreateSnapshot: func(ctx context.Context) (backups.DatabaseSnapshot, error) {
 			snapshot, err := backups.CreateDatabaseSnapshot(ctx, backups.SnapshotSource{
-				Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+				Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
 			})
 			return backups.DatabaseSnapshot{Path: snapshot.Path}, err
 		},
@@ -64,7 +64,7 @@ func (s *Server) backupProviderHTTPScope(w http.ResponseWriter) (backups.HTTPSco
 			if !ok {
 				return false
 			}
-			if err := dbpkg.ValidateEncrypted(runtime.path, password); err != nil {
+			if err := dbpkg.ValidateEncrypted(runtime.Path, password); err != nil {
 				attempt.failure()
 				writeError(response, http.StatusUnauthorized, "invalid current database password")
 				return false

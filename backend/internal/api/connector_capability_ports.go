@@ -36,11 +36,11 @@ func connectorRuntimeScopeWithSecretAccessor(runtime *databaseRuntime, kind stri
 		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{})
 	}
 	return connectorruntime.NewScope(kind, connectorruntime.Dependencies{
-		Database:        runtime.database,
-		Vault:           runtime.vault,
-		WorkspaceID:     runtime.workspaceUUID,
-		Resources:       runtime.connectorResources,
-		ConsoleSessions: runtime.consoleSessions,
+		Database:        runtime.Storage.Database,
+		Vault:           runtime.Storage.Vault,
+		WorkspaceID:     runtime.WorkspaceUUID,
+		Resources:       runtime.Connectors.Resources,
+		ConsoleSessions: runtime.Connectors.ConsoleSessions,
 		SecretAccessor:  accessor,
 	})
 }
@@ -82,10 +82,10 @@ type connectorLiveConsoleGatewayPort struct {
 }
 
 func (p connectorLiveConsoleGatewayPort) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*console.RuntimeSession, error) {
-	if p.server == nil || p.runtime == nil || p.runtime.database == nil {
+	if p.server == nil || p.runtime == nil || p.runtime.Storage.Database == nil {
 		return nil, errInvalidConnectorRuntime
 	}
-	store := connectortargets.NewStore(p.runtime.database)
+	store := connectortargets.NewStore(p.runtime.Storage.Database)
 	target, profile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil, err
@@ -146,10 +146,10 @@ func (p connectorRuntimeActionGatewayPort) ConnectorCreateAndRunDownloadBatch(ct
 	if err := connectorRuntimeIDBelongsToKind(ctx, p.runtime, p.kind, runtimeID); err != nil {
 		return connectorapi.TransferBatch{}, err
 	}
-	if p.runtime == nil || p.runtime.fileTransfers == nil {
+	if p.runtime == nil || p.runtime.Operations.FileTransfers == nil {
 		return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 	}
-	batch, err := p.server.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, p.runtime.fileTransfers, authorization, runtimeID, remotePaths, archiveName, source)
+	batch, err := p.server.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, p.runtime.Operations.FileTransfers, authorization, runtimeID, remotePaths, archiveName, source)
 	return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
 }
 
@@ -160,10 +160,10 @@ type connectorActionFinishGatewayPort struct {
 }
 
 func (p connectorActionFinishGatewayPort) ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
-	if p.server == nil || p.runtime == nil || p.runtime.database == nil {
+	if p.server == nil || p.runtime == nil || p.runtime.Storage.Database == nil {
 		return connectortargets.ActionRequest{}, errInvalidConnectorRuntime
 	}
-	request, err := connectortargets.NewStore(p.runtime.database).GetActionRequest(ctx, requestID)
+	request, err := connectortargets.NewStore(p.runtime.Storage.Database).GetActionRequest(ctx, requestID)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}

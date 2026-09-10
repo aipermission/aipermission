@@ -31,11 +31,11 @@ func (s *Server) connectorChangeVaultPeerTrust(ctx context.Context, change func(
 		return errors.New("database is locked")
 	}
 	sort.Slice(runtimes, func(i, j int) bool {
-		return runtimes[i].id < runtimes[j].id
+		return runtimes[i].ID < runtimes[j].ID
 	})
 	releases := make([]func(), 0, len(runtimes))
 	for _, runtime := range runtimes {
-		release, err := runtime.vaultDelivery.AcquireExclusive(ctx)
+		release, err := runtime.Security.VaultDelivery.AcquireExclusive(ctx)
 		if err != nil {
 			for index := len(releases) - 1; index >= 0; index-- {
 				releases[index]()

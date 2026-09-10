@@ -9,14 +9,14 @@ import (
 )
 
 func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*vaultsessions.Invalidator, error) {
-	if s == nil || runtime == nil || runtime.database == nil ||
-		runtime.vaultLeases == nil || runtime.consoleSessions == nil {
+	if s == nil || runtime == nil || runtime.Storage.Database == nil ||
+		runtime.Security.VaultLeases == nil || runtime.Connectors.ConsoleSessions == nil {
 		return nil, vaultsessions.ErrInvalidatorUnavailable
 	}
 	return vaultsessions.NewInvalidator(vaultsessions.InvalidatorDependencies{
-		Persistence: vaultsessions.NewPersistence(runtime.database),
-		Leases:      runtime.vaultLeases,
-		Sessions:    runtime.consoleSessions,
+		Persistence: vaultsessions.NewPersistence(runtime.Storage.Database),
+		Leases:      runtime.Security.VaultLeases,
+		Sessions:    runtime.Connectors.ConsoleSessions,
 		Principal: func() (executionprincipal.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},

@@ -19,12 +19,12 @@ func (s *Server) connectorTargetMutationHTTPScope(w http.ResponseWriter) (connec
 
 func (s *Server) connectorTargetMutationScope(runtime *databaseRuntime) connectormanagement.TargetMutationScope {
 	return connectormanagement.TargetMutationScope{
-		Database: runtime.database,
-		Registry: runtime.connectorRegistry(),
+		Database: runtime.Storage.Database,
+		Registry: runtimeConnectorRegistry(runtime),
 		ValidateTransport: func(ctx context.Context, projectID int64, config map[string]any) error {
-			return s.validateConnectorTransportConfig(ctx, connectortargets.NewStore(runtime.database), projectID, config)
+			return s.validateConnectorTransportConfig(ctx, connectortargets.NewStore(runtime.Storage.Database), projectID, config)
 		},
-		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
+		AcquireExclusive: runtime.Security.VaultDelivery.AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 				return mutate(tx, connectormanagement.AuditAppender(appendAudit))

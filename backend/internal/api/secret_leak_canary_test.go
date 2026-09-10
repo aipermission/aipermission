@@ -105,7 +105,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	runtime := fixture.server.activeRuntime()
-	if err := runtime.registry.Register(secretLeakCanaryConnector{}); err != nil {
+	if err := runtime.Connectors.Registry.Register(secretLeakCanaryConnector{}); err != nil {
 		t.Fatalf("register secret canary connector: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		t.Fatalf("create profile: %v", err)
 	}
 	encryptedSecret, err := recordcrypto.EncryptJSON(
-		runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID,
+		runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID,
 		map[string]any{"password": secretLeakCanaryValue},
 	)
 	if err != nil {

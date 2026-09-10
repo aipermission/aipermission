@@ -20,6 +20,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/connectors"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/storage"
 )
 
 const connectorActionTestWorkspaceID = "connector-action-test-workspace"
@@ -148,19 +150,39 @@ func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vau
 	if err != nil {
 		t.Fatalf("derive connector action identity key: %v", err)
 	}
-	runtime := &databaseRuntime{
-		database:          database,
-		vault:             secretVault,
-		tokens:            tokens.NewStore(database),
-		registry:          testConnectorRegistry(t),
-		workspaceUUID:     connectorActionTestWorkspaceID,
-		actionIdentityKey: identityKey,
-		securityPolicy:    securitypolicy.NewService(database),
-	}
-	runtime.transferLifecycle = filetransferhttp.NewLifecycle()
-	t.Cleanup(runtime.transferLifecycle.Stop)
-	runtime.setMCPStarted(true)
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), testConnectorRegistry(t),
+		connectorActionTestWorkspaceID, identityKey,
+	)
+	runtime.Security.Policy = securitypolicy.NewService(database)
+	runtime.Operations.TransferLifecycle = filetransferhttp.NewLifecycle()
+	t.Cleanup(runtime.Operations.TransferLifecycle.Stop)
+	runtime.SetMCPStarted(true)
 	return runtime
+}
+
+func newTestDatabaseRuntime(database *sql.DB) *databaseRuntime {
+	return &databaseRuntime{Storage: storage.State{Database: database}}
+}
+
+func newConnectorActionTestRuntime(
+	database *sql.DB,
+	secretVault *vault.Vault,
+	tokenStore *tokens.Store,
+	registry *connectors.Registry,
+	workspaceUUID string,
+	actionIdentityKey []byte,
+) *databaseRuntime {
+	return &databaseRuntime{
+		WorkspaceUUID:     workspaceUUID,
+		ActionIdentityKey: actionIdentityKey,
+		Storage: storage.State{
+			Database: database,
+			Vault:    secretVault,
+			Tokens:   tokenStore,
+		},
+		Connectors: connectorstate.State{Registry: registry},
+	}
 }
 
 func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
@@ -178,11 +200,11 @@ func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
 }
 
 func createSecurityPolicyRule(ctx context.Context, runtime *databaseRuntime, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
-	return runtime.securityPolicy.CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.database))
+	return runtime.Security.Policy.CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.Storage.Database))
 }
 
 func setSecurityPolicySettings(ctx context.Context, runtime *databaseRuntime, settings securitypolicy.Settings) error {
-	_, err := runtime.securityPolicy.UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.database))
+	_, err := runtime.Security.Policy.UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.Storage.Database))
 	return err
 }
 

@@ -13,7 +13,7 @@ func (s *Server) connectorProfileBackupHTTPScope(w http.ResponseWriter) (connect
 		return connectormanagement.ProfileBackupScope{}, false
 	}
 	return connectormanagement.ProfileBackupScope{
-		Database: runtime.database, Registry: runtime.connectorRegistry(),
+		Database: runtime.Storage.Database, Registry: runtimeConnectorRegistry(runtime),
 		Runtime: s.connectorCredentialRuntimePorts(runtime),
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)

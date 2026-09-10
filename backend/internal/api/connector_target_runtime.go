@@ -11,7 +11,7 @@ import (
 )
 
 func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
-	if runtime == nil || runtime.database == nil || targetID < 1 {
+	if runtime == nil || runtime.Storage.Database == nil || targetID < 1 {
 		return 0, nil
 	}
 	input := connectortargets.InvalidateActionRequestsForTargetInput{
@@ -95,7 +95,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		return
 	}
 	operation := strings.TrimSpace(r.PathValue("operation"))
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(runtime.Storage.Database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
 		handleConnectorTargetError(w, err)

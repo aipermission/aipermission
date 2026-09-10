@@ -14,11 +14,11 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (projectstore.Scope, b
 		return projectstore.Scope{}, false
 	}
 	return projectstore.Scope{
-		Database: runtime.database,
+		Database: runtime.Storage.Database,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
+		AcquireExclusive: runtime.Security.VaultDelivery.AcquireExclusive,
 		Invalidate: func(ctx context.Context, projectID int64) error {
 			return s.invalidateVaultProjectSessions(ctx, runtime, projectID, "project was archived; send a fresh Vault request")
 		},

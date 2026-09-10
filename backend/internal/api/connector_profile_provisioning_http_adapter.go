@@ -19,11 +19,11 @@ func (s *Server) connectorProfileProvisioningHTTPScope(w http.ResponseWriter) (c
 		return connectormanagement.ProvisioningScope{}, false
 	}
 	return connectormanagement.ProvisioningScope{
-		Database: runtime.database,
-		Registry: runtime.connectorRegistry(),
+		Database: runtime.Storage.Database,
+		Registry: runtimeConnectorRegistry(runtime),
 		Runtime:  s.connectorCredentialRuntimePorts(runtime),
 		EncryptSecret: func(_ context.Context, profileID int64, secret json.RawMessage) (string, error) {
-			return recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
+			return recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
 		},
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {

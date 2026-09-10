@@ -18,10 +18,10 @@ import (
 type actionTokenReader struct{ runtime *databaseRuntime }
 
 func (r actionTokenReader) Get(ctx context.Context, tokenID int64, now time.Time) (actions.AuthorizationToken, error) {
-	if r.runtime == nil || r.runtime.tokens == nil {
+	if r.runtime == nil || r.runtime.Storage.Tokens == nil {
 		return actions.AuthorizationToken{}, actions.ErrWorkflowUnavailable
 	}
-	token, err := r.runtime.tokens.Get(ctx, tokenID)
+	token, err := r.runtime.Storage.Tokens.Get(ctx, tokenID)
 	if errors.Is(err, tokens.ErrNotFound) {
 		return actions.AuthorizationToken{}, actions.ErrTokenNotFound
 	}
@@ -40,24 +40,24 @@ func (g actionDeliveryGate) Acquire(ctx context.Context) (func(), error) {
 	if g.runtime == nil {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	return g.runtime.vaultDelivery.AcquireDelivery(ctx)
+	return g.runtime.Security.VaultDelivery.AcquireDelivery(ctx)
 }
 
 type actionSealedRecords struct{ runtime *databaseRuntime }
 
 func (p actionSealedRecords) SealActionRequest(requestID int64, envelope actions.ExecutionEnvelope) (string, error) {
-	if p.runtime == nil || p.runtime.vault == nil {
+	if p.runtime == nil || p.runtime.Storage.Vault == nil {
 		return "", actions.ErrWorkflowUnavailable
 	}
-	return recordcrypto.EncryptJSON(p.runtime.vault, p.runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, requestID, envelope)
+	return recordcrypto.EncryptJSON(p.runtime.Storage.Vault, p.runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, requestID, envelope)
 }
 
 func (p actionSealedRecords) OpenActionRequest(requestID int64, sealed string) (actions.ExecutionEnvelope, error) {
-	if p.runtime == nil || p.runtime.vault == nil {
+	if p.runtime == nil || p.runtime.Storage.Vault == nil {
 		return actions.ExecutionEnvelope{}, actions.ErrWorkflowUnavailable
 	}
 	var envelope actions.ExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(p.runtime.vault, p.runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, requestID, sealed, &envelope); err != nil {
+	if err := recordcrypto.DecryptJSON(p.runtime.Storage.Vault, p.runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, requestID, sealed, &envelope); err != nil {
 		return actions.ExecutionEnvelope{}, err
 	}
 	return envelope, nil
@@ -68,10 +68,10 @@ func (p actionSealedRecords) OpenCredentialProfile(profileID int64, sealed strin
 	if sealed == "" {
 		return secrets, nil
 	}
-	if p.runtime == nil || p.runtime.vault == nil {
+	if p.runtime == nil || p.runtime.Storage.Vault == nil {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	if err := recordcrypto.DecryptJSON(p.runtime.vault, p.runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, sealed, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(p.runtime.Storage.Vault, p.runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, sealed, &secrets); err != nil {
 		return nil, err
 	}
 	return secrets, nil
@@ -123,43 +123,39 @@ func (s *Server) connectorActionWorkflow(runtime *databaseRuntime) (*actions.Run
 	if s == nil || runtime == nil {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	runtime.actionWorkflowMu.Lock()
-	defer runtime.actionWorkflowMu.Unlock()
-	if runtime.actionWorkflow != nil {
-		return runtime.actionWorkflow, nil
-	}
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return nil, err
-	}
-	workflow, err := actions.NewRuntime(actions.RuntimeDependencies{
-		Database:    runtime.database,
-		Tokens:      actionTokenReader{runtime: runtime},
-		Registry:    runtime.connectorRegistry(),
-		Targets:     newConnectorActionTargetResolver(runtime.database),
-		IdentityKey: runtime.actionIdentityKey,
-		Delivery:    actionDeliveryGate{runtime: runtime},
-		MCPStarted:  runtime.isMCPStarted,
-		Identity: func() (string, string, error) {
-			if err := ensureRuntimeIdentity(runtime); err != nil {
-				return "", "", err
-			}
-			return runtime.workspaceUUID, runtime.runtimeInstanceID, nil
-		},
-		Redactor:      redactor,
-		SealedRecords: actionSealedRecords{runtime: runtime},
-		Mutations:     actionMutationPort{server: s, runtime: runtime},
-		Capabilities: func(kind string, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
-			return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
-		},
-		RunningActions: actionRunningPort{server: s, runtime: runtime},
-		EnqueueUserNote: func(ctx context.Context, tx *sql.Tx, tokenID int64, message string) error {
-			return messagequeue.EnqueueUserNote(ctx, tx, tokenID, message)
-		},
+	return runtime.Operations.ActionWorkflowOrCreate(func() (*actions.Runtime, error) {
+		redactor, err := s.connectorActionRedactor(runtime)
+		if err != nil {
+			return nil, err
+		}
+		workflow, err := actions.NewRuntime(actions.RuntimeDependencies{
+			Database:    runtime.Storage.Database,
+			Tokens:      actionTokenReader{runtime: runtime},
+			Registry:    runtimeConnectorRegistry(runtime),
+			Targets:     newConnectorActionTargetResolver(runtime.Storage.Database),
+			IdentityKey: runtime.ActionIdentityKey,
+			Delivery:    actionDeliveryGate{runtime: runtime},
+			MCPStarted:  runtime.IsMCPStarted,
+			Identity: func() (string, string, error) {
+				if err := ensureRuntimeIdentity(runtime); err != nil {
+					return "", "", err
+				}
+				return runtime.WorkspaceUUID, runtime.RuntimeInstanceID, nil
+			},
+			Redactor:      redactor,
+			SealedRecords: actionSealedRecords{runtime: runtime},
+			Mutations:     actionMutationPort{server: s, runtime: runtime},
+			Capabilities: func(kind string, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+				return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
+			},
+			RunningActions: actionRunningPort{server: s, runtime: runtime},
+			EnqueueUserNote: func(ctx context.Context, tx *sql.Tx, tokenID int64, message string) error {
+				return messagequeue.EnqueueUserNote(ctx, tx, tokenID, message)
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initialize connector action workflow: %w", err)
+		}
+		return workflow, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("initialize connector action workflow: %w", err)
-	}
-	runtime.actionWorkflow = workflow
-	return workflow, nil
 }

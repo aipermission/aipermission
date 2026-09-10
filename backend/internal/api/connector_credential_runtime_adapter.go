@@ -13,7 +13,7 @@ func (s *Server) connectorCredentialRuntimePorts(runtime *databaseRuntime) conne
 	return connectormanagement.CredentialRuntimePorts{
 		DecryptSecret: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
+			err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
 			return secret, err
 		},
 		RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary connectormanagement.CredentialBoundary) connectors.RuntimeContext {

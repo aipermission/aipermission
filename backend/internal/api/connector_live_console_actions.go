@@ -11,30 +11,30 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (r *databaseRuntime) prepareLiveConsoleConnectorAction(ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, r, runtimeID)
+func prepareLiveConsoleConnectorAction(runtime *databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	target, profile, err := connectortargets.NewStore(r.database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	adapter, ok := r.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
+	adapter, ok := runtimeConnectorAPIAdapterFor(runtime, target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || adapter.LiveConsoleActionName() == "" {
 		return actions.PreparedRequest{}, connectortargets.ErrInvalidTargetRef
 	}
 	request.TargetRef = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
 	request.ActionName = adapter.LiveConsoleActionName()
-	return r.prepareConnectorAction(ctx, request)
+	return prepareConnectorAction(runtime, ctx, request)
 }
 
 func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	for _, info := range runtime.connectorRegistry().List() {
-		adapter, _ := runtime.connectorAPIAdapterFor(info.Kind).(connectorapi.LiveConsoleTargetAdapter)
+	for _, info := range runtimeConnectorRegistry(runtime).List() {
+		adapter, _ := runtimeConnectorAPIAdapterFor(runtime, info.Kind).(connectorapi.LiveConsoleTargetAdapter)
 		if adapter == nil {
 			continue
 		}

@@ -14,12 +14,12 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	audit := h.auditHealth.Snapshot(r.Context(), runtime.database)
+	audit := h.auditHealth.Snapshot(r.Context(), runtime.Storage.Database)
 	report, err := observability.Collect(r.Context(), observability.CollectInput{
-		Database:               runtime.database,
-		Registry:               runtime.connectorRegistry(),
+		Database:               runtime.Storage.Database,
+		Registry:               runtimeConnectorRegistry(runtime),
 		SupportedSchemaVersion: dbpkg.CurrentSchemaVersion(),
-		MCPEnabled:             runtime.isMCPStarted(),
+		MCPEnabled:             runtime.IsMCPStarted(),
 		Audit: observability.AuditHealth{
 			Status: audit.Status, FailureCount: audit.FailureCount, PendingCount: audit.PendingCount,
 			DeadLetterCount:   audit.DeadLetterCount,

@@ -13,11 +13,11 @@ func (s *Server) retentionHTTPScope(w http.ResponseWriter) (retention.HTTPScope,
 	if !ok {
 		return retention.HTTPScope{}, false
 	}
-	if runtime.retention == nil {
+	if runtime.Observation.Retention == nil {
 		return retention.HTTPScope{}, true
 	}
 	return retention.HTTPScope{
-		Service: runtime.retention,
+		Service: runtime.Observation.Retention,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
@@ -25,18 +25,18 @@ func (s *Server) retentionHTTPScope(w http.ResponseWriter) (retention.HTTPScope,
 }
 
 func (s *Server) initializeRetention(runtime *databaseRuntime) {
-	if runtime == nil || runtime.database == nil {
+	if runtime == nil || runtime.Storage.Database == nil {
 		return
 	}
-	if runtime.retention == nil {
-		runtime.retention = retention.NewService(runtime.database, runtime.id)
+	if runtime.Observation.Retention == nil {
+		runtime.Observation.Retention = retention.NewService(runtime.Storage.Database, runtime.ID)
 	}
-	runtime.retention.Start()
+	runtime.Observation.Retention.Start()
 	s.startConnectorActionRecoveryWorker(runtime)
 }
 
 func (s *Server) stopRetention(runtime *databaseRuntime) {
-	if runtime != nil && runtime.retention != nil {
-		runtime.retention.Stop()
+	if runtime != nil && runtime.Observation.Retention != nil {
+		runtime.Observation.Retention.Stop()
 	}
 }

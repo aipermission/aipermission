@@ -13,11 +13,11 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectorapp
 		return connectorapproval.Scope{}, false
 	}
 	return connectorapproval.Scope{
-		Database: runtime.database,
+		Database: runtime.Storage.Database,
 		Workflow: func() (connectorapproval.Workflow, error) {
 			return s.connectorActionWorkflow(runtime)
 		},
-		MCPStarted: runtime.isMCPStarted,
+		MCPStarted: runtime.IsMCPStarted,
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},

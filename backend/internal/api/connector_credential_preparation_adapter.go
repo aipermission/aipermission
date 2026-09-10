@@ -24,11 +24,11 @@ func (s *Server) connectorCredentialPreparationPorts(runtime *databaseRuntime) c
 		},
 		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
+			err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
 			return secret, err
 		},
 		Encrypt: func(_ context.Context, profileID int64, secret map[string]any) (string, error) {
-			return recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
+			return recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
 		},
 	}
 }

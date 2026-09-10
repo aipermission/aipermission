@@ -13,13 +13,13 @@ type consoleRestartResult struct {
 }
 
 func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
-	if runtime == nil || runtime.commandRequests == nil {
+	if runtime == nil || runtime.Operations.CommandRequests == nil {
 		return consoleRestartResult{}, commandrequests.ErrRuntimeUnavailable
 	}
 	var canceledRequests int64
-	closedSessionIDs, err := runtime.consoleSessions.RecoverRuntime(ctx, principal, runtimeID, func() error {
+	closedSessionIDs, err := runtime.Connectors.ConsoleSessions.RecoverRuntime(ctx, principal, runtimeID, func() error {
 		var err error
-		canceledRequests, err = runtime.commandRequests.CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
+		canceledRequests, err = runtime.Operations.CommandRequests.CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
 		return err
 	})
 	if err != nil {

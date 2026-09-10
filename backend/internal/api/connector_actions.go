@@ -29,10 +29,10 @@ func (r connectorActionTargetResolver) ResolveActionTarget(ctx context.Context, 
 	return actions.ResolvedTarget{}, err
 }
 
-func (runtime *databaseRuntime) prepareConnectorAction(ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	if runtime == nil || runtime.database == nil {
+func prepareConnectorAction(runtime *databaseRuntime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+	if runtime == nil || runtime.Storage.Database == nil {
 		return actions.PreparedRequest{}, fmt.Errorf("database runtime is not available")
 	}
-	service := actions.NewService(runtime.connectorRegistry(), newConnectorActionTargetResolver(runtime.database))
+	service := actions.NewService(runtimeConnectorRegistry(runtime), newConnectorActionTargetResolver(runtime.Storage.Database))
 	return service.Prepare(ctx, request)
 }

@@ -104,11 +104,11 @@ func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) 
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := &databaseRuntime{
-		database: database, vault: secretVault, tokens: tokens.NewStore(database),
-		registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t),
-	}
-	runtime.setMCPStarted(true)
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), registry,
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
+	runtime.SetMCPStarted(true)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -172,14 +172,10 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	if err := registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
-	runtime := &databaseRuntime{
-		database:          database,
-		vault:             secretVault,
-		tokens:            tokens.NewStore(database),
-		registry:          registry,
-		workspaceUUID:     connectorActionTestWorkspaceID,
-		actionIdentityKey: connectorActionTestIdentityKey(t),
-	}
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), registry,
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
@@ -284,7 +280,7 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t)}
+	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "idempotent-local", Config: map[string]any{}})
 	if err != nil {
@@ -323,7 +319,7 @@ func TestRunLocalConnectorMutationRequiresIdempotencyKey(t *testing.T) {
 	if err := registry.Register(mutatingLocalActionTestConnector{}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t)}
+	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "mutation", Config: map[string]any{}})
 	if err != nil {
@@ -366,10 +362,10 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := &databaseRuntime{
-		database: database, vault: secretVault, tokens: tokens.NewStore(database),
-		registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t),
-	}
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), registry,
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -384,7 +380,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+	prepared, err := prepareConnectorAction(runtime, t.Context(), actions.PrepareRequest{
 		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "must-not-run"},
@@ -448,7 +444,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 		dispatchStartedAt string
 	}{
 		{name: "another runtime owns the lease", owner: "another-runtime"},
-		{name: "dispatch already started", owner: runtime.runtimeInstanceID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+		{name: "dispatch already started", owner: runtime.RuntimeInstanceID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
@@ -488,14 +484,14 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &databaseRuntime{
-		database: database, vault: secretVault, tokens: tokens.NewStore(database),
-		registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t),
-	}
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), registry,
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.setMCPStarted(true)
+	runtime.SetMCPStarted(true)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -518,7 +514,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+	prepared, err := prepareConnectorAction(runtime, t.Context(), actions.PrepareRequest{
 		Source: commandRequestSourceMCP, TargetRef: connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "authorization race", CreatedAt: time.Now().UTC(),
 	})
@@ -567,14 +563,14 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &databaseRuntime{
-		database: database, vault: secretVault, tokens: tokens.NewStore(database),
-		registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t),
-	}
+	runtime := newConnectorActionTestRuntime(
+		database, secretVault, tokens.NewStore(database), registry,
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.setMCPStarted(true)
+	runtime.SetMCPStarted(true)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -597,7 +593,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := runtime.prepareConnectorAction(t.Context(), actions.PrepareRequest{
+	prepared, err := prepareConnectorAction(runtime, t.Context(), actions.PrepareRequest{
 		Source: commandRequestSourceMCP, TargetRef: connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo", Input: map[string]any{"value": "must-not-run"}, Reason: "MCP stop race", CreatedAt: time.Now().UTC(),
 	})
@@ -614,7 +610,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err != nil || !created {
 		t.Fatalf("insert running request: created=%v err=%v", created, err)
 	}
-	runtime.setMCPStarted(false)
+	runtime.SetMCPStarted(false)
 	principal, err := tokenExecutionPrincipal(runtime, tokenID)
 	if err != nil {
 		t.Fatal(err)
@@ -671,7 +667,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 	if err := registry.Register(connector); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, tokens: tokens.NewStore(database), registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t)}
+	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "persistence-local", Config: map[string]any{}})
 	if err != nil {
@@ -715,7 +711,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	if err := registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
-	runtime := &databaseRuntime{database: database, vault: secretVault, registry: registry, workspaceUUID: connectorActionTestWorkspaceID, actionIdentityKey: connectorActionTestIdentityKey(t)}
+	runtime := newConnectorActionTestRuntime(database, secretVault, nil, registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind,
@@ -735,7 +731,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create local profile: %v", err)
 	}
-	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
+	prepared, err := prepareConnectorAction(runtime, context.Background(), actions.PrepareRequest{
 		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "echo",
 		Input:      map[string]any{"value": "hello"},
@@ -876,7 +872,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
 	var decryptedPayload connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(secretVault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
+	if err := recordcrypto.DecryptJSON(secretVault, runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
@@ -1101,7 +1097,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert action request: %v", err)
 	}
-	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.workspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
+	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
 	if err != nil {
 		t.Fatalf("encrypt action request: %v", err)
 	}

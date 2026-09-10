@@ -11,9 +11,7 @@ func (s *Server) stopConnectorActionRecoveryWorker(runtime *databaseRuntime) {
 	if runtime == nil {
 		return
 	}
-	runtime.actionWorkflowMu.Lock()
-	workflow := runtime.actionWorkflow
-	runtime.actionWorkflowMu.Unlock()
+	workflow := runtime.Operations.ActionWorkflow()
 	if workflow != nil {
 		workflow.StopRecovery()
 	}

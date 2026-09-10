@@ -5,30 +5,22 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/observability"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
-	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
 )
 
 type Server struct {
@@ -53,37 +45,7 @@ type Server struct {
 	backupOperations     backups.OperationLimiter
 }
 
-type databaseRuntime struct {
-	id                 string
-	path               string
-	gatewaySecret      string
-	database           *sql.DB
-	vault              *vault.Vault
-	tokens             *tokens.Store
-	registry           *connectors.Registry
-	adapterRegistry    *connectorapi.Registry
-	connectorResources connectorruntime.ResourceScopes
-	consoleSessions    *console.Manager
-	commandRequests    *commandrequests.Runtime
-	fileTransfers      *filetransferhttp.Runtime
-	transferLifecycle  *filetransferhttp.Lifecycle
-	securityPolicy     *securitypolicy.Service
-	actionWorkflowMu   sync.Mutex
-	actionWorkflow     *actions.Runtime
-	projectVaultMu     sync.Mutex
-	projectVault       *projectvault.Runtime
-	runtimeState       runtimecontrol.State
-	workspaceUUID      string
-	uiRetryIdentity    string
-	runtimeInstanceID  string
-	actionIdentityKey  []byte
-	vaultLeases        *vaultsessions.Store
-	vaultDelivery      vaultsessions.DeliveryCoordinator
-	identityMu         sync.Mutex
-	auditDispatcher    *observability.Dispatcher
-	retention          *retention.Service
-	databaseOwnership  *dbpkg.DatabaseOwnership
-}
+type databaseRuntime = workspaceruntime.Runtime
 
 type serverOptions struct {
 	registry                   *connectors.Registry
@@ -165,38 +127,17 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
-	runtime := &databaseRuntime{
-		id:              activeID,
-		path:            cfg.DataPath,
-		gatewaySecret:   cfg.GatewaySecret,
-		database:        database,
-		vault:           secretVault,
-		tokens:          tokenStore,
-		registry:        registry,
-		adapterRegistry: resolved.adapterRegistry,
-		securityPolicy:  securitypolicy.NewService(database),
-		vaultLeases:     vaultsessions.NewStore(),
-	}
-	runtime.transferLifecycle = filetransferhttp.NewLifecycle()
-	var err error
-	runtime.workspaceUUID, err = projectvault.EnsureWorkspaceUUID(context.Background(), database)
+	foundationState, err := foundation.Adopt(context.Background(), foundation.AdoptInput{
+		ID: activeID, Path: cfg.DataPath, Database: database, Vault: secretVault,
+		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
+		Registry: registry, AdapterRegistry: resolved.adapterRegistry,
+		RuntimeInstanceID: resolved.runtimeInstanceIDGenerator,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("initialize workspace identity: %w", err)
+		return nil, err
 	}
-	runtime.uiRetryIdentity, err = projectvault.EnsureUIRetryIdentity(context.Background(), database)
-	if err != nil {
-		return nil, fmt.Errorf("initialize UI retry identity: %w", err)
-	}
-	runtime.actionIdentityKey, err = actions.DeriveIdentityKey(cfg.GatewaySecret, runtime.workspaceUUID)
-	if err != nil {
-		return nil, fmt.Errorf("initialize connector action identity: %w", err)
-	}
-	runtime.connectorResources = connectorruntime.NewResourceScopes(database, secretVault, runtime.workspaceUUID)
-	runtime.runtimeInstanceID, err = resolved.runtimeInstanceIDGenerator()
-	if err != nil {
-		return nil, fmt.Errorf("initialize runtime identity: %w", err)
-	}
-	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
+	runtime := workspaceruntime.New(foundationState)
+	runtime.Connectors.ConsoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	if err := server.initializeCommandRequestRuntime(runtime); err != nil {
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
 	}
@@ -204,7 +145,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
 	if err := server.configureVaultSessionRuntime(runtime); err != nil {
-		runtime.transferLifecycle.Stop()
+		runtime.Operations.TransferLifecycle.Stop()
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)
@@ -240,12 +181,6 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	return server
 }
 
-func (runtime *databaseRuntime) WorkspaceIdentity() workspacelifecycle.Identity {
-	return describeDatabaseRuntime(runtime)
-}
-
-func (runtime *databaseRuntime) WorkspaceDatabase() *sql.DB { return runtime.database }
-
 func (s *Server) initializeWorkspaceLifecycle() error {
 	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
 		DataPath:      s.config.DataPath,
@@ -257,8 +192,8 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *databaseRuntime) {
-			if runtime != nil && runtime.gatewaySecret != "" {
-				s.config.GatewaySecret = runtime.gatewaySecret
+			if runtime != nil && runtime.GatewaySecret != "" {
+				s.config.GatewaySecret = runtime.GatewaySecret
 			}
 		},
 		OnOpened: s.initializeRetention,
@@ -284,9 +219,7 @@ func describeDatabaseRuntime(runtime *databaseRuntime) workspacelifecycle.Identi
 	if runtime == nil {
 		return workspacelifecycle.Identity{}
 	}
-	return workspacelifecycle.Identity{
-		ID: runtime.id, Path: runtime.path, RetryIdentity: runtime.uiRetryIdentity,
-	}
+	return runtime.WorkspaceIdentity()
 }
 
 func (s *Server) connectorRegistry() *connectors.Registry {
@@ -303,16 +236,10 @@ func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
 	return connectorapi.NewRegistry()
 }
 
-func (runtime *databaseRuntime) connectorRegistry() *connectors.Registry {
-	if runtime != nil && runtime.registry != nil {
-		return runtime.registry
-	}
-	return connectors.NewRegistry()
+func runtimeConnectorRegistry(runtime *databaseRuntime) *connectors.Registry {
+	return runtime.Connectors.ConnectorRegistry()
 }
 
-func (runtime *databaseRuntime) connectorAdapterRegistry() *connectorapi.Registry {
-	if runtime != nil && runtime.adapterRegistry != nil {
-		return runtime.adapterRegistry
-	}
-	return connectorapi.NewRegistry()
+func runtimeConnectorAdapterRegistry(runtime *databaseRuntime) *connectorapi.Registry {
+	return runtime.Connectors.ConnectorAdapterRegistry()
 }

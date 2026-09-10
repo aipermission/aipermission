@@ -19,7 +19,7 @@ func (s *Server) auditHealthSnapshot(ctx context.Context) observability.HealthSn
 	if runtime == nil {
 		return s.auditHealth.Snapshot(ctx, nil)
 	}
-	return s.auditHealth.Snapshot(ctx, runtime.database)
+	return s.auditHealth.Snapshot(ctx, runtime.Storage.Database)
 }
 
 func (s *Server) auditHTTPScope(w http.ResponseWriter) (observability.HTTPScope, bool) {
@@ -27,7 +27,7 @@ func (s *Server) auditHTTPScope(w http.ResponseWriter) (observability.HTTPScope,
 	if !ok {
 		return observability.HTTPScope{}, false
 	}
-	return observability.HTTPScope{Database: runtime.database}, true
+	return observability.HTTPScope{Database: runtime.Storage.Database}, true
 }
 
 // writeObservationAudit records telemetry that is not the durable proof of a
@@ -49,10 +49,10 @@ func (s *Server) writeAuditRequired(ctx context.Context, runtime *databaseRuntim
 }
 
 func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRuntime) func(string) string {
-	if runtime == nil || runtime.securityPolicy == nil {
+	if runtime == nil || runtime.Security.Policy == nil {
 		return securitypolicy.RedactBasic
 	}
-	return runtime.securityPolicy.PrepareRedactor(ctx)
+	return runtime.Security.Policy.PrepareRedactor(ctx)
 }
 
 type auditAppender = observability.Appender
@@ -86,7 +86,7 @@ func (s *Server) projectAuditEvents(ctx context.Context, runtime *databaseRuntim
 }
 
 func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseRuntime) *observability.Coordinator {
-	if runtime == nil || runtime.database == nil {
+	if runtime == nil || runtime.Storage.Database == nil {
 		return observability.NewCoordinator(nil, nil, nil, s.auditProjectionFailureHandler())
 	}
 	// Redaction policy reads must happen before a transaction reserves
@@ -96,7 +96,7 @@ func (s *Server) auditedWriteCoordinator(ctx context.Context, runtime *databaseR
 }
 
 func (s *Server) newAuditCoordinator(runtime *databaseRuntime, redact func(string) string) *observability.Coordinator {
-	return observability.NewCoordinator(runtime.database, runtime.auditDispatcher, redact, s.auditProjectionFailureHandler())
+	return observability.NewCoordinator(runtime.Storage.Database, runtime.Observation.AuditDispatcher, redact, s.auditProjectionFailureHandler())
 }
 
 func (s *Server) auditProjectionFailureHandler() observability.ProjectionFailureHandler {

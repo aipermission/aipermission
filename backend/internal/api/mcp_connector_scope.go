@@ -17,10 +17,10 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 		return mcpconnector.Scope{}, false
 	}
 	return mcpconnector.Scope{
-		Database: auth.runtime.database, Registry: auth.runtime.connectorRegistry(), TokenID: auth.TokenID,
+		Database: auth.runtime.Storage.Database, Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]mcpconnector.Permission, error) {
 			permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(
-				ctx, auth.runtime.database, auth.runtime.connectorRegistry(), auth.TokenID,
+				ctx, auth.runtime.Storage.Database, runtimeConnectorRegistry(auth.runtime), auth.TokenID,
 			)
 			if err != nil {
 				return nil, err
@@ -56,7 +56,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		return mcpconnector.ActionScope{}, false
 	}
 	return mcpconnector.ActionScope{
-		Database: auth.runtime.database, AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
+		Database: auth.runtime.Storage.Database, AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: mcpConnectorOutputAuthorization(auth.runtime),
 		Call: func(ctx context.Context, call actions.Call) (actions.CallResult, error) {
 			return s.callConnectorAction(ctx, auth.runtime, call)
@@ -75,8 +75,8 @@ func mcpConnectorOutputAuthorization(runtime *databaseRuntime) *mcpconnector.Out
 		return nil
 	}
 	return &mcpconnector.OutputAuthorization{
-		Database: runtime.database, Tokens: runtime.tokens, Leases: runtime.vaultLeases,
-		Delivery: actionDeliveryGate{runtime: runtime}, MCPStarted: runtime.isMCPStarted,
+		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens, Leases: runtime.Security.VaultLeases,
+		Delivery: actionDeliveryGate{runtime: runtime}, MCPStarted: runtime.IsMCPStarted,
 		Principal: func(tokenID int64) (executionprincipal.Principal, error) {
 			return tokenExecutionPrincipal(runtime, tokenID)
 		},

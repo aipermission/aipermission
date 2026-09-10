@@ -15,13 +15,13 @@ func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (vaul
 		return vaultrequests.MCPHTTPScope{}, false
 	}
 	return vaultrequests.MCPHTTPScope{
-		Database: auth.runtime.database, Vault: auth.runtime.vault, WorkspaceUUID: auth.runtime.workspaceUUID,
-		TokenID: auth.TokenID, MCPStarted: auth.runtime.isMCPStarted,
+		Database: auth.runtime.Storage.Database, Vault: auth.runtime.Storage.Vault, WorkspaceUUID: auth.runtime.WorkspaceUUID,
+		TokenID: auth.TokenID, MCPStarted: auth.runtime.IsMCPStarted,
 		Runtime: func(ctx context.Context) (*vaultrequests.Runtime, error) {
 			return s.vaultRequestRuntime(ctx, auth.runtime)
 		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {
-			capability, err := accesscontrol.NewCapabilityStore(auth.runtime.database).Effective(
+			capability, err := accesscontrol.NewCapabilityStore(auth.runtime.Storage.Database).Effective(
 				ctx, auth.TokenID, projectID, accesscontrol.VaultMetadataRead, time.Now(),
 			)
 			return err == nil && capability.ExecutionRule == accesscontrol.RuleAlwaysRun, err

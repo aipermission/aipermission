@@ -17,7 +17,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	registry := runtime.connectorRegistry()
+	registry := runtimeConnectorRegistry(runtime)
 	connector, ok := registry.Get(strings.TrimSpace(request.ConnectorKind))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
@@ -29,7 +29,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		return
 	}
 	request.Config = config
-	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.database), request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), connectortargets.NewStore(runtime.Storage.Database), request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}

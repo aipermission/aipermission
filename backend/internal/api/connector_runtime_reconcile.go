@@ -7,10 +7,10 @@ import (
 )
 
 func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRuntime) error {
-	if runtime == nil || runtime.database == nil {
+	if runtime == nil || runtime.Storage.Database == nil {
 		return nil
 	}
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(runtime.Storage.Database)
 	targets, err := store.ListTargets(ctx, connectortargets.ListTargetsFilter{})
 	if err != nil {
 		return err

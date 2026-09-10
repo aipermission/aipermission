@@ -190,7 +190,7 @@ func TestHistoryRetentionSummarizesFileTransferDeletionWithoutPerRowAudit(t *tes
 	fixture := newAPITestFixture(t)
 	server := fixture.createKeyAndServer(t, "worker-1")
 	runtime := fixture.server.activeRuntime()
-	record, err := filetransfer.NewStore(runtime.database).Create(context.Background(), filetransfer.CreateRequest{
+	record, err := filetransfer.NewStore(runtime.Storage.Database).Create(context.Background(), filetransfer.CreateRequest{
 		RuntimeID:  server.ID,
 		Direction:  filetransfer.DirectionUpload,
 		Source:     filetransfer.SourceUI,
@@ -201,10 +201,10 @@ func TestHistoryRetentionSummarizesFileTransferDeletionWithoutPerRowAudit(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).MarkRunning(context.Background(), record.ID); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).MarkRunning(context.Background(), record.ID); err != nil || !ok {
 		t.Fatalf("mark running: ok=%v err=%v", ok, err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).Complete(context.Background(), record.ID, 3, "checksum"); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).Complete(context.Background(), record.ID, 3, "checksum"); err != nil || !ok {
 		t.Fatalf("complete transfer: ok=%v err=%v", ok, err)
 	}
 	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339Nano)
@@ -245,7 +245,7 @@ func TestFileTransferRoutes(t *testing.T) {
 	if err := os.WriteFile(tempPath, []byte("download payload"), 0o600); err != nil {
 		t.Fatalf("write download file: %v", err)
 	}
-	record, err := filetransfer.NewStore(runtime.database).Create(context.Background(), filetransfer.CreateRequest{
+	record, err := filetransfer.NewStore(runtime.Storage.Database).Create(context.Background(), filetransfer.CreateRequest{
 		RuntimeID:  server.ID,
 		Direction:  filetransfer.DirectionDownload,
 		Source:     filetransfer.SourceUI,
@@ -256,10 +256,10 @@ func TestFileTransferRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create file transfer: %v", err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).MarkRunning(context.Background(), record.ID); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).MarkRunning(context.Background(), record.ID); err != nil || !ok {
 		t.Fatalf("mark file transfer running: ok=%v err=%v", ok, err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).Complete(context.Background(), record.ID, int64(len("download payload")), "abc123"); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).Complete(context.Background(), record.ID, int64(len("download payload")), "abc123"); err != nil || !ok {
 		t.Fatalf("complete file transfer: %v", err)
 	}
 
@@ -289,7 +289,7 @@ func TestFileTransferRoutes(t *testing.T) {
 		t.Fatalf("missing multipart upload should fail, got %d %s", response.Code, response.Body.String())
 	}
 
-	cancelRecord, err := filetransfer.NewStore(runtime.database).Create(context.Background(), filetransfer.CreateRequest{
+	cancelRecord, err := filetransfer.NewStore(runtime.Storage.Database).Create(context.Background(), filetransfer.CreateRequest{
 		RuntimeID:  server.ID,
 		Direction:  filetransfer.DirectionUpload,
 		Source:     filetransfer.SourceUI,
@@ -301,7 +301,7 @@ func TestFileTransferRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create cancel transfer: %v", err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).MarkRunning(context.Background(), cancelRecord.ID); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).MarkRunning(context.Background(), cancelRecord.ID); err != nil || !ok {
 		t.Fatalf("mark cancel transfer running: ok=%v err=%v", ok, err)
 	}
 	cancelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/"+strconv.FormatInt(cancelRecord.ID, 10)+"/cancel", "", map[string]any{})
@@ -309,7 +309,7 @@ func TestFileTransferRoutes(t *testing.T) {
 		t.Fatalf("cancel file transfer failed: %d %s", cancelResponse.Code, cancelResponse.Body.String())
 	}
 
-	batch, err := filetransfer.NewStore(runtime.database).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
+	batch, err := filetransfer.NewStore(runtime.Storage.Database).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
 		RuntimeID: server.ID,
 		Direction: filetransfer.DirectionUpload,
 		Source:    filetransfer.SourceUI,
@@ -321,10 +321,10 @@ func TestFileTransferRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).MarkBatchRunning(context.Background(), batch.ID); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).MarkBatchRunning(context.Background(), batch.ID); err != nil || !ok {
 		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
 	}
-	if ok, err := filetransfer.NewStore(runtime.database).PauseBatch(context.Background(), batch.ID); err != nil || !ok {
+	if ok, err := filetransfer.NewStore(runtime.Storage.Database).PauseBatch(context.Background(), batch.ID); err != nil || !ok {
 		t.Fatalf("pause batch: ok=%v err=%v", ok, err)
 	}
 	batchListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/file-transfer-batches?runtime_id="+strconv.FormatInt(server.ID, 10), "", nil)

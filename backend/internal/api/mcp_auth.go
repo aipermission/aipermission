@@ -40,7 +40,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	tokenHash := tokens.HashToken(tokenValue)
 	now := time.Now().UTC()
 	for _, runtime := range runtimes {
-		authenticated, err := runtime.tokens.AuthenticateHash(r.Context(), tokenHash, now)
+		authenticated, err := runtime.Storage.Tokens.AuthenticateHash(r.Context(), tokenHash, now)
 		if errors.Is(err, tokens.ErrNotFound) {
 			continue
 		}

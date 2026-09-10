@@ -421,7 +421,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
-	runtime.consoleSessions = console.NewManager(fixture.db, func(openCtx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	runtime.Connectors.ConsoleSessions = console.NewManager(fixture.db, func(openCtx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
 		return &console.RuntimeSession{
 			Stdin:        discardWriteCloser{},
@@ -472,14 +472,14 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observer := vaultsessions.NewObserver(runtime.database, runtime.vaultLeases)
+	observer := vaultsessions.NewObserver(runtime.Storage.Database, runtime.Security.VaultLeases)
 	if !observer.Authorized(ctx, principal, vaultsessions.ObserveRequest{
 		SessionID: alwaysSessionID, SessionGeneration: alwaysGeneration,
 		ExpectedRuntimeID: target.ID, RequireEnvironment: true,
 	}) {
 		t.Fatal("Always session was not authorized for the owning token")
 	}
-	runtime.consoleSessions.Resize(alwaysSessionID, 141, 47)
+	runtime.Connectors.ConsoleSessions.Resize(alwaysSessionID, 141, 47)
 
 	setPermission(connectortargets.ActionPermissionApprovalRequired)
 	callBody.IdempotencyKey = "vault-session-e2e-prompt"
@@ -686,8 +686,8 @@ func TestVaultActionCompensationRemovesGeneratedItemAndSession(t *testing.T) {
 	}
 	store, err := projectvault.NewStore(
 		fixture.db,
-		fixture.server.activeRuntime().vault,
-		fixture.server.activeRuntime().workspaceUUID,
+		fixture.server.activeRuntime().Storage.Vault,
+		fixture.server.activeRuntime().WorkspaceUUID,
 	)
 	if err != nil {
 		t.Fatalf("create Vault store: %v", err)

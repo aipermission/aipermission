@@ -20,8 +20,8 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	defer cancelTransfer()
 	batchCtx, cancelBatch := context.WithCancel(context.Background())
 	defer cancelBatch()
-	runtime.transferLifecycle.Registry().Files.RegisterCancel(1, cancelTransfer)
-	runtime.transferLifecycle.Registry().Batches.RegisterCancel(1, cancelBatch)
+	runtime.Operations.TransferLifecycle.Registry().Files.RegisterCancel(1, cancelTransfer)
+	runtime.Operations.TransferLifecycle.Registry().Batches.RegisterCancel(1, cancelBatch)
 
 	fixture.server.Close()
 
@@ -35,7 +35,7 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	}
 	lateCtx, cancelLate := context.WithCancel(context.Background())
 	defer cancelLate()
-	runtime.transferLifecycle.Registry().Files.RegisterCancel(2, cancelLate)
+	runtime.Operations.TransferLifecycle.Registry().Files.RegisterCancel(2, cancelLate)
 	if lateCtx.Err() == nil {
 		t.Fatal("closed runtime accepted a late transfer")
 	}
@@ -83,12 +83,12 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 		{runtime: first, id: firstRequest.ID},
 		{runtime: second, id: secondRequest.ID},
 	} {
-		current, err := vaultrequests.NewStore(item.runtime.database).Get(ctx, item.id)
+		current, err := vaultrequests.NewStore(item.runtime.Storage.Database).Get(ctx, item.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if current.Status != vaultrequests.StatusStale {
-			t.Fatalf("workspace %q request status = %q", item.runtime.id, current.Status)
+			t.Fatalf("workspace %q request status = %q", item.runtime.ID, current.Status)
 		}
 	}
 }
@@ -96,15 +96,15 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suffix string) vaultrequests.Request {
 	t.Helper()
 	ctx := context.Background()
-	project, err := projectstore.NewStore(runtime.database).Create(ctx, "Trust "+suffix)
+	project, err := projectstore.NewStore(runtime.Storage.Database).Create(ctx, "Trust "+suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := tokens.NewStore(runtime.database).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
+	token, err := tokens.NewStore(runtime.Storage.Database).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := connectortargets.NewStore(runtime.database)
+	targets := connectortargets.NewStore(runtime.Storage.Database)
 	target, err := targets.CreateTarget(ctx, connectortargets.CreateTargetInput{
 		ProjectID: project.ID, ConnectorKind: "test", Name: "trust-" + suffix,
 	})
@@ -126,7 +126,7 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suf
 		t.Fatal(err)
 	}
 	runtimeID := surface.ID
-	request, _, err := vaultrequests.NewStore(runtime.database).Create(ctx, vaultrequests.CreateInput{
+	request, _, err := vaultrequests.NewStore(runtime.Storage.Database).Create(ctx, vaultrequests.CreateInput{
 		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
 		ActionName:          vaultrequests.ActionRestartSession,
 		Input:               map[string]any{"target_ref": "test:" + suffix},

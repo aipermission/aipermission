@@ -20,7 +20,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	runtime := fixture.server.activeRuntime()
-	if err := runtime.registry.Register(localActionTestConnector{}); err != nil {
+	if err := runtime.Connectors.Registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
 
@@ -46,7 +46,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connector credential profile: %v", err)
 	}
-	encryptedSecret, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": credentialSecret})
+	encryptedSecret, err := recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": credentialSecret})
 	if err != nil {
 		t.Fatalf("encrypt connector credential: %v", err)
 	}

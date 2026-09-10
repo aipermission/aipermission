@@ -19,13 +19,13 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*commandrequests.B
 	if !ok {
 		return nil, false
 	}
-	if runtime.commandRequests == nil {
+	if runtime.Operations.CommandRequests == nil {
 		writeInternalError(w)
 		return nil, false
 	}
 	return &commandrequests.BulkHTTPRuntime{
-		Requests: runtime.commandRequests,
-		Sessions: runtime.consoleSessions,
+		Requests: runtime.Operations.CommandRequests,
+		Sessions: runtime.Connectors.ConsoleSessions,
 		Principal: func() (executionprincipal.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
@@ -57,7 +57,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime
 	if err != nil {
 		return commandrequests.BulkTarget{}, err
 	}
-	target, profile, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return commandrequests.BulkTarget{}, err
 	}
@@ -85,7 +85,7 @@ func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRun
 	if err != nil {
 		return nil
 	}
-	target, _, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, _, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil
 	}

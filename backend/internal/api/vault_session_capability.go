@@ -27,7 +27,7 @@ func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, ru
 }
 
 func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
-	surface, err := connectortargets.NewStore(runtime.database).GetRuntimeSurface(ctx, runtimeID)
+	surface, err := connectortargets.NewStore(runtime.Storage.Database).GetRuntimeSurface(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}

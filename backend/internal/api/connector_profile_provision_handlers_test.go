@@ -126,7 +126,7 @@ func TestHandleConnectorProvisionErrorPreservesUncertainOutcomeCode(t *testing.T
 func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{provisionedSecret: "generated-secret"}
-	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 		t.Fatalf("register provisioning connector: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *t
 			DisplayText: "created with generated-secret",
 		},
 	}
-	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 		t.Fatal(err)
 	}
 	store := connectortargets.NewStore(fixture.db)
@@ -224,7 +224,7 @@ func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *t
 func TestProvisionConnectorCredentialProfileRedactsProvisioningErrors(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{provisionErr: errors.New("remote rejected admin-secret")}
-	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 		t.Fatal(err)
 	}
 	store := connectortargets.NewStore(fixture.db)
@@ -273,7 +273,7 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 		t.Run(testCase.name, func(t *testing.T) {
 			fixture := newAPITestFixture(t)
 			connector := &provisioningFailureTestConnector{cleanupStatus: testCase.cleanupStatus, cleanupErr: testCase.cleanupErr}
-			if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+			if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 				t.Fatalf("register provisioning connector: %v", err)
 			}
 
@@ -338,7 +338,7 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{cleanupStatus: connectors.ResultFailed}
-	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 		t.Fatalf("register provisioning connector: %v", err)
 	}
 
@@ -397,7 +397,7 @@ func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing
 
 func setProvisionTestProfileSecret(t *testing.T, runtime *databaseRuntime, store *connectortargets.Store, profile connectortargets.CredentialProfile, secret map[string]any) {
 	t.Helper()
-	encrypted, err := recordcrypto.EncryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, secret)
+	encrypted, err := recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, secret)
 	if err != nil {
 		t.Fatalf("encrypt profile secret: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing
 		"role_name": "app_reader", "ownership_reassigned_to": "postgres", "dropped": true,
 		"password": "cleanup-secret", "admin_echo": "admin-secret", "managed_echo": "managed-secret",
 	}}
-	if err := fixture.server.activeRuntime().connectorRegistry().Register(connector); err != nil {
+	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
 		t.Fatalf("register provisioning connector: %v", err)
 	}
 

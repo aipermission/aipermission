@@ -24,8 +24,8 @@ func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime 
 	return capabilities
 }
 
-func (runtime *databaseRuntime) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
-	return runtime.connectorAdapterRegistry().For(kind)
+func runtimeConnectorAPIAdapterFor(runtime *databaseRuntime, kind string) connectorapi.Adapter {
+	return runtimeConnectorAdapterRegistry(runtime).For(kind)
 }
 
 func (s *Server) connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {

@@ -19,10 +19,10 @@ func (s *Server) connectorProfileMutationHTTPScope(w http.ResponseWriter) (conne
 
 func (s *Server) connectorProfileMutationScope(runtime *databaseRuntime) connectormanagement.ProfileMutationScope {
 	return connectormanagement.ProfileMutationScope{
-		Database:         runtime.database,
-		Registry:         runtime.connectorRegistry(),
+		Database:         runtime.Storage.Database,
+		Registry:         runtimeConnectorRegistry(runtime),
 		Preparation:      s.connectorCredentialPreparationPorts(runtime),
-		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
+		AcquireExclusive: runtime.Security.VaultDelivery.AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 				return mutate(tx, connectormanagement.AuditAppender(appendAudit))

@@ -13,7 +13,7 @@ func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) console.RuntimeO
 		if err != nil {
 			return nil, err
 		}
-		target, _, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+		target, _, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 		if err != nil {
 			return nil, err
 		}

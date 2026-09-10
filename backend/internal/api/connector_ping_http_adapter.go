@@ -18,7 +18,7 @@ func (s *Server) connectorPingHTTPScope(w http.ResponseWriter) (connectormanagem
 	transport := connectorNetworkTransport{server: s, runtime: runtime}
 	return connectormanagement.HostPingScope{
 		ValidateTransport: func(ctx context.Context, projectID int64, mode, targetRef string) error {
-			return s.validateConnectorTransportConfig(ctx, connectortargets.NewStore(runtime.database), projectID, map[string]any{
+			return s.validateConnectorTransportConfig(ctx, connectortargets.NewStore(runtime.Storage.Database), projectID, map[string]any{
 				"connection_mode": mode, "transport_target_ref": targetRef,
 			})
 		},

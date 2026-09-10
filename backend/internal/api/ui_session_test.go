@@ -15,7 +15,7 @@ func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
 	registry := workspacelifecycle.NewRegistry(configuration.DataPath, databaseID, describeDatabaseRuntime)
 	if retryIdentity != "" {
-		registry.Activate(&databaseRuntime{id: databaseID, path: configuration.DataPath, uiRetryIdentity: retryIdentity})
+		registry.Activate(&databaseRuntime{ID: databaseID, Path: configuration.DataPath, UIRetryIdentity: retryIdentity})
 	}
 	return &Server{config: configuration, workspaces: registry, uiSessions: uisession.New(port)}
 }

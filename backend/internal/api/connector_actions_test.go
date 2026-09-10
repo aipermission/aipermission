@@ -25,9 +25,10 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
 	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace"), "core-1")
 	targetRef := profile.TargetRef
-	runtime := &databaseRuntime{database: database, registry: testConnectorRegistry(t)}
+	runtime := newTestDatabaseRuntime(database)
+	runtime.Connectors.Registry = testConnectorRegistry(t)
 
-	prepared, err := runtime.prepareConnectorAction(context.Background(), actions.PrepareRequest{
+	prepared, err := prepareConnectorAction(runtime, context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
 		TargetRef:  targetRef,
 		ActionName: sshconnector.ActionExec,
@@ -56,7 +57,8 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	catalog := newTestConnectorCatalog(t)
 	server := &Server{adapterRegistry: catalog.adapters}
-	runtime := &databaseRuntime{adapterRegistry: catalog.adapters}
+	runtime := &databaseRuntime{}
+	runtime.Connectors.AdapterRegistry = catalog.adapters
 	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)
 	if capabilities == nil || capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
 		t.Fatalf("postgres should receive generic network transport capability: %#v", capabilities)
@@ -75,7 +77,7 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 
 func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T) {
 	database := openAPITestDB(t)
-	transport := connectorNetworkTransport{runtime: &databaseRuntime{database: database}}
+	transport := connectorNetworkTransport{runtime: newTestDatabaseRuntime(database)}
 
 	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
 		Mode:               "over_fixture",
@@ -101,7 +103,7 @@ func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
 
 func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 	database := openAPITestDB(t)
-	runtime := &databaseRuntime{database: database}
+	runtime := newTestDatabaseRuntime(database)
 	transport := connectorNetworkTransport{
 		runtime:  runtime,
 		approved: newApprovedConnectorTransports(nil),
@@ -145,7 +147,7 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 		t.Fatalf("update transport profile: %v", err)
 	}
 
-	release, err := approved.acquire(t.Context(), &databaseRuntime{database: database}, connectors.NetworkTransportCapabilityName, profile.TargetRef)
+	release, err := approved.acquire(t.Context(), newTestDatabaseRuntime(database), connectors.NetworkTransportCapabilityName, profile.TargetRef)
 	if !errors.Is(err, errConnectorTransportApprovalChanged) {
 		if release != nil {
 			release()

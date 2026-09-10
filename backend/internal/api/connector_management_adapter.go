@@ -13,8 +13,8 @@ func (s *Server) connectorManagementScope(w http.ResponseWriter) (connectormanag
 		return connectormanagement.Scope{}, false
 	}
 	return connectormanagement.Scope{
-		Database: runtime.database,
-		Registry: runtime.connectorRegistry(),
+		Database: runtime.Storage.Database,
+		Registry: runtimeConnectorRegistry(runtime),
 		Features: func(kind string) connectormanagement.ConnectorFeatures {
 			features := connectormanagement.ConnectorFeatures{
 				FileTransfer: s.connectorFileTransferAdapterFor(kind) != nil,

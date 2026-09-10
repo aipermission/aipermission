@@ -11,10 +11,10 @@ import (
 type connectorCredentialBoundary = actions.CredentialBoundary
 
 func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (actions.CredentialBoundary, error) {
-	if runtime == nil || runtime.database == nil || runtime.vault == nil {
+	if runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil {
 		return actions.CredentialBoundary{}, nil
 	}
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(runtime.Storage.Database)
 	_, profileView, _, err := store.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return actions.CredentialBoundary{}, err
@@ -27,7 +27,7 @@ func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *datab
 		return actions.CredentialBoundary{}, nil
 	}
 	secrets := map[string]any{}
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		return actions.CredentialBoundary{}, err
 	}
 	return actions.NewCredentialBoundary(secrets), nil

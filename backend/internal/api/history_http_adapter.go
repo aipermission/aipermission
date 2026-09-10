@@ -14,7 +14,7 @@ func (s *Server) historyHTTPScope(w http.ResponseWriter) (historyhttp.Scope, boo
 		return historyhttp.Scope{}, false
 	}
 	return historyhttp.Scope{
-		Database: runtime.database,
+		Database: runtime.Storage.Database,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},

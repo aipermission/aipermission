@@ -35,14 +35,14 @@ func (approved approvedConnectorTransports) acquire(
 	if !ok {
 		return nil, errConnectorTransportApprovalChanged
 	}
-	if runtime == nil || runtime.database == nil {
+	if runtime == nil || runtime.Storage.Database == nil {
 		return nil, errors.New("database runtime is not available")
 	}
-	release, err := runtime.vaultDelivery.AcquireDelivery(ctx)
+	release, err := runtime.Security.VaultDelivery.AcquireDelivery(ctx)
 	if err != nil {
 		return nil, err
 	}
-	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.database).ResolveConnectorActionTarget(ctx, targetRef)
+	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil || !reflect.DeepEqual(currentTarget, expected.Target) || !reflect.DeepEqual(currentProfile, expected.Profile) {
 		release()
 		return nil, errConnectorTransportApprovalChanged

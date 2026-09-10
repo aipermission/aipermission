@@ -14,8 +14,8 @@ func (s *Server) connectorProfileTestingHTTPScope(w http.ResponseWriter) (connec
 		return connectormanagement.ProfileTestingScope{}, false
 	}
 	return connectormanagement.ProfileTestingScope{
-		Database: runtime.database,
-		Registry: runtime.connectorRegistry(),
+		Database: runtime.Storage.Database,
+		Registry: runtimeConnectorRegistry(runtime),
 		Runtime:  s.connectorCredentialRuntimePorts(runtime),
 		SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
 			adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind)

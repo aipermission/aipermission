@@ -15,13 +15,13 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(runtime.Storage.Database)
 	target, err := store.GetTarget(r.Context(), id)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.AcquireExclusive(r.Context())
+	release, err := runtime.Security.VaultDelivery.AcquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
 		return

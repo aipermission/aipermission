@@ -85,7 +85,7 @@ func (p vaultActionConnectorPort) LiveConsolePermission(
 	if actionName == "" {
 		return connectortargets.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
 	}
-	permission, err := connectortargets.NewStore(p.runtime.database).GetActionPermission(
+	permission, err := connectortargets.NewStore(p.runtime.Storage.Database).GetActionPermission(
 		ctx, tokenID, targetID, profileID, actionName, time.Now().UTC(),
 	)
 	if err != nil || (permission.ExecutionRule != connectortargets.ActionPermissionAlwaysRun &&
@@ -127,14 +127,14 @@ func (p vaultActionDeliveryPort) AcquireDelivery(ctx context.Context) (func(), e
 	if p.runtime == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return p.runtime.vaultDelivery.AcquireDelivery(ctx)
+	return p.runtime.Security.VaultDelivery.AcquireDelivery(ctx)
 }
 
 func (p vaultActionDeliveryPort) AcquireExclusive(ctx context.Context) (func(), error) {
 	if p.runtime == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return p.runtime.vaultDelivery.AcquireExclusive(ctx)
+	return p.runtime.Security.VaultDelivery.AcquireExclusive(ctx)
 }
 
 type vaultActionMutationPort struct {
@@ -156,29 +156,29 @@ func (p vaultActionMutationPort) WithMutation(
 }
 
 func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*vaultactions.Runtime, error) {
-	if s == nil || runtime == nil || runtime.database == nil || runtime.vault == nil ||
-		runtime.tokens == nil || runtime.consoleSessions == nil || runtime.vaultLeases == nil {
+	if s == nil || runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil ||
+		runtime.Storage.Tokens == nil || runtime.Connectors.ConsoleSessions == nil || runtime.Security.VaultLeases == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	itemStore, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
+	itemStore, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.Vault, runtime.WorkspaceUUID)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault action item store: %w", err)
 	}
 	owner, err := vaultactions.NewRuntime(vaultactions.Dependencies{
-		Database: runtime.database, Tokens: runtime.tokens,
-		Projects:      vaultActionProjectPort{database: runtime.database},
+		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens,
+		Projects:      vaultActionProjectPort{database: runtime.Storage.Database},
 		SessionItems:  vaultActionItemPort{store: itemStore},
 		ItemMutations: vaultActionItemPort{store: itemStore},
-		Sessions:      runtime.consoleSessions, Leases: runtime.vaultLeases,
-		PersistedLeases: vaultsessions.NewPersistence(runtime.database),
+		Sessions:      runtime.Connectors.ConsoleSessions, Leases: runtime.Security.VaultLeases,
+		PersistedLeases: vaultsessions.NewPersistence(runtime.Storage.Database),
 		Connector:       vaultActionConnectorPort{server: s, runtime: runtime},
 		Delivery:        vaultActionDeliveryPort{runtime: runtime},
 		Mutations:       vaultActionMutationPort{server: s, runtime: runtime},
-		WorkspaceID:     runtime.workspaceUUID, RuntimeInstanceID: runtime.runtimeInstanceID,
-		MCPStarted: runtime.isMCPStarted,
+		WorkspaceID:     runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
+		MCPStarted: runtime.IsMCPStarted,
 		AllowGenerate: func(tokenID int64) bool {
 			return s.vaultGenerateLimiter != nil && s.vaultGenerateLimiter.Allow(
-				fmt.Sprintf("vault-generate:%s:%d", runtime.id, tokenID),
+				fmt.Sprintf("vault-generate:%s:%d", runtime.ID, tokenID),
 			)
 		},
 	})

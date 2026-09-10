@@ -19,14 +19,14 @@ func (g projectVaultDeliveryGate) AcquireDelivery(ctx context.Context) (func(), 
 	if g.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return g.runtime.vaultDelivery.AcquireDelivery(ctx)
+	return g.runtime.Security.VaultDelivery.AcquireDelivery(ctx)
 }
 
 func (g projectVaultDeliveryGate) AcquireExclusive(ctx context.Context) (func(), error) {
 	if g.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return g.runtime.vaultDelivery.AcquireExclusive(ctx)
+	return g.runtime.Security.VaultDelivery.AcquireExclusive(ctx)
 }
 
 type projectVaultMutationPort struct {
@@ -45,10 +45,10 @@ type projectVaultSessionOptionsCatalog struct {
 }
 
 func (p projectVaultBindingTargets) ValidateDefaultBindingTarget(ctx context.Context, targetID, profileID int64) error {
-	if p.server == nil || p.runtime == nil || p.runtime.database == nil {
+	if p.server == nil || p.runtime == nil || p.runtime.Storage.Database == nil {
 		return projectvault.ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(p.runtime.database)
+	store := connectortargets.NewStore(p.runtime.Storage.Database)
 	target, err := store.GetTarget(ctx, targetID)
 	if errors.Is(err, connectortargets.ErrTargetNotFound) {
 		return projectvault.ErrBindingTargetNotFound
@@ -90,38 +90,34 @@ func (p projectVaultMutationPort) Observe(ctx context.Context, action string, pa
 }
 
 func (s *Server) projectVaultRuntime(runtime *databaseRuntime) (*projectvault.Runtime, error) {
-	if s == nil || runtime == nil || runtime.database == nil || runtime.vault == nil {
+	if s == nil || runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	runtime.projectVaultMu.Lock()
-	defer runtime.projectVaultMu.Unlock()
-	if runtime.projectVault != nil {
-		return runtime.projectVault, nil
-	}
-	store, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
-	if err != nil {
-		return nil, err
-	}
-	owner, err := projectvault.NewRuntime(projectvault.RuntimeDependencies{
-		Store:     store,
-		Delivery:  projectVaultDeliveryGate{runtime: runtime},
-		Mutations: projectVaultMutationPort{server: s, runtime: runtime},
-		InvalidateSessions: func(ctx context.Context, sessions []projectvault.SessionReference, scope projectvault.SessionMutationScope) error {
-			return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
-		},
-		BindingTargets: projectVaultBindingTargets{server: s, runtime: runtime},
-		AllowGenerate: func(key string) bool {
-			return s.vaultGenerateLimiter != nil && s.vaultGenerateLimiter.Allow(key)
-		},
-		AllowReveal: func(key string) bool {
-			return s.vaultRevealLimiter != nil && s.vaultRevealLimiter.Allow(key)
-		},
+	return runtime.Operations.ProjectVaultOrCreate(func() (*projectvault.Runtime, error) {
+		store, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.Vault, runtime.WorkspaceUUID)
+		if err != nil {
+			return nil, err
+		}
+		owner, err := projectvault.NewRuntime(projectvault.RuntimeDependencies{
+			Store:     store,
+			Delivery:  projectVaultDeliveryGate{runtime: runtime},
+			Mutations: projectVaultMutationPort{server: s, runtime: runtime},
+			InvalidateSessions: func(ctx context.Context, sessions []projectvault.SessionReference, scope projectvault.SessionMutationScope) error {
+				return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
+			},
+			BindingTargets: projectVaultBindingTargets{server: s, runtime: runtime},
+			AllowGenerate: func(key string) bool {
+				return s.vaultGenerateLimiter != nil && s.vaultGenerateLimiter.Allow(key)
+			},
+			AllowReveal: func(key string) bool {
+				return s.vaultRevealLimiter != nil && s.vaultRevealLimiter.Allow(key)
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initialize Project Vault runtime: %w", err)
+		}
+		return owner, nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("initialize Project Vault runtime: %w", err)
-	}
-	runtime.projectVault = owner
-	return owner, nil
 }
 
 func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (projectvault.HTTPScope, bool) {
@@ -135,7 +131,7 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (projectvault.HTTP
 		return projectvault.HTTPScope{}, false
 	}
 	return projectvault.HTTPScope{
-		Runtime: owner, RuntimeID: runtime.id,
+		Runtime: owner, RuntimeID: runtime.ID,
 		SessionCatalog: projectVaultSessionOptionsCatalog{server: s, runtime: runtime},
 	}, true
 }
@@ -143,10 +139,10 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (projectvault.HTTP
 func (c projectVaultSessionOptionsCatalog) ResolveSessionOptionsTarget(
 	ctx context.Context, runtimeID int64,
 ) (projectvault.SessionOptionsTarget, error) {
-	if c.server == nil || c.runtime == nil || c.runtime.database == nil {
+	if c.server == nil || c.runtime == nil || c.runtime.Storage.Database == nil {
 		return projectvault.SessionOptionsTarget{}, projectvault.ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(c.runtime.database)
+	store := connectortargets.NewStore(c.runtime.Storage.Database)
 	surface, err := store.GetRuntimeSurface(ctx, runtimeID)
 	if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		return projectvault.SessionOptionsTarget{}, projectvault.ErrSessionRuntimeNotFound
@@ -177,10 +173,10 @@ func (c projectVaultSessionOptionsCatalog) ResolveSessionOptionsTarget(
 func (c projectVaultSessionOptionsCatalog) ListSessionOptionsProjects(
 	ctx context.Context,
 ) ([]projectvault.SessionOptionsProject, error) {
-	if c.runtime == nil || c.runtime.database == nil {
+	if c.runtime == nil || c.runtime.Storage.Database == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	items, err := projectstore.NewStore(c.runtime.database).List(ctx)
+	items, err := projectstore.NewStore(c.runtime.Storage.Database).List(ctx)
 	if err != nil {
 		return nil, err
 	}

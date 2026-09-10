@@ -40,7 +40,7 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	snapshot, err := backups.CreateDatabaseSnapshot(r.Context(), backups.SnapshotSource{
-		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
+		Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
 	})
 	if err != nil {
 		releaseLifecycle()

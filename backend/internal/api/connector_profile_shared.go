@@ -31,7 +31,7 @@ func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseW
 	if profile.EncryptedSecretJSON == "" {
 		return secrets, true
 	}
-	if err := recordcrypto.DecryptJSON(runtime.vault, runtime.workspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		writeInternalError(w)
 		return nil, false
 	}

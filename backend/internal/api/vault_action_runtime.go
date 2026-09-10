@@ -48,7 +48,7 @@ func (p vaultRequestMutationPort) Observe(
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
-	return vaultrequests.NewStore(runtime.database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
+	return vaultrequests.NewStore(runtime.Storage.Database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
 		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
 			ActorType: "gateway",
 			TokenID:   int64Ptr(item.TokenID),
@@ -71,7 +71,7 @@ func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (vaultrequests.HTT
 		return vaultrequests.HTTPScope{}, false
 	}
 	return vaultrequests.HTTPScope{
-		MCPStarted: runtime.isMCPStarted,
+		MCPStarted: runtime.IsMCPStarted,
 		Runtime: func(ctx context.Context) (*vaultrequests.Runtime, error) {
 			return s.vaultRequestRuntime(ctx, runtime)
 		},
@@ -86,7 +86,7 @@ func vaultRuntimeIDOrZero(value *int64) int64 {
 }
 
 func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRuntime) (*vaultrequests.Runtime, error) {
-	if s == nil || runtime == nil || runtime.database == nil {
+	if s == nil || runtime == nil || runtime.Storage.Database == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
 	actions, err := s.vaultActionApplication(runtime)
@@ -100,13 +100,13 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 		AuthorizeOutput: actions.AuthorizeOutput,
 		AllowRequest: func(tokenID int64) bool {
 			return s.vaultRequestLimiter != nil && s.vaultRequestLimiter.Allow(
-				"vault-request:"+runtime.id+":"+strconv.FormatInt(tokenID, 10),
+				"vault-request:"+runtime.ID+":"+strconv.FormatInt(tokenID, 10),
 			)
 		},
 		Execute:    actions.Execute,
 		Compensate: actions.Compensate,
 		RepairProjection: func(ctx context.Context, id int64) error {
-			if err := history.NewStore(runtime.database).SyncVaultActionRequest(ctx, id); err != nil {
+			if err := history.NewStore(runtime.Storage.Database).SyncVaultActionRequest(ctx, id); err != nil {
 				log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 			}
 			return nil
@@ -115,7 +115,7 @@ func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRunti
 			return s.redactForPersistence(ctx, runtime, err.Error())
 		},
 		IsStale:    actions.IsStale,
-		MCPStarted: runtime.isMCPStarted,
+		MCPStarted: runtime.IsMCPStarted,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)

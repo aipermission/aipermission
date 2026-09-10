@@ -14,12 +14,12 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (runtimecontrol.MCPR
 		return runtimecontrol.MCPRuntimeScope{}, false
 	}
 	return runtimecontrol.MCPRuntimeScope{
-		State: &runtime.runtimeState,
+		State: &runtime.Security.Runtime,
 		StartEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err
 		},
-		AcquireStop: runtime.vaultDelivery.AcquireExclusive,
+		AcquireStop: runtime.Security.VaultDelivery.AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
 			if err := s.invalidateAllVaultSessions(ctx, runtime, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
 				return err
@@ -37,14 +37,4 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (runtimecontrol.MCPR
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
 	}, true
-}
-
-func (runtime *databaseRuntime) isMCPStarted() bool {
-	return runtime != nil && runtime.runtimeState.MCPStarted()
-}
-
-func (runtime *databaseRuntime) setMCPStarted(enabled bool) {
-	if runtime != nil {
-		runtime.runtimeState.SetMCPStarted(enabled)
-	}
 }
