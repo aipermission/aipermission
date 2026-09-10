@@ -1,6 +1,7 @@
 package commandrequests
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -8,7 +9,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-type HTTPScopeProvider func(http.ResponseWriter) (*Store, bool)
+type HTTPReader interface {
+	Get(context.Context, int64, int64, string) (Record, error)
+}
+
+type HTTPScopeProvider func(http.ResponseWriter) (HTTPReader, bool)
 
 type HTTPHandlers struct {
 	scope HTTPScopeProvider
@@ -27,15 +32,15 @@ func (h *HTTPHandlers) Get(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	store, ok := h.scope(w)
+	reader, ok := h.scope(w)
 	if !ok {
 		return
 	}
-	if store == nil {
+	if reader == nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	item, err := store.Get(r.Context(), id, 0, "")
+	item, err := reader.Get(r.Context(), id, 0, "")
 	if errors.Is(err, sql.ErrNoRows) {
 		httptransport.WriteError(w, http.StatusNotFound, "command request not found")
 		return

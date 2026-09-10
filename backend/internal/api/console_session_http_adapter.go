@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -41,7 +42,10 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 			return adapter
 		},
 		CancelForSession: func(ctx context.Context, sessionID int64, errorText string) error {
-			return s.cancelRunningCommandRequestsForSession(ctx, runtime, sessionID, errorText)
+			if runtime.commandRequests == nil {
+				return commandrequests.ErrRuntimeUnavailable
+			}
+			return runtime.commandRequests.CancelRunningForSession(ctx, sessionID, errorText)
 		},
 		RestartRuntime: func(ctx context.Context, runtimeID int64, errorText string) (connectorapi.LiveConsoleRestartResult, error) {
 			principal, err := localExecutionPrincipal(runtime)

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
@@ -1087,7 +1088,10 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	requestID, err := server.insertCommandRequest(t.Context(), runtime, token.ID, target.ID, "sleep 60", "test lock cleanup", "running")
+	requestID, err := runtime.commandRequests.Insert(t.Context(), commandrequests.Insert{
+		TokenID: &token.ID, RuntimeID: target.ID, Source: commandrequests.SourceMCP,
+		Command: "sleep 60", Reason: "test lock cleanup", Status: "running",
+	})
 	if err != nil {
 		t.Fatalf("insert running request: %v", err)
 	}

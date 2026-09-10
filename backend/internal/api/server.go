@@ -10,6 +10,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -68,6 +69,7 @@ type databaseRuntime struct {
 	adapterRegistry    *connectorapi.Registry
 	connectorResources connectorruntime.ResourceScopes
 	consoleSessions    *console.Manager
+	commandRequests    *commandrequests.Runtime
 	fileTransfers      *filetransferhttp.Runtime
 	transferLifecycle  *filetransferhttp.Lifecycle
 	securityPolicy     *securitypolicy.Service
@@ -202,6 +204,9 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize runtime identity: %w", err)
 	}
 	runtime.consoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
+	if err := server.initializeCommandRequestRuntime(runtime); err != nil {
+		return nil, fmt.Errorf("initialize command request runtime: %w", err)
+	}
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}

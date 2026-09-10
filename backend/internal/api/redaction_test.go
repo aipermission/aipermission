@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -72,19 +73,22 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 	runtime := fixture.server.activeRuntime()
 
 	rawCommand := "curl -H 'Authorization: Bearer secret-token-1234567890' https://example.invalid"
-	id, err := fixture.server.insertCommandRequest(ctx, runtime, token.ID, server.ID, rawCommand, "password=secret-value", "pending_approval")
+	id, err := runtime.commandRequests.Insert(ctx, commandrequests.Insert{
+		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
+		Command: rawCommand, Reason: "password=secret-value", Status: "pending_approval",
+	})
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
 	}
 
-	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID, commandRequestSourceMCP)
+	record, err := runtime.commandRequests.Get(ctx, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}
 	if strings.Contains(record.Command, "secret-token-1234567890") || strings.Contains(record.Reason, "secret-value") {
 		t.Fatalf("display fields should be redacted: %#v", record)
 	}
-	executionCommand, err := fixture.server.commandRequestExecutionCommand(ctx, runtime, id)
+	executionCommand, err := runtime.commandRequests.ExecutionCommand(ctx, id)
 	if err != nil {
 		t.Fatalf("read execution command: %v", err)
 	}
@@ -102,14 +106,19 @@ func TestCommandRequestErrorsAreRedactedBeforePersistence(t *testing.T) {
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
 	runtime := fixture.server.activeRuntime()
-	id, err := fixture.server.insertCommandRequest(ctx, runtime, token.ID, server.ID, "echo ok", "test", "running")
+	id, err := runtime.commandRequests.Insert(ctx, commandrequests.Insert{
+		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
+		Command: "echo ok", Reason: "test", Status: "running",
+	})
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
 	}
-	if err := fixture.server.finishCommandRequest(ctx, runtime, id, "error", 0, "", "", 1, "ssh failed password=super-secret"); err != nil {
+	if err := runtime.commandRequests.Finish(ctx, commandrequests.Completion{
+		ID: id, Status: "error", ExitCode: 1, Error: "ssh failed password=super-secret",
+	}); err != nil {
 		t.Fatalf("finish command request: %v", err)
 	}
-	record, err := fixture.server.getCommandRequest(ctx, runtime, id, token.ID, commandRequestSourceMCP)
+	record, err := runtime.commandRequests.Get(ctx, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}

@@ -235,6 +235,12 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 	}
 	runtime.runtimeState.SetMCPStarted(settings.MCPStartEnabled)
 	runtime.consoleSessions = console.NewManager(database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
+		runtime.transferLifecycle.Stop()
+		actions.ClearIdentityKey(actionIdentityKey)
+		_ = database.Close()
+		return nil, fmt.Errorf("initialize command request runtime: %w", err)
+	}
 	if err := s.initializeFileTransferRuntime(runtime); err != nil {
 		runtime.transferLifecycle.Stop()
 		actions.ClearIdentityKey(actionIdentityKey)
@@ -437,8 +443,10 @@ func (s *Server) closeRuntime(runtime *databaseRuntime) error {
 	if runtime.consoleSessions != nil {
 		runtime.consoleSessions.CloseAll()
 	}
-	if err := s.cancelRunningCommandRequests(context.Background(), runtime, "workspace locked while command was running"); err != nil {
-		log.Printf("mark running command requests failed workspace=%s error=%v", runtime.id, err)
+	if runtime.commandRequests != nil {
+		if err := runtime.commandRequests.CancelRunning(context.Background(), "workspace locked while command was running"); err != nil {
+			log.Printf("mark running command requests failed workspace=%s error=%v", runtime.id, err)
+		}
 	}
 	if err := s.markRunningConnectorActionsOutcomeUnknown(runtime); err != nil {
 		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.id, err)

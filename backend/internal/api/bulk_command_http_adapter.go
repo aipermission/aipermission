@@ -19,13 +19,12 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*commandrequests.B
 	if !ok {
 		return nil, false
 	}
-	requests, err := s.commandRequestRuntime(runtime)
-	if err != nil {
+	if runtime.commandRequests == nil {
 		writeInternalError(w)
 		return nil, false
 	}
 	return &commandrequests.BulkHTTPRuntime{
-		Requests: requests,
+		Requests: runtime.commandRequests,
 		Sessions: runtime.consoleSessions,
 		Principal: func() (executionprincipal.Principal, error) {
 			return localExecutionPrincipal(runtime)

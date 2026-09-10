@@ -20,7 +20,7 @@ func TestHTTPHandlersGetCommandRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (*Store, bool) { return NewStore(database), true })
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPReader, bool) { return NewStore(database), true })
 	request := httptest.NewRequest(http.MethodGet, "/api/console/command-requests/1", nil)
 	request.SetPathValue("id", strconv.FormatInt(id, 10))
 	response := httptest.NewRecorder()
@@ -32,7 +32,7 @@ func TestHTTPHandlersGetCommandRequest(t *testing.T) {
 
 func TestHTTPHandlersValidateIDBeforeScopeAndConcealMissingRequests(t *testing.T) {
 	scopeCalls := 0
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (*Store, bool) {
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPReader, bool) {
 		scopeCalls++
 		return nil, false
 	})
@@ -45,7 +45,7 @@ func TestHTTPHandlersValidateIDBeforeScopeAndConcealMissingRequests(t *testing.T
 	}
 
 	database, _ := commandRequestFixture(t)
-	handlers = NewHTTPHandlers(func(http.ResponseWriter) (*Store, bool) { return NewStore(database), true })
+	handlers = NewHTTPHandlers(func(http.ResponseWriter) (HTTPReader, bool) { return NewStore(database), true })
 	missingRequest := httptest.NewRequest(http.MethodGet, "/api/console/command-requests/999", nil)
 	missingRequest.SetPathValue("id", "999")
 	missing := httptest.NewRecorder()

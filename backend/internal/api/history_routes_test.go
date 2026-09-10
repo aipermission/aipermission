@@ -37,7 +37,7 @@ func TestConsoleCommandRequestDetail(t *testing.T) {
 	if manualID < 1 {
 		t.Fatalf("expected manual request id")
 	}
-	record, err := fixture.server.getCommandRequest(ctx, runtime, requestID, token.ID, commandRequestSourceMCP)
+	record, err := runtime.commandRequests.Get(ctx, requestID, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestCommandRequestInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
 		t.Fatalf("install history rejection trigger: %v", err)
 	}
 
-	_, err := fixture.server.insertCommandRequestWithOptions(t.Context(), fixture.server.activeRuntime(), commandRequestInsert{
+	_, err := fixture.server.activeRuntime().commandRequests.Insert(t.Context(), commandrequests.Insert{
 		RuntimeID: target.ID,
 		Source:    commandRequestSourceManual,
 		Command:   "echo rollback",

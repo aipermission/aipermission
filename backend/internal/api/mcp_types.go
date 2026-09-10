@@ -17,7 +17,6 @@ type mcpAuthContext struct {
 	runtime *databaseRuntime
 }
 
-type commandRequestRecord = commandrequests.Record
 type commandPolicyWarning = commandrequests.PolicyWarning
 
 const (

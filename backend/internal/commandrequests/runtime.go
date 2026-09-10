@@ -89,6 +89,13 @@ func (r *Runtime) ExecutionCommand(ctx context.Context, id int64) (string, error
 	return r.store.ExecutionCommand(ctx, r.codec, id)
 }
 
+func (r *Runtime) Get(ctx context.Context, id, tokenID int64, source string) (Record, error) {
+	if err := r.validate(); err != nil {
+		return Record{}, err
+	}
+	return r.store.Get(ctx, id, tokenID, source)
+}
+
 func (r *Runtime) SetSession(ctx context.Context, id, sessionID int64) error {
 	if err := r.validate(); err != nil {
 		return err
