@@ -1,23 +1,17 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 type importDatabaseRequest struct {
@@ -112,131 +106,32 @@ func (s backupHandlers) installImportedDatabase(w http.ResponseWriter, r *http.R
 }
 
 func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter, r *http.Request, databaseName string, databasePassword string, writeTemp func(string) error, mutate func(*sql.DB) error) {
-	databaseName = strings.TrimSpace(databaseName)
-	if databaseName == "" {
-		writeError(w, http.StatusBadRequest, "database name is required")
-		return
-	}
-	if databasePassword == "" {
-		writeError(w, http.StatusBadRequest, "database password is required")
-		return
-	}
 	attempt, ok := s.beginDatabasePasswordAttempt(w, r)
 	if !ok {
 		return
 	}
-
-	targetID, targetPath, err := databasecatalog.NewDatabasePathExact(s.config.DataPath, databaseName)
+	var preparedSession preparedUISession
+	transition, err := s.workspaceLifecycle.Import(r.Context(), workspacelifecycle.ImportInput{
+		DatabaseName: databaseName, Password: databasePassword, Write: writeTemp, Mutate: mutate,
+		BeforePublish: func() error {
+			var err error
+			preparedSession, err = prepareUISession()
+			return err
+		},
+	})
 	if err != nil {
-		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
-			writeError(w, http.StatusConflict, err.Error())
+		if errors.Is(err, workspacelifecycle.ErrCredential) {
+			attempt.failure()
+			writeError(w, http.StatusBadRequest, "invalid database password or database file")
 			return
 		}
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	// Remove staging files left by builds that used the former fixed import path.
-	if err := databasecatalog.DeleteDatabase(targetPath + ".import"); err != nil {
-		writeInternalError(w)
-		return
-	}
-	tmpPath, err := databasecatalog.ReserveTempPath(targetPath, "import-*.aipdb")
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := databasecatalog.DeleteDatabase(tmpPath); err != nil {
-		writeInternalError(w)
-		return
-	}
-	defer cleanupImportCandidate(tmpPath)
-	if err := writeTemp(tmpPath); err != nil {
-		writeInternalError(w)
-		return
-	}
-
-	if dbpkg.LooksLikePlainSQLite(tmpPath) {
-		writeError(w, http.StatusBadRequest, "plaintext SQLite imports are not supported; import an encrypted .aipdb database")
-		return
-	}
-	testDB, err := dbpkg.OpenEncryptedImportCandidate(tmpPath, databasePassword)
-	if err != nil {
-		if message := dbpkg.UnsupportedSchemaMessage(err); message != "" {
+		if workspacelifecycle.CredentialWasVerified(err) {
 			attempt.success()
-			writeError(w, http.StatusConflict, message)
-			return
 		}
-		attempt.failure()
-		writeError(w, http.StatusBadRequest, "invalid database password or database file")
+		writeWorkspaceImportError(w, err)
 		return
 	}
 	attempt.success()
-	if _, err := projectvault.ResolveGatewaySecret(r.Context(), testDB, s.config.GatewaySecret); err != nil {
-		if closeErr := closeImportCandidate(testDB); closeErr != nil {
-			writeInternalError(w)
-			return
-		}
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	// A restored copy is a new retry domain even though its workspace UUID must
-	// remain stable because encrypted record AAD is bound to that UUID.
-	if _, err := projectvault.RotateUIRetryIdentity(r.Context(), testDB); err != nil {
-		if closeErr := closeImportCandidate(testDB); closeErr != nil {
-			log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
-		}
-		writeInternalError(w)
-		return
-	}
-	if mutate != nil {
-		if err := mutate(testDB); err != nil {
-			if closeErr := closeImportCandidate(testDB); closeErr != nil {
-				log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
-			}
-			writeInternalError(w)
-			return
-		}
-	}
-	if err := closeImportCandidate(testDB); err != nil {
-		writeInternalError(w)
-		return
-	}
-
-	if dbpkg.Exists(targetPath) {
-		writeError(w, http.StatusConflict, "database name already exists")
-		return
-	}
-	preparedSession, err := prepareUISession()
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if err := s.publishDatabase(tmpPath, targetPath); err != nil {
-		if errors.Is(err, dbpkg.ErrPublishTargetExists) {
-			writeError(w, http.StatusConflict, "database name already exists")
-			return
-		}
-		writeInternalError(w)
-		return
-	}
-
-	previous := s.workspaces.Selection()
-	s.workspaces.Select(workspaceIdentity(targetID, targetPath))
-	if err := s.openUnlockedLocked(databasePassword); err != nil {
-		s.workspaces.Select(previous)
-		if runtime, exists := s.workspaces.Lookup(previous.ID); exists && runtime != nil {
-			s.applyRuntimeLocked(runtime)
-		}
-		if cleanupErr := rollbackImportedDatabase(targetPath); cleanupErr != nil {
-			log.Printf("failed imported database cleanup path=%q error=%v", targetPath, cleanupErr)
-		}
-		writeInternalError(w)
-		return
-	}
 	if err := s.issuePreparedUISessionLocked(w, preparedSession); err != nil {
 		writeInternalError(w)
 		return
@@ -245,30 +140,19 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "imported",
 		"state":       "unlocked",
-		"database_id": targetID,
+		"database_id": transition.Identity.ID,
 		"imported_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
-func closeImportCandidate(database *sql.DB) error {
-	if err := dbpkg.CheckpointForFilesystemMutation(context.Background(), database); err != nil {
-		_ = database.Close()
-		return fmt.Errorf("checkpoint import candidate: %w", err)
+func writeWorkspaceImportError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, workspacelifecycle.ErrDatabaseExists), errors.Is(err, workspacelifecycle.ErrUnsupportedSchema):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, workspacelifecycle.ErrNameRequired), errors.Is(err, workspacelifecycle.ErrPasswordRequired),
+		errors.Is(err, workspacelifecycle.ErrPlaintext), errors.Is(err, workspacelifecycle.ErrInvalidRequest):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeInternalError(w)
 	}
-	if err := database.Close(); err != nil {
-		return fmt.Errorf("close import candidate: %w", err)
-	}
-	return nil
-}
-
-func cleanupImportCandidate(path string) {
-	for _, candidate := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
-		if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
-			log.Printf("failed import candidate cleanup path=%q error=%v", candidate, err)
-		}
-	}
-}
-
-func rollbackImportedDatabase(targetPath string) error {
-	return databasecatalog.DeleteDatabase(targetPath)
 }

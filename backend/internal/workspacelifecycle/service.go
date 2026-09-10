@@ -43,6 +43,8 @@ type Dependencies[T Runtime] struct {
 	Move                func(currentPath, targetPath string) error
 	Delete              func(path string) error
 	ValidateNewPassword func(context.Context, *sql.DB, string, string) error
+	Publish             func(sourcePath, targetPath string) error
+	GatewaySecret       func() string
 }
 
 type Service[T Runtime] struct {
@@ -57,6 +59,8 @@ type Service[T Runtime] struct {
 	move                func(currentPath, targetPath string) error
 	delete              func(path string) error
 	validateNewPassword func(context.Context, *sql.DB, string, string) error
+	publish             func(sourcePath, targetPath string) error
+	gatewaySecret       func() string
 }
 
 type Status struct {
@@ -124,12 +128,17 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	if deleteDatabase == nil {
 		deleteDatabase = databasecatalog.DeleteDatabase
 	}
+	publish := dependencies.Publish
+	if publish == nil {
+		publish = db.PublishFileNoReplace
+	}
 	return &Service[T]{
 		dataPath: dependencies.DataPath, registry: dependencies.Registry,
 		open: dependencies.Open, close: dependencies.Close,
 		onActivated: dependencies.OnActivated, onOpened: dependencies.OnOpened,
 		validate: validate, move: move, delete: deleteDatabase,
 		validateNewPassword: dependencies.ValidateNewPassword,
+		publish:             publish, gatewaySecret: dependencies.GatewaySecret,
 	}, nil
 }
 

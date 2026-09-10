@@ -249,12 +249,14 @@ func (runtime *databaseRuntime) WorkspaceDatabase() *sql.DB { return runtime.dat
 
 func (s *Server) initializeWorkspaceLifecycle() error {
 	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
-		DataPath: s.config.DataPath,
-		Registry: s.workspaces,
-		Open:     s.openRuntimeForLifecycle,
-		Close:    s.closeRuntime,
-		Move:     s.moveDatabase,
-		Delete:   databasecatalog.DeleteDatabase,
+		DataPath:      s.config.DataPath,
+		Registry:      s.workspaces,
+		Open:          s.openRuntimeForLifecycle,
+		Close:         s.closeRuntime,
+		Move:          s.moveDatabase,
+		Delete:        databasecatalog.DeleteDatabase,
+		Publish:       s.publishDatabase,
+		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *databaseRuntime) {
 			if runtime != nil && runtime.gatewaySecret != "" {
 				s.config.GatewaySecret = runtime.gatewaySecret
