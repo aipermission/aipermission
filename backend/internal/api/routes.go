@@ -24,7 +24,6 @@ type consoleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
-type vaultItemHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type vaultActionApprovalHandlers struct{ *Server }
@@ -164,7 +163,6 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 func (s *Server) registerProjectAndVaultRoutes() {
 	projects := projectstore.NewHTTPHandlers(s.projectsHTTPScope)
 	vaultItems := projectvault.NewHTTPHandlers(s.projectVaultHTTPScope)
-	vaultSessions := vaultItemHandlers{s}
 	vaultApprovals := vaultActionApprovalHandlers{s}
 
 	s.mux.HandleFunc("GET /api/projects", projects.List)
@@ -182,7 +180,7 @@ func (s *Server) registerProjectAndVaultRoutes() {
 	s.mux.HandleFunc("GET /api/vault-default-bindings", vaultItems.ListDefaultBindings)
 	s.mux.HandleFunc("PUT /api/vault-default-bindings", vaultItems.SaveDefaultBinding)
 	s.mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", vaultItems.DeleteDefaultBinding)
-	s.mux.HandleFunc("GET /api/vault-session-options", vaultSessions.vaultSessionOptions)
+	s.mux.HandleFunc("GET /api/vault-session-options", vaultItems.SessionOptions)
 	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.list)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.run)
 	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.decline)

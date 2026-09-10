@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
@@ -33,6 +35,11 @@ type projectVaultMutationPort struct {
 }
 
 type projectVaultBindingTargets struct {
+	server  *Server
+	runtime *databaseRuntime
+}
+
+type projectVaultSessionOptionsCatalog struct {
 	server  *Server
 	runtime *databaseRuntime
 }
@@ -127,5 +134,62 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (projectvault.HTTP
 		writeInternalError(w)
 		return projectvault.HTTPScope{}, false
 	}
-	return projectvault.HTTPScope{Runtime: owner, RuntimeID: runtime.id}, true
+	return projectvault.HTTPScope{
+		Runtime: owner, RuntimeID: runtime.id,
+		SessionCatalog: projectVaultSessionOptionsCatalog{server: s, runtime: runtime},
+	}, true
+}
+
+func (c projectVaultSessionOptionsCatalog) ResolveSessionOptionsTarget(
+	ctx context.Context, runtimeID int64,
+) (projectvault.SessionOptionsTarget, error) {
+	if c.server == nil || c.runtime == nil || c.runtime.database == nil {
+		return projectvault.SessionOptionsTarget{}, projectvault.ErrRuntimeUnavailable
+	}
+	store := connectortargets.NewStore(c.runtime.database)
+	surface, err := store.GetRuntimeSurface(ctx, runtimeID)
+	if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+		return projectvault.SessionOptionsTarget{}, projectvault.ErrSessionRuntimeNotFound
+	}
+	if err != nil {
+		return projectvault.SessionOptionsTarget{}, err
+	}
+	target, err := store.GetTarget(ctx, surface.TargetID)
+	if errors.Is(err, connectortargets.ErrTargetNotFound) {
+		return projectvault.SessionOptionsTarget{}, projectvault.ErrSessionTargetNotFound
+	}
+	if err != nil {
+		return projectvault.SessionOptionsTarget{}, err
+	}
+	supported := true
+	if err := requireSessionEnvironmentCapability(ctx, c.server, c.runtime, runtimeID); err != nil {
+		if !errors.Is(err, connectors.ErrSessionEnvironmentUnsupported) {
+			return projectvault.SessionOptionsTarget{}, err
+		}
+		supported = false
+	}
+	return projectvault.SessionOptionsTarget{
+		ProjectID: target.ProjectID, TargetID: surface.TargetID, ProfileID: surface.ProfileID,
+		SessionEnvironmentSupported: supported,
+	}, nil
+}
+
+func (c projectVaultSessionOptionsCatalog) ListSessionOptionsProjects(
+	ctx context.Context,
+) ([]projectvault.SessionOptionsProject, error) {
+	if c.runtime == nil || c.runtime.database == nil {
+		return nil, projectvault.ErrRuntimeUnavailable
+	}
+	items, err := projectstore.NewStore(c.runtime.database).List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]projectvault.SessionOptionsProject, 0, len(items))
+	for _, item := range items {
+		result = append(result, projectvault.SessionOptionsProject{
+			ID: item.ID, Name: item.Name, Slug: item.Slug, TargetCount: item.TargetCount,
+			CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
+		})
+	}
+	return result, nil
 }

@@ -14,8 +14,9 @@ import (
 )
 
 type HTTPScope struct {
-	Runtime   *Runtime
-	RuntimeID string
+	Runtime        *Runtime
+	RuntimeID      string
+	SessionCatalog SessionOptionsCatalog
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)
