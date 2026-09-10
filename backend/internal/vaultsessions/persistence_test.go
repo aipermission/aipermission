@@ -103,6 +103,89 @@ func TestPersistenceGrantsReplacesAndRevokesLeases(t *testing.T) {
 	}
 }
 
+func TestPersistenceSelectsVaultInvalidationScopes(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "invalidation.db"), "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	project, err := projectstore.NewStore(database).Create(t.Context(), "Invalidation Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.NewStore(database).Create(t.Context(), tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := database.ExecContext(t.Context(), `
+		INSERT INTO connector_targets (project_id, connector_kind, name, status, config_json, created_at, updated_at)
+		VALUES (?, 'test', 'target', 'active', '{}', datetime('now'), datetime('now'))`, project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = database.ExecContext(t.Context(), `
+		INSERT INTO connector_credential_profiles (target_id, connector_kind, kind, label, encrypted_secret_json, status, created_at, updated_at)
+		VALUES (?, 'test', 'test', 'profile', '{}', 'active', datetime('now'), datetime('now'))`, targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = database.ExecContext(t.Context(), `
+		INSERT INTO connector_runtime_surfaces (connector_kind, target_id, profile_id, capability_kind, label, status, created_at, updated_at)
+		VALUES ('test', ?, ?, 'live_console', 'console', 'active', datetime('now'), datetime('now'))`, targetID, profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = database.ExecContext(t.Context(), `
+		INSERT INTO console_sessions (
+			runtime_id, name, status, generation, environment_content_hash, created_at, updated_at
+		) VALUES (?, 'Vault session', 'connected', 3, 'environment', datetime('now'), datetime('now'))`, runtimeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := Lease{
+		TokenID: token.ID, RuntimeID: runtimeID, SessionID: sessionID, SessionGeneration: 3,
+		ApprovalContextHash: "approval", EnvironmentContentHash: "environment",
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}
+	persistence := NewPersistence(database)
+	if err := persistence.Grant(t.Context(), project.ID, lease); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeIDs, err := persistence.RuntimeIDsForTargetProfile(t.Context(), targetID, profileID)
+	if err != nil || len(runtimeIDs) != 1 || runtimeIDs[0] != runtimeID {
+		t.Fatalf("target profile runtimes = %v, %v", runtimeIDs, err)
+	}
+	allRuntimeIDs, err := persistence.AllRuntimeIDs(t.Context())
+	if err != nil || len(allRuntimeIDs) != 1 || allRuntimeIDs[0] != runtimeID {
+		t.Fatalf("all runtimes = %v, %v", allRuntimeIDs, err)
+	}
+	projectSessions, err := persistence.ActiveForProject(t.Context(), project.ID)
+	if err != nil || len(projectSessions) != 1 || projectSessions[0].SessionID != sessionID || projectSessions[0].Generation != 3 {
+		t.Fatalf("project sessions = %#v, %v", projectSessions, err)
+	}
+	runtimeSessions, err := persistence.ActiveEnvironmentSessionsForRuntimes(t.Context(), []int64{0, runtimeID, runtimeID})
+	if err != nil || len(runtimeSessions) != 1 || runtimeSessions[0].SessionID != sessionID {
+		t.Fatalf("runtime sessions = %#v, %v", runtimeSessions, err)
+	}
+}
+
 func TestPersistenceRejectsMissingDatabase(t *testing.T) {
 	if err := NewPersistence(nil).Grant(t.Context(), 1, Lease{}); err != ErrPersistenceUnavailable {
 		t.Fatalf("Grant() error = %v", err)
@@ -112,5 +195,17 @@ func TestPersistenceRejectsMissingDatabase(t *testing.T) {
 	}
 	if err := NewPersistence(nil).RevokeAll(t.Context()); err != ErrPersistenceUnavailable {
 		t.Fatalf("RevokeAll() error = %v", err)
+	}
+	if _, err := NewPersistence(nil).ActiveForProject(t.Context(), 1); err != ErrPersistenceUnavailable {
+		t.Fatalf("ActiveForProject() error = %v", err)
+	}
+	if _, err := NewPersistence(nil).RuntimeIDsForTargetProfile(t.Context(), 1, 1); err != ErrPersistenceUnavailable {
+		t.Fatalf("RuntimeIDsForTargetProfile() error = %v", err)
+	}
+	if _, err := NewPersistence(nil).AllRuntimeIDs(t.Context()); err != ErrPersistenceUnavailable {
+		t.Fatalf("AllRuntimeIDs() error = %v", err)
+	}
+	if _, err := NewPersistence(nil).ActiveEnvironmentSessionsForRuntimes(t.Context(), []int64{1}); err != ErrPersistenceUnavailable {
+		t.Fatalf("ActiveEnvironmentSessionsForRuntimes() error = %v", err)
 	}
 }

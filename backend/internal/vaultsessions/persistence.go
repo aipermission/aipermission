@@ -3,6 +3,7 @@ package vaultsessions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
@@ -11,6 +12,12 @@ import (
 var ErrPersistenceUnavailable = errors.New("Vault session lease persistence is unavailable")
 
 type Persistence struct{ database sqldb.Executor }
+
+type Reference struct {
+	SessionID  int64
+	RuntimeID  int64
+	Generation int64
+}
 
 func NewPersistence(database sqldb.Executor) *Persistence {
 	return &Persistence{database: database}
@@ -61,4 +68,121 @@ func (p *Persistence) RevokeAll(ctx context.Context) error {
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	return err
+}
+
+func (p *Persistence) ActiveForProject(ctx context.Context, projectID int64) ([]Reference, error) {
+	if p == nil || p.database == nil {
+		return nil, ErrPersistenceUnavailable
+	}
+	rows, err := p.database.QueryContext(ctx, `
+		SELECT DISTINCT session_id, runtime_id, session_generation
+		FROM vault_session_leases
+		WHERE project_id = ? AND status = 'active'
+		ORDER BY session_id`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list active project Vault sessions: %w", err)
+	}
+	defer rows.Close()
+	return scanReferences(rows)
+}
+
+func (p *Persistence) RuntimeIDsForTargetProfile(ctx context.Context, targetID, profileID int64) ([]int64, error) {
+	if p == nil || p.database == nil {
+		return nil, ErrPersistenceUnavailable
+	}
+	query := `SELECT id FROM connector_runtime_surfaces WHERE target_id = ?`
+	args := []any{targetID}
+	if profileID > 0 {
+		query += ` AND profile_id = ?`
+		args = append(args, profileID)
+	}
+	query += ` ORDER BY id`
+	return p.queryRuntimeIDs(ctx, query, args...)
+}
+
+func (p *Persistence) AllRuntimeIDs(ctx context.Context) ([]int64, error) {
+	if p == nil || p.database == nil {
+		return nil, ErrPersistenceUnavailable
+	}
+	return p.queryRuntimeIDs(ctx, `SELECT id FROM connector_runtime_surfaces ORDER BY id`)
+}
+
+func (p *Persistence) ActiveEnvironmentSessionsForRuntimes(ctx context.Context, runtimeIDs []int64) ([]Reference, error) {
+	if p == nil || p.database == nil {
+		return nil, ErrPersistenceUnavailable
+	}
+	references := make([]Reference, 0)
+	seen := make(map[int64]struct{})
+	for _, runtimeID := range runtimeIDs {
+		if runtimeID < 1 {
+			continue
+		}
+		rows, err := p.database.QueryContext(ctx, `
+			SELECT id, runtime_id, generation
+			FROM console_sessions
+			WHERE runtime_id = ?
+			  AND status IN ('connecting', 'connected')
+			  AND environment_content_hash <> ''
+			ORDER BY id`, runtimeID)
+		if err != nil {
+			return nil, fmt.Errorf("list active Vault sessions for runtime %d: %w", runtimeID, err)
+		}
+		items, scanErr := scanReferences(rows)
+		closeErr := rows.Close()
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		for _, item := range items {
+			if _, exists := seen[item.SessionID]; exists {
+				continue
+			}
+			seen[item.SessionID] = struct{}{}
+			references = append(references, item)
+		}
+	}
+	return references, nil
+}
+
+type rowScanner interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}
+
+func scanReferences(rows rowScanner) ([]Reference, error) {
+	references := make([]Reference, 0)
+	for rows.Next() {
+		var reference Reference
+		if err := rows.Scan(&reference.SessionID, &reference.RuntimeID, &reference.Generation); err != nil {
+			return nil, err
+		}
+		references = append(references, reference)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return references, nil
+}
+
+func (p *Persistence) queryRuntimeIDs(ctx context.Context, query string, args ...any) ([]int64, error) {
+	rows, err := p.database.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list connector runtime surfaces for Vault invalidation: %w", err)
+	}
+	defer rows.Close()
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
