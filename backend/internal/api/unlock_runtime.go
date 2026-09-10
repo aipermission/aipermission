@@ -7,12 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	"github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
-	runtimeshutdown "github.com/aipermission/aipermission/backend/internal/workspaceruntime/shutdown"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
 func (s *Server) isUnlocked() bool {
@@ -22,10 +17,10 @@ func (s *Server) isUnlocked() bool {
 	return s.workspaceState.Registry.IsUnlocked()
 }
 
-func (s *Server) workspaceSelection() workspacelifecycle.Identity {
+func (s *Server) workspaceSelection() gatewayworkspace.Identity {
 	if s.workspaceState.Registry == nil {
-		return workspacelifecycle.Identity{
-			ID: databasecatalog.DefaultDatabaseID(s.config.DataPath), Path: s.config.DataPath,
+		return gatewayworkspace.Identity{
+			ID: gatewayworkspace.DefaultID(s.config.DataPath), Path: s.config.DataPath,
 		}
 	}
 	return s.workspaceState.Registry.Selection()
@@ -42,18 +37,18 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 	if s.workspaceState.MoveDatabase != nil {
 		return s.workspaceState.MoveDatabase(currentPath, targetPath)
 	}
-	return databasecatalog.MoveDatabase(currentPath, targetPath)
+	return gatewayworkspace.Move(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	if s.workspaceState.PublishDatabase != nil {
 		return s.workspaceState.PublishDatabase(sourcePath, targetPath)
 	}
-	return db.PublishFileNoReplace(sourcePath, targetPath)
+	return gatewayworkspace.Publish(sourcePath, targetPath)
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
-	state, err := foundation.Open(context.Background(), foundation.OpenInput{
+	runtime, err := gatewayworkspace.Open(context.Background(), gatewayworkspace.OpenInput{
 		ID: id, Path: path, Password: password,
 		ConfiguredGatewaySecret: s.config.GatewaySecret,
 		Registry:                s.connectorRegistry(), AdapterRegistry: s.connectorAdapterRegistry(),
@@ -61,7 +56,6 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	if err != nil {
 		return nil, err
 	}
-	runtime := workspaceruntime.New(state)
 	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
 		s.discardOpeningRuntime(runtime)
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
@@ -90,7 +84,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 }
 
 func (s *Server) discardOpeningRuntime(runtime *databaseRuntime) {
-	if err := runtimeshutdown.Discard(runtime); err != nil {
+	if err := gatewayworkspace.Discard(runtime); err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.ID, err)
 	}
 }
@@ -119,13 +113,13 @@ func (s *Server) activeRuntime() *databaseRuntime {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) error {
-	return runtimeshutdown.Close(runtime, func() (runtimeshutdown.ActionWorkflow, error) {
+	return gatewayworkspace.Close(runtime, func() (gatewayworkspace.ActionWorkflow, error) {
 		return s.connectorActionWorkflow(runtime)
 	})
 }
 
 func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {
-	if !db.LooksLikePlainSQLite(path) {
+	if !gatewayworkspace.LooksPlaintext(path) {
 		return false
 	}
 	writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")

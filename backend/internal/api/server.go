@@ -8,27 +8,20 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
-	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
-	gatewaycatalog "github.com/aipermission/aipermission/backend/internal/gatewaystate/catalog"
-	gatewaycontrols "github.com/aipermission/aipermission/backend/internal/gatewaystate/controls"
-	gatewayworkspaces "github.com/aipermission/aipermission/backend/internal/gatewaystate/workspaces"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
+	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
 )
 
 type Server struct {
 	config         serverConfig
-	workspaceState gatewayworkspaces.State
-	connectorState gatewaycatalog.State
-	controlState   gatewaycontrols.State
+	workspaceState gatewaystate.WorkspaceState
+	connectorState gatewaystate.ConnectorState
+	controlState   gatewaystate.ControlState
 	mux            *http.ServeMux
 	observation    applicationobservation.Component
 }
@@ -53,25 +46,25 @@ func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOpti
 	return gatewayoptions.WithRuntimeInstanceIDGenerator(generator)
 }
 
-func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, options ...ServerOption) (*Server, error) {
+func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *gatewayworkspace.Vault, tokenStore *gatewayworkspace.TokenStore, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
-	activeID := databasecatalog.DefaultDatabaseID(cfg.DataPath)
+	gatewayworkspace.Scavenge(cfg.DataPath, time.Now())
+	activeID := gatewayworkspace.DefaultID(cfg.DataPath)
 	resolved := gatewayoptions.Resolve(options)
 	registry := resolved.Registry
 	server := &Server{
 		config: cfg,
-		workspaceState: gatewayworkspaces.State{
-			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
+		workspaceState: gatewaystate.WorkspaceState{
+			Registry: gatewayworkspace.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
 		},
-		connectorState: gatewaycatalog.New(registry, resolved.AdapterRegistry),
-		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.MaintenanceConsole),
+		connectorState: gatewaystate.NewConnectorState(registry, resolved.AdapterRegistry),
+		controlState:   gatewaystate.NewControlState(cfg.FrontendPort, resolved.MaintenanceConsole),
 		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
-	foundationState, err := foundation.Adopt(context.Background(), foundation.AdoptInput{
+	runtime, err := gatewayworkspace.Adopt(context.Background(), gatewayworkspace.AdoptInput{
 		ID: activeID, Path: cfg.DataPath, Database: database, Vault: secretVault,
 		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
 		Registry: registry, AdapterRegistry: resolved.AdapterRegistry,
@@ -80,7 +73,6 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err != nil {
 		return nil, err
 	}
-	runtime := workspaceruntime.New(foundationState)
 	runtime.Connectors.ConsoleSessions = console.NewManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
 	if err := server.initializeCommandRequestRuntime(runtime); err != nil {
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
@@ -101,15 +93,15 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	databasecatalog.ScavengeTempPaths(cfg.DataPath, time.Now())
+	gatewayworkspace.Scavenge(cfg.DataPath, time.Now())
 	resolved := gatewayoptions.Resolve(options)
 	server := &Server{
 		config: cfg,
-		workspaceState: gatewayworkspaces.State{
-			Registry: workspacelifecycle.NewRegistry(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), describeDatabaseRuntime),
+		workspaceState: gatewaystate.WorkspaceState{
+			Registry: gatewayworkspace.NewRegistry(cfg.DataPath, gatewayworkspace.DefaultID(cfg.DataPath), describeDatabaseRuntime),
 		},
-		connectorState: gatewaycatalog.New(resolved.Registry, resolved.AdapterRegistry),
-		controlState:   gatewaycontrols.New(cfg.FrontendPort, resolved.MaintenanceConsole),
+		connectorState: gatewaystate.NewConnectorState(resolved.Registry, resolved.AdapterRegistry),
+		controlState:   gatewaystate.NewControlState(cfg.FrontendPort, resolved.MaintenanceConsole),
 		mux:            http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
@@ -120,13 +112,13 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 }
 
 func (s *Server) initializeWorkspaceLifecycle() error {
-	lifecycle, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*databaseRuntime]{
+	lifecycle, err := gatewayworkspace.NewService(gatewayworkspace.Dependencies{
 		DataPath:      s.config.DataPath,
 		Registry:      s.workspaceState.Registry,
 		Open:          s.openRuntimeForLifecycle,
 		Close:         s.closeRuntime,
 		Move:          s.moveDatabase,
-		Delete:        databasecatalog.DeleteDatabase,
+		Delete:        gatewayworkspace.Delete,
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *databaseRuntime) {
@@ -136,12 +128,12 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		},
 		OnOpened: s.initializeRetention,
 		ValidateNewPassword: func(ctx context.Context, database *sql.DB, databaseName, password string) error {
-			hasActiveRemoteBackup, err := backups.NewStore(database).HasActiveProvider(ctx)
+			hasActiveRemoteBackup, err := gatewayworkspace.HasActiveRemoteBackup(ctx, database)
 			if err != nil || !hasActiveRemoteBackup {
 				return err
 			}
-			if err := backups.ValidateRemoteBackupPassword(password, databaseName); err != nil {
-				return workspacelifecycle.PasswordPolicyError(err)
+			if err := gatewayworkspace.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+				return gatewayworkspace.PasswordPolicyError(err)
 			}
 			return nil
 		},
@@ -153,9 +145,9 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 	return nil
 }
 
-func describeDatabaseRuntime(runtime *databaseRuntime) workspacelifecycle.Identity {
+func describeDatabaseRuntime(runtime *databaseRuntime) gatewayworkspace.Identity {
 	if runtime == nil {
-		return workspacelifecycle.Identity{}
+		return gatewayworkspace.Identity{}
 	}
 	return runtime.WorkspaceIdentity()
 }

@@ -3,16 +3,16 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/gatewaystate/controls"
+	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 const databasePasswordRateLimitScope = "database-password"
-const authRateLimitLockoutFailures = controls.AuthLockoutFailures
+const authRateLimitLockoutFailures = gatewaystate.AuthLockoutFailures
 
 const (
-	mcpGlobalDelayFailures   = controls.MCPGlobalDelayFailures
-	mcpGlobalLockoutFailures = controls.MCPGlobalLockoutFailures
+	mcpGlobalDelayFailures   = gatewaystate.MCPGlobalDelayFailures
+	mcpGlobalLockoutFailures = gatewaystate.MCPGlobalLockoutFailures
 )
 
 type databasePasswordAttempt struct {

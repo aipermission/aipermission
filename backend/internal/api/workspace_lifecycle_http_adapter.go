@@ -4,24 +4,22 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
-	workspacehttp "github.com/aipermission/aipermission/backend/internal/workspacelifecycle/httpapi"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
-type unlockRequest = workspacehttp.UnlockRequest
-type setupUnlockRequest = workspacehttp.SetupRequest
-type unlockStatusResponse = workspacehttp.StatusResponse
-type renameDatabaseRequest = workspacehttp.RenameRequest
-type deleteDatabaseRequest = workspacehttp.DeleteRequest
-type deleteLockedDatabaseRequest = workspacehttp.DeleteLockedRequest
-type switchDatabaseRequest = workspacehttp.SwitchRequest
-type changeDatabasePasswordRequest = workspacehttp.ChangePasswordRequest
+type unlockRequest = gatewayworkspace.UnlockRequest
+type setupUnlockRequest = gatewayworkspace.SetupRequest
+type unlockStatusResponse = gatewayworkspace.StatusResponse
+type renameDatabaseRequest = gatewayworkspace.RenameRequest
+type deleteDatabaseRequest = gatewayworkspace.DeleteRequest
+type deleteLockedDatabaseRequest = gatewayworkspace.DeleteLockedRequest
+type switchDatabaseRequest = gatewayworkspace.SwitchRequest
+type changeDatabasePasswordRequest = gatewayworkspace.ChangePasswordRequest
 
-func (s *Server) workspaceLifecycleHTTPHandlers() *workspacehttp.Handlers {
-	return workspacehttp.New(workspacehttp.Dependencies{
+func (s *Server) workspaceLifecycleHTTPHandlers() *gatewayworkspace.HTTPHandlers {
+	return gatewayworkspace.NewHTTP(gatewayworkspace.HTTPDependencies{
 		Lifecycle: s.workspaceState.Lifecycle,
-		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (workspacehttp.PasswordAttempt, bool) {
+		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayworkspace.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
 		HasSession:       s.hasValidUISession,
@@ -43,7 +41,7 @@ func (attempt databasePasswordAttempt) Success() { attempt.success() }
 func (attempt databasePasswordAttempt) Failure() { attempt.failure() }
 
 func validateUnlockPassword(password, confirmation string) error {
-	return workspacelifecycle.ValidatePassword(password, confirmation)
+	return gatewayworkspace.ValidatePassword(password, confirmation)
 }
 
 func clearStringReferences(values ...*string) {
@@ -60,13 +58,13 @@ func (errPasswordMismatch) Error() string { return "password confirmation does n
 
 func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, db.ErrDatabaseInUse):
-		writeError(w, http.StatusConflict, db.ErrDatabaseInUse.Error())
-	case errors.Is(err, workspacelifecycle.ErrAuthentication):
+	case errors.Is(err, gatewayworkspace.ErrDatabaseInUse):
+		writeError(w, http.StatusConflict, gatewayworkspace.ErrDatabaseInUse.Error())
+	case errors.Is(err, gatewayworkspace.ErrAuthentication):
 		writeError(w, http.StatusUnauthorized, "invalid unlock password or database")
-	case db.UnsupportedSchemaMessage(err) != "":
-		writeError(w, http.StatusConflict, db.UnsupportedSchemaMessage(err))
-	case errors.Is(err, workspacelifecycle.ErrInitialization):
+	case gatewayworkspace.UnsupportedSchemaMessage(err) != "":
+		writeError(w, http.StatusConflict, gatewayworkspace.UnsupportedSchemaMessage(err))
+	case errors.Is(err, gatewayworkspace.ErrInitialization):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "database runtime initialization failed")
@@ -74,7 +72,7 @@ func writeDatabaseUnlockError(w http.ResponseWriter, err error) {
 }
 
 func recordDatabaseUnlockAttempt(attempt databasePasswordAttempt, err error) {
-	if errors.Is(err, workspacelifecycle.ErrAuthentication) {
+	if errors.Is(err, gatewayworkspace.ErrAuthentication) {
 		attempt.failure()
 		return
 	}
