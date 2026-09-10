@@ -1,4 +1,4 @@
-package api
+package vaultsessions
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"sync"
 )
 
-// vaultDeliveryCoordinator lets independent secret deliveries proceed together
-// while credential, permission, and trust mutations wait for a quiescent point.
-type vaultDeliveryCoordinator struct {
+// DeliveryCoordinator allows secret deliveries to proceed together while
+// credential, permission, and trust mutations wait for a quiescent point.
+type DeliveryCoordinator struct {
 	mu             sync.Mutex
 	readers        int
 	writer         bool
@@ -16,7 +16,7 @@ type vaultDeliveryCoordinator struct {
 	changed        chan struct{}
 }
 
-func (c *vaultDeliveryCoordinator) acquireDelivery(ctx context.Context) (func(), error) {
+func (c *DeliveryCoordinator) AcquireDelivery(ctx context.Context) (func(), error) {
 	if c == nil {
 		return nil, errors.New("Vault delivery coordinator is not configured")
 	}
@@ -49,7 +49,7 @@ func (c *vaultDeliveryCoordinator) acquireDelivery(ctx context.Context) (func(),
 	}
 }
 
-func (c *vaultDeliveryCoordinator) acquireExclusive(ctx context.Context) (func(), error) {
+func (c *DeliveryCoordinator) AcquireExclusive(ctx context.Context) (func(), error) {
 	if c == nil {
 		return nil, errors.New("Vault delivery coordinator is not configured")
 	}
@@ -91,20 +91,20 @@ func (c *vaultDeliveryCoordinator) acquireExclusive(ctx context.Context) (func()
 	}
 }
 
-func (c *vaultDeliveryCoordinator) cancelExclusiveWait() {
+func (c *DeliveryCoordinator) cancelExclusiveWait() {
 	c.mu.Lock()
 	c.waitingWriters--
 	c.notifyLocked()
 	c.mu.Unlock()
 }
 
-func (c *vaultDeliveryCoordinator) initializeLocked() {
+func (c *DeliveryCoordinator) initializeLocked() {
 	if c.changed == nil {
 		c.changed = make(chan struct{})
 	}
 }
 
-func (c *vaultDeliveryCoordinator) notifyLocked() {
+func (c *DeliveryCoordinator) notifyLocked() {
 	c.initializeLocked()
 	close(c.changed)
 	c.changed = make(chan struct{})

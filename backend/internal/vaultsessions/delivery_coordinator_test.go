@@ -1,4 +1,4 @@
-package api
+package vaultsessions
 
 import (
 	"context"
@@ -8,49 +8,49 @@ import (
 	"time"
 )
 
-func TestVaultDeliveryCoordinatorRejectsExpiredContextBeforeAcquiringGate(t *testing.T) {
-	coordinator := &vaultDeliveryCoordinator{}
+func TestDeliveryCoordinatorRejectsExpiredContextBeforeAcquiringGate(t *testing.T) {
+	coordinator := &DeliveryCoordinator{}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	for range 100 {
-		if release, err := coordinator.acquireDelivery(ctx); !errors.Is(err, context.Canceled) || release != nil {
+		if release, err := coordinator.AcquireDelivery(ctx); !errors.Is(err, context.Canceled) || release != nil {
 			t.Fatalf("expired context acquired Vault delivery gate: release=%v err=%v", release != nil, err)
 		}
 	}
 
-	release, err := coordinator.acquireDelivery(context.Background())
+	release, err := coordinator.AcquireDelivery(context.Background())
 	if err != nil {
 		t.Fatalf("live context could not acquire Vault delivery gate: %v", err)
 	}
 	release()
 }
 
-func TestVaultDeliveryCoordinatorAllowsConcurrentDeliveriesAndFencesMutation(t *testing.T) {
-	coordinator := &vaultDeliveryCoordinator{}
-	first, err := coordinator.acquireDelivery(t.Context())
+func TestDeliveryCoordinatorAllowsConcurrentDeliveriesAndFencesMutation(t *testing.T) {
+	coordinator := &DeliveryCoordinator{}
+	first, err := coordinator.AcquireDelivery(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := coordinator.acquireDelivery(t.Context())
+	second, err := coordinator.AcquireDelivery(t.Context())
 	if err != nil {
 		t.Fatalf("second delivery was serialized: %v", err)
 	}
 
 	exclusiveAcquired := make(chan func(), 1)
 	go func() {
-		release, acquireErr := coordinator.acquireExclusive(t.Context())
+		release, acquireErr := coordinator.AcquireExclusive(t.Context())
 		if acquireErr == nil {
 			exclusiveAcquired <- release
 		}
 	}()
-	waitForVaultCoordinatorState(t, coordinator, func(readers int, writer bool, waitingWriters int) bool {
+	waitForDeliveryCoordinatorState(t, coordinator, func(readers int, writer bool, waitingWriters int) bool {
 		return readers == 2 && !writer && waitingWriters == 1
 	})
 
 	thirdDelivery := make(chan func(), 1)
 	go func() {
-		release, acquireErr := coordinator.acquireDelivery(t.Context())
+		release, acquireErr := coordinator.AcquireDelivery(t.Context())
 		if acquireErr == nil {
 			thirdDelivery <- release
 		}
@@ -80,9 +80,9 @@ func TestVaultDeliveryCoordinatorAllowsConcurrentDeliveriesAndFencesMutation(t *
 	(<-thirdDelivery)()
 }
 
-func TestVaultDeliveryCoordinatorCanceledWriterUnblocksDeliveries(t *testing.T) {
-	coordinator := &vaultDeliveryCoordinator{}
-	activeRelease, err := coordinator.acquireDelivery(t.Context())
+func TestDeliveryCoordinatorCanceledWriterUnblocksDeliveries(t *testing.T) {
+	coordinator := &DeliveryCoordinator{}
+	activeRelease, err := coordinator.AcquireDelivery(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,10 +90,10 @@ func TestVaultDeliveryCoordinatorCanceledWriterUnblocksDeliveries(t *testing.T) 
 	writerContext, cancelWriter := context.WithCancel(t.Context())
 	writerDone := make(chan error, 1)
 	go func() {
-		_, acquireErr := coordinator.acquireExclusive(writerContext)
+		_, acquireErr := coordinator.AcquireExclusive(writerContext)
 		writerDone <- acquireErr
 	}()
-	waitForVaultCoordinatorState(t, coordinator, func(readers int, writer bool, waitingWriters int) bool {
+	waitForDeliveryCoordinatorState(t, coordinator, func(readers int, writer bool, waitingWriters int) bool {
 		return readers == 1 && !writer && waitingWriters == 1
 	})
 
@@ -101,7 +101,7 @@ func TestVaultDeliveryCoordinatorCanceledWriterUnblocksDeliveries(t *testing.T) 
 	if err := <-writerDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled writer error = %v", err)
 	}
-	nextRelease, err := coordinator.acquireDelivery(t.Context())
+	nextRelease, err := coordinator.AcquireDelivery(t.Context())
 	if err != nil {
 		t.Fatalf("delivery remained blocked after writer cancellation: %v", err)
 	}
@@ -109,9 +109,9 @@ func TestVaultDeliveryCoordinatorCanceledWriterUnblocksDeliveries(t *testing.T) 
 	activeRelease()
 }
 
-func waitForVaultCoordinatorState(
+func waitForDeliveryCoordinatorState(
 	t *testing.T,
-	coordinator *vaultDeliveryCoordinator,
+	coordinator *DeliveryCoordinator,
 	matches func(readers int, writer bool, waitingWriters int) bool,
 ) {
 	t.Helper()

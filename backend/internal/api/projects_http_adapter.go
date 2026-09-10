@@ -18,7 +18,7 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (projectstore.Scope, b
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AcquireExclusive: runtime.vaultDelivery.acquireExclusive,
+		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
 		Invalidate: func(ctx context.Context, projectID int64) error {
 			return s.invalidateVaultProjectSessions(ctx, runtime, projectID, "project was archived; send a fresh Vault request")
 		},

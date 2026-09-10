@@ -40,7 +40,7 @@ func (g actionDeliveryGate) Acquire(ctx context.Context) (func(), error) {
 	if g.runtime == nil {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	return g.runtime.vaultDelivery.acquireDelivery(ctx)
+	return g.runtime.vaultDelivery.AcquireDelivery(ctx)
 }
 
 type actionSealedRecords struct{ runtime *databaseRuntime }

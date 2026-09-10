@@ -19,14 +19,14 @@ func (g projectVaultDeliveryGate) AcquireDelivery(ctx context.Context) (func(), 
 	if g.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return g.runtime.vaultDelivery.acquireDelivery(ctx)
+	return g.runtime.vaultDelivery.AcquireDelivery(ctx)
 }
 
 func (g projectVaultDeliveryGate) AcquireExclusive(ctx context.Context) (func(), error) {
 	if g.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return g.runtime.vaultDelivery.acquireExclusive(ctx)
+	return g.runtime.vaultDelivery.AcquireExclusive(ctx)
 }
 
 type projectVaultMutationPort struct {

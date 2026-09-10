@@ -127,14 +127,14 @@ func (p vaultActionDeliveryPort) AcquireDelivery(ctx context.Context) (func(), e
 	if p.runtime == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return p.runtime.vaultDelivery.acquireDelivery(ctx)
+	return p.runtime.vaultDelivery.AcquireDelivery(ctx)
 }
 
 func (p vaultActionDeliveryPort) AcquireExclusive(ctx context.Context) (func(), error) {
 	if p.runtime == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return p.runtime.vaultDelivery.acquireExclusive(ctx)
+	return p.runtime.vaultDelivery.AcquireExclusive(ctx)
 }
 
 type vaultActionMutationPort struct {

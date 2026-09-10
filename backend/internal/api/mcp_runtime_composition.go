@@ -19,7 +19,7 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (runtimecontrol.MCPR
 			settings, err := readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err
 		},
-		AcquireStop: runtime.vaultDelivery.acquireExclusive,
+		AcquireStop: runtime.vaultDelivery.AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
 			if err := s.invalidateAllVaultSessions(ctx, runtime, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
 				return err

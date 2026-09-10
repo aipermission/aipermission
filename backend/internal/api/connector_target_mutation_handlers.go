@@ -21,7 +21,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.vaultDelivery.acquireExclusive(r.Context())
+	release, err := runtime.vaultDelivery.AcquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
 		return

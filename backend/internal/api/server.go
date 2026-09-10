@@ -78,7 +78,7 @@ type databaseRuntime struct {
 	runtimeInstanceID  string
 	actionIdentityKey  []byte
 	vaultLeases        *vaultsessions.Store
-	vaultDelivery      vaultDeliveryCoordinator
+	vaultDelivery      vaultsessions.DeliveryCoordinator
 	identityMu         sync.Mutex
 	auditDispatcher    *observability.Dispatcher
 	retention          *retention.Service

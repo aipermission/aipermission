@@ -24,7 +24,7 @@ func (s *Server) connectorTargetMutationScope(runtime *databaseRuntime) connecto
 		ValidateTransport: func(ctx context.Context, projectID int64, config map[string]any) error {
 			return s.validateConnectorTransportConfig(ctx, connectortargets.NewStore(runtime.database), projectID, config)
 		},
-		AcquireExclusive: runtime.vaultDelivery.acquireExclusive,
+		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 				return mutate(tx, connectormanagement.AuditAppender(appendAudit))

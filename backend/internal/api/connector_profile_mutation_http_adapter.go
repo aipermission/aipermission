@@ -22,7 +22,7 @@ func (s *Server) connectorProfileMutationScope(runtime *databaseRuntime) connect
 		Database:         runtime.database,
 		Registry:         runtime.connectorRegistry(),
 		Preparation:      s.connectorCredentialPreparationPorts(runtime),
-		AcquireExclusive: runtime.vaultDelivery.acquireExclusive,
+		AcquireExclusive: runtime.vaultDelivery.AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 				return mutate(tx, connectormanagement.AuditAppender(appendAudit))

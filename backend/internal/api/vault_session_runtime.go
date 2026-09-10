@@ -23,7 +23,7 @@ func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) error {
 		operation console.SessionOperation,
 		run func() error,
 	) error {
-		release, err := runtime.vaultDelivery.acquireDelivery(ctx)
+		release, err := runtime.vaultDelivery.AcquireDelivery(ctx)
 		if err != nil {
 			return err
 		}
