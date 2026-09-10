@@ -1,4 +1,4 @@
-package api
+package connectortransport
 
 import (
 	"context"
@@ -11,22 +11,17 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-const (
-	defaultConnectorCommandTimeout = 30 * time.Second
-	maxConnectorCommandTimeout     = 60 * time.Second
-)
+const defaultCommandTimeout = 30 * time.Second
+const MaxCommandTimeout = 60 * time.Second
 
-type connectorCommandTransport struct {
-	server   *Server
-	runtime  *databaseRuntime
-	approved approvedConnectorTransports
+type Command struct {
+	Dependencies
+	Approved Approved
 }
 
-func (connectorCommandTransport) ConnectorRuntimeCapability() string {
-	return connectors.CommandTransportCapabilityName
-}
+func (Command) ConnectorRuntimeCapability() string { return connectors.CommandTransportCapabilityName }
 
-func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+func (transport Command) RunConnectorCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
 	mode := strings.TrimSpace(request.Mode)
 	if mode == "" {
 		mode = "connector"
@@ -37,11 +32,11 @@ func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Conte
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	timeout := defaultConnectorCommandTimeout
+	timeout := defaultCommandTimeout
 	if request.TimeoutSeconds > 0 {
 		timeout = time.Duration(request.TimeoutSeconds) * time.Second
-		if timeout > maxConnectorCommandTimeout {
-			timeout = maxConnectorCommandTimeout
+		if timeout > MaxCommandTimeout {
+			timeout = MaxCommandTimeout
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -54,20 +49,23 @@ func (transport connectorCommandTransport) RunConnectorCommand(ctx context.Conte
 	if !ok {
 		return connectors.CommandRunResult{}, connectortargets.ErrInvalidTargetRef
 	}
-	if transport.runtime == nil || transport.runtime.Storage.Database == nil {
+	if transport.Runtime == nil || transport.Runtime.Storage.Database == nil {
 		return connectors.CommandRunResult{}, fmt.Errorf("database runtime is not available")
 	}
-	release, err := transport.approved.acquire(ctx, transport.runtime, connectors.CommandTransportCapabilityName, targetRef)
+	release, err := transport.Approved.Acquire(ctx, transport.Runtime, connectors.CommandTransportCapabilityName, targetRef)
 	if err != nil {
 		return connectors.CommandRunResult{}, err
 	}
 	defer release()
-	if err := connectortargets.NewStore(transport.runtime.Storage.Database).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
+	if err := connectortargets.NewStore(transport.Runtime.Storage.Database).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
 		return connectors.CommandRunResult{}, err
 	}
-	adapter, _ := transport.server.connectorAPIAdapterFor(kind).(connectorapi.CommandTransportAdapter)
+	var adapter connectorapi.CommandTransportAdapter
+	if transport.AdapterFor != nil {
+		adapter, _ = transport.AdapterFor(kind).(connectorapi.CommandTransportAdapter)
+	}
 	if adapter == nil {
 		return connectors.CommandRunResult{}, fmt.Errorf("%s connector does not expose command transport", kind)
 	}
-	return adapter.RunConnectorCommand(ctx, connectorPeerGatewayPort{server: transport.server}, connectorLiveRuntime(transport.runtime, kind), targetRef, request.Command)
+	return adapter.RunConnectorCommand(ctx, peerGateway{transport.TrustStorePath}, liveRuntime(transport.Runtime, kind), targetRef, request.Command)
 }

@@ -147,7 +147,7 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 		t.Fatalf("update transport profile: %v", err)
 	}
 
-	release, err := approved.acquire(t.Context(), newTestDatabaseRuntime(database), connectors.NetworkTransportCapabilityName, profile.TargetRef)
+	release, err := approved.Acquire(t.Context(), newTestDatabaseRuntime(database), connectors.NetworkTransportCapabilityName, profile.TargetRef)
 	if !errors.Is(err, errConnectorTransportApprovalChanged) {
 		if release != nil {
 			release()

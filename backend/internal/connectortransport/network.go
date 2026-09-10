@@ -1,4 +1,4 @@
-package api
+package connectortransport
 
 import (
 	"context"
@@ -14,20 +14,17 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-const connectorNetworkDialTimeout = 12 * time.Second
+const networkDialTimeout = 12 * time.Second
 const dockerHostInternalName = "host.docker.internal"
 
-type connectorNetworkTransport struct {
-	server   *Server
-	runtime  *databaseRuntime
-	approved approvedConnectorTransports
+type Network struct {
+	Dependencies
+	Approved Approved
 }
 
-func (connectorNetworkTransport) ConnectorRuntimeCapability() string {
-	return connectors.NetworkTransportCapabilityName
-}
+func (Network) ConnectorRuntimeCapability() string { return connectors.NetworkTransportCapabilityName }
 
-func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context, request connectors.NetworkDialRequest) (net.Conn, error) {
+func (transport Network) DialConnectorTCP(ctx context.Context, request connectors.NetworkDialRequest) (net.Conn, error) {
 	mode := strings.TrimSpace(request.Mode)
 	if mode == "" {
 		mode = "direct"
@@ -39,7 +36,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, connectorNetworkDialTimeout)
+	ctx, cancel := context.WithTimeout(ctx, networkDialTimeout)
 	defer cancel()
 	if !connectors.UsesConnectorTransport(mode, "direct") {
 		return dialDirectConnectorTCP(ctx, request.Host, request.Port)
@@ -52,15 +49,15 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	if !ok {
 		return nil, connectortargets.ErrInvalidTargetRef
 	}
-	if transport.runtime == nil || transport.runtime.Storage.Database == nil {
+	if transport.Runtime == nil || transport.Runtime.Storage.Database == nil {
 		return nil, fmt.Errorf("database runtime is not available")
 	}
-	release, err := transport.approved.acquire(ctx, transport.runtime, connectors.NetworkTransportCapabilityName, targetRef)
+	release, err := transport.Approved.Acquire(ctx, transport.Runtime, connectors.NetworkTransportCapabilityName, targetRef)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	store := connectortargets.NewStore(transport.runtime.Storage.Database)
+	store := connectortargets.NewStore(transport.Runtime.Storage.Database)
 	var projectErr error
 	if strings.TrimSpace(request.SourceTargetRef) != "" {
 		projectErr = store.ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef)
@@ -72,11 +69,14 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 	if projectErr != nil {
 		return nil, projectErr
 	}
-	adapter, _ := transport.server.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
+	var adapter connectorapi.TCPTransportAdapter
+	if transport.AdapterFor != nil {
+		adapter, _ = transport.AdapterFor(kind).(connectorapi.TCPTransportAdapter)
+	}
 	if adapter == nil {
 		return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
 	}
-	return adapter.DialConnectorTCP(ctx, connectorPeerGatewayPort{server: transport.server}, connectorLiveRuntime(transport.runtime, kind), targetRef, "tcp", address)
+	return adapter.DialConnectorTCP(ctx, peerGateway{transport.TrustStorePath}, liveRuntime(transport.Runtime, kind), targetRef, "tcp", address)
 }
 
 func networkDialAddress(host string, port int) (string, error) {
@@ -100,11 +100,11 @@ func dialDirectConnectorTCP(ctx context.Context, host string, port int) (net.Con
 	if err == nil && len(addrs) > 0 {
 		var lastErr error
 		for _, addr := range preferredDialAddresses(addrs, port) {
-			conn, err := dialTCPAddress(ctx, addr.network, addr.address)
-			if err == nil {
-				return conn, nil
+			connection, dialErr := dialTCPAddress(ctx, addr.network, addr.address)
+			if dialErr == nil {
+				return connection, nil
 			}
-			lastErr = err
+			lastErr = dialErr
 		}
 		if lastErr != nil {
 			return nil, lastErr
@@ -113,27 +113,16 @@ func dialDirectConnectorTCP(ctx context.Context, host string, port int) (net.Con
 	return dialTCPAddress(ctx, "tcp", address)
 }
 
-type preferredDialAddress struct {
-	network string
-	address string
-}
+type preferredDialAddress struct{ network, address string }
 
 func preferredDialAddresses(addrs []net.IPAddr, port int) []preferredDialAddress {
 	result := make([]preferredDialAddress, 0, len(addrs))
 	appendFamily := func(wantV4 bool) {
 		for _, addr := range addrs {
-			ip := addr.IP
-			if ip == nil {
+			if addr.IP == nil || (addr.IP.To4() != nil) != wantV4 {
 				continue
 			}
-			isV4 := ip.To4() != nil
-			if isV4 != wantV4 {
-				continue
-			}
-			result = append(result, preferredDialAddress{
-				network: ipNetwork(ip),
-				address: net.JoinHostPort(ip.String(), strconv.Itoa(port)),
-			})
+			result = append(result, preferredDialAddress{network: ipNetwork(addr.IP), address: net.JoinHostPort(addr.IP.String(), strconv.Itoa(port))})
 		}
 	}
 	appendFamily(true)
@@ -148,7 +137,7 @@ func ipNetwork(ip net.IP) string {
 	return "tcp6"
 }
 
-func dialTCPAddress(ctx context.Context, network string, address string) (net.Conn, error) {
+func dialTCPAddress(ctx context.Context, network, address string) (net.Conn, error) {
 	var dialer net.Dialer
 	return dialer.DialContext(ctx, network, address)
 }
@@ -187,10 +176,9 @@ func parseLinuxDefaultGatewayRoute(data string) (string, bool) {
 			continue
 		}
 		ip := net.IPv4(byte(value), byte(value>>8), byte(value>>16), byte(value>>24))
-		if ip == nil || ip.Equal(net.IPv4zero) {
-			continue
+		if ip != nil && !ip.Equal(net.IPv4zero) {
+			return ip.String(), true
 		}
-		return ip.String(), true
 	}
 	return "", false
 }

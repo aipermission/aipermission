@@ -1,4 +1,4 @@
-package api
+package connectortransport
 
 import (
 	"net"
@@ -9,11 +9,8 @@ func TestParseLinuxDefaultGatewayRoute(t *testing.T) {
 	gateway, ok := parseLinuxDefaultGatewayRoute(`Iface	Destination	Gateway	Flags	RefCnt	Use	Metric	Mask
 eth0	00000000	010011AC	0003	0	0	0	00000000
 `)
-	if !ok {
-		t.Fatalf("expected default gateway")
-	}
-	if gateway != "172.17.0.1" {
-		t.Fatalf("gateway = %q", gateway)
+	if !ok || gateway != "172.17.0.1" {
+		t.Fatalf("gateway=%q ok=%v", gateway, ok)
 	}
 }
 
@@ -27,8 +24,7 @@ eth0	0008A8C0	00000000	0001	0	0	0	00FFFFFF
 
 func TestPreferredDialAddressesPreferIPv4(t *testing.T) {
 	addrs := preferredDialAddresses([]net.IPAddr{
-		{IP: net.ParseIP("2001:db8::10")},
-		{IP: net.ParseIP("192.0.2.10")},
+		{IP: net.ParseIP("2001:db8::10")}, {IP: net.ParseIP("192.0.2.10")},
 	}, 443)
 	if len(addrs) != 2 {
 		t.Fatalf("addresses = %#v", addrs)
