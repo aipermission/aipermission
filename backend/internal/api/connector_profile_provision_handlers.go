@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -170,7 +171,7 @@ func (s connectorTargetHandlers) provisionConnectorCredentialProfile(w http.Resp
 		return
 	}
 	writeJSON(w, http.StatusCreated, provisionConnectorCredentialProfileResponse{
-		Profile: profileToSummary(profile),
+		Profile: connectormanagement.ProfileToSummary(profile),
 		Result:  provisioned.Result,
 	})
 }

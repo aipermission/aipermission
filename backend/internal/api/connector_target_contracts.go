@@ -1,6 +1,6 @@
 package api
 
-import "github.com/aipermission/aipermission/backend/internal/connectors"
+import "github.com/aipermission/aipermission/backend/internal/connectormanagement"
 
 type createConnectorTargetRequest struct {
 	ProjectID     int64          `json:"project_id"`
@@ -53,34 +53,5 @@ type connectorTargetTestResponse struct {
 	DurationMS    int64          `json:"duration_ms"`
 }
 
-type connectorTargetResponse struct {
-	ID            int64            `json:"id"`
-	ProjectID     int64            `json:"project_id"`
-	ProjectName   string           `json:"project_name"`
-	ProjectSlug   string           `json:"project_slug"`
-	Ref           string           `json:"ref,omitempty"`
-	ConnectorKind string           `json:"connector_kind"`
-	Name          string           `json:"name"`
-	Config        map[string]any   `json:"config,omitempty"`
-	Status        string           `json:"status"`
-	CreatedAt     string           `json:"created_at"`
-	UpdatedAt     string           `json:"updated_at"`
-	Profiles      []profileSummary `json:"profiles,omitempty"`
-}
-
-type profileSummary struct {
-	ID                int64                         `json:"id"`
-	TargetID          int64                         `json:"target_id"`
-	Ref               string                        `json:"ref"`
-	ConnectorKind     string                        `json:"connector_kind"`
-	Kind              string                        `json:"kind"`
-	Label             string                        `json:"label"`
-	Public            map[string]any                `json:"public,omitempty"`
-	RiskLabel         string                        `json:"risk_label,omitempty"`
-	Actions           []connectors.ActionDefinition `json:"actions,omitempty"`
-	RuntimeID         int64                         `json:"runtime_id,omitempty"`
-	TransferRuntimeID int64                         `json:"transfer_runtime_id,omitempty"`
-	VaultSession      bool                          `json:"vault_session_supported"`
-	CreatedAt         string                        `json:"created_at"`
-	UpdatedAt         string                        `json:"updated_at"`
-}
+type connectorTargetResponse = connectormanagement.TargetResponse
+type profileSummary = connectormanagement.ProfileSummary

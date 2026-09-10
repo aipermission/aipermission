@@ -1,9 +1,10 @@
-package api
+package connectormanagement
 
 import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type connectorCatalogItem struct {
@@ -21,12 +22,12 @@ type connectorCatalogDetail struct {
 	Help              connectors.ConnectorHelp      `json:"help"`
 }
 
-func (s connectorHandlers) listConnectors(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.activeRuntimeOrLocked(w); !ok {
+func (h *HTTPHandlers) ListConnectors(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireRegistry)
+	if !ok {
 		return
 	}
-	registry := s.connectorRegistry()
-	infos := registry.List()
+	infos := scope.Registry.List()
 	items := make([]connectorCatalogItem, 0, len(infos))
 	for _, info := range infos {
 		items = append(items, connectorCatalogItem{
@@ -35,35 +36,35 @@ func (s connectorHandlers) listConnectors(w http.ResponseWriter, r *http.Request
 			Version: info.Version,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (s connectorHandlers) getConnector(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.activeRuntimeOrLocked(w); !ok {
+func (h *HTTPHandlers) GetConnector(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireRegistry)
+	if !ok {
 		return
 	}
 	kind := r.PathValue("kind")
 	if !connectors.ValidIdentifier(kind) {
-		writeError(w, http.StatusBadRequest, "invalid connector kind")
+		httptransport.WriteError(w, http.StatusBadRequest, "invalid connector kind")
 		return
 	}
-	registry := s.connectorRegistry()
-	connector, ok := registry.Get(kind)
+	connector, ok := scope.Registry.Get(kind)
 	if !ok {
-		writeError(w, http.StatusNotFound, "connector not found")
+		httptransport.WriteError(w, http.StatusNotFound, "connector not found")
 		return
 	}
 	if err := connectors.ValidateNonSecretSchema(connector.TargetSchema(), connector.Kind()+" target"); err != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
 	target := connectors.TargetView{ConnectorKind: connector.Kind()}
 	help, err := connector.GetHelp(r.Context(), target)
 	if err != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, connectorCatalogDetail{
+	httptransport.WriteJSON(w, http.StatusOK, connectorCatalogDetail{
 		Kind:              connector.Kind(),
 		Label:             connector.Label(),
 		Version:           connector.Version(),

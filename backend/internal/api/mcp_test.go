@@ -357,11 +357,24 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("expected one connector target, got %#v", items)
 	}
 	metadata := items[0].Metadata
-	if metadata["host"] != profile.Host || metadata["username"] != profile.Username || int64ConfigValue(metadata, "port") != int64(profile.Port) {
+	if metadata["host"] != profile.Host || metadata["username"] != profile.Username || testMetadataInt64(metadata["port"]) != int64(profile.Port) {
 		t.Fatalf("unexpected exposed metadata: %#v", metadata)
 	}
 	if _, ok := metadata["ssh_key_id"]; ok {
 		t.Fatalf("metadata should not expose credential ids: %#v", metadata)
+	}
+}
+
+func testMetadataInt64(value any) int64 {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case float64:
+		return int64(typed)
+	default:
+		return 0
 	}
 }
 

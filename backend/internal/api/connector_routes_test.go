@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -189,7 +189,7 @@ func TestTargetsListDoesNotCreateRuntimeSurfacesOnRead(t *testing.T) {
 		t.Fatalf("surface-less target profile should still be listed: %s", response.Body.String())
 	}
 	listedPage := decodeRouteResponse[struct {
-		Items []targetProfileItem `json:"items"`
+		Items []connectormanagement.TargetProfileItem `json:"items"`
 	}](t, response.Body.Bytes())
 	found := false
 	for _, item := range listedPage.Items {

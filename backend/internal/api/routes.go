@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/observability"
@@ -22,9 +23,7 @@ type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type vaultItemHandlers struct{ *Server }
 type fileTransferHandlers struct{ *Server }
-type connectorHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
-type targetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type vaultActionApprovalHandlers struct{ *Server }
 type maintenanceConsoleHandlers struct{ *Server }
@@ -210,20 +209,19 @@ func (s *Server) registerTransferRoutes() {
 }
 
 func (s *Server) registerConnectorRoutes() {
-	connectors := connectorHandlers{s}
-	targets := targetHandlers{s}
+	queries := connectormanagement.NewHTTPHandlers(s.connectorManagementScope)
 	connectorTargets := connectorTargetHandlers{s}
 
-	s.mux.HandleFunc("GET /api/connectors", connectors.listConnectors)
-	s.mux.HandleFunc("GET /api/connectors/{kind}", connectors.getConnector)
-	s.mux.HandleFunc("GET /api/targets", targets.listTargets)
-	s.mux.HandleFunc("GET /api/connector-targets", connectorTargets.listConnectorTargets)
-	s.mux.HandleFunc("GET /api/connector-targets/inventory", connectorTargets.listConnectorTargetInventory)
+	s.mux.HandleFunc("GET /api/connectors", queries.ListConnectors)
+	s.mux.HandleFunc("GET /api/connectors/{kind}", queries.GetConnector)
+	s.mux.HandleFunc("GET /api/targets", queries.ListTargetProfiles)
+	s.mux.HandleFunc("GET /api/connector-targets", queries.ListTargets)
+	s.mux.HandleFunc("GET /api/connector-targets/inventory", queries.ListTargetInventory)
 	s.mux.HandleFunc("POST /api/connector-targets/with-profile", connectorTargets.createConnectorTargetWithProfile)
 	s.mux.HandleFunc("POST /api/connector-targets", connectorTargets.createConnectorTarget)
 	s.mux.HandleFunc("POST /api/connector-targets/ping", connectorTargets.pingConnectorTargetHost)
 	s.mux.HandleFunc("POST /api/connector-targets/test", connectorTargets.testConnectorTargetDraft)
-	s.mux.HandleFunc("GET /api/connector-targets/{id}", connectorTargets.getConnectorTarget)
+	s.mux.HandleFunc("GET /api/connector-targets/{id}", queries.GetTarget)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}/with-profile/{profile_id}", connectorTargets.updateConnectorTargetWithProfile)
 	s.mux.HandleFunc("PUT /api/connector-targets/{id}", connectorTargets.updateConnectorTarget)
 	s.mux.HandleFunc("DELETE /api/connector-targets/{id}", connectorTargets.deleteConnectorTarget)

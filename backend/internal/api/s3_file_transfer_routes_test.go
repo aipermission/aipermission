@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
@@ -109,7 +110,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("list targets: %d %s", list.Code, list.Body.String())
 	}
 	var payload struct {
-		Items []targetProfileItem `json:"items"`
+		Items []connectormanagement.TargetProfileItem `json:"items"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode target list: %v", err)

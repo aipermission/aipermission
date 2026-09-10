@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -31,7 +32,7 @@ func (s connectorTargetHandlers) listConnectorCredentialProfiles(w http.Response
 		handleConnectorTargetError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": profileSummaries(profiles)})
+	writeJSON(w, http.StatusOK, map[string]any{"items": connectormanagement.ProfileSummaries(profiles)})
 }
 
 func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +107,7 @@ func (s connectorTargetHandlers) createConnectorCredentialProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, profileToSummary(profile))
+	writeJSON(w, http.StatusCreated, connectormanagement.ProfileToSummary(profile))
 }
 
 func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +187,7 @@ func (s connectorTargetHandlers) updateConnectorCredentialProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, profileToSummary(profile))
+	writeJSON(w, http.StatusOK, connectormanagement.ProfileToSummary(profile))
 }
 
 func (s connectorTargetHandlers) deleteConnectorCredentialProfile(w http.ResponseWriter, r *http.Request) {

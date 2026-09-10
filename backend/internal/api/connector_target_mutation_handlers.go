@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
@@ -65,7 +66,7 @@ func (s connectorTargetHandlers) createConnectorTarget(w http.ResponseWriter, r 
 		handleConnectorTargetError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, nil))
+	writeJSON(w, http.StatusCreated, connectormanagement.TargetToResponse(target, nil))
 }
 
 func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +164,7 @@ func (s connectorTargetHandlers) createConnectorTargetWithProfile(w http.Respons
 		handleConnectorTargetError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
+	writeJSON(w, http.StatusCreated, connectormanagement.TargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
 func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +259,7 @@ func (s connectorTargetHandlers) updateConnectorTarget(w http.ResponseWriter, r 
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, profiles))
+	writeJSON(w, http.StatusOK, connectormanagement.TargetToResponse(target, profiles))
 }
 
 func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.ResponseWriter, r *http.Request) {
@@ -368,7 +369,7 @@ func (s connectorTargetHandlers) updateConnectorTargetWithProfile(w http.Respons
 		writeInternalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, connectorTargetToResponse(target, []connectortargets.CredentialProfile{profile}))
+	writeJSON(w, http.StatusOK, connectormanagement.TargetToResponse(target, []connectortargets.CredentialProfile{profile}))
 }
 
 func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r *http.Request) {

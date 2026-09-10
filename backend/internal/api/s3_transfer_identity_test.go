@@ -16,10 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
-func createS3IdentityRuntime(t *testing.T, server *Server, endpoint string) targetProfileItem {
+func createS3IdentityRuntime(t *testing.T, server *Server, endpoint string) connectormanagement.TargetProfileItem {
 	t.Helper()
 	u, _ := url.Parse(endpoint)
 	host, portText, _ := net.SplitHostPort(u.Host)
@@ -36,7 +37,7 @@ func createS3IdentityRuntime(t *testing.T, server *Server, endpoint string) targ
 	}
 	response = performJSON(server.Handler(), http.MethodGet, "/api/targets", "", nil)
 	var targets struct {
-		Items []targetProfileItem `json:"items"`
+		Items []connectormanagement.TargetProfileItem `json:"items"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &targets); err != nil || len(targets.Items) != 1 {
 		t.Fatalf("targets: %s", response.Body.String())

@@ -29,8 +29,12 @@ func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find connector target handlers: %v", err)
 	}
-	sourcePaths := append(targetFiles,
-		filepath.Join(apiDir, "target_handlers.go"),
+	managementFiles, err := filepath.Glob(filepath.Join(apiDir, "../connectormanagement/*.go"))
+	if err != nil {
+		t.Fatalf("find connector management handlers: %v", err)
+	}
+	sourcePaths := append(targetFiles, managementFiles...)
+	sourcePaths = append(sourcePaths,
 		filepath.Join(apiDir, "../history/store.go"),
 		filepath.Join(apiDir, "../console/console_session_manager.go"),
 		filepath.Join(apiDir, "../filetransfer/store.go"),

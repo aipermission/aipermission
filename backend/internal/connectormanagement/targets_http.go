@@ -1,4 +1,4 @@
-package api
+package connectormanagement
 
 import (
 	"encoding/json"
@@ -8,34 +8,15 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-type targetProfileItem struct {
-	Ref               string         `json:"ref"`
-	ProjectID         int64          `json:"project_id"`
-	ProjectName       string         `json:"project_name"`
-	ProjectSlug       string         `json:"project_slug"`
-	ConnectorKind     string         `json:"connector_kind"`
-	TargetID          int64          `json:"target_id"`
-	TargetName        string         `json:"target_name"`
-	ProfileID         int64          `json:"profile_id"`
-	ProfileKind       string         `json:"profile_kind"`
-	ProfileLabel      string         `json:"profile_label"`
-	RuntimeID         int64          `json:"runtime_id,omitempty"`
-	TransferRuntimeID int64          `json:"transfer_runtime_id,omitempty"`
-	Config            map[string]any `json:"config,omitempty"`
-	Public            map[string]any `json:"public,omitempty"`
-	Status            string         `json:"status"`
-	CreatedAt         string         `json:"created_at"`
-	UpdatedAt         string         `json:"updated_at"`
-}
-
-func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
+func (h *HTTPHandlers) ListTargetProfiles(w http.ResponseWriter, r *http.Request) {
+	scope, ok := h.resolve(w, requireDatabase|requireFeatures)
 	if !ok {
 		return
 	}
-	rows, err := runtime.database.QueryContext(r.Context(), `
+	rows, err := scope.Database.QueryContext(r.Context(), `
 			SELECT
 				t.id, t.project_id, project.name, project.slug, t.connector_kind, t.name, t.config_json, t.status,
 				p.id, p.kind, p.label, p.public_json,
@@ -46,14 +27,14 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			WHERE t.status = 'active' AND p.status = 'active' AND p.connector_kind = t.connector_kind
 			ORDER BY lower(project.name), t.connector_kind, lower(t.name), p.label, p.id`)
 	if err != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
 	defer rows.Close()
 
-	items := []targetProfileItem{}
+	items := []TargetProfileItem{}
 	for rows.Next() {
-		var item targetProfileItem
+		var item TargetProfileItem
 		var configJSON string
 		var publicJSON string
 		if err := rows.Scan(
@@ -72,18 +53,18 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
-			writeInternalError(w)
+			httptransport.WriteInternalError(w)
 			return
 		}
 		item.Ref = connectors.FormatTargetRef(item.ConnectorKind, item.TargetID, item.ProfileID)
 		config, err := decodeTargetObject(configJSON)
 		if err != nil {
-			writeInternalError(w)
+			httptransport.WriteInternalError(w)
 			return
 		}
 		public, err := decodeTargetObject(publicJSON)
 		if err != nil {
-			writeInternalError(w)
+			httptransport.WriteInternalError(w)
 			return
 		}
 		item.Config = config
@@ -91,27 +72,28 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		writeInternalError(w)
+		httptransport.WriteInternalError(w)
 		return
 	}
 
-	store := connectortargets.NewStore(runtime.database)
+	store := connectortargets.NewStore(scope.Database)
 	for index := range items {
 		item := &items[index]
-		if adapter := s.connectorLiveConsoleTargetAdapterFor(item.ConnectorKind); adapter != nil {
-			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, adapter.LiveConsoleCapabilityKind())
+		features := scope.Features(item.ConnectorKind)
+		if features.LiveConsoleCapability != "" {
+			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, features.LiveConsoleCapability)
 			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
-				writeInternalError(w)
+				httptransport.WriteInternalError(w)
 				return
 			}
 			if err == nil {
 				item.RuntimeID = surface.ID
 			}
 		}
-		if s.connectorFileTransferAdapterFor(item.ConnectorKind) != nil {
+		if features.FileTransfer {
 			surface, err := store.GetRuntimeSurfaceByProfile(r.Context(), item.ConnectorKind, item.TargetID, item.ProfileID, connectortargets.RuntimeCapabilityFileTransfer)
 			if err != nil && !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
-				writeInternalError(w)
+				httptransport.WriteInternalError(w)
 				return
 			}
 			if err == nil {
@@ -119,7 +101,7 @@ func (s targetHandlers) listTargets(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func decodeTargetObject(value string) (map[string]any, error) {

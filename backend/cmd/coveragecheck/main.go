@@ -27,6 +27,7 @@ var criticalCoverageFloors = map[string]float64{
 	"internal/connectors/s3":         64.0,
 	"internal/connectors/sqlsafe":    63.0,
 	"internal/connectors/ssh":        76.0,
+	"internal/connectormanagement":   73.0,
 	"internal/connectortargets":      63.0,
 	"internal/console":               72.0,
 	"internal/db":                    75.0,
