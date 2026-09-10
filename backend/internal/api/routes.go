@@ -10,6 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
@@ -134,7 +135,7 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	console := connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope)
 	bulkConsole := commandrequests.NewBulkHTTPHandlers(s.bulkCommandHTTPScope)
 	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
-	connectorApprovals := connectorActionApprovalHandlers{s}
+	connectorApprovals := connectorapproval.NewHTTPHandlers(s.connectorApprovalHTTPScope)
 	connectorActions := connectorActionHandlers{s}
 	historyHandlers := historyhttp.New(s.historyHTTPScope)
 
@@ -148,10 +149,10 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 	s.mux.HandleFunc("POST /api/console/runtime-surfaces/{id}/restart", console.Restart)
 	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.Restart)
 	s.mux.HandleFunc("GET /api/console/command-requests/{id}", commandRequests.Get)
-	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)
-	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)
-	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.runConnectorActionApproval)
-	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.declineConnectorActionApproval)
+	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.List)
+	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.Get)
+	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", connectorApprovals.Run)
+	s.mux.HandleFunc("POST /api/connector-action-approvals/{id}/decline", connectorApprovals.Decline)
 	s.mux.HandleFunc("POST /api/connector-actions/local-run", connectorActions.runLocalConnectorAction)
 	s.mux.HandleFunc("GET /api/history/targets", historyHandlers.ListTargetFacets)
 	s.mux.HandleFunc("GET /api/history", historyHandlers.ListEntries)
