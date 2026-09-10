@@ -23,7 +23,6 @@ import (
 )
 
 type credentialHandlers struct{ *Server }
-type bulkConsoleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
@@ -133,13 +132,13 @@ func (s *Server) registerBackupRoutes() {
 
 func (s *Server) registerConsoleAndActivityRoutes() {
 	console := connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope)
-	bulkConsole := bulkConsoleHandlers{s}
+	bulkConsole := commandrequests.NewBulkHTTPHandlers(s.bulkCommandHTTPScope)
 	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
 	connectorApprovals := connectorActionApprovalHandlers{s}
 	connectorActions := connectorActionHandlers{s}
 	historyHandlers := historyhttp.New(s.historyHTTPScope)
 
-	s.mux.HandleFunc("POST /api/console/bulk-exec", bulkConsole.runBulkConsoleCommand)
+	s.mux.HandleFunc("POST /api/console/bulk-exec", bulkConsole.Run)
 	s.mux.HandleFunc("GET /api/console/sessions", console.List)
 	s.mux.HandleFunc("POST /api/console/sessions", console.Create)
 	s.mux.HandleFunc("GET /api/console/sessions/{id}", console.Get)

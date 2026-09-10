@@ -29,4 +29,4 @@ Current contributor map:
 
 When adding behavior, start with a small file named after the workflow. If the behavior grows beyond HTTP handling, introduce or reuse a domain package and keep the handler thin.
 
-Handlers that still belong to this package should live on a narrowly named group such as `mcpHandlers` or `bulkConsoleHandlers`, not directly on `*Server`. Prefer an owning domain HTTP adapter when one exists; keep `*Server` methods for composition and shared lifecycle boundaries.
+Handlers that still belong to this package should live on a narrowly named group such as `mcpHandlers`, not directly on `*Server`. Prefer an owning domain HTTP adapter when one exists; keep `*Server` methods for composition and shared lifecycle boundaries.

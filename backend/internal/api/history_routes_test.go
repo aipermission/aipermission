@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
@@ -59,7 +60,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		t.Fatalf("move test ssh targets to closed port: %v", err)
 	}
 
-	missingConfirmation := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+	missingConfirmation := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
 		TargetIDs: []int64{serverOne.ID, serverTwo.ID},
 		Command:   "hostname",
 		Reason:    "bulk smoke",
@@ -68,7 +69,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		t.Fatalf("bulk command should require exact confirmation, got %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
 	}
 
-	duplicateServer := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+	duplicateServer := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
 		TargetIDs:    []int64{serverOne.ID, serverOne.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
@@ -78,7 +79,7 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		t.Fatalf("bulk command should reject duplicate targets, got %d %s", duplicateServer.Code, duplicateServer.Body.String())
 	}
 
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
 		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
 		Command:      "hostname",
 		Reason:       "bulk smoke",
@@ -87,8 +88,8 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("bulk command failed: %d %s", response.Code, response.Body.String())
 	}
-	result := decodeRouteResponse[bulkConsoleCommandResponse](t, response.Body.Bytes())
-	if result.Parallelism != bulkConsoleCommandParallelism || len(result.Items) != 2 {
+	result := decodeRouteResponse[commandrequests.BulkHTTPResponse](t, response.Body.Bytes())
+	if result.Parallelism != commandrequests.BulkParallelism || len(result.Items) != 2 {
 		t.Fatalf("unexpected bulk command response: %#v", result)
 	}
 	waitForBulkCommandHistory(t, fixture.db, result.Items)
@@ -161,7 +162,7 @@ func TestBulkConsoleCommandRollsBackEveryRequestWhenOneProjectionFails(t *testin
 		t.Fatalf("install bulk history rejection trigger: %v", err)
 	}
 
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", bulkConsoleCommandRequest{
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
 		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
 		Command:      "echo atomic bulk",
 		Reason:       "atomic bulk rollback",
@@ -186,7 +187,7 @@ func TestBulkConsoleCommandRollsBackEveryRequestWhenOneProjectionFails(t *testin
 	}
 }
 
-func waitForBulkCommandHistory(t *testing.T, database *sql.DB, items []bulkConsoleCommandResponseItem) {
+func waitForBulkCommandHistory(t *testing.T, database *sql.DB, items []commandrequests.BulkHTTPResponseItem) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
