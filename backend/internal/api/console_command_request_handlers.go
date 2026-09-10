@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 )
 
 func (s consoleHandlers) getConsoleCommandRequest(w http.ResponseWriter, r *http.Request) {
@@ -15,7 +17,7 @@ func (s consoleHandlers) getConsoleCommandRequest(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	item, err := s.getCommandRequest(r.Context(), runtime, id, 0, "")
+	item, err := commandrequests.NewStore(runtime.database).Get(r.Context(), id, 0, "")
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "command request not found")
 		return
