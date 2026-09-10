@@ -67,5 +67,5 @@ func (transport Command) RunConnectorCommand(ctx context.Context, request connec
 	if adapter == nil {
 		return connectors.CommandRunResult{}, fmt.Errorf("%s connector does not expose command transport", kind)
 	}
-	return adapter.RunConnectorCommand(ctx, peerGateway{transport.TrustStorePath}, liveRuntime(transport.Runtime, kind), targetRef, request.Command)
+	return adapter.RunConnectorCommand(ctx, peerGateway{transport.TrustStorePath}, LiveRuntime(transport.Runtime, kind), targetRef, request.Command)
 }

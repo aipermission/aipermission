@@ -8,6 +8,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 )
 
@@ -55,7 +56,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 		return filetransferhttp.ConnectorPorts{}, err
 	}
 	boundary := actions.NewCredentialBoundary(nil)
-	scope := connectorRuntimeScopeWithSecretAccessor(runtime, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
+	scope := connectortransport.ScopeWithSecretAccessor(runtime, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
 		boundary.AddStructured(secrets)
 		return connectorSecretAccessor{values: secrets, boundary: boundary}
 	})

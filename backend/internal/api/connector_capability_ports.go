@@ -4,65 +4,39 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
 
-type connectorTargetLifecycleRuntimePort struct {
-	connectorapi.LiveSessionRuntime
-	runtime *databaseRuntime
-}
-
-func (p connectorTargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error) {
-	if p.runtime == nil {
-		return executionprincipal.Principal{}, errInvalidConnectorRuntime
-	}
-	return localExecutionPrincipal(p.runtime)
-}
-
-func connectorRuntimeScope(runtime *databaseRuntime, kind string) *connectorruntime.Scope {
-	return connectorRuntimeScopeWithSecretAccessor(runtime, kind, func(secrets map[string]any) connectors.SecretAccessor {
-		return connectorSecretAccessor{values: secrets, boundary: actions.NewCredentialBoundary(secrets)}
-	})
-}
-
-func connectorRuntimeScopeWithSecretAccessor(runtime *databaseRuntime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
-	if runtime == nil {
-		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{})
-	}
-	return connectorruntime.NewScope(kind, connectorruntime.Dependencies{
-		Database:        runtime.Storage.Database,
-		Vault:           runtime.Storage.Vault,
-		WorkspaceID:     runtime.WorkspaceUUID,
-		Resources:       runtime.Connectors.Resources,
-		ConsoleSessions: runtime.Connectors.ConsoleSessions,
-		SecretAccessor:  accessor,
-	})
-}
+type connectorTargetLifecycleRuntimePort = connectortransport.TargetLifecycleRuntimePort
 
 func connectorDataRuntimePort(runtime *databaseRuntime, kind string) connectorapi.ConnectorDataRuntime {
-	return connectorRuntimeScope(runtime, kind).DataRuntime()
+	return connectortransport.DataRuntime(runtime, kind)
 }
 
 func connectorLiveRuntime(runtime *databaseRuntime, kind string) connectorapi.LiveConsoleRuntime {
-	return connectorRuntimeScope(runtime, kind).LiveConsoleRuntime()
+	return connectortransport.LiveRuntime(runtime, kind)
 }
 
 func connectorActionRuntime(runtime *databaseRuntime, kind string) connectorapi.ActionRuntime {
-	return connectorRuntimeScope(runtime, kind).ActionRuntime()
+	return connectortransport.ActionRuntime(runtime, kind)
 }
 
 func connectorTargetLifecycleRuntime(runtime *databaseRuntime, kind string) connectorapi.TargetLifecycleRuntime {
-	return connectorTargetLifecycleRuntimePort{LiveSessionRuntime: connectorRuntimeScope(runtime, kind).ActionRuntime(), runtime: runtime}
+	return connectortransport.TargetLifecycleRuntime(runtime, kind, func() (executionprincipal.Principal, error) {
+		if runtime == nil {
+			return executionprincipal.Principal{}, errInvalidConnectorRuntime
+		}
+		return localExecutionPrincipal(runtime)
+	})
 }
 
 func connectorCredentialResourceRuntime(runtime *databaseRuntime, kind string) connectorapi.CredentialResourceRuntime {
-	return connectorRuntimeScope(runtime, kind).DataRuntime()
+	return connectortransport.CredentialResourceRuntime(runtime, kind)
 }
 
 var _ connectorapi.TargetLifecycleRuntime = connectorTargetLifecycleRuntimePort{}
@@ -233,11 +207,11 @@ func newActionFinishPorts(server *Server, runtime *databaseRuntime, kind string)
 }
 
 func connectorRuntimeIDBelongsToKind(ctx context.Context, runtime *databaseRuntime, kind string, runtimeID int64) error {
-	return connectorRuntimeScope(runtime, kind).RequireRuntimeID(ctx, runtimeID)
+	return connectortransport.RequireRuntimeID(ctx, runtime, kind, runtimeID)
 }
 
 func connectorRuntimeIDBelongsToTarget(ctx context.Context, runtime *databaseRuntime, kind string, targetID int64, runtimeID int64) error {
-	return connectorRuntimeScope(runtime, kind).RequireTargetRuntimeID(ctx, targetID, runtimeID)
+	return connectortransport.RequireTargetRuntimeID(ctx, runtime, kind, targetID, runtimeID)
 }
 
 var _ connectorapi.RouteGateway = connectorRouteGatewayPort{}

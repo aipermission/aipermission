@@ -10,6 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
@@ -52,18 +53,64 @@ func (accessor secretAccessor) GetSecret(_ context.Context, name string) (string
 
 func (accessor secretAccessor) RegisterSensitiveValue(value string) { accessor.boundary.Add(value) }
 
-func liveRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.LiveConsoleRuntime {
+func Scope(runtime *workspaceruntime.Runtime, kind string) *connectorruntime.Scope {
+	return ScopeWithSecretAccessor(runtime, kind, func(secrets map[string]any) connectors.SecretAccessor {
+		return secretAccessor{values: secrets, boundary: actions.NewCredentialBoundary(secrets)}
+	})
+}
+
+func ScopeWithSecretAccessor(runtime *workspaceruntime.Runtime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
 	if runtime == nil {
-		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{}).LiveConsoleRuntime()
+		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{})
 	}
 	return connectorruntime.NewScope(kind, connectorruntime.Dependencies{
 		Database: runtime.Storage.Database, Vault: runtime.Storage.Vault, WorkspaceID: runtime.WorkspaceUUID,
 		Resources: runtime.Connectors.Resources, ConsoleSessions: runtime.Connectors.ConsoleSessions,
-		SecretAccessor: func(secrets map[string]any) connectors.SecretAccessor {
-			return secretAccessor{values: secrets, boundary: actions.NewCredentialBoundary(secrets)}
-		},
-	}).LiveConsoleRuntime()
+		SecretAccessor: accessor,
+	})
 }
+
+func DataRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.ConnectorDataRuntime {
+	return Scope(runtime, kind).DataRuntime()
+}
+
+func LiveRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.LiveConsoleRuntime {
+	return Scope(runtime, kind).LiveConsoleRuntime()
+}
+
+func ActionRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.ActionRuntime {
+	return Scope(runtime, kind).ActionRuntime()
+}
+
+type TargetLifecycleRuntimePort struct {
+	connectorapi.LiveSessionRuntime
+	Principal func() (executionprincipal.Principal, error)
+}
+
+func (runtime TargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error) {
+	if runtime.Principal == nil {
+		return executionprincipal.Principal{}, fmt.Errorf("connector local execution principal is unavailable")
+	}
+	return runtime.Principal()
+}
+
+func TargetLifecycleRuntime(runtime *workspaceruntime.Runtime, kind string, principal func() (executionprincipal.Principal, error)) connectorapi.TargetLifecycleRuntime {
+	return TargetLifecycleRuntimePort{LiveSessionRuntime: Scope(runtime, kind).ActionRuntime(), Principal: principal}
+}
+
+func CredentialResourceRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.CredentialResourceRuntime {
+	return Scope(runtime, kind).DataRuntime()
+}
+
+func RequireRuntimeID(ctx context.Context, runtime *workspaceruntime.Runtime, kind string, runtimeID int64) error {
+	return Scope(runtime, kind).RequireRuntimeID(ctx, runtimeID)
+}
+
+func RequireTargetRuntimeID(ctx context.Context, runtime *workspaceruntime.Runtime, kind string, targetID, runtimeID int64) error {
+	return Scope(runtime, kind).RequireTargetRuntimeID(ctx, targetID, runtimeID)
+}
+
+var _ connectorapi.TargetLifecycleRuntime = TargetLifecycleRuntimePort{}
 
 type peerGateway struct{ trustStorePath func() string }
 

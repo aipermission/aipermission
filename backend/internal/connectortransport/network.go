@@ -76,7 +76,7 @@ func (transport Network) DialConnectorTCP(ctx context.Context, request connector
 	if adapter == nil {
 		return nil, fmt.Errorf("%s connector does not expose TCP transport", kind)
 	}
-	return adapter.DialConnectorTCP(ctx, peerGateway{transport.TrustStorePath}, liveRuntime(transport.Runtime, kind), targetRef, "tcp", address)
+	return adapter.DialConnectorTCP(ctx, peerGateway{transport.TrustStorePath}, LiveRuntime(transport.Runtime, kind), targetRef, "tcp", address)
 }
 
 func networkDialAddress(host string, port int) (string, error) {
