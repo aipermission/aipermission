@@ -164,7 +164,7 @@ func buildVaultApprovalContext(
 		approval.ConnectorPermissionExpiresAt = permission.ExpiresAt
 		approval.ConnectorPermissionUpdatedAt = permission.UpdatedAt
 		approval.ExecutionRule = effectiveVaultExecutionRule(capability.ExecutionRule, permission.ExecutionRule)
-		record, activeErr := activeConsoleRecord(ctx, runtime, surface.ID)
+		record, activeErr := runtime.consoleSessions.ActiveRecord(ctx, surface.ID)
 		if activeErr == nil {
 			approval.ExpectedSessionID = record.ID
 			approval.ExpectedGeneration = record.Generation

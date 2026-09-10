@@ -1,20 +1,27 @@
-package api
+package vaultsessions
 
 import (
 	"context"
+	"errors"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
-func activeConsoleRecord(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (console.Record, error) {
-	return runtime.consoleSessions.ActiveRecord(ctx, runtimeID)
+var ErrPersistenceUnavailable = errors.New("Vault session lease persistence is unavailable")
+
+type Persistence struct{ database sqldb.Executor }
+
+func NewPersistence(database sqldb.Executor) *Persistence {
+	return &Persistence{database: database}
 }
 
-func persistVaultLease(ctx context.Context, runtime *databaseRuntime, projectID int64, lease vaultsessions.Lease) error {
+func (p *Persistence) Grant(ctx context.Context, projectID int64, lease Lease) error {
+	if p == nil || p.database == nil {
+		return ErrPersistenceUnavailable
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := runtime.database.ExecContext(ctx, `
+	_, err := p.database.ExecContext(ctx, `
 		INSERT INTO vault_session_leases (
 			token_id, project_id, runtime_id, session_id, session_generation, approval_context_hash,
 			environment_content_hash, status, expires_at, created_at, updated_at
@@ -30,12 +37,28 @@ func persistVaultLease(ctx context.Context, runtime *databaseRuntime, projectID 
 	return err
 }
 
-func revokePersistedVaultLease(ctx context.Context, runtime *databaseRuntime, sessionID, generation int64) error {
-	_, err := runtime.database.ExecContext(ctx, `
+func (p *Persistence) Revoke(ctx context.Context, sessionID, generation int64) error {
+	if p == nil || p.database == nil {
+		return ErrPersistenceUnavailable
+	}
+	_, err := p.database.ExecContext(ctx, `
 		UPDATE vault_session_leases
 		SET status = 'revoked', updated_at = ?
 		WHERE session_id = ? AND session_generation = ? AND status = 'active'`,
 		time.Now().UTC().Format(time.RFC3339Nano), sessionID, generation,
+	)
+	return err
+}
+
+func (p *Persistence) RevokeAll(ctx context.Context) error {
+	if p == nil || p.database == nil {
+		return ErrPersistenceUnavailable
+	}
+	_, err := p.database.ExecContext(ctx, `
+		UPDATE vault_session_leases
+		SET status = 'revoked', updated_at = ?
+		WHERE status = 'active'`,
+		time.Now().UTC().Format(time.RFC3339Nano),
 	)
 	return err
 }

@@ -15,6 +15,7 @@ import (
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type vaultRequestMutationPort struct {
@@ -145,7 +146,7 @@ func compensateVaultActionEffect(ctx context.Context, runtime *databaseRuntime, 
 		}
 		var cleanupErrors []error
 		if generation > 0 {
-			if err := revokePersistedVaultLease(ctx, runtime, sessionID, generation); err != nil {
+			if err := vaultsessions.NewPersistence(runtime.database).Revoke(ctx, sessionID, generation); err != nil {
 				cleanupErrors = append(cleanupErrors, err)
 			}
 		}

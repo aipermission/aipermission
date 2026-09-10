@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type mcpRuntimeResponse struct {
@@ -61,7 +62,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		runtime.vaultLeases.Clear()
-		if err := revokeAllPersistedVaultLeases(r.Context(), runtime); err != nil {
+		if err := vaultsessions.NewPersistence(runtime.database).RevokeAll(r.Context()); err != nil {
 			writeInternalError(w)
 			return
 		}

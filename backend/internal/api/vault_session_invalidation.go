@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 const vaultSessionInvalidationTimeout = 15 * time.Second
@@ -33,7 +34,7 @@ func closeVaultSessionReferences(ctx context.Context, runtime *databaseRuntime, 
 		runtime.vaultLeases.RevokeSession(console.SessionHandle{
 			ID: session.SessionID, RuntimeID: session.RuntimeID, Generation: session.Generation,
 		})
-		if err := revokePersistedVaultLease(ctx, runtime, session.SessionID, session.Generation); err != nil {
+		if err := vaultsessions.NewPersistence(runtime.database).Revoke(ctx, session.SessionID, session.Generation); err != nil {
 			closeErrors = append(closeErrors, fmt.Errorf("revoke persisted Vault lease for session %d: %w", session.SessionID, err))
 		}
 	}
@@ -97,19 +98,6 @@ func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *da
 	}
 	staleErr := owner.StalePendingForProject(ctx, projectID, reason)
 	return errors.Join(closeErr, staleErr)
-}
-
-func revokeAllPersistedVaultLeases(ctx context.Context, runtime *databaseRuntime) error {
-	if runtime == nil || runtime.database == nil {
-		return errors.New("Vault runtime is unavailable")
-	}
-	_, err := runtime.database.ExecContext(ctx, `
-		UPDATE vault_session_leases
-		SET status = 'revoked', updated_at = ?
-		WHERE status = 'active'`,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	)
-	return err
 }
 
 func queryVaultRuntimeIDs(ctx context.Context, runtime *databaseRuntime, where string, args ...any) ([]int64, error) {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) {
@@ -30,6 +31,6 @@ func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) {
 	})
 	runtime.consoleSessions.SetSessionClosedHook(func(handle console.SessionHandle) {
 		runtime.vaultLeases.RevokeSession(handle)
-		_ = revokePersistedVaultLease(context.Background(), runtime, handle.ID, handle.Generation)
+		_ = vaultsessions.NewPersistence(runtime.database).Revoke(context.Background(), handle.ID, handle.Generation)
 	})
 }

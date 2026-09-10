@@ -57,7 +57,7 @@ func TestConnectorPeerTrustChangeInvalidatesVaultStateBeforeMutation(t *testing.
 	if err := runtime.vaultLeases.Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := persistVaultLease(ctx, runtime, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.database).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	pending, _, err := vaultrequests.NewStore(fixture.db).Create(ctx, vaultrequests.CreateInput{
@@ -233,7 +233,7 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 	if err := runtime.vaultLeases.Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := persistVaultLease(ctx, runtime, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.database).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	pending, _, err := vaultrequests.NewStore(fixture.db).Create(ctx, vaultrequests.CreateInput{
@@ -336,7 +336,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 	if err := runtime.vaultLeases.Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := persistVaultLease(ctx, runtime, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.database).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	if _, err := fixture.db.ExecContext(ctx, `

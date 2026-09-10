@@ -158,7 +158,7 @@ func executeVaultSessionApply(
 			ExpiresAt:              expiresAt,
 			Validate: func(validateCtx context.Context) error {
 				revoke := func(message string) error {
-					_ = revokePersistedVaultLease(validateCtx, runtime, handle.ID, handle.Generation)
+					_ = vaultsessions.NewPersistence(runtime.database).Revoke(validateCtx, handle.ID, handle.Generation)
 					return errors.New(message)
 				}
 				if _, err := validateVaultApprovalAuthorization(validateCtx, server, runtime, request, approval); err != nil {
@@ -173,13 +173,13 @@ func executeVaultSessionApply(
 		if err := runtime.vaultLeases.Grant(lease); err != nil {
 			return err
 		}
-		if err := persistVaultLease(finalizeCtx, runtime, request.ProjectID, lease); err != nil {
+		if err := vaultsessions.NewPersistence(runtime.database).Grant(finalizeCtx, request.ProjectID, lease); err != nil {
 			runtime.vaultLeases.RevokeSession(handle)
 			return err
 		}
 		if err := store.MarkSessionItemsUsed(finalizeCtx, approval.Items); err != nil {
 			runtime.vaultLeases.RevokeSession(handle)
-			_ = revokePersistedVaultLease(finalizeCtx, runtime, handle.ID, handle.Generation)
+			_ = vaultsessions.NewPersistence(runtime.database).Revoke(finalizeCtx, handle.ID, handle.Generation)
 			return err
 		}
 		return nil

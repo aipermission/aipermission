@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 var errInvalidConnectorRuntime = errors.New("invalid connector runtime")
@@ -55,7 +56,7 @@ func (s *Server) connectorChangeVaultPeerTrust(ctx context.Context, change func(
 			return err
 		}
 		runtime.vaultLeases.Clear()
-		if err := revokeAllPersistedVaultLeases(ctx, runtime); err != nil {
+		if err := vaultsessions.NewPersistence(runtime.database).RevokeAll(ctx); err != nil {
 			return err
 		}
 		if err := s.invalidateVaultRuntimeSessions(
