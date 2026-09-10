@@ -52,7 +52,7 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 		}
 		return vaultactions.PeerIdentityExpectation{}, nil
 	}
-	items, err := adapter.ExpectedLiveConsolePeerIdentities(ctx, connectorPeerGatewayPort{server: port.server}, connectorLiveRuntime(port.runtime, surface.ConnectorKind), surface.ID)
+	items, err := adapter.ExpectedLiveConsolePeerIdentities(ctx, port.server.connectorPortsApplication().PeerGateway(), connectorLiveRuntime(port.runtime, surface.ConnectorKind), surface.ID)
 	if err != nil {
 		return vaultactions.PeerIdentityExpectation{}, err
 	}

@@ -34,7 +34,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		return
 	}
 	if adapter := s.connectorDraftTesterFor(request.ConnectorKind); adapter != nil {
-		adapter.TestDraft(connectorPeerGatewayPort{server: s.Server}, w, r, connectorDataRuntimePort(runtime, request.ConnectorKind), request)
+		adapter.TestDraft(s.connectorPortsApplication().PeerGateway(), w, r, connectorDataRuntimePort(runtime, request.ConnectorKind), request)
 		return
 	}
 	writeError(w, http.StatusBadRequest, "draft test is not supported for this connector")

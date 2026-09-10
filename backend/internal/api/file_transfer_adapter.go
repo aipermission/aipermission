@@ -62,7 +62,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 	})
 	return filetransferhttp.ConnectorPorts{
 		ConnectorKind:      target.ConnectorKind,
-		Gateway:            connectorFileTransferGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: server}, runtime: runtime, kind: target.ConnectorKind},
+		Gateway:            server.connectorPortsApplication().FileTransferGateway(runtime, target.ConnectorKind),
 		Runtime:            scope.TransferRuntime(),
 		CredentialBoundary: boundary,
 	}, nil

@@ -28,13 +28,10 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	}
 	defer release()
 	if adapter := s.connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
-		adapter.DeleteTarget(connectorTargetDeletionGatewayPort{
-			connectorPeerGatewayPort: connectorPeerGatewayPort{server: s.Server},
-			handlers:                 s,
-			runtime:                  runtime,
-			kind:                     target.ConnectorKind,
-			targetID:                 target.ID,
-		}, w, r, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
+		adapter.DeleteTarget(
+			s.connectorPortsApplication().TargetDeletionGateway(runtime, target.ConnectorKind, target.ID),
+			w, r, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target,
+		)
 		return
 	}
 	if err := s.connectorDeleteTargetRecord(r.Context(), runtime, target, nil); err != nil {

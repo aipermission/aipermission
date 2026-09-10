@@ -53,14 +53,14 @@ func (s *Server) connectorManagementApplication() *applicationmanagement.Compone
 		},
 		BeforeCreate: func(ctx context.Context, runtime *workspaceruntime.Runtime, target connectortargets.Target) error {
 			if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-				return adapter.BeforeCreateCredentialProfile(ctx, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
+				return adapter.BeforeCreateCredentialProfile(ctx, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
 			}
 			return nil
 		},
 		BeforeDelete: func(ctx context.Context, runtime *workspaceruntime.Runtime, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-				gateway := connectorRuntimeActionGatewayPort{connectorPeerGatewayPort: connectorPeerGatewayPort{server: s}, runtime: runtime, kind: target.ConnectorKind}
-				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
+				gateway, _ := s.connectorPortsApplication().RuntimeActionPorts(runtime, target.ConnectorKind)
+				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
 			}
 			return nil
 		},
@@ -69,7 +69,7 @@ func (s *Server) connectorManagementApplication() *applicationmanagement.Compone
 			if adapter == nil {
 				return false
 			}
-			adapter.TestCredentialProfile(connectorPeerGatewayPort{server: s}, w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
+			adapter.TestCredentialProfile(s.connectorPortsApplication().PeerGateway(), w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
 			return true
 		},
 		RedactDetails: func(ctx context.Context, runtime *workspaceruntime.Runtime, details map[string]any, boundary connectormanagement.CredentialBoundary) (map[string]any, error) {

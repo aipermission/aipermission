@@ -49,7 +49,7 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *datab
 	}
 	adapter := server.connectorRuntimeAdapterFor(kind)
 	if adapter != nil {
-		gatewayPort, runtimePort := newRuntimeActionPorts(server, runtime, kind)
+		gatewayPort, runtimePort := server.connectorPortsApplication().RuntimeActionPorts(runtime, kind)
 		for name, capability := range adapter.RuntimeCapabilities(gatewayPort, runtimePort) {
 			if name == "" || capability == nil {
 				continue
@@ -76,7 +76,7 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	for _, route := range routes {
 		handler := route.Handler
 		mux.HandleFunc(route.Pattern(), func(w http.ResponseWriter, r *http.Request) {
-			handler(connectorRouteGatewayPort{connectorPeerGatewayPort{server: server}}, w, r)
+			handler(server.connectorPortsApplication().RouteGateway(), w, r)
 		})
 	}
 }

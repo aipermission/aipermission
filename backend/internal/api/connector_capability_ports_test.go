@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	connectorports "github.com/aipermission/aipermission/backend/internal/applicationconnectorports"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
@@ -17,15 +18,15 @@ func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
 		value   any
 		methods []string
 	}{
-		{name: "lifecycle runtime", value: connectorTargetLifecycleRuntimePort{}, methods: []string{"ConnectorConsoleSessions", "ConnectorLocalExecutionPrincipal", "CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
-		{name: "peer gateway", value: connectorPeerGatewayPort{}, methods: []string{"ConnectorTrustStorePath"}},
-		{name: "live console gateway", value: connectorLiveConsoleGatewayPort{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
-		{name: "route gateway", value: connectorRouteGatewayPort{}, methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
-		{name: "runtime action gateway", value: connectorRuntimeActionGatewayPort{}, methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
-		{name: "action finish gateway", value: connectorActionFinishGatewayPort{}, methods: []string{"ConnectorFinishActionRequest"}},
-		{name: "file transfer gateway", value: connectorFileTransferGatewayPort{}, methods: []string{"ConnectorRuntimeCapabilities", "ConnectorTrustStorePath"}},
-		{name: "target deletion gateway", value: connectorTargetDeletionGatewayPort{}, methods: []string{"ConnectorDeleteTargetRecord", "ConnectorFinalizeDeletedTarget", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
-		{name: "target operation gateway", value: connectorTargetOperationGatewayPort{}, methods: []string{"ConnectorTrustStorePath", "ConnectorWriteAudit"}},
+		{name: "lifecycle runtime", value: connectorports.TargetLifecycleRuntimePort{}, methods: []string{"ConnectorConsoleSessions", "ConnectorLocalExecutionPrincipal", "CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
+		{name: "peer gateway", value: connectorports.PeerGateway{}, methods: []string{"ConnectorTrustStorePath"}},
+		{name: "live console gateway", value: connectorports.LiveConsoleGateway{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
+		{name: "route gateway", value: connectorports.RouteGateway{}, methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
+		{name: "runtime action gateway", value: connectorports.RuntimeActionGateway{}, methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
+		{name: "action finish gateway", value: connectorports.ActionFinishGateway{}, methods: []string{"ConnectorFinishActionRequest"}},
+		{name: "file transfer gateway", value: connectorports.FileTransferGateway{}, methods: []string{"ConnectorRuntimeCapabilities", "ConnectorTrustStorePath"}},
+		{name: "target deletion gateway", value: connectorports.TargetDeletionGateway{}, methods: []string{"ConnectorDeleteTargetRecord", "ConnectorFinalizeDeletedTarget", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
+		{name: "target operation gateway", value: connectorports.TargetOperationGateway{}, methods: []string{"ConnectorTrustStorePath", "ConnectorWriteAudit"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,11 +73,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := connectorRuntimeActionGatewayPort{
-		connectorPeerGatewayPort: connectorPeerGatewayPort{server: fixture.server},
-		runtime:                  runtime,
-		kind:                     "beta",
-	}
+	port, _ := fixture.server.connectorPortsApplication().RuntimeActionPorts(runtime, "beta")
 	_, err = port.ConnectorRestartConsoleSession(context.Background(), executionprincipal.Principal{}, surface.ID, "test")
 	if !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		t.Fatalf("cross-connector restart error = %v", err)
@@ -84,7 +81,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 }
 
 func TestConnectorTargetDeletionGatewayRejectsUnboundTarget(t *testing.T) {
-	port := connectorTargetDeletionGatewayPort{kind: "alpha", targetID: 41}
+	port := connectorports.New(connectorports.Dependencies{}).TargetDeletionGateway(nil, "alpha", 41)
 	err := port.ConnectorDeleteTargetRecord(context.Background(), connectortargets.Target{ID: 42, ConnectorKind: "alpha"}, nil)
 	if !errors.Is(err, connectortargets.ErrTargetNotFound) {
 		t.Fatalf("unbound target deletion error = %v", err)
