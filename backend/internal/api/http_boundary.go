@@ -35,8 +35,8 @@ func (s *Server) withLocalHTTPBoundary(next http.Handler) http.Handler {
 }
 
 func (s *Server) Close() {
-	s.lifecycleMu.Lock()
-	defer s.lifecycleMu.Unlock()
+	release := s.workspaceLifecycle.AcquireMutation()
+	defer release()
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
 	if err := s.workspaceLifecycle.CloseAll(); err != nil {
 		log.Printf("close unlocked database resources failed: %v", err)
@@ -52,11 +52,11 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	managesLifecycle := managesLifecycleLock(r.URL.Path)
 	if !streaming && !managesLifecycle {
 		if isLifecycleMutation(r.URL.Path) {
-			s.lifecycleMu.Lock()
-			defer s.lifecycleMu.Unlock()
+			release := s.workspaceLifecycle.AcquireMutation()
+			defer release()
 		} else {
-			s.lifecycleMu.RLock()
-			defer s.lifecycleMu.RUnlock()
+			release := s.workspaceLifecycle.AcquireRead()
+			defer release()
 		}
 	}
 

@@ -38,7 +38,6 @@ type Server struct {
 	registry             *connectors.Registry
 	adapterRegistry      *connectorapi.Registry
 	mux                  *http.ServeMux
-	lifecycleMu          sync.RWMutex
 	maintenanceConsole   console.MaintenanceConsoleRuntime
 	authLimiter          *runtimecontrol.Auth
 	mcpIPAuthLimiter     *runtimecontrol.Auth

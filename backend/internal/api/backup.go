@@ -26,28 +26,28 @@ func (s backupHandlers) downloadDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer releaseBackup()
-	s.lifecycleMu.RLock()
+	releaseLifecycle := s.workspaceLifecycle.AcquireRead()
 	// This route releases the lifecycle lock before streaming the completed
 	// snapshot, so repeat the database-bound session check after acquiring it.
 	if !s.hasValidUISession(r) {
-		s.lifecycleMu.RUnlock()
+		releaseLifecycle()
 		writeError(w, http.StatusUnauthorized, "ui session required")
 		return
 	}
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		s.lifecycleMu.RUnlock()
+		releaseLifecycle()
 		return
 	}
 	snapshot, err := backups.CreateDatabaseSnapshot(r.Context(), backups.SnapshotSource{
 		Database: runtime.database, DatabaseID: runtime.id, Path: runtime.path,
 	})
 	if err != nil {
-		s.lifecycleMu.RUnlock()
+		releaseLifecycle()
 		writeInternalError(w)
 		return
 	}
-	s.lifecycleMu.RUnlock()
+	releaseLifecycle()
 	defer os.Remove(snapshot.Path)
 
 	httpattachment.SetHeaders(w, snapshot.Filename, "application/octet-stream")

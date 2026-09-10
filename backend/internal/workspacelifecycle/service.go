@@ -50,6 +50,7 @@ type Dependencies[T Runtime] struct {
 }
 
 type Service[T Runtime] struct {
+	gate                sync.RWMutex
 	mu                  sync.RWMutex
 	dataPath            string
 	registry            *Registry[T]
@@ -63,6 +64,16 @@ type Service[T Runtime] struct {
 	validateNewPassword func(context.Context, *sql.DB, string, string) error
 	publish             func(sourcePath, targetPath string) error
 	gatewaySecret       func() string
+}
+
+func (s *Service[T]) AcquireRead() func() {
+	s.gate.RLock()
+	return s.gate.RUnlock
+}
+
+func (s *Service[T]) AcquireMutation() func() {
+	s.gate.Lock()
+	return s.gate.Unlock
 }
 
 type Status struct {

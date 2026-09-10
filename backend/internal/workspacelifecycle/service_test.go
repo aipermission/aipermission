@@ -4,10 +4,80 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/db"
 )
+
+func TestServiceRequestGateSerializesMutationsAgainstReaders(t *testing.T) {
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db",
+		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
+			return runtime.identity
+		}),
+		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(*serviceRuntime) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	releaseRead := service.AcquireRead()
+	acquiredMutation := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		releaseMutation := service.AcquireMutation()
+		close(acquiredMutation)
+		releaseMutation()
+		close(done)
+	}()
+
+	select {
+	case <-acquiredMutation:
+		t.Fatal("mutation acquired while read lease was active")
+	case <-time.After(25 * time.Millisecond):
+	}
+	releaseRead()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("mutation did not acquire after read lease was released")
+	}
+}
+
+func TestServiceRequestGateAllowsConcurrentReaders(t *testing.T) {
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db",
+		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
+			return runtime.identity
+		}),
+		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(*serviceRuntime) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	releaseFirst := service.AcquireRead()
+	var acquired sync.WaitGroup
+	acquired.Add(1)
+	done := make(chan struct{})
+	go func() {
+		releaseSecond := service.AcquireRead()
+		acquired.Done()
+		releaseSecond()
+		close(done)
+	}()
+	acquired.Wait()
+	releaseFirst()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent reader did not complete")
+	}
+}
 
 type serviceRuntime struct {
 	identity Identity
