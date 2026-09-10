@@ -211,7 +211,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatalf("foreign token cancel = %d %s", foreignCancel.Code, foreignCancel.Body.String())
 	}
 
-	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultActionDecisionRequest{UserNote: "Approved locally."})
+	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."})
 	if run.Code != http.StatusOK || strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
 		t.Fatalf("run Vault action: %d %s", run.Code, run.Body.String())
 	}
@@ -494,7 +494,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		http.MethodPost,
 		"/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run",
 		"",
-		vaultActionDecisionRequest{UserNote: "Approved locally."},
+		vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."},
 	)
 	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"status":"completed"`) {
 		t.Fatalf("run Prompt session apply: %d %s", run.Code, run.Body.String())

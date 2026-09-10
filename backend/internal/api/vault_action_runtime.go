@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 
 	"github.com/aipermission/aipermission/backend/internal/history"
@@ -51,7 +52,7 @@ func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime
 		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
 			ActorType: "gateway",
 			TokenID:   int64Ptr(item.TokenID),
-			RuntimeID: valueOrZero(item.RuntimeID),
+			RuntimeID: vaultRuntimeIDOrZero(item.RuntimeID),
 			Action:    "vault.action_request." + item.Status,
 			Payload:   vaultrequests.RequestAuditPayload(item, item.UserNote),
 			Redact:    redact,
@@ -62,6 +63,26 @@ func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime
 		_, err = (observability.Store{}).Append(ctx, executor, event)
 		return err
 	})
+}
+
+func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (vaultrequests.HTTPScope, bool) {
+	runtime, ok := s.activeRuntimeOrLocked(w)
+	if !ok {
+		return vaultrequests.HTTPScope{}, false
+	}
+	return vaultrequests.HTTPScope{
+		MCPStarted: runtime.isMCPStarted,
+		Runtime: func(ctx context.Context) (*vaultrequests.Runtime, error) {
+			return s.vaultRequestRuntime(ctx, runtime)
+		},
+	}, true
+}
+
+func vaultRuntimeIDOrZero(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRuntime) (*vaultrequests.Runtime, error) {

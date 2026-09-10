@@ -17,6 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
+	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
 type credentialHandlers struct{ *Server }
@@ -26,7 +27,6 @@ type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
 type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
-type vaultActionApprovalHandlers struct{ *Server }
 type maintenanceConsoleHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
@@ -163,7 +163,7 @@ func (s *Server) registerConsoleAndActivityRoutes() {
 func (s *Server) registerProjectAndVaultRoutes() {
 	projects := projectstore.NewHTTPHandlers(s.projectsHTTPScope)
 	vaultItems := projectvault.NewHTTPHandlers(s.projectVaultHTTPScope)
-	vaultApprovals := vaultActionApprovalHandlers{s}
+	vaultApprovals := vaultrequests.NewHTTPHandlers(s.vaultRequestHTTPScope)
 
 	s.mux.HandleFunc("GET /api/projects", projects.List)
 	s.mux.HandleFunc("POST /api/projects", projects.Create)
@@ -181,9 +181,9 @@ func (s *Server) registerProjectAndVaultRoutes() {
 	s.mux.HandleFunc("PUT /api/vault-default-bindings", vaultItems.SaveDefaultBinding)
 	s.mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", vaultItems.DeleteDefaultBinding)
 	s.mux.HandleFunc("GET /api/vault-session-options", vaultItems.SessionOptions)
-	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.list)
-	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.run)
-	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.decline)
+	s.mux.HandleFunc("GET /api/vault-action-approvals", vaultApprovals.List)
+	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", vaultApprovals.Run)
+	s.mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", vaultApprovals.Decline)
 }
 
 func (s *Server) registerTransferRoutes() {
