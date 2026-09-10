@@ -269,14 +269,15 @@ func (s *Server) registerMessageAndAuditRoutes() {
 func (s *Server) registerMCPRoutes() {
 	mcp := mcpHandlers{s}
 	connectorReads := mcpconnector.NewHTTPHandlers(mcp.mcpConnectorReadScope)
+	connectorActions := mcpconnector.NewActionHTTPHandlers(mcp.mcpConnectorActionScope)
 
 	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
 	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
 	s.mux.HandleFunc("GET /api/mcp/connector-targets", connectorReads.ListTargets)
 	s.mux.HandleFunc("GET /api/mcp/connector-help", connectorReads.GetHelp)
 	s.mux.HandleFunc("GET /api/mcp/connector-actions", connectorReads.GetActions)
-	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", mcp.mcpCallConnectorAction)
-	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", mcp.mcpGetConnectorActionRequest)
+	s.mux.HandleFunc("POST /api/mcp/connector-actions/call", connectorActions.Call)
+	s.mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", connectorActions.GetRequest)
 	s.mux.HandleFunc("GET /api/mcp/vault-items", mcp.mcpListVaultItems)
 	s.mux.HandleFunc("POST /api/mcp/vault-actions/call", mcp.mcpCallVaultAction)
 	s.mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", mcp.mcpGetVaultActionRequest)

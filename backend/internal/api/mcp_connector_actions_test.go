@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -23,6 +24,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
+
+type mcpConnectorActionCallRequest = mcpconnector.ActionCallRequest
+type mcpConnectorActionResponse = actions.Response
 
 func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	fixture := newAPITestFixture(t)
@@ -143,10 +147,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		"missing session generation": {SessionID: &sessionID},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, malformed) {
+			if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, malformed) {
 				t.Fatalf("partial Vault session handle authorized output")
 			}
-			response := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, malformed, connectors.ActionResult{
+			response := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, malformed, connectors.ActionResult{
 				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 			})
 			if !response.OutputWithheld || response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" {
@@ -154,10 +158,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 			}
 		})
 	}
-	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("Vault session output was authorized without a lease")
 	}
-	withheld := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, request, connectors.ActionResult{
+	withheld := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
@@ -182,10 +186,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}, console.OperationObserve); err != nil {
 		t.Fatalf("exact Vault lease should authorize output: %v", err)
 	}
-	if !connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+	if !mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("valid exact Vault lease did not authorize connector output")
 	}
-	authorized := connectorActionResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), runtime, token.ID, request, connectors.ActionResult{
+	authorized := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
@@ -197,7 +201,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("block action permission: %v", err)
 	}
-	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("blocked action permission still authorized stored output")
 	}
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -207,7 +211,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		t.Fatalf("restore action permission: %v", err)
 	}
 	runtime.vaultLeases.RevokeToken(token.ID)
-	if connectorActionVaultPollAuthorized(ctx, runtime, token.ID, request) {
+	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("revoked Vault lease still authorized connector output")
 	}
 }
@@ -440,7 +444,7 @@ func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t
 }
 
 func TestMCPConnectorActionOutcomeUnknownForbidsAutomaticRetry(t *testing.T) {
-	response := connectorActionRequestToMCPResponse(nil, connectortargets.ActionRequest{
+	response := mcpconnector.ResponseFromRequest(nil, connectortargets.ActionRequest{
 		ID: 42, Status: connectors.ResultOutcomeUnknown,
 		ConnectorKind: "ssh", TargetID: 7, ProfileID: 8, ActionName: "exec",
 	})
@@ -460,7 +464,7 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 		SessionID: &sessionID,
 		Output:    map[string]any{"secret_derived_result": "withhold-me"},
 	}
-	response := connectorActionResponseForToken(context.Background(), nil, nil, 9, request, connectors.ActionResult{
+	response := mcpConnectorOutputAuthorization(nil).ResponseForToken(context.Background(), nil, 9, request, connectors.ActionResult{
 		Status: connectors.ResultOutcomeUnknown,
 		Output: request.Output,
 	})
@@ -493,16 +497,15 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 		ID: 1, TokenID: &token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionGetSchemas,
 	}
-	response := connectorActionRequestToMCPResponse(fixture.server.connectorAdapterRegistry(), request)
+	response := mcpconnector.ResponseFromRequest(fixture.server.connectorAdapterRegistry(), request)
 	response.Output = map[string]any{"sensitive": "bounded-result"}
 	w := newBlockingResponseWriter()
 	writeDone := make(chan struct{})
 	go func() {
 		defer close(writeDone)
-		mcpHandlers{fixture.server}.writeMCPConnectorActionResponse(
+		mcpConnectorOutputAuthorization(runtime).Deliver(
 			w,
 			httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
-			runtime,
 			token.ID,
 			request,
 			response,
@@ -533,10 +536,9 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	}
 
 	after := httptest.NewRecorder()
-	mcpHandlers{fixture.server}.writeMCPConnectorActionResponse(
+	mcpConnectorOutputAuthorization(runtime).Deliver(
 		after,
 		httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
-		runtime,
 		token.ID,
 		request,
 		response,
