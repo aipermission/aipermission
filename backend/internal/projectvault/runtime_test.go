@@ -36,6 +36,16 @@ type runtimeTestMutations struct {
 	actions  []string
 }
 
+type runtimeTestBindingTargets struct {
+	calls int
+	err   error
+}
+
+func (t *runtimeTestBindingTargets) ValidateDefaultBindingTarget(context.Context, int64, int64) error {
+	t.calls++
+	return t.err
+}
+
 func (m *runtimeTestMutations) WithMutation(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 	tx, err := m.database.BeginTx(ctx, nil)
 	if err != nil {
@@ -62,11 +72,13 @@ func (m *runtimeTestMutations) Observe(_ context.Context, action string, payload
 }
 
 type runtimeTestHarness struct {
-	runtime     *Runtime
-	delivery    *runtimeTestDelivery
-	mutations   *runtimeTestMutations
-	projectID   int64
-	invalidated int
+	runtime        *Runtime
+	delivery       *runtimeTestDelivery
+	mutations      *runtimeTestMutations
+	bindingTargets *runtimeTestBindingTargets
+	database       *sql.DB
+	projectID      int64
+	invalidated    int
 }
 
 func newRuntimeTestHarness(t *testing.T) *runtimeTestHarness {
@@ -77,9 +89,11 @@ func newRuntimeTestHarness(t *testing.T) *runtimeTestHarness {
 		t.Fatal(err)
 	}
 	harness := &runtimeTestHarness{
-		delivery:  &runtimeTestDelivery{},
-		mutations: &runtimeTestMutations{database: database},
-		projectID: project.ID,
+		delivery:       &runtimeTestDelivery{},
+		mutations:      &runtimeTestMutations{database: database},
+		bindingTargets: &runtimeTestBindingTargets{},
+		database:       database,
+		projectID:      project.ID,
 	}
 	runtime, err := NewRuntime(RuntimeDependencies{
 		Store: store, Delivery: harness.delivery, Mutations: harness.mutations,
@@ -87,9 +101,10 @@ func newRuntimeTestHarness(t *testing.T) *runtimeTestHarness {
 			harness.invalidated++
 			return nil
 		},
-		AllowGenerate: func(string) bool { return true },
-		AllowReveal:   func(string) bool { return true },
-		Nonce:         func() (string, error) { return "nonce-one", nil },
+		BindingTargets: harness.bindingTargets,
+		AllowGenerate:  func(string) bool { return true },
+		AllowReveal:    func(string) bool { return true },
+		Nonce:          func() (string, error) { return "nonce-one", nil },
 	})
 	if err != nil {
 		t.Fatal(err)

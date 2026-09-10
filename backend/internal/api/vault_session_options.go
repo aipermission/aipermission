@@ -58,19 +58,21 @@ func (s vaultItemHandlers) vaultSessionOptions(w http.ResponseWriter, r *http.Re
 		writeInternalError(w)
 		return
 	}
-	store, err := projectvault.NewStore(runtime.database, runtime.vault, runtime.workspaceUUID)
+	owner, err := s.projectVaultRuntime(runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	items, total, err := store.List(r.Context(), projectvault.ListFilter{
+	items, total, err := owner.List(r.Context(), projectvault.ListFilter{
 		Query: strings.TrimSpace(r.URL.Query().Get("q")), Limit: 100,
 	})
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	defaults, err := store.ListDefaultBindings(r.Context(), 0, surface.TargetID, surface.ProfileID)
+	defaults, err := owner.ListDefaultBindings(r.Context(), projectvault.DefaultBindingFilter{
+		TargetID: surface.TargetID, ProfileID: surface.ProfileID,
+	})
 	if err != nil {
 		writeInternalError(w)
 		return

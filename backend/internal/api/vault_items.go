@@ -291,24 +291,6 @@ func (s vaultItemHandlers) deleteVaultItem(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s vaultItemHandlers) store(w http.ResponseWriter, r *http.Request) (*databaseRuntime, *projectvault.Store, bool) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return nil, nil, false
-	}
-	workspaceUUID, err := projectvault.EnsureWorkspaceUUID(r.Context(), runtime.database)
-	if err != nil {
-		writeInternalError(w)
-		return nil, nil, false
-	}
-	store, err := projectvault.NewStore(runtime.database, runtime.vault, workspaceUUID)
-	if err != nil {
-		writeInternalError(w)
-		return nil, nil, false
-	}
-	return runtime, store, true
-}
-
 func (s vaultItemHandlers) owner(w http.ResponseWriter, r *http.Request) (*databaseRuntime, *projectvault.Runtime, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {

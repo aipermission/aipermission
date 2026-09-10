@@ -14,6 +14,8 @@ import (
 var ErrRuntimeUnavailable = errors.New("Project Vault runtime is unavailable")
 var ErrGenerateRateLimited = errors.New("too many generated previews; wait before trying again")
 var ErrRevealRateLimited = errors.New("too many reveal requests; wait before trying again")
+var ErrBindingTargetNotFound = errors.New("connector target not found")
+var ErrSessionEnvironmentUnsupported = errors.New("connector profile does not support Vault session environments")
 
 type DeliveryGate interface {
 	AcquireDelivery(context.Context) (func(), error)
@@ -28,11 +30,16 @@ type MutationPort interface {
 type SessionInvalidator func(context.Context, []SessionReference, SessionMutationScope) error
 type RateLimiter func(string) bool
 
+type BindingTargetValidator interface {
+	ValidateDefaultBindingTarget(context.Context, int64, int64) error
+}
+
 type RuntimeDependencies struct {
 	Store              *Store
 	Delivery           DeliveryGate
 	Mutations          MutationPort
 	InvalidateSessions SessionInvalidator
+	BindingTargets     BindingTargetValidator
 	AllowGenerate      RateLimiter
 	AllowReveal        RateLimiter
 	Now                func() time.Time
@@ -46,6 +53,7 @@ type Runtime struct {
 	delivery           DeliveryGate
 	mutations          MutationPort
 	invalidateSessions SessionInvalidator
+	bindingTargets     BindingTargetValidator
 	allowGenerate      RateLimiter
 	allowReveal        RateLimiter
 	now                func() time.Time
@@ -58,7 +66,7 @@ type Runtime struct {
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if dependencies.Store == nil || dependencies.Store.vault == nil || dependencies.Store.workspaceUUID == "" ||
 		dependencies.Delivery == nil || dependencies.Mutations == nil || dependencies.InvalidateSessions == nil ||
-		dependencies.AllowGenerate == nil || dependencies.AllowReveal == nil {
+		dependencies.BindingTargets == nil || dependencies.AllowGenerate == nil || dependencies.AllowReveal == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	now := dependencies.Now
@@ -72,6 +80,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	return &Runtime{
 		store: dependencies.Store, delivery: dependencies.Delivery, mutations: dependencies.Mutations,
 		invalidateSessions: dependencies.InvalidateSessions,
+		bindingTargets:     dependencies.BindingTargets,
 		allowGenerate:      dependencies.AllowGenerate, allowReveal: dependencies.AllowReveal,
 		now: now, nonce: nonce, previewNonces: make(map[int64]string),
 	}, nil

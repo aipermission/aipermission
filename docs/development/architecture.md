@@ -182,8 +182,9 @@ place.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 - `internal/projectvault`: Project Vault item metadata, encrypted values,
   project sharing, default session bindings, exact-session item tracking, and
-  local-operator item lifecycle. Its runtime owns mutation fencing, generated
-  preview state, required audit calls, and affected-session invalidation;
+  local-operator item and default-binding lifecycles. Its runtime owns mutation
+  fencing, generated preview state, binding capability validation through a
+  narrow port, required audit calls, and affected-session invalidation;
   `internal/api` maps HTTP input and status codes through narrow ports.
 - `internal/sessionenv`: framed one-time session environment envelopes and
   acknowledgement parsing. It never persists plaintext values.
