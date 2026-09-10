@@ -1,0 +1,166 @@
+package vaultrequests
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type CallInput struct {
+	TokenID        int64
+	ProjectRef     string
+	ActionName     string
+	Input          map[string]any
+	Reason         string
+	IdempotencyKey string
+}
+
+type RequestView struct {
+	Request          Request
+	OutputAuthorized bool
+}
+
+func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error) {
+	if err := r.validate(); err != nil {
+		return RequestView{}, err
+	}
+	input.ProjectRef = strings.TrimSpace(input.ProjectRef)
+	input.ActionName = strings.TrimSpace(input.ActionName)
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
+	if input.TokenID < 1 || input.ProjectRef == "" || input.IdempotencyKey == "" {
+		return RequestView{}, ValidationError("project_ref and idempotency_key are required")
+	}
+	if input.Reason == "" {
+		return RequestView{}, ValidationError("reason is required")
+	}
+	if len([]byte(input.IdempotencyKey)) > maxIdempotencyKeyBytes {
+		return RequestView{}, ValidationError("idempotency_key is too long")
+	}
+	if len([]byte(input.Reason)) > maxReasonBytes {
+		return RequestView{}, ValidationError(fmt.Sprintf("reason must be %d bytes or less", maxReasonBytes))
+	}
+	normalizedInput, err := NormalizeActionInput(input.ActionName, input.Input)
+	if err != nil {
+		return RequestView{}, ValidationError(err.Error())
+	}
+	existing, err := r.store.GetByIdempotencyKey(ctx, input.TokenID, input.IdempotencyKey)
+	if err == nil {
+		if !SameActionCall(existing, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+			return RequestView{}, ErrIdempotencyConflict
+		}
+		return r.View(ctx, existing), nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return RequestView{}, err
+	}
+	if !r.allowRequest(input.TokenID) {
+		return RequestView{}, ErrRequestRateLimited
+	}
+	prepared, err := r.prepare(ctx, input.TokenID, input.ProjectRef, input.ActionName, normalizedInput)
+	if err != nil {
+		return RequestView{}, err
+	}
+	contextMap, err := approvalContextMap(prepared.ApprovalContext)
+	if err != nil {
+		return RequestView{}, err
+	}
+	runtimeID := (*int64)(nil)
+	if prepared.RuntimeID > 0 {
+		runtimeID = &prepared.RuntimeID
+	}
+	initialStatus := StatusApprovalPending
+	if prepared.RunImmediately {
+		initialStatus = StatusRunning
+	}
+	createInput := CreateInput{
+		TokenID: input.TokenID, ProjectID: prepared.ProjectID, RuntimeID: runtimeID,
+		ActionName: input.ActionName, Input: prepared.Input, Reason: input.Reason,
+		ApprovalContext: contextMap, ApprovalContextHash: prepared.ApprovalContextHash,
+		IdempotencyKey: input.IdempotencyKey, InitialStatus: initialStatus,
+	}
+	var request Request
+	created := false
+	err = r.mutations.WithMutation(
+		ctx, "mcp", &input.TokenID, prepared.RuntimeID, "mcp.vault_action.request.created",
+		func() any { return RequestAuditPayload(request, "") },
+		func(tx *sql.Tx) error {
+			var createErr error
+			request, created, createErr = NewTxStore(tx).Create(ctx, createInput)
+			if createErr == nil && !created {
+				return errMutationUnchanged
+			}
+			return createErr
+		},
+	)
+	if errors.Is(err, errMutationUnchanged) {
+		return r.View(ctx, request), nil
+	}
+	if err != nil {
+		return RequestView{}, err
+	}
+	if !prepared.RunImmediately {
+		r.mutations.Observe(ctx, "mcp", &input.TokenID, prepared.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
+			"request_id": request.ID, "project_id": prepared.ProjectID, "action_name": request.ActionName,
+			"approval_context_hash": request.ApprovalContextHash,
+		})
+		return r.View(ctx, request), nil
+	}
+	executionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.executionTimeout)
+	defer cancel()
+	result, err := RunClaimedWorkflow(executionCtx, request, r.workflowPorts("mcp", "", "", "mcp.vault_action"))
+	if err != nil {
+		return RequestView{}, err
+	}
+	return r.View(ctx, result.Request), nil
+}
+
+func (r *Runtime) GetOwned(ctx context.Context, id, tokenID int64) (RequestView, error) {
+	if err := r.validate(); err != nil {
+		return RequestView{}, err
+	}
+	item, err := r.store.Get(ctx, id)
+	if errors.Is(err, ErrNotFound) || (err == nil && item.TokenID != tokenID) {
+		return RequestView{}, ErrNotFound
+	}
+	if err != nil {
+		return RequestView{}, err
+	}
+	authorized := r.authorizeOutput(ctx, item)
+	if item.Status == StatusApprovalPending && !authorized {
+		if stale, staleErr := r.store.StalePending(ctx, item.ID, "Vault approval context changed; send a fresh request"); staleErr == nil {
+			item = stale
+		}
+	}
+	return RequestView{Request: item, OutputAuthorized: authorized}, nil
+}
+
+func (r *Runtime) View(ctx context.Context, item Request) RequestView {
+	return RequestView{Request: item, OutputAuthorized: r.authorizeOutput(ctx, item)}
+}
+
+func SameActionCall(request Request, projectRef, actionName string, input map[string]any, reason string) bool {
+	projectMatches := request.ProjectSlug == projectRef || strconv.FormatInt(request.ProjectID, 10) == projectRef
+	if !projectMatches || request.ActionName != actionName || request.Reason != reason {
+		return false
+	}
+	requestJSON, requestErr := json.Marshal(request.Input)
+	inputJSON, inputErr := json.Marshal(input)
+	return requestErr == nil && inputErr == nil && string(requestJSON) == string(inputJSON)
+}
+
+func approvalContextMap(approval ApprovalContext) (map[string]any, error) {
+	payload, err := json.Marshal(approval)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
