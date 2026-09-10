@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
@@ -22,7 +23,7 @@ import (
 )
 
 type credentialHandlers struct{ *Server }
-type consoleHandlers struct{ *Server }
+type bulkConsoleHandlers struct{ *Server }
 type backupHandlers struct{ *Server }
 type databaseHandlers struct{ *Server }
 type unlockHandlers struct{ *Server }
@@ -131,21 +132,22 @@ func (s *Server) registerBackupRoutes() {
 }
 
 func (s *Server) registerConsoleAndActivityRoutes() {
-	console := consoleHandlers{s}
+	console := connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope)
+	bulkConsole := bulkConsoleHandlers{s}
 	commandRequests := commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope)
 	connectorApprovals := connectorActionApprovalHandlers{s}
 	connectorActions := connectorActionHandlers{s}
 	historyHandlers := historyhttp.New(s.historyHTTPScope)
 
-	s.mux.HandleFunc("POST /api/console/bulk-exec", console.runBulkConsoleCommand)
-	s.mux.HandleFunc("GET /api/console/sessions", console.listConsoleSessions)
-	s.mux.HandleFunc("POST /api/console/sessions", console.createConsoleSession)
-	s.mux.HandleFunc("GET /api/console/sessions/{id}", console.getConsoleSession)
-	s.mux.HandleFunc("POST /api/console/sessions/{id}/input", console.inputConsoleSession)
-	s.mux.HandleFunc("POST /api/console/sessions/{id}/close", console.closeConsoleSession)
-	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.attachConsoleSession)
-	s.mux.HandleFunc("POST /api/console/runtime-surfaces/{id}/restart", console.restartTargetConsoleSession)
-	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.restartTargetConsoleSession)
+	s.mux.HandleFunc("POST /api/console/bulk-exec", bulkConsole.runBulkConsoleCommand)
+	s.mux.HandleFunc("GET /api/console/sessions", console.List)
+	s.mux.HandleFunc("POST /api/console/sessions", console.Create)
+	s.mux.HandleFunc("GET /api/console/sessions/{id}", console.Get)
+	s.mux.HandleFunc("POST /api/console/sessions/{id}/input", console.Input)
+	s.mux.HandleFunc("POST /api/console/sessions/{id}/close", console.Close)
+	s.mux.HandleFunc("GET /api/console/sessions/{id}/attach", console.Attach)
+	s.mux.HandleFunc("POST /api/console/runtime-surfaces/{id}/restart", console.Restart)
+	s.mux.HandleFunc("POST /api/console/targets/{id}/restart", console.Restart)
 	s.mux.HandleFunc("GET /api/console/command-requests/{id}", commandRequests.Get)
 	s.mux.HandleFunc("GET /api/connector-action-approvals", connectorApprovals.listConnectorActionApprovals)
 	s.mux.HandleFunc("GET /api/connector-action-approvals/{id}", connectorApprovals.getConnectorActionApproval)

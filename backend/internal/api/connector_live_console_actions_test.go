@@ -128,7 +128,7 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 		t.Fatal(err)
 	}
 
-	_, err = (consoleHandlers{fixture.server}).bulkConsoleTarget(t.Context(), runtime, surface.ID)
+	_, err = (bulkConsoleHandlers{fixture.server}).bulkConsoleTarget(t.Context(), runtime, surface.ID)
 	if !errors.Is(err, connectortargets.ErrInvalidTargetRef) {
 		t.Fatalf("bulk console target error = %v, want invalid target ref", err)
 	}

@@ -40,7 +40,7 @@ type bulkConsoleCommandResponseItem struct {
 	Status     string `json:"status"`
 }
 
-func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Request) {
+func (s bulkConsoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return
@@ -135,7 +135,7 @@ type bulkConsoleTarget struct {
 	Name string
 }
 
-func (s consoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (bulkConsoleTarget, error) {
+func (s bulkConsoleHandlers) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (bulkConsoleTarget, error) {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return bulkConsoleTarget{}, err

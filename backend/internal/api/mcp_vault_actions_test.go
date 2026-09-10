@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -506,7 +507,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatalf("fake transport did not receive the expected secret twice: %#v", appliedValues)
 	}
 
-	human := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", createConsoleSessionRequest{
+	human := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", connectorapi.LiveConsoleCreateHTTPRequest{
 		RuntimeID: target.ID, Name: "Local Vault session", CloseExisting: true,
 		Cols: 100, Rows: 30,
 		VaultItems: []projectvault.SessionSelection{{
