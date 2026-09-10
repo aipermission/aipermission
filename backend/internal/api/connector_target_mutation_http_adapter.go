@@ -14,6 +14,10 @@ func (s *Server) connectorTargetMutationHTTPScope(w http.ResponseWriter) (connec
 	if !ok {
 		return connectormanagement.TargetMutationScope{}, false
 	}
+	return s.connectorTargetMutationScope(runtime), true
+}
+
+func (s *Server) connectorTargetMutationScope(runtime *databaseRuntime) connectormanagement.TargetMutationScope {
 	return connectormanagement.TargetMutationScope{
 		Database: runtime.database,
 		Registry: runtime.connectorRegistry(),
@@ -35,5 +39,5 @@ func (s *Server) connectorTargetMutationHTTPScope(w http.ResponseWriter) (connec
 				change.UserMessage, change.IncludeRunning,
 			)
 		},
-	}, true
+	}
 }

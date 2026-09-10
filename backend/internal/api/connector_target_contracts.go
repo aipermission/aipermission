@@ -10,15 +10,9 @@ type updateConnectorTargetRequest = connectormanagement.UpdateTargetRequest
 
 type updateConnectorCredentialProfileRequest = connectormanagement.CredentialProfileInput
 
-type createConnectorTargetWithProfileRequest struct {
-	Target  createConnectorTargetRequest            `json:"target"`
-	Profile createConnectorCredentialProfileRequest `json:"profile"`
-}
+type createConnectorTargetWithProfileRequest = connectormanagement.CreateTargetWithProfileRequest
 
-type updateConnectorTargetWithProfileRequest struct {
-	Target  updateConnectorTargetRequest            `json:"target"`
-	Profile updateConnectorCredentialProfileRequest `json:"profile"`
-}
+type updateConnectorTargetWithProfileRequest = connectormanagement.UpdateTargetWithProfileRequest
 
 type connectorTargetTestResponse struct {
 	TargetID      int64          `json:"target_id"`

@@ -27,7 +27,10 @@ func (managementTestConnector) TargetSchema() connectors.Schema {
 	return connectors.Schema{Fields: []connectors.Field{{Name: "endpoint", Type: connectors.FieldString}}}
 }
 func (managementTestConnector) CredentialSchemas() []connectors.CredentialSchema {
-	return []connectors.CredentialSchema{{Kind: "operator", Label: "Operator"}}
+	return []connectors.CredentialSchema{{
+		Kind: "operator", Label: "Operator",
+		Schema: connectors.Schema{Fields: []connectors.Field{{Name: "managed_marker", Type: connectors.FieldString}}},
+	}}
 }
 func (managementTestConnector) GetHelp(context.Context, connectors.TargetView) (connectors.ConnectorHelp, error) {
 	return connectors.ConnectorHelp{Connector: managementTestConnectorKind, ConnectorID: managementTestConnectorKind}, nil
@@ -42,6 +45,19 @@ func (managementTestConnector) PrepareAction(context.Context, connectors.ActionR
 }
 func (managementTestConnector) ExecuteAction(context.Context, connectors.RuntimeContext, connectors.PreparedAction) (connectors.ActionResult, error) {
 	return connectors.ActionResult{Status: connectors.ResultCompleted}, nil
+}
+func (managementTestConnector) PreserveProvisionedCredentialPublic(existing connectors.CredentialProfileView, requested map[string]any) (map[string]any, error) {
+	result := make(map[string]any, len(requested)+1)
+	for key, value := range requested {
+		result[key] = value
+	}
+	if marker, ok := existing.Public["managed_marker"]; ok {
+		result["managed_marker"] = marker
+	}
+	return result, nil
+}
+func (managementTestConnector) ProvisionedCredentialAdminProfileID(connectors.CredentialProfileView) (int64, bool, error) {
+	return 0, false, nil
 }
 
 type managementHTTPFixture struct {

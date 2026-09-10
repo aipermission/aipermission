@@ -16,6 +16,16 @@ type UpdateTargetRequest struct {
 	Config    map[string]any `json:"config,omitempty"`
 }
 
+type CreateTargetWithProfileRequest struct {
+	Target  CreateTargetRequest    `json:"target"`
+	Profile CredentialProfileInput `json:"profile"`
+}
+
+type UpdateTargetWithProfileRequest struct {
+	Target  UpdateTargetRequest    `json:"target"`
+	Profile CredentialProfileInput `json:"profile"`
+}
+
 type TargetResponse struct {
 	ID            int64            `json:"id"`
 	ProjectID     int64            `json:"project_id"`

@@ -70,27 +70,12 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 		if err := scope.BeforeCreate(r.Context(), target); err != nil {
 			return err
 		}
-		txStore := connectortargets.NewTxStore(tx)
 		var createErr error
-		profile, createErr = txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
-			TargetID: target.ID, ConnectorKind: target.ConnectorKind,
-			Kind: prepared.Kind, Label: prepared.Label, Public: prepared.Public,
-			RiskLabel: prepared.RiskLabel,
-		})
+		profile, createErr = createPreparedCredentialProfile(
+			r.Context(), connectortargets.NewTxStore(tx), target, prepared,
+			scope.Preparation, scope.EnsureRuntimeSurfaces,
+		)
 		if createErr != nil {
-			return createErr
-		}
-		encrypted, createErr := EncryptPreparedCredentialSecret(r.Context(), profile.ID, prepared, scope.Preparation)
-		if createErr != nil {
-			return createErr
-		}
-		if encrypted != nil {
-			if createErr := txStore.SetCredentialProfileEncryptedSecret(r.Context(), target.ID, profile.ID, *encrypted); createErr != nil {
-				return createErr
-			}
-			profile.EncryptedSecretJSON = *encrypted
-		}
-		if createErr := scope.EnsureRuntimeSurfaces(r.Context(), txStore, target, profile); createErr != nil {
 			return createErr
 		}
 		return appendAudit(tx, "user", nil, 0, "connector.profile.created", profileAuditPayload(target, profile))
@@ -100,6 +85,41 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusCreated, ProfileToSummary(profile))
+}
+
+func createPreparedCredentialProfile(
+	ctx context.Context,
+	store *connectortargets.Store,
+	target connectortargets.Target,
+	prepared PreparedCredentialProfile,
+	preparation CredentialPreparationPorts,
+	ensureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error,
+) (connectortargets.CredentialProfile, error) {
+	if store == nil || ensureRuntimeSurfaces == nil {
+		return connectortargets.CredentialProfile{}, errProfileMutationRuntimeUnavailable
+	}
+	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: target.ConnectorKind,
+		Kind: prepared.Kind, Label: prepared.Label, Public: prepared.Public,
+		RiskLabel: prepared.RiskLabel,
+	})
+	if err != nil {
+		return connectortargets.CredentialProfile{}, err
+	}
+	encrypted, err := EncryptPreparedCredentialSecret(ctx, profile.ID, prepared, preparation)
+	if err != nil {
+		return connectortargets.CredentialProfile{}, err
+	}
+	if encrypted != nil {
+		if err := store.SetCredentialProfileEncryptedSecret(ctx, target.ID, profile.ID, *encrypted); err != nil {
+			return connectortargets.CredentialProfile{}, err
+		}
+		profile.EncryptedSecretJSON = *encrypted
+	}
+	if err := ensureRuntimeSurfaces(ctx, store, target, profile); err != nil {
+		return connectortargets.CredentialProfile{}, err
+	}
+	return profile, nil
 }
 
 func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Request) {

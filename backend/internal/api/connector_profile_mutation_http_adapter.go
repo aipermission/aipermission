@@ -14,6 +14,10 @@ func (s *Server) connectorProfileMutationHTTPScope(w http.ResponseWriter) (conne
 	if !ok {
 		return connectormanagement.ProfileMutationScope{}, false
 	}
+	return s.connectorProfileMutationScope(runtime), true
+}
+
+func (s *Server) connectorProfileMutationScope(runtime *databaseRuntime) connectormanagement.ProfileMutationScope {
 	return connectormanagement.ProfileMutationScope{
 		Database:         runtime.database,
 		Registry:         runtime.connectorRegistry(),
@@ -39,5 +43,5 @@ func (s *Server) connectorProfileMutationHTTPScope(w http.ResponseWriter) (conne
 				change.UserMessage, change.IncludeRunning,
 			)
 		},
-	}, true
+	}
 }
