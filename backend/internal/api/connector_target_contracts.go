@@ -18,3 +18,4 @@ type connectorTargetTestResponse = connectormanagement.ConnectionTestResponse
 
 type connectorTargetResponse = connectormanagement.TargetResponse
 type profileSummary = connectormanagement.ProfileSummary
+type preparedConnectorCredentialProfileInput = connectormanagement.PreparedCredentialProfile

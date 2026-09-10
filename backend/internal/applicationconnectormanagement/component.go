@@ -84,7 +84,7 @@ func (component *Component) targetMutation(runtime *workspaceruntime.Runtime) co
 			return component.dependencies.Transaction(ctx, runtime, mutate)
 		},
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
+			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
 			return component.dependencies.AfterLifecycle(ctx, runtime, change)
@@ -111,7 +111,7 @@ func (component *Component) profileMutation(runtime *workspaceruntime.Runtime) c
 			return component.dependencies.BeforeCreate(ctx, runtime, target)
 		},
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
+			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
 			return component.dependencies.AfterLifecycle(ctx, runtime, change)
@@ -133,7 +133,10 @@ func (component *Component) CombinedMutationScope(w http.ResponseWriter) (connec
 	}, true
 }
 
-func (component *Component) ensureRuntimeSurfaces(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (component *Component) EnsureRuntimeSurfaces(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+	if store == nil {
+		return nil
+	}
 	capabilities := []string{}
 	if capability, ok := component.dependencies.LiveConsoleKind(target.ConnectorKind); ok {
 		capabilities = append(capabilities, capability)
@@ -171,7 +174,7 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 			return component.dependencies.Transaction(ctx, runtime, mutate)
 		},
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
+			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AuditRequired: func(ctx context.Context, action string, payload any) error {
 			return component.dependencies.AuditRequired(ctx, runtime, action, payload)

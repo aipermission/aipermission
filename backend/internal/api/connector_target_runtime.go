@@ -49,33 +49,7 @@ func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx 
 }
 
 func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-	if store == nil {
-		return nil
-	}
-	capabilities := []string{}
-	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
-		capabilities = append(capabilities, adapter.LiveConsoleCapabilityKind())
-	}
-	if s.connectorFileTransferAdapterFor(target.ConnectorKind) != nil {
-		capabilities = append(capabilities, connectortargets.RuntimeCapabilityFileTransfer)
-	}
-	seen := map[string]struct{}{}
-	for _, capability := range capabilities {
-		if _, exists := seen[capability]; exists {
-			continue
-		}
-		seen[capability] = struct{}{}
-		if _, err := store.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
-			ConnectorKind:  target.ConnectorKind,
-			TargetID:       target.ID,
-			ProfileID:      profile.ID,
-			CapabilityKind: capability,
-			Label:          profile.Label,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.connectorManagementApplication().EnsureRuntimeSurfaces(ctx, store, target, profile)
 }
 
 func connectorLifecycleApprovalDrift(profileID int64) string {
