@@ -156,7 +156,7 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	normalizedInput, err := normalizeVaultActionInput(input.ActionName, input.Input)
+	normalizedInput, err := vaultrequests.NormalizeActionInput(input.ActionName, input.Input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -388,8 +388,8 @@ func vaultRequestMCPResponse(item vaultrequests.Request) map[string]any {
 }
 
 func currentVaultPollAuthorization(ctx context.Context, server *Server, runtime *databaseRuntime, item vaultrequests.Request) bool {
-	var approval vaultApprovalContext
-	if decodeMap(item.ApprovalContext, &approval) != nil ||
+	approval, err := vaultrequests.DecodeApprovalContext(item.ApprovalContext)
+	if err != nil ||
 		approval.TokenID != item.TokenID || approval.ProjectID != item.ProjectID {
 		return false
 	}

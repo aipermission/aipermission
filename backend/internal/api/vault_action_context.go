@@ -17,44 +17,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
-const vaultApprovalContextSchema = "vault-action-v3"
+const vaultApprovalContextSchema = vaultrequests.ApprovalContextSchema
 
-type vaultApprovalContext struct {
-	Schema                       string                     `json:"schema"`
-	ActionName                   string                     `json:"action_name"`
-	TokenID                      int64                      `json:"token_id"`
-	ProjectID                    int64                      `json:"project_id"`
-	WorkspaceID                  string                     `json:"workspace_id"`
-	RuntimeInstanceID            string                     `json:"runtime_instance_id"`
-	CapabilityName               string                     `json:"capability_name"`
-	ExecutionRule                string                     `json:"execution_rule"`
-	CapabilityExecutionRule      string                     `json:"capability_execution_rule"`
-	CapabilityRevision           int64                      `json:"capability_revision"`
-	CapabilityExpiresAt          string                     `json:"capability_expires_at,omitempty"`
-	TokenExpiresAt               string                     `json:"token_expires_at,omitempty"`
-	TokenUpdatedAt               string                     `json:"token_updated_at"`
-	InputHash                    string                     `json:"input_hash"`
-	RuntimeID                    int64                      `json:"runtime_id,omitempty"`
-	RuntimeSurfaceUpdatedAt      string                     `json:"runtime_surface_updated_at,omitempty"`
-	RuntimeCapabilityVersion     string                     `json:"runtime_capability_version,omitempty"`
-	TargetID                     int64                      `json:"target_id,omitempty"`
-	ProfileID                    int64                      `json:"profile_id,omitempty"`
-	ConnectorKind                string                     `json:"connector_kind,omitempty"`
-	ConnectorActionName          string                     `json:"connector_action_name,omitempty"`
-	ConnectorExecutionRule       string                     `json:"connector_execution_rule,omitempty"`
-	ConnectorPermissionExpiresAt string                     `json:"connector_permission_expires_at,omitempty"`
-	ConnectorPermissionUpdatedAt string                     `json:"connector_permission_updated_at,omitempty"`
-	TargetContextHash            string                     `json:"target_context_hash,omitempty"`
-	ExpectedPeerIdentities       []string                   `json:"expected_peer_identities,omitempty"`
-	ExpectedSessionID            int64                      `json:"expected_session_id,omitempty"`
-	ExpectedGeneration           int64                      `json:"expected_session_generation,omitempty"`
-	ExpectedCols                 int                        `json:"expected_cols,omitempty"`
-	ExpectedRows                 int                        `json:"expected_rows,omitempty"`
-	EnvironmentContentHash       string                     `json:"environment_content_hash,omitempty"`
-	Items                        []projectvault.SessionItem `json:"items,omitempty"`
-	SourceProjectIDs             []int64                    `json:"source_project_ids,omitempty"`
-	ProjectScopeHash             string                     `json:"project_scope_hash"`
-}
+type vaultApprovalContext = vaultrequests.ApprovalContext
 
 type vaultContextDriftError struct{ message string }
 
@@ -94,11 +59,11 @@ func buildVaultApprovalContext(
 	project projectstore.Project,
 	actionName string,
 	input map[string]any,
-) (vaultApprovalContext, string, map[string]any, error) {
+) (vaultrequests.ApprovalContext, string, map[string]any, error) {
 	if actionName != vaultrequests.ActionGenerateItem && actionName != vaultrequests.ActionRestartSession {
-		return vaultApprovalContext{}, "", nil, errors.New("unsupported Vault action")
+		return vaultrequests.ApprovalContext{}, "", nil, errors.New("unsupported Vault action")
 	}
-	normalizedInput, err := normalizeVaultActionInput(actionName, input)
+	normalizedInput, err := vaultrequests.NormalizeActionInput(actionName, input)
 	if err != nil {
 		return vaultApprovalContext{}, "", nil, err
 	}
@@ -113,8 +78,8 @@ func buildVaultApprovalContext(
 	if !isExecutableVaultRule(capability.ExecutionRule) {
 		return vaultApprovalContext{}, "", nil, errors.New("this Vault action requires an active Prompt or Always project capability")
 	}
-	approval := vaultApprovalContext{
-		Schema: vaultApprovalContextSchema, ActionName: actionName, TokenID: tokenID,
+	approval := vaultrequests.ApprovalContext{
+		Schema: vaultrequests.ApprovalContextSchema, ActionName: actionName, TokenID: tokenID,
 		ProjectID: project.ID, WorkspaceID: runtime.workspaceUUID,
 		RuntimeInstanceID: runtime.runtimeInstanceID, CapabilityName: capabilityName,
 		ExecutionRule:           capability.ExecutionRule,
@@ -132,8 +97,8 @@ func buildVaultApprovalContext(
 		return vaultApprovalContext{}, "", nil, err
 	}
 	if actionName == vaultrequests.ActionGenerateItem {
-		var actionInput vaultGenerateActionInput
-		if err := decodeMap(normalizedInput, &actionInput); err != nil {
+		actionInput, err := vaultrequests.DecodeGenerateInput(normalizedInput)
+		if err != nil {
 			return vaultApprovalContext{}, "", nil, err
 		}
 		if err := projectvault.ValidateSessionItemName(actionInput.Name); err != nil {
@@ -148,8 +113,8 @@ func buildVaultApprovalContext(
 		}
 	}
 	if actionName == vaultrequests.ActionRestartSession {
-		var actionInput vaultSessionApplyActionInput
-		if err := decodeMap(normalizedInput, &actionInput); err != nil || strings.TrimSpace(actionInput.TargetRef) == "" || len(actionInput.Items) == 0 {
+		actionInput, decodeErr := vaultrequests.DecodeSessionApplyInput(normalizedInput)
+		if decodeErr != nil || strings.TrimSpace(actionInput.TargetRef) == "" || len(actionInput.Items) == 0 {
 			return vaultApprovalContext{}, "", nil, errors.New("target_ref and at least one Vault item are required")
 		}
 		targets := connectortargets.NewStore(runtime.database)
@@ -172,7 +137,7 @@ func buildVaultApprovalContext(
 		if err != nil {
 			return vaultApprovalContext{}, "", nil, err
 		}
-		snapshot, err := buildVaultEnvironmentSnapshot(ctx, server, runtime, surface.ID, actionInput.sessionSelections())
+		snapshot, err := buildVaultEnvironmentSnapshot(ctx, server, runtime, surface.ID, actionInput.SessionSelections())
 		if err != nil {
 			return vaultApprovalContext{}, "", nil, err
 		}

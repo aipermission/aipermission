@@ -189,6 +189,7 @@ place.
 - `internal/sessionenv`: framed one-time session environment envelopes and
   acknowledgement parsing. It never persists plaintext values.
 - `internal/vaultrequests`: tracked Prompt/Always Project Vault action request
+  contracts, strict action input normalization, persisted approval context,
   lifecycle, idempotency, expiry, cancellation, stale transitions, and the
   claim/effect/finalize/repair/compensation workflow. API ports add transactional
   audit and encrypted Vault effects without merging this flow with connector

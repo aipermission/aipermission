@@ -16,8 +16,8 @@ import (
 )
 
 func executeVaultAction(ctx context.Context, server *Server, runtime *databaseRuntime, request vaultrequests.Request) (any, error) {
-	var approval vaultApprovalContext
-	if err := decodeMap(request.ApprovalContext, &approval); err != nil {
+	approval, err := vaultrequests.DecodeApprovalContext(request.ApprovalContext)
+	if err != nil {
 		return nil, err
 	}
 	if approval.Schema != vaultApprovalContextSchema || approval.TokenID != request.TokenID ||
@@ -58,8 +58,8 @@ func executeVaultGenerate(
 		!server.vaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.id, request.TokenID)) {
 		return nil, errors.New("Vault generation rate limit exceeded; wait before generating another item")
 	}
-	var input vaultGenerateActionInput
-	if err := decodeMap(request.Input, &input); err != nil {
+	input, err := vaultrequests.DecodeGenerateInput(request.Input)
+	if err != nil {
 		return nil, err
 	}
 	if input.Name == "" || input.GeneratorKind == "" {
@@ -82,7 +82,7 @@ func executeVaultGenerate(
 		SecretType: input.SecretType, Provider: input.Provider, Environment: input.Environment,
 		Description: input.Description, ExpiresAt: input.ExpiresAt,
 		ExpiryWarningDays: input.ExpiryWarningDays, Source: "generated",
-		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.projectUsageNotes(),
+		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.ProjectUsageNotes(),
 	}
 	var item projectvault.Item
 	err = server.withAuditedMutation(ctx, runtime, "mcp", &request.TokenID, 0, "vault.item.created", func() any {
@@ -118,8 +118,8 @@ func executeVaultSessionApply(
 	approval vaultApprovalContext,
 	capability accesscontrol.Capability,
 ) (any, error) {
-	var input vaultSessionApplyActionInput
-	if err := decodeMap(request.Input, &input); err != nil {
+	input, err := vaultrequests.DecodeSessionApplyInput(request.Input)
+	if err != nil {
 		return nil, err
 	}
 	snapshot := vaultEnvironmentSnapshotFromApproval(approval)
@@ -194,7 +194,7 @@ func executeVaultSessionApply(
 	createRequest := console.CreateRequest{
 		RuntimeID: approval.RuntimeID, Name: fmt.Sprintf("Vault session for %s", request.ProjectName),
 		CloseExisting: false, Cols: cols, Rows: rows, WaitForStart: true, Principal: principal,
-		PrepareEnvironment:     newVaultEnvironmentPreparer(server, runtime, snapshot, input.sessionSelections(), authorize, finalize),
+		PrepareEnvironment:     newVaultEnvironmentPreparer(server, runtime, snapshot, input.SessionSelections(), authorize, finalize),
 		EnvironmentContentHash: approval.EnvironmentContentHash,
 		ApprovalContextHash:    request.ApprovalContextHash,
 	}
