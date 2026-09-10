@@ -5,22 +5,21 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 const RunningAssistantHint = "Wait 3 seconds, then poll this running console command request again."
 
 type Store struct {
-	database sqldb.Executor
+	database Database
 }
 
-func NewStore(database sqldb.Executor) *Store {
+func NewStore(database Database) *Store {
 	return &Store{database: database}
 }
 
 func (s *Store) Get(ctx context.Context, id, tokenID int64, source string) (Record, error) {
 	if s == nil || s.database == nil {
-		return Record{}, sql.ErrConnDone
+		return Record{}, ErrStoreUnavailable
 	}
 	row := s.database.QueryRowContext(ctx, `
 		SELECT cr.id, cr.token_id, COALESCE(tok.name, ''), cr.runtime_id, COALESCE(ct.name, ''), cr.source, cr.command, cr.reason, cr.status,

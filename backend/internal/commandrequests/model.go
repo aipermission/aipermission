@@ -40,7 +40,7 @@ type Insert struct {
 }
 
 type PreparedInsert struct {
-	Insert
-	StoredCommand string
-	StoredReason  string
+	insert        Insert
+	storedCommand string
+	storedReason  string
 }

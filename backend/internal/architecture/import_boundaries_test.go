@@ -84,6 +84,7 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 		modulePath + "/internal/actionresult",
 		modulePath + "/internal/actions",
 		modulePath + "/internal/backups",
+		modulePath + "/internal/commandrequests",
 		modulePath + "/internal/connectormanagement",
 		modulePath + "/internal/observability",
 		modulePath + "/internal/projectvault",

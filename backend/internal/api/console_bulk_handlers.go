@@ -86,13 +86,18 @@ func (s consoleHandlers) runBulkConsoleCommand(w http.ResponseWriter, r *http.Re
 	items := make([]bulkConsoleCommandResponseItem, 0, len(targets))
 	preparedRequests := make([]preparedCommandRequestInsert, 0, len(targets))
 	for _, target := range targets {
-		preparedRequests = append(preparedRequests, s.prepareCommandRequestInsert(r.Context(), runtime, commandRequestInsert{
+		prepared, err := s.prepareCommandRequestInsert(r.Context(), runtime, commandRequestInsert{
 			RuntimeID: target.ID,
 			Source:    commandRequestSourceManual,
 			Command:   request.Command,
 			Reason:    request.Reason,
 			Status:    "running",
-		}))
+		})
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		preparedRequests = append(preparedRequests, prepared)
 	}
 	err = s.withAuditedTransaction(r.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 		for index, target := range targets {
