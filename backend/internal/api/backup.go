@@ -319,7 +319,7 @@ func (s backupHandlers) installImportedDatabaseWithMutator(w http.ResponseWriter
 }
 
 func closeImportCandidate(database *sql.DB) error {
-	if _, err := database.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+	if err := dbpkg.CheckpointForFilesystemMutation(context.Background(), database); err != nil {
 		_ = database.Close()
 		return fmt.Errorf("checkpoint import candidate: %w", err)
 	}

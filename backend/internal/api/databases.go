@@ -1,10 +1,6 @@
 package api
 
 import (
-	"context"
-	"database/sql"
-	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -79,7 +75,7 @@ func (s databaseHandlers) renameDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	attempt.success()
-	if err := checkpointDatabaseForMove(r.Context(), s.database); err != nil {
+	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), s.database); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -153,7 +149,7 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 	attempt.success()
 
 	path := s.activeDataPath
-	if err := checkpointDatabaseForMove(r.Context(), s.database); err != nil {
+	if err := dbpkg.CheckpointForFilesystemMutation(r.Context(), s.database); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -186,20 +182,6 @@ func (s databaseHandlers) deleteDatabase(w http.ResponseWriter, r *http.Request)
 		"database_id": s.activeDatabase,
 		"deleted_at":  time.Now().UTC().Format(time.RFC3339),
 	})
-}
-
-func checkpointDatabaseForMove(ctx context.Context, database *sql.DB) error {
-	if database == nil {
-		return errors.New("database is not open")
-	}
-	var busy, logFrames, checkpointedFrames int
-	if err := database.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
-		return fmt.Errorf("checkpoint database before filesystem mutation: %w", err)
-	}
-	if busy != 0 || checkpointedFrames < logFrames {
-		return fmt.Errorf("checkpoint database before filesystem mutation: database remained busy")
-	}
-	return nil
 }
 
 func (s databaseHandlers) deleteLockedDatabase(w http.ResponseWriter, r *http.Request) {
@@ -401,12 +383,12 @@ func (s databaseHandlers) changeDatabasePassword(w http.ResponseWriter, r *http.
 	}
 	attempt.success()
 
-	_, _ = runtime.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
+	_ = dbpkg.CheckpointFull(r.Context(), runtime.database)
 	if err := dbpkg.Rekey(runtime.database, request.NewPassword); err != nil {
 		writeInternalError(w)
 		return
 	}
-	_, _ = runtime.database.ExecContext(r.Context(), `PRAGMA wal_checkpoint(FULL)`)
+	_ = dbpkg.CheckpointFull(r.Context(), runtime.database)
 
 	if err := dbpkg.ValidateEncrypted(runtime.path, request.NewPassword); err != nil {
 		writeError(w, http.StatusInternalServerError, "database password changed but verification reopen failed")
