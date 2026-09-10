@@ -38,7 +38,7 @@ func (s *Server) Close() {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
-	if err := s.closeAllUnlockedResources(); err != nil {
+	if err := s.workspaceLifecycle.CloseAll(); err != nil {
 		log.Printf("close unlocked database resources failed: %v", err)
 	}
 }

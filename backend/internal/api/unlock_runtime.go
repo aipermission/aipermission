@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
@@ -32,10 +31,6 @@ var (
 	errDatabaseAuthentication = errors.New("database authentication failed")
 	errDatabaseInitialization = errors.New("database initialization failed")
 )
-
-func workspaceIdentity(id, path string) workspacelifecycle.Identity {
-	return workspacelifecycle.Identity{ID: id, Path: path}
-}
 
 const fileTransferShutdownWait = 10 * time.Second
 
@@ -73,18 +68,6 @@ func unlockStatusFromLifecycle(status workspacelifecycle.Status) unlockStatusRes
 		DatabaseName: status.DatabaseName, DatabaseSizeBytes: status.DatabaseSizeBytes,
 		UISessionAuthenticated: status.State == "unlocked", Databases: status.Databases,
 	}
-}
-
-func (s *Server) openUnlockedLocked(password string) error {
-	selection := s.workspaces.Selection()
-	runtime, err := s.openRuntimeForLifecycle(selection.Path, selection.ID, password)
-	if err != nil {
-		return err
-	}
-	s.config.GatewaySecret = runtime.gatewaySecret
-	s.applyRuntimeLocked(runtime)
-	s.initializeRetention(runtime)
-	return nil
 }
 
 func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*databaseRuntime, error) {
@@ -272,83 +255,10 @@ func (s *Server) currentDataPath() string {
 	return s.workspaceSelection().Path
 }
 
-func (s *Server) setupTargetPathLocked(databaseID string, databaseName string) (string, string, error) {
-	databaseID = strings.TrimSpace(databaseID)
-	databaseName = strings.TrimSpace(databaseName)
-	if databaseName != "" {
-		id, path, err := databasecatalog.NewDatabasePath(s.config.DataPath, databaseName)
-		return path, id, err
-	}
-	path, err := databasecatalog.DatabasePath(s.config.DataPath, databaseID)
-	if err != nil {
-		return "", "", err
-	}
-	if databaseID == "" {
-		databaseID = databasecatalog.DefaultDatabaseID(s.config.DataPath)
-	}
-	return path, databaseID, nil
-}
-
-func (s *Server) unlockTargetPathLocked(databaseID string) (string, string, error) {
-	databaseID = strings.TrimSpace(databaseID)
-	if databaseID == "" {
-		databaseID = s.workspaces.Selection().ID
-	}
-	path, err := databasecatalog.DatabasePath(s.config.DataPath, databaseID)
-	if err != nil {
-		return "", "", err
-	}
-	if databaseID == "" {
-		databaseID = databasecatalog.DefaultDatabaseID(s.config.DataPath)
-	}
-	return path, databaseID, nil
-}
-
-func (s *Server) closeActiveRuntimeLocked(promote bool) error {
-	activeID := s.workspaces.Selection().ID
-	var closeErr error
-	if activeID != "" {
-		if runtime, ok := s.workspaces.Lookup(activeID); ok && runtime != nil {
-			closeErr = s.closeRuntime(runtime)
-		}
-		_, _, promoted, promotedOK := s.workspaces.Remove(activeID, promote)
-		if promotedOK && promoted != nil {
-			s.applyRuntimeLocked(promoted)
-		}
-	}
-	return closeErr
-}
-
-func (s *Server) closeUnlockedResources() error {
-	return s.closeActiveRuntimeLocked(false)
-}
-
-func (s *Server) closeAllUnlockedResources() error {
-	seen := map[*databaseRuntime]bool{}
-	var closeErrors []error
-	for _, runtime := range s.workspaces.Clear(databasecatalog.DefaultDatabaseID(s.config.DataPath)) {
-		if runtime == nil || seen[runtime] {
-			continue
-		}
-		seen[runtime] = true
-		if err := s.closeRuntime(runtime); err != nil {
-			closeErrors = append(closeErrors, err)
-		}
-	}
-	return errors.Join(closeErrors...)
-}
-
-func (s *Server) closeRuntimeByIDLocked(id string) error {
-	runtime, ok := s.workspaces.Lookup(id)
-	if !ok || runtime == nil {
-		return nil
-	}
-	closeErr := s.closeRuntime(runtime)
-	s.workspaces.Remove(id, false)
-	return closeErr
-}
-
 func (s *Server) unlockedRuntimeSnapshot() []*databaseRuntime {
+	if s.workspaceLifecycle != nil {
+		return s.workspaceLifecycle.Snapshot()
+	}
 	return s.workspaces.Snapshot()
 }
 
@@ -356,18 +266,12 @@ func (s *Server) activeRuntime() *databaseRuntime {
 	if s.workspaces == nil {
 		return nil
 	}
+	if s.workspaceLifecycle != nil {
+		runtime, _ := s.workspaceLifecycle.Active()
+		return runtime
+	}
 	runtime, _ := s.workspaces.Active()
 	return runtime
-}
-
-func (s *Server) applyRuntimeLocked(runtime *databaseRuntime) {
-	if runtime == nil {
-		return
-	}
-	s.workspaces.Activate(runtime)
-	if strings.TrimSpace(runtime.gatewaySecret) != "" {
-		s.config.GatewaySecret = runtime.gatewaySecret
-	}
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) error {

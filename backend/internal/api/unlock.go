@@ -203,10 +203,6 @@ func (s unlockHandlers) lock(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, unlockStatusFromLifecycle(status))
 }
 
-func (s *Server) currentLockLeavesNoUnlockedRuntime() bool {
-	return s.workspaceLifecycle.WillLockAll("current")
-}
-
 func writeWorkspaceLifecycleError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, workspacelifecycle.ErrLocked):

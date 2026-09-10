@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
@@ -274,15 +273,9 @@ func writeWorkspaceMutationError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	selection := s.workspaces.Selection()
-	items, err := databasecatalog.ListDatabases(s.config.DataPath, selection.Path)
-	if err != nil {
-		return selection.ID
+	status, err := s.workspaceLifecycle.Status()
+	if err == nil && status.DatabaseName != "" {
+		return status.DatabaseName
 	}
-	for _, item := range items {
-		if item.Path == selection.Path || item.ID == selection.ID {
-			return item.Name
-		}
-	}
-	return selection.ID
+	return s.workspaceSelection().ID
 }
