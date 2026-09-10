@@ -7,14 +7,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*commandrequests.BulkHTTPRuntime, bool) {
+func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.CommandBulkHTTPRuntime, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return nil, false
@@ -23,25 +22,25 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*commandrequests.B
 		writeInternalError(w)
 		return nil, false
 	}
-	return &commandrequests.BulkHTTPRuntime{
+	return &gatewayaccess.CommandBulkHTTPRuntime{
 		Requests: runtime.Operations.CommandRequests,
 		Sessions: runtime.Connectors.ConsoleSessions,
-		Principal: func() (executionprincipal.Principal, error) {
+		Principal: func() (gatewayaccess.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
-		ResolveTarget: func(ctx context.Context, runtimeID int64) (commandrequests.BulkTarget, error) {
+		ResolveTarget: func(ctx context.Context, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
 			target, err := s.bulkConsoleTarget(ctx, runtime, runtimeID)
-			if errors.Is(err, connectortargets.ErrTargetProfileNotFound) ||
-				errors.Is(err, connectortargets.ErrTargetNotFound) ||
-				errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) ||
-				errors.Is(err, connectortargets.ErrInvalidTargetRef) {
-				return commandrequests.BulkTarget{}, commandrequests.ErrBulkTargetNotFound
+			if errors.Is(err, connectormgmt.ErrTargetProfileNotFound) ||
+				errors.Is(err, connectormgmt.ErrTargetNotFound) ||
+				errors.Is(err, connectormgmt.ErrRuntimeSurfaceNotFound) ||
+				errors.Is(err, connectormgmt.ErrInvalidTargetRef) {
+				return gatewayaccess.CommandBulkTarget{}, gatewayaccess.ErrBulkTargetNotFound
 			}
 			return target, err
 		},
-		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, commandrequests.BulkAuditAppender) error) error {
+		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayaccess.CommandBulkAuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-				return mutate(tx, commandrequests.BulkAuditAppender(appendAudit))
+				return mutate(tx, gatewayaccess.CommandBulkAuditAppender(appendAudit))
 			})
 		},
 		PresentError: func(ctx context.Context, runtimeID int64, err error) string {
@@ -52,18 +51,18 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*commandrequests.B
 	}, true
 }
 
-func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (commandrequests.BulkTarget, error) {
+func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
-		return commandrequests.BulkTarget{}, err
+		return gatewayaccess.CommandBulkTarget{}, err
 	}
-	target, profile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
-		return commandrequests.BulkTarget{}, err
+		return gatewayaccess.CommandBulkTarget{}, err
 	}
 	actionAdapter, ok := s.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || strings.TrimSpace(actionAdapter.LiveConsoleActionName()) == "" {
-		return commandrequests.BulkTarget{}, connectortargets.ErrInvalidTargetRef
+		return gatewayaccess.CommandBulkTarget{}, connectormgmt.ErrInvalidTargetRef
 	}
 	name := target.Name
 	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
@@ -77,7 +76,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime
 			name = strings.TrimSpace(label)
 		}
 	}
-	return commandrequests.BulkTarget{RuntimeID: runtimeID, Name: name}, nil
+	return gatewayaccess.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
 }
 
 func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) any {
@@ -85,7 +84,7 @@ func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRun
 	if err != nil {
 		return nil
 	}
-	target, _, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, _, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil
 	}

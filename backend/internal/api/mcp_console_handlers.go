@@ -3,8 +3,7 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 type consoleRestartResult struct {
@@ -12,9 +11,9 @@ type consoleRestartResult struct {
 	CanceledRunningRequests int64
 }
 
-func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
+func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
 	if runtime == nil || runtime.Operations.CommandRequests == nil {
-		return consoleRestartResult{}, commandrequests.ErrRuntimeUnavailable
+		return consoleRestartResult{}, gatewayaccess.ErrCommandRuntimeUnavailable
 	}
 	var canceledRequests int64
 	closedSessionIDs, err := runtime.Connectors.ConsoleSessions.RecoverRuntime(ctx, principal, runtimeID, func() error {

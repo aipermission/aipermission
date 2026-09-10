@@ -4,9 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func sha256Hex(value string) string {
@@ -14,7 +14,7 @@ func sha256Hex(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func connectorActionApprovalSnapshots(token tokens.Token, permission connectortargets.ActionPermission) (actions.ApprovalTokenSnapshot, actions.ApprovalPermissionSnapshot) {
+func connectorActionApprovalSnapshots(token gatewayaccess.Token, permission connectormgmt.ActionPermission) (actions.ApprovalTokenSnapshot, actions.ApprovalPermissionSnapshot) {
 	return actions.ApprovalTokenSnapshot{
 			ID: token.ID, ExpiresAt: token.ExpiresAt, RevokedAt: token.RevokedAt,
 		}, actions.ApprovalPermissionSnapshot{

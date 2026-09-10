@@ -3,7 +3,7 @@ package api
 import (
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 const (
@@ -17,14 +17,14 @@ type mcpAuthContext struct {
 	runtime *databaseRuntime
 }
 
-type commandPolicyWarning = commandrequests.PolicyWarning
+type commandPolicyWarning = gatewayaccess.CommandPolicyWarning
 
 const (
-	commandRequestSourceMCP            = commandrequests.SourceMCP
-	commandRequestSourceManual         = commandrequests.SourceManual
-	runningCommandRequestAssistantHint = commandrequests.RunningAssistantHint
+	commandRequestSourceMCP            = gatewayaccess.CommandSourceMCP
+	commandRequestSourceManual         = gatewayaccess.CommandSourceManual
+	runningCommandRequestAssistantHint = gatewayaccess.RunningAssistantHint
 )
 
 func analyzeCommandPolicy(command string) []commandPolicyWarning {
-	return commandrequests.AnalyzePolicy(command)
+	return gatewayaccess.AnalyzeCommandPolicy(command)
 }

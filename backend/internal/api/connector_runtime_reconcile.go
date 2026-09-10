@@ -3,15 +3,15 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRuntime) error {
 	if runtime == nil || runtime.Storage.Database == nil {
 		return nil
 	}
-	store := connectortargets.NewStore(runtime.Storage.Database)
-	targets, err := store.ListTargets(ctx, connectortargets.ListTargetsFilter{})
+	store := connectormgmt.NewStore(runtime.Storage.Database)
+	targets, err := store.ListTargets(ctx, connectormgmt.ListTargetsFilter{})
 	if err != nil {
 		return err
 	}

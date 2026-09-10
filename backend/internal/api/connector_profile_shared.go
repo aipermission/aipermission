@@ -3,17 +3,17 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseWriter, runtime *databaseRuntime, profile connectortargets.CredentialProfile) (map[string]any, bool) {
+func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseWriter, runtime *databaseRuntime, profile connectormgmt.CredentialProfile) (map[string]any, bool) {
 	secrets := map[string]any{}
 	if profile.EncryptedSecretJSON == "" {
 		return secrets, true
 	}
-	if err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := gatewayvault.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, gatewayvault.ConnectorCredentialProfileRecord, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		writeInternalError(w)
 		return nil, false
 	}

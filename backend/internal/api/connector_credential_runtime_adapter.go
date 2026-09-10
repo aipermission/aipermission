@@ -3,17 +3,17 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func (s *Server) connectorCredentialRuntimePorts(runtime *databaseRuntime) connectormanagement.CredentialRuntimePorts {
-	return connectormanagement.RuntimeCredentialPorts(
+func (s *Server) connectorCredentialRuntimePorts(runtime *databaseRuntime) connectormgmt.CredentialRuntimePorts {
+	return connectormgmt.RuntimeCredentialPorts(
 		runtime,
 		func(kind string) connectors.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
 		},
-		func(ctx context.Context, result connectors.ActionResult, boundary connectormanagement.CredentialBoundary) (connectors.ActionResult, error) {
+		func(ctx context.Context, result connectors.ActionResult, boundary connectormgmt.CredentialBoundary) (connectors.ActionResult, error) {
 			return s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, boundary)
 		},
 		func(ctx context.Context, value string) string {

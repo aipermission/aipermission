@@ -1,21 +1,21 @@
 package api
 
-import "github.com/aipermission/aipermission/backend/internal/connectormanagement"
+import connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 
-type createConnectorTargetRequest = connectormanagement.CreateTargetRequest
+type createConnectorTargetRequest = connectormgmt.CreateTargetRequest
 
-type createConnectorCredentialProfileRequest = connectormanagement.CredentialProfileInput
+type createConnectorCredentialProfileRequest = connectormgmt.CredentialProfileInput
 
-type updateConnectorTargetRequest = connectormanagement.UpdateTargetRequest
+type updateConnectorTargetRequest = connectormgmt.UpdateTargetRequest
 
-type updateConnectorCredentialProfileRequest = connectormanagement.CredentialProfileInput
+type updateConnectorCredentialProfileRequest = connectormgmt.CredentialProfileInput
 
-type createConnectorTargetWithProfileRequest = connectormanagement.CreateTargetWithProfileRequest
+type createConnectorTargetWithProfileRequest = connectormgmt.CreateTargetWithProfileRequest
 
-type updateConnectorTargetWithProfileRequest = connectormanagement.UpdateTargetWithProfileRequest
+type updateConnectorTargetWithProfileRequest = connectormgmt.UpdateTargetWithProfileRequest
 
-type connectorTargetTestResponse = connectormanagement.ConnectionTestResponse
+type connectorTargetTestResponse = connectormgmt.ConnectionTestResponse
 
-type connectorTargetResponse = connectormanagement.TargetResponse
-type profileSummary = connectormanagement.ProfileSummary
-type preparedConnectorCredentialProfileInput = connectormanagement.PreparedCredentialProfile
+type connectorTargetResponse = connectormgmt.TargetResponse
+type profileSummary = connectormgmt.ProfileSummary
+type preparedConnectorCredentialProfileInput = connectormgmt.PreparedCredentialProfile

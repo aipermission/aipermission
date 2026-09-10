@@ -4,22 +4,21 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-type localConnectorActionRequest = applicationactions.LocalRequest
+type localConnectorActionRequest = actions.LocalRequest
 
-func (s *Server) localConnectorActionHTTP() applicationactions.LocalHTTPHandlers {
-	return s.connectorActionApplication().LocalHTTP(applicationactions.LocalHTTPDependencies{
+func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
+	return s.connectorActionApplication().LocalHTTP(actions.LocalHTTPDependencies{
 		ActiveRuntime: s.activeRuntimeOrLocked, DecodeJSON: decodeJSON,
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: handleConnectorTargetError,
-		Response: func(request connectortargets.ActionRequest, result connectors.ActionResult, replayed bool) any {
-			response := mcpconnector.ResponseFromResult(s.connectorAdapterRegistry(), request, result)
+		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
+			response := gatewayaccess.MCPResponseFromResult(s.connectorAdapterRegistry(), request, result)
 			response.Replayed = replayed
 			return response
 		},

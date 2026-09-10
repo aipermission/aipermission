@@ -6,12 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAuthContext, bool) {
-	ipLimitKey := runtimecontrol.Key(r, "mcp")
+	ipLimitKey := gatewayaccess.RuntimeKey(r, "mcp")
 	if err := s.controlState.MCPIPAuthLimiter.Wait(r.Context(), ipLimitKey); err != nil {
 		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
 		return mcpAuthContext{}, false
@@ -37,11 +36,11 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 
 	runtimes := s.unlockedRuntimeSnapshot()
 	matches := []mcpAuthContext{}
-	tokenHash := tokens.HashToken(tokenValue)
+	tokenHash := gatewayaccess.HashToken(tokenValue)
 	now := time.Now().UTC()
 	for _, runtime := range runtimes {
 		authenticated, err := runtime.Storage.Tokens.AuthenticateHash(r.Context(), tokenHash, now)
-		if errors.Is(err, tokens.ErrNotFound) {
+		if errors.Is(err, gatewayaccess.ErrTokenNotFound) {
 			continue
 		}
 		if err != nil {
@@ -74,7 +73,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 }
 
 func mcpTokenRateLimitKey(tokenValue string) string {
-	tokenHash := strings.TrimPrefix(tokens.HashToken(tokenValue), "sha256:")
+	tokenHash := strings.TrimPrefix(gatewayaccess.HashToken(tokenValue), "sha256:")
 	const fingerprintLength = 24
 	if len(tokenHash) > fingerprintLength {
 		tokenHash = tokenHash[:fingerprintLength]

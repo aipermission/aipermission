@@ -3,14 +3,14 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) error {
 	if runtime == nil || runtime.Connectors.ConsoleSessions == nil || runtime.Security.VaultLeases == nil {
-		return vaultsessions.ErrInvalidatorUnavailable
+		return gatewayvault.ErrInvalidatorUnavailable
 	}
 	owner, err := s.vaultSessionInvalidator(runtime)
 	if err != nil {
@@ -18,9 +18,9 @@ func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) error {
 	}
 	runtime.Connectors.ConsoleSessions.SetAuthorizer(func(
 		ctx context.Context,
-		principal executionprincipal.Principal,
-		session console.SessionAuthorization,
-		operation console.SessionOperation,
+		principal gatewayaccess.Principal,
+		session gatewayoperations.SessionAuthorization,
+		operation gatewayoperations.SessionOperation,
 		run func() error,
 	) error {
 		release, err := runtime.Security.VaultDelivery.AcquireDelivery(ctx)
@@ -33,7 +33,7 @@ func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) error {
 		}
 		return run()
 	})
-	runtime.Connectors.ConsoleSessions.SetSessionClosedHook(func(handle console.SessionHandle) {
+	runtime.Connectors.ConsoleSessions.SetSessionClosedHook(func(handle gatewayoperations.SessionHandle) {
 		_ = owner.SessionClosed(context.Background(), handle)
 	})
 	return nil

@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime *databaseRuntime) error {
-	owner, err := commandrequests.NewWorkspaceRuntime(commandrequests.WorkspaceRuntimeDependencies{
+	owner, err := gatewayaccess.NewCommandWorkspaceRuntime(gatewayaccess.CommandWorkspaceRuntimeDependencies{
 		Database: runtime.Storage.Database, Vault: runtime.Storage.Vault, WorkspaceID: runtime.WorkspaceUUID,
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
@@ -22,7 +22,7 @@ func (s *Server) initializeCommandRequestRuntime(runtime *databaseRuntime) error
 	return nil
 }
 
-func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (commandrequests.HTTPReader, bool) {
+func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.CommandHTTPReader, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return nil, false

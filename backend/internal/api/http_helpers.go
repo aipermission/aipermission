@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/tokens"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 type httpDomainError struct {
@@ -55,11 +55,11 @@ func parseInt64Query(w http.ResponseWriter, value string, name string) (int64, b
 
 func handleTokenError(w http.ResponseWriter, err error) {
 	handleDomainError(w, err, httpDomainError{
-		NotFound:        tokens.ErrNotFound,
+		NotFound:        gatewayaccess.ErrTokenNotFound,
 		NotFoundMessage: "token not found",
 		FailureMessage:  "token operation failed",
 		Validation: func(err error) (string, bool) {
-			var validation tokens.ValidationError
+			var validation gatewayaccess.TokenValidationError
 			if errors.As(err, &validation) {
 				return validation.Error(), true
 			}

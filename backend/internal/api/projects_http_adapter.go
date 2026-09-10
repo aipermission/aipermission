@@ -5,15 +5,15 @@ import (
 	"database/sql"
 	"net/http"
 
-	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) projectsHTTPScope(w http.ResponseWriter) (projectstore.Scope, bool) {
+func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return projectstore.Scope{}, false
+		return gatewayvault.ProjectScope{}, false
 	}
-	return projectstore.Scope{
+	return gatewayvault.ProjectScope{
 		Database: runtime.Storage.Database,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)

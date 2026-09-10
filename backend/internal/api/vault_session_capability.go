@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) error {
@@ -27,7 +27,7 @@ func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, ru
 }
 
 func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
-	surface, err := connectortargets.NewStore(runtime.Storage.Database).GetRuntimeSurface(ctx, runtimeID)
+	surface, err := connectormgmt.NewStore(runtime.Storage.Database).GetRuntimeSurface(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}

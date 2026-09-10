@@ -6,8 +6,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (s *Server) isUnlocked() bool {
@@ -17,10 +17,10 @@ func (s *Server) isUnlocked() bool {
 	return s.workspaceState.Registry.IsUnlocked()
 }
 
-func (s *Server) workspaceSelection() gatewayworkspace.Identity {
+func (s *Server) workspaceSelection() gatewayinfra.Identity {
 	if s.workspaceState.Registry == nil {
-		return gatewayworkspace.Identity{
-			ID: gatewayworkspace.DefaultID(s.config.DataPath), Path: s.config.DataPath,
+		return gatewayinfra.Identity{
+			ID: gatewayinfra.DefaultID(s.config.DataPath), Path: s.config.DataPath,
 		}
 	}
 	return s.workspaceState.Registry.Selection()
@@ -37,18 +37,18 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 	if s.workspaceState.MoveDatabase != nil {
 		return s.workspaceState.MoveDatabase(currentPath, targetPath)
 	}
-	return gatewayworkspace.Move(currentPath, targetPath)
+	return gatewayinfra.Move(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	if s.workspaceState.PublishDatabase != nil {
 		return s.workspaceState.PublishDatabase(sourcePath, targetPath)
 	}
-	return gatewayworkspace.Publish(sourcePath, targetPath)
+	return gatewayinfra.Publish(sourcePath, targetPath)
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
-	runtime, err := gatewayworkspace.Open(context.Background(), gatewayworkspace.OpenInput{
+	runtime, err := gatewayinfra.Open(context.Background(), gatewayinfra.OpenInput{
 		ID: id, Path: path, Password: password,
 		ConfiguredGatewaySecret: s.config.GatewaySecret,
 		Registry:                s.connectorRegistry(), AdapterRegistry: s.connectorAdapterRegistry(),
@@ -66,7 +66,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		return nil, err
 	}
 	runtime.Security.Runtime.SetMCPStarted(settings.MCPStartEnabled)
-	runtime.Connectors.ConsoleSessions = console.NewManager(runtime.Storage.Database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	runtime.Connectors.ConsoleSessions = gatewayoperations.NewConsoleManager(runtime.Storage.Database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		s.discardOpeningRuntime(runtime)
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
@@ -84,7 +84,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 }
 
 func (s *Server) discardOpeningRuntime(runtime *databaseRuntime) {
-	if err := gatewayworkspace.Discard(runtime); err != nil {
+	if err := gatewayinfra.Discard(runtime); err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.ID, err)
 	}
 }
@@ -113,13 +113,13 @@ func (s *Server) activeRuntime() *databaseRuntime {
 }
 
 func (s *Server) closeRuntime(runtime *databaseRuntime) error {
-	return gatewayworkspace.Close(runtime, func() (gatewayworkspace.ActionWorkflow, error) {
+	return gatewayinfra.Close(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionWorkflow(runtime)
 	})
 }
 
 func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {
-	if !gatewayworkspace.LooksPlaintext(path) {
+	if !gatewayinfra.LooksPlaintext(path) {
 		return false
 	}
 	writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")

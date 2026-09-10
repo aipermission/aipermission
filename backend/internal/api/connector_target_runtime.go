@@ -7,20 +7,20 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
 	if runtime == nil || runtime.Storage.Database == nil || targetID < 1 {
 		return 0, nil
 	}
-	input := connectortargets.InvalidateActionRequestsForTargetInput{
+	input := connectormgmt.InvalidateActionRequestsForTargetInput{
 		TargetID: targetID, ProfileID: profileID,
 		Error:         s.redactForPersistence(ctx, runtime, reason),
 		RunningError:  s.redactForPersistence(ctx, runtime, "connector configuration changed after dispatch; the external outcome is unknown and must be inspected before retrying"),
 		ApprovalDrift: connectorLifecycleApprovalDrift(profileID), IncludeRunning: includeRunning,
 	}
-	var result connectortargets.InvalidateActionRequestsForTargetResult
+	var result connectormgmt.InvalidateActionRequestsForTargetResult
 	err := s.withAuditedMutation(
 		ctx, runtime, "gateway", nil, 0, "connector_action.requests.invalidated",
 		func() any {
@@ -32,7 +32,7 @@ func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx 
 		},
 		func(tx *sql.Tx) error {
 			var err error
-			result, err = connectortargets.NewTxStore(tx).InvalidateActionRequestsForTarget(ctx, input)
+			result, err = connectormgmt.NewTxStore(tx).InvalidateActionRequestsForTarget(ctx, input)
 			if err == nil && result.Affected == 0 {
 				return errAuditedMutationUnchanged
 			}
@@ -48,7 +48,7 @@ func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx 
 	return result.Affected, nil
 }
 
-func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectormgmt.Store, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
 	return s.connectorManagementApplication().EnsureRuntimeSurfaces(ctx, store, target, profile)
 }
 
@@ -69,7 +69,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		return
 	}
 	operation := strings.TrimSpace(r.PathValue("operation"))
-	store := connectortargets.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.Storage.Database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
 		handleConnectorTargetError(w, err)

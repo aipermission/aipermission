@@ -4,10 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.LiveConsoleHTTPRuntime, bool) {
@@ -17,10 +16,10 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 	}
 	return &connectorapi.LiveConsoleHTTPRuntime{
 		Sessions: runtime.Connectors.ConsoleSessions,
-		Principal: func() (executionprincipal.Principal, error) {
+		Principal: func() (gatewayaccess.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
-		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []projectvault.SessionSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
+		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []gatewayvault.SessionSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
 			application, err := s.vaultActionApplication(runtime)
 			if err != nil {
 				return connectorapi.LiveConsoleEnvironmentPlan{}, err
@@ -43,7 +42,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		},
 		CancelForSession: func(ctx context.Context, sessionID int64, errorText string) error {
 			if runtime.Operations.CommandRequests == nil {
-				return commandrequests.ErrRuntimeUnavailable
+				return gatewayaccess.ErrCommandRuntimeUnavailable
 			}
 			return runtime.Operations.CommandRequests.CancelRunningForSession(ctx, sessionID, errorText)
 		},

@@ -3,24 +3,23 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*vaultsessions.Invalidator, error) {
+func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*gatewayvault.Invalidator, error) {
 	if s == nil || runtime == nil || runtime.Storage.Database == nil ||
 		runtime.Security.VaultLeases == nil || runtime.Connectors.ConsoleSessions == nil {
-		return nil, vaultsessions.ErrInvalidatorUnavailable
+		return nil, gatewayvault.ErrInvalidatorUnavailable
 	}
-	return vaultsessions.NewInvalidator(vaultsessions.InvalidatorDependencies{
-		Persistence: vaultsessions.NewPersistence(runtime.Storage.Database),
+	return gatewayvault.NewInvalidator(gatewayvault.InvalidatorDependencies{
+		Persistence: gatewayvault.NewPersistence(runtime.Storage.Database),
 		Leases:      runtime.Security.VaultLeases,
 		Sessions:    runtime.Connectors.ConsoleSessions,
-		Principal: func() (executionprincipal.Principal, error) {
+		Principal: func() (gatewayaccess.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
-		Requests: func(ctx context.Context) (vaultsessions.RequestInvalidator, error) {
+		Requests: func(ctx context.Context) (gatewayvault.RequestInvalidator, error) {
 			owner, err := s.vaultRequestRuntime(ctx, runtime)
 			if err != nil {
 				return nil, err
@@ -33,16 +32,16 @@ func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*vaultsessio
 func (s *Server) invalidateVaultMutationAfterCommit(
 	ctx context.Context,
 	runtime *databaseRuntime,
-	sessions []projectvault.SessionReference,
-	scope projectvault.SessionMutationScope,
+	sessions []gatewayvault.SessionReference,
+	scope gatewayvault.SessionMutationScope,
 ) error {
 	owner, err := s.vaultSessionInvalidator(runtime)
 	if err != nil {
 		return err
 	}
-	references := make([]vaultsessions.Reference, len(sessions))
+	references := make([]gatewayvault.VaultSessionReference, len(sessions))
 	for index, session := range sessions {
-		references[index] = vaultsessions.Reference{
+		references[index] = gatewayvault.VaultSessionReference{
 			SessionID: session.SessionID, RuntimeID: session.RuntimeID, Generation: session.Generation,
 		}
 	}

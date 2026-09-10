@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) connectorActionRedactor(runtime *databaseRuntime) (*actions.Redactor, error) {

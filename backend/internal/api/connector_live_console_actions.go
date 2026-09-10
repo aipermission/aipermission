@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func prepareLiveConsoleConnectorAction(runtime *databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
@@ -16,13 +16,13 @@ func prepareLiveConsoleConnectorAction(runtime *databaseRuntime, ctx context.Con
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	target, profile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
 	adapter, ok := runtimeConnectorAPIAdapterFor(runtime, target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || adapter.LiveConsoleActionName() == "" {
-		return actions.PreparedRequest{}, connectortargets.ErrInvalidTargetRef
+		return actions.PreparedRequest{}, connectormgmt.ErrInvalidTargetRef
 	}
 	request.TargetRef = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
 	request.ActionName = adapter.LiveConsoleActionName()
@@ -39,7 +39,7 @@ func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRunt
 			continue
 		}
 		ref, err := adapter.LiveConsoleTargetRef(ctx, connectorLiveRuntime(runtime, info.Kind), runtimeID)
-		if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+		if errors.Is(err, connectormgmt.ErrRuntimeSurfaceNotFound) {
 			continue
 		}
 		if err != nil {
@@ -50,5 +50,5 @@ func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRunt
 		}
 		return ref, nil
 	}
-	return "", connectortargets.ErrInvalidTargetRef
+	return "", connectormgmt.ErrInvalidTargetRef
 }

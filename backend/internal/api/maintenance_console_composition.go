@@ -4,15 +4,15 @@ import (
 	"context"
 	"net/http"
 
-	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func (s *Server) maintenanceConsoleHTTPScope(w http.ResponseWriter) (consolehttp.MaintenanceHTTPScope, bool) {
+func (s *Server) maintenanceConsoleHTTPScope(w http.ResponseWriter) (gatewayoperations.MaintenanceHTTPScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return consolehttp.MaintenanceHTTPScope{}, false
+		return gatewayoperations.MaintenanceHTTPScope{}, false
 	}
-	return consolehttp.MaintenanceHTTPScope{
+	return gatewayoperations.MaintenanceHTTPScope{
 		Runtime: s.controlState.MaintenanceConsole,
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)

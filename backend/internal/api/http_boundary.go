@@ -4,11 +4,11 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (s *Server) Handler() http.Handler {
-	return gatewayhttp.Boundary{
+	return gatewayoperations.HTTPBoundary{
 		Routes: s.mux, Lifecycle: s.workspaceState.Lifecycle, IsUnlocked: s.isUnlocked,
 		IsLocalRemoteAddr: s.config.IsLocalRemoteAddr, IsLocalhostHeader: s.config.IsLocalhostHeader,
 		AllowsOrigin: s.config.AllowsOrigin, HasSession: s.hasValidUISession,

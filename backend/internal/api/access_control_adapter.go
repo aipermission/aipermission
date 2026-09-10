@@ -6,15 +6,15 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
-func (s *Server) accessControlScope(w http.ResponseWriter) (accesscontrol.Scope, bool) {
+func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.AccessScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return accesscontrol.Scope{}, false
+		return gatewayaccess.AccessScope{}, false
 	}
-	return accesscontrol.Scope{
+	return gatewayaccess.AccessScope{
 		Database: runtime.Storage.Database,
 		Tokens:   runtime.Storage.Tokens,
 		Registry: runtimeConnectorRegistry(runtime),

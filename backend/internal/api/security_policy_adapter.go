@@ -6,17 +6,17 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 var errSecurityPolicyUnavailable = errors.New("security policy runtime is unavailable")
 
-func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (securitypolicy.HTTPScope, bool) {
+func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.SecurityHTTPScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return securitypolicy.HTTPScope{}, false
+		return gatewayaccess.SecurityHTTPScope{}, false
 	}
-	return securitypolicy.HTTPScope{
+	return gatewayaccess.SecurityHTTPScope{
 		Service: runtime.Security.Policy,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
@@ -24,23 +24,23 @@ func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (securitypolicy.
 	}, true
 }
 
-func readSecuritySettings(ctx context.Context, runtime *databaseRuntime) (securitypolicy.Settings, error) {
+func readSecuritySettings(ctx context.Context, runtime *databaseRuntime) (gatewayaccess.SecuritySettings, error) {
 	if runtime == nil || runtime.Security.Policy == nil {
-		return securitypolicy.Settings{}, errSecurityPolicyUnavailable
+		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
 	}
 	return runtime.Security.Policy.ReadSettings(ctx)
 }
 
 func (s *Server) redactForPersistence(ctx context.Context, runtime *databaseRuntime, value string) string {
 	if runtime == nil || runtime.Security.Policy == nil {
-		return securitypolicy.RedactBasic(value)
+		return gatewayaccess.RedactBasic(value)
 	}
 	return runtime.Security.Policy.Redact(ctx, value)
 }
 
 func (s *Server) runtimeRedactor(runtime *databaseRuntime) func(string) string {
 	if runtime == nil || runtime.Security.Policy == nil {
-		return securitypolicy.RedactBasic
+		return gatewayaccess.RedactBasic
 	}
 	return runtime.Security.Policy.Redactor()
 }

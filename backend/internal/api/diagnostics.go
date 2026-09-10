@@ -4,8 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
-	"github.com/aipermission/aipermission/backend/internal/httpattachment"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
@@ -19,8 +18,8 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
-		"report_format_version": applicationobservation.ReportFormatVersion(),
+		"report_format_version": gatewayoperations.ObservationReportFormatVersion(),
 	})
-	httpattachment.SetHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
+	gatewayoperations.SetAttachmentHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
 	writeJSON(w, http.StatusOK, report)
 }

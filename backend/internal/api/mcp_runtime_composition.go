@@ -4,16 +4,16 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
-	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (runtimecontrol.MCPRuntimeScope, bool) {
+func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRuntimeScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return runtimecontrol.MCPRuntimeScope{}, false
+		return gatewayaccess.MCPRuntimeScope{}, false
 	}
-	return runtimecontrol.MCPRuntimeScope{
+	return gatewayaccess.MCPRuntimeScope{
 		State: &runtime.Security.Runtime,
 		StartEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := readSecuritySettings(ctx, runtime)
@@ -28,7 +28,7 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (runtimecontrol.MCPR
 			if err != nil {
 				return err
 			}
-			if err := owner.StalePendingForAction(ctx, vaultrequests.ActionGenerateItem, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
+			if err := owner.StalePendingForAction(ctx, gatewayvault.ActionGenerateItem, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
 				return err
 			}
 			return owner.FailRunning(ctx, "MCP execution stopped while the Vault action was running")

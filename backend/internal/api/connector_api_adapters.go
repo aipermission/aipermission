@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {

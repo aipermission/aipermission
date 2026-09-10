@@ -3,21 +3,21 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 const (
-	uiSessionCookieName   = uisession.SessionCookieBase
-	uiCSRFCookieName      = uisession.CSRFCookieBase
-	uiWorkspaceCookieName = uisession.WorkspaceCookieBase
-	uiCSRFHeaderName      = uisession.CSRFHeaderName
-	uiSessionMaxAge       = uisession.SessionMaxAge
+	uiSessionCookieName   = gatewayvault.SessionCookieBase
+	uiCSRFCookieName      = gatewayvault.CSRFCookieBase
+	uiWorkspaceCookieName = gatewayvault.WorkspaceCookieBase
+	uiCSRFHeaderName      = gatewayvault.CSRFHeaderName
+	uiSessionMaxAge       = gatewayvault.SessionMaxAge
 )
 
-type preparedUISession = uisession.Prepared
+type preparedUISession = gatewayvault.PreparedUISession
 
-func prepareUISession() (preparedUISession, error) { return uisession.Prepare() }
+func prepareUISession() (preparedUISession, error) { return gatewayvault.PrepareUISession() }
 
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
@@ -52,10 +52,12 @@ func (s *Server) activeUIWorkspaceLocked() (string, string) {
 	return databaseID, ""
 }
 
-func uiRetryIdentity(instanceID string) string { return uisession.RetryIdentity(instanceID) }
+func uiRetryIdentity(instanceID string) string {
+	return gatewayvault.UISessionRetryIdentity(instanceID)
+}
 
-func isUISessionExempt(path string) bool { return uisession.IsExempt(path) }
+func isUISessionExempt(path string) bool { return gatewayvault.IsUIExempt(path) }
 
 func requiresUICSRF(method, path string) bool {
-	return !uisession.IsExempt(path) && gatewayhttp.IsStateChangingMethod(method)
+	return !gatewayvault.IsUIExempt(path) && gatewayoperations.IsStateChangingMethod(method)
 }

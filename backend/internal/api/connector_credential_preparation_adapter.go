@@ -3,11 +3,11 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorCredentialPreparationPorts(runtime *databaseRuntime) connectormanagement.CredentialPreparationPorts {
-	return connectormanagement.RuntimeCredentialPreparation(runtime, func(connectorKind string) connectormanagement.CredentialCanonicalizer {
+func (s *Server) connectorCredentialPreparationPorts(runtime *databaseRuntime) connectormgmt.CredentialPreparationPorts {
+	return connectormgmt.RuntimeCredentialPreparation(runtime, func(connectorKind string) connectormgmt.CredentialCanonicalizer {
 		adapter := s.connectorCredentialCanonicalizerFor(connectorKind)
 		if adapter == nil {
 			return nil

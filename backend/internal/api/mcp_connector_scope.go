@@ -4,31 +4,28 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/actions"
-	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (mcpconnector.Scope, bool) {
+func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPScope, bool) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
-		return mcpconnector.Scope{}, false
+		return gatewayaccess.MCPScope{}, false
 	}
-	return mcpconnector.Scope{
+	return gatewayaccess.MCPScope{
 		Database: auth.runtime.Storage.Database, Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
-		Permissions: func(ctx context.Context) ([]mcpconnector.Permission, error) {
-			permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(
+		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
+			permissions, err := gatewayaccess.ProjectScopedSupportedConnectorPermissions(
 				ctx, auth.runtime.Storage.Database, runtimeConnectorRegistry(auth.runtime), auth.TokenID,
 			)
 			if err != nil {
 				return nil, err
 			}
-			result := make([]mcpconnector.Permission, 0, len(permissions))
+			result := make([]gatewayaccess.MCPPermission, 0, len(permissions))
 			for _, permission := range permissions {
-				result = append(result, mcpconnector.Permission{
+				result = append(result, gatewayaccess.MCPPermission{
 					ProjectID: permission.ProjectID, ProjectName: permission.ProjectName, ProjectSlug: permission.ProjectSlug,
 					TargetID: permission.TargetID, TargetName: permission.TargetName,
 					ProfileID: permission.ProfileID, ProfileLabel: permission.ProfileLabel,
@@ -51,12 +48,12 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 	}, true
 }
 
-func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Request) (mcpconnector.ActionScope, bool) {
+func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPActionScope, bool) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
-		return mcpconnector.ActionScope{}, false
+		return gatewayaccess.MCPActionScope{}, false
 	}
-	return mcpconnector.ActionScope{
+	return gatewayaccess.MCPActionScope{
 		Database: auth.runtime.Storage.Database, AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: mcpConnectorOutputAuthorization(auth.runtime),
 		Call: func(ctx context.Context, call actions.Call) (actions.CallResult, error) {
@@ -71,14 +68,14 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	}, true
 }
 
-func mcpConnectorOutputAuthorization(runtime *databaseRuntime) *mcpconnector.OutputAuthorization {
+func mcpConnectorOutputAuthorization(runtime *databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
 	if runtime == nil {
 		return nil
 	}
-	return &mcpconnector.OutputAuthorization{
+	return &gatewayaccess.MCPOutputAuthorization{
 		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens, Leases: runtime.Security.VaultLeases,
-		Delivery: applicationactions.Delivery(runtime), MCPStarted: runtime.IsMCPStarted,
-		Principal: func(tokenID int64) (executionprincipal.Principal, error) {
+		Delivery: actions.Delivery(runtime), MCPStarted: runtime.IsMCPStarted,
+		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return tokenExecutionPrincipal(runtime, tokenID)
 		},
 	}

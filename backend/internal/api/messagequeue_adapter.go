@@ -4,19 +4,19 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/messagequeue"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func (s *Server) messageQueueScope(w http.ResponseWriter) (messagequeue.Scope, bool) {
+func (s *Server) messageQueueScope(w http.ResponseWriter) (gatewayoperations.MessageScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return messagequeue.Scope{}, false
+		return gatewayoperations.MessageScope{}, false
 	}
-	return messagequeue.Scope{Store: s.messageQueueStore(runtime)}, true
+	return gatewayoperations.MessageScope{Store: s.messageQueueStore(runtime)}, true
 }
 
-func (s *Server) messageQueueStore(runtime *databaseRuntime) *messagequeue.Store {
-	return messagequeue.NewStore(runtime.Storage.Database, func(ctx context.Context, value string) string {
+func (s *Server) messageQueueStore(runtime *databaseRuntime) *gatewayoperations.MessageStore {
+	return gatewayoperations.NewMessageStore(runtime.Storage.Database, func(ctx context.Context, value string) string {
 		return s.redactForPersistence(ctx, runtime, value)
 	})
 }

@@ -4,29 +4,29 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func localExecutionPrincipal(runtime *databaseRuntime) (executionprincipal.Principal, error) {
+func localExecutionPrincipal(runtime *databaseRuntime) (gatewayaccess.Principal, error) {
 	if err := ensureRuntimeIdentity(runtime); err != nil {
-		return executionprincipal.Principal{}, err
+		return gatewayaccess.Principal{}, err
 	}
-	return executionprincipal.LocalOperator(runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	return gatewayaccess.PrincipalLocalOperator(runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
 }
 
-func tokenExecutionPrincipal(runtime *databaseRuntime, tokenID int64) (executionprincipal.Principal, error) {
+func tokenExecutionPrincipal(runtime *databaseRuntime, tokenID int64) (gatewayaccess.Principal, error) {
 	if err := ensureRuntimeIdentity(runtime); err != nil {
-		return executionprincipal.Principal{}, err
+		return gatewayaccess.Principal{}, err
 	}
-	return executionprincipal.MCPToken(tokenID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	return gatewayaccess.PrincipalMCPToken(tokenID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
 }
 
 func ensureRuntimeIdentity(runtime *databaseRuntime) error {
 	if runtime == nil {
-		return executionprincipal.ErrInvalid
+		return gatewayaccess.ErrInvalidPrincipal
 	}
 	return runtime.EnsureIdentity(func(database *sql.DB) (string, error) {
-		return projectvault.EnsureWorkspaceUUID(context.Background(), database)
-	}, executionprincipal.NewRuntimeInstanceID)
+		return gatewayvault.EnsureWorkspaceUUID(context.Background(), database)
+	}, gatewayaccess.NewRuntimeInstanceID)
 }

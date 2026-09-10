@@ -3,30 +3,30 @@ package api
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-type declineConnectorActionApprovalRequest = connectorapproval.NoteRequest
-type runConnectorActionApprovalRequest = connectorapproval.NoteRequest
-type connectorActionApprovalItem = connectorapproval.Item
+type declineConnectorActionApprovalRequest = gatewayaccess.ConnectorApprovalNoteRequest
+type runConnectorActionApprovalRequest = gatewayaccess.ConnectorApprovalNoteRequest
+type connectorActionApprovalItem = gatewayaccess.ConnectorApprovalItem
 
-func connectorActionApprovalItemFromRequest(item connectortargets.ActionRequest) connectorActionApprovalItem {
-	return connectorapproval.ItemFromRequest(item)
+func connectorActionApprovalItemFromRequest(item connectormgmt.ActionRequest) connectorActionApprovalItem {
+	return gatewayaccess.ConnectorApprovalItemFromRequest(item)
 }
 
-func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectortargets.ActionRequest, error) {
+func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectormgmt.ActionRequest{}, err
 	}
 	return workflow.RunPending(ctx, id, userNote)
 }
 
-func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectortargets.ActionRequest) (connectorActionApprovalItem, error) {
+func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectorActionApprovalItem{}, err
 	}
-	return connectorapproval.ItemForResponse(ctx, workflow, item)
+	return gatewayaccess.ConnectorApprovalItemForResponse(ctx, workflow, item)
 }

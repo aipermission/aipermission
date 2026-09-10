@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r *http.Request) {
@@ -15,7 +15,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	store := connectortargets.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.Storage.Database)
 	target, err := store.GetTarget(r.Context(), id)
 	if err != nil {
 		handleConnectorTargetError(w, err)
@@ -45,7 +45,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectortargets.Target, staleReason string, payload map[string]any) bool {
+func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) bool {
 	_, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
 	if err != nil {
 		writeInternalError(w)

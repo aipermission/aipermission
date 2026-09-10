@@ -5,20 +5,12 @@ package api
 import (
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
-	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
-	"github.com/aipermission/aipermission/backend/internal/gatewayroutes"
-	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
-	"github.com/aipermission/aipermission/backend/internal/messagequeue"
-	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
-	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
-	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 type connectorTargetHandlers struct{ *Server }
@@ -29,60 +21,60 @@ func (s *Server) routes() {
 	observation := s.observation.HTTPHandlers(s.activeRuntimeOrLocked)
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
-	connectorQueries := connectormanagement.NewHTTPHandlers(connectorManagement.QueryScope)
+	connectorQueries := connectormgmt.NewHTTPHandlers(connectorManagement.QueryScope)
 	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
 
-	gatewayroutes.Register(s.mux, gatewayroutes.Dependencies{
-		Health: gatewayroutes.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
-		Security:    securitypolicy.NewHTTPHandlers(s.securityPolicyHTTPScope),
+	gatewayinfra.RegisterRoutes(s.mux, gatewayinfra.RouteDependencies{
+		Health: gatewayinfra.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
+		Security:    gatewayaccess.NewSecurityHTTPHandlers(s.securityPolicyHTTPScope),
 		Retention:   observation.Retention,
-		Maintenance: consolehttp.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope),
+		Maintenance: gatewayoperations.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope),
 		Workspaces:  s.workspaceLifecycleHTTPHandlers(),
 
 		Credentials:     connectorManagement.CredentialResources(s.connectorCredentialResourceDependencies()),
-		TokenAccess:     accesscontrol.NewHTTPHandlers(s.accessControlScope),
+		TokenAccess:     gatewayaccess.NewAccessHTTPHandlers(s.accessControlScope),
 		TargetOperation: connectorTargets.runConnectorTargetOperation,
 
-		Backup: gatewayroutes.Backup{
+		Backup: gatewayinfra.RouteBackup{
 			Download: backup.Download, Import: backup.Import,
 			RestoreRemote: backup.RestoreRemote, RestoreProvider: backup.RestoreProvider,
 		},
 		TransientBackup: backup.Transient, BackupProviders: backup.Providers,
 
 		Console:            connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope),
-		BulkConsole:        commandrequests.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
-		CommandRequests:    commandrequests.NewHTTPHandlers(s.commandRequestHTTPScope),
-		ConnectorApprovals: connectorapproval.NewHTTPHandlers(s.connectorApprovalHTTPScope),
+		BulkConsole:        gatewayaccess.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
+		CommandRequests:    gatewayaccess.NewCommandHTTPHandlers(s.commandRequestHTTPScope),
+		ConnectorApprovals: gatewayaccess.NewConnectorApprovalHTTPHandlers(s.connectorApprovalHTTPScope),
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,
 
-		Projects:       projectstore.NewHTTPHandlers(s.projectsHTTPScope),
-		VaultItems:     projectvault.NewHTTPHandlers(s.projectVaultHTTPScope),
-		VaultApprovals: vaultrequests.NewHTTPHandlers(s.vaultRequestHTTPScope),
+		Projects:       gatewayvault.NewProjectsHTTPHandlers(s.projectsHTTPScope),
+		VaultItems:     gatewayvault.NewProjectVaultHTTPHandlers(s.projectVaultHTTPScope),
+		VaultApprovals: gatewayvault.NewVaultApprovalHTTPHandlers(s.vaultRequestHTTPScope),
 		FileTransfers:  s.fileTransferHTTPHandlers(),
 
 		ConnectorQueries: connectorQueries,
-		CombinedMutations: connectormanagement.NewCombinedMutationHTTPHandler(
+		CombinedMutations: connectormgmt.NewCombinedMutationHTTPHandler(
 			connectorManagement.CombinedMutationScope,
 		),
-		TargetMutations: connectormanagement.NewTargetMutationHTTPHandler(connectorManagement.TargetMutationScope),
-		HostPing:        connectormanagement.NewHostPingHTTPHandler(connectorManagement.HostPingScope),
+		TargetMutations: connectormgmt.NewTargetMutationHTTPHandler(connectorManagement.TargetMutationScope),
+		HostPing:        connectormgmt.NewHostPingHTTPHandler(connectorManagement.HostPingScope),
 		TestTarget:      connectorTargets.testConnectorTargetDraft,
 		DeleteTarget:    connectorTargets.deleteConnectorTarget,
-		ProfileMutations: connectormanagement.NewProfileMutationHTTPHandler(
+		ProfileMutations: connectormgmt.NewProfileMutationHTTPHandler(
 			connectorManagement.ProfileMutationScope,
 		),
-		ProfileProvision: connectormanagement.NewProvisioningHTTPHandler(connectorManagement.ProvisioningScope),
-		ProfileBackup:    connectormanagement.NewProfileBackupHTTPHandler(connectorManagement.ProfileBackupScope),
-		ProfileDelete:    connectormanagement.NewProfileDeletionHTTPHandler(connectorManagement.ProfileDeletionScope),
-		ProfileTest:      connectormanagement.NewProfileTestingHTTPHandler(connectorManagement.ProfileTestingScope),
+		ProfileProvision: connectormgmt.NewProvisioningHTTPHandler(connectorManagement.ProvisioningScope),
+		ProfileBackup:    connectormgmt.NewProfileBackupHTTPHandler(connectorManagement.ProfileBackupScope),
+		ProfileDelete:    connectormgmt.NewProfileDeletionHTTPHandler(connectorManagement.ProfileDeletionScope),
+		ProfileTest:      connectormgmt.NewProfileTestingHTTPHandler(connectorManagement.ProfileTestingScope),
 
-		Messages: messagequeue.NewHTTPHandlers(s.messageQueueScope), Audit: observation.Audit,
-		MCPRuntime:          runtimecontrol.NewMCPHTTPHandlers(s.mcpRuntimeHTTPScope),
-		MCPConnectorReads:   mcpconnector.NewHTTPHandlers(mcp.mcpConnectorReadScope),
-		MCPConnectorActions: mcpconnector.NewActionHTTPHandlers(mcp.mcpConnectorActionScope),
-		MCPVaultActions:     vaultrequests.NewMCPHTTPHandlers(mcp.mcpVaultScope),
+		Messages: gatewayoperations.NewMessageHTTPHandlers(s.messageQueueScope), Audit: observation.Audit,
+		MCPRuntime:          gatewayaccess.NewMCPRuntimeHTTPHandlers(s.mcpRuntimeHTTPScope),
+		MCPConnectorReads:   gatewayaccess.NewMCPReadHTTPHandlers(mcp.mcpConnectorReadScope),
+		MCPConnectorActions: gatewayaccess.NewMCPActionHTTPHandlers(mcp.mcpConnectorActionScope),
+		MCPVaultActions:     gatewayvault.NewVaultMCPHTTPHandlers(mcp.mcpVaultScope),
 		RegisterAdapterRoutes: func(mux *http.ServeMux) {
 			registerConnectorAdapterRoutes(mux, s)
 		},

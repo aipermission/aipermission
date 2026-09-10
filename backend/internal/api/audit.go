@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
@@ -25,7 +25,7 @@ func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *databaseRunt
 	return s.observation.PrepareRedactor(ctx, runtime)
 }
 
-type auditAppender = applicationobservation.Appender
+type auditAppender = gatewayoperations.ObservationAppender
 
 func (s *Server) withAuditedTransaction(
 	ctx context.Context,
