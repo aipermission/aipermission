@@ -2,16 +2,33 @@ package api
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
-const vaultSessionInvalidationTimeout = 15 * time.Second
+func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*vaultsessions.Invalidator, error) {
+	if s == nil || runtime == nil || runtime.database == nil ||
+		runtime.vaultLeases == nil || runtime.consoleSessions == nil {
+		return nil, vaultsessions.ErrInvalidatorUnavailable
+	}
+	return vaultsessions.NewInvalidator(vaultsessions.InvalidatorDependencies{
+		Persistence: vaultsessions.NewPersistence(runtime.database),
+		Leases:      runtime.vaultLeases,
+		Sessions:    runtime.consoleSessions,
+		Principal: func() (executionprincipal.Principal, error) {
+			return localExecutionPrincipal(runtime)
+		},
+		Requests: func(ctx context.Context) (vaultsessions.RequestInvalidator, error) {
+			owner, err := s.vaultRequestRuntime(ctx, runtime)
+			if err != nil {
+				return nil, err
+			}
+			return owner, nil
+		},
+	})
+}
 
 func (s *Server) invalidateVaultMutationAfterCommit(
 	ctx context.Context,
@@ -19,163 +36,59 @@ func (s *Server) invalidateVaultMutationAfterCommit(
 	sessions []projectvault.SessionReference,
 	scope projectvault.SessionMutationScope,
 ) error {
-	closeErr := closeVaultSessionReferences(ctx, runtime, sessions)
-	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
-	if ownerErr != nil {
-		return errors.Join(closeErr, ownerErr)
-	}
-	staleErr := owner.StalePendingForContext(ctx, scope.ItemID, scope.BindingID, "Vault item or binding changed; send a fresh request")
-	return errors.Join(closeErr, staleErr)
-}
-
-func closeVaultSessionReferences(ctx context.Context, runtime *databaseRuntime, sessions []projectvault.SessionReference) error {
-	var closeErrors []error
-	for _, session := range sessions {
-		runtime.vaultLeases.RevokeSession(console.SessionHandle{
-			ID: session.SessionID, RuntimeID: session.RuntimeID, Generation: session.Generation,
-		})
-		if err := vaultsessions.NewPersistence(runtime.database).Revoke(ctx, session.SessionID, session.Generation); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("revoke persisted Vault lease for session %d: %w", session.SessionID, err))
-		}
-	}
-	principal, err := localExecutionPrincipal(runtime)
-	if err != nil {
-		closeErrors = append(closeErrors, err)
-		return errors.Join(closeErrors...)
-	}
-	for _, session := range sessions {
-		if err := runtime.consoleSessions.Close(ctx, principal, session.SessionID); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("close stale Vault session %d: %w", session.SessionID, err))
-		}
-	}
-	return errors.Join(closeErrors...)
-}
-
-func finishVaultTokenSessionInvalidation(ctx context.Context, runtime *databaseRuntime, tokenID int64, sessionIDs []int64) error {
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), vaultSessionInvalidationTimeout)
-	defer cancel()
-	runtime.vaultLeases.RevokeToken(tokenID)
-	principal, err := localExecutionPrincipal(runtime)
+	owner, err := s.vaultSessionInvalidator(runtime)
 	if err != nil {
 		return err
 	}
-	var closeErrors []error
-	for _, sessionID := range sessionIDs {
-		if err := runtime.consoleSessions.Close(cleanupCtx, principal, sessionID); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("close token Vault session %d: %w", sessionID, err))
+	references := make([]vaultsessions.Reference, len(sessions))
+	for index, session := range sessions {
+		references[index] = vaultsessions.Reference{
+			SessionID: session.SessionID, RuntimeID: session.RuntimeID, Generation: session.Generation,
 		}
 	}
-	return errors.Join(closeErrors...)
-}
-
-func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *databaseRuntime, projectID int64, reason string) error {
-	rows, err := runtime.database.QueryContext(ctx, `
-		SELECT DISTINCT session_id, runtime_id, session_generation
-		FROM vault_session_leases
-		WHERE project_id = ? AND status = 'active'
-		ORDER BY session_id`,
-		projectID,
-	)
-	if err != nil {
-		return err
-	}
-	references := []projectvault.SessionReference{}
-	for rows.Next() {
-		var reference projectvault.SessionReference
-		if err := rows.Scan(&reference.SessionID, &reference.RuntimeID, &reference.Generation); err != nil {
-			rows.Close()
-			return err
-		}
-		references = append(references, reference)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
-	if ownerErr != nil {
-		return errors.Join(closeErr, ownerErr)
-	}
-	staleErr := owner.StalePendingForProject(ctx, projectID, reason)
-	return errors.Join(closeErr, staleErr)
-}
-
-func queryVaultRuntimeIDs(ctx context.Context, runtime *databaseRuntime, where string, args ...any) ([]int64, error) {
-	query := "SELECT id FROM connector_runtime_surfaces"
-	if where != "" {
-		query += " WHERE " + where
-	}
-	query += " ORDER BY id"
-	rows, err := runtime.database.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	ids := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-func vaultRuntimeIDsForTargetProfile(ctx context.Context, runtime *databaseRuntime, targetID, profileID int64) ([]int64, error) {
-	return queryVaultRuntimeIDs(ctx, runtime, "target_id = ? AND (? = 0 OR profile_id = ?)",
-		targetID, profileID, profileID,
+	return owner.InvalidateMutation(
+		ctx, references, scope.ItemID, scope.BindingID,
+		"Vault item or binding changed; send a fresh request",
 	)
 }
 
-func vaultAllRuntimeIDs(ctx context.Context, runtime *databaseRuntime) ([]int64, error) {
-	return queryVaultRuntimeIDs(ctx, runtime, "")
+func (s *Server) finishVaultTokenSessionInvalidation(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	tokenID int64,
+	sessionIDs []int64,
+) error {
+	owner, err := s.vaultSessionInvalidator(runtime)
+	if err != nil {
+		return err
+	}
+	return owner.FinishTokenInvalidation(ctx, tokenID, sessionIDs)
 }
 
-func (s *Server) invalidateVaultRuntimeSessions(ctx context.Context, runtime *databaseRuntime, runtimeIDs []int64, reason string) error {
-	if len(runtimeIDs) == 0 {
-		return nil
+func (s *Server) invalidateVaultProjectSessions(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	projectID int64,
+	reason string,
+) error {
+	owner, err := s.vaultSessionInvalidator(runtime)
+	if err != nil {
+		return err
 	}
-	references := []projectvault.SessionReference{}
-	seenSessions := map[int64]bool{}
-	for _, runtimeID := range runtimeIDs {
-		if runtimeID < 1 {
-			continue
-		}
-		rows, err := runtime.database.QueryContext(ctx, `
-			SELECT id, runtime_id, generation
-			FROM console_sessions
-			WHERE runtime_id = ?
-			  AND status IN ('connecting', 'connected')
-			  AND environment_content_hash <> ''
-			ORDER BY id`,
-			runtimeID,
-		)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var item projectvault.SessionReference
-			if err := rows.Scan(&item.SessionID, &item.RuntimeID, &item.Generation); err != nil {
-				rows.Close()
-				return err
-			}
-			if !seenSessions[item.SessionID] {
-				seenSessions[item.SessionID] = true
-				references = append(references, item)
-			}
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
+	return owner.InvalidateProject(ctx, projectID, reason)
+}
+
+func (s *Server) invalidateVaultRuntimeSessions(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	runtimeIDs []int64,
+	reason string,
+) error {
+	owner, err := s.vaultSessionInvalidator(runtime)
+	if err != nil {
+		return err
 	}
-	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
-	if ownerErr != nil {
-		return errors.Join(closeErr, ownerErr)
-	}
-	staleErr := owner.StalePendingForRuntimes(ctx, runtimeIDs, reason)
-	return errors.Join(closeErr, staleErr)
+	return owner.InvalidateRuntimes(ctx, runtimeIDs, reason)
 }
 
 func (s *Server) invalidateVaultSessionsForTargetProfile(
@@ -185,9 +98,21 @@ func (s *Server) invalidateVaultSessionsForTargetProfile(
 	profileID int64,
 	reason string,
 ) error {
-	runtimeIDs, err := vaultRuntimeIDsForTargetProfile(ctx, runtime, targetID, profileID)
+	owner, err := s.vaultSessionInvalidator(runtime)
 	if err != nil {
 		return err
 	}
-	return s.invalidateVaultRuntimeSessions(ctx, runtime, runtimeIDs, reason)
+	return owner.InvalidateTargetProfile(ctx, targetID, profileID, reason)
+}
+
+func (s *Server) invalidateAllVaultSessions(
+	ctx context.Context,
+	runtime *databaseRuntime,
+	reason string,
+) error {
+	owner, err := s.vaultSessionInvalidator(runtime)
+	if err != nil {
+		return err
+	}
+	return owner.InvalidateAll(ctx, reason)
 }

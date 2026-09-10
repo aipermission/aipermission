@@ -439,7 +439,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 			Close: func() error { return nil },
 		}, nil
 	}, fixture.server.runtimeRedactor(runtime))
-	fixture.server.configureVaultSessionRuntime(runtime)
+	if err := fixture.server.configureVaultSessionRuntime(runtime); err != nil {
+		t.Fatal(err)
+	}
 
 	callBody := mcpVaultActionCallRequest{
 		ProjectRef: project.Slug, ActionName: vaultrequests.ActionRestartSession,

@@ -8,9 +8,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
-func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) {
+func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) error {
 	if runtime == nil || runtime.consoleSessions == nil || runtime.vaultLeases == nil {
-		return
+		return vaultsessions.ErrInvalidatorUnavailable
+	}
+	owner, err := s.vaultSessionInvalidator(runtime)
+	if err != nil {
+		return err
 	}
 	runtime.consoleSessions.SetAuthorizer(func(
 		ctx context.Context,
@@ -30,7 +34,7 @@ func (s *Server) configureVaultSessionRuntime(runtime *databaseRuntime) {
 		return run()
 	})
 	runtime.consoleSessions.SetSessionClosedHook(func(handle console.SessionHandle) {
-		runtime.vaultLeases.RevokeSession(handle)
-		_ = vaultsessions.NewPersistence(runtime.database).Revoke(context.Background(), handle.ID, handle.Generation)
+		_ = owner.SessionClosed(context.Background(), handle)
 	})
+	return nil
 }

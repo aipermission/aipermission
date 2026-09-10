@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
-	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type mcpRuntimeResponse struct {
@@ -56,20 +55,9 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 	}
 	runtime.setMCPStarted(request.Enabled)
 	if !request.Enabled {
-		runtimeIDs, err := vaultAllRuntimeIDs(r.Context(), runtime)
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		runtime.vaultLeases.Clear()
-		if err := vaultsessions.NewPersistence(runtime.database).RevokeAll(r.Context()); err != nil {
-			writeInternalError(w)
-			return
-		}
-		if err := s.invalidateVaultRuntimeSessions(
+		if err := s.invalidateAllVaultSessions(
 			r.Context(),
 			runtime,
-			runtimeIDs,
 			"MCP execution stopped; send a fresh Vault request after it starts",
 		); err != nil {
 			writeInternalError(w)

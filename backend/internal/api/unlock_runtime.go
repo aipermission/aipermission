@@ -241,7 +241,12 @@ func (s *Server) openValidatedRuntime(path string, id string, password string) (
 		_ = database.Close()
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
-	s.configureVaultSessionRuntime(runtime)
+	if err := s.configureVaultSessionRuntime(runtime); err != nil {
+		runtime.transferLifecycle.Stop()
+		actions.ClearIdentityKey(actionIdentityKey)
+		_ = database.Close()
+		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
+	}
 	s.configureAuditDispatcher(runtime)
 	return runtime, nil
 }

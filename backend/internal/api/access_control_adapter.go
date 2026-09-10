@@ -27,7 +27,7 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (accesscontrol.Scope,
 		},
 		AcquireExclusive: runtime.vaultDelivery.acquireExclusive,
 		FinishTokenInvalidation: func(ctx context.Context, tokenID int64, sessionIDs []int64) {
-			if err := finishVaultTokenSessionInvalidation(ctx, runtime, tokenID, sessionIDs); err != nil {
+			if err := s.finishVaultTokenSessionInvalidation(ctx, runtime, tokenID, sessionIDs); err != nil {
 				log.Printf("finish token Vault session invalidation failed token=%d sessions=%v error=%v", tokenID, sessionIDs, err)
 			}
 		},
