@@ -19,9 +19,11 @@ func (s *Server) invalidateVaultMutationAfterCommit(
 	scope projectvault.SessionMutationScope,
 ) error {
 	closeErr := closeVaultSessionReferences(ctx, runtime, sessions)
-	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForContext(
-		ctx, scope.ItemID, scope.BindingID, "Vault item or binding changed; send a fresh request",
-	)
+	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
+	if ownerErr != nil {
+		return errors.Join(closeErr, ownerErr)
+	}
+	staleErr := owner.StalePendingForContext(ctx, scope.ItemID, scope.BindingID, "Vault item or binding changed; send a fresh request")
 	return errors.Join(closeErr, staleErr)
 }
 
@@ -89,7 +91,11 @@ func (s *Server) invalidateVaultProjectSessions(ctx context.Context, runtime *da
 		return err
 	}
 	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForProject(ctx, projectID, reason)
+	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
+	if ownerErr != nil {
+		return errors.Join(closeErr, ownerErr)
+	}
+	staleErr := owner.StalePendingForProject(ctx, projectID, reason)
 	return errors.Join(closeErr, staleErr)
 }
 
@@ -176,7 +182,11 @@ func (s *Server) invalidateVaultRuntimeSessions(ctx context.Context, runtime *da
 		}
 	}
 	closeErr := closeVaultSessionReferences(ctx, runtime, references)
-	staleErr := s.vaultRequestStore(ctx, runtime).StalePendingForRuntimes(ctx, runtimeIDs, reason)
+	owner, ownerErr := s.vaultRequestRuntime(ctx, runtime)
+	if ownerErr != nil {
+		return errors.Join(closeErr, ownerErr)
+	}
+	staleErr := owner.StalePendingForRuntimes(ctx, runtimeIDs, reason)
 	return errors.Join(closeErr, staleErr)
 }
 

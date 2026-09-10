@@ -74,8 +74,12 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		store := s.vaultRequestStore(r.Context(), runtime)
-		if err := store.StalePendingForAction(
+		owner, err := s.vaultRequestRuntime(r.Context(), runtime)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		if err := owner.StalePendingForAction(
 			r.Context(),
 			vaultrequests.ActionGenerateItem,
 			"MCP execution stopped; send a fresh Vault request after it starts",
@@ -83,7 +87,7 @@ func (s mcpHandlers) updateMCPRuntime(w http.ResponseWriter, r *http.Request) {
 			writeInternalError(w)
 			return
 		}
-		if err := store.FailRunning(r.Context(), "MCP execution stopped while the Vault action was running"); err != nil {
+		if err := owner.FailRunning(r.Context(), "MCP execution stopped while the Vault action was running"); err != nil {
 			writeInternalError(w)
 			return
 		}

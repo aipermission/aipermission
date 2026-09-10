@@ -1,12 +1,9 @@
 package api
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
@@ -20,7 +17,12 @@ func (s vaultActionApprovalHandlers) list(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	items, err := s.vaultRequestStore(r.Context(), runtime).List(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), 100)
+	owner, err := s.vaultRequestRuntime(r.Context(), runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	items, err := owner.List(r.Context(), strings.TrimSpace(r.URL.Query().Get("status")), 100)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -38,30 +40,34 @@ func (s vaultActionApprovalHandlers) run(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !runtime.isMCPStarted() {
-		writeError(w, http.StatusConflict, "MCP execution is stopped; start MCP before running Vault approvals")
+		writeError(w, http.StatusConflict, vaultrequests.ErrMCPExecutionStopped.Error())
 		return
 	}
 	request, ok := decodeVaultDecision(w, r)
 	if !ok {
 		return
 	}
-	executionContext, cancelExecution := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
-	defer cancelExecution()
-	result, err := s.runVaultActionRequest(
-		executionContext,
-		runtime,
-		id,
-		"user",
-		request.UserNote,
-		"vault.action.run_requested",
-		"vault.action",
-	)
+	owner, err := s.vaultRequestRuntime(r.Context(), runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	result, err := owner.RunPending(r.Context(), id, request.UserNote)
 	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return
 	}
 	if errors.Is(err, vaultrequests.ErrNotPending) {
 		writeError(w, http.StatusConflict, "Vault action request is no longer pending")
+		return
+	}
+	if errors.Is(err, vaultrequests.ErrMCPExecutionStopped) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	var validation vaultrequests.ValidationError
+	if errors.As(err, &validation) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err != nil {
@@ -88,23 +94,23 @@ func (s vaultActionApprovalHandlers) decline(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	var item vaultrequests.Request
-	tokenID, runtimeID := vaultActionAuditIdentity(r.Context(), runtime, id)
-	err := s.withAuditedMutation(
-		r.Context(), runtime, "user", tokenID, runtimeID, "vault.action.declined",
-		func() any { return vaultActionAuditPayload(item, request.UserNote) },
-		func(tx *sql.Tx) error {
-			var err error
-			item, err = vaultrequests.NewTxStore(tx).Decline(r.Context(), id, request.UserNote)
-			return err
-		},
-	)
+	owner, err := s.vaultRequestRuntime(r.Context(), runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	item, err := owner.DeclinePending(r.Context(), id, request.UserNote)
 	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return
 	}
 	if errors.Is(err, vaultrequests.ErrNotPending) {
 		writeError(w, http.StatusConflict, "Vault action request is no longer pending")
+		return
+	}
+	var validation vaultrequests.ValidationError
+	if errors.As(err, &validation) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err != nil {
@@ -127,13 +133,6 @@ func decodeVaultDecision(w http.ResponseWriter, r *http.Request) (vaultActionDec
 		return vaultActionDecisionRequest{}, false
 	}
 	return request, true
-}
-
-func vaultActionAuditPayload(item vaultrequests.Request, userNote string) map[string]any {
-	return map[string]any{
-		"request_id": item.ID, "project_id": item.ProjectID, "action_name": item.ActionName,
-		"approval_context_hash": item.ApprovalContextHash, "note": strings.TrimSpace(userNote) != "",
-	}
 }
 
 func valueOrZero(value *int64) int64 {

@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -136,132 +134,19 @@ func (s mcpHandlers) mcpCallVaultAction(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	input.ProjectRef = strings.TrimSpace(input.ProjectRef)
-	input.ActionName = strings.TrimSpace(input.ActionName)
-	input.Reason = strings.TrimSpace(input.Reason)
-	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
-	if input.ProjectRef == "" || input.IdempotencyKey == "" {
-		writeError(w, http.StatusBadRequest, "project_ref and idempotency_key are required")
-		return
-	}
-	if input.Reason == "" {
-		writeError(w, http.StatusBadRequest, "reason is required")
-		return
-	}
-	if len(input.IdempotencyKey) > 128 {
-		writeError(w, http.StatusBadRequest, "idempotency_key is too long")
-		return
-	}
-	if err := validateTextLimit("reason", input.Reason, maxReasonBytes); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	normalizedInput, err := vaultrequests.NormalizeActionInput(input.ActionName, input.Input)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	requestStore := s.vaultRequestStore(r.Context(), auth.runtime)
-	existing, existingErr := requestStore.GetByIdempotencyKey(r.Context(), auth.TokenID, input.IdempotencyKey)
-	if existingErr == nil {
-		if !sameVaultActionCall(existing, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
-			writeError(w, http.StatusConflict, vaultrequests.ErrIdempotencyConflict.Error())
-			return
-		}
-		writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, existing)
-		return
-	}
-	if !errors.Is(existingErr, vaultrequests.ErrNotFound) {
-		writeInternalError(w)
-		return
-	}
-	if s.vaultRequestLimiter == nil ||
-		!s.vaultRequestLimiter.Allow("vault-request:"+auth.runtime.id+":"+strconv.FormatInt(auth.TokenID, 10)) {
-		writeError(w, http.StatusTooManyRequests, "Vault action request rate limit exceeded; retry later")
-		return
-	}
-	project, err := resolveProjectRef(r.Context(), auth.runtime, input.ProjectRef)
-	if errors.Is(err, projectstore.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "project not found")
-		return
-	}
+	owner, err := s.vaultRequestRuntime(r.Context(), auth.runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	approval, contextHash, normalizedInput, err := buildVaultApprovalContext(
-		r.Context(), s.Server, auth.runtime, auth.TokenID, project, input.ActionName, normalizedInput,
-	)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	view, err := owner.Call(r.Context(), vaultrequests.CallInput{
+		TokenID: auth.TokenID, ProjectRef: input.ProjectRef, ActionName: input.ActionName,
+		Input: input.Input, Reason: input.Reason, IdempotencyKey: input.IdempotencyKey,
+	})
+	if writeVaultCallError(w, err) {
 		return
 	}
-	initialStatus := vaultrequests.StatusApprovalPending
-	if approval.ExecutionRule == accesscontrol.RuleAlwaysRun {
-		initialStatus = vaultrequests.StatusRunning
-	}
-	contextMap := map[string]any{}
-	if payload, err := json.Marshal(approval); err == nil {
-		_ = json.Unmarshal(payload, &contextMap)
-	}
-	runtimeID := (*int64)(nil)
-	if approval.RuntimeID > 0 {
-		runtimeID = &approval.RuntimeID
-	}
-	createInput := vaultrequests.CreateInput{
-		TokenID: auth.TokenID, ProjectID: project.ID, RuntimeID: runtimeID,
-		ActionName: input.ActionName, Input: normalizedInput, Reason: input.Reason,
-		ApprovalContext: contextMap, ApprovalContextHash: contextHash,
-		IdempotencyKey: input.IdempotencyKey,
-		InitialStatus:  initialStatus,
-	}
-	var request vaultrequests.Request
-	created := false
-	err = s.withAuditedMutation(
-		r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID,
-		"mcp.vault_action.request.created",
-		func() any { return vaultActionAuditPayload(request, "") },
-		func(tx *sql.Tx) error {
-			var err error
-			request, created, err = vaultrequests.NewTxStore(tx).Create(r.Context(), createInput)
-			if err == nil && !created {
-				return errAuditedMutationUnchanged
-			}
-			return err
-		},
-	)
-	if errors.Is(err, errAuditedMutationUnchanged) {
-		writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, request)
-		return
-	}
-	if errors.Is(err, vaultrequests.ErrIdempotencyConflict) {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if created && approval.ExecutionRule == accesscontrol.RuleApprovalRequired {
-		s.writeObservationAudit(r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), approval.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
-			"request_id": request.ID, "project_id": project.ID, "action_name": request.ActionName,
-			"approval_context_hash": request.ApprovalContextHash,
-		})
-	}
-	if created && approval.ExecutionRule == accesscontrol.RuleAlwaysRun {
-		executionContext, cancelExecution := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
-		defer cancelExecution()
-		result, runErr := vaultrequests.RunClaimedWorkflow(
-			executionContext, request,
-			s.vaultActionWorkflowPorts(auth.runtime, "mcp", "", "", "mcp.vault_action"),
-		)
-		if runErr != nil {
-			writeInternalError(w)
-			return
-		}
-		request = result.Request
-	}
-	writeVaultRequestMCPResponse(w, r.Context(), s.Server, auth.runtime, request)
+	writeVaultRequestMCPResponse(w, view)
 }
 
 func (s mcpHandlers) mcpGetVaultActionRequest(w http.ResponseWriter, r *http.Request) {
@@ -273,9 +158,13 @@ func (s mcpHandlers) mcpGetVaultActionRequest(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	store := s.vaultRequestStore(r.Context(), auth.runtime)
-	item, err := store.Get(r.Context(), id)
-	if errors.Is(err, vaultrequests.ErrNotFound) || (err == nil && item.TokenID != auth.TokenID) {
+	owner, err := s.vaultRequestRuntime(r.Context(), auth.runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	view, err := owner.GetOwned(r.Context(), id, auth.TokenID)
+	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return
 	}
@@ -283,18 +172,7 @@ func (s mcpHandlers) mcpGetVaultActionRequest(w http.ResponseWriter, r *http.Req
 		writeInternalError(w)
 		return
 	}
-	authorized := currentVaultPollAuthorization(r.Context(), s.Server, auth.runtime, item)
-	if item.Status == vaultrequests.StatusApprovalPending && !authorized {
-		stale, staleErr := store.StalePending(r.Context(), item.ID, "Vault approval context changed; send a fresh request")
-		if staleErr == nil {
-			item = stale
-		}
-	}
-	response := vaultRequestMCPResponse(item)
-	if item.Output != nil && !authorized {
-		withholdVaultRequestOutput(response)
-	}
-	writeJSON(w, http.StatusOK, response)
+	writeVaultRequestMCPResponse(w, view)
 }
 
 func withholdVaultRequestOutput(response map[string]any) {
@@ -303,34 +181,33 @@ func withholdVaultRequestOutput(response map[string]any) {
 	response["assistant_hint"] = "Current Vault authorization no longer permits returning this action output."
 }
 
-func sameVaultActionCall(
-	request vaultrequests.Request,
-	projectRef string,
-	actionName string,
-	input map[string]any,
-	reason string,
-) bool {
-	projectMatches := request.ProjectSlug == projectRef || strconv.FormatInt(request.ProjectID, 10) == projectRef
-	if !projectMatches || request.ActionName != actionName || request.Reason != reason {
-		return false
-	}
-	requestJSON, requestErr := json.Marshal(request.Input)
-	inputJSON, inputErr := json.Marshal(input)
-	return requestErr == nil && inputErr == nil && string(requestJSON) == string(inputJSON)
-}
-
-func writeVaultRequestMCPResponse(
-	w http.ResponseWriter,
-	ctx context.Context,
-	server *Server,
-	runtime *databaseRuntime,
-	request vaultrequests.Request,
-) {
-	response := vaultRequestMCPResponse(request)
-	if request.Output != nil && !currentVaultPollAuthorization(ctx, server, runtime, request) {
+func writeVaultRequestMCPResponse(w http.ResponseWriter, view vaultrequests.RequestView) {
+	response := vaultRequestMCPResponse(view.Request)
+	if view.Request.Output != nil && !view.OutputAuthorized {
 		withholdVaultRequestOutput(response)
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func writeVaultCallError(w http.ResponseWriter, err error) bool {
+	if err == nil {
+		return false
+	}
+	var validation vaultrequests.ValidationError
+	var preparation vaultrequests.PreparationError
+	switch {
+	case errors.As(err, &validation), errors.As(err, &preparation):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, vaultrequests.ErrProjectNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, vaultrequests.ErrIdempotencyConflict):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, vaultrequests.ErrRequestRateLimited):
+		writeError(w, http.StatusTooManyRequests, err.Error())
+	default:
+		writeInternalError(w)
+	}
+	return true
 }
 
 func (s mcpHandlers) mcpCancelVaultActionRequest(w http.ResponseWriter, r *http.Request) {
@@ -342,16 +219,12 @@ func (s mcpHandlers) mcpCancelVaultActionRequest(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	var item vaultrequests.Request
-	err := s.withAuditedMutation(
-		r.Context(), auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, "mcp.vault_action.canceled",
-		func() any { return vaultActionAuditPayload(item, "") },
-		func(tx *sql.Tx) error {
-			var err error
-			item, err = vaultrequests.NewTxStore(tx).CancelOwned(r.Context(), id, auth.TokenID)
-			return err
-		},
-	)
+	owner, err := s.vaultRequestRuntime(r.Context(), auth.runtime)
+	if err != nil {
+		writeInternalError(w)
+		return
+	}
+	item, err := owner.CancelOwned(r.Context(), id, auth.TokenID)
 	if errors.Is(err, vaultrequests.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "Vault action request not found")
 		return

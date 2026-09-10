@@ -4,14 +4,51 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
+	"strconv"
 
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/observability"
+	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
+
+type vaultRequestMutationPort struct {
+	server  *Server
+	runtime *databaseRuntime
+}
+
+func (p vaultRequestMutationPort) WithMutation(
+	ctx context.Context,
+	actor string,
+	tokenID *int64,
+	runtimeID int64,
+	action string,
+	payload func() any,
+	mutate func(*sql.Tx) error,
+) error {
+	if p.server == nil || p.runtime == nil {
+		return vaultrequests.ErrRuntimeUnavailable
+	}
+	return p.server.withAuditedMutation(ctx, p.runtime, actor, tokenID, runtimeID, action, payload, mutate)
+}
+
+func (p vaultRequestMutationPort) Observe(
+	ctx context.Context,
+	actor string,
+	tokenID *int64,
+	runtimeID int64,
+	action string,
+	payload any,
+) {
+	if p.server != nil && p.runtime != nil {
+		p.server.writeObservationAudit(ctx, p.runtime, actor, tokenID, runtimeID, action, payload)
+	}
+}
 
 func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime) *vaultrequests.Store {
 	redact := s.prepareAuditRedactor(ctx, runtime)
@@ -21,7 +58,7 @@ func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime
 			TokenID:   int64Ptr(item.TokenID),
 			RuntimeID: valueOrZero(item.RuntimeID),
 			Action:    "vault.action_request." + item.Status,
-			Payload:   vaultActionAuditPayload(item, item.UserNote),
+			Payload:   vaultrequests.RequestAuditPayload(item, item.UserNote),
 			Redact:    redact,
 		})
 		if err != nil {
@@ -32,108 +69,63 @@ func (s *Server) vaultRequestStore(ctx context.Context, runtime *databaseRuntime
 	})
 }
 
-func (s *Server) runVaultActionRequest(
-	ctx context.Context,
-	runtime *databaseRuntime,
-	requestID int64,
-	actor string,
-	userNote string,
-	startedAction string,
-	finishedActionPrefix string,
-) (vaultrequests.WorkflowResult, error) {
-	return vaultrequests.RunWorkflow(ctx, requestID, s.vaultActionWorkflowPorts(runtime, actor, userNote, startedAction, finishedActionPrefix))
-}
-
-func (s *Server) vaultActionWorkflowPorts(runtime *databaseRuntime, actor, userNote, startedAction, finishedActionPrefix string) vaultrequests.WorkflowPorts {
-	return vaultrequests.WorkflowPorts{
-		Claim: func(ctx context.Context, id int64) (vaultrequests.Request, error) {
-			return s.claimVaultActionRequest(ctx, runtime, id, actor, startedAction, userNote)
+func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *databaseRuntime) (*vaultrequests.Runtime, error) {
+	if s == nil || runtime == nil || runtime.database == nil {
+		return nil, vaultrequests.ErrRuntimeUnavailable
+	}
+	owner, err := vaultrequests.NewRuntime(vaultrequests.RuntimeDependencies{
+		Store:     s.vaultRequestStore(ctx, runtime),
+		Mutations: vaultRequestMutationPort{server: s, runtime: runtime},
+		Prepare: func(ctx context.Context, tokenID int64, projectRef, actionName string, input map[string]any) (vaultrequests.PreparedAction, error) {
+			project, err := resolveProjectRef(ctx, runtime, projectRef)
+			if errors.Is(err, projectstore.ErrNotFound) {
+				return vaultrequests.PreparedAction{}, vaultrequests.ErrProjectNotFound
+			}
+			if err != nil {
+				return vaultrequests.PreparedAction{}, err
+			}
+			approval, contextHash, normalizedInput, err := buildVaultApprovalContext(
+				ctx, s, runtime, tokenID, project, actionName, input,
+			)
+			if err != nil {
+				return vaultrequests.PreparedAction{}, vaultrequests.PreparationError{Err: err}
+			}
+			return vaultrequests.PreparedAction{
+				ProjectID: project.ID, RuntimeID: approval.RuntimeID, Input: normalizedInput,
+				ApprovalContext: approval, ApprovalContextHash: contextHash,
+				RunImmediately: approval.ExecutionRule == accesscontrol.RuleAlwaysRun,
+			}, nil
+		},
+		AuthorizeOutput: func(ctx context.Context, item vaultrequests.Request) bool {
+			return currentVaultPollAuthorization(ctx, s, runtime, item)
+		},
+		AllowRequest: func(tokenID int64) bool {
+			return s.vaultRequestLimiter != nil && s.vaultRequestLimiter.Allow(
+				"vault-request:"+runtime.id+":"+strconv.FormatInt(tokenID, 10),
+			)
 		},
 		Execute: func(ctx context.Context, item vaultrequests.Request) (any, error) {
 			return executeVaultAction(ctx, s, runtime, item)
 		},
-		Complete: func(ctx context.Context, id int64, status string, output any, errorText string) (vaultrequests.Request, error) {
-			return s.completeVaultActionRequest(ctx, runtime, id, status, output, errorText, userNote, actor, finishedActionPrefix+"."+status)
+		Compensate: func(ctx context.Context, item vaultrequests.Request, output any) error {
+			return compensateVaultActionEffect(ctx, runtime, item, output)
 		},
-		Get: func(ctx context.Context, id int64) (vaultrequests.Request, error) {
-			return s.vaultRequestStore(ctx, runtime).Get(ctx, id)
-		},
-		Repair: func(ctx context.Context, id int64) error {
+		RepairProjection: func(ctx context.Context, id int64) error {
 			if err := history.NewStore(runtime.database).SyncVaultActionRequest(ctx, id); err != nil {
 				log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 			}
 			return nil
 		},
-		Compensate: func(ctx context.Context, item vaultrequests.Request, output any) error {
-			return compensateVaultActionEffect(ctx, runtime, item, output)
-		},
 		RedactError: func(ctx context.Context, err error) string {
 			return s.redactForPersistence(ctx, runtime, err.Error())
 		},
-		IsStale: isVaultContextDrift,
+		IsStale:    isVaultContextDrift,
+		MCPStarted: runtime.isMCPStarted,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)
 	}
-}
-
-func (s *Server) claimVaultActionRequest(
-	ctx context.Context,
-	runtime *databaseRuntime,
-	requestID int64,
-	actor string,
-	action string,
-	userNote string,
-) (vaultrequests.Request, error) {
-	tokenID, runtimeID := vaultActionAuditIdentity(ctx, runtime, requestID)
-	var item vaultrequests.Request
-	err := s.withAuditedMutation(
-		ctx, runtime, actor, tokenID, runtimeID, action,
-		func() any { return vaultActionAuditPayload(item, userNote) },
-		func(tx *sql.Tx) error {
-			var err error
-			item, err = vaultrequests.NewTxStore(tx).Claim(ctx, requestID)
-			return err
-		},
-	)
-	return item, err
-}
-
-func (s *Server) completeVaultActionRequest(
-	ctx context.Context,
-	runtime *databaseRuntime,
-	requestID int64,
-	status string,
-	output any,
-	errorText string,
-	userNote string,
-	actor string,
-	action string,
-) (vaultrequests.Request, error) {
-	tokenID, runtimeID := vaultActionAuditIdentity(ctx, runtime, requestID)
-	var item vaultrequests.Request
-	err := s.withAuditedMutation(
-		ctx, runtime, actor, tokenID, runtimeID, action,
-		func() any { return vaultActionAuditPayload(item, userNote) },
-		func(tx *sql.Tx) error {
-			var err error
-			item, err = vaultrequests.NewTxStore(tx).Complete(ctx, requestID, status, output, errorText, userNote)
-			return err
-		},
-	)
-	return item, err
-}
-
-func vaultActionAuditIdentity(ctx context.Context, runtime *databaseRuntime, requestID int64) (*int64, int64) {
-	if runtime == nil || runtime.database == nil || requestID < 1 {
-		return nil, 0
-	}
-	var tokenID int64
-	var runtimeID sql.NullInt64
-	if err := runtime.database.QueryRowContext(ctx, `
-		SELECT token_id, runtime_id FROM vault_action_requests WHERE id = ?`, requestID,
-	).Scan(&tokenID, &runtimeID); err != nil {
-		log.Printf("resolve Vault action audit identity request_id=%d error=%v", requestID, err)
-		return nil, 0
-	}
-	return &tokenID, runtimeID.Int64
+	return owner, nil
 }
 
 func compensateVaultActionEffect(ctx context.Context, runtime *databaseRuntime, request vaultrequests.Request, output any) error {
