@@ -21,6 +21,7 @@ import (
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/retention"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
@@ -268,12 +269,13 @@ func (s *Server) registerMessageAndAuditRoutes() {
 
 func (s *Server) registerMCPRoutes() {
 	mcp := mcpHandlers{s}
+	mcpRuntime := runtimecontrol.NewMCPHTTPHandlers(s.mcpRuntimeHTTPScope)
 	connectorReads := mcpconnector.NewHTTPHandlers(mcp.mcpConnectorReadScope)
 	connectorActions := mcpconnector.NewActionHTTPHandlers(mcp.mcpConnectorActionScope)
 	vaultActions := vaultrequests.NewMCPHTTPHandlers(mcp.mcpVaultScope)
 
-	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcp.getMCPRuntime)
-	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcp.updateMCPRuntime)
+	s.mux.HandleFunc("GET /api/settings/mcp-runtime", mcpRuntime.Get)
+	s.mux.HandleFunc("PUT /api/settings/mcp-runtime", mcpRuntime.Update)
 	s.mux.HandleFunc("GET /api/mcp/connector-targets", connectorReads.ListTargets)
 	s.mux.HandleFunc("GET /api/mcp/connector-help", connectorReads.GetHelp)
 	s.mux.HandleFunc("GET /api/mcp/connector-actions", connectorReads.GetActions)

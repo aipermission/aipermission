@@ -144,7 +144,7 @@ func TestMCPStopStalesPendingVaultActions(t *testing.T) {
 		http.MethodPut,
 		"/api/settings/mcp-runtime",
 		"",
-		updateMCPRuntimeRequest{Enabled: false},
+		map[string]bool{"enabled": false},
 	)
 	if stop.Code != http.StatusOK {
 		t.Fatalf("stop MCP: %d %s", stop.Code, stop.Body.String())
