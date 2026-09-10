@@ -24,7 +24,10 @@ type ProjectDependencies struct {
 	AllowReveal        func(string) bool
 }
 
-type Component struct{ projects ProjectDependencies }
+type Component struct {
+	projects ProjectDependencies
+	actions  ActionDependencies
+}
 
 func New(projects ProjectDependencies) *Component { return &Component{projects: projects} }
 
