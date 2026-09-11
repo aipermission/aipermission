@@ -1,4 +1,5 @@
-// Package gatewayoperations exposes backup, observation, console, transfer, and message operations to the gateway.
+// Package gatewayoperations owns command-request, backup, observation,
+// maintenance-console, transfer, and message operations for the gateway.
 package gatewayoperations
 
 import (

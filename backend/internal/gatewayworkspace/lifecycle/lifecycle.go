@@ -15,8 +15,6 @@ type Runtime interface {
 	WorkspaceIdentity() workspacelifecycle.Identity
 	WorkspaceDatabase() *sql.DB
 }
-type Identity = workspacelifecycle.Identity
-
 type PasswordAttempt interface {
 	Success()
 	Failure()
@@ -64,7 +62,7 @@ type Component struct {
 	service  *workspacelifecycle.Service[Runtime]
 }
 
-func NewComponent(path, id string, describe func(Runtime) Identity) *Component {
+func NewComponent(path, id string, describe func(Runtime) workspacelifecycle.Identity) *Component {
 	return &Component{registry: workspacelifecycle.NewRegistry(path, id, describe)}
 }
 
@@ -84,9 +82,9 @@ func (component *Component) IsUnlocked() bool {
 	return component != nil && component.registry != nil && component.registry.IsUnlocked()
 }
 
-func (component *Component) Selection() Identity {
+func (component *Component) Selection() workspacelifecycle.Identity {
 	if component == nil || component.registry == nil {
-		return Identity{}
+		return workspacelifecycle.Identity{}
 	}
 	return component.registry.Selection()
 }

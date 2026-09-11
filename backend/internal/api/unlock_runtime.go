@@ -130,7 +130,7 @@ func (s *Server) releaseRuntimeApplications(runtime databaseRuntime) {
 	if s == nil || runtime == nil {
 		return
 	}
-	s.access.ReleaseCommandRuntime(runtime.Identity.RuntimeID)
+	s.commands.Release(runtime.Identity.RuntimeID)
 	s.connectorActions.ReleaseWorkspace(s.connectorActionWorkspace(runtime))
 	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
 }

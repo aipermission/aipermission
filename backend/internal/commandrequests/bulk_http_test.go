@@ -48,8 +48,13 @@ func (owner *fakeBulkRequestOwner) Finish(_ context.Context, completion Completi
 	return nil
 }
 
-func (owner *fakeBulkRequestOwner) FinishActive(_ int64, _ executionprincipal.Principal, handle console.SessionHandle) {
+func (owner *fakeBulkRequestOwner) FinishActive(_ context.Context, _ int64, _ executionprincipal.Principal, handle console.SessionHandle) {
 	owner.finishedActive <- handle
+}
+
+func (*fakeBulkRequestOwner) RunWorker(run func(context.Context)) bool {
+	go run(context.Background())
+	return true
 }
 
 type fakeBulkSessions struct {

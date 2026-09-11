@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -35,6 +36,11 @@ type Runtime struct {
 	redact            Redactor
 	sessions          ActiveSessions
 	backgroundTimeout time.Duration
+	workerMu          sync.Mutex
+	workerCtx         context.Context
+	workerCancel      context.CancelFunc
+	workerWG          sync.WaitGroup
+	workersClosed     bool
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
@@ -46,10 +52,60 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if timeout <= 0 {
 		return nil, ErrRuntimeUnavailable
 	}
+	workerCtx, workerCancel := context.WithCancel(context.Background())
 	return &Runtime{
 		store: dependencies.Store, codec: dependencies.Codec, projection: dependencies.Projection,
 		redact: dependencies.Redact, sessions: dependencies.Sessions, backgroundTimeout: timeout,
+		workerCtx: workerCtx, workerCancel: workerCancel,
 	}, nil
+}
+
+// RunWorker admits one workspace-owned background command worker. It returns
+// false once shutdown has begun, so no worker can outlive encrypted storage.
+func (r *Runtime) RunWorker(run func(context.Context)) bool {
+	if r == nil || run == nil {
+		return false
+	}
+	r.workerMu.Lock()
+	if r.workersClosed || r.workerCtx == nil {
+		r.workerMu.Unlock()
+		return false
+	}
+	ctx := r.workerCtx
+	r.workerWG.Add(1)
+	r.workerMu.Unlock()
+	go func() {
+		defer r.workerWG.Done()
+		run(ctx)
+	}()
+	return true
+}
+
+// StopWorkers prevents new workers, cancels active work, and waits for all
+// command persistence to finish before the workspace database can close.
+func (r *Runtime) StopWorkers(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.workerMu.Lock()
+	r.workersClosed = true
+	cancel := r.workerCancel
+	r.workerCancel = nil
+	r.workerMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		r.workerWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (r *Runtime) Prepare(ctx context.Context, request Insert) (PreparedInsert, error) {
@@ -113,27 +169,33 @@ func (r *Runtime) Finish(ctx context.Context, completion Completion) error {
 	return r.store.Finish(ctx, r.projection, completion)
 }
 
-func (r *Runtime) FinishActive(requestID int64, principal executionprincipal.Principal, handle console.SessionHandle) {
+func (r *Runtime) FinishActive(parent context.Context, requestID int64, principal executionprincipal.Principal, handle console.SessionHandle) {
 	if r.validate() != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), r.backgroundTimeout)
+	ctx, cancel := context.WithTimeout(parent, r.backgroundTimeout)
 	defer cancel()
 	result, err := r.sessions.WaitActive(ctx, principal, handle)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			_ = r.sessions.InterruptActive(context.Background(), principal, handle)
-			_ = r.Finish(context.Background(), Completion{ID: requestID, Status: "error", Error: "command timed out while running in background"})
+			cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cleanupCancel()
+			_ = r.sessions.InterruptActive(cleanup, principal, handle)
+			_ = r.Finish(cleanup, Completion{ID: requestID, Status: "error", Error: "command timed out while running in background"})
 			return
 		}
-		_ = r.Finish(context.Background(), Completion{ID: requestID, Status: "error", Error: err.Error()})
+		cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_ = r.Finish(cleanup, Completion{ID: requestID, Status: "error", Error: err.Error()})
 		return
 	}
 	status := "completed"
 	if result.ExitCode != 0 {
 		status = "failed"
 	}
-	_ = r.Finish(context.Background(), Completion{
+	cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cleanupCancel()
+	_ = r.Finish(cleanup, Completion{
 		ID: requestID, Status: status, SessionID: result.SessionID,
 		Stdout: result.Output, ExitCode: result.ExitCode,
 	})

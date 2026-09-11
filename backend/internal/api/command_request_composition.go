@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	return s.access.InitializeCommandRuntime(runtime.Identity.RuntimeID, gatewayaccess.CommandRuntimeDependencies{
+	return s.commands.Initialize(runtime.Identity.RuntimeID, gatewayoperations.CommandRuntimeDependencies{
 		Database: runtime.Storage.DatabaseHandle(), Vault: runtime.Storage.SecretVault(), WorkspaceID: runtime.Identity.WorkspaceID,
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
@@ -17,14 +17,14 @@ func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error 
 	})
 }
 
-func (s *Server) commandRuntime(runtime databaseRuntime) (*gatewayaccess.CommandRuntime, error) {
+func (s *Server) commandRuntime(runtime databaseRuntime) (*gatewayoperations.CommandRuntime, error) {
 	if runtime == nil {
-		return nil, gatewayaccess.ErrCommandRuntimeUnavailable
+		return nil, gatewayoperations.ErrCommandRuntimeUnavailable
 	}
-	return s.access.CommandRuntime(runtime.Identity.RuntimeID)
+	return s.commands.Runtime(runtime.Identity.RuntimeID)
 }
 
-func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.CommandHTTPReader, bool) {
+func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (*gatewayoperations.CommandRuntime, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return nil, false

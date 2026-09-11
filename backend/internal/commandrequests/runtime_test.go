@@ -79,7 +79,7 @@ func TestRuntimeFinishesBackgroundCommandsAndInterruptsTimeouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner.FinishActive(id, principal, console.SessionHandle{ID: 44, RuntimeID: runtimeID, Generation: 1})
+	owner.FinishActive(t.Context(), id, principal, console.SessionHandle{ID: 44, RuntimeID: runtimeID, Generation: 1})
 	item, err := NewStore(database).Get(t.Context(), id, 0, "")
 	if err != nil || item.Status != "completed" || item.Stdout != "done" {
 		t.Fatalf("completed background request = %#v, %v", item, err)
@@ -90,7 +90,7 @@ func TestRuntimeFinishesBackgroundCommandsAndInterruptsTimeouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner.FinishActive(timedOutID, principal, console.SessionHandle{ID: 45, RuntimeID: runtimeID, Generation: 1})
+	owner.FinishActive(t.Context(), timedOutID, principal, console.SessionHandle{ID: 45, RuntimeID: runtimeID, Generation: 1})
 	timedOut, err := NewStore(database).Get(t.Context(), timedOutID, 0, "")
 	if err != nil || timedOut.Status != "error" || !strings.Contains(timedOut.Error, "timed out") || sessions.interrupts != 1 {
 		t.Fatalf("timed-out background request = %#v interrupts=%d err=%v", timedOut, sessions.interrupts, err)
@@ -107,6 +107,54 @@ func TestRuntimeRejectsIncompleteDependencies(t *testing.T) {
 	}
 	if err := owner.CancelRunning(t.Context(), "closed"); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("nil Runtime.CancelRunning() error = %v", err)
+	}
+}
+
+func TestRuntimeStopWorkersCancelsDrainsAndClosesAdmission(t *testing.T) {
+	database, _ := commandRequestFixture(t)
+	owner := newTestRuntime(t, database, &testActiveSessions{}, &testCommandProjection{})
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	if !owner.RunWorker(func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		close(finished)
+	}) {
+		t.Fatal("worker was not admitted before shutdown")
+	}
+	<-started
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := owner.StopWorkers(ctx); err != nil {
+		t.Fatalf("StopWorkers() error = %v", err)
+	}
+	select {
+	case <-finished:
+	default:
+		t.Fatal("StopWorkers returned before the active worker exited")
+	}
+	if owner.RunWorker(func(context.Context) {}) {
+		t.Fatal("worker was admitted after shutdown")
+	}
+}
+
+func TestRuntimeStopWorkersReportsBoundedWaitAndCanObserveLaterDrain(t *testing.T) {
+	database, _ := commandRequestFixture(t)
+	owner := newTestRuntime(t, database, &testActiveSessions{}, &testCommandProjection{})
+	release := make(chan struct{})
+	if !owner.RunWorker(func(context.Context) { <-release }) {
+		t.Fatal("worker was not admitted")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if err := owner.StopWorkers(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("StopWorkers() error = %v, want deadline exceeded", err)
+	}
+	close(release)
+	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
+	defer drainCancel()
+	if err := owner.StopWorkers(drainCtx); err != nil {
+		t.Fatalf("second StopWorkers() did not observe eventual drain: %v", err)
 	}
 }
 

@@ -24,9 +24,11 @@ func (s *Server) routes() {
 	connectorManagement := s.connectorManagementApplication()
 	connectorHTTP := connectorManagement.HTTPHandlers()
 	mcp := mcpHandlers{s}
+	commandHTTP := s.commands.HTTPHandlers(gatewayoperations.CommandScopeProviders{
+		Bulk: s.bulkCommandHTTPScope, Requests: s.commandRequestHTTPScope,
+	})
 	accessHTTP := s.access.HTTPHandlers(gatewayaccess.HTTPScopeProviders{
 		Security: s.securityPolicyHTTPScope, TokenAccess: s.accessControlScope,
-		BulkConsole: s.bulkCommandHTTPScope, CommandRequests: s.commandRequestHTTPScope,
 		MCPRuntime: s.mcpRuntimeHTTPScope, MCPConnectorReads: mcp.mcpConnectorReadScope,
 		MCPConnectorActions: mcp.mcpConnectorActionScope,
 	})
@@ -53,8 +55,8 @@ func (s *Server) routes() {
 		TransientBackup: backup.Transient, BackupProviders: backup.Providers,
 
 		Console:            connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope),
-		BulkConsole:        accessHTTP.BulkConsole,
-		CommandRequests:    accessHTTP.CommandRequests,
+		BulkConsole:        commandHTTP.Bulk,
+		CommandRequests:    commandHTTP.Requests,
 		ConnectorApprovals: connectorHTTP.Approvals,
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,

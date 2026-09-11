@@ -16,7 +16,6 @@ import (
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
 type Server struct {
@@ -29,13 +28,14 @@ type Server struct {
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
 	observation             gatewayoperations.Observation
+	commands                gatewayoperations.CommandComponent
 	transfers               *gatewaytransfer.Component
 	openRuntimeOverride     func(string, string, string) (databaseRuntime, error)
 	moveDatabaseOverride    func(string, string) error
 	publishDatabaseOverride func(string, string) error
 }
 
-type databaseRuntime = *gatewayworkspace.Runtime
+type databaseRuntime = *gatewayinfra.Runtime
 
 type ServerOption = gatewayinfra.ServerOption
 

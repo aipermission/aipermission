@@ -3,10 +3,10 @@ package api
 import (
 	"testing"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func requireCommandRuntime(t *testing.T, server *Server, runtime databaseRuntime) *gatewayaccess.CommandRuntime {
+func requireCommandRuntime(t *testing.T, server *Server, runtime databaseRuntime) *gatewayoperations.CommandRuntime {
 	t.Helper()
 	owner, err := server.commandRuntime(runtime)
 	if err != nil {

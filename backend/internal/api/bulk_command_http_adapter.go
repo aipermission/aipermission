@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"net/http"
 	"strings"
 
@@ -11,9 +10,10 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.CommandBulkHTTPRuntime, bool) {
+func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayoperations.CommandBulkHTTPRuntime, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
 		return nil, false
@@ -23,25 +23,25 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 		writeInternalError(w)
 		return nil, false
 	}
-	return &gatewayaccess.CommandBulkHTTPRuntime{
+	return &gatewayoperations.CommandBulkHTTPRuntime{
 		Requests: requests,
 		Sessions: runtime.Connectors.ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},
-		ResolveTarget: func(ctx context.Context, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
+		ResolveTarget: func(ctx context.Context, runtimeID int64) (gatewayoperations.CommandBulkTarget, error) {
 			target, err := s.bulkConsoleTarget(ctx, runtime, runtimeID)
-			if errors.Is(err, connectormgmt.ErrTargetProfileNotFound) ||
-				errors.Is(err, connectormgmt.ErrTargetNotFound) ||
-				errors.Is(err, connectormgmt.ErrRuntimeSurfaceNotFound) ||
-				errors.Is(err, connectormgmt.ErrInvalidTargetRef) {
-				return gatewayaccess.CommandBulkTarget{}, gatewayaccess.ErrBulkTargetNotFound
+			if connectormgmt.IsTargetProfileNotFound(err) ||
+				connectormgmt.IsTargetNotFound(err) ||
+				connectormgmt.IsRuntimeSurfaceNotFound(err) ||
+				connectormgmt.IsInvalidTargetRef(err) {
+				return gatewayoperations.CommandBulkTarget{}, gatewayoperations.ErrBulkTargetNotFound
 			}
 			return target, err
 		},
-		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayaccess.CommandBulkAuditAppender) error) error {
+		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayoperations.CommandBulkAuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-				return mutate(tx, gatewayaccess.CommandBulkAuditAppender(appendAudit))
+				return mutate(tx, gatewayoperations.CommandBulkAuditAppender(appendAudit))
 			})
 		},
 		PresentError: func(ctx context.Context, runtimeID int64, err error) string {
@@ -52,18 +52,18 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 	}, true
 }
 
-func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
+func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime, runtimeID int64) (gatewayoperations.CommandBulkTarget, error) {
 	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
-		return gatewayaccess.CommandBulkTarget{}, err
+		return gatewayoperations.CommandBulkTarget{}, err
 	}
 	target, profile, err := s.connectorCatalog(runtime).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
-		return gatewayaccess.CommandBulkTarget{}, err
+		return gatewayoperations.CommandBulkTarget{}, err
 	}
 	actionAdapter, ok := s.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
 	if !ok || strings.TrimSpace(actionAdapter.LiveConsoleActionName()) == "" {
-		return gatewayaccess.CommandBulkTarget{}, connectormgmt.ErrInvalidTargetRef
+		return gatewayoperations.CommandBulkTarget{}, connectormgmt.InvalidTargetRefError()
 	}
 	name := target.Name
 	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
@@ -77,7 +77,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime,
 			name = strings.TrimSpace(label)
 		}
 	}
-	return gatewayaccess.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
+	return gatewayoperations.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
 }
 
 func (s *Server) consoleErrorPresenter(ctx context.Context, runtime databaseRuntime, runtimeID int64) any {

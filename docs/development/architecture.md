@@ -172,8 +172,10 @@ place.
   transfer primitives, and host key verification owned by the SSH connector.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
-- `internal/gatewayoperations`: the backup, observation, message, and
-  maintenance application boundary. Its `transfer` boundary owns file-transfer
+- `internal/gatewayoperations`: the command-request, backup, observation,
+  message, and maintenance application boundary. It owns workspace-scoped
+  command worker admission, cancellation, and terminal persistence. Its
+  `transfer` boundary owns file-transfer
   authorization snapshots, connector adapter dispatch, routes, and workspace
   initialization. The transfer boundary's `runtime` child owns workers and
   lifecycle state; `internal/api` may import the boundary, never that child.

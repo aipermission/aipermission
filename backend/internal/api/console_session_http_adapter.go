@@ -6,6 +6,7 @@ import (
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -52,7 +53,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		CancelForSession: func(ctx context.Context, sessionID int64, errorText string) error {
 			requests, err := s.commandRuntime(runtime)
 			if err != nil {
-				return gatewayaccess.ErrCommandRuntimeUnavailable
+				return gatewayoperations.ErrCommandRuntimeUnavailable
 			}
 			return requests.CancelRunningForSession(ctx, sessionID, errorText)
 		},

@@ -58,20 +58,6 @@ func TestPasswordAttemptIdentityIsSharedAcrossRoutesAndOmitsRequestMetadata(t *t
 	}
 }
 
-func TestCommandRuntimeFailsClosedUntilInitialized(t *testing.T) {
-	component := NewComponent("3210")
-	if _, err := component.CommandRuntime("runtime"); !errors.Is(err, ErrCommandRuntimeUnavailable) {
-		t.Fatalf("uninitialized command runtime error = %v", err)
-	}
-	if err := component.InitializeCommandRuntime("runtime", CommandRuntimeDependencies{}); !errors.Is(err, ErrCommandRuntimeUnavailable) {
-		t.Fatalf("invalid command runtime dependencies error = %v", err)
-	}
-	var unavailable *Component
-	if err := unavailable.InitializeCommandRuntime("runtime", CommandRuntimeDependencies{}); !errors.Is(err, ErrComponentUnavailable) {
-		t.Fatalf("nil component initialization error = %v", err)
-	}
-}
-
 func TestNilComponentFailsClosed(t *testing.T) {
 	var component *Component
 	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/unlock", nil)
@@ -105,16 +91,14 @@ func TestPrincipalConstructionRequiresReadyRuntime(t *testing.T) {
 func TestComponentOwnsCompleteHTTPHandlerSet(t *testing.T) {
 	component := NewComponent("3212")
 	handlers := component.HTTPHandlers(HTTPScopeProviders{})
-	if handlers.Security == nil || handlers.TokenAccess == nil || handlers.BulkConsole == nil ||
-		handlers.CommandRequests == nil || handlers.MCPRuntime == nil ||
+	if handlers.Security == nil || handlers.TokenAccess == nil || handlers.MCPRuntime == nil ||
 		handlers.MCPConnectorReads == nil || handlers.MCPConnectorActions == nil {
 		t.Fatal("access HTTP handler set is incomplete")
 	}
 
 	var unavailable *Component
 	zero := unavailable.HTTPHandlers(HTTPScopeProviders{})
-	if zero.Security != nil || zero.TokenAccess != nil || zero.BulkConsole != nil ||
-		zero.CommandRequests != nil || zero.MCPRuntime != nil ||
+	if zero.Security != nil || zero.TokenAccess != nil || zero.MCPRuntime != nil ||
 		zero.MCPConnectorReads != nil || zero.MCPConnectorActions != nil {
 		t.Fatal("nil access component exposed HTTP handlers")
 	}

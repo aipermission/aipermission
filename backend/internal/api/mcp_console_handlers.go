@@ -4,6 +4,7 @@ import (
 	"context"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 type consoleRestartResult struct {
@@ -14,7 +15,7 @@ type consoleRestartResult struct {
 func (s *Server) restartServerConsoleSession(ctx context.Context, runtime databaseRuntime, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
 	requests, err := s.commandRuntime(runtime)
 	if err != nil {
-		return consoleRestartResult{}, gatewayaccess.ErrCommandRuntimeUnavailable
+		return consoleRestartResult{}, gatewayoperations.ErrCommandRuntimeUnavailable
 	}
 	var canceledRequests int64
 	closedSessionIDs, err := runtime.Connectors.ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, func() error {

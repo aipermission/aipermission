@@ -36,7 +36,8 @@ type BulkRequestOwner interface {
 	InsertPrepared(context.Context, Executor, PreparedInsert) (int64, error)
 	SetSession(context.Context, int64, int64) error
 	Finish(context.Context, Completion) error
-	FinishActive(int64, executionprincipal.Principal, console.SessionHandle)
+	FinishActive(context.Context, int64, executionprincipal.Principal, console.SessionHandle)
+	RunWorker(func(context.Context)) bool
 }
 
 type BulkConsoleSessions interface {
@@ -193,7 +194,7 @@ func (h *BulkHTTPHandlers) resolve(w http.ResponseWriter) (*BulkHTTPRuntime, boo
 }
 
 func (runtime *BulkHTTPRuntime) run(command string, items []BulkHTTPResponseItem) {
-	go func() {
+	if !runtime.Requests.RunWorker(func(workerContext context.Context) {
 		sem := make(chan struct{}, BulkParallelism)
 		var wait sync.WaitGroup
 		for _, item := range items {
@@ -201,45 +202,58 @@ func (runtime *BulkHTTPRuntime) run(command string, items []BulkHTTPResponseItem
 			wait.Add(1)
 			go func() {
 				defer wait.Done()
-				sem <- struct{}{}
+				select {
+				case sem <- struct{}{}:
+				case <-workerContext.Done():
+					runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: "command runtime is shutting down"})
+					return
+				}
 				defer func() { <-sem }()
-				runtime.runOne(item, command)
+				runtime.runOne(workerContext, item, command)
 			}()
 		}
 		wait.Wait()
-	}()
+	}) {
+		for _, item := range items {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = runtime.Requests.Finish(ctx, Completion{ID: item.RequestID, Status: "error", Error: "command runtime is shutting down"})
+			cancel()
+		}
+	}
 }
 
-func (runtime *BulkHTTPRuntime) runOne(item BulkHTTPResponseItem, command string) {
+func (runtime *BulkHTTPRuntime) runOne(workerContext context.Context, item BulkHTTPResponseItem, command string) {
 	timeout := runtime.InitialTimeout
 	if timeout <= 0 {
 		timeout = bulkInitialExecTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(workerContext, timeout)
 	defer cancel()
 	principal, err := runtime.Principal()
 	if err != nil || principal.Validate() != nil {
 		if err == nil {
 			err = executionprincipal.ErrInvalid
 		}
-		_ = runtime.Requests.Finish(context.Background(), Completion{ID: item.RequestID, Status: "error", Error: err.Error()})
+		runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: err.Error()})
 		return
 	}
 	result, err := runtime.Sessions.Exec(ctx, principal, item.TargetID, command)
 	if err != nil {
 		message := "command execution failed: " + strings.TrimSpace(err.Error())
 		if runtime.PresentError != nil {
-			message = runtime.PresentError(context.Background(), item.TargetID, err)
+			message = runtime.PresentError(workerContext, item.TargetID, err)
 		}
 		if strings.TrimSpace(message) == "" {
 			message = "command execution failed"
 		}
-		_ = runtime.Requests.Finish(context.Background(), Completion{ID: item.RequestID, Status: "error", Error: message})
+		runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: message})
 		return
 	}
 	if result.Running {
-		_ = runtime.Requests.SetSession(context.Background(), item.RequestID, result.SessionID)
-		runtime.Requests.FinishActive(item.RequestID, principal, console.SessionHandle{
+		persist, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = runtime.Requests.SetSession(persist, item.RequestID, result.SessionID)
+		persistCancel()
+		runtime.Requests.FinishActive(workerContext, item.RequestID, principal, console.SessionHandle{
 			ID: result.SessionID, RuntimeID: item.TargetID, Generation: result.Generation,
 		})
 		return
@@ -248,10 +262,16 @@ func (runtime *BulkHTTPRuntime) runOne(item BulkHTTPResponseItem, command string
 	if result.ExitCode != 0 {
 		status = "failed"
 	}
-	_ = runtime.Requests.Finish(context.Background(), Completion{
+	runtime.finish(Completion{
 		ID: item.RequestID, Status: status, SessionID: result.SessionID,
 		Stdout: result.Output, ExitCode: result.ExitCode,
 	})
+}
+
+func (runtime *BulkHTTPRuntime) finish(completion Completion) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = runtime.Requests.Finish(ctx, completion)
 }
 
 func normalizeBulkTargetIDs(values []int64) ([]int64, error) {
