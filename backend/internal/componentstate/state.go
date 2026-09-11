@@ -29,6 +29,8 @@ func NewKey[T any](name string) Key {
 type Port interface {
 	LoadComponentState(Key) (any, bool, error)
 	LoadOrCreateComponentState(Key, func() (any, error)) (any, error)
+	RegisterComponentLifecycle(Key, Lifecycle) error
+	ComponentLifecycles() ([]Lifecycle, error)
 }
 
 type slot struct {
@@ -38,12 +40,14 @@ type slot struct {
 }
 
 type State struct {
-	mu    sync.Mutex
-	slots map[string]*slot
+	mu             sync.Mutex
+	slots          map[string]*slot
+	lifecycles     map[string]Lifecycle
+	lifecycleOrder []string
 }
 
 func New() State {
-	return State{slots: make(map[string]*slot)}
+	return State{slots: make(map[string]*slot), lifecycles: make(map[string]Lifecycle)}
 }
 
 func Load[T any](state Port, key Key) (T, bool, error) {
@@ -161,6 +165,43 @@ func (s *State) stateSlot(key Key) (*slot, error) {
 	created := &slot{valueType: key.valueType}
 	s.slots[key.name] = created
 	return created, nil
+}
+
+func (s *State) RegisterComponentLifecycle(key Key, lifecycle Lifecycle) error {
+	if s == nil {
+		return ErrUnavailable
+	}
+	if err := key.validate(); err != nil {
+		return err
+	}
+	if err := lifecycle.validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lifecycles == nil {
+		s.lifecycles = make(map[string]Lifecycle)
+	}
+	if _, exists := s.lifecycles[key.name]; !exists {
+		s.lifecycleOrder = append(s.lifecycleOrder, key.name)
+	}
+	s.lifecycles[key.name] = lifecycle
+	return nil
+}
+
+func (s *State) ComponentLifecycles() ([]Lifecycle, error) {
+	if s == nil {
+		return nil, ErrUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]Lifecycle, 0, len(s.lifecycleOrder))
+	for _, name := range s.lifecycleOrder {
+		if lifecycle, ok := s.lifecycles[name]; ok {
+			result = append(result, lifecycle)
+		}
+	}
+	return result, nil
 }
 
 func (key Key) validate() error {

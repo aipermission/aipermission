@@ -137,12 +137,16 @@ func (runtime *Runtime) ConnectorPorts(ctx context.Context, runtimeID int64) (Co
 // Shutdown cancels transfer workers, persists interrupted terminal states,
 // and closes the finalization lifetime before workspace storage is released.
 func (runtime *Runtime) Shutdown(timeout time.Duration, runningMessage string, batchMessage string) (bool, error) {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return runtime.ShutdownContext(shutdownCtx, runningMessage, batchMessage)
+}
+
+func (runtime *Runtime) ShutdownContext(ctx context.Context, runningMessage string, batchMessage string) (bool, error) {
 	if runtime == nil {
 		return true, nil
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	drained := runtime.jobs.Shutdown(shutdownCtx)
-	cancel()
+	drained := runtime.jobs.Shutdown(ctx)
 	err := runtime.store.FailActive(context.Background(), runningMessage, batchMessage)
 	runtime.finalization.Stop()
 	return drained, err

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 )
@@ -48,18 +48,15 @@ func Close(runtime runtimecontract.Runtime, resolveActions ActionWorkflowResolve
 		sessions.CloseAll()
 	}
 	stopCommandRequests(runtime.DatabaseIdentifier(), resolveCommands)
-	initialized, drained, err := transferapp.ShutdownWorkspace(
-		runtime, transferWait, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped,
-	)
-	if !initialized {
-		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.DatabaseIdentifier())
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), transferWait)
+	report := componentstate.CloseComponents(shutdownCtx, runtime.ComponentStatePort())
+	cancel()
+	if report.Err != nil {
+		log.Printf("workspace component shutdown failed workspace=%s error=%v", runtime.DatabaseIdentifier(), report.Err)
 	}
-	if err != nil {
-		log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
-	}
-	if !drained {
+	if !report.Drained {
 		go func() {
-			transferapp.WaitWorkspace(context.Background(), runtime)
+			componentstate.WaitComponents(context.Background(), runtime.ComponentStatePort())
 			if err := closeStorage(runtime); err != nil {
 				log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 			}
@@ -92,7 +89,7 @@ func Discard(runtime runtimecontract.Runtime) error {
 	if runtime == nil {
 		return nil
 	}
-	transferapp.StopWorkspace(runtime)
+	_ = componentstate.AbortComponents(runtime.ComponentStatePort())
 	return closeStorage(runtime)
 }
 

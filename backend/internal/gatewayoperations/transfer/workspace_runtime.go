@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
+	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
@@ -31,7 +32,7 @@ func InitializeWorkspace(
 	if err != nil {
 		return err
 	}
-	_, err = componentstate.LoadOrCreate(state, workspaceRuntimeStateKey, func() (*workspaceRuntimeHandle, error) {
+	handle, err := componentstate.LoadOrCreate(state, workspaceRuntimeStateKey, func() (*workspaceRuntimeHandle, error) {
 		lifecycle := NewLifecycle()
 		runtime, err := lifecycle.NewRuntime(database, observe, resolve)
 		if err != nil {
@@ -40,7 +41,17 @@ func InitializeWorkspace(
 		}
 		return &workspaceRuntimeHandle{lifecycle: lifecycle, runtime: runtime}, nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return componentstate.RegisterLifecycle(state, workspaceRuntimeStateKey, componentstate.Lifecycle{
+		Name: "file-transfer",
+		Close: func(ctx context.Context) (bool, error) {
+			return handle.runtime.ShutdownContext(ctx, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped)
+		},
+		Abort: handle.lifecycle.Stop,
+		Wait:  handle.lifecycle.Wait,
+	})
 }
 
 func RuntimeForWorkspace(workspace Workspace) (*Runtime, error) {
