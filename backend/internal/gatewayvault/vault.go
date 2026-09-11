@@ -2,8 +2,11 @@
 package gatewayvault
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/projects"
+	"context"
+	"database/sql"
+
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -16,15 +19,59 @@ const (
 	ActionGenerateItem = vaultrequests.ActionGenerateItem
 )
 
-type ProjectScope = projects.Scope
-type ProjectVaultHTTPScope = projectvault.HTTPScope
+type ProjectMutation func(context.Context, string, func() any, func(*sql.Tx) error) error
+
+type ProjectScope struct {
+	Database         *sql.DB
+	Mutate           ProjectMutation
+	AcquireExclusive func(context.Context) (func(), error)
+	Invalidate       func(context.Context, int64) error
+}
+
+type ProjectVaultHTTPScope struct {
+	Runtime        ProjectVaultApplication
+	RuntimeID      string
+	SessionCatalog projectvault.SessionOptionsCatalog
+}
+
 type SessionMutationScope = projectvault.SessionMutationScope
 type SessionReference = projectvault.SessionReference
 type SessionSelection = projectvault.SessionSelection
-type VaultApprovalHTTPScope = vaultrequests.HTTPScope
-type VaultMCPHTTPScope = vaultrequests.MCPHTTPScope
-type VaultRequestApplication = vaultrequests.Application
-type Invalidator = vaultsessions.Invalidator
-type InvalidatorDependencies = vaultsessions.InvalidatorDependencies
+
+type VaultRequestApplication interface {
+	List(context.Context, string, int) ([]vaultrequests.Request, error)
+	RunPending(context.Context, int64, string) (vaultrequests.WorkflowResult, error)
+	DeclinePending(context.Context, int64, string) (vaultrequests.Request, error)
+	Call(context.Context, vaultrequests.CallInput) (vaultrequests.RequestView, error)
+	GetOwned(context.Context, int64, int64) (vaultrequests.RequestView, error)
+	CancelOwned(context.Context, int64, int64) (vaultrequests.Request, error)
+	StalePendingForContext(context.Context, int64, int64, string) error
+	StalePendingForProject(context.Context, int64, string) error
+	StalePendingForRuntimes(context.Context, []int64, string) error
+	StalePendingForAction(context.Context, string, string) error
+	FailRunning(context.Context, string) error
+	Validate() error
+}
+
+type VaultApprovalHTTPScope struct {
+	MCPStarted func() bool
+	Runtime    func(context.Context) (VaultRequestApplication, error)
+}
+
+type VaultMCPHTTPScope struct {
+	Database      *sql.DB
+	Vault         *vault.Vault
+	WorkspaceUUID string
+	TokenID       int64
+	MCPStarted    func() bool
+	Runtime       func(context.Context) (VaultRequestApplication, error)
+	MetadataRead  func(context.Context, int64) (bool, error)
+}
+
 type VaultSessionReference = vaultsessions.Reference
-type RequestInvalidator = vaultsessions.RequestInvalidator
+
+type RequestInvalidator interface {
+	StalePendingForContext(context.Context, int64, int64, string) error
+	StalePendingForProject(context.Context, int64, string) error
+	StalePendingForRuntimes(context.Context, []int64, string) error
+}

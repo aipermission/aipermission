@@ -17,7 +17,7 @@ type SessionLifecycleRuntime struct {
 	Leases               vaultsessions.LeaseRevoker
 	Sessions             vaultsessions.SessionCloser
 	Principal            vaultsessions.PrincipalProvider
-	Requests             vaultsessions.RequestInvalidatorProvider
+	Requests             func(context.Context) (RequestInvalidator, error)
 	AcquireDelivery      func(context.Context) (func(), error)
 	InstallAuthorizer    SessionAuthorizerInstaller
 	InstallSessionClosed SessionClosedHookInstaller
@@ -36,7 +36,10 @@ func (component *Component) SessionLifecycle(runtime SessionLifecycleRuntime) (*
 	}
 	invalidator, err := vaultsessions.NewInvalidator(vaultsessions.InvalidatorDependencies{
 		Persistence: vaultsessions.NewPersistence(runtime.Database),
-		Leases:      runtime.Leases, Sessions: runtime.Sessions, Principal: runtime.Principal, Requests: runtime.Requests,
+		Leases:      runtime.Leases, Sessions: runtime.Sessions, Principal: runtime.Principal,
+		Requests: func(ctx context.Context) (vaultsessions.RequestInvalidator, error) {
+			return runtime.Requests(ctx)
+		},
 	})
 	if err != nil {
 		return nil, err

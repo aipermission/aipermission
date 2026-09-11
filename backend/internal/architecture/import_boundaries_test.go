@@ -211,6 +211,38 @@ func TestGatewayConnectorContractDoesNotReexportTypes(t *testing.T) {
 	}
 }
 
+func TestGatewayVaultOwnsTransportContracts(t *testing.T) {
+	path := filepath.Join("..", "gatewayvault", "vault.go")
+	want := map[string]bool{
+		"ProjectScope": true, "ProjectVaultHTTPScope": true,
+		"VaultRequestApplication": true, "VaultApprovalHTTPScope": true,
+		"VaultMCPHTTPScope": true, "RequestInvalidator": true,
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec := specification.(*ast.TypeSpec)
+			if !want[typeSpec.Name.Name] {
+				continue
+			}
+			delete(want, typeSpec.Name.Name)
+			if typeSpec.Assign.IsValid() {
+				t.Errorf("%s reexports %s; Vault transport contracts must be boundary-owned", path, typeSpec.Name.Name)
+			}
+		}
+	}
+	for name := range want {
+		t.Errorf("%s is missing boundary-owned contract %s", path, name)
+	}
+}
+
 func TestGatewayBoundariesStayIndependentFromAPI(t *testing.T) {
 	apiPackage := modulePath + "/internal/api"
 	for importer, imports := range allPackageImports(t) {

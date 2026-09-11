@@ -1,6 +1,8 @@
 package gatewayvault
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/projects"
@@ -64,9 +66,71 @@ type MCPVaultHTTP interface {
 
 func (*Component) HTTPHandlers(dependencies HTTPDependencies) HTTPHandlers {
 	return HTTPHandlers{
-		Projects:       projects.NewHTTPHandlers(projects.ScopeProvider(dependencies.Projects)),
-		ProjectVault:   projectvault.NewHTTPHandlers(projectvault.HTTPScopeProvider(dependencies.ProjectVault)),
-		VaultApprovals: vaultrequests.NewHTTPHandlers(vaultrequests.HTTPScopeProvider(dependencies.VaultApprovals)),
-		MCPVault:       vaultrequests.NewMCPHTTPHandlers(vaultrequests.MCPHTTPScopeProvider(dependencies.MCPVault)),
+		Projects:       projects.NewHTTPHandlers(projectScopeProvider(dependencies.Projects)),
+		ProjectVault:   projectvault.NewHTTPHandlers(projectVaultScopeProvider(dependencies.ProjectVault)),
+		VaultApprovals: vaultrequests.NewHTTPHandlers(vaultApprovalScopeProvider(dependencies.VaultApprovals)),
+		MCPVault:       vaultrequests.NewMCPHTTPHandlers(mcpVaultScopeProvider(dependencies.MCPVault)),
+	}
+}
+
+func projectScopeProvider(provider ProjectScopeProvider) projects.ScopeProvider {
+	if provider == nil {
+		return nil
+	}
+	return func(w http.ResponseWriter) (projects.Scope, bool) {
+		scope, ok := provider(w)
+		var mutate func(context.Context, string, func() any, func(*sql.Tx) error) error
+		if scope.Mutate != nil {
+			mutate = func(ctx context.Context, action string, payload func() any, mutation func(*sql.Tx) error) error {
+				return scope.Mutate(ctx, action, payload, mutation)
+			}
+		}
+		return projects.Scope{
+			Database: scope.Database, Mutate: mutate,
+			AcquireExclusive: scope.AcquireExclusive, Invalidate: scope.Invalidate,
+		}, ok
+	}
+}
+
+func projectVaultScopeProvider(provider ProjectVaultScopeProvider) projectvault.HTTPScopeProvider {
+	if provider == nil {
+		return nil
+	}
+	return func(w http.ResponseWriter) (projectvault.HTTPScope, bool) {
+		scope, ok := provider(w)
+		return projectvault.HTTPScope{
+			Runtime: scope.Runtime, RuntimeID: scope.RuntimeID, SessionCatalog: scope.SessionCatalog,
+		}, ok
+	}
+}
+
+func vaultApprovalScopeProvider(provider VaultApprovalScopeProvider) vaultrequests.HTTPScopeProvider {
+	if provider == nil {
+		return nil
+	}
+	return func(w http.ResponseWriter) (vaultrequests.HTTPScope, bool) {
+		scope, ok := provider(w)
+		var runtime func(context.Context) (vaultrequests.Application, error)
+		if scope.Runtime != nil {
+			runtime = func(ctx context.Context) (vaultrequests.Application, error) { return scope.Runtime(ctx) }
+		}
+		return vaultrequests.HTTPScope{MCPStarted: scope.MCPStarted, Runtime: runtime}, ok
+	}
+}
+
+func mcpVaultScopeProvider(provider MCPVaultScopeProvider) vaultrequests.MCPHTTPScopeProvider {
+	if provider == nil {
+		return nil
+	}
+	return func(w http.ResponseWriter, r *http.Request) (vaultrequests.MCPHTTPScope, bool) {
+		scope, ok := provider(w, r)
+		var runtime func(context.Context) (vaultrequests.Application, error)
+		if scope.Runtime != nil {
+			runtime = func(ctx context.Context) (vaultrequests.Application, error) { return scope.Runtime(ctx) }
+		}
+		return vaultrequests.MCPHTTPScope{
+			Database: scope.Database, Vault: scope.Vault, WorkspaceUUID: scope.WorkspaceUUID,
+			TokenID: scope.TokenID, MCPStarted: scope.MCPStarted, Runtime: runtime, MetadataRead: scope.MetadataRead,
+		}, ok
 	}
 }
