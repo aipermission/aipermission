@@ -1,0 +1,58 @@
+// Package gatewayadapter adapts the concrete workspace runtime to the
+// gateway-owned runtime contract.
+package gatewayadapter
+
+import (
+	gatewayconnectors "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
+	gatewayobservation "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/operations"
+	gatewaysecurity "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
+	gatewaystorage "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
+)
+
+type adapter struct{ *workspaceruntime.Runtime }
+
+func Wrap(runtime *workspaceruntime.Runtime) runtimecontract.Runtime {
+	if runtime == nil {
+		return nil
+	}
+	return &adapter{Runtime: runtime}
+}
+
+func Unwrap(runtime runtimecontract.Runtime) (*workspaceruntime.Runtime, bool) {
+	if runtime == nil {
+		return nil, true
+	}
+	value, ok := runtime.(*adapter)
+	if !ok {
+		return nil, false
+	}
+	if value == nil {
+		return nil, true
+	}
+	return value.Runtime, true
+}
+
+func (runtime *adapter) StoragePort() gatewaystorage.Port {
+	return runtime.Runtime.StoragePort()
+}
+
+func (runtime *adapter) ConnectorPort() gatewayconnectors.Port {
+	return runtime.Runtime.ConnectorPort()
+}
+
+func (runtime *adapter) OperationsPort() gatewayoperations.Port {
+	return runtime.Runtime.OperationsPort()
+}
+
+func (runtime *adapter) SecurityPort() gatewaysecurity.Port {
+	return runtime.Runtime.SecurityPort()
+}
+
+func (runtime *adapter) ObservationPort() gatewayobservation.Port {
+	return runtime.Runtime.ObservationPort()
+}
+
+var _ runtimecontract.Runtime = (*adapter)(nil)

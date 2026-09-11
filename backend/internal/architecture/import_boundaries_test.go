@@ -306,6 +306,43 @@ func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
 	}
 }
 
+func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
+	path := filepath.Join("..", "gatewayworkspace", "runtimecontract", "runtime.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec := specification.(*ast.TypeSpec)
+			if typeSpec.Name.Name != "Runtime" {
+				continue
+			}
+			found = true
+			if typeSpec.Assign.IsValid() {
+				t.Fatal("gateway workspace Runtime must be a boundary-owned interface, not an alias")
+			}
+			if _, ok := typeSpec.Type.(*ast.InterfaceType); !ok {
+				t.Fatal("gateway workspace Runtime must remain an interface")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("gateway workspace Runtime contract is missing")
+	}
+	statePackage := modulePath + "/internal/gatewaystate/workspaces"
+	for _, imported := range allPackageImports(t)[statePackage] {
+		if imported == modulePath+"/internal/workspaceruntime" {
+			t.Fatalf("%s must store the gateway-owned runtime contract", statePackage)
+		}
+	}
+}
+
 func referencesConcreteWorkspaceRuntime(node ast.Node, workspaceAliases map[string]bool) bool {
 	found := false
 	ast.Inspect(node, func(candidate ast.Node) bool {

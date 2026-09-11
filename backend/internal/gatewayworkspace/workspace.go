@@ -8,17 +8,21 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/catalog"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/lifecycle"
-	workspaceruntime "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime"
+	runtimefactory "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimeinput"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
-type Runtime = workspaceruntime.Runtime
+type Runtime = runtimecontract.Runtime
 type Registry = workspacelifecycle.Registry[Runtime]
 type Service = workspacelifecycle.Service[Runtime]
-type Vault = workspaceruntime.Vault
-type TokenStore = workspaceruntime.TokenStore
-type AdoptInput = workspaceruntime.AdoptInput
-type OpenInput = workspaceruntime.OpenInput
+type Vault = vault.Vault
+type TokenStore = tokens.Store
+type AdoptInput = runtimeinput.Adopt
+type OpenInput = runtimeinput.Open
 type Identity = lifecycle.Identity
 type Dependencies = lifecycle.Dependencies
 type HTTPDependencies = lifecycle.HTTPDependencies
@@ -32,7 +36,7 @@ type DeleteRequest = lifecycle.DeleteRequest
 type DeleteLockedRequest = lifecycle.DeleteLockedRequest
 type SwitchRequest = lifecycle.SwitchRequest
 type ChangePasswordRequest = lifecycle.ChangePasswordRequest
-type ActionWorkflow = workspaceruntime.ActionWorkflow
+type ActionWorkflow = runtimefactory.ActionWorkflow
 
 var (
 	ErrDatabaseInUse  = catalog.ErrDatabaseInUse
@@ -48,14 +52,14 @@ func Publish(sourcePath, targetPath string) error { return catalog.Publish(sourc
 func LooksPlaintext(path string) bool             { return catalog.LooksPlaintext(path) }
 func UnsupportedSchemaMessage(err error) string   { return catalog.UnsupportedSchemaMessage(err) }
 func Adopt(ctx context.Context, input AdoptInput) (Runtime, error) {
-	return workspaceruntime.Adopt(ctx, input)
+	return runtimefactory.Adopt(ctx, input)
 }
 func Open(ctx context.Context, input OpenInput) (Runtime, error) {
-	return workspaceruntime.Open(ctx, input)
+	return runtimefactory.Open(ctx, input)
 }
-func Discard(runtime Runtime) error { return workspaceruntime.Discard(runtime) }
+func Discard(runtime Runtime) error { return runtimefactory.Discard(runtime) }
 func Close(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
-	return workspaceruntime.Close(runtime, resolve)
+	return runtimefactory.Close(runtime, resolve)
 }
 func NewRegistry(path, id string, describe func(Runtime) Identity) *Registry {
 	return lifecycle.NewRegistry(path, id, describe)

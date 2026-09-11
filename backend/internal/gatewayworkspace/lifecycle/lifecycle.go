@@ -5,12 +5,12 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	workspaceruntime "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	workspacehttp "github.com/aipermission/aipermission/backend/internal/workspacelifecycle/httpapi"
 )
 
-type Runtime = workspaceruntime.Runtime
+type Runtime = runtimecontract.Runtime
 type Identity = workspacelifecycle.Identity
 type PasswordAttempt = workspacehttp.PasswordAttempt
 type HTTPDependencies = workspacehttp.Dependencies
