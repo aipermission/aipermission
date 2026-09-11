@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
+
+var projectRuntimeStateKey = componentstate.NewKey[*projectRuntimeHandle]("project-vault-runtime")
 
 type Dependencies struct {
 	LiveConsoleKind func(string) (string, bool)
@@ -79,7 +81,7 @@ func (component *Component) ProjectRuntime(runtime Runtime) (ProjectVaultApplica
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Project.State == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	handle, err := runtimeops.LoadOrCreateState(runtime.Project.State, func() (*projectRuntimeHandle, error) {
+	handle, err := componentstate.LoadOrCreate(runtime.Project.State, projectRuntimeStateKey, func() (*projectRuntimeHandle, error) {
 		store, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)
 		if err != nil {
 			return nil, err

@@ -10,13 +10,15 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
+
+var workflowStateKey = componentstate.NewKey[*workflowHandle]("connector-action-workflow")
 
 type Dependencies struct {
 	MaxJSONBytes    int
@@ -182,7 +184,7 @@ func (component *Component) workflow(runtime Workspace) (*workflowHandle, error)
 	if component == nil || component.dependencies.SupportsRunning == nil || !runtime.workflowReady() {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	workflow, err := runtimeops.LoadOrCreateState(runtime.Workflow.State, func() (*workflowHandle, error) {
+	workflow, err := componentstate.LoadOrCreate(runtime.Workflow.State, workflowStateKey, func() (*workflowHandle, error) {
 		redactor, err := actions.NewRedactor(
 			func(ctx context.Context, value string) string {
 				return runtime.Workflow.RedactBasic(ctx, value)
@@ -266,7 +268,11 @@ func (component *Component) StartRecovery(runtime Workspace) {
 }
 
 func (component *Component) StopRecovery(runtime Workspace) {
-	if workflow, ok := runtimeops.LoadState[*workflowHandle](runtime.Workflow.State); ok {
+	if runtime.Workflow.State == nil {
+		return
+	}
+	workflow, ok, err := componentstate.Load[*workflowHandle](runtime.Workflow.State, workflowStateKey)
+	if err == nil && ok && workflow != nil && workflow.runtime != nil {
 		workflow.runtime.StopRecovery()
 	}
 }

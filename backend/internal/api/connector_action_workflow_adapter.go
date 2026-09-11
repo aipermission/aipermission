@@ -41,7 +41,7 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Works
 			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return s.ensureRuntimeIdentity(runtime) },
 		},
 		Workflow: actions.WorkflowPorts{
-			State:         runtime.OperationsPort().ActionWorkflowState(),
+			State:         runtime.ComponentStatePort(),
 			AcquireSecret: delivery.AcquireDelivery,
 			RedactBasic: func(ctx context.Context, value string) string {
 				return s.redactForPersistence(ctx, runtime, value)

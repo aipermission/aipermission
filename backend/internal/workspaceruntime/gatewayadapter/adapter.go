@@ -3,6 +3,7 @@
 package gatewayadapter
 
 import (
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	gatewayconnectors "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
 	gatewayobservation "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/operations"
@@ -45,6 +46,10 @@ func (runtime *adapter) ConnectorPort() gatewayconnectors.Port {
 
 func (runtime *adapter) OperationsPort() gatewayoperations.Port {
 	return runtime.Runtime.OperationsPort()
+}
+
+func (runtime *adapter) ComponentStatePort() componentstate.Port {
+	return runtime.Runtime.ComponentStatePort()
 }
 
 func (runtime *adapter) SecurityPort() gatewaysecurity.Port {

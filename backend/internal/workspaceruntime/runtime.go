@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"sync"
 
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/connectors"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
@@ -26,6 +27,7 @@ type Runtime struct {
 	Operations        operations.State
 	Security          security.State
 	Observation       observation.State
+	Components        componentstate.State
 	identityMu        sync.Mutex
 }
 
@@ -37,6 +39,7 @@ type Port interface {
 	OperationsPort() operations.Port
 	SecurityPort() security.Port
 	ObservationPort() observation.Port
+	ComponentStatePort() componentstate.Port
 	WorkspaceIdentifier() string
 	RuntimeIdentifier() string
 	DatabaseIdentifier() string
@@ -65,6 +68,7 @@ func New(state foundation.State) *Runtime {
 			state.Registry, state.AdapterRegistry, state.Database, state.Identity.Vault, state.Identity.WorkspaceUUID,
 		),
 		Operations: operations.New(),
+		Components: componentstate.New(),
 		Security:   security.New(state.Database),
 	}
 }
@@ -104,6 +108,13 @@ func (r *Runtime) OperationsPort() operations.Port {
 		return (*operations.State)(nil)
 	}
 	return &r.Operations
+}
+
+func (r *Runtime) ComponentStatePort() componentstate.Port {
+	if r == nil {
+		return (*componentstate.State)(nil)
+	}
+	return &r.Components
 }
 
 func (r *Runtime) SecurityPort() security.Port {

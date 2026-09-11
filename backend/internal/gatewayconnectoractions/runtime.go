@@ -5,11 +5,11 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
-	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
 
 // Workspace is the action-owner view of one unlocked workspace.
@@ -35,7 +35,7 @@ type ActionIdentity struct {
 }
 
 type WorkflowPorts struct {
-	State         *runtimeops.StateSlot
+	State         componentstate.Port
 	AcquireSecret func(context.Context) (func(), error)
 	RedactBasic   func(context.Context, string) string
 	RedactCustom  func(context.Context, string) string

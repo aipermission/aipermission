@@ -4,6 +4,7 @@ package runtimecontract
 import (
 	"database/sql"
 
+	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	gatewayconnectors "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
 	gatewayobservation "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/operations"
@@ -18,6 +19,7 @@ type Runtime interface {
 	StoragePort() gatewaystorage.Port
 	ConnectorPort() gatewayconnectors.Port
 	OperationsPort() gatewayoperations.Port
+	ComponentStatePort() componentstate.Port
 	SecurityPort() gatewaysecurity.Port
 	ObservationPort() gatewayobservation.Port
 	WorkspaceIdentifier() string

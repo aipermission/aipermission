@@ -9,8 +9,6 @@ type State struct {
 	CommandRequests   *commandrequests.Runtime
 	FileTransfers     *transferapp.Runtime
 	TransferLifecycle *transferapp.Lifecycle
-	actionWorkflow    StateSlot
-	projectVault      StateSlot
 }
 
 type Port interface {
@@ -19,11 +17,11 @@ type Port interface {
 	FileTransferRuntime() *transferapp.Runtime
 	SetFileTransferRuntime(*transferapp.Runtime)
 	FileTransferLifecycle() *transferapp.Lifecycle
-	ActionWorkflowState() *StateSlot
-	ProjectVaultState() *StateSlot
 }
 
-func New() State { return State{TransferLifecycle: transferapp.NewLifecycle()} }
+func New() State {
+	return State{TransferLifecycle: transferapp.NewLifecycle()}
+}
 
 func (s *State) CommandRequestRuntime() *commandrequests.Runtime {
 	if s == nil {
@@ -56,18 +54,4 @@ func (s *State) FileTransferLifecycle() *transferapp.Lifecycle {
 		return nil
 	}
 	return s.TransferLifecycle
-}
-
-func (s *State) ActionWorkflowState() *StateSlot {
-	if s == nil {
-		return nil
-	}
-	return &s.actionWorkflow
-}
-
-func (s *State) ProjectVaultState() *StateSlot {
-	if s == nil {
-		return nil
-	}
-	return &s.projectVault
 }

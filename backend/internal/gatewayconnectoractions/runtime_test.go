@@ -19,3 +19,7 @@ func TestRedactorRejectsIncompleteWorkspace(t *testing.T) {
 		t.Fatalf("Redactor() error = %v, want ErrWorkflowUnavailable", err)
 	}
 }
+
+func TestStopRecoveryAcceptsWorkspaceWithoutState(t *testing.T) {
+	New(Dependencies{}).StopRecovery(Workspace{})
+}
