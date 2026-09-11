@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
@@ -174,6 +175,18 @@ func TestGatewayBoundariesStayIndependentFromAPI(t *testing.T) {
 			if imported == apiPackage || strings.HasPrefix(imported, apiPackage+"/") {
 				t.Errorf("%s must not depend on the HTTP/API composition root", importer)
 			}
+		}
+	}
+}
+
+func TestApplicationFacadePackagesStayRetired(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join("..", "..", "internal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "application") {
+			t.Errorf("internal/%s reintroduces an application facade; composition belongs in an owning gateway boundary", entry.Name())
 		}
 	}
 }
