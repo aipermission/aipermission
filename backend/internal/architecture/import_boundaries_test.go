@@ -251,6 +251,17 @@ func TestGatewayBoundariesDoNotExposeMutableValues(t *testing.T) {
 	}
 }
 
+func TestGatewayBoundariesDoNotReintroduceForwarderFiles(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "internal", "gateway*", "forwarders.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 0 {
+		sort.Strings(paths)
+		t.Fatalf("gateway boundaries must organize behavior by ownership instead of generic forwarder files: %v", paths)
+	}
+}
+
 func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
 	roots, err := filepath.Glob(filepath.Join("..", "..", "internal", "gateway*"))
 	if err != nil {
