@@ -5,9 +5,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -18,18 +16,6 @@ func (*Component) NewCapabilityStore(db *sql.DB) *accesscontrol.CapabilityStore 
 	return accesscontrol.NewCapabilityStore(db)
 }
 
-func (*Component) NewAccessHTTPHandlers(scope accesscontrol.ScopeProvider) *accesscontrol.HTTPHandlers {
-	return accesscontrol.NewHTTPHandlers(scope)
-}
-
-func (*Component) NewBulkHTTPHandlers(scope commandrequests.BulkHTTPScopeProvider) *commandrequests.BulkHTTPHandlers {
-	return commandrequests.NewBulkHTTPHandlers(scope)
-}
-
-func (*Component) NewCommandHTTPHandlers(scope commandrequests.HTTPScopeProvider) *commandrequests.HTTPHandlers {
-	return commandrequests.NewHTTPHandlers(scope)
-}
-
 func (*Component) PrincipalLocalOperator(workspaceID string, runtimeInstanceID string) (executionprincipal.Principal, error) {
 	return executionprincipal.LocalOperator(workspaceID, runtimeInstanceID)
 }
@@ -38,24 +24,8 @@ func (*Component) PrincipalMCPToken(tokenID int64, workspaceID string, runtimeIn
 	return executionprincipal.MCPToken(tokenID, workspaceID, runtimeInstanceID)
 }
 
-func (*Component) NewMCPActionHTTPHandlers(scope mcpconnector.ActionScopeProvider) *mcpconnector.ActionHTTPHandlers {
-	return mcpconnector.NewActionHTTPHandlers(scope)
-}
-
-func (*Component) NewMCPReadHTTPHandlers(scope mcpconnector.ScopeProvider) *mcpconnector.HTTPHandlers {
-	return mcpconnector.NewHTTPHandlers(scope)
-}
-
 func (*Component) RuntimeKey(r *http.Request, scope string) string {
 	return runtimecontrol.Key(r, scope)
-}
-
-func (*Component) NewMCPRuntimeHTTPHandlers(scope runtimecontrol.MCPRuntimeScopeProvider) *runtimecontrol.MCPHTTPHandlers {
-	return runtimecontrol.NewMCPHTTPHandlers(scope)
-}
-
-func (*Component) NewSecurityHTTPHandlers(scope securitypolicy.HTTPScopeProvider) *securitypolicy.HTTPHandlers {
-	return securitypolicy.NewHTTPHandlers(scope)
 }
 
 func (*Component) RedactBasic(value string) string {
