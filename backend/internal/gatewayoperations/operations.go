@@ -5,7 +5,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
-	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 )
 
 type BackupApplication struct{ *backupapp.Component }
@@ -24,5 +23,3 @@ type RuntimeSession = console.RuntimeSession
 type SessionAuthorization = console.SessionAuthorization
 type SessionHandle = console.SessionHandle
 type SessionOperation = console.SessionOperation
-type MessageScope = messagequeue.Scope
-type MessageStore = messagequeue.Store
