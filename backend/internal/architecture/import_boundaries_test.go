@@ -262,6 +262,31 @@ func TestGatewayBoundariesDoNotReintroduceForwarderFiles(t *testing.T) {
 	}
 }
 
+func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
+	const routeSource = "internal/gatewayinfrastructure/routes.go"
+	command, err := os.ReadFile(filepath.Join("..", "..", "cmd", "openapi", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(command), `flag.String("routes", "`+routeSource+`"`) {
+		t.Fatalf("OpenAPI command must default to %s", routeSource)
+	}
+	if strings.Contains(string(command), "internal/api/routes.go") {
+		t.Fatal("OpenAPI command references the retired API route source")
+	}
+
+	contents, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(string(contents), routeSource); count != 2 {
+		t.Fatalf("Makefile must use %s for both OpenAPI commands; found %d references", routeSource, count)
+	}
+	if strings.Contains(string(contents), "internal/gatewayroutes/") {
+		t.Fatal("Makefile references the retired gatewayroutes package")
+	}
+}
+
 func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
 	roots, err := filepath.Glob(filepath.Join("..", "..", "internal", "gateway*"))
 	if err != nil {

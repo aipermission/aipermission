@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	routesPath := flag.String("routes", "internal/api/routes.go", "path to the Go route registration source")
+	routesPath := flag.String("routes", "internal/gatewayinfrastructure/routes.go", "path to the Go route registration source")
 	outputPath := flag.String("output", "../docs/api/openapi.json", "path to the generated OpenAPI document")
 	check := flag.Bool("check", false, "verify that the generated document is current")
 	flag.Parse()
