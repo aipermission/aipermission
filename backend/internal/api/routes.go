@@ -11,7 +11,6 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-type connectorTargetHandlers struct{ *Server }
 type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
@@ -23,7 +22,6 @@ func (s *Server) routes() {
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
 	connectorHTTP := connectorManagement.HTTPHandlers()
-	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
 	vaultHTTP := s.vaultApplication().HTTPHandlers(gatewayvault.HTTPDependencies{
 		Projects: s.projectsHTTPScope, ProjectVault: s.projectVaultHTTPScope,
@@ -39,7 +37,7 @@ func (s *Server) routes() {
 
 		Credentials:     connectorManagement.CredentialResources(s.connectorCredentialResourceDependencies()),
 		TokenAccess:     s.access.NewAccessHTTPHandlers(s.accessControlScope),
-		TargetOperation: connectorTargets.runConnectorTargetOperation,
+		TargetOperation: connectorHTTP.TargetOperation.Run,
 
 		Backup: gatewayinfra.Backup{
 			Download: backup.Download, Import: backup.Import,

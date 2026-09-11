@@ -93,11 +93,6 @@ func (s *Server) connectorCredentialProfileTesterFor(kind string) connectorapi.C
 	return adapter
 }
 
-func (s *Server) connectorTargetOperationRunnerFor(kind string) connectorapi.TargetOperationRunner {
-	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TargetOperationRunner)
-	return adapter
-}
-
 func (s *Server) connectorCredentialCanonicalizerFor(kind string) connectorapi.CredentialCanonicalizer {
 	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialCanonicalizer)
 	return adapter

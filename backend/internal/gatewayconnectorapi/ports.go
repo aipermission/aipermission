@@ -248,6 +248,9 @@ func (component *PortsComponent) TargetDeletionGateway(workspace Workspace, kind
 
 func (component *PortsComponent) TargetDeletionGatewayProvider(workspace Workspace) func(string, int64) connectorapi.TargetDeletionGateway {
 	return func(kind string, targetID int64) connectorapi.TargetDeletionGateway {
+		if component == nil {
+			return nil
+		}
 		return component.TargetDeletionGateway(workspace, kind, targetID)
 	}
 }
@@ -291,6 +294,15 @@ type TargetOperationGateway struct {
 
 func (component *PortsComponent) TargetOperationGateway(workspace Workspace, kind string, targetID int64) connectorapi.TargetOperationGateway {
 	return TargetOperationGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind, targetID: targetID}
+}
+
+func (component *PortsComponent) TargetOperationGatewayProvider(workspace Workspace) func(string, int64) connectorapi.TargetOperationGateway {
+	return func(kind string, targetID int64) connectorapi.TargetOperationGateway {
+		if component == nil {
+			return nil
+		}
+		return component.TargetOperationGateway(workspace, kind, targetID)
+	}
 }
 
 func (gateway TargetOperationGateway) ConnectorWriteAudit(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {

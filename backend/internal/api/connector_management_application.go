@@ -147,7 +147,8 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 			LifecycleRuntime: func(kind string) connectorapi.TargetLifecycleRuntime {
 				return s.connectorTargetLifecycleRuntime(runtime, kind)
 			},
-			DeletionGateway: s.connectorPorts.TargetDeletionGatewayProvider(s.connectorPortsWorkspace(runtime)),
+			DeletionGateway:  s.connectorPorts.TargetDeletionGatewayProvider(s.connectorPortsWorkspace(runtime)),
+			OperationGateway: s.connectorPorts.TargetOperationGatewayProvider(s.connectorPortsWorkspace(runtime)),
 		},
 		Network: connectormgmt.NetworkPorts{
 			Probe: func(ctx context.Context, request connectorapi.NetworkDialRequest) error {

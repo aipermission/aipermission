@@ -44,6 +44,7 @@ type TargetAdapterPorts struct {
 	DataRuntime      func(string) connectorapi.ConnectorDataRuntime
 	LifecycleRuntime func(string) connectorapi.TargetLifecycleRuntime
 	DeletionGateway  func(string, int64) connectorapi.TargetDeletionGateway
+	OperationGateway func(string, int64) connectorapi.TargetOperationGateway
 }
 
 type NetworkPorts struct {
@@ -96,6 +97,7 @@ type HTTPHandlers struct {
 	ProfileTest       *connectormanagement.ProfileTestingHTTPHandler
 	TargetDraft       *TargetDraftHTTPHandler
 	TargetDelete      *TargetDeleteHTTPHandler
+	TargetOperation   *TargetOperationHTTPHandler
 }
 
 func (component *Component) HTTPHandlers() HTTPHandlers {
@@ -112,6 +114,7 @@ func (component *Component) HTTPHandlers() HTTPHandlers {
 		ProfileTest:       connectormanagement.NewProfileTestingHTTPHandler(component.ProfileTestingScope),
 		TargetDraft:       &TargetDraftHTTPHandler{component: component},
 		TargetDelete:      &TargetDeleteHTTPHandler{component: component},
+		TargetOperation:   &TargetOperationHTTPHandler{component: component},
 	}
 }
 
