@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	defaultMaxLines      = 180
-	defaultMaxComplexity = 35
+	defaultMaxLines          = 180
+	defaultMaxComplexity     = 35
+	defaultMaxTestLines      = 220
+	defaultMaxTestComplexity = 60
 )
 
 type finding struct {
@@ -48,19 +50,23 @@ func inspectTree(root string) ([]finding, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 		parsed, err := parser.ParseFile(fileSet, path, nil, 0)
 		if err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
+		maxLines, maxComplexity := defaultMaxLines, defaultMaxComplexity
+		if strings.HasSuffix(path, "_test.go") {
+			maxLines, maxComplexity = defaultMaxTestLines, defaultMaxTestComplexity
+		}
 		for _, declaration := range parsed.Decls {
 			function, ok := declaration.(*ast.FuncDecl)
 			if !ok || function.Body == nil {
 				continue
 			}
-			inspectFunction(fileSet, filepath.ToSlash(path), functionName(function), function, function.Body, &findings)
+			inspectFunction(fileSet, filepath.ToSlash(path), functionName(function), function, function.Body, maxLines, maxComplexity, &findings)
 		}
 		return nil
 	})
@@ -72,14 +78,14 @@ func inspectTree(root string) ([]finding, error) {
 	return findings, err
 }
 
-func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, findings *[]finding) {
+func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, maxLines int, maxComplexity int, findings *[]finding) {
 	lines := fileSet.Position(node.End()).Line - fileSet.Position(node.Pos()).Line + 1
 	complexity := cyclomaticComplexity(body)
-	if lines > defaultMaxLines {
-		*findings = append(*findings, finding{path: path, function: name, metric: "lines", actual: lines, configured: defaultMaxLines})
+	if lines > maxLines {
+		*findings = append(*findings, finding{path: path, function: name, metric: "lines", actual: lines, configured: maxLines})
 	}
-	if complexity > defaultMaxComplexity {
-		*findings = append(*findings, finding{path: path, function: name, metric: "complexity", actual: complexity, configured: defaultMaxComplexity})
+	if complexity > maxComplexity {
+		*findings = append(*findings, finding{path: path, function: name, metric: "complexity", actual: complexity, configured: maxComplexity})
 	}
 
 	closures := []*ast.FuncLit{}
@@ -92,7 +98,7 @@ func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.
 		return false
 	})
 	for index, closure := range closures {
-		inspectFunction(fileSet, path, fmt.Sprintf("%s$closure%d", name, index+1), closure, closure.Body, findings)
+		inspectFunction(fileSet, path, fmt.Sprintf("%s$closure%d", name, index+1), closure, closure.Body, maxLines, maxComplexity, findings)
 	}
 }
 

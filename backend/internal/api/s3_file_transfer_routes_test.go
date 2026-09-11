@@ -19,7 +19,21 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 )
 
+type s3TransferRouteScenario struct {
+	fixture      apiTestFixture
+	runtimeID    int64
+	uploadedPath <-chan string
+}
+
 func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
+	scenario := newS3TransferRouteScenario(t)
+	assertS3TransferBrowseRoutes(t, scenario)
+	assertS3TransferSizeLimits(t, scenario)
+	assertS3TransferUploadIdempotency(t, scenario)
+}
+
+func newS3TransferRouteScenario(t *testing.T) s3TransferRouteScenario {
+	t.Helper()
 	uploadedPath := make(chan string, 1)
 	objectStore := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
@@ -64,7 +78,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 			t.Fatalf("unexpected S3 request: %s %s", r.Method, r.URL.String())
 		}
 	}))
-	defer objectStore.Close()
+	t.Cleanup(objectStore.Close)
 	endpoint, err := url.Parse(objectStore.URL)
 	if err != nil {
 		t.Fatalf("parse object store URL: %v", err)
@@ -118,45 +132,59 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	if len(payload.Items) != 1 || payload.Items[0].RuntimeID != 0 || payload.Items[0].TransferRuntimeID < 1 {
 		t.Fatalf("unexpected S3 runtime surfaces: %#v", payload.Items)
 	}
+	return s3TransferRouteScenario{
+		fixture:      fixture,
+		runtimeID:    payload.Items[0].TransferRuntimeID,
+		uploadedPath: uploadedPath,
+	}
+}
 
-	browse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID,
+func assertS3TransferBrowseRoutes(t *testing.T, scenario s3TransferRouteScenario) {
+	t.Helper()
+	handler := scenario.fixture.server.Handler()
+	browse := performJSON(handler, http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: scenario.runtimeID,
 		Path:      "/daily",
 	})
 	if browse.Code != http.StatusOK || !bytes.Contains(browse.Body.Bytes(), []byte(`"path":"/daily/report.txt"`)) || !bytes.Contains(browse.Body.Bytes(), []byte(`"has_more":true`)) {
 		t.Fatalf("browse S3 transfer runtime: %d %s", browse.Code, browse.Body.String())
 	}
-	nextBrowse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID,
+	nextBrowse := performJSON(handler, http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: scenario.runtimeID,
 		Path:      "/daily",
 		Cursor:    "page-2",
 	})
 	if nextBrowse.Code != http.StatusOK || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"path":"/daily/report-2.txt"`)) || !bytes.Contains(nextBrowse.Body.Bytes(), []byte(`"has_more":false`)) {
 		t.Fatalf("browse S3 transfer runtime next page: %d %s", nextBrowse.Code, nextBrowse.Body.String())
 	}
-	reflectedBrowse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID,
+	reflectedBrowse := performJSON(handler, http.MethodPost, "/api/file-transfers/browse", "", browseRemoteFilesRequest{
+		RuntimeID: scenario.runtimeID,
 		Path:      "/reflect",
 	})
 	if reflectedBrowse.Code != http.StatusBadGateway || bytes.Contains(reflectedBrowse.Body.Bytes(), []byte("test-secret")) {
 		t.Fatalf("browse exposed reflected S3 credential: %d %s", reflectedBrowse.Code, reflectedBrowse.Body.String())
 	}
-	reflectedExpand := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID,
+	reflectedExpand := performJSON(handler, http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
+		RuntimeID: scenario.runtimeID,
 		Path:      "/reflect-recursive",
 	})
 	if reflectedExpand.Code != http.StatusBadGateway || bytes.Contains(reflectedExpand.Body.Bytes(), []byte("test-secret")) {
 		t.Fatalf("recursive selection exposed reflected S3 credential: %d %s", reflectedExpand.Code, reflectedExpand.Body.String())
 	}
+}
+
+func assertS3TransferSizeLimits(t *testing.T, scenario s3TransferRouteScenario) {
+	t.Helper()
+	fixture := scenario.fixture
 	oversizedExpand := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/expand", "", expandRemoteFilesRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID,
+		RuntimeID: scenario.runtimeID,
 		Path:      "/large",
 	})
 	if oversizedExpand.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized recursive selection status=%d body=%s", oversizedExpand.Code, oversizedExpand.Body.String())
 	}
 	oversizedDownload := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/download", "", startDownloadRequest{
-		RuntimeID:      payload.Items[0].TransferRuntimeID,
+		RuntimeID:      scenario.runtimeID,
 		RemotePath:     "/large/object.bin",
 		IdempotencyKey: "oversized-s3-download",
 	})
@@ -165,7 +193,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	}
 	runtime := fixture.server.activeRuntime()
 	pendingBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
-		RuntimeID: payload.Items[0].TransferRuntimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceMCP,
+		RuntimeID: scenario.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceMCP,
 		Status: filetransfer.StatusPendingApproval,
 		Items: []filetransfer.CreateRequest{
 			{RemotePath: "/batch/a.bin", FileName: "a.bin"},
@@ -193,9 +221,13 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	if err != nil || rejectedBatch.Status != filetransfer.StatusFailed {
 		t.Fatalf("oversized approved batch = %#v, %v", rejectedBatch, err)
 	}
+}
 
+func assertS3TransferUploadIdempotency(t *testing.T, scenario s3TransferRouteScenario) {
+	t.Helper()
+	fixture := scenario.fixture
 	body, contentType := multipartUploadBody(t, map[string]string{
-		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"runtime_id":      strconv.FormatInt(scenario.runtimeID, 10),
 		"idempotency_key": "s3-upload-batch",
 		"remote_dir":      "/daily",
 		"overwrite":       "false",
@@ -212,7 +244,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("decode S3 upload batch: id=%d err=%v", uploadBatch.ID, err)
 	}
 	select {
-	case objectPath := <-uploadedPath:
+	case objectPath := <-scenario.uploadedPath:
 		if objectPath != "/test-bucket/daily/nested/report.txt" {
 			t.Fatalf("uploaded object path = %q", objectPath)
 		}
@@ -235,7 +267,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	}
 
 	replayBody, replayContentType := multipartUploadBody(t, map[string]string{
-		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"runtime_id":      strconv.FormatInt(scenario.runtimeID, 10),
 		"idempotency_key": "s3-upload-batch",
 		"remote_dir":      "/daily",
 		"overwrite":       "false",
@@ -246,7 +278,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("replay S3 upload batch: %d %s", replay.Code, replay.Body.String())
 	}
 	changedBody, changedContentType := multipartUploadBody(t, map[string]string{
-		"runtime_id":      strconv.FormatInt(payload.Items[0].TransferRuntimeID, 10),
+		"runtime_id":      strconv.FormatInt(scenario.runtimeID, 10),
 		"idempotency_key": "s3-upload-batch",
 		"remote_dir":      "/daily",
 		"overwrite":       "false",

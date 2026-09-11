@@ -217,7 +217,24 @@ func waitForBulkCommandHistory(t *testing.T, database *sql.DB, items []commandre
 	}
 }
 
+type historyRoutesScenario struct {
+	fixture         apiTestFixture
+	token           tokens.Token
+	server          testSSHConnectorProfile
+	dockerID        int64
+	dockerHistoryID int64
+}
+
 func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
+	scenario := newHistoryRoutesScenario(t)
+	assertCommandHistoryRoutes(t, &scenario)
+	assertConnectorHistoryRoutes(t, scenario)
+	assertHistoryLabelRoutes(t, scenario)
+	assertAuditHistoryRoutes(t, scenario)
+}
+
+func newHistoryRoutesScenario(t *testing.T) historyRoutesScenario {
+	t.Helper()
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
@@ -254,6 +271,18 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert uptime request: %v", err)
 	}
+	return historyRoutesScenario{
+		fixture:  fixture,
+		token:    token.Token,
+		server:   server,
+		dockerID: dockerID,
+	}
+}
+
+func assertCommandHistoryRoutes(t *testing.T, scenario *historyRoutesScenario) {
+	t.Helper()
+	fixture := scenario.fixture
+	dockerID := scenario.dockerID
 	historyResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?q=docker&limit=1", "", nil)
 	if historyResponse.Code != http.StatusOK {
 		t.Fatalf("history search failed: %d %s", historyResponse.Code, historyResponse.Body.String())
@@ -284,7 +313,16 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if unifiedDockerPage.Total != 1 || len(unifiedDockerPage.Items) != 1 || unifiedDockerPage.Items[0].SourceRefID != dockerID {
 		t.Fatalf("unexpected unified docker history page: %#v", unifiedDockerPage)
 	}
-	dockerHistoryID := unifiedDockerPage.Items[0].ID
+	scenario.dockerHistoryID = unifiedDockerPage.Items[0].ID
+}
+
+func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) {
+	t.Helper()
+	fixture := scenario.fixture
+	ctx := context.Background()
+	token := scenario.token
+	server := scenario.server
+	dockerID := scenario.dockerID
 	store := connectortargets.NewStore(fixture.db)
 	sshConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
@@ -414,6 +452,13 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if profileFilterPage.Total != 1 || len(profileFilterPage.Items) != 1 || profileFilterPage.Items[0].SourceRefID != connectorRequest.ID {
 		t.Fatalf("postgres profile filter should isolate one profile, got %#v", profileFilterPage)
 	}
+}
+
+func assertHistoryLabelRoutes(t *testing.T, scenario historyRoutesScenario) {
+	t.Helper()
+	fixture := scenario.fixture
+	dockerID := scenario.dockerID
+	dockerHistoryID := scenario.dockerHistoryID
 	labelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/history-labels", "", createHistoryLabelRequest{Name: "issue-440"})
 	if labelResponse.Code != http.StatusCreated {
 		t.Fatalf("create history label failed: %d %s", labelResponse.Code, labelResponse.Body.String())
@@ -465,7 +510,14 @@ func TestHistoryAndAuditPaginationSearchAndDetail(t *testing.T) {
 	if filterDeletedLabelResponse.Code != http.StatusOK || filterDeletedLabelPage.Total != 0 {
 		t.Fatalf("deleted label should filter as empty: %d %#v", filterDeletedLabelResponse.Code, filterDeletedLabelPage)
 	}
+}
 
+func assertAuditHistoryRoutes(t *testing.T, scenario historyRoutesScenario) {
+	t.Helper()
+	fixture := scenario.fixture
+	ctx := context.Background()
+	token := scenario.token
+	server := scenario.server
 	sensitivePayload := strings.Repeat("x", 700) + " docker image scan"
 	fixture.server.writeObservationAudit(ctx, fixture.server.activeRuntime(), "user", &token.ID, server.ID, "docker.audit", map[string]any{
 		"detail": sensitivePayload,

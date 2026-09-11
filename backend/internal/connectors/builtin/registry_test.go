@@ -152,7 +152,16 @@ func TestBuiltInConnectorPrepareActionsAreDeterministic(t *testing.T) {
 
 func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView, connectors.CredentialProfileView, map[string]map[string]any) {
 	t.Helper()
+	switch kind {
+	case clickhouseconnector.Kind, dockerconnector.Kind, kubernetesconnector.Kind, kafkaconnector.Kind, mailconnector.Kind:
+		return builtInDeterminismSamplesPartOne(t, kind)
+	default:
+		return builtInDeterminismSamplesPartTwo(t, kind)
+	}
+}
 
+func builtInDeterminismSamplesPartOne(t *testing.T, kind string) (connectors.TargetView, connectors.CredentialProfileView, map[string]map[string]any) {
+	t.Helper()
 	switch kind {
 	case clickhouseconnector.Kind:
 		return connectors.TargetView{
@@ -288,6 +297,15 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 				mailconnector.ActionReplyMessage:    {"message_ref": messageRef, "to": []any{"operator@example.com"}, "subject": "Re: Status", "text_body": "Acknowledged."},
 				mailconnector.ActionDeleteMessage:   {"message_ref": messageRef},
 			}
+	default:
+		t.Fatalf("missing first-group deterministic samples for connector %q", kind)
+	}
+	return connectors.TargetView{}, connectors.CredentialProfileView{}, nil
+}
+
+func builtInDeterminismSamplesPartTwo(t *testing.T, kind string) (connectors.TargetView, connectors.CredentialProfileView, map[string]map[string]any) {
+	t.Helper()
+	switch kind {
 	case postgresconnector.Kind:
 		return connectors.TargetView{
 				ID:            1,

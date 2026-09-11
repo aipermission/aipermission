@@ -125,46 +125,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	if storageUsage.UsedBytes < 1 || !storageUsage.QuotaEnabled || storageUsage.BackupCount != 1 {
 		t.Fatalf("storage usage was incomplete: %#v", storageUsage)
 	}
-	retention := performJSON(handler, http.MethodGet, providerPath(created.ID, "/retention"), "", nil)
-	if retention.Code != http.StatusOK {
-		t.Fatalf("retention policy failed: %d %s", retention.Code, retention.Body.String())
-	}
-	retentionPolicy := decodeRouteResponse[backups.ServiceRetentionPolicy](t, retention.Body.Bytes())
-	if retentionPolicy.Enabled || retentionPolicy.KeepLatest != 0 {
-		t.Fatalf("unexpected default retention policy: %#v", retentionPolicy)
-	}
-	if invalid := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 0}); invalid.Code != http.StatusBadRequest {
-		t.Fatalf("invalid retention preview status = %d body=%s", invalid.Code, invalid.Body.String())
-	}
-	if invalid := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", map[string]any{"enabled": false, "keep_latest": 1}); invalid.Code != http.StatusBadRequest {
-		t.Fatalf("invalid disabled retention status = %d body=%s", invalid.Code, invalid.Body.String())
-	}
-	preview := performJSON(handler, http.MethodPost, providerPath(created.ID, "/retention/preview"), "", map[string]any{"keep_latest": 1})
-	if preview.Code != http.StatusOK {
-		t.Fatalf("retention preview failed: %d %s", preview.Code, preview.Body.String())
-	}
-	retentionPreview := decodeRouteResponse[backups.ServiceRetentionPreview](t, preview.Body.Bytes())
-	if retentionPreview.KeepLatest != 1 || retentionPreview.RetainCount != 1 || retentionPreview.DeleteCount != 0 {
-		t.Fatalf("unexpected retention preview: %#v", retentionPreview)
-	}
-	update := performJSON(handler, http.MethodPut, providerPath(created.ID, "/retention"), "", map[string]any{
-		"enabled": true, "keep_latest": 1, "apply_now": true,
-	})
-	if update.Code != http.StatusOK {
-		t.Fatalf("retention update failed: %d %s", update.Code, update.Body.String())
-	}
-	retentionUpdate := decodeRouteResponse[backups.ServiceRetentionUpdate](t, update.Body.Bytes())
-	if !retentionUpdate.Policy.Enabled || retentionUpdate.Policy.KeepLatest != 1 || retentionUpdate.DeletedCount != 0 {
-		t.Fatalf("unexpected retention update: %#v", retentionUpdate)
-	}
-	prune := performJSON(handler, http.MethodPost, providerPath(created.ID, "/prune"), "", map[string]any{"keep_latest": 1})
-	if prune.Code != http.StatusOK {
-		t.Fatalf("prune failed: %d %s", prune.Code, prune.Body.String())
-	}
-	pruneResult := decodeRouteResponse[backups.ServicePruneResult](t, prune.Body.Bytes())
-	if pruneResult.KeepLatest != 1 || pruneResult.DeletedCount != 0 {
-		t.Fatalf("unexpected prune result: %#v", pruneResult)
-	}
+	assertBackupRetentionLifecycle(t, handler, created.ID)
 	download := performJSON(handler, http.MethodGet, providerPath(created.ID, "/records/"+strconv.FormatInt(record.ID, 10)+"/download"), "", nil)
 	if download.Code != http.StatusOK || download.Body.Len() != int(record.SizeBytes) {
 		t.Fatalf("download failed: %d bytes=%d body=%s", download.Code, download.Body.Len(), download.Body.String())
@@ -217,6 +178,50 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 	}
 	if encrypted != "" {
 		t.Fatal("archived provider retained its encrypted token")
+	}
+}
+
+func assertBackupRetentionLifecycle(t *testing.T, handler http.Handler, providerID int64) {
+	t.Helper()
+	retention := performJSON(handler, http.MethodGet, providerPath(providerID, "/retention"), "", nil)
+	if retention.Code != http.StatusOK {
+		t.Fatalf("retention policy failed: %d %s", retention.Code, retention.Body.String())
+	}
+	policy := decodeRouteResponse[backups.ServiceRetentionPolicy](t, retention.Body.Bytes())
+	if policy.Enabled || policy.KeepLatest != 0 {
+		t.Fatalf("unexpected default retention policy: %#v", policy)
+	}
+	if invalid := performJSON(handler, http.MethodPost, providerPath(providerID, "/retention/preview"), "", map[string]any{"keep_latest": 0}); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid retention preview status = %d body=%s", invalid.Code, invalid.Body.String())
+	}
+	if invalid := performJSON(handler, http.MethodPut, providerPath(providerID, "/retention"), "", map[string]any{"enabled": false, "keep_latest": 1}); invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid disabled retention status = %d body=%s", invalid.Code, invalid.Body.String())
+	}
+	preview := performJSON(handler, http.MethodPost, providerPath(providerID, "/retention/preview"), "", map[string]any{"keep_latest": 1})
+	if preview.Code != http.StatusOK {
+		t.Fatalf("retention preview failed: %d %s", preview.Code, preview.Body.String())
+	}
+	previewValue := decodeRouteResponse[backups.ServiceRetentionPreview](t, preview.Body.Bytes())
+	if previewValue.KeepLatest != 1 || previewValue.RetainCount != 1 || previewValue.DeleteCount != 0 {
+		t.Fatalf("unexpected retention preview: %#v", previewValue)
+	}
+	update := performJSON(handler, http.MethodPut, providerPath(providerID, "/retention"), "", map[string]any{
+		"enabled": true, "keep_latest": 1, "apply_now": true,
+	})
+	if update.Code != http.StatusOK {
+		t.Fatalf("retention update failed: %d %s", update.Code, update.Body.String())
+	}
+	updated := decodeRouteResponse[backups.ServiceRetentionUpdate](t, update.Body.Bytes())
+	if !updated.Policy.Enabled || updated.Policy.KeepLatest != 1 || updated.DeletedCount != 0 {
+		t.Fatalf("unexpected retention update: %#v", updated)
+	}
+	prune := performJSON(handler, http.MethodPost, providerPath(providerID, "/prune"), "", map[string]any{"keep_latest": 1})
+	if prune.Code != http.StatusOK {
+		t.Fatalf("prune failed: %d %s", prune.Code, prune.Body.String())
+	}
+	pruned := decodeRouteResponse[backups.ServicePruneResult](t, prune.Body.Bytes())
+	if pruned.KeepLatest != 1 || pruned.DeletedCount != 0 {
+		t.Fatalf("unexpected prune result: %#v", pruned)
 	}
 }
 

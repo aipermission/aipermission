@@ -1,7 +1,12 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { backendFanoutBudgets, budgetIncreases, budgetSnapshot, goFunctionBudgets } = require("./maintenance-budget-ratchet");
+const {
+  backendFanoutBudgets,
+  budgetIncreases,
+  budgetSnapshot,
+  goFunctionBudgets,
+} = require("./maintenance-budget-ratchet");
 
 const checkSource = `
 const sourceBudgets = [
@@ -22,7 +27,10 @@ const backendPackageBudgetOverrides = new Map([
 ]);
 const suppressionBudget = 0;
 `;
-const architectureSource = JSON.stringify({ maxDependencyFanout: 20, maxProductionModuleLines: 550 });
+const architectureSource = JSON.stringify({
+  maxDependencyFanout: 20,
+  maxProductionModuleLines: 550,
+});
 
 test("extracts every mutable maintenance ceiling", () => {
   assert.deepEqual(budgetSnapshot(checkSource, architectureSource), {
@@ -46,29 +54,94 @@ test("extracts every mutable maintenance ceiling", () => {
 test("treats newly introduced test budgets as tightening", () => {
   const legacy = checkSource
     .split("\n")
-    .filter((line) => !line.includes("TestSourceBudget") && !line.includes("TestPackageBudget"))
+    .filter(
+      (line) =>
+        !line.includes("TestSourceBudget") &&
+        !line.includes("TestPackageBudget"),
+    )
     .join("\n");
-  assert.deepEqual(budgetIncreases(budgetSnapshot(legacy, architectureSource), budgetSnapshot(checkSource, architectureSource)), []);
+  assert.deepEqual(
+    budgetIncreases(
+      budgetSnapshot(legacy, architectureSource),
+      budgetSnapshot(checkSource, architectureSource),
+    ),
+    [],
+  );
+});
+
+test("rejects removing an established maintenance ceiling", () => {
+  const base = budgetSnapshot(checkSource, architectureSource);
+  const withoutTestCeiling = checkSource.replace(
+    "const frontendTestSourceBudget = 1000;",
+    "",
+  );
+  assert.deepEqual(
+    budgetIncreases(
+      base,
+      budgetSnapshot(withoutTestCeiling, architectureSource),
+    ),
+    [
+      "frontendTestSourceBudget was removed from the current maintenance budget",
+    ],
+  );
+});
+
+test("allows removing an explicit exception because the default becomes stricter", () => {
+  const base = budgetSnapshot(checkSource, architectureSource);
+  const withoutOverride = checkSource.replace(
+    'const backendPackageBudgetOverrides = new Map([\n  ["backend/internal/api", 23500],\n]);',
+    "const backendPackageBudgetOverrides = new Map();",
+  );
+  assert.deepEqual(
+    budgetIncreases(base, budgetSnapshot(withoutOverride, architectureSource)),
+    [],
+  );
 });
 
 test("rejects raised ceilings while allowing tighter inherited package budgets", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
-  assert.deepEqual(budgetIncreases(base, { ...base, connectorSourceBudget: 849 }), []);
-  assert.deepEqual(budgetIncreases(base, { ...base, connectorSourceBudget: 851 }), ["connectorSourceBudget increased from 850 to 851"]);
-  assert.deepEqual(budgetIncreases(base, { ...base, "backend.package.backend/internal/new": 100 }), []);
-  assert.deepEqual(budgetIncreases(base, { ...base, "backend.package.backend/internal/new": 3600 }), [
-    "backend.package.backend/internal/new is a new unreviewed budget (3600)",
-  ]);
+  assert.deepEqual(
+    budgetIncreases(base, { ...base, connectorSourceBudget: 849 }),
+    [],
+  );
+  assert.deepEqual(
+    budgetIncreases(base, { ...base, connectorSourceBudget: 851 }),
+    ["connectorSourceBudget increased from 850 to 851"],
+  );
+  assert.deepEqual(
+    budgetIncreases(base, {
+      ...base,
+      "backend.package.backend/internal/new": 100,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    budgetIncreases(base, {
+      ...base,
+      "backend.package.backend/internal/new": 3600,
+    }),
+    ["backend.package.backend/internal/new is a new unreviewed budget (3600)"],
+  );
 });
 
 test("rejects a source-file exception introduced by the same change", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
-  const tighter = checkSource.replace("const sourceBudgetOverrides = new Map();", 'const sourceBudgetOverrides = new Map([["frontend/src/small.jsx", 500]]);');
-  assert.deepEqual(budgetIncreases(base, budgetSnapshot(tighter, architectureSource)), []);
-  const changed = checkSource.replace("const sourceBudgetOverrides = new Map();", 'const sourceBudgetOverrides = new Map([["frontend/src/large.jsx", 900]]);');
-  assert.deepEqual(budgetIncreases(base, budgetSnapshot(changed, architectureSource)), [
-    "source.override.frontend/src/large.jsx is a new unreviewed budget (900)",
-  ]);
+  const tighter = checkSource.replace(
+    "const sourceBudgetOverrides = new Map();",
+    'const sourceBudgetOverrides = new Map([["frontend/src/small.jsx", 500]]);',
+  );
+  assert.deepEqual(
+    budgetIncreases(base, budgetSnapshot(tighter, architectureSource)),
+    [],
+  );
+  const changed = checkSource.replace(
+    "const sourceBudgetOverrides = new Map();",
+    'const sourceBudgetOverrides = new Map([["frontend/src/large.jsx", 900]]);',
+  );
+  assert.deepEqual(
+    budgetIncreases(base, budgetSnapshot(changed, architectureSource)),
+    ["source.override.frontend/src/large.jsx is a new unreviewed budget (900)"],
+  );
 });
 
 test("treats architecture constraints added over the legacy source budget as tightening", () => {
@@ -78,7 +151,10 @@ test("treats architecture constraints added over the legacy source budget as tig
   );
   const legacy = budgetSnapshot(legacySource);
   const current = budgetSnapshot(legacySource, architectureSource);
-  assert.equal(legacy["frontend.maxDependencyFanout"], Number.POSITIVE_INFINITY);
+  assert.equal(
+    legacy["frontend.maxDependencyFanout"],
+    Number.POSITIVE_INFINITY,
+  );
   assert.deepEqual(budgetIncreases(legacy, current), []);
 });
 
@@ -87,6 +163,8 @@ test("ratchets Go function defaults and per-function overrides", () => {
 const (
   defaultMaxLines = 180
   defaultMaxComplexity = 35
+  defaultMaxTestLines = 220
+  defaultMaxTestComplexity = 60
 )
 var overrides = map[string]budget{
   "internal/api/routes.go:Server.routes": {lines: 191, complexity: defaultMaxComplexity},
@@ -96,22 +174,39 @@ var overrides = map[string]budget{
   assert.deepEqual(snapshot, {
     "go.function.default.lines": 180,
     "go.function.default.complexity": 35,
+    "go.function.test.lines": 220,
+    "go.function.test.complexity": 60,
     "go.function.override.internal/api/routes.go:Server.routes.lines": 191,
     "go.function.override.internal/api/routes.go:Server.routes.complexity": 35,
   });
-  assert.deepEqual(budgetIncreases(snapshot, { ...snapshot, "go.function.default.lines": 181 }), [
-    "go.function.default.lines increased from 180 to 181",
-  ]);
+  assert.deepEqual(
+    budgetIncreases(snapshot, {
+      ...snapshot,
+      "go.function.default.lines": 181,
+    }),
+    ["go.function.default.lines increased from 180 to 181"],
+  );
+  assert.deepEqual(
+    budgetIncreases(snapshot, {
+      ...snapshot,
+      "go.function.test.complexity": 61,
+    }),
+    ["go.function.test.complexity increased from 60 to 61"],
+  );
   assert.deepEqual(
     goFunctionBudgets(`
 const (
   defaultMaxLines = 180
   defaultMaxComplexity = 35
+  defaultMaxTestLines = 220
+  defaultMaxTestComplexity = 60
 )
 `),
     {
       "go.function.default.lines": 180,
       "go.function.default.complexity": 35,
+      "go.function.test.lines": 220,
+      "go.function.test.complexity": 60,
     },
   );
 });
@@ -120,6 +215,7 @@ test("ratchets backend fan-out defaults and overrides", () => {
   const source = `
 func test() {
   const defaultBudget = 8
+  const maxTestFileInternalImports = 14
   overrides := map[string]int{
     modulePath + "/internal/api": 28,
   }
@@ -127,6 +223,7 @@ func test() {
 `;
   assert.deepEqual(backendFanoutBudgets(source), {
     "go.fanout.default": 8,
+    "go.testImports.maxPerFile": 14,
     "go.fanout.override./internal/api": 28,
   });
 });

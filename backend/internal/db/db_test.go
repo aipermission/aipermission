@@ -20,7 +20,18 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 		t.Fatalf("open encrypted db: %v", err)
 	}
 	defer database.Close()
+	assertMigrationMetadata(t, database)
+	assertBaselineSchemaObjects(t, database)
+	assertBaselineRuntimeConstraints(t, database, path)
 
+	if wrong, err := OpenEncrypted(path, "wrong-password"); err == nil {
+		_ = wrong.Close()
+		t.Fatalf("expected wrong password to fail")
+	}
+}
+
+func assertMigrationMetadata(t *testing.T, database *sql.DB) {
+	t.Helper()
 	var count int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'api_tokens'`).Scan(&count); err != nil {
 		t.Fatalf("query schema: %v", err)
@@ -91,6 +102,10 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	if !strings.Contains(plan.String(), "idx_history_entries_kind_created") || strings.Contains(plan.String(), "TEMP B-TREE") {
 		t.Fatalf("history cursor query does not use its covering order index:\n%s", plan.String())
 	}
+}
+
+func assertBaselineSchemaObjects(t *testing.T, database *sql.DB) {
+	t.Helper()
 	if !tableExists(t, database, "redaction_rules") {
 		t.Fatalf("redaction_rules table was not created")
 	}
@@ -203,6 +218,10 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 			t.Fatalf("audit_logs.%s column was not created", column)
 		}
 	}
+}
+
+func assertBaselineRuntimeConstraints(t *testing.T, database *sql.DB, path string) {
+	t.Helper()
 	var connectorTriggerSQL string
 	if err := database.QueryRow(`SELECT COALESCE(group_concat(sql, char(10)), '') FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%connector%'`).Scan(&connectorTriggerSQL); err != nil {
 		t.Fatalf("read connector trigger sql: %v", err)
@@ -227,11 +246,6 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	assertConnectorProfileTargetForeignKeys(t, database)
 	if LooksLikePlainSQLite(path) {
 		t.Fatalf("encrypted database should not have plaintext sqlite header")
-	}
-
-	if wrong, err := OpenEncrypted(path, "wrong-password"); err == nil {
-		_ = wrong.Close()
-		t.Fatalf("expected wrong password to fail")
 	}
 }
 

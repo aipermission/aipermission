@@ -2,6 +2,7 @@ package vaultrequests
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -14,12 +15,30 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
+type storeTestScenario struct {
+	database  *sql.DB
+	ctx       context.Context
+	projectID int64
+	tokenID   int64
+	store     *Store
+}
+
 func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
+	scenario := newStoreTestScenario(t)
+	assertIdempotencyAndBasicTransitions(t, scenario)
+	assertStaleTransitions(t, scenario)
+	assertRuntimeStaleTransition(t, scenario)
+	assertCancelExpiryAndRestartTransitions(t, scenario)
+	assertDeclineAndSingleStaleTransitions(t, scenario)
+}
+
+func newStoreTestScenario(t *testing.T) storeTestScenario {
+	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "requests.db"), "test-password")
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	defer database.Close()
+	t.Cleanup(func() { _ = database.Close() })
 	ctx := context.Background()
 	project, err := projectstore.NewStore(database).Create(ctx, "Vault Requests")
 	if err != nil {
@@ -29,9 +48,16 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
-	store := NewStore(database)
+	return storeTestScenario{
+		database: database, ctx: ctx, projectID: project.ID, tokenID: token.ID, store: NewStore(database),
+	}
+}
+
+func assertIdempotencyAndBasicTransitions(t *testing.T, scenario storeTestScenario) {
+	t.Helper()
+	ctx, store := scenario.ctx, scenario.store
 	input := CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "PROJECT_KEY"}, ApprovalContextHash: "context",
 		IdempotencyKey: "same-request",
 	}
@@ -67,7 +93,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 
 	running, created, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "ALWAYS_KEY"}, ApprovalContextHash: "always-context",
 		IdempotencyKey: "always-request", InitialStatus: StatusRunning,
 	})
@@ -81,9 +107,13 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	if err != nil || completedRunning.Status != StatusCompleted {
 		t.Fatalf("complete running request = %#v err=%v", completedRunning, err)
 	}
+}
 
+func assertStaleTransitions(t *testing.T, scenario storeTestScenario) {
+	t.Helper()
+	ctx, store := scenario.ctx, scenario.store
 	pending, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionRestartSession,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionRestartSession,
 		Input: map[string]any{"target_ref": "ssh:1:1"},
 		ApprovalContext: map[string]any{"items": []any{map[string]any{
 			"item_id": float64(42), "binding_id": float64(9),
@@ -102,7 +132,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 
 	pendingByAction, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionRestartSession,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionRestartSession,
 		Input:               map[string]any{"target_ref": "ssh:2:2"},
 		ApprovalContextHash: "session-action-context", IdempotencyKey: "session-action-request",
 	})
@@ -110,7 +140,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 		t.Fatalf("create action-scoped request: %v", err)
 	}
 	unrelatedPending, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input:               map[string]any{"name": "UNCHANGED_KEY"},
 		ApprovalContextHash: "generate-action-context", IdempotencyKey: "generate-action-request",
 	})
@@ -128,9 +158,13 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	if err != nil || stillPending.Status != StatusApprovalPending {
 		t.Fatalf("unrelated request = %#v %v", stillPending, err)
 	}
+}
 
+func assertRuntimeStaleTransition(t *testing.T, scenario storeTestScenario) {
+	t.Helper()
+	database, ctx, store := scenario.database, scenario.ctx, scenario.store
 	target, err := connectortargets.NewStore(database).CreateTarget(ctx, connectortargets.CreateTargetInput{
-		ProjectID: project.ID, ConnectorKind: "test", Name: "Runtime request target",
+		ProjectID: scenario.projectID, ConnectorKind: "test", Name: "Runtime request target",
 	})
 	if err != nil {
 		t.Fatalf("create runtime request target: %v", err)
@@ -151,7 +185,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 	runtimeID := surface.ID
 	pendingByRuntime, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, RuntimeID: &runtimeID,
 		ActionName: ActionRestartSession, Input: map[string]any{"target_ref": "ssh:3:3"},
 		ApprovalContextHash: "runtime-context", IdempotencyKey: "runtime-request",
 	})
@@ -165,25 +199,29 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	if err != nil || staleByRuntime.Status != StatusStale {
 		t.Fatalf("runtime-scoped stale request = %#v %v", staleByRuntime, err)
 	}
+}
 
+func assertCancelExpiryAndRestartTransitions(t *testing.T, scenario storeTestScenario) {
+	t.Helper()
+	database, ctx, store := scenario.database, scenario.ctx, scenario.store
 	cancelable, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "CANCELED_KEY"}, ApprovalContextHash: "cancel-context",
 		IdempotencyKey: "cancel-request",
 	})
 	if err != nil {
 		t.Fatalf("create cancelable request: %v", err)
 	}
-	canceled, err := store.CancelOwned(ctx, cancelable.ID, token.ID)
+	canceled, err := store.CancelOwned(ctx, cancelable.ID, scenario.tokenID)
 	if err != nil || canceled.Status != StatusCanceled {
 		t.Fatalf("cancel request = %#v %v", canceled, err)
 	}
-	if _, err := store.CancelOwned(ctx, cancelable.ID, token.ID); err != ErrNotPending {
+	if _, err := store.CancelOwned(ctx, cancelable.ID, scenario.tokenID); err != ErrNotPending {
 		t.Fatalf("cancel terminal request = %v", err)
 	}
 
 	expiring, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "EXPIRING_KEY"}, ApprovalContextHash: "expiry-context",
 		IdempotencyKey: "expiry-request",
 	})
@@ -202,7 +240,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 		t.Fatalf("claim expired request = %v", err)
 	}
 	replayedExpired, created, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "EXPIRING_KEY"}, ApprovalContextHash: "expiry-context",
 		IdempotencyKey: "expiry-request",
 	})
@@ -211,7 +249,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 
 	runningRequest, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "RESTARTED_KEY"}, ApprovalContextHash: "restart-context",
 		IdempotencyKey: "restart-request",
 	})
@@ -239,9 +277,13 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	if historyStatus != StatusFailed || historyError != "gateway restarted during execution" {
 		t.Fatalf("history projection status=%q error=%q", historyStatus, historyError)
 	}
+}
 
+func assertDeclineAndSingleStaleTransitions(t *testing.T, scenario storeTestScenario) {
+	t.Helper()
+	ctx, store := scenario.ctx, scenario.store
 	declinable, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "DECLINED_KEY"}, ApprovalContextHash: "decline-context",
 		IdempotencyKey: "decline-request",
 	})
@@ -257,7 +299,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 
 	invalidTerminal, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionGenerateItem,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionGenerateItem,
 		Input: map[string]any{"name": "INVALID_TERMINAL_KEY"}, ApprovalContextHash: "invalid-terminal-context",
 		IdempotencyKey: "invalid-terminal-request", InitialStatus: StatusRunning,
 	})
@@ -272,7 +314,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 	}
 
 	singleStale, _, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionRestartSession,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionRestartSession,
 		Input: map[string]any{"target_ref": "ssh:4:4"}, ApprovalContextHash: "single-stale-context",
 		IdempotencyKey: "single-stale-request",
 	})
@@ -284,7 +326,7 @@ func TestStoreUsesTokenScopedIdempotencyAndStrictTransitions(t *testing.T) {
 		t.Fatalf("stale single request = %#v err=%v", staled, err)
 	}
 	replayedStale, created, err := store.Create(ctx, CreateInput{
-		TokenID: token.ID, ProjectID: project.ID, ActionName: ActionRestartSession,
+		TokenID: scenario.tokenID, ProjectID: scenario.projectID, ActionName: ActionRestartSession,
 		Input: map[string]any{"target_ref": "ssh:4:4"}, ApprovalContextHash: "single-stale-context",
 		IdempotencyKey: "single-stale-request",
 	})

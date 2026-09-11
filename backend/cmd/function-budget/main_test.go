@@ -4,6 +4,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,5 +36,22 @@ func TestCyclomaticComplexityExcludesNestedClosures(t *testing.T) {
 	})
 	if got := cyclomaticComplexity(closure.Body); got != 3 {
 		t.Fatalf("closure complexity = %d, want 3", got)
+	}
+}
+
+func TestInspectTreeAppliesSeparateTestFunctionBudget(t *testing.T) {
+	root := t.TempDir()
+	source := "package fixture\nfunc oversized() {\n" + strings.Repeat("\n", defaultMaxLines) + "}\n"
+	for _, name := range []string{"production.go", "fixture_test.go"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	findings, err := inspectTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || !strings.HasSuffix(findings[0].path, "production.go") || findings[0].metric != "lines" {
+		t.Fatalf("findings = %#v, want only production line-budget violation", findings)
 	}
 }

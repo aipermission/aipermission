@@ -18,6 +18,8 @@ import (
 
 const modulePath = "github.com/aipermission/aipermission/backend"
 
+const maxTestFileInternalImports = 14
+
 func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 	packages := []string{
 		modulePath + "/internal/connectors",
@@ -409,6 +411,35 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 	}
 }
 
+func TestTestFilesRespectInternalImportBudget(t *testing.T) {
+	root := filepath.Join("..", "..", "internal")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		count := 0
+		for _, imported := range file.Imports {
+			if strings.HasPrefix(strings.Trim(imported.Path.Value, `"`), modulePath+"/internal/") {
+				count++
+			}
+		}
+		if count > maxTestFileInternalImports {
+			t.Errorf("%s has %d direct internal imports; test-file budget is %d", path, count, maxTestFileInternalImports)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect test imports: %v", err)
+	}
+}
+
 func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
 	importsByPackage := allPackageImports(t)
 	state := map[string]uint8{}
@@ -476,7 +507,15 @@ func allPackageImports(t *testing.T) map[string][]string {
 		if !ok || importer == "" {
 			continue
 		}
-		result[importer] = strings.Fields(imports)
+		seen := map[string]bool{}
+		for _, imported := range strings.Fields(imports) {
+			seen[imported] = true
+		}
+		result[importer] = make([]string, 0, len(seen))
+		for imported := range seen {
+			result[importer] = append(result[importer], imported)
+		}
+		sort.Strings(result[importer])
 	}
 	return result
 }
