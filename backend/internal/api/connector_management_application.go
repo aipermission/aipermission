@@ -54,6 +54,8 @@ func (s *Server) newConnectorManagementApplication() *connectormgmt.Component {
 				return adapter != nil
 			},
 		},
+		Adapters:     s.connectorAdapterRegistry(),
+		PeerIdentity: s.connectorPorts.PeerGateway(),
 	})
 }
 
@@ -130,6 +132,11 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 		Lifecycle: connectormgmt.LifecyclePorts{
 			AfterChange: func(ctx context.Context, change connectormgmt.TargetLifecycleChange) error {
 				return s.connectorLifecycleApplication(runtime).AfterCredentialChange(ctx, change)
+			},
+		},
+		Adapters: connectormgmt.TargetAdapterPorts{
+			DataRuntime: func(kind string) connectorapi.ConnectorDataRuntime {
+				return s.connectorDataRuntimePort(runtime, kind)
 			},
 		},
 		Network: connectormgmt.NetworkPorts{

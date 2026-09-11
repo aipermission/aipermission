@@ -38,6 +38,10 @@ type LifecyclePorts struct {
 	AfterChange func(context.Context, connectormanagement.TargetLifecycleChange) error
 }
 
+type TargetAdapterPorts struct {
+	DataRuntime func(string) connectorapi.ConnectorDataRuntime
+}
+
 type NetworkPorts struct {
 	Probe  func(context.Context, connectors.NetworkDialRequest) error
 	Redact func(context.Context, string) string
@@ -54,6 +58,7 @@ type Workspace struct {
 	Lifecycle   LifecyclePorts
 	Network     NetworkPorts
 	Observation ObservationPorts
+	Adapters    TargetAdapterPorts
 }
 
 type CapabilityDependencies struct {
@@ -66,6 +71,8 @@ type Dependencies struct {
 	Active       func(http.ResponseWriter) (Workspace, bool)
 	Approvals    connectorapproval.ScopeProvider
 	Capabilities CapabilityDependencies
+	Adapters     *connectorapi.Registry
+	PeerIdentity connectorapi.PeerIdentityGateway
 }
 
 type Component struct{ dependencies Dependencies }
@@ -83,6 +90,7 @@ type HTTPHandlers struct {
 	ProfileBackup     *connectormanagement.ProfileBackupHTTPHandler
 	ProfileDelete     *connectormanagement.ProfileDeletionHTTPHandler
 	ProfileTest       *connectormanagement.ProfileTestingHTTPHandler
+	TargetDraft       *TargetDraftHTTPHandler
 }
 
 func (component *Component) HTTPHandlers() HTTPHandlers {
@@ -97,6 +105,7 @@ func (component *Component) HTTPHandlers() HTTPHandlers {
 		ProfileBackup:     connectormanagement.NewProfileBackupHTTPHandler(component.ProfileBackupScope),
 		ProfileDelete:     connectormanagement.NewProfileDeletionHTTPHandler(component.ProfileDeletionScope),
 		ProfileTest:       connectormanagement.NewProfileTestingHTTPHandler(component.ProfileTestingScope),
+		TargetDraft:       &TargetDraftHTTPHandler{component: component},
 	}
 }
 

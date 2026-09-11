@@ -61,7 +61,7 @@ func (s *Server) routes() {
 		CombinedMutations: connectorHTTP.CombinedMutations,
 		TargetMutations:   connectorHTTP.TargetMutations,
 		HostPing:          connectorHTTP.HostPing,
-		TestTarget:        connectorTargets.testConnectorTargetDraft,
+		TestTarget:        connectorHTTP.TargetDraft.Test,
 		DeleteTarget:      connectorTargets.deleteConnectorTarget,
 		ProfileMutations:  connectorHTTP.ProfileMutations,
 		ProfileProvision:  connectorHTTP.ProfileProvision,

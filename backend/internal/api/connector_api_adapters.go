@@ -83,11 +83,6 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	}
 }
 
-func (s *Server) connectorDraftTesterFor(kind string) connectorapi.DraftTester {
-	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.DraftTester)
-	return adapter
-}
-
 func (s *Server) connectorTargetDeleterFor(kind string) connectorapi.TargetDeleter {
 	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TargetDeleter)
 	return adapter
