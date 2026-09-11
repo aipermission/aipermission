@@ -8,7 +8,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 var ErrApprovalChanged = errors.New("connector transport approval dependency changed before use")
@@ -23,7 +22,7 @@ func NewApproved(dependencies []actions.ResolvedDependency) Approved {
 	return approved
 }
 
-func (approved Approved) Acquire(ctx context.Context, runtime workspaceruntime.Port, purpose, targetRef string) (func(), error) {
+func (approved Approved) Acquire(ctx context.Context, runtime Runtime, purpose, targetRef string) (func(), error) {
 	if approved == nil {
 		return func() {}, nil
 	}
@@ -31,14 +30,14 @@ func (approved Approved) Acquire(ctx context.Context, runtime workspaceruntime.P
 	if !ok {
 		return nil, ErrApprovalChanged
 	}
-	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
+	if runtime.Database == nil || runtime.AcquireDelivery == nil {
 		return nil, errors.New("database runtime is not available")
 	}
-	release, err := runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery(ctx)
+	release, err := runtime.AcquireDelivery(ctx)
 	if err != nil {
 		return nil, err
 	}
-	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
+	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil || !reflect.DeepEqual(currentTarget, expected.Target) || !reflect.DeepEqual(currentProfile, expected.Profile) {
 		release()
 		return nil, ErrApprovalChanged

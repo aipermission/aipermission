@@ -55,13 +55,13 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 		return gatewayoperations.FileTransferConnectorPorts{}, err
 	}
 	boundary := actions.NewCredentialBoundary(nil)
-	scope := connectors.ScopeWithSecretAccessor(runtime, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
+	scope := connectors.ScopeWithSecretAccessor(connectorWorkspace(runtime).Connector, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
 		boundary.AddStructured(secrets)
 		return connectorSecretAccessor{values: secrets, boundary: boundary}
 	})
 	return gatewayoperations.FileTransferConnectorPorts{
 		ConnectorKind:      target.ConnectorKind,
-		Gateway:            server.connectorPortsApplication().FileTransferGateway(runtime, target.ConnectorKind),
+		Gateway:            server.connectorPortsApplication().FileTransferGateway(server.connectorPortsWorkspace(runtime), target.ConnectorKind),
 		Runtime:            scope.TransferRuntime(),
 		CredentialBoundary: boundary,
 	}, nil

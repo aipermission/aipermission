@@ -49,7 +49,7 @@ func (transport Command) RunConnectorCommand(ctx context.Context, request connec
 	if !ok {
 		return connectors.CommandRunResult{}, connectortargets.ErrInvalidTargetRef
 	}
-	if transport.Runtime == nil || transport.Runtime.StoragePort().DatabaseHandle() == nil {
+	if transport.Runtime.Database == nil {
 		return connectors.CommandRunResult{}, fmt.Errorf("database runtime is not available")
 	}
 	release, err := transport.Approved.Acquire(ctx, transport.Runtime, connectors.CommandTransportCapabilityName, targetRef)
@@ -57,7 +57,7 @@ func (transport Command) RunConnectorCommand(ctx context.Context, request connec
 		return connectors.CommandRunResult{}, err
 	}
 	defer release()
-	if err := connectortargets.NewStore(transport.Runtime.StoragePort().DatabaseHandle()).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
+	if err := connectortargets.NewStore(transport.Runtime.Database).ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef); err != nil {
 		return connectors.CommandRunResult{}, err
 	}
 	var adapter connectorapi.CommandTransportAdapter

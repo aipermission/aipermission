@@ -2,6 +2,7 @@ package gatewayconnectorapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 var ErrRuntimeUnavailable = errors.New("connector runtime is unavailable")
@@ -24,39 +24,40 @@ type RouteDependencies struct {
 	ChangePeerTrust func(context.Context, func() error) error
 }
 
-type RuntimeDependencies struct {
-	LocalPrincipal func(workspaceruntime.Port) (executionprincipal.Principal, error)
-}
-
 type LiveConsoleDependencies struct {
 	TransportAdapter func(string) connectorapi.LiveConsoleTransportAdapter
 	TargetAdapter    func(string) connectorapi.LiveConsoleTargetAdapter
 }
 
-type ActionDependencies struct {
-	Restart func(context.Context, workspaceruntime.Port, executionprincipal.Principal, int64, string) (connectorapi.ConsoleRestartResult, error)
-	Finish  func(context.Context, workspaceruntime.Port, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
+type Workspace struct {
+	Database  *sql.DB
+	Connector connectortransport.Runtime
+	Principal func() (executionprincipal.Principal, error)
+	Actions   WorkspaceActionPorts
+	Transfers WorkspaceTransferPorts
+	Targets   WorkspaceTargetPorts
 }
 
-type TransferDependencies struct {
-	RunDownloadBatch    func(context.Context, workspaceruntime.Port, connectorapi.TransferAuthorization, int64, []string, string, string) (connectorapi.TransferBatch, error)
-	RuntimeCapabilities func(string, workspaceruntime.Port) connectors.RuntimeCapabilityResolver
+type WorkspaceActionPorts struct {
+	Restart func(context.Context, executionprincipal.Principal, int64, string) (connectorapi.ConsoleRestartResult, error)
+	Finish  func(context.Context, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
 }
 
-type TargetDependencies struct {
-	Delete   func(context.Context, workspaceruntime.Port, connectortargets.Target, map[string]any) error
-	Finalize func(context.Context, workspaceruntime.Port, connectortargets.Target, string, map[string]any) (int64, error)
-	Audit    func(context.Context, workspaceruntime.Port, string, *int64, int64, string, any)
+type WorkspaceTransferPorts struct {
+	RunDownloadBatch    func(context.Context, connectorapi.TransferAuthorization, int64, []string, string, string) (connectorapi.TransferBatch, error)
+	RuntimeCapabilities func(string) connectors.RuntimeCapabilityResolver
+}
+
+type WorkspaceTargetPorts struct {
+	Delete   func(context.Context, connectortargets.Target, map[string]any) error
+	Finalize func(context.Context, connectortargets.Target, string, map[string]any) (int64, error)
+	Audit    func(context.Context, string, *int64, int64, string, any)
 }
 
 type PortsDependencies struct {
 	Peer        PeerDependencies
 	Routes      RouteDependencies
-	Runtime     RuntimeDependencies
 	LiveConsole LiveConsoleDependencies
-	Actions     ActionDependencies
-	Transfers   TransferDependencies
-	Targets     TargetDependencies
 }
 
 type PortsComponent struct{ dependencies PortsDependencies }
@@ -67,26 +68,28 @@ func NewPorts(dependencies PortsDependencies) *PortsComponent {
 	return &PortsComponent{dependencies: dependencies}
 }
 
-func DataRuntime(runtime workspaceruntime.Port, kind string) connectorapi.ConnectorDataRuntime {
-	return connectortransport.DataRuntime(runtime, kind)
+func NewTransportRuntime(scopes connectortransport.ScopeRuntime, database *sql.DB, acquireDelivery func(context.Context) (func(), error)) connectortransport.Runtime {
+	return connectortransport.Runtime{Scopes: scopes, Database: database, AcquireDelivery: acquireDelivery}
 }
 
-func LiveRuntime(runtime workspaceruntime.Port, kind string) connectorapi.LiveConsoleRuntime {
-	return connectortransport.LiveRuntime(runtime, kind)
+func DataRuntime(workspace Workspace, kind string) connectorapi.ConnectorDataRuntime {
+	return connectortransport.DataRuntime(workspace.Connector, kind)
 }
 
-func PortActionRuntime(runtime workspaceruntime.Port, kind string) connectorapi.ActionRuntime {
-	return connectortransport.ActionRuntime(runtime, kind)
+func LiveRuntime(workspace Workspace, kind string) connectorapi.LiveConsoleRuntime {
+	return connectortransport.LiveRuntime(workspace.Connector, kind)
 }
 
-func PortCredentialResourceRuntime(runtime workspaceruntime.Port, kind string) connectorapi.CredentialResourceRuntime {
-	return connectortransport.CredentialResourceRuntime(runtime, kind)
+func PortActionRuntime(workspace Workspace, kind string) connectorapi.ActionRuntime {
+	return connectortransport.ActionRuntime(workspace.Connector, kind)
 }
 
-func (component *PortsComponent) TargetLifecycleRuntime(runtime workspaceruntime.Port, kind string) connectorapi.TargetLifecycleRuntime {
-	return connectortransport.TargetLifecycleRuntime(runtime, kind, func() (executionprincipal.Principal, error) {
-		return component.dependencies.Runtime.LocalPrincipal(runtime)
-	})
+func PortCredentialResourceRuntime(workspace Workspace, kind string) connectorapi.CredentialResourceRuntime {
+	return connectortransport.CredentialResourceRuntime(workspace.Connector, kind)
+}
+
+func (component *PortsComponent) TargetLifecycleRuntime(workspace Workspace, kind string) connectorapi.TargetLifecycleRuntime {
+	return connectortransport.TargetLifecycleRuntime(workspace.Connector, kind, workspace.Principal)
 }
 
 type PeerGateway struct{ component *PortsComponent }
@@ -115,18 +118,18 @@ func (component *PortsComponent) RouteGateway() RouteGateway {
 
 type LiveConsoleGateway struct {
 	PeerGateway
-	runtime workspaceruntime.Port
+	workspace Workspace
 }
 
-func (component *PortsComponent) LiveConsoleGateway(runtime workspaceruntime.Port) LiveConsoleGateway {
-	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), runtime: runtime}
+func (component *PortsComponent) LiveConsoleGateway(workspace Workspace) LiveConsoleGateway {
+	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), workspace: workspace}
 }
 
 func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*connectorapi.RuntimeSession, error) {
-	if gateway.component == nil || gateway.runtime == nil || gateway.runtime.StoragePort().DatabaseHandle() == nil {
+	if gateway.component == nil || gateway.workspace.Database == nil || gateway.workspace.Connector.Scopes == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(gateway.runtime.StoragePort().DatabaseHandle())
+	store := connectortargets.NewStore(gateway.workspace.Database)
 	target, profile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil, err
@@ -143,126 +146,144 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.runtime, target.ConnectorKind), connectorapi.RuntimeOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.RuntimeOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
 }
 
 type RuntimeActionGateway struct {
 	PeerGateway
-	runtime workspaceruntime.Port
-	kind    string
+	workspace Workspace
+	kind      string
 }
 
-func (component *PortsComponent) RuntimeActionPorts(runtime workspaceruntime.Port, kind string) (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
-	return RuntimeActionGateway{PeerGateway: component.PeerGateway(), runtime: runtime, kind: kind}, PortActionRuntime(runtime, kind)
+func (component *PortsComponent) RuntimeActionPorts(workspace Workspace, kind string) (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
+	return RuntimeActionGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind}, PortActionRuntime(workspace, kind)
 }
 
 func (gateway RuntimeActionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.runtime, gateway.kind, runtimeID); err != nil {
+	if gateway.workspace.Actions.Restart == nil {
+		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
+	}
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
-	return gateway.component.dependencies.Actions.Restart(ctx, gateway.runtime, principal, runtimeID, runningError)
+	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
 }
 
 func (gateway RuntimeActionGateway) ConnectorCreateAndRunDownloadBatch(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.runtime, gateway.kind, runtimeID); err != nil {
+	if gateway.workspace.Transfers.RunDownloadBatch == nil {
+		return connectorapi.TransferBatch{}, ErrRuntimeUnavailable
+	}
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
 		return connectorapi.TransferBatch{}, err
 	}
-	return gateway.component.dependencies.Transfers.RunDownloadBatch(ctx, gateway.runtime, authorization, runtimeID, paths, archiveName, source)
+	return gateway.workspace.Transfers.RunDownloadBatch(ctx, authorization, runtimeID, paths, archiveName, source)
 }
 
 type ActionFinishGateway struct {
 	component *PortsComponent
-	runtime   workspaceruntime.Port
+	workspace Workspace
 	kind      string
 }
 
-func (component *PortsComponent) ActionFinishPorts(runtime workspaceruntime.Port, kind string) (connectorapi.ActionFinishGateway, connectorapi.ActionRuntime) {
-	return ActionFinishGateway{component: component, runtime: runtime, kind: kind}, PortActionRuntime(runtime, kind)
+func (component *PortsComponent) ActionFinishPorts(workspace Workspace, kind string) (connectorapi.ActionFinishGateway, connectorapi.ActionRuntime) {
+	return ActionFinishGateway{component: component, workspace: workspace, kind: kind}, PortActionRuntime(workspace, kind)
 }
 
 func (gateway ActionFinishGateway) ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
-	if gateway.runtime == nil || gateway.runtime.StoragePort().DatabaseHandle() == nil {
+	if gateway.workspace.Database == nil || gateway.workspace.Actions.Finish == nil {
 		return connectortargets.ActionRequest{}, ErrRuntimeUnavailable
 	}
-	request, err := connectortargets.NewStore(gateway.runtime.StoragePort().DatabaseHandle()).GetActionRequest(ctx, requestID)
+	request, err := connectortargets.NewStore(gateway.workspace.Database).GetActionRequest(ctx, requestID)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
 	if request.ConnectorKind != gateway.kind {
 		return connectortargets.ActionRequest{}, connectortargets.ErrActionRequestNotFound
 	}
-	return gateway.component.dependencies.Actions.Finish(ctx, gateway.runtime, requestID, status, output, displayText, errorText, hints...)
+	return gateway.workspace.Actions.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
 }
 
 type FileTransferGateway struct {
 	PeerGateway
-	runtime workspaceruntime.Port
-	kind    string
+	workspace Workspace
+	kind      string
 }
 
-func (component *PortsComponent) FileTransferGateway(runtime workspaceruntime.Port, kind string) connectorapi.FileTransferGateway {
-	return FileTransferGateway{PeerGateway: component.PeerGateway(), runtime: runtime, kind: kind}
+func (component *PortsComponent) FileTransferGateway(workspace Workspace, kind string) connectorapi.FileTransferGateway {
+	return FileTransferGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind}
 }
 
 func (gateway FileTransferGateway) ConnectorRuntimeCapabilities() connectors.RuntimeCapabilityResolver {
-	return gateway.component.dependencies.Transfers.RuntimeCapabilities(gateway.kind, gateway.runtime)
+	if gateway.workspace.Transfers.RuntimeCapabilities == nil {
+		return nil
+	}
+	return gateway.workspace.Transfers.RuntimeCapabilities(gateway.kind)
 }
 
 type TargetDeletionGateway struct {
 	PeerGateway
-	runtime  workspaceruntime.Port
-	kind     string
-	targetID int64
+	workspace Workspace
+	kind      string
+	targetID  int64
 }
 
-func (component *PortsComponent) TargetDeletionGateway(runtime workspaceruntime.Port, kind string, targetID int64) connectorapi.TargetDeletionGateway {
-	return TargetDeletionGateway{PeerGateway: component.PeerGateway(), runtime: runtime, kind: kind, targetID: targetID}
+func (component *PortsComponent) TargetDeletionGateway(workspace Workspace, kind string, targetID int64) connectorapi.TargetDeletionGateway {
+	return TargetDeletionGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind, targetID: targetID}
 }
 
 func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.runtime, gateway.kind, runtimeID); err != nil {
+	if gateway.workspace.Actions.Restart == nil {
+		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
+	}
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
-	return gateway.component.dependencies.Actions.Restart(ctx, gateway.runtime, principal, runtimeID, runningError)
+	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
 }
 
 func (gateway TargetDeletionGateway) ConnectorDeleteTargetRecord(ctx context.Context, target connectortargets.Target, payload map[string]any) error {
 	if target.ID != gateway.targetID || target.ConnectorKind != gateway.kind {
 		return connectortargets.ErrTargetNotFound
 	}
-	return gateway.component.dependencies.Targets.Delete(ctx, gateway.runtime, target, payload)
+	if gateway.workspace.Targets.Delete == nil {
+		return ErrRuntimeUnavailable
+	}
+	return gateway.workspace.Targets.Delete(ctx, target, payload)
 }
 
 func (gateway TargetDeletionGateway) ConnectorFinalizeDeletedTarget(ctx context.Context, target connectortargets.Target, reason string, payload map[string]any) (int64, error) {
 	if target.ID != gateway.targetID || target.ConnectorKind != gateway.kind {
 		return 0, connectortargets.ErrTargetNotFound
 	}
-	return gateway.component.dependencies.Targets.Finalize(ctx, gateway.runtime, target, reason, payload)
+	if gateway.workspace.Targets.Finalize == nil {
+		return 0, ErrRuntimeUnavailable
+	}
+	return gateway.workspace.Targets.Finalize(ctx, target, reason, payload)
 }
 
 type TargetOperationGateway struct {
 	PeerGateway
-	runtime  workspaceruntime.Port
-	kind     string
-	targetID int64
+	workspace Workspace
+	kind      string
+	targetID  int64
 }
 
-func (component *PortsComponent) TargetOperationGateway(runtime workspaceruntime.Port, kind string, targetID int64) connectorapi.TargetOperationGateway {
-	return TargetOperationGateway{PeerGateway: component.PeerGateway(), runtime: runtime, kind: kind, targetID: targetID}
+func (component *PortsComponent) TargetOperationGateway(workspace Workspace, kind string, targetID int64) connectorapi.TargetOperationGateway {
+	return TargetOperationGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind, targetID: targetID}
 }
 
 func (gateway TargetOperationGateway) ConnectorWriteAudit(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-	if connectortransport.RequireTargetRuntimeID(ctx, gateway.runtime, gateway.kind, gateway.targetID, runtimeID) == nil {
-		gateway.component.dependencies.Targets.Audit(ctx, gateway.runtime, actor, tokenID, runtimeID, action, payload)
+	if gateway.workspace.Targets.Audit != nil && connectortransport.RequireTargetRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, gateway.targetID, runtimeID) == nil {
+		gateway.workspace.Targets.Audit(ctx, actor, tokenID, runtimeID, action, payload)
 	}
 }
 
-func RequireRuntimeID(ctx context.Context, runtime workspaceruntime.Port, kind string, runtimeID int64) error {
-	return connectortransport.RequireRuntimeID(ctx, runtime, kind, runtimeID)
+func RequireRuntimeID(ctx context.Context, workspace Workspace, kind string, runtimeID int64) error {
+	return connectortransport.RequireRuntimeID(ctx, workspace.Connector, kind, runtimeID)
 }
 
-func RequireTargetRuntimeID(ctx context.Context, runtime workspaceruntime.Port, kind string, targetID, runtimeID int64) error {
-	return connectortransport.RequireTargetRuntimeID(ctx, runtime, kind, targetID, runtimeID)
+func RequireTargetRuntimeID(ctx context.Context, workspace Workspace, kind string, targetID, runtimeID int64) error {
+	return connectortransport.RequireTargetRuntimeID(ctx, workspace.Connector, kind, targetID, runtimeID)
 }
 
 var (

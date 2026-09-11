@@ -49,7 +49,7 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databa
 	}
 	adapter := server.connectorRuntimeAdapterFor(kind)
 	if adapter != nil {
-		gatewayPort, runtimePort := server.connectorPortsApplication().RuntimeActionPorts(runtime, kind)
+		gatewayPort, runtimePort := server.connectorPortsApplication().RuntimeActionPorts(server.connectorPortsWorkspace(runtime), kind)
 		for name, capability := range adapter.RuntimeCapabilities(gatewayPort, runtimePort) {
 			if name == "" || capability == nil {
 				continue

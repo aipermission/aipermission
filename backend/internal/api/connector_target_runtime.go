@@ -81,7 +81,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		return
 	}
 	adapter.RunTargetOperation(
-		s.connectorPortsApplication().TargetOperationGateway(runtime, target.ConnectorKind, target.ID),
+		s.connectorPortsApplication().TargetOperationGateway(s.connectorPortsWorkspace(runtime), target.ConnectorKind, target.ID),
 		w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, operation,
 	)
 }

@@ -5,7 +5,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 func ErrorCode(err error) string {
@@ -28,6 +27,6 @@ func NewApproved(dependencies []actions.ResolvedDependency) connectortransport.A
 	return connectortransport.NewApproved(dependencies)
 }
 
-func ScopeWithSecretAccessor(runtime workspaceruntime.Port, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
+func ScopeWithSecretAccessor(runtime connectortransport.Runtime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
 	return connectortransport.ScopeWithSecretAccessor(runtime, kind, accessor)
 }

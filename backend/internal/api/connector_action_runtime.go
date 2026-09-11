@@ -50,7 +50,7 @@ func (s *Server) finishActiveConnectorActionRequest(runtime databaseRuntime, req
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
 	}
-	gatewayPort, runtimePort := s.connectorPortsApplication().ActionFinishPorts(runtime, prepared.Target.ConnectorKind)
+	gatewayPort, runtimePort := s.connectorPortsApplication().ActionFinishPorts(s.connectorPortsWorkspace(runtime), prepared.Target.ConnectorKind)
 	if err := adapter.FinishRunning(gatewayPort, runtimePort, requestID, prepared, principal, handles); err != nil {
 		log.Printf("finish running connector action failed connector=%q request=%d error=%v", prepared.Target.ConnectorKind, requestID, err)
 	}

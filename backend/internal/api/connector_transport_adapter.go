@@ -63,6 +63,6 @@ func connectorTransportDependencies(server *Server, runtime databaseRuntime) con
 		trustStorePath = server.connectorTrustStorePath
 	}
 	return connectors.Dependencies{
-		Runtime: runtime, AdapterFor: adapterFor, TrustStorePath: trustStorePath,
+		Runtime: connectorWorkspace(runtime).Connector, AdapterFor: adapterFor, TrustStorePath: trustStorePath,
 	}
 }

@@ -19,7 +19,9 @@ func (s *Server) connectorCredentialResourceDependencies() connectormgmt.Credent
 		Adapter: func(kind string) connectormgmt.CredentialResourceAdapter {
 			return s.connectorCredentialResourceAdapterFor(kind)
 		},
-		Runtime:    connectorapi.PortCredentialResourceRuntime,
+		Runtime: func(runtime gatewayinfra.Runtime, kind string) connectorapi.CredentialResourceRuntime {
+			return connectorapi.PortCredentialResourceRuntime(connectorWorkspace(runtime), kind)
+		},
 		WriteError: writeError,
 	}
 }
@@ -62,7 +64,7 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			},
 			BeforeDelete: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
 				if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-					gateway, _ := s.connectorPortsApplication().RuntimeActionPorts(runtime, target.ConnectorKind)
+					gateway, _ := s.connectorPortsApplication().RuntimeActionPorts(s.connectorPortsWorkspace(runtime), target.ConnectorKind)
 					return adapter.BeforeDeleteCredentialProfile(ctx, gateway, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
 				}
 				return nil

@@ -15,6 +15,9 @@ type State struct {
 	AdapterRegistry *connectorapi.Registry
 	Resources       connectorruntime.ResourceScopes
 	ConsoleSessions *console.Manager
+	database        *sql.DB
+	vault           *vault.Vault
+	workspaceID     string
 }
 
 type Port interface {
@@ -23,6 +26,7 @@ type Port interface {
 	ResourceScopes() connectorruntime.ResourceScopes
 	ConsoleSessionManager() *console.Manager
 	SetConsoleSessionManager(*console.Manager)
+	ConnectorScope(string, connectorruntime.SecretAccessorFactory) *connectorruntime.Scope
 }
 
 func New(
@@ -36,6 +40,9 @@ func New(
 		Registry:        registry,
 		AdapterRegistry: adapterRegistry,
 		Resources:       connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
+		database:        database,
+		vault:           secretVault,
+		workspaceID:     workspaceUUID,
 	}
 }
 
@@ -71,4 +78,14 @@ func (s *State) SetConsoleSessionManager(manager *console.Manager) {
 	if s != nil {
 		s.ConsoleSessions = manager
 	}
+}
+
+func (s *State) ConnectorScope(kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
+	if s == nil {
+		return connectorruntime.NewScope(kind, connectorruntime.Dependencies{})
+	}
+	return connectorruntime.NewScope(kind, connectorruntime.Dependencies{
+		Database: s.database, Vault: s.vault, WorkspaceID: s.workspaceID,
+		Resources: s.Resources, ConsoleSessions: s.ConsoleSessions, SecretAccessor: accessor,
+	})
 }

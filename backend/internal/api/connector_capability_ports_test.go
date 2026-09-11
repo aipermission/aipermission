@@ -73,7 +73,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	port, _ := fixture.server.connectorPortsApplication().RuntimeActionPorts(runtime, "beta")
+	port, _ := fixture.server.connectorPortsApplication().RuntimeActionPorts(fixture.server.connectorPortsWorkspace(runtime), "beta")
 	_, err = port.ConnectorRestartConsoleSession(context.Background(), executionprincipal.Principal{}, surface.ID, "test")
 	if !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		t.Fatalf("cross-connector restart error = %v", err)
@@ -81,7 +81,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 }
 
 func TestConnectorTargetDeletionGatewayRejectsUnboundTarget(t *testing.T) {
-	port := connectorports.NewPorts(connectorports.PortsDependencies{}).TargetDeletionGateway(nil, "alpha", 41)
+	port := connectorports.NewPorts(connectorports.PortsDependencies{}).TargetDeletionGateway(connectorports.Workspace{}, "alpha", 41)
 	err := port.ConnectorDeleteTargetRecord(context.Background(), connectortargets.Target{ID: 42, ConnectorKind: "alpha"}, nil)
 	if !errors.Is(err, connectortargets.ErrTargetNotFound) {
 		t.Fatalf("unbound target deletion error = %v", err)

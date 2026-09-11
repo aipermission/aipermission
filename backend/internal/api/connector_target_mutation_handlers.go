@@ -29,7 +29,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	defer release()
 	if adapter := s.connectorTargetDeleterFor(target.ConnectorKind); adapter != nil {
 		adapter.DeleteTarget(
-			s.connectorPortsApplication().TargetDeletionGateway(runtime, target.ConnectorKind, target.ID),
+			s.connectorPortsApplication().TargetDeletionGateway(s.connectorPortsWorkspace(runtime), target.ConnectorKind, target.ID),
 			w, r, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target,
 		)
 		return
