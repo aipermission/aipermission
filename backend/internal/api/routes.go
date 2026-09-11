@@ -25,6 +25,10 @@ func (s *Server) routes() {
 	connectorHTTP := connectorManagement.HTTPHandlers()
 	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
+	vaultHTTP := s.vaultApplication().HTTPHandlers(gatewayvault.HTTPDependencies{
+		Projects: s.projectsHTTPScope, ProjectVault: s.projectVaultHTTPScope,
+		VaultApprovals: s.vaultRequestHTTPScope, MCPVault: mcp.mcpVaultScope,
+	})
 
 	gatewayinfra.Register(s.mux, gatewayinfra.Dependencies{
 		Health: gatewayinfra.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
@@ -50,10 +54,8 @@ func (s *Server) routes() {
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,
 
-		Projects:       gatewayvault.NewProjectsHTTPHandlers(s.projectsHTTPScope),
-		VaultItems:     gatewayvault.NewProjectVaultHTTPHandlers(s.projectVaultHTTPScope),
-		VaultApprovals: gatewayvault.NewVaultApprovalHTTPHandlers(s.vaultRequestHTTPScope),
-		FileTransfers:  s.fileTransferHTTPHandlers(),
+		Projects: vaultHTTP.Projects, VaultItems: vaultHTTP.ProjectVault, VaultApprovals: vaultHTTP.VaultApprovals,
+		FileTransfers: s.fileTransferHTTPHandlers(),
 
 		ConnectorQueries:  connectorHTTP.Queries,
 		CombinedMutations: connectorHTTP.CombinedMutations,
@@ -71,7 +73,7 @@ func (s *Server) routes() {
 		MCPRuntime:          s.access.NewMCPRuntimeHTTPHandlers(s.mcpRuntimeHTTPScope),
 		MCPConnectorReads:   s.access.NewMCPReadHTTPHandlers(mcp.mcpConnectorReadScope),
 		MCPConnectorActions: s.access.NewMCPActionHTTPHandlers(mcp.mcpConnectorActionScope),
-		MCPVaultActions:     gatewayvault.NewVaultMCPHTTPHandlers(mcp.mcpVaultScope),
+		MCPVaultActions:     vaultHTTP.MCPVault,
 		RegisterAdapterRoutes: func(mux *http.ServeMux) {
 			registerConnectorAdapterRoutes(mux, s)
 		},
