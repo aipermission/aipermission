@@ -3,11 +3,9 @@ package gatewayinfrastructure
 import (
 	"context"
 	"database/sql"
-	"net/http"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
-	"github.com/aipermission/aipermission/backend/internal/gatewayroutes"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
@@ -29,14 +27,6 @@ func WithMaintenanceConsole(runtime gatewayoptions.MaintenanceConsoleRuntime) ga
 
 func WithRuntimeInstanceIDGenerator(generator func() (string, error)) gatewayoptions.Option {
 	return gatewayoptions.WithRuntimeInstanceIDGenerator(generator)
-}
-
-func Health(w http.ResponseWriter, arg1 *http.Request) {
-	gatewayroutes.Health(w, arg1)
-}
-
-func RegisterRoutes(mux *http.ServeMux, d gatewayroutes.Dependencies) {
-	gatewayroutes.Register(mux, d)
 }
 
 func Scavenge(path string, now time.Time) {

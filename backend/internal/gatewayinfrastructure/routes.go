@@ -1,5 +1,4 @@
-// Package gatewayroutes owns the public HTTP method and path table.
-package gatewayroutes
+package gatewayinfrastructure
 
 import (
 	"encoding/json"

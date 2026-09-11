@@ -3,7 +3,6 @@ package gatewayinfrastructure
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
-	"github.com/aipermission/aipermission/backend/internal/gatewayroutes"
 	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
@@ -21,8 +20,6 @@ var (
 )
 
 type ServerOption = gatewayoptions.Option
-type RouteBackup = gatewayroutes.Backup
-type RouteDependencies = gatewayroutes.Dependencies
 type Runtime = gatewayworkspace.Runtime
 type WorkspaceRegistry = gatewayworkspace.Registry
 type WorkspaceService = gatewayworkspace.Service

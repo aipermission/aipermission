@@ -1,6 +1,6 @@
 package api
 
-//go:generate go run ../../cmd/openapi -routes ../gatewayroutes/routes.go -output ../../../docs/api/openapi.json
+//go:generate go run ../../cmd/openapi -routes ../gatewayinfrastructure/routes.go -output ../../../docs/api/openapi.json
 
 import (
 	"net/http"
@@ -28,7 +28,7 @@ func (s *Server) routes() {
 	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
 
-	gatewayinfra.RegisterRoutes(s.mux, gatewayinfra.RouteDependencies{
+	gatewayinfra.Register(s.mux, gatewayinfra.Dependencies{
 		Health: gatewayinfra.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
 		Security:    gatewayaccess.NewSecurityHTTPHandlers(s.securityPolicyHTTPScope),
 		Retention:   observation.Retention,
@@ -39,7 +39,7 @@ func (s *Server) routes() {
 		TokenAccess:     gatewayaccess.NewAccessHTTPHandlers(s.accessControlScope),
 		TargetOperation: connectorTargets.runConnectorTargetOperation,
 
-		Backup: gatewayinfra.RouteBackup{
+		Backup: gatewayinfra.Backup{
 			Download: backup.Download, Import: backup.Import,
 			RestoreRemote: backup.RestoreRemote, RestoreProvider: backup.RestoreProvider,
 		},
