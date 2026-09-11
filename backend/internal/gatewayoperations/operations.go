@@ -18,6 +18,7 @@ type ImportDatabaseRequest backupapp.ImportDatabaseRequest
 type BackupPasswordAttempt = backupapp.PasswordAttempt
 type TransientRestoreRequest backupapp.TransientRestoreRequest
 type ObservationAppender = observationapp.Appender
+type ObservationRuntime = observationapp.Runtime
 type Observation struct{ observationapp.Component }
 type MaintenanceConsoleRuntime = console.MaintenanceConsoleRuntime
 type RuntimeOpenRequest = console.RuntimeOpenRequest

@@ -12,7 +12,7 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	report, err := h.observation.Diagnostics(r.Context(), runtime)
+	report, err := h.observation.Diagnostics(r.Context(), observationRuntime(runtime))
 	if err != nil {
 		writeInternalError(w)
 		return

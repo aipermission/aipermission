@@ -10,18 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
-
-type ActionDependencies struct {
-	Connector     func(workspaceruntime.Port) vaultactions.ConnectorPort
-	Mutate        func(context.Context, workspaceruntime.Port, int64, string, func() any, func(*sql.Tx) error) error
-	AllowGenerate func(workspaceruntime.Port, int64) bool
-}
-
-func (component *Component) ConfigureActions(dependencies ActionDependencies) {
-	component.actions = dependencies
-}
 
 type actionProjectPort struct{ database *sql.DB }
 
@@ -64,52 +53,51 @@ func (port actionItemPort) Delete(ctx context.Context, id, valueVersion, metadat
 	return port.store.Delete(ctx, id, valueVersion, metadataRevision)
 }
 
-type actionDeliveryPort struct{ runtime workspaceruntime.Port }
+type actionDeliveryPort struct{ runtime Runtime }
 
 func (port actionDeliveryPort) AcquireDelivery(ctx context.Context) (func(), error) {
-	if port.runtime == nil {
+	if port.runtime.Session.AcquireDelivery == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return port.runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery(ctx)
+	return port.runtime.Session.AcquireDelivery(ctx)
 }
 func (port actionDeliveryPort) AcquireExclusive(ctx context.Context) (func(), error) {
-	if port.runtime == nil {
+	if port.runtime.Session.AcquireExclusive == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	return port.runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive(ctx)
+	return port.runtime.Session.AcquireExclusive(ctx)
 }
 
 type actionMutationPort struct {
 	component *Component
-	runtime   workspaceruntime.Port
+	runtime   Runtime
 }
 
 func (port actionMutationPort) WithMutation(ctx context.Context, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-	if port.component == nil || port.runtime == nil || port.component.actions.Mutate == nil {
+	if port.component == nil || port.runtime.Action.Mutate == nil {
 		return vaultactions.ErrRuntimeUnavailable
 	}
-	return port.component.actions.Mutate(ctx, port.runtime, tokenID, action, payload, mutate)
+	return port.runtime.Action.Mutate(ctx, tokenID, action, payload, mutate)
 }
 
-func (component *Component) ActionRuntime(runtime workspaceruntime.Port) (*vaultactions.Runtime, error) {
-	if component == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil ||
-		runtime.StoragePort().TokenStore() == nil || runtime.ConnectorPort().ConsoleSessionManager() == nil || runtime.SecurityPort().VaultLeaseStore() == nil ||
-		component.actions.Connector == nil || component.actions.AllowGenerate == nil {
+func (component *Component) ActionRuntime(runtime Runtime) (*vaultactions.Runtime, error) {
+	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.Tokens == nil || runtime.Session.Sessions == nil ||
+		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Action.AllowGenerate == nil || runtime.Session.MCPStarted == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
-	items, err := projectvault.NewStore(runtime.StoragePort().DatabaseHandle(), runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier())
+	items, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault action item store: %w", err)
 	}
 	owner, err := vaultactions.NewRuntime(vaultactions.Dependencies{
-		Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(),
-		Projects: actionProjectPort{database: runtime.StoragePort().DatabaseHandle()}, SessionItems: actionItemPort{store: items},
-		ItemMutations: actionItemPort{store: items}, Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
-		Leases: runtime.SecurityPort().VaultLeaseStore(), PersistedLeases: vaultsessions.NewPersistence(runtime.StoragePort().DatabaseHandle()),
-		Connector: component.actions.Connector(runtime), Delivery: actionDeliveryPort{runtime: runtime},
-		Mutations: actionMutationPort{component: component, runtime: runtime}, WorkspaceID: runtime.WorkspaceIdentifier(),
-		RuntimeInstanceID: runtime.RuntimeIdentifier(), MCPStarted: runtime.IsMCPStarted,
-		AllowGenerate: func(tokenID int64) bool { return component.actions.AllowGenerate(runtime, tokenID) },
+		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens,
+		Projects: actionProjectPort{database: runtime.Storage.Database}, SessionItems: actionItemPort{store: items},
+		ItemMutations: actionItemPort{store: items}, Sessions: runtime.Session.Sessions,
+		Leases: runtime.Session.Leases, PersistedLeases: vaultsessions.NewPersistence(runtime.Storage.Database),
+		Connector: runtime.Action.Connector, Delivery: actionDeliveryPort{runtime: runtime},
+		Mutations: actionMutationPort{component: component, runtime: runtime}, WorkspaceID: runtime.Storage.WorkspaceID,
+		RuntimeInstanceID: runtime.Session.RuntimeInstanceID, MCPStarted: runtime.Session.MCPStarted,
+		AllowGenerate: runtime.Action.AllowGenerate,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault action application: %w", err)

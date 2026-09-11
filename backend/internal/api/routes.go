@@ -18,7 +18,10 @@ type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
-	observation := s.observation.HTTPHandlers(s.activeRuntimeOrLocked)
+	observation := s.observation.HTTPHandlers(func(w http.ResponseWriter) (gatewayoperations.ObservationRuntime, bool) {
+		runtime, ok := s.activeRuntimeOrLocked(w)
+		return observationRuntime(runtime), ok
+	})
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
 	connectorQueries := connectormgmt.NewHTTPHandlers(connectorManagement.QueryScope)
@@ -84,7 +87,7 @@ func (s *Server) routes() {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "aipermission", "status": "running",
-		"audit":  s.observation.HealthSnapshot(r.Context(), s.activeRuntime()),
+		"audit":  s.observation.HealthSnapshot(r.Context(), observationRuntime(s.activeRuntime())),
 		"config": s.config.PublicStatusMinimal(),
 		"features": []string{
 			"local-docker-runtime", "react-dashboard", "sqlcipher-sqlite-storage", "database-unlock-screen",

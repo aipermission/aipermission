@@ -61,7 +61,7 @@ func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	health := server.observation.HealthSnapshot(context.Background(), server.activeRuntime())
+	health := server.observation.HealthSnapshot(context.Background(), observationRuntime(server.activeRuntime()))
 	if health.Status != "ok" || health.FailureCount != 1 || health.LastDeliverySuccess == "" {
 		t.Fatalf("unexpected recovered audit health: %+v", health)
 	}

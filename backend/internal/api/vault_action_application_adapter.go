@@ -2,15 +2,12 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -59,21 +56,5 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 }
 
 func (s *Server) vaultActionApplication(runtime databaseRuntime) (*gatewayvault.VaultActionRuntime, error) {
-	component := s.vaultApplication()
-	s.configureVaultActions(component)
-	return component.ActionRuntime(runtime)
-}
-
-func (s *Server) configureVaultActions(component *gatewayvault.Component) {
-	component.ConfigureActions(gatewayvault.ActionDependencies{
-		Connector: func(runtime gatewayinfra.Runtime) gatewayvault.VaultConnectorPort {
-			return vaultActionConnectorPort{server: s, runtime: runtime}
-		},
-		Mutate: func(ctx context.Context, runtime gatewayinfra.Runtime, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, "mcp", &tokenID, 0, action, payload, mutate)
-		},
-		AllowGenerate: func(runtime gatewayinfra.Runtime, tokenID int64) bool {
-			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.DatabaseIdentifier(), tokenID))
-		},
-	})
+	return s.vaultApplication().ActionRuntime(s.vaultRuntime(runtime))
 }

@@ -1,40 +1,19 @@
 package api
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"net/http"
 
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 func (s *Server) vaultApplication() *gatewayvault.Component {
-	return gatewayvault.New(gatewayvault.ProjectDependencies{
-		InvalidateSessions: func(ctx context.Context, runtime gatewayinfra.Runtime, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
-			return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
-		},
+	return gatewayvault.New(gatewayvault.Dependencies{
 		LiveConsoleKind: func(kind string) (string, bool) {
 			adapter := s.connectorLiveConsoleTargetAdapterFor(kind)
 			if adapter == nil {
 				return "", false
 			}
 			return adapter.LiveConsoleCapabilityKind(), true
-		},
-		SessionEnvironment: func(ctx context.Context, runtime gatewayinfra.Runtime, runtimeID int64) (bool, error) {
-			err := requireSessionEnvironmentCapability(ctx, s, runtime, runtimeID)
-			if errors.Is(err, connectors.ErrSessionEnvironmentUnsupported) {
-				return false, nil
-			}
-			return err == nil, err
-		},
-		Mutate: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
-		},
-		Observe: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) error {
-			return s.writeAuditRequired(ctx, runtime, "user", nil, 0, action, payload)
 		},
 		AllowGenerate: func(key string) bool {
 			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(key)
@@ -46,7 +25,7 @@ func (s *Server) vaultApplication() *gatewayvault.Component {
 }
 
 func (s *Server) projectVaultRuntime(runtime databaseRuntime) (*gatewayvault.ProjectVaultRuntime, error) {
-	return s.vaultApplication().ProjectRuntime(runtime)
+	return s.vaultApplication().ProjectRuntime(s.vaultRuntime(runtime))
 }
 
 func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectVaultHTTPScope, bool) {
@@ -61,6 +40,6 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (gatewayvault.Proj
 	}
 	return gatewayvault.ProjectVaultHTTPScope{
 		Runtime: owner, RuntimeID: runtime.DatabaseIdentifier(),
-		SessionCatalog: s.vaultApplication().SessionCatalog(runtime),
+		SessionCatalog: s.vaultApplication().SessionCatalog(s.vaultRuntime(runtime)),
 	}, true
 }
