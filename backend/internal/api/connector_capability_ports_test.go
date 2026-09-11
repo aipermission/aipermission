@@ -7,9 +7,9 @@ import (
 	"slices"
 	"testing"
 
-	connectorports "github.com/aipermission/aipermission/backend/internal/applicationconnectorports"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
@@ -81,7 +81,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 }
 
 func TestConnectorTargetDeletionGatewayRejectsUnboundTarget(t *testing.T) {
-	port := connectorports.New(connectorports.Dependencies{}).TargetDeletionGateway(nil, "alpha", 41)
+	port := connectorports.NewPorts(connectorports.PortsDependencies{}).TargetDeletionGateway(nil, "alpha", 41)
 	err := port.ConnectorDeleteTargetRecord(context.Background(), connectortargets.Target{ID: 42, ConnectorKind: "alpha"}, nil)
 	if !errors.Is(err, connectortargets.ErrTargetNotFound) {
 		t.Fatalf("unbound target deletion error = %v", err)

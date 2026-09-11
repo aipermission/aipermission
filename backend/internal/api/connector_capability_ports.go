@@ -12,42 +12,56 @@ import (
 
 func (s *Server) connectorPortsApplication() *connectorapi.PortsComponent {
 	return connectorapi.NewPorts(connectorapi.PortsDependencies{
-		TrustStorePath: s.connectorTrustStorePath,
-		ActiveRuntime: func(w http.ResponseWriter) bool {
-			_, ok := s.activeRuntimeOrLocked(w)
-			return ok
+		Peer: connectorapi.PeerDependencies{
+			TrustStorePath: s.connectorTrustStorePath,
 		},
-		ChangePeerTrust: s.connectorChangeVaultPeerTrust,
-		LocalPrincipal: func(runtime gatewayinfra.Runtime) (gatewayaccess.Principal, error) {
-			if runtime == nil {
-				return gatewayaccess.Principal{}, errInvalidConnectorRuntime
-			}
-			return localExecutionPrincipal(runtime)
+		Routes: connectorapi.RouteDependencies{
+			ActiveRuntime: func(w http.ResponseWriter) bool {
+				_, ok := s.activeRuntimeOrLocked(w)
+				return ok
+			},
+			ChangePeerTrust: s.connectorChangeVaultPeerTrust,
 		},
-		LiveTransportAdapter: s.connectorLiveConsoleTransportAdapterFor,
-		LiveTargetAdapter:    s.connectorLiveConsoleTargetAdapterFor,
-		RestartConsole: func(ctx context.Context, runtime gatewayinfra.Runtime, principal gatewayaccess.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-			result, err := s.restartServerConsoleSession(ctx, runtime, principal, runtimeID, runningError)
-			return connectorapi.ConsoleRestartResult{ClosedSessionIDs: result.ClosedSessionIDs, CanceledRunningRequests: result.CanceledRunningRequests}, err
+		Runtime: connectorapi.RuntimeDependencies{
+			LocalPrincipal: func(runtime gatewayinfra.Runtime) (gatewayaccess.Principal, error) {
+				if runtime == nil {
+					return gatewayaccess.Principal{}, errInvalidConnectorRuntime
+				}
+				return localExecutionPrincipal(runtime)
+			},
 		},
-		RunDownloadBatch: func(ctx context.Context, runtime gatewayinfra.Runtime, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
-			if runtime == nil || runtime.OperationsPort().FileTransferRuntime() == nil {
-				return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
-			}
-			batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, runtime.OperationsPort().FileTransferRuntime(), authorization, runtimeID, paths, archiveName, source)
-			return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
+		LiveConsole: connectorapi.LiveConsoleDependencies{
+			TransportAdapter: s.connectorLiveConsoleTransportAdapterFor,
+			TargetAdapter:    s.connectorLiveConsoleTargetAdapterFor,
 		},
-		FinishAction: s.finishConnectorActionRequest,
-		RuntimeCapabilities: func(kind string, runtime gatewayinfra.Runtime) connectors.RuntimeCapabilityResolver {
-			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
+		Actions: connectorapi.ActionDependencies{
+			Restart: func(ctx context.Context, runtime gatewayinfra.Runtime, principal gatewayaccess.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
+				result, err := s.restartServerConsoleSession(ctx, runtime, principal, runtimeID, runningError)
+				return connectorapi.ConsoleRestartResult{ClosedSessionIDs: result.ClosedSessionIDs, CanceledRunningRequests: result.CanceledRunningRequests}, err
+			},
+			Finish: s.finishConnectorActionRequest,
 		},
-		DeleteTarget: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, payload map[string]any) error {
-			return (connectorTargetHandlers{s}).connectorDeleteTargetRecord(ctx, runtime, target, payload)
+		Transfers: connectorapi.TransferDependencies{
+			RunDownloadBatch: func(ctx context.Context, runtime gatewayinfra.Runtime, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
+				if runtime == nil || runtime.OperationsPort().FileTransferRuntime() == nil {
+					return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
+				}
+				batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, runtime.OperationsPort().FileTransferRuntime(), authorization, runtimeID, paths, archiveName, source)
+				return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
+			},
+			RuntimeCapabilities: func(kind string, runtime gatewayinfra.Runtime) connectors.RuntimeCapabilityResolver {
+				return connectorRuntimeCapabilitiesFor(kind, s, runtime)
+			},
 		},
-		FinalizeDeletedTarget: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, reason string, payload map[string]any) (int64, error) {
-			return (connectorTargetHandlers{s}).connectorFinalizeDeletedTarget(ctx, runtime, target, reason, payload)
+		Targets: connectorapi.TargetDependencies{
+			Delete: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, payload map[string]any) error {
+				return (connectorTargetHandlers{s}).connectorDeleteTargetRecord(ctx, runtime, target, payload)
+			},
+			Finalize: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, reason string, payload map[string]any) (int64, error) {
+				return (connectorTargetHandlers{s}).connectorFinalizeDeletedTarget(ctx, runtime, target, reason, payload)
+			},
+			Audit: s.writeObservationAudit,
 		},
-		WriteAudit: s.writeObservationAudit,
 	})
 }
 

@@ -3,7 +3,6 @@ package gatewayconnectorapi
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	connectorports "github.com/aipermission/aipermission/backend/internal/applicationconnectorports"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
@@ -36,7 +35,5 @@ type TargetLifecycleRuntime = connectorapi.TargetLifecycleRuntime
 type TargetOperationRunner = connectorapi.TargetOperationRunner
 type TransferAuthorization = connectorapi.TransferAuthorization
 type TransferBatch = connectorapi.TransferBatch
-type PortsComponent = connectorports.Component
-type PortsDependencies = connectorports.Dependencies
 type ActionResponse = actions.Response
 type ActionRequest = connectortargets.ActionRequest

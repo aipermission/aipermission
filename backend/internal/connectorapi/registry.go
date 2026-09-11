@@ -205,6 +205,9 @@ type TransferBatch struct {
 	ItemCount int
 }
 
+type RuntimeSession = console.RuntimeSession
+type RuntimeOpenRequest = console.RuntimeOpenRequest
+
 // RuntimeCapabilityGateway exposes connector-owned runtime capabilities to
 // adapters executing outside the structured action pipeline.
 type RuntimeCapabilityGateway interface {
