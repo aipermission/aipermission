@@ -3,7 +3,6 @@ package gatewayconnectormanagement
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	applicationmanagement "github.com/aipermission/aipermission/backend/internal/applicationconnectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -23,9 +22,6 @@ const (
 	ActionPermissionApprovalRequired = connectortargets.ActionPermissionApprovalRequired
 )
 
-type Component = applicationmanagement.Component
-type Dependencies = applicationmanagement.Dependencies
-type CredentialResourceDependencies = applicationmanagement.CredentialResourceDependencies
 type AuditAppender = connectormanagement.AuditAppender
 type ConnectionTestResponse = connectormanagement.ConnectionTestResponse
 type CreateTargetRequest = connectormanagement.CreateTargetRequest

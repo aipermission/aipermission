@@ -1,4 +1,4 @@
-package applicationconnectormanagement
+package gatewayconnectormanagement
 
 import (
 	"context"

@@ -5,17 +5,12 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	applicationmanagement "github.com/aipermission/aipermission/backend/internal/applicationconnectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
-
-func New(dependencies applicationmanagement.Dependencies) *applicationmanagement.Component {
-	return applicationmanagement.New(dependencies)
-}
 
 func ProjectScopedSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
 	return accesscontrol.ProjectScopedSupportedConnectorPermissions(ctx, database, registry, tokenID)
@@ -31,10 +26,6 @@ func ConnectorApprovalItemFromRequest(item connectortargets.ActionRequest) conne
 
 func NewConnectorApprovalHTTPHandlers(scope connectorapproval.ScopeProvider) *connectorapproval.HTTPHandlers {
 	return connectorapproval.NewHTTPHandlers(scope)
-}
-
-func ValidateTransport(ctx context.Context, store *connectortargets.Store, projectID int64, config map[string]any, hasTCP func(string) bool) error {
-	return applicationmanagement.ValidateTransport(ctx, store, projectID, config, hasTCP)
 }
 
 func NewCombinedMutationHTTPHandler(scope connectormanagement.CombinedMutationScopeProvider) *connectormanagement.CombinedMutationHTTPHandler {
