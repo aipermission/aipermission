@@ -133,11 +133,21 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 			AfterChange: func(ctx context.Context, change connectormgmt.TargetLifecycleChange) error {
 				return s.connectorLifecycleApplication(runtime).AfterCredentialChange(ctx, change)
 			},
+			DeleteTarget: func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
+				return s.connectorLifecycleApplication(runtime).DeleteTarget(ctx, target, payload)
+			},
+			FinalizeTarget: func(ctx context.Context, target connectormgmt.Target, reason string) (int64, error) {
+				return s.connectorLifecycleApplication(runtime).FinalizeDeletedTarget(ctx, target, reason)
+			},
 		},
 		Adapters: connectormgmt.TargetAdapterPorts{
 			DataRuntime: func(kind string) connectorapi.ConnectorDataRuntime {
 				return s.connectorDataRuntimePort(runtime, kind)
 			},
+			LifecycleRuntime: func(kind string) connectorapi.TargetLifecycleRuntime {
+				return s.connectorTargetLifecycleRuntime(runtime, kind)
+			},
+			DeletionGateway: s.connectorPorts.TargetDeletionGatewayProvider(s.connectorPortsWorkspace(runtime)),
 		},
 		Network: connectormgmt.NetworkPorts{
 			Probe: func(ctx context.Context, request connectorapi.NetworkDialRequest) error {

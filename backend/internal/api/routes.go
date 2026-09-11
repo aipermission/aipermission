@@ -62,7 +62,7 @@ func (s *Server) routes() {
 		TargetMutations:   connectorHTTP.TargetMutations,
 		HostPing:          connectorHTTP.HostPing,
 		TestTarget:        connectorHTTP.TargetDraft.Test,
-		DeleteTarget:      connectorTargets.deleteConnectorTarget,
+		DeleteTarget:      connectorHTTP.TargetDelete.Delete,
 		ProfileMutations:  connectorHTTP.ProfileMutations,
 		ProfileProvision:  connectorHTTP.ProfileProvision,
 		ProfileBackup:     connectorHTTP.ProfileBackup,

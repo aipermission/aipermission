@@ -19,7 +19,7 @@ func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 		},
 		DecodeJSON: decodeJSON,
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
-		HandleTargetError: handleConnectorTargetError,
+		HandleTargetError: connectormgmt.WriteTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectorapi.ActionResult, replayed bool) any {
 			response := connectorapi.MCPResponseFromResult(s.connectorAdapterRegistry(), request, result)
 			response.Replayed = replayed

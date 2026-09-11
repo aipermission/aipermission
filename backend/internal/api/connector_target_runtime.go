@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"strings"
+
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWriter, r *http.Request) {
@@ -17,7 +19,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 	operation := strings.TrimSpace(r.PathValue("operation"))
 	target, err := s.connectorCatalog(runtime).Target(r.Context(), targetID)
 	if err != nil {
-		handleConnectorTargetError(w, err)
+		connectormgmt.WriteTargetError(w, err)
 		return
 	}
 	adapter := s.connectorTargetOperationRunnerFor(target.ConnectorKind)

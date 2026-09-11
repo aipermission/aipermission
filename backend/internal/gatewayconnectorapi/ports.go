@@ -246,6 +246,12 @@ func (component *PortsComponent) TargetDeletionGateway(workspace Workspace, kind
 	return TargetDeletionGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind, targetID: targetID}
 }
 
+func (component *PortsComponent) TargetDeletionGatewayProvider(workspace Workspace) func(string, int64) connectorapi.TargetDeletionGateway {
+	return func(kind string, targetID int64) connectorapi.TargetDeletionGateway {
+		return component.TargetDeletionGateway(workspace, kind, targetID)
+	}
+}
+
 func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
 	if gateway.workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable

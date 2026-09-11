@@ -35,11 +35,15 @@ type CredentialPorts struct {
 }
 
 type LifecyclePorts struct {
-	AfterChange func(context.Context, connectormanagement.TargetLifecycleChange) error
+	AfterChange    func(context.Context, connectormanagement.TargetLifecycleChange) error
+	DeleteTarget   func(context.Context, connectortargets.Target, map[string]any) error
+	FinalizeTarget func(context.Context, connectortargets.Target, string) (int64, error)
 }
 
 type TargetAdapterPorts struct {
-	DataRuntime func(string) connectorapi.ConnectorDataRuntime
+	DataRuntime      func(string) connectorapi.ConnectorDataRuntime
+	LifecycleRuntime func(string) connectorapi.TargetLifecycleRuntime
+	DeletionGateway  func(string, int64) connectorapi.TargetDeletionGateway
 }
 
 type NetworkPorts struct {
@@ -91,6 +95,7 @@ type HTTPHandlers struct {
 	ProfileDelete     *connectormanagement.ProfileDeletionHTTPHandler
 	ProfileTest       *connectormanagement.ProfileTestingHTTPHandler
 	TargetDraft       *TargetDraftHTTPHandler
+	TargetDelete      *TargetDeleteHTTPHandler
 }
 
 func (component *Component) HTTPHandlers() HTTPHandlers {
@@ -106,6 +111,7 @@ func (component *Component) HTTPHandlers() HTTPHandlers {
 		ProfileDelete:     connectormanagement.NewProfileDeletionHTTPHandler(component.ProfileDeletionScope),
 		ProfileTest:       connectormanagement.NewProfileTestingHTTPHandler(component.ProfileTestingScope),
 		TargetDraft:       &TargetDraftHTTPHandler{component: component},
+		TargetDelete:      &TargetDeleteHTTPHandler{component: component},
 	}
 }
 

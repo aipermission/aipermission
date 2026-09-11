@@ -83,11 +83,6 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	}
 }
 
-func (s *Server) connectorTargetDeleterFor(kind string) connectorapi.TargetDeleter {
-	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TargetDeleter)
-	return adapter
-}
-
 func (s *Server) connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {
 	adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.CredentialProfileLifecycleAdapter)
 	return adapter
