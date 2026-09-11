@@ -6,7 +6,7 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
-func requireCommandRuntime(t *testing.T, server *Server, runtime databaseRuntime) gatewayaccess.CommandRuntime {
+func requireCommandRuntime(t *testing.T, server *Server, runtime databaseRuntime) *gatewayaccess.CommandRuntime {
 	t.Helper()
 	owner, err := server.commandRuntime(runtime)
 	if err != nil {
