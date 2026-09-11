@@ -27,7 +27,7 @@ func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.S
 		Leases:   runtime.SecurityPort().VaultLeaseStore(),
 		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
-			return localExecutionPrincipal(runtime)
+			return s.localExecutionPrincipal(runtime)
 		},
 		Requests: func(ctx context.Context) (gatewayvault.RequestInvalidator, error) {
 			owner, err := s.vaultRequestRuntime(ctx, runtime)

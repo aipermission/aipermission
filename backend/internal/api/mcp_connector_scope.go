@@ -56,7 +56,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	}
 	return gatewayaccess.MCPActionScope{
 		Database: auth.runtime.StoragePort().DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
-		Output: mcpConnectorOutputAuthorization(auth.runtime),
+		Output: s.mcpConnectorOutputAuthorization(auth.runtime),
 		Call: func(ctx context.Context, call actions.Call) (actions.CallResult, error) {
 			return s.callConnectorAction(ctx, auth.runtime, call)
 		},
@@ -69,7 +69,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	}, true
 }
 
-func mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
+func (s *Server) mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
 	if runtime == nil {
 		return nil
 	}
@@ -77,7 +77,7 @@ func mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatewayaccess.MCP
 		Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(), Leases: runtime.SecurityPort().VaultLeaseStore(),
 		Delivery: actions.Delivery(runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: runtime.IsMCPStarted,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
-			return tokenExecutionPrincipal(runtime, tokenID)
+			return s.tokenExecutionPrincipal(runtime, tokenID)
 		},
 	}
 }

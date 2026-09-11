@@ -147,10 +147,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		"missing session generation": {SessionID: &sessionID},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, malformed) {
+			if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, malformed) {
 				t.Fatalf("partial Vault session handle authorized output")
 			}
-			response := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, malformed, connectors.ActionResult{
+			response := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, malformed, connectors.ActionResult{
 				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 			})
 			if !response.OutputWithheld || response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" {
@@ -158,10 +158,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 			}
 		})
 	}
-	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("Vault session output was authorized without a lease")
 	}
-	withheld := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
+	withheld := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
@@ -175,7 +175,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("grant Vault session lease: %v", err)
 	}
-	principal, err := tokenExecutionPrincipal(runtime, token.ID)
+	principal, err := fixture.server.tokenExecutionPrincipal(runtime, token.ID)
 	if err != nil {
 		t.Fatalf("create token execution principal: %v", err)
 	}
@@ -186,10 +186,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}, console.OperationObserve); err != nil {
 		t.Fatalf("exact Vault lease should authorize output: %v", err)
 	}
-	if !mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if !fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("valid exact Vault lease did not authorize connector output")
 	}
-	authorized := mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
+	authorized := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
@@ -201,7 +201,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("block action permission: %v", err)
 	}
-	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("blocked action permission still authorized stored output")
 	}
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -211,7 +211,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		t.Fatalf("restore action permission: %v", err)
 	}
 	runtime.SecurityPort().VaultLeaseStore().RevokeToken(token.ID)
-	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("revoked Vault lease still authorized connector output")
 	}
 }
@@ -464,7 +464,7 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 		SessionID: &sessionID,
 		Output:    map[string]any{"secret_derived_result": "withhold-me"},
 	}
-	response := mcpConnectorOutputAuthorization(nil).ResponseForToken(context.Background(), nil, 9, request, connectors.ActionResult{
+	response := (&Server{}).mcpConnectorOutputAuthorization(nil).ResponseForToken(context.Background(), nil, 9, request, connectors.ActionResult{
 		Status: connectors.ResultOutcomeUnknown,
 		Output: request.Output,
 	})
@@ -503,7 +503,7 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	writeDone := make(chan struct{})
 	go func() {
 		defer close(writeDone)
-		mcpConnectorOutputAuthorization(runtime).Deliver(
+		fixture.server.mcpConnectorOutputAuthorization(runtime).Deliver(
 			w,
 			httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
 			token.ID,
@@ -536,7 +536,7 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	}
 
 	after := httptest.NewRecorder()
-	mcpConnectorOutputAuthorization(runtime).Deliver(
+	fixture.server.mcpConnectorOutputAuthorization(runtime).Deliver(
 		after,
 		httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
 		token.ID,

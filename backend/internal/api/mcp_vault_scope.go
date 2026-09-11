@@ -21,7 +21,7 @@ func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (gate
 			return s.vaultRequestRuntime(ctx, auth.runtime)
 		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {
-			capability, err := gatewayaccess.NewCapabilityStore(auth.runtime.StoragePort().DatabaseHandle()).Effective(
+			capability, err := s.access.NewCapabilityStore(auth.runtime.StoragePort().DatabaseHandle()).Effective(
 				ctx, auth.TokenID, projectID, gatewayaccess.VaultMetadataRead, time.Now(),
 			)
 			return err == nil && capability.ExecutionRule == gatewayaccess.RuleAlwaysRun, err

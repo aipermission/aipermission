@@ -48,7 +48,17 @@ func (s *Server) connectorPeerTrustApplication() *connectorapi.PeerTrustCoordina
 	})
 }
 
-func connectorWorkspace(runtime databaseRuntime) connectorapi.Workspace {
+func (s *Server) connectorWorkspace(runtime databaseRuntime) connectorapi.Workspace {
+	workspace := connectorBaseWorkspace(runtime)
+	if runtime != nil {
+		workspace.Principal = func() (gatewayaccess.Principal, error) {
+			return s.localExecutionPrincipal(runtime)
+		}
+	}
+	return workspace
+}
+
+func connectorBaseWorkspace(runtime databaseRuntime) connectorapi.Workspace {
 	if runtime == nil {
 		return connectorapi.Workspace{}
 	}
@@ -58,14 +68,11 @@ func connectorWorkspace(runtime databaseRuntime) connectorapi.Workspace {
 		Connector: connectorapi.NewTransportRuntime(
 			runtime.ConnectorPort(), database, runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery,
 		),
-		Principal: func() (gatewayaccess.Principal, error) {
-			return localExecutionPrincipal(runtime)
-		},
 	}
 }
 
 func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.Workspace {
-	workspace := connectorWorkspace(runtime)
+	workspace := s.connectorWorkspace(runtime)
 	if runtime == nil {
 		return workspace
 	}
@@ -104,30 +111,18 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.W
 	return workspace
 }
 
-func connectorDataRuntimePort(runtime databaseRuntime, kind string) connectorapi.ConnectorDataRuntime {
-	return connectorapi.DataRuntime(connectorWorkspace(runtime), kind)
+func (s *Server) connectorDataRuntimePort(runtime databaseRuntime, kind string) connectorapi.ConnectorDataRuntime {
+	return connectorapi.DataRuntime(s.connectorWorkspace(runtime), kind)
 }
 
-func connectorLiveRuntime(runtime databaseRuntime, kind string) connectorapi.LiveConsoleRuntime {
-	return connectorapi.LiveRuntime(connectorWorkspace(runtime), kind)
+func (s *Server) connectorLiveRuntime(runtime databaseRuntime, kind string) connectorapi.LiveConsoleRuntime {
+	return connectorapi.LiveRuntime(s.connectorWorkspace(runtime), kind)
 }
 
-func connectorActionRuntime(runtime databaseRuntime, kind string) connectorapi.ActionRuntime {
-	return connectorapi.PortActionRuntime(connectorWorkspace(runtime), kind)
-}
-
-func connectorCredentialResourceRuntime(runtime databaseRuntime, kind string) connectorapi.CredentialResourceRuntime {
-	return connectorapi.PortCredentialResourceRuntime(connectorWorkspace(runtime), kind)
+func (s *Server) connectorCredentialResourceRuntime(runtime databaseRuntime, kind string) connectorapi.CredentialResourceRuntime {
+	return connectorapi.PortCredentialResourceRuntime(s.connectorWorkspace(runtime), kind)
 }
 
 func (s *Server) connectorTargetLifecycleRuntime(runtime databaseRuntime, kind string) connectorapi.TargetLifecycleRuntime {
-	return s.connectorPortsApplication().TargetLifecycleRuntime(connectorWorkspace(runtime), kind)
-}
-
-func connectorRuntimeIDBelongsToKind(ctx context.Context, runtime databaseRuntime, kind string, runtimeID int64) error {
-	return connectorapi.RequireRuntimeID(ctx, connectorWorkspace(runtime), kind, runtimeID)
-}
-
-func connectorRuntimeIDBelongsToTarget(ctx context.Context, runtime databaseRuntime, kind string, targetID, runtimeID int64) error {
-	return connectorapi.RequireTargetRuntimeID(ctx, connectorWorkspace(runtime), kind, targetID, runtimeID)
+	return s.connectorPortsApplication().TargetLifecycleRuntime(s.connectorWorkspace(runtime), kind)
 }

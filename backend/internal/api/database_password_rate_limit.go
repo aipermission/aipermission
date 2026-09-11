@@ -22,7 +22,7 @@ type databasePasswordAttempt struct {
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
 	attempt := databasePasswordAttempt{
 		access: s.access,
-		key:    gatewayaccess.RuntimeKey(r, databasePasswordRateLimitScope),
+		key:    s.access.RuntimeKey(r, databasePasswordRateLimitScope),
 	}
 	if err := attempt.access.WaitDatabasePassword(r.Context(), attempt.key); err != nil {
 		writeError(w, http.StatusRequestTimeout, "database password verification timed out")

@@ -467,7 +467,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	alwaysOutput := alwaysResponse["output"].(map[string]any)
 	alwaysSessionID := int64(alwaysOutput["session_id"].(float64))
 	alwaysGeneration := int64(alwaysOutput["session_generation"].(float64))
-	principal, err := tokenExecutionPrincipal(runtime, token.ID)
+	principal, err := fixture.server.tokenExecutionPrincipal(runtime, token.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

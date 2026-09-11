@@ -9,7 +9,7 @@ import (
 
 func (s *Server) runtimeConsoleOpener(runtime databaseRuntime) gatewayoperations.RuntimeOpener {
 	return func(ctx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
-		targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, request.RuntimeID)
+		targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, request.RuntimeID)
 		if err != nil {
 			return nil, err
 		}
@@ -21,6 +21,6 @@ func (s *Server) runtimeConsoleOpener(runtime databaseRuntime) gatewayoperations
 		if adapter == nil {
 			return nil, connectormgmt.ErrInvalidTargetRef
 		}
-		return adapter.OpenLiveConsole(ctx, s.connectorPortsApplication().LiveConsoleGateway(s.connectorPortsWorkspace(runtime)), connectorLiveRuntime(runtime, target.ConnectorKind), request)
+		return adapter.OpenLiveConsole(ctx, s.connectorPortsApplication().LiveConsoleGateway(s.connectorPortsWorkspace(runtime)), s.connectorLiveRuntime(runtime, target.ConnectorKind), request)
 	}
 }

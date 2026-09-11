@@ -22,16 +22,13 @@ var (
 )
 
 const (
-	RuleAlwaysRun        = accesscontrol.RuleAlwaysRun
-	VaultMetadataRead    = accesscontrol.VaultMetadataRead
-	RunningAssistantHint = commandrequests.RunningAssistantHint
-	CommandSourceMCP     = commandrequests.SourceMCP
-	CommandSourceManual  = commandrequests.SourceManual
-	CSRFCookieBase       = uisession.CSRFCookieBase
-	CSRFHeaderName       = uisession.CSRFHeaderName
-	SessionCookieBase    = uisession.SessionCookieBase
-	SessionMaxAge        = uisession.SessionMaxAge
-	WorkspaceCookieBase  = uisession.WorkspaceCookieBase
+	RuleAlwaysRun       = accesscontrol.RuleAlwaysRun
+	VaultMetadataRead   = accesscontrol.VaultMetadataRead
+	CSRFCookieBase      = uisession.CSRFCookieBase
+	CSRFHeaderName      = uisession.CSRFHeaderName
+	SessionCookieBase   = uisession.SessionCookieBase
+	SessionMaxAge       = uisession.SessionMaxAge
+	WorkspaceCookieBase = uisession.WorkspaceCookieBase
 )
 
 type AccessScope = accesscontrol.Scope
@@ -39,14 +36,12 @@ type CommandBulkAuditAppender = commandrequests.BulkAuditAppender
 type CommandBulkHTTPRuntime = commandrequests.BulkHTTPRuntime
 type CommandBulkTarget = commandrequests.BulkTarget
 type CommandHTTPReader = commandrequests.HTTPReader
-type CommandPolicyWarning = commandrequests.PolicyWarning
 type CommandWorkspaceRuntimeDependencies = commandrequests.WorkspaceRuntimeDependencies
 type Principal = executionprincipal.Principal
 type MCPActionScope = mcpconnector.ActionScope
 type MCPOutputAuthorization = mcpconnector.OutputAuthorization
 type MCPPermission = mcpconnector.Permission
 type MCPScope = mcpconnector.Scope
-type Auth = runtimecontrol.Auth
 type MCPRuntimeScope = runtimecontrol.MCPRuntimeScope
 type SecurityHTTPScope = securitypolicy.HTTPScope
 type SecuritySettings = securitypolicy.Settings

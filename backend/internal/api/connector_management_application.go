@@ -93,7 +93,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 				if adapter == nil {
 					return false
 				}
-				adapter.TestCredentialProfile(s.connectorPortsApplication().PeerGateway(), w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
+				adapter.TestCredentialProfile(s.connectorPortsApplication().PeerGateway(), w, r, s.connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
 				return true
 			},
 			RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
@@ -107,7 +107,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 				return map[string]any{"value": redacted}, nil
 			},
 			ResourceRuntime: func(kind string) connectorapi.CredentialResourceRuntime {
-				return connectorapi.PortCredentialResourceRuntime(connectorWorkspace(runtime), kind)
+				return s.connectorCredentialResourceRuntime(runtime, kind)
 			},
 		},
 		Lifecycle: connectormgmt.LifecyclePorts{

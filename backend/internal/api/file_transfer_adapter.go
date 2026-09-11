@@ -44,7 +44,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 		return filetransferhttp.ConnectorPorts{}, err
 	}
 	boundary := actions.NewCredentialBoundary(nil)
-	scope := connectors.ScopeWithSecretAccessor(connectorWorkspace(runtime).Connector, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
+	scope := connectors.ScopeWithSecretAccessor(server.connectorWorkspace(runtime).Connector, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
 		boundary.AddStructured(secrets)
 		return connectorSecretAccessor{values: secrets, boundary: boundary}
 	})

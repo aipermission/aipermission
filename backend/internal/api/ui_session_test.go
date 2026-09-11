@@ -41,6 +41,10 @@ func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	return server
 }
 
+func uiRetryIdentity(instanceID string) string {
+	return gatewayaccess.NewComponent("").UISessionRetryIdentity(instanceID)
+}
+
 func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
 	srv := uiSessionTestServer("", databasecatalog.DefaultDatabaseID(""), "")
 

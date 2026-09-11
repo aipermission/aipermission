@@ -7,14 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 func TestMCPTokenRateLimitFingerprintIsNonReversibleAndStable(t *testing.T) {
 	const token = "aip_secret-token-value"
-	first := mcpTokenRateLimitKey(token)
-	second := mcpTokenRateLimitKey(token)
+	server := &Server{access: gatewayaccess.NewComponent("")}
+	first := server.mcpTokenRateLimitKey(token)
+	second := server.mcpTokenRateLimitKey(token)
 	if first != second {
 		t.Fatalf("fingerprint is not stable: %q != %q", first, second)
 	}
@@ -32,8 +33,9 @@ func TestDatabasePasswordRateLimitKeyIsSharedAcrossRoutesAndOmitsRequestMetadata
 	second := httptest.NewRequest(http.MethodPost, "/api/databases/delete-locked?database=customer-name", strings.NewReader(`{"current_password":"second-secret"}`))
 	second.RemoteAddr = "127.0.0.1:54321"
 
-	firstKey := runtimecontrol.Key(first, databasePasswordRateLimitScope)
-	secondKey := runtimecontrol.Key(second, databasePasswordRateLimitScope)
+	access := gatewayaccess.NewComponent("")
+	firstKey := access.RuntimeKey(first, databasePasswordRateLimitScope)
+	secondKey := access.RuntimeKey(second, databasePasswordRateLimitScope)
 	if firstKey != secondKey {
 		t.Fatalf("database password routes use different keys: %q != %q", firstKey, secondKey)
 	}
@@ -50,7 +52,7 @@ func TestMCPAuthenticationDoesNotShareTokenBackoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	brokenKey := mcpTokenRateLimitKey("broken-client-token")
+	brokenKey := fixture.server.mcpTokenRateLimitKey("broken-client-token")
 	for range authRateLimitLockoutFailures {
 		fixture.server.access.RecordMCPTokenFailure(brokenKey)
 	}

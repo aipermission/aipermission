@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAuthContext, bool) {
-	ipLimitKey := gatewayaccess.RuntimeKey(r, "mcp")
+	ipLimitKey := s.access.RuntimeKey(r, "mcp")
 	if err := s.access.WaitMCPIP(r.Context(), ipLimitKey); err != nil {
 		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
 		return mcpAuthContext{}, false
@@ -28,7 +28,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		writeError(w, http.StatusUnauthorized, "missing API token")
 		return mcpAuthContext{}, false
 	}
-	tokenLimitKey := mcpTokenRateLimitKey(tokenValue)
+	tokenLimitKey := s.mcpTokenRateLimitKey(tokenValue)
 	if err := s.access.WaitMCPToken(r.Context(), tokenLimitKey); err != nil {
 		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
 		return mcpAuthContext{}, false
@@ -36,7 +36,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 
 	runtimes := s.unlockedRuntimeSnapshot()
 	matches := []mcpAuthContext{}
-	tokenHash := gatewayaccess.HashToken(tokenValue)
+	tokenHash := s.access.HashToken(tokenValue)
 	now := time.Now().UTC()
 	for _, runtime := range runtimes {
 		authenticated, err := runtime.StoragePort().TokenStore().AuthenticateHash(r.Context(), tokenHash, now)
@@ -72,8 +72,8 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	return mcpAuthContext{}, false
 }
 
-func mcpTokenRateLimitKey(tokenValue string) string {
-	tokenHash := strings.TrimPrefix(gatewayaccess.HashToken(tokenValue), "sha256:")
+func (s *Server) mcpTokenRateLimitKey(tokenValue string) string {
+	tokenHash := strings.TrimPrefix(s.access.HashToken(tokenValue), "sha256:")
 	const fingerprintLength = 24
 	if len(tokenHash) > fingerprintLength {
 		tokenHash = tokenHash[:fingerprintLength]

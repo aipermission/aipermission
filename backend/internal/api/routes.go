@@ -5,7 +5,6 @@ package api
 import (
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -30,13 +29,13 @@ func (s *Server) routes() {
 
 	gatewayinfra.Register(s.mux, gatewayinfra.Dependencies{
 		Health: gatewayinfra.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
-		Security:    gatewayaccess.NewSecurityHTTPHandlers(s.securityPolicyHTTPScope),
+		Security:    s.access.NewSecurityHTTPHandlers(s.securityPolicyHTTPScope),
 		Retention:   observation.Retention,
 		Maintenance: gatewayoperations.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope),
 		Workspaces:  s.workspaceLifecycleHTTPHandlers(),
 
 		Credentials:     connectorManagement.CredentialResources(s.connectorCredentialResourceDependencies()),
-		TokenAccess:     gatewayaccess.NewAccessHTTPHandlers(s.accessControlScope),
+		TokenAccess:     s.access.NewAccessHTTPHandlers(s.accessControlScope),
 		TargetOperation: connectorTargets.runConnectorTargetOperation,
 
 		Backup: gatewayinfra.Backup{
@@ -46,8 +45,8 @@ func (s *Server) routes() {
 		TransientBackup: backup.Transient, BackupProviders: backup.Providers,
 
 		Console:            connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope),
-		BulkConsole:        gatewayaccess.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
-		CommandRequests:    gatewayaccess.NewCommandHTTPHandlers(s.commandRequestHTTPScope),
+		BulkConsole:        s.access.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
+		CommandRequests:    s.access.NewCommandHTTPHandlers(s.commandRequestHTTPScope),
 		ConnectorApprovals: connectormgmt.NewConnectorApprovalHTTPHandlers(s.connectorApprovalHTTPScope),
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,
@@ -74,9 +73,9 @@ func (s *Server) routes() {
 		ProfileTest:      connectormgmt.NewProfileTestingHTTPHandler(connectorManagement.ProfileTestingScope),
 
 		Messages: gatewayoperations.NewMessageHTTPHandlers(s.messageQueueScope), Audit: observation.Audit,
-		MCPRuntime:          gatewayaccess.NewMCPRuntimeHTTPHandlers(s.mcpRuntimeHTTPScope),
-		MCPConnectorReads:   gatewayaccess.NewMCPReadHTTPHandlers(mcp.mcpConnectorReadScope),
-		MCPConnectorActions: gatewayaccess.NewMCPActionHTTPHandlers(mcp.mcpConnectorActionScope),
+		MCPRuntime:          s.access.NewMCPRuntimeHTTPHandlers(s.mcpRuntimeHTTPScope),
+		MCPConnectorReads:   s.access.NewMCPReadHTTPHandlers(mcp.mcpConnectorReadScope),
+		MCPConnectorActions: s.access.NewMCPActionHTTPHandlers(mcp.mcpConnectorActionScope),
 		MCPVaultActions:     gatewayvault.NewVaultMCPHTTPHandlers(mcp.mcpVaultScope),
 		RegisterAdapterRoutes: func(mux *http.ServeMux) {
 			registerConnectorAdapterRoutes(mux, s)

@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	owner, err := gatewayaccess.NewCommandWorkspaceRuntime(gatewayaccess.CommandWorkspaceRuntimeDependencies{
+	owner, err := s.access.NewCommandWorkspaceRuntime(gatewayaccess.CommandWorkspaceRuntimeDependencies{
 		Database: runtime.StoragePort().DatabaseHandle(), Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)

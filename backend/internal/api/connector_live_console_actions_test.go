@@ -48,7 +48,7 @@ func TestLiveConsoleTargetRefPreservesUnexpectedAdapterErrors(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, err := liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
+			_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 			if !errors.Is(err, test.err) {
 				t.Fatalf("error = %v, want wrapped %v", err, test.err)
 			}
@@ -66,7 +66,7 @@ func TestLiveConsoleTargetRefContinuesOnlyForRuntimeNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
+	_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 	if !errors.Is(err, connectortargets.ErrInvalidTargetRef) {
 		t.Fatalf("error = %v, want invalid target ref after all adapters miss", err)
 	}
@@ -82,7 +82,7 @@ func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
+	_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 	if err == nil || !strings.Contains(err.Error(), "empty target reference") {
 		t.Fatalf("error = %v", err)
 	}

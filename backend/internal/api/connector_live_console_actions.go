@@ -5,30 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func prepareLiveConsoleConnectorAction(runtime databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
-	if err != nil {
-		return actions.PreparedRequest{}, err
-	}
-	target, profile, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
-	if err != nil {
-		return actions.PreparedRequest{}, err
-	}
-	adapter, ok := runtimeConnectorAPIAdapterFor(runtime, target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
-	if !ok || adapter.LiveConsoleActionName() == "" {
-		return actions.PreparedRequest{}, connectormgmt.ErrInvalidTargetRef
-	}
-	request.TargetRef = connectorapi.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
-	request.ActionName = adapter.LiveConsoleActionName()
-	return prepareConnectorAction(runtime, ctx, request)
-}
-
-func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime databaseRuntime, runtimeID int64) (string, error) {
+func (s *Server) liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime databaseRuntime, runtimeID int64) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -37,7 +18,7 @@ func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime databaseRunti
 		if adapter == nil {
 			continue
 		}
-		ref, err := adapter.LiveConsoleTargetRef(ctx, connectorLiveRuntime(runtime, info.Kind), runtimeID)
+		ref, err := adapter.LiveConsoleTargetRef(ctx, s.connectorLiveRuntime(runtime, info.Kind), runtimeID)
 		if errors.Is(err, connectormgmt.ErrRuntimeSurfaceNotFound) {
 			continue
 		}

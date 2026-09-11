@@ -17,7 +17,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 	return &connectorapi.LiveConsoleHTTPRuntime{
 		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
-			return localExecutionPrincipal(runtime)
+			return s.localExecutionPrincipal(runtime)
 		},
 		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []gatewayvault.SessionSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
 			application, err := s.vaultActionApplication(runtime)
@@ -47,7 +47,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 			return runtime.OperationsPort().CommandRequestRuntime().CancelRunningForSession(ctx, sessionID, errorText)
 		},
 		RestartRuntime: func(ctx context.Context, runtimeID int64, errorText string) (connectorapi.LiveConsoleRestartResult, error) {
-			principal, err := localExecutionPrincipal(runtime)
+			principal, err := s.localExecutionPrincipal(runtime)
 			if err != nil {
 				return connectorapi.LiveConsoleRestartResult{}, err
 			}

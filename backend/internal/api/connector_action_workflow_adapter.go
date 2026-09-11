@@ -29,7 +29,7 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Works
 		},
 		Identity: actions.ActionIdentity{
 			Key: runtime.ActionIdentity(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
-			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
+			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return s.ensureRuntimeIdentity(runtime) },
 		},
 		Workflow: actions.WorkflowPorts{
 			Current: runtime.OperationsPort().ActionWorkflow, OrCreate: runtime.OperationsPort().ActionWorkflowOrCreate,

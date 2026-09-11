@@ -25,7 +25,7 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 		Requests: runtime.OperationsPort().CommandRequestRuntime(),
 		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
-			return localExecutionPrincipal(runtime)
+			return s.localExecutionPrincipal(runtime)
 		},
 		ResolveTarget: func(ctx context.Context, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
 			target, err := s.bulkConsoleTarget(ctx, runtime, runtimeID)
@@ -51,7 +51,7 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 }
 
 func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
-	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
+	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return gatewayaccess.CommandBulkTarget{}, err
 	}
@@ -79,7 +79,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime,
 }
 
 func (s *Server) consoleErrorPresenter(ctx context.Context, runtime databaseRuntime, runtimeID int64) any {
-	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
+	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil
 	}

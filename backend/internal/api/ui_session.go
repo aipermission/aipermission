@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 const (
@@ -16,8 +15,6 @@ const (
 )
 
 type preparedUISession = gatewayaccess.PreparedUISession
-
-func prepareUISession() (preparedUISession, error) { return gatewayaccess.PrepareUISession() }
 
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
@@ -50,14 +47,4 @@ func (s *Server) activeUIWorkspaceLocked() (string, string) {
 		return databaseID, runtime.UIRetryIdentifier()
 	}
 	return databaseID, ""
-}
-
-func uiRetryIdentity(instanceID string) string {
-	return gatewayaccess.UISessionRetryIdentity(instanceID)
-}
-
-func isUISessionExempt(path string) bool { return gatewayaccess.IsUIExempt(path) }
-
-func requiresUICSRF(method, path string) bool {
-	return !gatewayaccess.IsUIExempt(path) && gatewayoperations.IsStateChangingMethod(method)
 }

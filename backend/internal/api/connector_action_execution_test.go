@@ -391,7 +391,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	principal, err := localExecutionPrincipal(runtime)
+	principal, err := server.localExecutionPrincipal(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,10 +430,10 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	if err := ensureRuntimeIdentity(runtime); err != nil {
+	server := &Server{}
+	if err := server.ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -488,11 +488,11 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	if err := ensureRuntimeIdentity(runtime); err != nil {
+	server := &Server{}
+	if err := server.ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
 	runtime.SetMCPStarted(true)
-	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -535,7 +535,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 	if err := store.SetActionPermission(t.Context(), permissionInput); err != nil {
 		t.Fatal(err)
 	}
-	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	principal, err := server.tokenExecutionPrincipal(runtime, tokenID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,11 +567,11 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	if err := ensureRuntimeIdentity(runtime); err != nil {
+	server := &Server{}
+	if err := server.ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
 	runtime.SetMCPStarted(true)
-	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -611,7 +611,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 		t.Fatalf("insert running request: created=%v err=%v", created, err)
 	}
 	runtime.SetMCPStarted(false)
-	principal, err := tokenExecutionPrincipal(runtime, tokenID)
+	principal, err := server.tokenExecutionPrincipal(runtime, tokenID)
 	if err != nil {
 		t.Fatal(err)
 	}
