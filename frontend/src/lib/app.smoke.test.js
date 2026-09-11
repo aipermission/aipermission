@@ -8,7 +8,7 @@ import {
   releaseData,
   releaseSource,
   releaseManifest,
-} from "./smoke/app-smoke-fixtures.js";
+} from "./smoke/app-smoke-fixtures.test.fixture.js";
 
 test("App keeps the primary route surface available", () => {
   for (const route of [

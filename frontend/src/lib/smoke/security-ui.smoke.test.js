@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { apiSource, nginxSource } from "./app-smoke-fixtures.js";
+import { apiSource, nginxSource } from "./app-smoke-fixtures.test.fixture.js";
 
 test("MCP setup defaults to the local Docker frontend origin", () => {
   assert.match(apiSource, /mcpApiUrl = normalizeApiUrl\(viteEnv\.VITE_MCP_API_URL \|\| browserOrigin\(\)\)/);

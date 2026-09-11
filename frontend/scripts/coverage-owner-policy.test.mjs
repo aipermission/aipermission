@@ -19,6 +19,7 @@ test("treats production modules as owners by default", () => {
     "src/lib/release.generated.json",
     "src/lib/mcp-client-catalog.js",
     "src/pages/history.component.test.jsx",
+    "src/lib/smoke/app-smoke-fixtures.test.fixture.js",
     "src/test/setup.js",
   ];
 

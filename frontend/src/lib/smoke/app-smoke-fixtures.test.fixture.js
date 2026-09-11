@@ -31,8 +31,12 @@ export function backendRegisteredConnectorKinds(sources) {
   const kinds = new Set();
   for (const source of sources) {
     const connectorImports = new Map();
-    for (const match of source.matchAll(/(\w+)\s+"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g)) {
-      connectorImports.set(match[1], match[2].split("/")[0]);
+    for (const match of source.matchAll(
+      /(?:(\w+)\s+)?"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g,
+    )) {
+      const pathParts = match[2].split("/");
+      const packageName = !match[1] || match[1] === "import" ? pathParts.at(-1) : match[1];
+      connectorImports.set(packageName, pathParts[0]);
     }
     for (const match of source.matchAll(/(\w+)\.New\(\)/g)) {
       const kind = connectorImports.get(match[1]);

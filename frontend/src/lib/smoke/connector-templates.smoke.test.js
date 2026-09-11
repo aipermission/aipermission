@@ -10,7 +10,7 @@ import {
   connectorTemplateRegistrySource,
   connectorTemplatesDir,
   sourceDir,
-} from "./app-smoke-fixtures.js";
+} from "./app-smoke-fixtures.test.fixture.js";
 
 test("connector templates are discovered dynamically", () => {
   assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.jsx"/);
@@ -28,6 +28,20 @@ test("frontend and backend connector catalogs stay aligned", () => {
     assert.ok(metadata.label);
     assert.ok(metadata.version);
   }
+});
+
+test("backend connector discovery accepts implicit Go import names", () => {
+  assert.deepEqual(
+    backendRegisteredConnectorKinds([
+      `package catalog
+import "github.com/aipermission/aipermission/backend/internal/connectors/mysql"
+import (
+  "github.com/aipermission/aipermission/backend/internal/connectors/redis/transport"
+)
+func register() { mysql.New(); transport.New() }`,
+    ]),
+    ["mysql", "redis"],
+  );
 });
 
 test("connector templates do not import sibling connector internals", () => {
