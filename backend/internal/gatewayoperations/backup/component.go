@@ -1,6 +1,6 @@
-// Package applicationbackup composes encrypted workspace import, export, and
-// remote backup provider operations behind a narrow HTTP boundary.
-package applicationbackup
+// Package backup composes encrypted workspace import, export, and remote
+// provider operations behind the gateway operations boundary.
+package backup
 
 import (
 	"context"

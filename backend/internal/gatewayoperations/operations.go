@@ -2,22 +2,22 @@
 package gatewayoperations
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/applicationbackup"
-	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
+	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
+	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 )
 
-type BackupApplication = applicationbackup.Component
-type BackupDependencies = applicationbackup.Dependencies
-type ImportDatabaseRequest = applicationbackup.ImportDatabaseRequest
-type BackupPasswordAttempt = applicationbackup.PasswordAttempt
-type TransientRestoreRequest = applicationbackup.TransientRestoreRequest
-type ObservationAppender = applicationobservation.Appender
-type Observation = applicationobservation.Component
+type BackupApplication struct{ *backupapp.Component }
+type BackupDependencies backupapp.Dependencies
+type ImportDatabaseRequest backupapp.ImportDatabaseRequest
+type BackupPasswordAttempt = backupapp.PasswordAttempt
+type TransientRestoreRequest backupapp.TransientRestoreRequest
+type ObservationAppender = observationapp.Appender
+type Observation struct{ observationapp.Component }
 type MaintenanceConsoleRuntime = console.MaintenanceConsoleRuntime
 type RuntimeOpenRequest = console.RuntimeOpenRequest
 type RuntimeOpener = console.RuntimeOpener

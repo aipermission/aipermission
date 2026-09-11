@@ -4,22 +4,22 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/applicationbackup"
-	"github.com/aipermission/aipermission/backend/internal/applicationobservation"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
+	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
+	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 )
 
 func ObservationReportFormatVersion() string {
-	return applicationobservation.ReportFormatVersion()
+	return observationapp.ReportFormatVersion()
 }
 
-func NewBackupApplication(dependencies applicationbackup.Dependencies) *applicationbackup.Component {
-	return applicationbackup.New(dependencies)
+func NewBackupApplication(dependencies BackupDependencies) *BackupApplication {
+	return &BackupApplication{Component: backupapp.New(backupapp.Dependencies(dependencies))}
 }
 
 func NewConsoleManager(db *sql.DB, openRuntime console.RuntimeOpener, redact func(string) string) *console.Manager {

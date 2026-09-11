@@ -1,4 +1,4 @@
-package applicationbackup
+package backup
 
 import (
 	"database/sql"

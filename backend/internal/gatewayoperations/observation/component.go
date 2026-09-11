@@ -1,6 +1,6 @@
-// Package applicationobservation composes workspace audit, history, and
-// retention capabilities without exposing their implementation to transport.
-package applicationobservation
+// Package observation composes workspace audit, history, and retention
+// capabilities behind the gateway operations boundary.
+package observation
 
 import (
 	"context"

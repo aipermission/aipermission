@@ -1,4 +1,4 @@
-package applicationobservation
+package observation
 
 import (
 	"net/http"
