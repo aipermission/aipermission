@@ -26,7 +26,7 @@ func (port requestMutationPort) Observe(ctx context.Context, actor string, token
 	}
 }
 
-func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime) (*vaultrequests.Runtime, error) {
+func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime) (VaultRequestApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Requests.Store == nil || runtime.Requests.AllowRequest == nil ||
 		runtime.Requests.RepairProjection == nil || runtime.Requests.RedactRequestError == nil || runtime.Session.MCPStarted == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable

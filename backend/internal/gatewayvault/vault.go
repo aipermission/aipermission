@@ -19,16 +19,14 @@ const (
 
 type ProjectScope = projects.Scope
 type ProjectVaultHTTPScope = projectvault.HTTPScope
-type ProjectVaultRuntime = projectvault.Runtime
 type SessionMutationScope = projectvault.SessionMutationScope
 type SessionReference = projectvault.SessionReference
 type SessionSelection = projectvault.SessionSelection
 type VaultConnectorPort = vaultactions.ConnectorPort
 type PeerIdentityExpectation = vaultactions.PeerIdentityExpectation
-type VaultActionRuntime = vaultactions.Runtime
 type VaultApprovalHTTPScope = vaultrequests.HTTPScope
 type VaultMCPHTTPScope = vaultrequests.MCPHTTPScope
-type VaultRequestRuntime = vaultrequests.Runtime
+type VaultRequestApplication = vaultrequests.Application
 type Invalidator = vaultsessions.Invalidator
 type InvalidatorDependencies = vaultsessions.InvalidatorDependencies
 type VaultSessionReference = vaultsessions.Reference

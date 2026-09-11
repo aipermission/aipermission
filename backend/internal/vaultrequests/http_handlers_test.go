@@ -39,7 +39,7 @@ func TestHTTPHandlersPreserveStoppedMCPPrecedence(t *testing.T) {
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
 		return HTTPScope{
 			MCPStarted: func() bool { return false },
-			Runtime: func(context.Context) (*Runtime, error) {
+			Runtime: func(context.Context) (Application, error) {
 				runtimeCalls++
 				return harness.runtime, nil
 			},
@@ -114,7 +114,7 @@ func approvalHTTPRequest(method, path, body string) *http.Request {
 func testApprovalHTTPScope(harness *runtimeHarness) HTTPScope {
 	return HTTPScope{
 		MCPStarted: func() bool { return harness.mcpStarted },
-		Runtime: func(context.Context) (*Runtime, error) {
+		Runtime: func(context.Context) (Application, error) {
 			return harness.runtime, nil
 		},
 	}

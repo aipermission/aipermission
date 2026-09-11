@@ -11,7 +11,22 @@ import (
 
 type HTTPScope struct {
 	MCPStarted func() bool
-	Runtime    func(context.Context) (*Runtime, error)
+	Runtime    func(context.Context) (Application, error)
+}
+
+type Application interface {
+	List(context.Context, string, int) ([]Request, error)
+	RunPending(context.Context, int64, string) (WorkflowResult, error)
+	DeclinePending(context.Context, int64, string) (Request, error)
+	Call(context.Context, CallInput) (RequestView, error)
+	GetOwned(context.Context, int64, int64) (RequestView, error)
+	CancelOwned(context.Context, int64, int64) (Request, error)
+	StalePendingForContext(context.Context, int64, int64, string) error
+	StalePendingForProject(context.Context, int64, string) error
+	StalePendingForRuntimes(context.Context, []int64, string) error
+	StalePendingForAction(context.Context, string, string) error
+	FailRunning(context.Context, string) error
+	Validate() error
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)
@@ -117,9 +132,9 @@ func (h *HTTPHandlers) resolve(w http.ResponseWriter) (HTTPScope, bool) {
 	return scope, true
 }
 
-func resolveHTTPRuntime(w http.ResponseWriter, r *http.Request, scope HTTPScope) (*Runtime, bool) {
+func resolveHTTPRuntime(w http.ResponseWriter, r *http.Request, scope HTTPScope) (Application, bool) {
 	runtime, err := scope.Runtime(r.Context())
-	if err != nil || runtime == nil || runtime.validate() != nil {
+	if err != nil || runtime == nil || runtime.Validate() != nil {
 		httptransport.WriteInternalError(w)
 		return nil, false
 	}

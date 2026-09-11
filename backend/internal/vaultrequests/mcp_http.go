@@ -43,7 +43,7 @@ type MCPHTTPScope struct {
 	WorkspaceUUID string
 	TokenID       int64
 	MCPStarted    func() bool
-	Runtime       func(context.Context) (*Runtime, error)
+	Runtime       func(context.Context) (Application, error)
 	MetadataRead  func(context.Context, int64) (bool, error)
 }
 
@@ -231,9 +231,9 @@ func (h *MCPHTTPHandlers) resolve(w http.ResponseWriter, r *http.Request, requir
 	return scope, true
 }
 
-func (h *MCPHTTPHandlers) runtime(w http.ResponseWriter, r *http.Request, scope MCPHTTPScope) (*Runtime, bool) {
+func (h *MCPHTTPHandlers) runtime(w http.ResponseWriter, r *http.Request, scope MCPHTTPScope) (Application, bool) {
 	owner, err := scope.Runtime(r.Context())
-	if err != nil || owner == nil {
+	if err != nil || owner == nil || owner.Validate() != nil {
 		httptransport.WriteInternalError(w)
 		return nil, false
 	}

@@ -31,7 +31,7 @@ func TestMCPCallPreservesStoppedPrecedenceBeforeBodyDecode(t *testing.T) {
 		return MCPHTTPScope{
 			Database: harness.database, Vault: secretVault, WorkspaceUUID: "mcp-http-workspace",
 			TokenID: 1, MCPStarted: func() bool { return false },
-			Runtime:      func(context.Context) (*Runtime, error) { return harness.runtime, nil },
+			Runtime:      func(context.Context) (Application, error) { return harness.runtime, nil },
 			MetadataRead: func(context.Context, int64) (bool, error) { return true, nil },
 		}, true
 	})

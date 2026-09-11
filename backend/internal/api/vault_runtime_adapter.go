@@ -28,7 +28,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 			AcquireDelivery: delivery.AcquireDelivery, AcquireExclusive: delivery.AcquireExclusive,
 		},
 		Project: gatewayvault.ProjectRuntimePorts{
-			RuntimeOrCreate: runtime.OperationsPort().ProjectVaultOrCreate,
+			State: runtime.OperationsPort().ProjectVaultState(),
 			InvalidateSessions: func(ctx context.Context, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
 				lifecycle, err := s.vaultSessionLifecycle(runtime)
 				if err != nil {

@@ -17,7 +17,7 @@ func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (gate
 	return gatewayvault.VaultMCPHTTPScope{
 		Database: auth.runtime.StoragePort().DatabaseHandle(), Vault: auth.runtime.StoragePort().SecretVault(), WorkspaceUUID: auth.runtime.WorkspaceIdentifier(),
 		TokenID: auth.TokenID, MCPStarted: auth.runtime.IsMCPStarted,
-		Runtime: func(ctx context.Context) (*gatewayvault.VaultRequestRuntime, error) {
+		Runtime: func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
 			return s.vaultRequestRuntime(ctx, auth.runtime)
 		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {

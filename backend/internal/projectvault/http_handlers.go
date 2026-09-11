@@ -14,9 +14,23 @@ import (
 )
 
 type HTTPScope struct {
-	Runtime        *Runtime
+	Runtime        Application
 	RuntimeID      string
 	SessionCatalog SessionOptionsCatalog
+}
+
+type Application interface {
+	List(context.Context, ListFilter) ([]Item, int, error)
+	Get(context.Context, int64) (Item, error)
+	Create(context.Context, CreateInput) (Item, error)
+	UpdateMetadata(context.Context, UpdateMetadataInput) (Item, error)
+	ReplaceValue(context.Context, ReplaceRuntimeValueInput) (Item, error)
+	GeneratePreview(context.Context, int64, string, string) (GeneratedPreviewResult, error)
+	Reveal(context.Context, int64, string) (string, error)
+	Delete(context.Context, int64, int64, int64) error
+	ListDefaultBindings(context.Context, DefaultBindingFilter) ([]DefaultBinding, error)
+	SaveDefaultBinding(context.Context, DefaultBindingInput) (DefaultBinding, error)
+	DeleteDefaultBinding(context.Context, int64, int64) error
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)

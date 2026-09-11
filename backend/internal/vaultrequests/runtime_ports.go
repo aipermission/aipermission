@@ -119,3 +119,5 @@ func (r *Runtime) validate() error {
 	}
 	return nil
 }
+
+func (r *Runtime) Validate() error { return r.validate() }

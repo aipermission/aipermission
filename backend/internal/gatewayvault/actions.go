@@ -9,10 +9,21 @@ import (
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
+	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type actionProjectPort struct{ database *sql.DB }
+
+type VaultActionApplication interface {
+	BuildEnvironmentPlan(context.Context, int64, []projectvault.SessionSelection) (vaultactions.EnvironmentPlan, error)
+	Prepare(context.Context, int64, string, string, map[string]any) (vaultrequests.PreparedAction, error)
+	AuthorizeOutput(context.Context, vaultrequests.Request) bool
+	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
+	Execute(context.Context, vaultrequests.Request) (any, error)
+	Compensate(context.Context, vaultrequests.Request, any) error
+	IsStale(error) bool
+}
 
 func (port actionProjectPort) ResolveRef(ctx context.Context, ref string) (vaultactions.Project, bool, error) {
 	project, err := projectstore.NewStore(port.database).ResolveRef(ctx, ref)
@@ -80,7 +91,7 @@ func (port actionMutationPort) WithMutation(ctx context.Context, tokenID int64, 
 	return port.runtime.Action.Mutate(ctx, tokenID, action, payload, mutate)
 }
 
-func (component *Component) ActionRuntime(runtime Runtime) (*vaultactions.Runtime, error) {
+func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.Tokens == nil || runtime.Session.Sessions == nil ||
 		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Action.AllowGenerate == nil || runtime.Session.MCPStarted == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable

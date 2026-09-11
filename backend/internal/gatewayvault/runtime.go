@@ -5,10 +5,10 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
+	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
 
 // Runtime is the Vault-owned capability view of one unlocked workspace.
@@ -25,7 +25,7 @@ type Runtime struct {
 type StorageRuntime struct {
 	Database    *sql.DB
 	SecretVault *vault.Vault
-	Tokens      *tokens.Store
+	Tokens      vaultactions.TokenReader
 	WorkspaceID string
 }
 
@@ -39,7 +39,7 @@ type SessionRuntime struct {
 }
 
 type ProjectRuntimePorts struct {
-	RuntimeOrCreate    func(func() (*projectvault.Runtime, error)) (*projectvault.Runtime, error)
+	State              *runtimeops.StateSlot
 	InvalidateSessions func(context.Context, []projectvault.SessionReference, projectvault.SessionMutationScope) error
 	SessionEnvironment func(context.Context, int64) (bool, error)
 	Mutate             func(context.Context, string, func() any, func(*sql.Tx) error) error

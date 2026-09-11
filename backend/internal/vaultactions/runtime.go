@@ -89,9 +89,13 @@ type LeasePersistence interface {
 	Revoke(context.Context, int64, int64) error
 }
 
+type TokenReader interface {
+	Get(context.Context, int64) (tokens.Token, error)
+}
+
 type Dependencies struct {
 	Database          *sql.DB
-	Tokens            *tokens.Store
+	Tokens            TokenReader
 	Projects          ProjectPort
 	SessionItems      SessionItemPort
 	ItemMutations     ItemMutationPort
@@ -109,7 +113,7 @@ type Dependencies struct {
 
 type Runtime struct {
 	database          *sql.DB
-	tokens            *tokens.Store
+	tokens            TokenReader
 	projects          ProjectPort
 	sessionItems      SessionItemPort
 	itemMutations     ItemMutationPort

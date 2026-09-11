@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
 
 type Dependencies struct {
@@ -22,6 +23,22 @@ type Component struct {
 }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
+
+type ProjectVaultApplication interface {
+	List(context.Context, projectvault.ListFilter) ([]projectvault.Item, int, error)
+	Get(context.Context, int64) (projectvault.Item, error)
+	Create(context.Context, projectvault.CreateInput) (projectvault.Item, error)
+	UpdateMetadata(context.Context, projectvault.UpdateMetadataInput) (projectvault.Item, error)
+	ReplaceValue(context.Context, projectvault.ReplaceRuntimeValueInput) (projectvault.Item, error)
+	GeneratePreview(context.Context, int64, string, string) (projectvault.GeneratedPreviewResult, error)
+	Reveal(context.Context, int64, string) (string, error)
+	Delete(context.Context, int64, int64, int64) error
+	ListDefaultBindings(context.Context, projectvault.DefaultBindingFilter) ([]projectvault.DefaultBinding, error)
+	SaveDefaultBinding(context.Context, projectvault.DefaultBindingInput) (projectvault.DefaultBinding, error)
+	DeleteDefaultBinding(context.Context, int64, int64) error
+}
+
+type projectRuntimeHandle struct{ runtime *projectvault.Runtime }
 
 type deliveryGate struct{ runtime Runtime }
 
@@ -58,11 +75,11 @@ func (port mutationPort) Observe(ctx context.Context, action string, payload any
 	return port.runtime.Project.Observe(ctx, action, payload)
 }
 
-func (component *Component) ProjectRuntime(runtime Runtime) (*projectvault.Runtime, error) {
-	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Project.RuntimeOrCreate == nil {
+func (component *Component) ProjectRuntime(runtime Runtime) (ProjectVaultApplication, error) {
+	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Project.State == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return runtime.Project.RuntimeOrCreate(func() (*projectvault.Runtime, error) {
+	handle, err := runtimeops.LoadOrCreateState(runtime.Project.State, func() (*projectRuntimeHandle, error) {
 		store, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)
 		if err != nil {
 			return nil, err
@@ -76,8 +93,15 @@ func (component *Component) ProjectRuntime(runtime Runtime) (*projectvault.Runti
 		if err != nil {
 			return nil, fmt.Errorf("initialize Project Vault runtime: %w", err)
 		}
-		return owner, nil
+		return &projectRuntimeHandle{runtime: owner}, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	if handle == nil || handle.runtime == nil {
+		return nil, projectvault.ErrRuntimeUnavailable
+	}
+	return handle.runtime, nil
 }
 
 type bindingTargets struct {

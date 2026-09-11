@@ -55,6 +55,6 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 	return gatewayvault.PeerIdentityExpectation{Items: items, Required: capability.SessionEnvironmentPeerIdentityRequired()}, nil
 }
 
-func (s *Server) vaultActionApplication(runtime databaseRuntime) (*gatewayvault.VaultActionRuntime, error) {
+func (s *Server) vaultActionApplication(runtime databaseRuntime) (gatewayvault.VaultActionApplication, error) {
 	return s.vaultApplication().ActionRuntime(s.vaultRuntime(runtime))
 }

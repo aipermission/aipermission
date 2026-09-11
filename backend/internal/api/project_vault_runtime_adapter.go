@@ -7,6 +7,13 @@ import (
 )
 
 func (s *Server) vaultApplication() *gatewayvault.Component {
+	if s == nil || s.vault == nil {
+		panic("Vault application is not initialized")
+	}
+	return s.vault
+}
+
+func (s *Server) newVaultApplication() *gatewayvault.Component {
 	return gatewayvault.New(gatewayvault.Dependencies{
 		LiveConsoleKind: func(kind string) (string, bool) {
 			adapter := s.connectorLiveConsoleTargetAdapterFor(kind)
@@ -24,7 +31,7 @@ func (s *Server) vaultApplication() *gatewayvault.Component {
 	})
 }
 
-func (s *Server) projectVaultRuntime(runtime databaseRuntime) (*gatewayvault.ProjectVaultRuntime, error) {
+func (s *Server) projectVaultRuntime(runtime databaseRuntime) (gatewayvault.ProjectVaultApplication, error) {
 	return s.vaultApplication().ProjectRuntime(s.vaultRuntime(runtime))
 }
 
