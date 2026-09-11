@@ -4,7 +4,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -218,6 +220,78 @@ func TestGatewayBoundariesDoNotExposeMutableValues(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
+	roots, err := filepath.Glob(filepath.Join("..", "..", "internal", "gateway*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				return err
+			}
+			workspaceAliases := map[string]bool{}
+			for _, imported := range file.Imports {
+				importPath := strings.Trim(imported.Path.Value, `"`)
+				if importPath != modulePath+"/internal/workspaceruntime" {
+					continue
+				}
+				name := pathpkg.Base(importPath)
+				if imported.Name != nil {
+					name = imported.Name.Name
+				}
+				workspaceAliases[name] = true
+			}
+			if len(workspaceAliases) == 0 {
+				return nil
+			}
+			for _, declaration := range file.Decls {
+				switch typed := declaration.(type) {
+				case *ast.FuncDecl:
+					if typed.Name.IsExported() && referencesConcreteWorkspaceRuntime(typed.Type, workspaceAliases) {
+						t.Errorf("%s exports concrete workspaceruntime.Runtime through %s", path, typed.Name.Name)
+					}
+				case *ast.GenDecl:
+					for _, specification := range typed.Specs {
+						typeSpec, ok := specification.(*ast.TypeSpec)
+						if ok && typeSpec.Name.IsExported() && referencesConcreteWorkspaceRuntime(typeSpec.Type, workspaceAliases) {
+							t.Errorf("%s exports concrete workspaceruntime.Runtime through %s", path, typeSpec.Name.Name)
+						}
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("inspect %s: %v", root, err)
+		}
+	}
+}
+
+func referencesConcreteWorkspaceRuntime(node ast.Node, workspaceAliases map[string]bool) bool {
+	found := false
+	ast.Inspect(node, func(candidate ast.Node) bool {
+		selector, ok := candidate.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Runtime" {
+			return true
+		}
+		identifier, ok := selector.X.(*ast.Ident)
+		if ok && workspaceAliases[identifier.Name] {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {

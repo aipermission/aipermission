@@ -21,7 +21,7 @@ func newApprovedConnectorTransports(dependencies []actions.ResolvedDependency) a
 
 type connectorNetworkTransport struct {
 	server   *Server
-	runtime  *databaseRuntime
+	runtime  databaseRuntime
 	approved approvedConnectorTransports
 }
 
@@ -37,7 +37,7 @@ func (transport connectorNetworkTransport) DialConnectorTCP(ctx context.Context,
 
 type connectorCommandTransport struct {
 	server   *Server
-	runtime  *databaseRuntime
+	runtime  databaseRuntime
 	approved approvedConnectorTransports
 }
 
@@ -55,7 +55,7 @@ func (transport connectorNetworkTransport) dependencies() connectors.Dependencie
 	return connectorTransportDependencies(transport.server, transport.runtime)
 }
 
-func connectorTransportDependencies(server *Server, runtime *databaseRuntime) connectors.Dependencies {
+func connectorTransportDependencies(server *Server, runtime databaseRuntime) connectors.Dependencies {
 	var adapterFor connectors.AdapterProvider
 	var trustStorePath func() string
 	if server != nil {

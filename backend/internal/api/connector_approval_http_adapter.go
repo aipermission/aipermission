@@ -13,7 +13,7 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgm
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
 	return connectormgmt.ConnectorApprovalScope{
-		Database: runtime.Storage.Database,
+		Database: runtime.StoragePort().DatabaseHandle(),
 		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
 			return s.connectorActionWorkflow(runtime)
 		},

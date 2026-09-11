@@ -39,7 +39,7 @@ func TestConnectorPeerTrustChangeInvalidatesVaultStateBeforeMutation(t *testing.
 			approval_context_hash, name, status, created_at, updated_at
 		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash',
 		          'approval-hash', 'Vault invalidation session', 'connected', ?, ?)`,
-		target.ID, token.ID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID, now, now,
+		target.ID, token.ID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier(), now, now,
 	)
 	if err != nil {
 		t.Fatalf("insert Vault console session: %v", err)
@@ -49,15 +49,15 @@ func TestConnectorPeerTrustChangeInvalidatesVaultStateBeforeMutation(t *testing.
 		t.Fatal(err)
 	}
 	lease := vaultsessions.Lease{
-		WorkspaceID: runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
+		WorkspaceID: runtime.WorkspaceIdentifier(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
 		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID,
 		SessionGeneration: 1, EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 		ExpiresAt: time.Now().UTC().Add(time.Hour),
 	}
-	if err := runtime.Security.VaultLeases.Grant(lease); err != nil {
+	if err := runtime.SecurityPort().VaultLeaseStore().Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := vaultsessions.NewPersistence(runtime.Storage.Database).Grant(ctx, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.StoragePort().DatabaseHandle()).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	pending, _, err := vaultrequests.NewStore(fixture.db).Create(ctx, vaultrequests.CreateInput{
@@ -215,7 +215,7 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 			approval_context_hash, name, status, created_at, updated_at
 		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash',
 		          'approval-hash', 'Vault no-op session', 'connected', ?, ?)`,
-		target.ID, token.ID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID, now, now,
+		target.ID, token.ID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier(), now, now,
 	)
 	if err != nil {
 		t.Fatalf("insert Vault console session: %v", err)
@@ -225,15 +225,15 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		t.Fatal(err)
 	}
 	lease := vaultsessions.Lease{
-		WorkspaceID: runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
+		WorkspaceID: runtime.WorkspaceIdentifier(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
 		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID,
 		SessionGeneration: 1, EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 		ExpiresAt: time.Now().UTC().Add(time.Hour),
 	}
-	if err := runtime.Security.VaultLeases.Grant(lease); err != nil {
+	if err := runtime.SecurityPort().VaultLeaseStore().Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := vaultsessions.NewPersistence(runtime.Storage.Database).Grant(ctx, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.StoragePort().DatabaseHandle()).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	pending, _, err := vaultrequests.NewStore(fixture.db).Create(ctx, vaultrequests.CreateInput{
@@ -277,7 +277,7 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 	if sessionStatus != "connected" || leaseStatus != "active" || request.Status != vaultrequests.StatusApprovalPending {
 		t.Fatalf("no-op authorization update changed Vault state: session=%q lease=%q request=%q", sessionStatus, leaseStatus, request.Status)
 	}
-	principal, err := executionprincipal.MCPToken(token.ID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	principal, err := executionprincipal.MCPToken(token.ID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: 1},
 		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 	}
-	if err := runtime.Security.VaultLeases.Authorize(ctx, principal, authorization, console.OperationObserve); err != nil {
+	if err := runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, authorization, console.OperationObserve); err != nil {
 		t.Fatalf("no-op authorization update revoked the in-memory Vault lease: %v", err)
 	}
 }
@@ -318,7 +318,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 			approval_context_hash, name, status, created_at, updated_at
 		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash',
 		          'approval-hash', 'Vault atomic session', 'connected', ?, ?)`,
-		target.ID, token.ID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID, now, now,
+		target.ID, token.ID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier(), now, now,
 	)
 	if err != nil {
 		t.Fatalf("insert Vault console session: %v", err)
@@ -328,15 +328,15 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 		t.Fatal(err)
 	}
 	lease := vaultsessions.Lease{
-		WorkspaceID: runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
+		WorkspaceID: runtime.WorkspaceIdentifier(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
 		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID, SessionGeneration: 1,
 		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 		ExpiresAt: time.Now().UTC().Add(time.Hour),
 	}
-	if err := runtime.Security.VaultLeases.Grant(lease); err != nil {
+	if err := runtime.SecurityPort().VaultLeaseStore().Grant(lease); err != nil {
 		t.Fatalf("grant Vault lease: %v", err)
 	}
-	if err := vaultsessions.NewPersistence(runtime.Storage.Database).Grant(ctx, project.ID, lease); err != nil {
+	if err := vaultsessions.NewPersistence(runtime.StoragePort().DatabaseHandle()).Grant(ctx, project.ID, lease); err != nil {
 		t.Fatalf("persist Vault lease: %v", err)
 	}
 	if _, err := fixture.db.ExecContext(ctx, `
@@ -377,7 +377,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 	if leaseStatus != "active" {
 		t.Fatalf("lease mutation was not rolled back: %q", leaseStatus)
 	}
-	principal, err := executionprincipal.MCPToken(token.ID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	principal, err := executionprincipal.MCPToken(token.ID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: 1},
 		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 	}
-	if err := runtime.Security.VaultLeases.Authorize(ctx, principal, authorization, console.OperationObserve); err != nil {
+	if err := runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, authorization, console.OperationObserve); err != nil {
 		t.Fatalf("rolled-back update changed the in-memory lease: %v", err)
 	}
 }

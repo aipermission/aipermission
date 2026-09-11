@@ -7,7 +7,7 @@ import (
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func (s *Server) connectorCredentialRuntimePorts(runtime *databaseRuntime) connectormgmt.CredentialRuntimePorts {
+func (s *Server) connectorCredentialRuntimePorts(runtime databaseRuntime) connectormgmt.CredentialRuntimePorts {
 	return connectormgmt.RuntimeCredentialPorts(
 		runtime,
 		func(kind string) connectors.RuntimeCapabilityResolver {

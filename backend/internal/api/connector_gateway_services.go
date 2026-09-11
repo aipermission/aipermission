@@ -31,11 +31,11 @@ func (s *Server) connectorChangeVaultPeerTrust(ctx context.Context, change func(
 		return errors.New("database is locked")
 	}
 	sort.Slice(runtimes, func(i, j int) bool {
-		return runtimes[i].ID < runtimes[j].ID
+		return runtimes[i].DatabaseIdentifier() < runtimes[j].DatabaseIdentifier()
 	})
 	releases := make([]func(), 0, len(runtimes))
 	for _, runtime := range runtimes {
-		release, err := runtime.Security.VaultDelivery.AcquireExclusive(ctx)
+		release, err := runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive(ctx)
 		if err != nil {
 			for index := len(releases) - 1; index >= 0; index-- {
 				releases[index]()
@@ -64,7 +64,7 @@ func (s *Server) connectorChangeVaultPeerTrust(ctx context.Context, change func(
 // ConnectorDeleteTargetRecord atomically deletes a connector target and
 // records its shared lifecycle audit event. Connector-owned adapters perform
 // remote cleanup before crossing this irreversible local boundary.
-func (s connectorTargetHandlers) connectorDeleteTargetRecord(ctx context.Context, dbRuntime *databaseRuntime, target connectormgmt.Target, payload map[string]any) error {
+func (s connectorTargetHandlers) connectorDeleteTargetRecord(ctx context.Context, dbRuntime databaseRuntime, target connectormgmt.Target, payload map[string]any) error {
 	if payload == nil {
 		payload = map[string]any{}
 	}
@@ -81,7 +81,7 @@ func (s connectorTargetHandlers) connectorDeleteTargetRecord(ctx context.Context
 // ConnectorFinalizeDeletedTarget applies the shared post-delete lifecycle:
 // pending connector action requests are marked stale after the target record
 // and its audit event commit atomically.
-func (s connectorTargetHandlers) connectorFinalizeDeletedTarget(ctx context.Context, dbRuntime *databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) (int64, error) {
+func (s connectorTargetHandlers) connectorFinalizeDeletedTarget(ctx context.Context, dbRuntime databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) (int64, error) {
 	if staleReason == "" {
 		staleReason = "connector target was deleted; ask the AI to send a fresh request"
 	}

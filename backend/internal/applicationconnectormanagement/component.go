@@ -15,33 +15,33 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
-type Transaction func(context.Context, *workspaceruntime.Runtime, func(*sql.Tx, connectormanagement.AuditAppender) error) error
+type Transaction func(context.Context, workspaceruntime.Port, func(*sql.Tx, connectormanagement.AuditAppender) error) error
 
 type Dependencies struct {
-	ActiveRuntime      func(http.ResponseWriter) (*workspaceruntime.Runtime, bool)
+	ActiveRuntime      func(http.ResponseWriter) (workspaceruntime.Port, bool)
 	LiveConsoleKind    func(string) (string, bool)
 	HasFileTransfer    func(string) bool
 	HasTCPTransport    func(string) bool
-	SessionEnvironment func(context.Context, *workspaceruntime.Runtime, int64) bool
-	Preparation        func(*workspaceruntime.Runtime) connectormanagement.CredentialPreparationPorts
-	CredentialRuntime  func(*workspaceruntime.Runtime) connectormanagement.CredentialRuntimePorts
+	SessionEnvironment func(context.Context, workspaceruntime.Port, int64) bool
+	Preparation        func(workspaceruntime.Port) connectormanagement.CredentialPreparationPorts
+	CredentialRuntime  func(workspaceruntime.Port) connectormanagement.CredentialRuntimePorts
 	Transaction        Transaction
-	AfterLifecycle     func(context.Context, *workspaceruntime.Runtime, connectormanagement.TargetLifecycleChange) error
-	BeforeCreate       func(context.Context, *workspaceruntime.Runtime, connectortargets.Target) error
-	BeforeDelete       func(context.Context, *workspaceruntime.Runtime, connectortargets.Target, connectortargets.CredentialProfile) error
-	SpecialTest        func(http.ResponseWriter, *http.Request, *workspaceruntime.Runtime, connectors.TargetView, connectors.CredentialProfileView) bool
-	RedactDetails      func(context.Context, *workspaceruntime.Runtime, map[string]any, connectormanagement.CredentialBoundary) (map[string]any, error)
-	Probe              func(context.Context, *workspaceruntime.Runtime, connectors.NetworkDialRequest) error
-	Redact             func(context.Context, *workspaceruntime.Runtime, string) string
-	Observe            func(context.Context, *workspaceruntime.Runtime, string, any)
-	AuditRequired      func(context.Context, *workspaceruntime.Runtime, string, any) error
+	AfterLifecycle     func(context.Context, workspaceruntime.Port, connectormanagement.TargetLifecycleChange) error
+	BeforeCreate       func(context.Context, workspaceruntime.Port, connectortargets.Target) error
+	BeforeDelete       func(context.Context, workspaceruntime.Port, connectortargets.Target, connectortargets.CredentialProfile) error
+	SpecialTest        func(http.ResponseWriter, *http.Request, workspaceruntime.Port, connectors.TargetView, connectors.CredentialProfileView) bool
+	RedactDetails      func(context.Context, workspaceruntime.Port, map[string]any, connectormanagement.CredentialBoundary) (map[string]any, error)
+	Probe              func(context.Context, workspaceruntime.Port, connectors.NetworkDialRequest) error
+	Redact             func(context.Context, workspaceruntime.Port, string) string
+	Observe            func(context.Context, workspaceruntime.Port, string, any)
+	AuditRequired      func(context.Context, workspaceruntime.Port, string, any) error
 }
 
 type Component struct{ dependencies Dependencies }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
 
-func (component *Component) active(w http.ResponseWriter) (*workspaceruntime.Runtime, bool) {
+func (component *Component) active(w http.ResponseWriter) (workspaceruntime.Port, bool) {
 	return component.dependencies.ActiveRuntime(w)
 }
 
@@ -51,7 +51,7 @@ func (component *Component) QueryScope(w http.ResponseWriter) (connectormanageme
 		return connectormanagement.Scope{}, false
 	}
 	return connectormanagement.Scope{
-		Database: runtime.Storage.Database, Registry: runtime.Connectors.ConnectorRegistry(),
+		Database: runtime.StoragePort().DatabaseHandle(), Registry: runtime.ConnectorPort().ConnectorRegistry(),
 		Features: func(kind string) connectormanagement.ConnectorFeatures {
 			features := connectormanagement.ConnectorFeatures{FileTransfer: component.dependencies.HasFileTransfer(kind)}
 			if capability, ok := component.dependencies.LiveConsoleKind(kind); ok {
@@ -73,13 +73,13 @@ func (component *Component) TargetMutationScope(w http.ResponseWriter) (connecto
 	return component.targetMutation(runtime), true
 }
 
-func (component *Component) targetMutation(runtime *workspaceruntime.Runtime) connectormanagement.TargetMutationScope {
+func (component *Component) targetMutation(runtime workspaceruntime.Port) connectormanagement.TargetMutationScope {
 	return connectormanagement.TargetMutationScope{
-		Database: runtime.Storage.Database, Registry: runtime.Connectors.ConnectorRegistry(),
+		Database: runtime.StoragePort().DatabaseHandle(), Registry: runtime.ConnectorPort().ConnectorRegistry(),
 		ValidateTransport: func(ctx context.Context, projectID int64, config map[string]any) error {
-			return ValidateTransport(ctx, connectortargets.NewStore(runtime.Storage.Database), projectID, config, component.dependencies.HasTCPTransport)
+			return ValidateTransport(ctx, connectortargets.NewStore(runtime.StoragePort().DatabaseHandle()), projectID, config, component.dependencies.HasTCPTransport)
 		},
-		AcquireExclusive: runtime.Security.VaultDelivery.AcquireExclusive,
+		AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return component.dependencies.Transaction(ctx, runtime, mutate)
 		},
@@ -100,10 +100,10 @@ func (component *Component) ProfileMutationScope(w http.ResponseWriter) (connect
 	return component.profileMutation(runtime), true
 }
 
-func (component *Component) profileMutation(runtime *workspaceruntime.Runtime) connectormanagement.ProfileMutationScope {
+func (component *Component) profileMutation(runtime workspaceruntime.Port) connectormanagement.ProfileMutationScope {
 	return connectormanagement.ProfileMutationScope{
-		Database: runtime.Storage.Database, Registry: runtime.Connectors.ConnectorRegistry(),
-		Preparation: component.dependencies.Preparation(runtime), AcquireExclusive: runtime.Security.VaultDelivery.AcquireExclusive,
+		Database: runtime.StoragePort().DatabaseHandle(), Registry: runtime.ConnectorPort().ConnectorRegistry(),
+		Preparation: component.dependencies.Preparation(runtime), AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return component.dependencies.Transaction(ctx, runtime, mutate)
 		},
@@ -166,9 +166,9 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 		return connectormanagement.ProvisioningScope{}, false
 	}
 	return connectormanagement.ProvisioningScope{
-		Database: runtime.Storage.Database, Registry: runtime.Connectors.ConnectorRegistry(), Runtime: component.dependencies.CredentialRuntime(runtime),
+		Database: runtime.StoragePort().DatabaseHandle(), Registry: runtime.ConnectorPort().ConnectorRegistry(), Runtime: component.dependencies.CredentialRuntime(runtime),
 		EncryptSecret: func(_ context.Context, id int64, secret json.RawMessage) (string, error) {
-			return recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, id, secret)
+			return recordcrypto.EncryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, id, secret)
 		},
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
 			return component.dependencies.Transaction(ctx, runtime, mutate)

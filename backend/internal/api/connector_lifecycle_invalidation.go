@@ -4,7 +4,7 @@ import "context"
 
 func (s connectorTargetHandlers) afterConnectorCredentialLifecycleChange(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	targetID int64,
 	profileID int64,
 	vaultReason string,

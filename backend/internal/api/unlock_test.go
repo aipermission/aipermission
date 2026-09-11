@@ -161,12 +161,11 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	runtime.ID = "transfer-shutdown"
 	server := &Server{}
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
-	transferStore := filetransfer.NewStore(runtime.Storage.Database)
+	transferStore := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle())
 	store := connectortargets.NewStore(database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
@@ -197,7 +196,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	workerDone := make(chan filetransfer.Record, 1)
-	if !runtime.Operations.TransferLifecycle.Registry().Files.Launch(record.ID, cancel, func() {
+	if !runtime.OperationsPort().FileTransferLifecycle().Registry().Files.Launch(record.ID, cancel, func() {
 		<-ctx.Done()
 		_, _ = transferStore.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
 		finished, _ := transferStore.Get(context.Background(), record.ID)
@@ -259,12 +258,12 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("server should be unlocked after setup")
 	}
 	runtime := server.activeRuntime()
-	identityBeforePasswordChange, err := actions.IdentityTag(runtime.ActionIdentityKey, []byte("stable-retry-identity"))
+	identityBeforePasswordChange, err := actions.IdentityTag(runtime.ActionIdentity(), []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity before password change: %v", err)
 	}
-	connectorStore := connectortargets.NewStore(runtime.Storage.Database)
-	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.Storage.Vault, runtime.WorkspaceUUID)
+	connectorStore := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle())
+	target, profile := createAPITestPostgresTargetProfile(t, connectorStore, runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier())
 	if _, err := connectorStore.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 		ActionName: "retention_fixture", Source: commandRequestSourceManual, Status: connectors.ResultCompleted,
@@ -354,7 +353,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{DatabaseID: "renamed-database", Password: "ChangedPassword123"}); response.Code != http.StatusOK {
 		t.Fatalf("unlock renamed database failed: %d %s", response.Code, response.Body.String())
 	}
-	identityAfterPasswordChange, err := actions.IdentityTag(server.activeRuntime().ActionIdentityKey, []byte("stable-retry-identity"))
+	identityAfterPasswordChange, err := actions.IdentityTag(server.activeRuntime().ActionIdentity(), []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity after password change: %v", err)
 	}
@@ -415,10 +414,10 @@ func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 		t.Fatalf("injected rename failure should return 500, got %d %s", response.Code, response.Body.String())
 	}
 	runtime := server.activeRuntime()
-	if runtime == nil || runtime.ID != "project-one" || runtime.Path != oldPath {
+	if runtime == nil || runtime.DatabaseIdentifier() != "project-one" || runtime.DatabasePath() != oldPath {
 		t.Fatalf("failed rename should restore the original runtime, got %#v", runtime)
 	}
-	if err := runtime.Storage.Database.PingContext(t.Context()); err != nil {
+	if err := runtime.StoragePort().DatabaseHandle().PingContext(t.Context()); err != nil {
 		t.Fatalf("restored runtime should remain queryable: %v", err)
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"unlocked"`) {
@@ -593,7 +592,7 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	projectOne := server.activeRuntime()
-	if projectOne == nil || projectOne.ID != "project-one" {
+	if projectOne == nil || projectOne.DatabaseIdentifier() != "project-one" {
 		t.Fatalf("expected project-one runtime, got %#v", projectOne)
 	}
 
@@ -619,10 +618,10 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 	if rename.Code != http.StatusBadRequest || !strings.Contains(rename.Body.String(), "database name already exists") {
 		t.Fatalf("duplicate rename should fail cleanly, got %d %s", rename.Code, rename.Body.String())
 	}
-	if runtime := server.activeRuntime(); runtime == nil || runtime.ID != "project-one" || runtime.Path != projectOne.Path {
+	if runtime := server.activeRuntime(); runtime == nil || runtime.DatabaseIdentifier() != "project-one" || runtime.DatabasePath() != projectOne.DatabasePath() {
 		t.Fatalf("failed rename should keep project-one active, got %#v", runtime)
 	}
-	if !dbpkg.Exists(projectOne.Path) || !dbpkg.Exists(projectTwoPath) {
+	if !dbpkg.Exists(projectOne.DatabasePath()) || !dbpkg.Exists(projectTwoPath) {
 		t.Fatalf("failed rename should not move database files")
 	}
 
@@ -633,7 +632,7 @@ func TestDatabaseRenameAndSwitchFailuresKeepActiveRuntime(t *testing.T) {
 	if switched.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong-password switch should fail, got %d %s", switched.Code, switched.Body.String())
 	}
-	if runtime := server.activeRuntime(); runtime == nil || runtime.ID != "project-one" || runtime.Path != projectOne.Path {
+	if runtime := server.activeRuntime(); runtime == nil || runtime.DatabaseIdentifier() != "project-one" || runtime.DatabasePath() != projectOne.DatabasePath() {
 		t.Fatalf("failed switch should keep project-one active, got %#v", runtime)
 	}
 
@@ -750,7 +749,7 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	if !server.isUnlocked() {
 		t.Fatalf("server should be unlocked after multipart import")
 	}
-	if importedRetryIdentity := server.activeRuntime().UIRetryIdentity; importedRetryIdentity == "" || importedRetryIdentity == sourceRetryIdentity {
+	if importedRetryIdentity := server.activeRuntime().UIRetryIdentifier(); importedRetryIdentity == "" || importedRetryIdentity == sourceRetryIdentity {
 		t.Fatalf("import did not rotate retry identity: source=%q imported=%q", sourceRetryIdentity, importedRetryIdentity)
 	}
 	importedPath, err := databasecatalog.DatabasePath(server.config.DataPath, "imported-project")
@@ -801,7 +800,7 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read source db: %v", err)
 	}
-	server.workspaceState.OpenRuntime = func(path string, id string, password string) (*databaseRuntime, error) {
+	server.workspaceState.OpenRuntime = func(path string, id string, password string) (databaseRuntime, error) {
 		if id == "imported-project" {
 			return nil, errors.New("injected runtime open failure")
 		}
@@ -816,10 +815,10 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("injected import open failure should return 500, got %d %s", response.Code, response.Body.String())
 	}
-	if runtime := server.activeRuntime(); runtime != previousRuntime || runtime.ID != "project-one" {
+	if runtime := server.activeRuntime(); runtime != previousRuntime || runtime.DatabaseIdentifier() != "project-one" {
 		t.Fatalf("failed import should restore the previous workspace, got %#v", runtime)
 	}
-	if err := previousRuntime.Storage.Database.PingContext(t.Context()); err != nil {
+	if err := previousRuntime.StoragePort().DatabaseHandle().PingContext(t.Context()); err != nil {
 		t.Fatalf("previous workspace should remain queryable: %v", err)
 	}
 	importedPath, err := databasecatalog.DatabasePath(server.config.DataPath, "imported-project")
@@ -966,12 +965,12 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, runtime.Storage.Database, testSSHKeyStore(t, runtime), "worker-1")
-	token, err := runtime.Storage.Tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
+	target := createTestSSHConnectorProfile(t, runtime.StoragePort().DatabaseHandle(), testSSHKeyStore(t, runtime), "worker-1")
+	token, err := runtime.StoragePort().TokenStore().Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	if err := connectortargets.NewStore(runtime.Storage.Database).SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
+	if err := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle()).SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.TargetID,
 		ProfileID:     target.ProfileID,
@@ -1072,12 +1071,12 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	}
 
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, runtime.Storage.Database, testSSHKeyStore(t, runtime), "worker-1")
-	token, err := runtime.Storage.Tokens.Create(t.Context(), tokens.CreateRequest{Name: "agent"})
+	target := createTestSSHConnectorProfile(t, runtime.StoragePort().DatabaseHandle(), testSSHKeyStore(t, runtime), "worker-1")
+	token, err := runtime.StoragePort().TokenStore().Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	requestID, err := runtime.Operations.CommandRequests.Insert(t.Context(), commandrequests.Insert{
+	requestID, err := runtime.OperationsPort().CommandRequestRuntime().Insert(t.Context(), commandrequests.Insert{
 		TokenID: &token.ID, RuntimeID: target.ID, Source: commandrequests.SourceMCP,
 		Command: "sleep 60", Reason: "test lock cleanup", Status: "running",
 	})
@@ -1176,7 +1175,7 @@ func TestDeleteActiveDatabasePromotesRemainingUnlockedWorkspace(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"unlocked"`) || !strings.Contains(response.Body.String(), `"project-one"`) {
 		t.Fatalf("delete should promote project-one, got %d %s", response.Code, response.Body.String())
 	}
-	if runtime := server.activeRuntime(); runtime == nil || runtime.ID != "project-one" {
+	if runtime := server.activeRuntime(); runtime == nil || runtime.DatabaseIdentifier() != "project-one" {
 		t.Fatalf("expected project-one runtime to remain active, got %#v", runtime)
 	}
 }

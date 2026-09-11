@@ -47,7 +47,7 @@ func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
 func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	store := connectortargets.NewStore(runtime.Storage.Database)
+	store := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle())
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
 		ConnectorKind: "alpha",
 		Name:          "alpha target",

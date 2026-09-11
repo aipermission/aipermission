@@ -25,7 +25,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -111,7 +111,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -156,7 +156,7 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -205,7 +205,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -268,7 +268,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	badAction := "missing_action"
 	if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
@@ -292,7 +292,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		ApprovalContext:      `{}`,
 		ApprovalContextHash:  "old-context",
 	}, func(requestID int64) (string, error) {
-		return recordcrypto.EncryptJSON(fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID, recordcrypto.ConnectorActionRequest, requestID, connectorActionExecutionEnvelope{
+		return recordcrypto.EncryptJSON(fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier(), recordcrypto.ConnectorActionRequest, requestID, connectorActionExecutionEnvelope{
 			Input:   map[string]any{},
 			Payload: map[string]any{},
 		})
@@ -397,7 +397,7 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	pendingTarget, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
@@ -511,7 +511,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create token: %v", err)
 			}
-			target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+			target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 			if err := store.SetActionPermission(context.Background(), connectortargets.SetActionPermissionInput{
 				TokenID:       token.ID,
 				TargetID:      target.ID,

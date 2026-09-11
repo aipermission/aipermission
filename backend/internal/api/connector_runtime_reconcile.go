@@ -6,11 +6,11 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime *databaseRuntime) error {
-	if runtime == nil || runtime.Storage.Database == nil {
+func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime databaseRuntime) error {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
 		return nil
 	}
-	store := connectormgmt.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
 	targets, err := store.ListTargets(ctx, connectormgmt.ListTargetsFilter{})
 	if err != nil {
 		return err

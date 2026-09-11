@@ -16,28 +16,28 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	item := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(runtime.Storage.Database).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+	batch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
 		RuntimeID: item.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
 		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.Database).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
 		t.Fatalf("start batch: %t %v", changed, err)
 	}
 	control := &transferjobs.Control{}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.Operations.TransferLifecycle.Registry().Batches.RegisterControl(batch.ID, control)
-	runtime.Operations.TransferLifecycle.Registry().Batches.RegisterCancel(batch.ID, cancel)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterControl(batch.ID, control)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(batch.ID, cancel)
 	request := func(action string, wantCode int, wantStatus string) {
 		t.Helper()
 		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
 		if response.Code != wantCode {
 			t.Fatalf("%s: %d %s", action, response.Code, response.Body.String())
 		}
-		stored, err := filetransfer.NewStore(runtime.Storage.Database).GetBatch(t.Context(), batch.ID)
+		stored, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).GetBatch(t.Context(), batch.ID)
 		if err != nil || stored.Status != wantStatus {
 			t.Fatalf("%s persisted status = %q: %v", action, stored.Status, err)
 		}
@@ -82,19 +82,19 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	item, err := filetransfer.NewStore(runtime.Storage.Database).Create(t.Context(), filetransfer.CreateRequest{
+	item, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).Create(t.Context(), filetransfer.CreateRequest{
 		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionUpload, RemotePath: "/report", FileName: "report",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.Database).MarkRunning(t.Context(), item.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).MarkRunning(t.Context(), item.ID); err != nil || !changed {
 		t.Fatalf("start transfer: changed=%t err=%v", changed, err)
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.Operations.TransferLifecycle.Registry().Files.RegisterCancel(item.ID, cancel)
-	defer runtime.Operations.TransferLifecycle.Registry().Files.UnregisterCancel(item.ID)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(item.ID, cancel)
+	defer runtime.OperationsPort().FileTransferLifecycle().Registry().Files.UnregisterCancel(item.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -107,7 +107,7 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	if workerCtx.Err() != nil {
 		t.Fatal("worker was canceled before terminal state became durable")
 	}
-	stored, err := filetransfer.NewStore(runtime.Storage.Database).Get(t.Context(), item.ID)
+	stored, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).Get(t.Context(), item.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
 		t.Fatalf("rolled-back transfer status=%q err=%v", stored.Status, err)
 	}
@@ -127,20 +127,20 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(runtime.Storage.Database).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+	batch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
 		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
 		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.Database).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
 		t.Fatalf("start batch: changed=%t err=%v", changed, err)
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.Operations.TransferLifecycle.Registry().Batches.RegisterCancel(batch.ID, cancel)
-	defer runtime.Operations.TransferLifecycle.Registry().Batches.UnregisterCancel(batch.ID)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(batch.ID, cancel)
+	defer runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.UnregisterCancel(batch.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -153,7 +153,7 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	if workerCtx.Err() != nil {
 		t.Fatal("batch worker was canceled before terminal state became durable")
 	}
-	stored, err := filetransfer.NewStore(runtime.Storage.Database).GetBatch(t.Context(), batch.ID)
+	stored, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).GetBatch(t.Context(), batch.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
 		t.Fatalf("rolled-back batch status=%q err=%v", stored.Status, err)
 	}

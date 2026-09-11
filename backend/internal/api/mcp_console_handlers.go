@@ -11,14 +11,14 @@ type consoleRestartResult struct {
 	CanceledRunningRequests int64
 }
 
-func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *databaseRuntime, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
-	if runtime == nil || runtime.Operations.CommandRequests == nil {
+func (s *Server) restartServerConsoleSession(ctx context.Context, runtime databaseRuntime, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
+	if runtime == nil || runtime.OperationsPort().CommandRequestRuntime() == nil {
 		return consoleRestartResult{}, gatewayaccess.ErrCommandRuntimeUnavailable
 	}
 	var canceledRequests int64
-	closedSessionIDs, err := runtime.Connectors.ConsoleSessions.RecoverRuntime(ctx, principal, runtimeID, func() error {
+	closedSessionIDs, err := runtime.ConnectorPort().ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, func() error {
 		var err error
-		canceledRequests, err = runtime.Operations.CommandRequests.CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
+		canceledRequests, err = runtime.OperationsPort().CommandRequestRuntime().CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
 		return err
 	})
 	if err != nil {

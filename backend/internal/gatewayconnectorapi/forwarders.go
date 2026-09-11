@@ -32,26 +32,26 @@ func NewPorts(dependencies connectorports.Dependencies) *connectorports.Componen
 	return connectorports.New(dependencies)
 }
 
-func DataRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.ConnectorDataRuntime {
+func DataRuntime(runtime workspaceruntime.Port, kind string) connectorapi.ConnectorDataRuntime {
 	return connectorports.DataRuntime(runtime, kind)
 }
 
-func LiveRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.LiveConsoleRuntime {
+func LiveRuntime(runtime workspaceruntime.Port, kind string) connectorapi.LiveConsoleRuntime {
 	return connectorports.LiveRuntime(runtime, kind)
 }
 
-func PortActionRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.ActionRuntime {
+func PortActionRuntime(runtime workspaceruntime.Port, kind string) connectorapi.ActionRuntime {
 	return connectorports.ActionRuntime(runtime, kind)
 }
 
-func PortCredentialResourceRuntime(runtime *workspaceruntime.Runtime, kind string) connectorapi.CredentialResourceRuntime {
+func PortCredentialResourceRuntime(runtime workspaceruntime.Port, kind string) connectorapi.CredentialResourceRuntime {
 	return connectorports.CredentialResourceRuntime(runtime, kind)
 }
 
-func RequireRuntimeID(ctx context.Context, runtime *workspaceruntime.Runtime, kind string, runtimeID int64) error {
+func RequireRuntimeID(ctx context.Context, runtime workspaceruntime.Port, kind string, runtimeID int64) error {
 	return connectorports.RequireRuntimeID(ctx, runtime, kind, runtimeID)
 }
 
-func RequireTargetRuntimeID(ctx context.Context, runtime *workspaceruntime.Runtime, kind string, targetID int64, runtimeID int64) error {
+func RequireTargetRuntimeID(ctx context.Context, runtime workspaceruntime.Port, kind string, targetID int64, runtimeID int64) error {
 	return connectorports.RequireTargetRuntimeID(ctx, runtime, kind, targetID, runtimeID)
 }

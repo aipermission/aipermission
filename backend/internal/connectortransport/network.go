@@ -49,7 +49,7 @@ func (transport Network) DialConnectorTCP(ctx context.Context, request connector
 	if !ok {
 		return nil, connectortargets.ErrInvalidTargetRef
 	}
-	if transport.Runtime == nil || transport.Runtime.Storage.Database == nil {
+	if transport.Runtime == nil || transport.Runtime.StoragePort().DatabaseHandle() == nil {
 		return nil, fmt.Errorf("database runtime is not available")
 	}
 	release, err := transport.Approved.Acquire(ctx, transport.Runtime, connectors.NetworkTransportCapabilityName, targetRef)
@@ -57,7 +57,7 @@ func (transport Network) DialConnectorTCP(ctx context.Context, request connector
 		return nil, err
 	}
 	defer release()
-	store := connectortargets.NewStore(transport.Runtime.Storage.Database)
+	store := connectortargets.NewStore(transport.Runtime.StoragePort().DatabaseHandle())
 	var projectErr error
 	if strings.TrimSpace(request.SourceTargetRef) != "" {
 		projectErr = store.ValidateTransportTarget(ctx, request.SourceTargetRef, targetRef)

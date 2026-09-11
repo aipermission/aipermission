@@ -26,15 +26,15 @@ type PasswordAttempt interface {
 type Dependencies struct {
 	DataPath            string
 	Lifecycle           Lifecycle
-	ActiveRuntime       func(http.ResponseWriter) (*workspaceruntime.Runtime, bool)
+	ActiveRuntime       func(http.ResponseWriter) (workspaceruntime.Port, bool)
 	CurrentDatabaseName func() string
 	HasSession          func(*http.Request) bool
 	BeginAttempt        func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
 	IssuePrepared       func(http.ResponseWriter, uisession.Prepared) error
 	AcquireOperation    backups.OperationLease
-	Mutate              func(context.Context, *workspaceruntime.Runtime, string, func() any, func(*sql.Tx) error) error
-	AuditRequired       func(context.Context, *workspaceruntime.Runtime, string, any) error
-	Observe             func(context.Context, *workspaceruntime.Runtime, string, any)
+	Mutate              func(context.Context, workspaceruntime.Port, string, func() any, func(*sql.Tx) error) error
+	AuditRequired       func(context.Context, workspaceruntime.Port, string, any) error
+	Observe             func(context.Context, workspaceruntime.Port, string, any)
 }
 
 type Component struct{ dependencies Dependencies }

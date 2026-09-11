@@ -64,19 +64,19 @@ func Publish(sourcePath string, targetPath string) error {
 	return gatewayworkspace.Publish(sourcePath, targetPath)
 }
 
-func Adopt(ctx context.Context, input gatewayworkspace.AdoptInput) (*gatewayworkspace.Runtime, error) {
+func Adopt(ctx context.Context, input gatewayworkspace.AdoptInput) (gatewayworkspace.Runtime, error) {
 	return gatewayworkspace.Adopt(ctx, input)
 }
 
-func Open(ctx context.Context, input gatewayworkspace.OpenInput) (*gatewayworkspace.Runtime, error) {
+func Open(ctx context.Context, input gatewayworkspace.OpenInput) (gatewayworkspace.Runtime, error) {
 	return gatewayworkspace.Open(ctx, input)
 }
 
-func Discard(runtime *gatewayworkspace.Runtime) error {
+func Discard(runtime gatewayworkspace.Runtime) error {
 	return gatewayworkspace.Discard(runtime)
 }
 
-func Close(runtime *gatewayworkspace.Runtime, resolve func() (gatewayworkspace.ActionWorkflow, error)) error {
+func Close(runtime gatewayworkspace.Runtime, resolve func() (gatewayworkspace.ActionWorkflow, error)) error {
 	return gatewayworkspace.Close(runtime, resolve)
 }
 
@@ -84,7 +84,7 @@ func Delete(path string) error {
 	return gatewayworkspace.Delete(path)
 }
 
-func NewRegistry(path string, id string, describe func(*gatewayworkspace.Runtime) gatewayworkspace.Identity) *gatewayworkspace.Registry {
+func NewRegistry(path string, id string, describe func(gatewayworkspace.Runtime) gatewayworkspace.Identity) *gatewayworkspace.Registry {
 	return gatewayworkspace.NewRegistry(path, id, describe)
 }
 

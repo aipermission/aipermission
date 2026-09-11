@@ -14,7 +14,7 @@ const (
 type mcpAuthContext struct {
 	TokenID int64
 	Name    string
-	runtime *databaseRuntime
+	runtime databaseRuntime
 }
 
 type commandPolicyWarning = gatewayaccess.CommandPolicyWarning

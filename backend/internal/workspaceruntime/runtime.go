@@ -29,6 +29,27 @@ type Runtime struct {
 	identityMu        sync.Mutex
 }
 
+type Port interface {
+	WorkspaceIdentity() workspacelifecycle.Identity
+	WorkspaceDatabase() *sql.DB
+	StoragePort() storage.Port
+	ConnectorPort() connectorstate.Port
+	OperationsPort() operations.Port
+	SecurityPort() security.Port
+	ObservationPort() observation.Port
+	WorkspaceIdentifier() string
+	RuntimeIdentifier() string
+	DatabaseIdentifier() string
+	DatabasePath() string
+	GatewaySecretValue() string
+	UIRetryIdentifier() string
+	ActionIdentity() []byte
+	ClearActionIdentity()
+	EnsureIdentity(func(*sql.DB) (string, error), func() (string, error)) error
+	IsMCPStarted() bool
+	SetMCPStarted(bool)
+}
+
 func New(state foundation.State) *Runtime {
 	return &Runtime{
 		ID: state.ID, Path: state.Path,
@@ -62,6 +83,96 @@ func (r *Runtime) WorkspaceDatabase() *sql.DB {
 		return nil
 	}
 	return r.Storage.Database
+}
+
+func (r *Runtime) StoragePort() storage.Port {
+	if r == nil {
+		return (*storage.State)(nil)
+	}
+	return &r.Storage
+}
+
+func (r *Runtime) ConnectorPort() connectorstate.Port {
+	if r == nil {
+		return (*connectorstate.State)(nil)
+	}
+	return &r.Connectors
+}
+
+func (r *Runtime) OperationsPort() operations.Port {
+	if r == nil {
+		return (*operations.State)(nil)
+	}
+	return &r.Operations
+}
+
+func (r *Runtime) SecurityPort() security.Port {
+	if r == nil {
+		return (*security.State)(nil)
+	}
+	return &r.Security
+}
+
+func (r *Runtime) ObservationPort() observation.Port {
+	if r == nil {
+		return (*observation.State)(nil)
+	}
+	return &r.Observation
+}
+
+func (r *Runtime) WorkspaceIdentifier() string {
+	if r == nil {
+		return ""
+	}
+	return r.WorkspaceUUID
+}
+
+func (r *Runtime) RuntimeIdentifier() string {
+	if r == nil {
+		return ""
+	}
+	return r.RuntimeInstanceID
+}
+
+func (r *Runtime) DatabaseIdentifier() string {
+	if r == nil {
+		return ""
+	}
+	return r.ID
+}
+
+func (r *Runtime) DatabasePath() string {
+	if r == nil {
+		return ""
+	}
+	return r.Path
+}
+
+func (r *Runtime) GatewaySecretValue() string {
+	if r == nil {
+		return ""
+	}
+	return r.GatewaySecret
+}
+
+func (r *Runtime) UIRetryIdentifier() string {
+	if r == nil {
+		return ""
+	}
+	return r.UIRetryIdentity
+}
+
+func (r *Runtime) ActionIdentity() []byte {
+	if r == nil {
+		return nil
+	}
+	return r.ActionIdentityKey
+}
+
+func (r *Runtime) ClearActionIdentity() {
+	if r != nil {
+		r.ActionIdentityKey = nil
+	}
 }
 
 func (r *Runtime) EnsureIdentity(

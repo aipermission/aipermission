@@ -10,11 +10,11 @@ import (
 
 type connectorCredentialBoundary = actions.CredentialBoundary
 
-func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (actions.CredentialBoundary, error) {
-	if runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil {
+func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime databaseRuntime, runtimeID int64) (actions.CredentialBoundary, error) {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil {
 		return actions.CredentialBoundary{}, nil
 	}
-	store := connectormgmt.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
 	_, profileView, _, err := store.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return actions.CredentialBoundary{}, err
@@ -27,7 +27,7 @@ func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime *datab
 		return actions.CredentialBoundary{}, nil
 	}
 	secrets := map[string]any{}
-	if err := gatewayvault.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, gatewayvault.ConnectorCredentialProfileRecord(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := gatewayvault.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), gatewayvault.ConnectorCredentialProfileRecord(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		return actions.CredentialBoundary{}, err
 	}
 	return actions.NewCredentialBoundary(secrets), nil

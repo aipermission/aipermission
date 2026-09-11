@@ -16,10 +16,10 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 		return gatewayaccess.MCPScope{}, false
 	}
 	return gatewayaccess.MCPScope{
-		Database: auth.runtime.Storage.Database, Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
+		Database: auth.runtime.StoragePort().DatabaseHandle(), Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
 			permissions, err := connectormgmt.ProjectScopedSupportedConnectorPermissions(
-				ctx, auth.runtime.Storage.Database, runtimeConnectorRegistry(auth.runtime), auth.TokenID,
+				ctx, auth.runtime.StoragePort().DatabaseHandle(), runtimeConnectorRegistry(auth.runtime), auth.TokenID,
 			)
 			if err != nil {
 				return nil, err
@@ -55,7 +55,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	return gatewayaccess.MCPActionScope{
-		Database: auth.runtime.Storage.Database, AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
+		Database: auth.runtime.StoragePort().DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: mcpConnectorOutputAuthorization(auth.runtime),
 		Call: func(ctx context.Context, call actions.Call) (actions.CallResult, error) {
 			return s.callConnectorAction(ctx, auth.runtime, call)
@@ -69,12 +69,12 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	}, true
 }
 
-func mcpConnectorOutputAuthorization(runtime *databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
+func mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
 	if runtime == nil {
 		return nil
 	}
 	return &gatewayaccess.MCPOutputAuthorization{
-		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens, Leases: runtime.Security.VaultLeases,
+		Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(), Leases: runtime.SecurityPort().VaultLeaseStore(),
 		Delivery: actions.Delivery(runtime), MCPStarted: runtime.IsMCPStarted,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return tokenExecutionPrincipal(runtime, tokenID)

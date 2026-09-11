@@ -13,8 +13,8 @@ import (
 )
 
 type Runtime = workspaceruntime.Runtime
-type Registry = workspacelifecycle.Registry[*Runtime]
-type Service = workspacelifecycle.Service[*Runtime]
+type Registry = workspacelifecycle.Registry[Runtime]
+type Service = workspacelifecycle.Service[Runtime]
 type Vault = workspaceruntime.Vault
 type TokenStore = workspaceruntime.TokenStore
 type AdoptInput = workspaceruntime.AdoptInput
@@ -47,17 +47,17 @@ func Delete(path string) error                    { return catalog.Delete(path) 
 func Publish(sourcePath, targetPath string) error { return catalog.Publish(sourcePath, targetPath) }
 func LooksPlaintext(path string) bool             { return catalog.LooksPlaintext(path) }
 func UnsupportedSchemaMessage(err error) string   { return catalog.UnsupportedSchemaMessage(err) }
-func Adopt(ctx context.Context, input AdoptInput) (*Runtime, error) {
+func Adopt(ctx context.Context, input AdoptInput) (Runtime, error) {
 	return workspaceruntime.Adopt(ctx, input)
 }
-func Open(ctx context.Context, input OpenInput) (*Runtime, error) {
+func Open(ctx context.Context, input OpenInput) (Runtime, error) {
 	return workspaceruntime.Open(ctx, input)
 }
-func Discard(runtime *Runtime) error { return workspaceruntime.Discard(runtime) }
-func Close(runtime *Runtime, resolve func() (ActionWorkflow, error)) error {
+func Discard(runtime Runtime) error { return workspaceruntime.Discard(runtime) }
+func Close(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
 	return workspaceruntime.Close(runtime, resolve)
 }
-func NewRegistry(path, id string, describe func(*Runtime) Identity) *Registry {
+func NewRegistry(path, id string, describe func(Runtime) Identity) *Registry {
 	return lifecycle.NewRegistry(path, id, describe)
 }
 func NewService(dependencies Dependencies) (*Service, error) {

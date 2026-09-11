@@ -25,13 +25,13 @@ func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
 			return s.issuePreparedUISessionLocked(w, prepared)
 		},
 		AcquireOperation: s.controlState.BackupOperations.Acquire,
-		Mutate: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		Mutate: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AuditRequired: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload any) error {
+		AuditRequired: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) error {
 			return s.writeAuditRequired(ctx, runtime, "user", nil, 0, action, payload)
 		},
-		Observe: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload any) {
+		Observe: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
 	})

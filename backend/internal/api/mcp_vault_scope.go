@@ -15,13 +15,13 @@ func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (gate
 		return gatewayvault.VaultMCPHTTPScope{}, false
 	}
 	return gatewayvault.VaultMCPHTTPScope{
-		Database: auth.runtime.Storage.Database, Vault: auth.runtime.Storage.Vault, WorkspaceUUID: auth.runtime.WorkspaceUUID,
+		Database: auth.runtime.StoragePort().DatabaseHandle(), Vault: auth.runtime.StoragePort().SecretVault(), WorkspaceUUID: auth.runtime.WorkspaceIdentifier(),
 		TokenID: auth.TokenID, MCPStarted: auth.runtime.IsMCPStarted,
 		Runtime: func(ctx context.Context) (*gatewayvault.VaultRequestRuntime, error) {
 			return s.vaultRequestRuntime(ctx, auth.runtime)
 		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {
-			capability, err := gatewayaccess.NewCapabilityStore(auth.runtime.Storage.Database).Effective(
+			capability, err := gatewayaccess.NewCapabilityStore(auth.runtime.StoragePort().DatabaseHandle()).Effective(
 				ctx, auth.TokenID, projectID, gatewayaccess.VaultMetadataRead, time.Now(),
 			)
 			return err == nil && capability.ExecutionRule == gatewayaccess.RuleAlwaysRun, err

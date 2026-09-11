@@ -12,7 +12,7 @@ func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime *databaseRuntime, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
 	capabilities, _ := resolver.(connectorRuntimeCapabilities)
 	if capabilities == nil {
@@ -24,7 +24,7 @@ func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime 
 	return capabilities
 }
 
-func runtimeConnectorAPIAdapterFor(runtime *databaseRuntime, kind string) connectorapi.Adapter {
+func runtimeConnectorAPIAdapterFor(runtime databaseRuntime, kind string) connectorapi.Adapter {
 	return runtimeConnectorAdapterRegistry(runtime).For(kind)
 }
 
@@ -39,7 +39,7 @@ func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.
 	return c[name]
 }
 
-func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *databaseRuntime) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectors.RuntimeCapabilityResolver {
 	capabilities := connectorRuntimeCapabilities{}
 	if server != nil && runtime != nil {
 		networkTransport := connectorNetworkTransport{server: server, runtime: runtime}

@@ -395,9 +395,9 @@ func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing
 	}
 }
 
-func setProvisionTestProfileSecret(t *testing.T, runtime *databaseRuntime, store *connectortargets.Store, profile connectortargets.CredentialProfile, secret map[string]any) {
+func setProvisionTestProfileSecret(t *testing.T, runtime databaseRuntime, store *connectortargets.Store, profile connectortargets.CredentialProfile, secret map[string]any) {
 	t.Helper()
-	encrypted, err := recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profile.ID, secret)
+	encrypted, err := recordcrypto.EncryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, profile.ID, secret)
 	if err != nil {
 		t.Fatalf("encrypt profile secret: %v", err)
 	}

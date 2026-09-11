@@ -164,7 +164,7 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 		t.Fatalf("oversized download status=%d body=%s", oversizedDownload.Code, oversizedDownload.Body.String())
 	}
 	runtime := fixture.server.activeRuntime()
-	pendingBatch, err := filetransfer.NewStore(runtime.Storage.Database).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
+	pendingBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
 		RuntimeID: payload.Items[0].TransferRuntimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceMCP,
 		Status: filetransfer.StatusPendingApproval,
 		Items: []filetransfer.CreateRequest{
@@ -186,10 +186,10 @@ func TestS3ProfileExposesGenericFileTransferRuntime(t *testing.T) {
 	}
 	waitCtx, cancelOversizedBatch := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelOversizedBatch()
-	if !runtime.Operations.TransferLifecycle.Registry().Wait(waitCtx) {
+	if !runtime.OperationsPort().FileTransferLifecycle().Registry().Wait(waitCtx) {
 		t.Fatal("oversized approved download batch did not settle")
 	}
-	rejectedBatch, err := filetransfer.NewStore(runtime.Storage.Database).GetBatch(context.Background(), pendingBatch.ID)
+	rejectedBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).GetBatch(context.Background(), pendingBatch.ID)
 	if err != nil || rejectedBatch.Status != filetransfer.StatusFailed {
 		t.Fatalf("oversized approved batch = %#v, %v", rejectedBatch, err)
 	}

@@ -26,7 +26,7 @@ func (s *Server) workspaceSelection() gatewayinfra.Identity {
 	return s.workspaceState.Registry.Selection()
 }
 
-func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*databaseRuntime, error) {
+func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (databaseRuntime, error) {
 	if s.workspaceState.OpenRuntime != nil {
 		return s.workspaceState.OpenRuntime(path, id, password)
 	}
@@ -47,7 +47,7 @@ func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	return gatewayinfra.Publish(sourcePath, targetPath)
 }
 
-func (s *Server) openRuntime(path string, id string, password string) (*databaseRuntime, error) {
+func (s *Server) openRuntime(path string, id string, password string) (databaseRuntime, error) {
 	runtime, err := gatewayinfra.Open(context.Background(), gatewayinfra.OpenInput{
 		ID: id, Path: path, Password: password,
 		ConfiguredGatewaySecret: s.config.GatewaySecret,
@@ -60,13 +60,13 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 		s.discardOpeningRuntime(runtime)
 		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
 	}
-	settings, err := runtime.Security.Policy.ReadSettings(context.Background())
+	settings, err := runtime.SecurityPort().PolicyService().ReadSettings(context.Background())
 	if err != nil {
 		s.discardOpeningRuntime(runtime)
 		return nil, err
 	}
-	runtime.Security.Runtime.SetMCPStarted(settings.MCPStartEnabled)
-	runtime.Connectors.ConsoleSessions = gatewayoperations.NewConsoleManager(runtime.Storage.Database, s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	runtime.SecurityPort().RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
+	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(runtime.StoragePort().DatabaseHandle(), s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime)))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		s.discardOpeningRuntime(runtime)
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
@@ -83,9 +83,9 @@ func (s *Server) openRuntime(path string, id string, password string) (*database
 	return runtime, nil
 }
 
-func (s *Server) discardOpeningRuntime(runtime *databaseRuntime) {
+func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {
 	if err := gatewayinfra.Discard(runtime); err != nil {
-		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.ID, err)
+		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 	}
 }
 
@@ -93,14 +93,14 @@ func (s *Server) currentDataPath() string {
 	return s.workspaceSelection().Path
 }
 
-func (s *Server) unlockedRuntimeSnapshot() []*databaseRuntime {
+func (s *Server) unlockedRuntimeSnapshot() []databaseRuntime {
 	if s.workspaceState.Lifecycle != nil {
 		return s.workspaceState.Lifecycle.Snapshot()
 	}
 	return s.workspaceState.Registry.Snapshot()
 }
 
-func (s *Server) activeRuntime() *databaseRuntime {
+func (s *Server) activeRuntime() databaseRuntime {
 	if s.workspaceState.Registry == nil {
 		return nil
 	}
@@ -112,7 +112,7 @@ func (s *Server) activeRuntime() *databaseRuntime {
 	return runtime
 }
 
-func (s *Server) closeRuntime(runtime *databaseRuntime) error {
+func (s *Server) closeRuntime(runtime databaseRuntime) error {
 	return gatewayinfra.Close(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionWorkflow(runtime)
 	})

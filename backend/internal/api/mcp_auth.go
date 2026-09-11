@@ -39,7 +39,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 	tokenHash := gatewayaccess.HashToken(tokenValue)
 	now := time.Now().UTC()
 	for _, runtime := range runtimes {
-		authenticated, err := runtime.Storage.Tokens.AuthenticateHash(r.Context(), tokenHash, now)
+		authenticated, err := runtime.StoragePort().TokenStore().AuthenticateHash(r.Context(), tokenHash, now)
 		if errors.Is(err, gatewayaccess.ErrTokenNotFound) {
 			continue
 		}

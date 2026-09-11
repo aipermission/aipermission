@@ -49,14 +49,14 @@ func TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret(t *testing.T)
 	if setup.Code != http.StatusOK {
 		t.Fatalf("setup recovery source: %d %s", setup.Code, setup.Body.String())
 	}
-	if _, err := server.activeRuntime().Storage.Database.Exec(`
+	if _, err := server.activeRuntime().StoragePort().DatabaseHandle().Exec(`
 		INSERT INTO settings (key, value, updated_at)
 		VALUES ('recovery_drill_marker', 'preserved', datetime('now'))`); err != nil {
 		t.Fatalf("insert recovery marker: %v", err)
 	}
 	runtime := server.activeRuntime()
 	snapshot, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
-		Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
+		Database: runtime.StoragePort().DatabaseHandle(), DatabaseID: runtime.DatabaseIdentifier(), Path: runtime.DatabasePath(),
 	})
 	if err != nil {
 		t.Fatalf("create encrypted recovery snapshot: %v", err)
@@ -121,14 +121,14 @@ func TestDatabaseSnapshotsUseUniqueTemporaryPaths(t *testing.T) {
 
 	runtime := server.activeRuntime()
 	first, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
-		Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
+		Database: runtime.StoragePort().DatabaseHandle(), DatabaseID: runtime.DatabaseIdentifier(), Path: runtime.DatabasePath(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(first.Path)
 	second, err := backups.CreateDatabaseSnapshot(t.Context(), backups.SnapshotSource{
-		Database: runtime.Storage.Database, DatabaseID: runtime.ID, Path: runtime.Path,
+		Database: runtime.StoragePort().DatabaseHandle(), DatabaseID: runtime.DatabaseIdentifier(), Path: runtime.DatabasePath(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func performRecoveryImport(t *testing.T, handler http.Handler, snapshotPath, dat
 func assertRecoveryMarker(t *testing.T, server *Server) {
 	t.Helper()
 	var marker string
-	if err := server.activeRuntime().Storage.Database.QueryRow(`SELECT value FROM settings WHERE key = 'recovery_drill_marker'`).Scan(&marker); err != nil {
+	if err := server.activeRuntime().StoragePort().DatabaseHandle().QueryRow(`SELECT value FROM settings WHERE key = 'recovery_drill_marker'`).Scan(&marker); err != nil {
 		t.Fatalf("read recovery marker: %v", err)
 	}
 	if marker != "preserved" {

@@ -15,13 +15,13 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	store := connectormgmt.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
 	target, err := store.GetTarget(r.Context(), id)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	release, err := runtime.Security.VaultDelivery.AcquireExclusive(r.Context())
+	release, err := runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive(r.Context())
 	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
 		return
@@ -45,7 +45,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime *databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) bool {
+func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) bool {
 	_, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
 	if err != nil {
 		writeInternalError(w)

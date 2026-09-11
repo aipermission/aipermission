@@ -17,7 +17,7 @@ func SensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
 	return actions.SensitiveOutputFields(hints...)
 }
 
-func Delivery(runtime *workspaceruntime.Runtime) actions.DeliveryGate {
+func Delivery(runtime workspaceruntime.Port) actions.DeliveryGate {
 	return applicationactions.Delivery(runtime)
 }
 
@@ -25,10 +25,10 @@ func New(dependencies applicationactions.Dependencies) *applicationactions.Compo
 	return applicationactions.New(dependencies)
 }
 
-func Prepare(runtime *workspaceruntime.Runtime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+func Prepare(runtime workspaceruntime.Port, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
 	return applicationactions.Prepare(runtime, ctx, request)
 }
 
-func StopRecovery(runtime *workspaceruntime.Runtime) {
+func StopRecovery(runtime workspaceruntime.Port) {
 	applicationactions.StopRecovery(runtime)
 }

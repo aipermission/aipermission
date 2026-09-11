@@ -21,7 +21,7 @@ func TestRequiredAuditFailureDegradesHealth(t *testing.T) {
 
 func TestHTTPHandlersShareActiveRuntimeBoundary(t *testing.T) {
 	calls := 0
-	handlers := New().HTTPHandlers(func(w http.ResponseWriter) (*workspaceruntime.Runtime, bool) {
+	handlers := New().HTTPHandlers(func(w http.ResponseWriter) (workspaceruntime.Port, bool) {
 		calls++
 		http.Error(w, "locked", http.StatusLocked)
 		return nil, false

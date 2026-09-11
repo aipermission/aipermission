@@ -7,15 +7,15 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*gatewayvault.Invalidator, error) {
-	if s == nil || runtime == nil || runtime.Storage.Database == nil ||
-		runtime.Security.VaultLeases == nil || runtime.Connectors.ConsoleSessions == nil {
+func (s *Server) vaultSessionInvalidator(runtime databaseRuntime) (*gatewayvault.Invalidator, error) {
+	if s == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil ||
+		runtime.SecurityPort().VaultLeaseStore() == nil || runtime.ConnectorPort().ConsoleSessionManager() == nil {
 		return nil, gatewayvault.ErrInvalidatorUnavailable
 	}
 	return gatewayvault.NewInvalidator(gatewayvault.InvalidatorDependencies{
-		Persistence: gatewayvault.NewPersistence(runtime.Storage.Database),
-		Leases:      runtime.Security.VaultLeases,
-		Sessions:    runtime.Connectors.ConsoleSessions,
+		Persistence: gatewayvault.NewPersistence(runtime.StoragePort().DatabaseHandle()),
+		Leases:      runtime.SecurityPort().VaultLeaseStore(),
+		Sessions:    runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
@@ -31,7 +31,7 @@ func (s *Server) vaultSessionInvalidator(runtime *databaseRuntime) (*gatewayvaul
 
 func (s *Server) invalidateVaultMutationAfterCommit(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	sessions []gatewayvault.SessionReference,
 	scope gatewayvault.SessionMutationScope,
 ) error {
@@ -53,7 +53,7 @@ func (s *Server) invalidateVaultMutationAfterCommit(
 
 func (s *Server) finishVaultTokenSessionInvalidation(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	tokenID int64,
 	sessionIDs []int64,
 ) error {
@@ -66,7 +66,7 @@ func (s *Server) finishVaultTokenSessionInvalidation(
 
 func (s *Server) invalidateVaultProjectSessions(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	projectID int64,
 	reason string,
 ) error {
@@ -79,7 +79,7 @@ func (s *Server) invalidateVaultProjectSessions(
 
 func (s *Server) invalidateVaultRuntimeSessions(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	runtimeIDs []int64,
 	reason string,
 ) error {
@@ -92,7 +92,7 @@ func (s *Server) invalidateVaultRuntimeSessions(
 
 func (s *Server) invalidateVaultSessionsForTargetProfile(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	targetID int64,
 	profileID int64,
 	reason string,
@@ -106,7 +106,7 @@ func (s *Server) invalidateVaultSessionsForTargetProfile(
 
 func (s *Server) invalidateAllVaultSessions(
 	ctx context.Context,
-	runtime *databaseRuntime,
+	runtime databaseRuntime,
 	reason string,
 ) error {
 	owner, err := s.vaultSessionInvalidator(runtime)

@@ -5,9 +5,9 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	workspaceruntime "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	workspacehttp "github.com/aipermission/aipermission/backend/internal/workspacelifecycle/httpapi"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 type Runtime = workspaceruntime.Runtime
@@ -31,10 +31,10 @@ var (
 
 type Dependencies struct {
 	DataPath              string
-	Registry              *workspacelifecycle.Registry[*Runtime]
-	Open                  func(string, string, string) (*Runtime, error)
-	Close                 func(*Runtime) error
-	OnActivated, OnOpened func(*Runtime)
+	Registry              *workspacelifecycle.Registry[Runtime]
+	Open                  func(string, string, string) (Runtime, error)
+	Close                 func(Runtime) error
+	OnActivated, OnOpened func(Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
 	ValidateNewPassword   func(context.Context, *sql.DB, string, string) error
@@ -42,12 +42,12 @@ type Dependencies struct {
 	GatewaySecret         func() string
 }
 
-func NewRegistry(path, id string, describe func(*Runtime) Identity) *workspacelifecycle.Registry[*Runtime] {
+func NewRegistry(path, id string, describe func(Runtime) Identity) *workspacelifecycle.Registry[Runtime] {
 	return workspacelifecycle.NewRegistry(path, id, describe)
 }
 
-func NewService(dependencies Dependencies) (*workspacelifecycle.Service[*Runtime], error) {
-	return workspacelifecycle.NewService(workspacelifecycle.Dependencies[*Runtime]{
+func NewService(dependencies Dependencies) (*workspacelifecycle.Service[Runtime], error) {
+	return workspacelifecycle.NewService(workspacelifecycle.Dependencies[Runtime]{
 		DataPath: dependencies.DataPath, Registry: dependencies.Registry, Open: dependencies.Open,
 		Close: dependencies.Close, OnActivated: dependencies.OnActivated, OnOpened: dependencies.OnOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: dependencies.ValidateNewPassword,

@@ -20,8 +20,8 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	defer cancelTransfer()
 	batchCtx, cancelBatch := context.WithCancel(context.Background())
 	defer cancelBatch()
-	runtime.Operations.TransferLifecycle.Registry().Files.RegisterCancel(1, cancelTransfer)
-	runtime.Operations.TransferLifecycle.Registry().Batches.RegisterCancel(1, cancelBatch)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(1, cancelTransfer)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(1, cancelBatch)
 
 	fixture.server.Close()
 
@@ -35,7 +35,7 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	}
 	lateCtx, cancelLate := context.WithCancel(context.Background())
 	defer cancelLate()
-	runtime.Operations.TransferLifecycle.Registry().Files.RegisterCancel(2, cancelLate)
+	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(2, cancelLate)
 	if lateCtx.Err() == nil {
 		t.Fatal("closed runtime accepted a late transfer")
 	}
@@ -77,34 +77,34 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 		t.Fatal("trust change callback was not called")
 	}
 	for _, item := range []struct {
-		runtime *databaseRuntime
+		runtime databaseRuntime
 		id      int64
 	}{
 		{runtime: first, id: firstRequest.ID},
 		{runtime: second, id: secondRequest.ID},
 	} {
-		current, err := vaultrequests.NewStore(item.runtime.Storage.Database).Get(ctx, item.id)
+		current, err := vaultrequests.NewStore(item.runtime.StoragePort().DatabaseHandle()).Get(ctx, item.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if current.Status != vaultrequests.StatusStale {
-			t.Fatalf("workspace %q request status = %q", item.runtime.ID, current.Status)
+			t.Fatalf("workspace %q request status = %q", item.runtime.DatabaseIdentifier(), current.Status)
 		}
 	}
 }
 
-func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suffix string) vaultrequests.Request {
+func createRuntimeScopedVaultRequest(t *testing.T, runtime databaseRuntime, suffix string) vaultrequests.Request {
 	t.Helper()
 	ctx := context.Background()
-	project, err := projectstore.NewStore(runtime.Storage.Database).Create(ctx, "Trust "+suffix)
+	project, err := projectstore.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, "Trust "+suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := tokens.NewStore(runtime.Storage.Database).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
+	token, err := tokens.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := connectortargets.NewStore(runtime.Storage.Database)
+	targets := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle())
 	target, err := targets.CreateTarget(ctx, connectortargets.CreateTargetInput{
 		ProjectID: project.ID, ConnectorKind: "test", Name: "trust-" + suffix,
 	})
@@ -126,7 +126,7 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime *databaseRuntime, suf
 		t.Fatal(err)
 	}
 	runtimeID := surface.ID
-	request, _, err := vaultrequests.NewStore(runtime.Storage.Database).Create(ctx, vaultrequests.CreateInput{
+	request, _, err := vaultrequests.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, vaultrequests.CreateInput{
 		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
 		ActionName:          vaultrequests.ActionRestartSession,
 		Input:               map[string]any{"target_ref": "test:" + suffix},

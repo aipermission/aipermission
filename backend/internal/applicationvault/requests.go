@@ -10,12 +10,12 @@ import (
 )
 
 type RequestDependencies struct {
-	Store            func(context.Context, *workspaceruntime.Runtime) *vaultrequests.Store
-	Mutate           func(context.Context, *workspaceruntime.Runtime, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
-	Observe          func(context.Context, *workspaceruntime.Runtime, string, *int64, int64, string, any)
-	AllowRequest     func(*workspaceruntime.Runtime, int64) bool
-	RepairProjection func(context.Context, *workspaceruntime.Runtime, int64) error
-	RedactError      func(context.Context, *workspaceruntime.Runtime, error) string
+	Store            func(context.Context, workspaceruntime.Port) *vaultrequests.Store
+	Mutate           func(context.Context, workspaceruntime.Port, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
+	Observe          func(context.Context, workspaceruntime.Port, string, *int64, int64, string, any)
+	AllowRequest     func(workspaceruntime.Port, int64) bool
+	RepairProjection func(context.Context, workspaceruntime.Port, int64) error
+	RedactError      func(context.Context, workspaceruntime.Port, error) string
 }
 
 func (component *Component) ConfigureRequests(dependencies RequestDependencies) {
@@ -24,7 +24,7 @@ func (component *Component) ConfigureRequests(dependencies RequestDependencies) 
 
 type requestMutationPort struct {
 	component *Component
-	runtime   *workspaceruntime.Runtime
+	runtime   workspaceruntime.Port
 }
 
 func (port requestMutationPort) WithMutation(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
@@ -40,8 +40,8 @@ func (port requestMutationPort) Observe(ctx context.Context, actor string, token
 	}
 }
 
-func (component *Component) RequestRuntime(ctx context.Context, runtime *workspaceruntime.Runtime) (*vaultrequests.Runtime, error) {
-	if component == nil || runtime == nil || runtime.Storage.Database == nil || component.requests.Store == nil ||
+func (component *Component) RequestRuntime(ctx context.Context, runtime workspaceruntime.Port) (*vaultrequests.Runtime, error) {
+	if component == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || component.requests.Store == nil ||
 		component.requests.AllowRequest == nil || component.requests.RepairProjection == nil || component.requests.RedactError == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}

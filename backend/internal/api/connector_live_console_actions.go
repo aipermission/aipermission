@@ -11,12 +11,12 @@ import (
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func prepareLiveConsoleConnectorAction(runtime *databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+func prepareLiveConsoleConnectorAction(runtime databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
-	target, profile, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return actions.PreparedRequest{}, err
 	}
@@ -29,7 +29,7 @@ func prepareLiveConsoleConnectorAction(runtime *databaseRuntime, ctx context.Con
 	return prepareConnectorAction(runtime, ctx, request)
 }
 
-func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (string, error) {
+func liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime databaseRuntime, runtimeID int64) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

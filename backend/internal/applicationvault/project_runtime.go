@@ -15,11 +15,11 @@ import (
 )
 
 type ProjectDependencies struct {
-	InvalidateSessions func(context.Context, *workspaceruntime.Runtime, []projectvault.SessionReference, projectvault.SessionMutationScope) error
+	InvalidateSessions func(context.Context, workspaceruntime.Port, []projectvault.SessionReference, projectvault.SessionMutationScope) error
 	LiveConsoleKind    func(string) (string, bool)
-	SessionEnvironment func(context.Context, *workspaceruntime.Runtime, int64) (bool, error)
-	Mutate             func(context.Context, *workspaceruntime.Runtime, string, func() any, func(*sql.Tx) error) error
-	Observe            func(context.Context, *workspaceruntime.Runtime, string, any) error
+	SessionEnvironment func(context.Context, workspaceruntime.Port, int64) (bool, error)
+	Mutate             func(context.Context, workspaceruntime.Port, string, func() any, func(*sql.Tx) error) error
+	Observe            func(context.Context, workspaceruntime.Port, string, any) error
 	AllowGenerate      func(string) bool
 	AllowReveal        func(string) bool
 }
@@ -32,25 +32,25 @@ type Component struct {
 
 func New(projects ProjectDependencies) *Component { return &Component{projects: projects} }
 
-type deliveryGate struct{ runtime *workspaceruntime.Runtime }
+type deliveryGate struct{ runtime workspaceruntime.Port }
 
 func (gate deliveryGate) AcquireDelivery(ctx context.Context) (func(), error) {
 	if gate.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return gate.runtime.Security.VaultDelivery.AcquireDelivery(ctx)
+	return gate.runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery(ctx)
 }
 
 func (gate deliveryGate) AcquireExclusive(ctx context.Context) (func(), error) {
 	if gate.runtime == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return gate.runtime.Security.VaultDelivery.AcquireExclusive(ctx)
+	return gate.runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive(ctx)
 }
 
 type mutationPort struct {
 	component *Component
-	runtime   *workspaceruntime.Runtime
+	runtime   workspaceruntime.Port
 }
 
 func (port mutationPort) WithMutation(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
@@ -67,12 +67,12 @@ func (port mutationPort) Observe(ctx context.Context, action string, payload any
 	return port.component.projects.Observe(ctx, port.runtime, action, payload)
 }
 
-func (component *Component) ProjectRuntime(runtime *workspaceruntime.Runtime) (*projectvault.Runtime, error) {
-	if component == nil || runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil {
+func (component *Component) ProjectRuntime(runtime workspaceruntime.Port) (*projectvault.Runtime, error) {
+	if component == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	return runtime.Operations.ProjectVaultOrCreate(func() (*projectvault.Runtime, error) {
-		store, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.Vault, runtime.WorkspaceUUID)
+	return runtime.OperationsPort().ProjectVaultOrCreate(func() (*projectvault.Runtime, error) {
+		store, err := projectvault.NewStore(runtime.StoragePort().DatabaseHandle(), runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier())
 		if err != nil {
 			return nil, err
 		}
@@ -93,14 +93,14 @@ func (component *Component) ProjectRuntime(runtime *workspaceruntime.Runtime) (*
 
 type bindingTargets struct {
 	component *Component
-	runtime   *workspaceruntime.Runtime
+	runtime   workspaceruntime.Port
 }
 
 func (port bindingTargets) ValidateDefaultBindingTarget(ctx context.Context, targetID, profileID int64) error {
-	if port.component == nil || port.runtime == nil || port.runtime.Storage.Database == nil {
+	if port.component == nil || port.runtime == nil || port.runtime.StoragePort().DatabaseHandle() == nil {
 		return projectvault.ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(port.runtime.Storage.Database)
+	store := connectortargets.NewStore(port.runtime.StoragePort().DatabaseHandle())
 	target, err := store.GetTarget(ctx, targetID)
 	if errors.Is(err, connectortargets.ErrTargetNotFound) {
 		return projectvault.ErrBindingTargetNotFound
@@ -128,18 +128,18 @@ func (port bindingTargets) ValidateDefaultBindingTarget(ctx context.Context, tar
 
 type SessionCatalog struct {
 	component *Component
-	runtime   *workspaceruntime.Runtime
+	runtime   workspaceruntime.Port
 }
 
-func (component *Component) SessionCatalog(runtime *workspaceruntime.Runtime) SessionCatalog {
+func (component *Component) SessionCatalog(runtime workspaceruntime.Port) SessionCatalog {
 	return SessionCatalog{component: component, runtime: runtime}
 }
 
 func (catalog SessionCatalog) ResolveSessionOptionsTarget(ctx context.Context, runtimeID int64) (projectvault.SessionOptionsTarget, error) {
-	if catalog.component == nil || catalog.runtime == nil || catalog.runtime.Storage.Database == nil {
+	if catalog.component == nil || catalog.runtime == nil || catalog.runtime.StoragePort().DatabaseHandle() == nil {
 		return projectvault.SessionOptionsTarget{}, projectvault.ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(catalog.runtime.Storage.Database)
+	store := connectortargets.NewStore(catalog.runtime.StoragePort().DatabaseHandle())
 	surface, err := store.GetRuntimeSurface(ctx, runtimeID)
 	if errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		return projectvault.SessionOptionsTarget{}, projectvault.ErrSessionRuntimeNotFound
@@ -165,10 +165,10 @@ func (catalog SessionCatalog) ResolveSessionOptionsTarget(ctx context.Context, r
 }
 
 func (catalog SessionCatalog) ListSessionOptionsProjects(ctx context.Context) ([]projectvault.SessionOptionsProject, error) {
-	if catalog.runtime == nil || catalog.runtime.Storage.Database == nil {
+	if catalog.runtime == nil || catalog.runtime.StoragePort().DatabaseHandle() == nil {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	items, err := projectstore.NewStore(catalog.runtime.Storage.Database).List(ctx)
+	items, err := projectstore.NewStore(catalog.runtime.StoragePort().DatabaseHandle()).List(ctx)
 	if err != nil {
 		return nil, err
 	}

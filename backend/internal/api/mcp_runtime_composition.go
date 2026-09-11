@@ -14,12 +14,12 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 		return gatewayaccess.MCPRuntimeScope{}, false
 	}
 	return gatewayaccess.MCPRuntimeScope{
-		State: &runtime.Security.Runtime,
+		State: runtime.SecurityPort().RuntimeControlState(),
 		StartEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err
 		},
-		AcquireStop: runtime.Security.VaultDelivery.AcquireExclusive,
+		AcquireStop: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
 			if err := s.invalidateAllVaultSessions(ctx, runtime, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
 				return err

@@ -104,7 +104,7 @@ func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) 
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(
+	runtime := newConnectorActionTestRuntime(t,
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
@@ -172,7 +172,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	if err := registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(
+	runtime := newConnectorActionTestRuntime(t,
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
@@ -280,7 +280,7 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
+	runtime := newConnectorActionTestRuntime(t, database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "idempotent-local", Config: map[string]any{}})
 	if err != nil {
@@ -319,7 +319,7 @@ func TestRunLocalConnectorMutationRequiresIdempotencyKey(t *testing.T) {
 	if err := registry.Register(mutatingLocalActionTestConnector{}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
+	runtime := newConnectorActionTestRuntime(t, database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "mutation", Config: map[string]any{}})
 	if err != nil {
@@ -362,7 +362,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(
+	runtime := newConnectorActionTestRuntime(t,
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
@@ -444,7 +444,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 		dispatchStartedAt string
 	}{
 		{name: "another runtime owns the lease", owner: "another-runtime"},
-		{name: "dispatch already started", owner: runtime.RuntimeInstanceID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+		{name: "dispatch already started", owner: runtime.RuntimeIdentifier(), dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
@@ -484,7 +484,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := newConnectorActionTestRuntime(
+	runtime := newConnectorActionTestRuntime(t,
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
@@ -563,7 +563,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err := registry.Register(countingLocalActionTestConnector{executions: &executions}); err != nil {
 		t.Fatal(err)
 	}
-	runtime := newConnectorActionTestRuntime(
+	runtime := newConnectorActionTestRuntime(t,
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
@@ -667,7 +667,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 	if err := registry.Register(connector); err != nil {
 		t.Fatalf("register connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
+	runtime := newConnectorActionTestRuntime(t, database, secretVault, tokens.NewStore(database), registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: localActionTestConnectorKind, Name: "persistence-local", Config: map[string]any{}})
 	if err != nil {
@@ -711,7 +711,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	if err := registry.Register(localActionTestConnector{}); err != nil {
 		t.Fatalf("register local test connector: %v", err)
 	}
-	runtime := newConnectorActionTestRuntime(database, secretVault, nil, registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
+	runtime := newConnectorActionTestRuntime(t, database, secretVault, nil, registry, connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t))
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind,
@@ -872,7 +872,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
 	var decryptedPayload connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(secretVault, runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
+	if err := recordcrypto.DecryptJSON(secretVault, runtime.WorkspaceIdentifier(), recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
@@ -1097,7 +1097,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert action request: %v", err)
 	}
-	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.WorkspaceUUID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
+	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.WorkspaceIdentifier(), recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
 	if err != nil {
 		t.Fatalf("encrypt action request: %v", err)
 	}

@@ -36,7 +36,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -123,8 +123,8 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash', 'approval-hash', 'Vault session', 'connected', ?, ?)`,
 		target.ID,
 		token.ID,
-		runtime.WorkspaceUUID,
-		runtime.RuntimeInstanceID,
+		runtime.WorkspaceIdentifier(),
+		runtime.RuntimeIdentifier(),
 		now,
 		now,
 	)
@@ -167,8 +167,8 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
 		t.Fatalf("completed call/replay response exposed output without a lease: %#v", withheld)
 	}
-	if err := runtime.Security.VaultLeases.Grant(vaultsessions.Lease{
-		WorkspaceID: runtime.WorkspaceUUID, RuntimeInstanceID: runtime.RuntimeInstanceID,
+	if err := runtime.SecurityPort().VaultLeaseStore().Grant(vaultsessions.Lease{
+		WorkspaceID: runtime.WorkspaceIdentifier(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
 		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID, SessionGeneration: generation,
 		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 		ExpiresAt: time.Now().UTC().Add(time.Hour),
@@ -179,7 +179,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	if err != nil {
 		t.Fatalf("create token execution principal: %v", err)
 	}
-	if err := runtime.Security.VaultLeases.Authorize(ctx, principal, console.SessionAuthorization{
+	if err := runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, console.SessionAuthorization{
 		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: generation},
 		EnvironmentContentHash: "environment-hash",
 		ApprovalContextHash:    "approval-hash",
@@ -210,7 +210,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("restore action permission: %v", err)
 	}
-	runtime.Security.VaultLeases.RevokeToken(token.ID)
+	runtime.SecurityPort().VaultLeaseStore().RevokeToken(token.ID)
 	if mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
 		t.Fatalf("revoked Vault lease still authorized connector output")
 	}
@@ -229,7 +229,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	target, err = store.UpdateTarget(ctx, connectortargets.UpdateTargetInput{
 		ID:        target.ID,
 		ProjectID: project.ID,
@@ -289,7 +289,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName:    postgresconnector.ActionGetSchemas,
@@ -414,7 +414,7 @@ func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
@@ -484,7 +484,7 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,

@@ -7,13 +7,13 @@ import (
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func (s *Server) runtimeConsoleOpener(runtime *databaseRuntime) gatewayoperations.RuntimeOpener {
+func (s *Server) runtimeConsoleOpener(runtime databaseRuntime) gatewayoperations.RuntimeOpener {
 	return func(ctx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, request.RuntimeID)
 		if err != nil {
 			return nil, err
 		}
-		target, _, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+		target, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
 		if err != nil {
 			return nil, err
 		}

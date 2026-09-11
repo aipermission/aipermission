@@ -12,7 +12,7 @@ import (
 func TestTransportConfigRejectsTargetsWithoutReviewedTCPAdapter(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.Vault, fixture.server.activeRuntime().WorkspaceUUID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
 	err := fixture.server.validateConnectorTransportConfig(context.Background(), store, target.ProjectID, map[string]any{
 		"connection_mode":      "over_fixture",
 		"transport_target_ref": connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID),

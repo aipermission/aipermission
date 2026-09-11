@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -15,13 +16,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
+	gatewayconnectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
-	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/connectors"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/storage"
 )
 
 const connectorActionTestWorkspaceID = "connector-action-test-workspace"
@@ -32,7 +32,7 @@ const connectorActionLeaseExpiredBeforeDispatchMessage = actions.LeaseExpiredBef
 type connectorActionExecutionOptions = actions.ExecutionOptions
 type connectorActionExecutionEnvelope = actions.ExecutionEnvelope
 
-func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -40,7 +40,7 @@ func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime *data
 	return workflow.InsertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey)
 }
 
-func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime *databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -48,7 +48,7 @@ func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runti
 	return workflow.InsertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
 }
 
-func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (connectorActionCallResult, error) {
+func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (connectorActionCallResult, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectorActionCallResult{}, err
@@ -56,7 +56,7 @@ func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime *da
 	return workflow.ExecuteInserted(ctx, prepared, request, principal, options)
 }
 
-func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *databaseRuntime, prepared actions.PreparedRequest) (actions.ExecutionSnapshot, error) {
+func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest) (actions.ExecutionSnapshot, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return actions.ExecutionSnapshot{}, err
@@ -64,7 +64,7 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *d
 	return workflow.Snapshot(ctx, prepared)
 }
 
-func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Context, runtime *databaseRuntime, request connectortargets.ActionRequest, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
+func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Context, runtime databaseRuntime, request connectortargets.ActionRequest, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -72,7 +72,7 @@ func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Conte
 	return workflow.CaptureSessionHandleIfReturned(ctx, request, handles)
 }
 
-func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Server, runtime *databaseRuntime, requestID int64) (connectorCredentialBoundary, error) {
+func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Server, runtime databaseRuntime, requestID int64) (connectorCredentialBoundary, error) {
 	workflow, err := server.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectorCredentialBoundary{}, err
@@ -80,7 +80,7 @@ func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Se
 	return workflow.CredentialBoundaryForRequest(ctx, requestID)
 }
 
-func (s *Server) trackConnectorCredentialBoundary(runtime *databaseRuntime, requestID int64, boundary connectorCredentialBoundary) error {
+func (s *Server) trackConnectorCredentialBoundary(runtime databaseRuntime, requestID int64, boundary connectorCredentialBoundary) error {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func (s *Server) trackConnectorCredentialBoundary(runtime *databaseRuntime, requ
 	return nil
 }
 
-func (s *Server) connectorCredentialBoundary(runtime *databaseRuntime, requestID int64) (connectorCredentialBoundary, bool) {
+func (s *Server) connectorCredentialBoundary(runtime databaseRuntime, requestID int64) (connectorCredentialBoundary, bool) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectorCredentialBoundary{}, false
@@ -97,14 +97,14 @@ func (s *Server) connectorCredentialBoundary(runtime *databaseRuntime, requestID
 	return workflow.CredentialBoundary(requestID)
 }
 
-func (s *Server) recoverOrphanedConnectorActions(ctx context.Context, runtime *databaseRuntime, now time.Time) {
+func (s *Server) recoverOrphanedConnectorActions(ctx context.Context, runtime databaseRuntime, now time.Time) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err == nil {
 		workflow.Recover(ctx, now)
 	}
 }
 
-func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runtime *databaseRuntime, requestID int64, now time.Time) (connectortargets.ActionRequest, error) {
+func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runtime databaseRuntime, requestID int64, now time.Time) (connectortargets.ActionRequest, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
@@ -112,7 +112,7 @@ func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runt
 	return workflow.PersistExpiredRecovery(ctx, requestID, now)
 }
 
-func (s *Server) beginConnectorActionDispatch(ctx context.Context, runtime *databaseRuntime, requestID int64) (connectortargets.ActionRequest, bool, error) {
+func (s *Server) beginConnectorActionDispatch(ctx context.Context, runtime databaseRuntime, requestID int64) (connectortargets.ActionRequest, bool, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -144,45 +144,64 @@ func openAPITestDB(t *testing.T) *sql.DB {
 	return database
 }
 
-func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) *databaseRuntime {
+func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vault.Vault) databaseRuntime {
 	t.Helper()
 	identityKey, err := actions.DeriveIdentityKey("test-password", connectorActionTestWorkspaceID)
 	if err != nil {
 		t.Fatalf("derive connector action identity key: %v", err)
 	}
 	runtime := newConnectorActionTestRuntime(
+		t,
 		database, secretVault, tokens.NewStore(database), testConnectorRegistry(t),
 		connectorActionTestWorkspaceID, identityKey,
 	)
-	runtime.Security.Policy = securitypolicy.NewService(database)
-	runtime.Operations.TransferLifecycle = filetransferhttp.NewLifecycle()
-	t.Cleanup(runtime.Operations.TransferLifecycle.Stop)
 	runtime.SetMCPStarted(true)
 	return runtime
 }
 
-func newTestDatabaseRuntime(database *sql.DB) *databaseRuntime {
-	return &databaseRuntime{Storage: storage.State{Database: database}}
+func newTestDatabaseRuntime(t *testing.T, database *sql.DB) databaseRuntime {
+	t.Helper()
+	secretVault, err := vault.New("test-password")
+	if err != nil {
+		t.Fatalf("create test Vault: %v", err)
+	}
+	return newConnectorActionTestRuntime(
+		t, database, secretVault, tokens.NewStore(database), testConnectorRegistry(t),
+		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
+	)
 }
 
 func newConnectorActionTestRuntime(
+	t *testing.T,
 	database *sql.DB,
 	secretVault *vault.Vault,
 	tokenStore *tokens.Store,
 	registry *connectors.Registry,
 	workspaceUUID string,
 	actionIdentityKey []byte,
-) *databaseRuntime {
-	return &databaseRuntime{
-		WorkspaceUUID:     workspaceUUID,
-		ActionIdentityKey: actionIdentityKey,
-		Storage: storage.State{
-			Database: database,
-			Vault:    secretVault,
-			Tokens:   tokenStore,
-		},
-		Connectors: connectorstate.State{Registry: registry},
+) databaseRuntime {
+	t.Helper()
+	runtime, err := gatewayinfra.Adopt(t.Context(), gatewayinfra.AdoptInput{
+		ID:                      workspaceUUID,
+		Database:                database,
+		Vault:                   secretVault,
+		TokenStore:              tokenStore,
+		ConfiguredGatewaySecret: "test-password",
+		Registry:                registry,
+		AdapterRegistry:         gatewayconnectorapi.NewRegistry(),
+		RuntimeInstanceID:       func() (string, error) { return "test-runtime", nil },
+	})
+	if err != nil {
+		t.Fatalf("adopt test runtime: %v", err)
 	}
+	if runtime.WorkspaceIdentifier() != workspaceUUID {
+		t.Fatalf("workspace identifier = %q, want %q", runtime.WorkspaceIdentifier(), workspaceUUID)
+	}
+	if !bytes.Equal(runtime.ActionIdentity(), actionIdentityKey) {
+		t.Fatal("test runtime action identity does not match fixture")
+	}
+	t.Cleanup(runtime.OperationsPort().FileTransferLifecycle().Stop)
+	return runtime
 }
 
 func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
@@ -199,12 +218,12 @@ func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
 	}
 }
 
-func createSecurityPolicyRule(ctx context.Context, runtime *databaseRuntime, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
-	return runtime.Security.Policy.CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.Storage.Database))
+func createSecurityPolicyRule(ctx context.Context, runtime databaseRuntime, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
+	return runtime.SecurityPort().PolicyService().CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.StoragePort().DatabaseHandle()))
 }
 
-func setSecurityPolicySettings(ctx context.Context, runtime *databaseRuntime, settings securitypolicy.Settings) error {
-	_, err := runtime.Security.Policy.UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.Storage.Database))
+func setSecurityPolicySettings(ctx context.Context, runtime databaseRuntime, settings securitypolicy.Settings) error {
+	_, err := runtime.SecurityPort().PolicyService().UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.StoragePort().DatabaseHandle()))
 	return err
 }
 

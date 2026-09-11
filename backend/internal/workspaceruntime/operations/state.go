@@ -19,8 +19,52 @@ type State struct {
 	projectVault      *projectvault.Runtime
 }
 
+type Port interface {
+	CommandRequestRuntime() *commandrequests.Runtime
+	SetCommandRequestRuntime(*commandrequests.Runtime)
+	FileTransferRuntime() *filetransferhttp.Runtime
+	SetFileTransferRuntime(*filetransferhttp.Runtime)
+	FileTransferLifecycle() *filetransferhttp.Lifecycle
+	ActionWorkflow() *actions.Runtime
+	ActionWorkflowOrCreate(func() (*actions.Runtime, error)) (*actions.Runtime, error)
+	ProjectVaultOrCreate(func() (*projectvault.Runtime, error)) (*projectvault.Runtime, error)
+}
+
 func New() State {
 	return State{TransferLifecycle: filetransferhttp.NewLifecycle()}
+}
+
+func (s *State) CommandRequestRuntime() *commandrequests.Runtime {
+	if s == nil {
+		return nil
+	}
+	return s.CommandRequests
+}
+
+func (s *State) SetCommandRequestRuntime(runtime *commandrequests.Runtime) {
+	if s != nil {
+		s.CommandRequests = runtime
+	}
+}
+
+func (s *State) FileTransferRuntime() *filetransferhttp.Runtime {
+	if s == nil {
+		return nil
+	}
+	return s.FileTransfers
+}
+
+func (s *State) SetFileTransferRuntime(runtime *filetransferhttp.Runtime) {
+	if s != nil {
+		s.FileTransfers = runtime
+	}
+}
+
+func (s *State) FileTransferLifecycle() *filetransferhttp.Lifecycle {
+	if s == nil {
+		return nil
+	}
+	return s.TransferLifecycle
 }
 
 func (s *State) ActionWorkflow() *actions.Runtime {

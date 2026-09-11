@@ -10,8 +10,8 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime *databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
-	if runtime == nil || runtime.Storage.Database == nil || targetID < 1 {
+func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || targetID < 1 {
 		return 0, nil
 	}
 	input := connectormgmt.InvalidateActionRequestsForTargetInput{
@@ -69,7 +69,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		return
 	}
 	operation := strings.TrimSpace(r.PathValue("operation"))
-	store := connectormgmt.NewStore(runtime.Storage.Database)
+	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
 		handleConnectorTargetError(w, err)

@@ -36,33 +36,33 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
 			return adapter != nil
 		},
-		SessionEnvironment: func(ctx context.Context, runtime *gatewayinfra.Runtime, id int64) bool {
+		SessionEnvironment: func(ctx context.Context, runtime gatewayinfra.Runtime, id int64) bool {
 			return requireSessionEnvironmentCapability(ctx, s, runtime, id) == nil
 		},
 		Preparation:       s.connectorCredentialPreparationPorts,
 		CredentialRuntime: s.connectorCredentialRuntimePorts,
-		Transaction: func(ctx context.Context, runtime *gatewayinfra.Runtime, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
+		Transaction: func(ctx context.Context, runtime gatewayinfra.Runtime, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 				return mutate(tx, connectormgmt.AuditAppender(appendAudit))
 			})
 		},
-		AfterLifecycle: func(ctx context.Context, runtime *gatewayinfra.Runtime, change connectormgmt.TargetLifecycleChange) error {
+		AfterLifecycle: func(ctx context.Context, runtime gatewayinfra.Runtime, change connectormgmt.TargetLifecycleChange) error {
 			return (connectorTargetHandlers{s}).afterConnectorCredentialLifecycleChange(ctx, runtime, change.TargetID, change.ProfileID, change.StaleReason, change.UserMessage, change.IncludeRunning)
 		},
-		BeforeCreate: func(ctx context.Context, runtime *gatewayinfra.Runtime, target connectormgmt.Target) error {
+		BeforeCreate: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target) error {
 			if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
 				return adapter.BeforeCreateCredentialProfile(ctx, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
 			}
 			return nil
 		},
-		BeforeDelete: func(ctx context.Context, runtime *gatewayinfra.Runtime, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
+		BeforeDelete: func(ctx context.Context, runtime gatewayinfra.Runtime, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
 			if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
 				gateway, _ := s.connectorPortsApplication().RuntimeActionPorts(runtime, target.ConnectorKind)
 				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
 			}
 			return nil
 		},
-		SpecialTest: func(w http.ResponseWriter, r *http.Request, runtime *gatewayinfra.Runtime, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
+		SpecialTest: func(w http.ResponseWriter, r *http.Request, runtime gatewayinfra.Runtime, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
 			adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind)
 			if adapter == nil {
 				return false
@@ -70,7 +70,7 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			adapter.TestCredentialProfile(s.connectorPortsApplication().PeerGateway(), w, r, connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
 			return true
 		},
-		RedactDetails: func(ctx context.Context, runtime *gatewayinfra.Runtime, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
+		RedactDetails: func(ctx context.Context, runtime gatewayinfra.Runtime, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
 			redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, details, connectorSensitiveOutputFields(), nil, boundary)
 			if err != nil || redacted == nil {
 				return nil, err
@@ -80,7 +80,7 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			}
 			return map[string]any{"value": redacted}, nil
 		},
-		Probe: func(ctx context.Context, runtime *gatewayinfra.Runtime, request connectors.NetworkDialRequest) error {
+		Probe: func(ctx context.Context, runtime gatewayinfra.Runtime, request connectors.NetworkDialRequest) error {
 			connection, err := (connectorNetworkTransport{server: s, runtime: runtime}).DialConnectorTCP(ctx, request)
 			if err != nil {
 				return err
@@ -91,13 +91,13 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			_ = connection.Close()
 			return nil
 		},
-		Redact: func(ctx context.Context, runtime *gatewayinfra.Runtime, value string) string {
+		Redact: func(ctx context.Context, runtime gatewayinfra.Runtime, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},
-		Observe: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload any) {
+		Observe: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
-		AuditRequired: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload any) error {
+		AuditRequired: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) error {
 			return s.writeAuditRequired(ctx, runtime, "gateway", nil, 0, action, payload)
 		},
 	})

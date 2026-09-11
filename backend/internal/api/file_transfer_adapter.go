@@ -16,22 +16,22 @@ func (s *Server) fileTransferHTTPRuntime(w http.ResponseWriter) (*gatewayoperati
 	if !ok {
 		return nil, false
 	}
-	if runtime.Operations.FileTransfers == nil {
+	if runtime.OperationsPort().FileTransferRuntime() == nil {
 		writeInternalError(w)
 		return nil, false
 	}
-	return runtime.Operations.FileTransfers, true
+	return runtime.OperationsPort().FileTransferRuntime(), true
 }
 
-func (s *Server) initializeFileTransferRuntime(runtime *databaseRuntime) error {
+func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	if runtime.Operations.TransferLifecycle == nil {
+	if runtime.OperationsPort().FileTransferLifecycle() == nil {
 		return fmt.Errorf("file transfer workspace lifecycle is unavailable")
 	}
-	transferRuntime, err := runtime.Operations.TransferLifecycle.NewRuntime(
-		runtime.Storage.Database,
+	transferRuntime, err := runtime.OperationsPort().FileTransferLifecycle().NewRuntime(
+		runtime.StoragePort().DatabaseHandle(),
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},
@@ -42,15 +42,15 @@ func (s *Server) initializeFileTransferRuntime(runtime *databaseRuntime) error {
 	if err != nil {
 		return err
 	}
-	runtime.Operations.FileTransfers = transferRuntime
+	runtime.OperationsPort().SetFileTransferRuntime(transferRuntime)
 	return nil
 }
 
-func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (gatewayoperations.FileTransferConnectorPorts, error) {
-	if server == nil || runtime == nil || runtime.Storage.Database == nil || runtime.Storage.Vault == nil {
+func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (gatewayoperations.FileTransferConnectorPorts, error) {
+	if server == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil {
 		return gatewayoperations.FileTransferConnectorPorts{}, fmt.Errorf("file transfer connector runtime is unavailable")
 	}
-	target, _, _, err := connectormgmt.NewStore(runtime.Storage.Database).TargetProfileByRuntimeID(ctx, runtimeID)
+	target, _, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return gatewayoperations.FileTransferConnectorPorts{}, err
 	}

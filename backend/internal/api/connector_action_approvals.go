@@ -14,7 +14,7 @@ func connectorActionApprovalItemFromRequest(item connectormgmt.ActionRequest) co
 	return connectormgmt.ConnectorApprovalItemFromRequest(item)
 }
 
-func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
+func (s *Server) runPendingConnectorAction(ctx context.Context, runtime databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectormgmt.ActionRequest{}, err
@@ -22,7 +22,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databas
 	return workflow.RunPending(ctx, id, userNote)
 }
 
-func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *databaseRuntime, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
+func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime databaseRuntime, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)
 	if err != nil {
 		return connectorActionApprovalItem{}, err

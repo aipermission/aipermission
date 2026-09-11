@@ -28,6 +28,6 @@ func NewApproved(dependencies []actions.ResolvedDependency) connectortransport.A
 	return connectortransport.NewApproved(dependencies)
 }
 
-func ScopeWithSecretAccessor(runtime *workspaceruntime.Runtime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
+func ScopeWithSecretAccessor(runtime workspaceruntime.Port, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
 	return connectortransport.ScopeWithSecretAccessor(runtime, kind, accessor)
 }

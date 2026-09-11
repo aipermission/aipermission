@@ -12,7 +12,7 @@ import (
 )
 
 type LocalHTTPDependencies struct {
-	ActiveRuntime     func(http.ResponseWriter) (*workspaceruntime.Runtime, bool)
+	ActiveRuntime     func(http.ResponseWriter) (workspaceruntime.Port, bool)
 	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
 	WriteError        func(http.ResponseWriter, int, string)
 	WriteErrorCode    func(http.ResponseWriter, int, string, string)

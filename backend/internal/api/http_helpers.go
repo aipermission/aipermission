@@ -35,7 +35,7 @@ func parsePathInt64(w http.ResponseWriter, r *http.Request, key string, label st
 	return id, true
 }
 
-func (s *Server) activeRuntimeOrLocked(w http.ResponseWriter) (*databaseRuntime, bool) {
+func (s *Server) activeRuntimeOrLocked(w http.ResponseWriter) (databaseRuntime, bool) {
 	runtime := s.activeRuntime()
 	if runtime == nil {
 		writeError(w, http.StatusLocked, "database is locked")

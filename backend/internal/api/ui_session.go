@@ -47,7 +47,7 @@ func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request)
 func (s *Server) activeUIWorkspaceLocked() (string, string) {
 	databaseID := s.workspaceSelection().ID
 	if runtime, ok := s.workspaceState.Registry.Lookup(databaseID); ok && runtime != nil {
-		return databaseID, runtime.UIRetryIdentity
+		return databaseID, runtime.UIRetryIdentifier()
 	}
 	return databaseID, ""
 }

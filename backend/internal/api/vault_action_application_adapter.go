@@ -16,7 +16,7 @@ import (
 
 type vaultActionConnectorPort struct {
 	server  *Server
-	runtime *databaseRuntime
+	runtime databaseRuntime
 }
 
 func (port vaultActionConnectorPort) SessionEnvironmentVersion(ctx context.Context, runtimeID int64) (string, error) {
@@ -32,7 +32,7 @@ func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, 
 	if action == "" {
 		return connectormgmt.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
 	}
-	permission, err := connectormgmt.NewStore(port.runtime.Storage.Database).GetActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
+	permission, err := connectormgmt.NewStore(port.runtime.StoragePort().DatabaseHandle()).GetActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
 	if err != nil || (permission.ExecutionRule != connectormgmt.ActionPermissionAlwaysRun && permission.ExecutionRule != connectormgmt.ActionPermissionApprovalRequired) {
 		return connectormgmt.ActionPermission{}, "", errors.New("Vault session apply requires an active Prompt or Always connector action permission")
 	}
@@ -58,7 +58,7 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 	return gatewayvault.PeerIdentityExpectation{Items: items, Required: capability.SessionEnvironmentPeerIdentityRequired()}, nil
 }
 
-func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*gatewayvault.VaultActionRuntime, error) {
+func (s *Server) vaultActionApplication(runtime databaseRuntime) (*gatewayvault.VaultActionRuntime, error) {
 	component := s.vaultApplication()
 	s.configureVaultActions(component)
 	return component.ActionRuntime(runtime)
@@ -66,14 +66,14 @@ func (s *Server) vaultActionApplication(runtime *databaseRuntime) (*gatewayvault
 
 func (s *Server) configureVaultActions(component *gatewayvault.Application) {
 	component.ConfigureActions(gatewayvault.ActionDependencies{
-		Connector: func(runtime *gatewayinfra.Runtime) gatewayvault.VaultConnectorPort {
+		Connector: func(runtime gatewayinfra.Runtime) gatewayvault.VaultConnectorPort {
 			return vaultActionConnectorPort{server: s, runtime: runtime}
 		},
-		Mutate: func(ctx context.Context, runtime *gatewayinfra.Runtime, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		Mutate: func(ctx context.Context, runtime gatewayinfra.Runtime, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "mcp", &tokenID, 0, action, payload, mutate)
 		},
-		AllowGenerate: func(runtime *gatewayinfra.Runtime, tokenID int64) bool {
-			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.ID, tokenID))
+		AllowGenerate: func(runtime gatewayinfra.Runtime, tokenID int64) bool {
+			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(fmt.Sprintf("vault-generate:%s:%d", runtime.DatabaseIdentifier(), tokenID))
 		},
 	})
 }

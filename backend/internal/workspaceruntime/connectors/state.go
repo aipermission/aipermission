@@ -17,6 +17,14 @@ type State struct {
 	ConsoleSessions *console.Manager
 }
 
+type Port interface {
+	ConnectorRegistry() *connectorcatalog.Registry
+	ConnectorAdapterRegistry() *connectorapi.Registry
+	ResourceScopes() connectorruntime.ResourceScopes
+	ConsoleSessionManager() *console.Manager
+	SetConsoleSessionManager(*console.Manager)
+}
+
 func New(
 	registry *connectorcatalog.Registry,
 	adapterRegistry *connectorapi.Registry,
@@ -43,4 +51,24 @@ func (s *State) ConnectorAdapterRegistry() *connectorapi.Registry {
 		return s.AdapterRegistry
 	}
 	return connectorapi.NewRegistry()
+}
+
+func (s *State) ResourceScopes() connectorruntime.ResourceScopes {
+	if s == nil {
+		return nil
+	}
+	return s.Resources
+}
+
+func (s *State) ConsoleSessionManager() *console.Manager {
+	if s == nil {
+		return nil
+	}
+	return s.ConsoleSessions
+}
+
+func (s *State) SetConsoleSessionManager(manager *console.Manager) {
+	if s != nil {
+		s.ConsoleSessions = manager
+	}
 }

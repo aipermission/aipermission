@@ -26,40 +26,41 @@ type ActionWorkflowResolver func() (ActionWorkflow, error)
 // Close stops runtime workers and sessions before releasing encrypted storage.
 // If transfer workers outlive the bounded wait, storage closes asynchronously
 // after they exit so no worker can touch a closed database.
-func Close(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResolver) error {
+func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver) error {
 	if runtime == nil {
 		return nil
 	}
-	if runtime.Observation.Retention != nil {
-		runtime.Observation.Retention.Stop()
+	if retention := runtime.ObservationPort().RetentionService(); retention != nil {
+		retention.Stop()
 	}
 	stopConnectorActions(runtime, resolveActions)
-	if runtime.Security.VaultLeases != nil {
-		runtime.Security.VaultLeases.Clear()
+	if leases := runtime.SecurityPort().VaultLeaseStore(); leases != nil {
+		leases.Clear()
 	}
-	if runtime.Connectors.ConsoleSessions != nil {
-		runtime.Connectors.ConsoleSessions.CloseAll()
+	if sessions := runtime.ConnectorPort().ConsoleSessionManager(); sessions != nil {
+		sessions.CloseAll()
 	}
-	if runtime.Operations.CommandRequests != nil {
-		if err := runtime.Operations.CommandRequests.CancelRunning(context.Background(), runtimeoutcome.CommandCanceled); err != nil {
-			log.Printf("mark running command requests failed workspace=%s error=%v", runtime.ID, err)
+	operations := runtime.OperationsPort()
+	if requests := operations.CommandRequestRuntime(); requests != nil {
+		if err := requests.CancelRunning(context.Background(), runtimeoutcome.CommandCanceled); err != nil {
+			log.Printf("mark running command requests failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 		}
 	}
-	if runtime.Operations.FileTransfers == nil {
-		runtime.Operations.TransferLifecycle.Stop()
-		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.ID)
+	if transfers := operations.FileTransferRuntime(); transfers == nil {
+		operations.FileTransferLifecycle().Stop()
+		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.DatabaseIdentifier())
 	} else {
-		drained, err := runtime.Operations.FileTransfers.Shutdown(
+		drained, err := transfers.Shutdown(
 			transferWait, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped,
 		)
 		if err != nil {
-			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.ID, err)
+			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 		}
 		if !drained {
 			go func() {
-				runtime.Operations.TransferLifecycle.Wait(context.Background())
+				operations.FileTransferLifecycle().Wait(context.Background())
 				if err := closeStorage(runtime); err != nil {
-					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.ID, err)
+					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 				}
 			}()
 			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", transferWait)
@@ -70,17 +71,17 @@ func Close(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResol
 
 // Discard releases a partially opened runtime without running normal shutdown
 // recovery against state that was never published.
-func Discard(runtime *workspaceruntime.Runtime) error {
+func Discard(runtime workspaceruntime.Port) error {
 	if runtime == nil {
 		return nil
 	}
-	runtime.Operations.TransferLifecycle.Stop()
+	runtime.OperationsPort().FileTransferLifecycle().Stop()
 	return closeStorage(runtime)
 }
 
-func stopConnectorActions(runtime *workspaceruntime.Runtime, resolve ActionWorkflowResolver) {
+func stopConnectorActions(runtime workspaceruntime.Port, resolve ActionWorkflowResolver) {
 	var workflow ActionWorkflow
-	if existing := runtime.Operations.ActionWorkflow(); existing != nil {
+	if existing := runtime.OperationsPort().ActionWorkflow(); existing != nil {
 		workflow = existing
 	}
 	if workflow == nil {
@@ -90,33 +91,34 @@ func stopConnectorActions(runtime *workspaceruntime.Runtime, resolve ActionWorkf
 		var err error
 		workflow, err = resolve()
 		if err != nil {
-			log.Printf("initialize connector action shutdown workspace=%s error=%v", runtime.ID, err)
+			log.Printf("initialize connector action shutdown workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 			return
 		}
 	}
 	workflow.StopRecovery()
 	if err := workflow.MarkRunningOutcomeUnknown(context.Background(), runtimeoutcome.ConnectorActionUnknown); err != nil {
-		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.ID, err)
+		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 	}
 }
 
-func closeStorage(runtime *workspaceruntime.Runtime) error {
-	if runtime.Observation.AuditDispatcher != nil {
-		runtime.Observation.AuditDispatcher.Stop()
+func closeStorage(runtime workspaceruntime.Port) error {
+	if dispatcher := runtime.ObservationPort().AuditDispatcherService(); dispatcher != nil {
+		dispatcher.Stop()
 	}
-	actions.ClearIdentityKey(runtime.ActionIdentityKey)
-	runtime.ActionIdentityKey = nil
+	actions.ClearIdentityKey(runtime.ActionIdentity())
+	runtime.ClearActionIdentity()
+	storage := runtime.StoragePort()
 	var closeErrors []error
-	if runtime.Storage.Database != nil {
-		if err := runtime.Storage.Database.Close(); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("close encrypted database runtime %q: %w", runtime.ID, err))
+	if database := storage.DatabaseHandle(); database != nil {
+		if err := database.Close(); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close encrypted database runtime %q: %w", runtime.DatabaseIdentifier(), err))
 		}
 	}
-	if runtime.Storage.Ownership != nil {
-		if err := runtime.Storage.Ownership.Close(); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("release encrypted database runtime %q ownership: %w", runtime.ID, err))
+	if ownership := storage.DatabaseOwnership(); ownership != nil {
+		if err := ownership.Close(); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("release encrypted database runtime %q ownership: %w", runtime.DatabaseIdentifier(), err))
 		}
-		runtime.Storage.Ownership = nil
+		storage.ClearDatabaseOwnership()
 	}
 	return errors.Join(closeErrors...)
 }

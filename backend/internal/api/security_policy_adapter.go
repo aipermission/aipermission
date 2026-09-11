@@ -17,37 +17,37 @@ func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.S
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
 	return gatewayaccess.SecurityHTTPScope{
-		Service: runtime.Security.Policy,
+		Service: runtime.SecurityPort().PolicyService(),
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
 	}, true
 }
 
-func readSecuritySettings(ctx context.Context, runtime *databaseRuntime) (gatewayaccess.SecuritySettings, error) {
-	if runtime == nil || runtime.Security.Policy == nil {
+func readSecuritySettings(ctx context.Context, runtime databaseRuntime) (gatewayaccess.SecuritySettings, error) {
+	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
 		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
 	}
-	return runtime.Security.Policy.ReadSettings(ctx)
+	return runtime.SecurityPort().PolicyService().ReadSettings(ctx)
 }
 
-func (s *Server) redactForPersistence(ctx context.Context, runtime *databaseRuntime, value string) string {
-	if runtime == nil || runtime.Security.Policy == nil {
+func (s *Server) redactForPersistence(ctx context.Context, runtime databaseRuntime, value string) string {
+	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
 		return gatewayaccess.RedactBasic(value)
 	}
-	return runtime.Security.Policy.Redact(ctx, value)
+	return runtime.SecurityPort().PolicyService().Redact(ctx, value)
 }
 
-func (s *Server) runtimeRedactor(runtime *databaseRuntime) func(string) string {
-	if runtime == nil || runtime.Security.Policy == nil {
+func (s *Server) runtimeRedactor(runtime databaseRuntime) func(string) string {
+	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
 		return gatewayaccess.RedactBasic
 	}
-	return runtime.Security.Policy.Redactor()
+	return runtime.SecurityPort().PolicyService().Redactor()
 }
 
-func (s *Server) redactCustom(ctx context.Context, runtime *databaseRuntime, value string) string {
-	if runtime == nil || runtime.Security.Policy == nil {
+func (s *Server) redactCustom(ctx context.Context, runtime databaseRuntime, value string) string {
+	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
 		return value
 	}
-	return runtime.Security.Policy.RedactCustom(ctx, value)
+	return runtime.SecurityPort().PolicyService().RedactCustom(ctx, value)
 }

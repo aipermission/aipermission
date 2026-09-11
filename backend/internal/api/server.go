@@ -69,7 +69,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err != nil {
 		return nil, err
 	}
-	runtime.Connectors.ConsoleSessions = gatewayoperations.NewConsoleManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime))
+	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime)))
 	if err := server.initializeCommandRequestRuntime(runtime); err != nil {
 		return nil, fmt.Errorf("initialize command request runtime: %w", err)
 	}
@@ -77,7 +77,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
 	if err := server.configureVaultSessionRuntime(runtime); err != nil {
-		runtime.Operations.TransferLifecycle.Stop()
+		runtime.OperationsPort().FileTransferLifecycle().Stop()
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)
@@ -117,9 +117,9 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		Delete:        gatewayinfra.Delete,
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
-		OnActivated: func(runtime *databaseRuntime) {
-			if runtime != nil && runtime.GatewaySecret != "" {
-				s.config.GatewaySecret = runtime.GatewaySecret
+		OnActivated: func(runtime databaseRuntime) {
+			if runtime != nil && runtime.GatewaySecretValue() != "" {
+				s.config.GatewaySecret = runtime.GatewaySecretValue()
 			}
 		},
 		OnOpened: s.initializeRetention,
@@ -141,7 +141,7 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 	return nil
 }
 
-func describeDatabaseRuntime(runtime *databaseRuntime) gatewayinfra.Identity {
+func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 	if runtime == nil {
 		return gatewayinfra.Identity{}
 	}
@@ -162,10 +162,10 @@ func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
 	return connectorapi.NewRegistry()
 }
 
-func runtimeConnectorRegistry(runtime *databaseRuntime) *connectors.Registry {
-	return runtime.Connectors.ConnectorRegistry()
+func runtimeConnectorRegistry(runtime databaseRuntime) *connectors.Registry {
+	return runtime.ConnectorPort().ConnectorRegistry()
 }
 
-func runtimeConnectorAdapterRegistry(runtime *databaseRuntime) *connectorapi.Registry {
-	return runtime.Connectors.ConnectorAdapterRegistry()
+func runtimeConnectorAdapterRegistry(runtime databaseRuntime) *connectorapi.Registry {
+	return runtime.ConnectorPort().ConnectorAdapterRegistry()
 }

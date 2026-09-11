@@ -13,7 +13,7 @@ import (
 type CredentialCanonicalizer func(context.Context, string, string, map[string]any) (map[string]any, error)
 type CredentialCanonicalizerProvider func(string) CredentialCanonicalizer
 
-func RuntimeCredentialPreparation(runtime *workspaceruntime.Runtime, provider CredentialCanonicalizerProvider) CredentialPreparationPorts {
+func RuntimeCredentialPreparation(runtime workspaceruntime.Port, provider CredentialCanonicalizerProvider) CredentialPreparationPorts {
 	return CredentialPreparationPorts{
 		Canonicalize: func(ctx context.Context, connectorKind, credentialKind string, public map[string]any) (map[string]any, error) {
 			if provider != nil {
@@ -25,11 +25,11 @@ func RuntimeCredentialPreparation(runtime *workspaceruntime.Runtime, provider Cr
 		},
 		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
+			err := recordcrypto.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
 			return secret, err
 		},
 		Encrypt: func(_ context.Context, profileID int64, secret map[string]any) (string, error) {
-			return recordcrypto.EncryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
+			return recordcrypto.EncryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, profileID, secret)
 		},
 	}
 }
@@ -38,11 +38,11 @@ type RuntimeCapabilities func(string) connectors.RuntimeCapabilityResolver
 type ResultRedactor func(context.Context, connectors.ActionResult, CredentialBoundary) (connectors.ActionResult, error)
 type TextRedactor func(context.Context, string) string
 
-func RuntimeCredentialPorts(runtime *workspaceruntime.Runtime, capabilities RuntimeCapabilities, redactResult ResultRedactor, redactText TextRedactor) CredentialRuntimePorts {
+func RuntimeCredentialPorts(runtime workspaceruntime.Port, capabilities RuntimeCapabilities, redactResult ResultRedactor, redactText TextRedactor) CredentialRuntimePorts {
 	return CredentialRuntimePorts{
 		DecryptSecret: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
+			err := recordcrypto.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
 			return secret, err
 		},
 		RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary CredentialBoundary) connectors.RuntimeContext {

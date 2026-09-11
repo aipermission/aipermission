@@ -23,7 +23,7 @@ func NewApproved(dependencies []actions.ResolvedDependency) Approved {
 	return approved
 }
 
-func (approved Approved) Acquire(ctx context.Context, runtime *workspaceruntime.Runtime, purpose, targetRef string) (func(), error) {
+func (approved Approved) Acquire(ctx context.Context, runtime workspaceruntime.Port, purpose, targetRef string) (func(), error) {
 	if approved == nil {
 		return func() {}, nil
 	}
@@ -31,14 +31,14 @@ func (approved Approved) Acquire(ctx context.Context, runtime *workspaceruntime.
 	if !ok {
 		return nil, ErrApprovalChanged
 	}
-	if runtime == nil || runtime.Storage.Database == nil {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
 		return nil, errors.New("database runtime is not available")
 	}
-	release, err := runtime.Security.VaultDelivery.AcquireDelivery(ctx)
+	release, err := runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery(ctx)
 	if err != nil {
 		return nil, err
 	}
-	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil || !reflect.DeepEqual(currentTarget, expected.Target) || !reflect.DeepEqual(currentProfile, expected.Profile) {
 		release()
 		return nil, ErrApprovalChanged

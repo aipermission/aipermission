@@ -19,8 +19,8 @@ import (
 )
 
 type Appender = observability.Appender
-type ActiveRuntime func(http.ResponseWriter) (*workspaceruntime.Runtime, bool)
-type StartActions func(*workspaceruntime.Runtime)
+type ActiveRuntime func(http.ResponseWriter) (workspaceruntime.Port, bool)
+type StartActions func(workspaceruntime.Port)
 
 type Component struct {
 	health observability.HealthTracker
@@ -28,48 +28,49 @@ type Component struct {
 
 func New() *Component { return &Component{} }
 
-func (component *Component) ConfigureDispatcher(runtime *workspaceruntime.Runtime) {
-	if runtime == nil || runtime.Storage.Database == nil || runtime.Observation.AuditDispatcher != nil {
+func (component *Component) ConfigureDispatcher(runtime workspaceruntime.Port) {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.ObservationPort().AuditDispatcherService() != nil {
 		return
 	}
-	runtime.Observation.AuditDispatcher = observability.NewDispatcher(runtime.Storage.Database)
-	runtime.Observation.AuditDispatcher.Start()
+	dispatcher := observability.NewDispatcher(runtime.StoragePort().DatabaseHandle())
+	runtime.ObservationPort().SetAuditDispatcherService(dispatcher)
+	dispatcher.Start()
 }
 
-func (component *Component) InitializeRetention(runtime *workspaceruntime.Runtime, startActions StartActions) {
-	if runtime == nil || runtime.Storage.Database == nil {
+func (component *Component) InitializeRetention(runtime workspaceruntime.Port, startActions StartActions) {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
 		return
 	}
-	if runtime.Observation.Retention == nil {
-		runtime.Observation.Retention = retention.NewService(runtime.Storage.Database, runtime.ID)
+	if runtime.ObservationPort().RetentionService() == nil {
+		runtime.ObservationPort().SetRetentionService(retention.NewService(runtime.StoragePort().DatabaseHandle(), runtime.DatabaseIdentifier()))
 	}
-	runtime.Observation.Retention.Start()
+	runtime.ObservationPort().RetentionService().Start()
 	if startActions != nil {
 		startActions(runtime)
 	}
 }
 
-func (component *Component) HealthSnapshot(ctx context.Context, runtime *workspaceruntime.Runtime) observability.HealthSnapshot {
+func (component *Component) HealthSnapshot(ctx context.Context, runtime workspaceruntime.Port) observability.HealthSnapshot {
 	if runtime == nil {
 		return component.health.Snapshot(ctx, nil)
 	}
-	return component.health.Snapshot(ctx, runtime.Storage.Database)
+	return component.health.Snapshot(ctx, runtime.StoragePort().DatabaseHandle())
 }
 
 func (component *Component) RecordFailure(at time.Time) {
 	component.health.RecordFailure(at)
 }
 
-func (component *Component) PrepareRedactor(ctx context.Context, runtime *workspaceruntime.Runtime) func(string) string {
-	if runtime == nil || runtime.Security.Policy == nil {
+func (component *Component) PrepareRedactor(ctx context.Context, runtime workspaceruntime.Port) func(string) string {
+	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
 		return securitypolicy.RedactBasic
 	}
-	return runtime.Security.Policy.PrepareRedactor(ctx)
+	return runtime.SecurityPort().PolicyService().PrepareRedactor(ctx)
 }
 
 func (component *Component) WriteObservation(
 	ctx context.Context,
-	runtime *workspaceruntime.Runtime,
+	runtime workspaceruntime.Port,
 	actorType string,
 	tokenID *int64,
 	runtimeID int64,
@@ -83,7 +84,7 @@ func (component *Component) WriteObservation(
 
 func (component *Component) WriteRequired(
 	ctx context.Context,
-	runtime *workspaceruntime.Runtime,
+	runtime workspaceruntime.Port,
 	actorType string,
 	tokenID *int64,
 	runtimeID int64,
@@ -100,7 +101,7 @@ func (component *Component) WriteRequired(
 
 func (component *Component) WithTransaction(
 	ctx context.Context,
-	runtime *workspaceruntime.Runtime,
+	runtime workspaceruntime.Port,
 	mutate func(*sql.Tx, Appender) error,
 ) error {
 	return component.coordinator(ctx, runtime).WithTransaction(ctx, mutate)
@@ -108,7 +109,7 @@ func (component *Component) WithTransaction(
 
 func (component *Component) WithMutation(
 	ctx context.Context,
-	runtime *workspaceruntime.Runtime,
+	runtime workspaceruntime.Port,
 	actorType string,
 	tokenID *int64,
 	runtimeID int64,
@@ -119,15 +120,15 @@ func (component *Component) WithMutation(
 	return component.coordinator(ctx, runtime).WithMutation(ctx, actorType, tokenID, runtimeID, action, payload, mutate)
 }
 
-func (component *Component) Project(ctx context.Context, runtime *workspaceruntime.Runtime) {
+func (component *Component) Project(ctx context.Context, runtime workspaceruntime.Port) {
 	if runtime != nil {
 		component.newCoordinator(runtime, nil).Project(ctx)
 	}
 }
 
-func (component *Component) VaultRequestStore(ctx context.Context, runtime *workspaceruntime.Runtime) *vaultrequests.Store {
+func (component *Component) VaultRequestStore(ctx context.Context, runtime workspaceruntime.Port) *vaultrequests.Store {
 	redact := component.PrepareRedactor(ctx, runtime)
-	return vaultrequests.NewStore(runtime.Storage.Database).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
+	return vaultrequests.NewStore(runtime.StoragePort().DatabaseHandle()).WithMutationHook(func(ctx context.Context, executor vaultrequests.Executor, item vaultrequests.Request) error {
 		event, err := observability.BuildEvent(ctx, executor, observability.BuildInput{
 			ActorType: "gateway", TokenID: pointer(item.TokenID), RuntimeID: valueOrZero(item.RuntimeID),
 			Action:  "vault.action_request." + item.Status,
@@ -141,14 +142,14 @@ func (component *Component) VaultRequestStore(ctx context.Context, runtime *work
 	})
 }
 
-func (component *Component) SyncVaultActionRequest(ctx context.Context, runtime *workspaceruntime.Runtime, id int64) error {
-	return historyhttp.NewStore(runtime.Storage.Database).SyncVaultActionRequest(ctx, id)
+func (component *Component) SyncVaultActionRequest(ctx context.Context, runtime workspaceruntime.Port, id int64) error {
+	return historyhttp.NewStore(runtime.StoragePort().DatabaseHandle()).SyncVaultActionRequest(ctx, id)
 }
 
-func (component *Component) Diagnostics(ctx context.Context, runtime *workspaceruntime.Runtime) (observability.Report, error) {
+func (component *Component) Diagnostics(ctx context.Context, runtime workspaceruntime.Port) (observability.Report, error) {
 	audit := component.HealthSnapshot(ctx, runtime)
 	return observability.Collect(ctx, observability.CollectInput{
-		Database: runtime.Storage.Database, Registry: runtime.Connectors.ConnectorRegistry(),
+		Database: runtime.StoragePort().DatabaseHandle(), Registry: runtime.ConnectorPort().ConnectorRegistry(),
 		SupportedSchemaVersion: db.CurrentSchemaVersion(), MCPEnabled: runtime.IsMCPStarted(),
 		Audit: observability.AuditHealth{
 			Status: audit.Status, FailureCount: audit.FailureCount, PendingCount: audit.PendingCount,
@@ -168,15 +169,15 @@ func valueOrZero(value *int64) int64 {
 	return *value
 }
 
-func (component *Component) coordinator(ctx context.Context, runtime *workspaceruntime.Runtime) *observability.Coordinator {
-	if runtime == nil || runtime.Storage.Database == nil {
+func (component *Component) coordinator(ctx context.Context, runtime workspaceruntime.Port) *observability.Coordinator {
+	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
 		return observability.NewCoordinator(nil, nil, nil, component.projectionFailureHandler())
 	}
 	return component.newCoordinator(runtime, component.PrepareRedactor(ctx, runtime))
 }
 
-func (component *Component) newCoordinator(runtime *workspaceruntime.Runtime, redact func(string) string) *observability.Coordinator {
-	return observability.NewCoordinator(runtime.Storage.Database, runtime.Observation.AuditDispatcher, redact, component.projectionFailureHandler())
+func (component *Component) newCoordinator(runtime workspaceruntime.Port, redact func(string) string) *observability.Coordinator {
+	return observability.NewCoordinator(runtime.StoragePort().DatabaseHandle(), runtime.ObservationPort().AuditDispatcherService(), redact, component.projectionFailureHandler())
 }
 
 func (component *Component) projectionFailureHandler() observability.ProjectionFailureHandler {
@@ -210,7 +211,7 @@ func (component *Component) auditScope(active ActiveRuntime) observability.HTTPS
 		if !ok {
 			return observability.HTTPScope{}, false
 		}
-		return observability.HTTPScope{Database: runtime.Storage.Database}, true
+		return observability.HTTPScope{Database: runtime.StoragePort().DatabaseHandle()}, true
 	}
 }
 
@@ -221,7 +222,7 @@ func (component *Component) historyScope(active ActiveRuntime) historyhttp.Scope
 			return historyhttp.Scope{}, false
 		}
 		return historyhttp.Scope{
-			Database: runtime.Storage.Database,
+			Database: runtime.StoragePort().DatabaseHandle(),
 			Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return component.WithMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 			},
@@ -235,11 +236,11 @@ func (component *Component) retentionScope(active ActiveRuntime) retention.HTTPS
 		if !ok {
 			return retention.HTTPScope{}, false
 		}
-		if runtime.Observation.Retention == nil {
+		if runtime.ObservationPort().RetentionService() == nil {
 			return retention.HTTPScope{}, true
 		}
 		return retention.HTTPScope{
-			Service: runtime.Observation.Retention,
+			Service: runtime.ObservationPort().RetentionService(),
 			Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return component.WithMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 			},

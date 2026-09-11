@@ -8,21 +8,21 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func localExecutionPrincipal(runtime *databaseRuntime) (gatewayaccess.Principal, error) {
+func localExecutionPrincipal(runtime databaseRuntime) (gatewayaccess.Principal, error) {
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		return gatewayaccess.Principal{}, err
 	}
-	return gatewayaccess.PrincipalLocalOperator(runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	return gatewayaccess.PrincipalLocalOperator(runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
 }
 
-func tokenExecutionPrincipal(runtime *databaseRuntime, tokenID int64) (gatewayaccess.Principal, error) {
+func tokenExecutionPrincipal(runtime databaseRuntime, tokenID int64) (gatewayaccess.Principal, error) {
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		return gatewayaccess.Principal{}, err
 	}
-	return gatewayaccess.PrincipalMCPToken(tokenID, runtime.WorkspaceUUID, runtime.RuntimeInstanceID)
+	return gatewayaccess.PrincipalMCPToken(tokenID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
 }
 
-func ensureRuntimeIdentity(runtime *databaseRuntime) error {
+func ensureRuntimeIdentity(runtime databaseRuntime) error {
 	if runtime == nil {
 		return gatewayaccess.ErrInvalidPrincipal
 	}

@@ -41,10 +41,10 @@ func TestLiveConsoleTargetRefPreservesUnexpectedAdapterErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newAPITestFixture(t)
 			runtime := fixture.server.activeRuntime()
-			if err := runtime.Connectors.Registry.Register(localActionTestConnector{}); err != nil {
+			if err := runtime.ConnectorPort().ConnectorRegistry().Register(localActionTestConnector{}); err != nil {
 				t.Fatal(err)
 			}
-			if err := runtime.Connectors.AdapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: test.err}); err != nil {
+			if err := runtime.ConnectorPort().ConnectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: test.err}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -59,10 +59,10 @@ func TestLiveConsoleTargetRefPreservesUnexpectedAdapterErrors(t *testing.T) {
 func TestLiveConsoleTargetRefContinuesOnlyForRuntimeNotFound(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	if err := runtime.Connectors.Registry.Register(localActionTestConnector{}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorRegistry().Register(localActionTestConnector{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Connectors.AdapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: connectortargets.ErrRuntimeSurfaceNotFound}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: connectortargets.ErrRuntimeSurfaceNotFound}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,10 +75,10 @@ func TestLiveConsoleTargetRefContinuesOnlyForRuntimeNotFound(t *testing.T) {
 func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	if err := runtime.Connectors.Registry.Register(localActionTestConnector{}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorRegistry().Register(localActionTestConnector{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Connectors.AdapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +91,7 @@ func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
 func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	if err := runtime.Connectors.Registry.Register(localActionTestConnector{}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorRegistry().Register(localActionTestConnector{}); err != nil {
 		t.Fatal(err)
 	}
 	store := connectortargets.NewStore(fixture.db)
@@ -124,7 +124,7 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 		t.Fatal(err)
 	}
 	targetRef := connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID)
-	if err := runtime.Connectors.AdapterRegistry.Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{ref: targetRef}); err != nil {
+	if err := runtime.ConnectorPort().ConnectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{ref: targetRef}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -28,7 +28,7 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		return
 	}
 	request.Config = config
-	if err := s.validateConnectorTransportConfig(r.Context(), connectormgmt.NewStore(runtime.Storage.Database), request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()), request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}

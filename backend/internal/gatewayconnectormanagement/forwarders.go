@@ -77,11 +77,11 @@ func NormalizeTargetConfig(connector connectors.Connector, config map[string]any
 	return connectormanagement.NormalizeTargetConfig(connector, config)
 }
 
-func RuntimeCredentialPorts(runtime *workspaceruntime.Runtime, capabilities connectormanagement.RuntimeCapabilities, redactResult connectormanagement.ResultRedactor, redactText connectormanagement.TextRedactor) connectormanagement.CredentialRuntimePorts {
+func RuntimeCredentialPorts(runtime workspaceruntime.Port, capabilities connectormanagement.RuntimeCapabilities, redactResult connectormanagement.ResultRedactor, redactText connectormanagement.TextRedactor) connectormanagement.CredentialRuntimePorts {
 	return connectormanagement.RuntimeCredentialPorts(runtime, capabilities, redactResult, redactText)
 }
 
-func RuntimeCredentialPreparation(runtime *workspaceruntime.Runtime, provider connectormanagement.CredentialCanonicalizerProvider) connectormanagement.CredentialPreparationPorts {
+func RuntimeCredentialPreparation(runtime workspaceruntime.Port, provider connectormanagement.CredentialCanonicalizerProvider) connectormanagement.CredentialPreparationPorts {
 	return connectormanagement.RuntimeCredentialPreparation(runtime, provider)
 }
 

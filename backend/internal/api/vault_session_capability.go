@@ -9,12 +9,12 @@ import (
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) error {
+func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) error {
 	_, err := sessionEnvironmentCapabilityVersion(ctx, server, runtime, runtimeID)
 	return err
 }
 
-func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (string, error) {
+func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (string, error) {
 	sessionCapability, err := sessionEnvironmentCapabilityFor(ctx, server, runtime, runtimeID)
 	if err != nil {
 		return "", err
@@ -26,8 +26,8 @@ func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, ru
 	return version, nil
 }
 
-func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime *databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
-	surface, err := connectormgmt.NewStore(runtime.Storage.Database).GetRuntimeSurface(ctx, runtimeID)
+func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
+	surface, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).GetRuntimeSurface(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}

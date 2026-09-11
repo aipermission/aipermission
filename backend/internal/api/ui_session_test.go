@@ -7,15 +7,31 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
+
+type uiSessionIdentityRuntime struct {
+	gatewayinfra.Runtime
+	identity      gatewayinfra.Identity
+	retryIdentity string
+}
+
+func (runtime uiSessionIdentityRuntime) WorkspaceIdentity() gatewayinfra.Identity {
+	return runtime.identity
+}
+
+func (runtime uiSessionIdentityRuntime) UIRetryIdentifier() string {
+	return runtime.retryIdentity
+}
 
 func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
-	registry := workspacelifecycle.NewRegistry(configuration.DataPath, databaseID, describeDatabaseRuntime)
+	registry := gatewayinfra.NewRegistry(configuration.DataPath, databaseID, describeDatabaseRuntime)
 	if retryIdentity != "" {
-		registry.Activate(&databaseRuntime{ID: databaseID, Path: configuration.DataPath, UIRetryIdentity: retryIdentity})
+		registry.Activate(uiSessionIdentityRuntime{
+			identity: gatewayinfra.Identity{ID: databaseID, Path: configuration.DataPath}, retryIdentity: retryIdentity,
+		})
 	}
 	server := &Server{config: configuration}
 	server.workspaceState.Registry = registry

@@ -7,11 +7,11 @@ import (
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
-func (s *Server) connectorActionRedactor(runtime *databaseRuntime) (*actions.Redactor, error) {
+func (s *Server) connectorActionRedactor(runtime databaseRuntime) (*actions.Redactor, error) {
 	return s.connectorActionApplication().Redactor(runtime)
 }
 
-func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime *databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {
+func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {
 	redactor, err := s.connectorActionRedactor(runtime)
 	if err != nil {
 		return nil, err
@@ -19,7 +19,7 @@ func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Contex
 	return redactor.ValueWithCredentialBoundary(ctx, value, sensitiveFields, capabilityFields, boundary)
 }
 
-func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+func (s *Server) redactConnectorActionResult(ctx context.Context, runtime databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	redactor, err := s.connectorActionRedactor(runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -27,7 +27,7 @@ func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *datab
 	return redactor.Result(ctx, result, hints...)
 }
 
-func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime *databaseRuntime, result connectors.ActionResult, boundary connectorCredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime databaseRuntime, result connectors.ActionResult, boundary connectorCredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	redactor, err := s.connectorActionRedactor(runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -35,7 +35,7 @@ func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.C
 	return redactor.ResultWithCredentialBoundary(ctx, result, boundary, hints...)
 }
 
-func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databaseRuntime, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
+func (s *Server) redactConnectorActionInput(ctx context.Context, runtime databaseRuntime, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
 	redactor, err := s.connectorActionRedactor(runtime)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (s *Server) redactConnectorActionInput(ctx context.Context, runtime *databa
 	return redactor.Input(ctx, input, sensitiveInputFields)
 }
 
-func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime *databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
+func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
 	redactor, err := s.connectorActionRedactor(runtime)
 	if err != nil {
 		return nil, err

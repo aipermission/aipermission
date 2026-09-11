@@ -18,13 +18,13 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 	if !ok {
 		return nil, false
 	}
-	if runtime.Operations.CommandRequests == nil {
+	if runtime.OperationsPort().CommandRequestRuntime() == nil {
 		writeInternalError(w)
 		return nil, false
 	}
 	return &gatewayaccess.CommandBulkHTTPRuntime{
-		Requests: runtime.Operations.CommandRequests,
-		Sessions: runtime.Connectors.ConsoleSessions,
+		Requests: runtime.OperationsPort().CommandRequestRuntime(),
+		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return localExecutionPrincipal(runtime)
 		},
@@ -51,12 +51,12 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 	}, true
 }
 
-func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
+func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime, runtimeID int64) (gatewayaccess.CommandBulkTarget, error) {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return gatewayaccess.CommandBulkTarget{}, err
 	}
-	target, profile, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return gatewayaccess.CommandBulkTarget{}, err
 	}
@@ -79,12 +79,12 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *databaseRuntime
 	return gatewayaccess.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
 }
 
-func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *databaseRuntime, runtimeID int64) any {
+func (s *Server) consoleErrorPresenter(ctx context.Context, runtime databaseRuntime, runtimeID int64) any {
 	targetRef, err := liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil
 	}
-	target, _, err := connectormgmt.NewStore(runtime.Storage.Database).ResolveConnectorActionTarget(ctx, targetRef)
+	target, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil
 	}

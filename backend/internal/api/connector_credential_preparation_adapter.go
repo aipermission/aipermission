@@ -6,7 +6,7 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorCredentialPreparationPorts(runtime *databaseRuntime) connectormgmt.CredentialPreparationPorts {
+func (s *Server) connectorCredentialPreparationPorts(runtime databaseRuntime) connectormgmt.CredentialPreparationPorts {
 	return connectormgmt.RuntimeCredentialPreparation(runtime, func(connectorKind string) connectormgmt.CredentialCanonicalizer {
 		adapter := s.connectorCredentialCanonicalizerFor(connectorKind)
 		if adapter == nil {

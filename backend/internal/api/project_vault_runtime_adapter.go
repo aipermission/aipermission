@@ -13,7 +13,7 @@ import (
 
 func (s *Server) vaultApplication() *gatewayvault.Application {
 	return gatewayvault.NewApplication(gatewayvault.ProjectDependencies{
-		InvalidateSessions: func(ctx context.Context, runtime *gatewayinfra.Runtime, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
+		InvalidateSessions: func(ctx context.Context, runtime gatewayinfra.Runtime, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
 			return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
 		},
 		LiveConsoleKind: func(kind string) (string, bool) {
@@ -23,17 +23,17 @@ func (s *Server) vaultApplication() *gatewayvault.Application {
 			}
 			return adapter.LiveConsoleCapabilityKind(), true
 		},
-		SessionEnvironment: func(ctx context.Context, runtime *gatewayinfra.Runtime, runtimeID int64) (bool, error) {
+		SessionEnvironment: func(ctx context.Context, runtime gatewayinfra.Runtime, runtimeID int64) (bool, error) {
 			err := requireSessionEnvironmentCapability(ctx, s, runtime, runtimeID)
 			if errors.Is(err, connectors.ErrSessionEnvironmentUnsupported) {
 				return false, nil
 			}
 			return err == nil, err
 		},
-		Mutate: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		Mutate: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		Observe: func(ctx context.Context, runtime *gatewayinfra.Runtime, action string, payload any) error {
+		Observe: func(ctx context.Context, runtime gatewayinfra.Runtime, action string, payload any) error {
 			return s.writeAuditRequired(ctx, runtime, "user", nil, 0, action, payload)
 		},
 		AllowGenerate: func(key string) bool {
@@ -45,7 +45,7 @@ func (s *Server) vaultApplication() *gatewayvault.Application {
 	})
 }
 
-func (s *Server) projectVaultRuntime(runtime *databaseRuntime) (*gatewayvault.ProjectVaultRuntime, error) {
+func (s *Server) projectVaultRuntime(runtime databaseRuntime) (*gatewayvault.ProjectVaultRuntime, error) {
 	return s.vaultApplication().ProjectRuntime(runtime)
 }
 
@@ -60,7 +60,7 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (gatewayvault.Proj
 		return gatewayvault.ProjectVaultHTTPScope{}, false
 	}
 	return gatewayvault.ProjectVaultHTTPScope{
-		Runtime: owner, RuntimeID: runtime.ID,
+		Runtime: owner, RuntimeID: runtime.DatabaseIdentifier(),
 		SessionCatalog: s.vaultApplication().SessionCatalog(runtime),
 	}, true
 }
