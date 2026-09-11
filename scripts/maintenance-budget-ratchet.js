@@ -108,8 +108,15 @@ function goFunctionBudgets(source) {
 
 function backendFanoutBudgets(source) {
   if (!source) return {};
-  const defaultBudget = goInteger(source, "defaultBudget");
-  const snapshot = { "go.fanout.default": defaultBudget };
+  const legacyBudget = optionalGoInteger(source, "defaultBudget");
+  const packageBudget = optionalGoInteger(source, "packageBudget");
+  const ownerBudget = optionalGoInteger(source, "ownerBudget");
+  if (legacyBudget === undefined && packageBudget === undefined)
+    throw new Error("Could not read backend package fan-out budget");
+  const snapshot = {
+    "go.fanout.package": packageBudget ?? legacyBudget,
+  };
+  if (ownerBudget !== undefined) snapshot["go.fanout.owner"] = ownerBudget;
   const maxTestImports = optionalGoInteger(
     source,
     "maxTestFileInternalImports",
@@ -119,11 +126,12 @@ function backendFanoutBudgets(source) {
   const match = source.match(
     /overrides\s*:=\s*map\[string\]int\s*\{([\s\S]*?)\n\s*\}/,
   );
-  if (!match) throw new Error("Could not read backend fan-out overrides");
-  for (const entry of match[1].matchAll(
-    /modulePath\s*\+\s*"([^"]+)"\s*:\s*(\d+)/g,
-  )) {
-    snapshot[`go.fanout.override.${entry[1]}`] = Number(entry[2]);
+  if (match) {
+    for (const entry of match[1].matchAll(
+      /modulePath\s*\+\s*"([^"]+)"\s*:\s*(\d+)/g,
+    )) {
+      snapshot[`go.fanout.override.${entry[1]}`] = Number(entry[2]);
+    }
   }
   return snapshot;
 }
@@ -179,6 +187,12 @@ function budgetIncreases(base, current) {
       if (inherited !== undefined && value <= inherited) return [];
       return [`${name} is a new unreviewed budget (${value})`];
     }
+    if (
+      name === "go.fanout.package" &&
+      !Object.hasOwn(base, "go.fanout.owner") &&
+      current["go.fanout.owner"] <= base[name]
+    )
+      return [];
     return value > base[name]
       ? [`${name} increased from ${base[name]} to ${value}`]
       : [];
@@ -196,10 +210,19 @@ function isRemovableException(name) {
 }
 
 function inheritedBudget(base, name) {
-  if (name.endsWith("TestSourceBudget") || name.endsWith("TestPackageBudget"))
-    return Number.POSITIVE_INFINITY;
-  if (name.startsWith("go.function.test.")) return Number.POSITIVE_INFINITY;
-  if (name === "go.testImports.maxPerFile") return Number.POSITIVE_INFINITY;
+  const bootstrapCeilings = {
+    backendTestSourceBudget: 1800,
+    frontendTestSourceBudget: 1000,
+    mcpTestSourceBudget: 800,
+    backendTestPackageBudget: 15000,
+    frontendTestPackageBudget: 3000,
+    mcpTestPackageBudget: 1200,
+    "go.function.test.lines": 220,
+    "go.function.test.complexity": 60,
+    "go.testImports.maxPerFile": 14,
+  };
+  if (Object.hasOwn(bootstrapCeilings, name)) return bootstrapCeilings[name];
+  if (name === "go.fanout.owner") return base["go.fanout.package"];
   if (name.startsWith("backend.package.")) return base.backendPackageBudget;
   if (!name.startsWith("source.override.")) return undefined;
   const file = name.slice("source.override.".length);

@@ -69,6 +69,28 @@ test("treats newly introduced test budgets as tightening", () => {
   );
 });
 
+test("rejects newly introduced test budgets above bootstrap ceilings", () => {
+  const legacy = checkSource
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.includes("TestSourceBudget") &&
+        !line.includes("TestPackageBudget"),
+    )
+    .join("\n");
+  const relaxed = checkSource.replace(
+    "const backendTestSourceBudget = 1800;",
+    "const backendTestSourceBudget = 1801;",
+  );
+  assert.deepEqual(
+    budgetIncreases(
+      budgetSnapshot(legacy, architectureSource),
+      budgetSnapshot(relaxed, architectureSource),
+    ),
+    ["backendTestSourceBudget is a new unreviewed budget (1801)"],
+  );
+});
+
 test("rejects removing an established maintenance ceiling", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
   const withoutTestCeiling = checkSource.replace(
@@ -222,8 +244,44 @@ func test() {
 }
 `;
   assert.deepEqual(backendFanoutBudgets(source), {
-    "go.fanout.default": 8,
+    "go.fanout.package": 8,
     "go.testImports.maxPerFile": 14,
     "go.fanout.override./internal/api": 28,
   });
+});
+
+test("ratchets package and owner fan-out budgets without legacy overrides", () => {
+  const source = `
+func test() {
+  const packageBudget = 11
+  const ownerBudget = 8
+  const maxTestFileInternalImports = 14
+}
+`;
+  assert.deepEqual(backendFanoutBudgets(source), {
+    "go.fanout.package": 11,
+    "go.fanout.owner": 8,
+    "go.testImports.maxPerFile": 14,
+  });
+});
+
+test("allows a package fan-out migration only when the new owner budget stays tight", () => {
+  const base = { "go.fanout.package": 8 };
+  assert.deepEqual(
+    budgetIncreases(base, {
+      "go.fanout.package": 11,
+      "go.fanout.owner": 8,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    budgetIncreases(base, {
+      "go.fanout.package": 11,
+      "go.fanout.owner": 9,
+    }),
+    [
+      "go.fanout.package increased from 8 to 11",
+      "go.fanout.owner is a new unreviewed budget (9)",
+    ],
+  );
 });
