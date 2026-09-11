@@ -15,13 +15,8 @@ const (
 
 var (
 	ErrSessionEnvironmentUnsupported = connectors.ErrSessionEnvironmentUnsupported
-	ErrorCode                        = connectors.ErrorCode
-	ErrorStatus                      = connectors.ErrorStatus
-	FormatTargetRef                  = connectors.FormatTargetRef
-	NewRegistry                      = connectors.NewRegistry
-	ErrApprovalChanged               = connectortransport.ErrApprovalChanged
-	NewApproved                      = connectortransport.NewApproved
-	ScopeWithSecretAccessor          = connectortransport.ScopeWithSecretAccessor
+
+	ErrApprovalChanged = connectortransport.ErrApprovalChanged
 )
 
 type ActionHandles = connectors.ActionHandles

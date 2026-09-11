@@ -4,17 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (gatewayaccess.ConnectorApprovalScope, bool) {
+func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgmt.ConnectorApprovalScope, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return gatewayaccess.ConnectorApprovalScope{}, false
+		return connectormgmt.ConnectorApprovalScope{}, false
 	}
-	return gatewayaccess.ConnectorApprovalScope{
+	return connectormgmt.ConnectorApprovalScope{
 		Database: runtime.Storage.Database,
-		Workflow: func() (gatewayaccess.ConnectorApprovalWorkflow, error) {
+		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
 			return s.connectorActionWorkflow(runtime)
 		},
 		MCPStarted: runtime.IsMCPStarted,

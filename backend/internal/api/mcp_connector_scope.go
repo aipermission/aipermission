@@ -6,6 +6,7 @@ import (
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
@@ -17,7 +18,7 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 	return gatewayaccess.MCPScope{
 		Database: auth.runtime.Storage.Database, Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
-			permissions, err := gatewayaccess.ProjectScopedSupportedConnectorPermissions(
+			permissions, err := connectormgmt.ProjectScopedSupportedConnectorPermissions(
 				ctx, auth.runtime.Storage.Database, runtimeConnectorRegistry(auth.runtime), auth.TokenID,
 			)
 			if err != nil {

@@ -11,6 +11,8 @@ import (
 
 var ErrPersistenceUnavailable = errors.New("Vault session lease persistence is unavailable")
 
+type Executor = sqldb.Executor
+
 type Persistence struct{ database sqldb.Executor }
 
 type Reference struct {
@@ -19,7 +21,7 @@ type Reference struct {
 	Generation int64
 }
 
-func NewPersistence(database sqldb.Executor) *Persistence {
+func NewPersistence(database Executor) *Persistence {
 	return &Persistence{database: database}
 }
 

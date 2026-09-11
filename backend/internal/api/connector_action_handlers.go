@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
@@ -18,7 +18,7 @@ func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: handleConnectorTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
-			response := gatewayaccess.MCPResponseFromResult(s.connectorAdapterRegistry(), request, result)
+			response := connectorapi.MCPResponseFromResult(s.connectorAdapterRegistry(), request, result)
 			response.Replayed = replayed
 			return response
 		},

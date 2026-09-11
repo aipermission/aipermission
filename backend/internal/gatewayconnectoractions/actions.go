@@ -14,12 +14,6 @@ const (
 
 var (
 	ErrMCPExecutionStopped = actions.ErrMCPExecutionStopped
-	NewCredentialBoundary  = actions.NewCredentialBoundary
-	SensitiveOutputFields  = actions.SensitiveOutputFields
-	Delivery               = applicationactions.Delivery
-	New                    = applicationactions.New
-	Prepare                = applicationactions.Prepare
-	StopRecovery           = applicationactions.StopRecovery
 )
 
 type ApprovalPermissionSnapshot = actions.ApprovalPermissionSnapshot

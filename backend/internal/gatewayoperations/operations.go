@@ -8,20 +8,7 @@ import (
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
-	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
-)
-
-var (
-	ObservationReportFormatVersion = applicationobservation.ReportFormatVersion
-	NewBackupApplication           = applicationbackup.New
-	NewConsoleManager              = console.NewManager
-	NewMaintenanceHTTPHandlers     = consolehttp.NewMaintenanceHTTPHandlers
-	NewFileTransferHandlers        = filetransferhttp.NewHandlers
-	IsStateChangingMethod          = gatewayhttp.IsStateChangingMethod
-	SetAttachmentHeaders           = httpattachment.SetHeaders
-	NewMessageHTTPHandlers         = messagequeue.NewHTTPHandlers
-	NewMessageStore                = messagequeue.NewStore
 )
 
 type BackupApplication = applicationbackup.Component

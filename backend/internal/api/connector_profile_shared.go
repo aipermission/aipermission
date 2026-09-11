@@ -13,7 +13,7 @@ func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseW
 	if profile.EncryptedSecretJSON == "" {
 		return secrets, true
 	}
-	if err := gatewayvault.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, gatewayvault.ConnectorCredentialProfileRecord, profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := gatewayvault.DecryptJSON(runtime.Storage.Vault, runtime.WorkspaceUUID, gatewayvault.ConnectorCredentialProfileRecord(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		writeInternalError(w)
 		return nil, false
 	}

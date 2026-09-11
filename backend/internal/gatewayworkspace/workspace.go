@@ -13,6 +13,8 @@ import (
 )
 
 type Runtime = workspaceruntime.Runtime
+type Registry = workspacelifecycle.Registry[*Runtime]
+type Service = workspacelifecycle.Service[*Runtime]
 type Vault = workspaceruntime.Vault
 type TokenStore = workspaceruntime.TokenStore
 type AdoptInput = workspaceruntime.AdoptInput
@@ -55,10 +57,10 @@ func Discard(runtime *Runtime) error { return workspaceruntime.Discard(runtime) 
 func Close(runtime *Runtime, resolve func() (ActionWorkflow, error)) error {
 	return workspaceruntime.Close(runtime, resolve)
 }
-func NewRegistry(path, id string, describe func(*Runtime) Identity) *workspacelifecycle.Registry[*Runtime] {
+func NewRegistry(path, id string, describe func(*Runtime) Identity) *Registry {
 	return lifecycle.NewRegistry(path, id, describe)
 }
-func NewService(dependencies Dependencies) (*workspacelifecycle.Service[*Runtime], error) {
+func NewService(dependencies Dependencies) (*Service, error) {
 	return lifecycle.NewService(dependencies)
 }
 func NewHTTP(dependencies HTTPDependencies) *HTTPHandlers { return lifecycle.NewHTTP(dependencies) }

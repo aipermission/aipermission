@@ -45,7 +45,7 @@ func (s *Server) routes() {
 		Console:            connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope),
 		BulkConsole:        gatewayaccess.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
 		CommandRequests:    gatewayaccess.NewCommandHTTPHandlers(s.commandRequestHTTPScope),
-		ConnectorApprovals: gatewayaccess.NewConnectorApprovalHTTPHandlers(s.connectorApprovalHTTPScope),
+		ConnectorApprovals: connectormgmt.NewConnectorApprovalHTTPHandlers(s.connectorApprovalHTTPScope),
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,
 

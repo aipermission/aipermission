@@ -2,28 +2,14 @@
 package gatewayconnectormanagement
 
 import (
+	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	applicationmanagement "github.com/aipermission/aipermission/backend/internal/applicationconnectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 var (
-	New                                = applicationmanagement.New
-	ValidateTransport                  = applicationmanagement.ValidateTransport
-	NewCombinedMutationHTTPHandler     = connectormanagement.NewCombinedMutationHTTPHandler
-	NewHTTPHandlers                    = connectormanagement.NewHTTPHandlers
-	NewHostPingHTTPHandler             = connectormanagement.NewHostPingHTTPHandler
-	NewProfileBackupHTTPHandler        = connectormanagement.NewProfileBackupHTTPHandler
-	NewProfileDeletionHTTPHandler      = connectormanagement.NewProfileDeletionHTTPHandler
-	NewProfileMutationHTTPHandler      = connectormanagement.NewProfileMutationHTTPHandler
-	NewProfileTestingHTTPHandler       = connectormanagement.NewProfileTestingHTTPHandler
-	NewProvisioningHTTPHandler         = connectormanagement.NewProvisioningHTTPHandler
-	NewTargetMutationHTTPHandler       = connectormanagement.NewTargetMutationHTTPHandler
-	NormalizeTargetConfig              = connectormanagement.NormalizeTargetConfig
-	RuntimeCredentialPorts             = connectormanagement.RuntimeCredentialPorts
-	RuntimeCredentialPreparation       = connectormanagement.RuntimeCredentialPreparation
-	NewStore                           = connectortargets.NewStore
-	NewTxStore                         = connectortargets.NewTxStore
 	ErrCredentialProfileUpdateConflict = connectortargets.ErrCredentialProfileUpdateConflict
 	ErrInvalidTargetRef                = connectortargets.ErrInvalidTargetRef
 	ErrRuntimeSurfaceNotFound          = connectortargets.ErrRuntimeSurfaceNotFound
@@ -66,3 +52,8 @@ type RuntimeSurface = connectortargets.RuntimeSurface
 type Store = connectortargets.Store
 type Target = connectortargets.Target
 type ValidationError = connectortargets.ValidationError
+type ConnectorApprovalItem = connectorapproval.Item
+type ConnectorApprovalNoteRequest = connectorapproval.NoteRequest
+type ConnectorApprovalScope = connectorapproval.Scope
+type ConnectorApprovalWorkflow = connectorapproval.Workflow
+type CapabilityStore = accesscontrol.CapabilityStore

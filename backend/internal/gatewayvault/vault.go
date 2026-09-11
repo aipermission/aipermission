@@ -5,7 +5,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/applicationvault"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -13,21 +12,7 @@ import (
 )
 
 var (
-	NewApplication                   = applicationvault.New
-	NewProjectsHTTPHandlers          = projects.NewHTTPHandlers
-	WriteProjectHTTPError            = projects.WriteHTTPError
-	EnsureWorkspaceUUID              = projectvault.EnsureWorkspaceUUID
-	NewProjectVaultHTTPHandlers      = projectvault.NewHTTPHandlers
-	DecryptJSON                      = recordcrypto.DecryptJSON
-	IsUIExempt                       = uisession.IsExempt
-	PrepareUISession                 = uisession.Prepare
-	UISessionRetryIdentity           = uisession.RetryIdentity
-	NewVaultApprovalHTTPHandlers     = vaultrequests.NewHTTPHandlers
-	NewVaultMCPHTTPHandlers          = vaultrequests.NewMCPHTTPHandlers
-	ErrInvalidatorUnavailable        = vaultsessions.ErrInvalidatorUnavailable
-	NewInvalidator                   = vaultsessions.NewInvalidator
-	NewPersistence                   = vaultsessions.NewPersistence
-	ConnectorCredentialProfileRecord = recordcrypto.ConnectorCredentialProfile
+	ErrInvalidatorUnavailable = vaultsessions.ErrInvalidatorUnavailable
 )
 
 const (

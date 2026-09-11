@@ -6,37 +6,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/gatewayroutes"
 	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
-)
-
-var (
-	ResolveOptions                 = gatewayoptions.Resolve
-	WithConnectorAdapterRegistry   = gatewayoptions.WithConnectorAdapterRegistry
-	WithConnectorRegistry          = gatewayoptions.WithConnectorRegistry
-	WithMaintenanceConsole         = gatewayoptions.WithMaintenanceConsole
-	WithRuntimeInstanceIDGenerator = gatewayoptions.WithRuntimeInstanceIDGenerator
-	Health                         = gatewayroutes.Health
-	RegisterRoutes                 = gatewayroutes.Register
-	NewConnectorState              = gatewaystate.NewConnectorState
-	NewControlState                = gatewaystate.NewControlState
-	Scavenge                       = gatewayworkspace.Scavenge
-	DefaultID                      = gatewayworkspace.DefaultID
-	Move                           = gatewayworkspace.Move
-	Publish                        = gatewayworkspace.Publish
-	Adopt                          = gatewayworkspace.Adopt
-	Open                           = gatewayworkspace.Open
-	Discard                        = gatewayworkspace.Discard
-	Close                          = gatewayworkspace.Close
-	Delete                         = gatewayworkspace.Delete
-	NewRegistry                    = gatewayworkspace.NewRegistry
-	NewService                     = gatewayworkspace.NewService
-	NewWorkspaceHTTP               = gatewayworkspace.NewHTTP
-	HasActiveRemoteBackup          = gatewayworkspace.HasActiveRemoteBackup
-	LooksPlaintext                 = gatewayworkspace.LooksPlaintext
-	PasswordPolicyError            = gatewayworkspace.PasswordPolicyError
-	UnsupportedSchemaMessage       = gatewayworkspace.UnsupportedSchemaMessage
-	ValidatePassword               = gatewayworkspace.ValidatePassword
-	ValidateRemoteBackupPassword   = gatewayworkspace.ValidateRemoteBackupPassword
 )
 
 const (
@@ -57,7 +26,9 @@ type RouteDependencies = gatewayroutes.Dependencies
 type ConnectorState = gatewaystate.ConnectorState
 type ControlState = gatewaystate.ControlState
 type WorkspaceState = gatewaystate.WorkspaceState
-type Runtime = workspaceruntime.Runtime
+type Runtime = gatewayworkspace.Runtime
+type WorkspaceRegistry = gatewayworkspace.Registry
+type WorkspaceService = gatewayworkspace.Service
 type ActionWorkflow = gatewayworkspace.ActionWorkflow
 type AdoptInput = gatewayworkspace.AdoptInput
 type ChangePasswordRequest = gatewayworkspace.ChangePasswordRequest

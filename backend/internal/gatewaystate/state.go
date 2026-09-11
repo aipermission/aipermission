@@ -19,11 +19,14 @@ const (
 type WorkspaceState = workspaces.State
 type ConnectorState = catalog.State
 type ControlState = controls.State
+type ConnectorRegistry = connectors.Registry
+type ConnectorAdapterRegistry = connectorapi.Registry
+type MaintenanceConsoleRuntime = console.MaintenanceConsoleRuntime
 
-func NewConnectorState(registry *connectors.Registry, adapters *connectorapi.Registry) ConnectorState {
+func NewConnectorState(registry *ConnectorRegistry, adapters *ConnectorAdapterRegistry) ConnectorState {
 	return catalog.New(registry, adapters)
 }
 
-func NewControlState(frontendPort string, maintenance console.MaintenanceConsoleRuntime) ControlState {
+func NewControlState(frontendPort string, maintenance MaintenanceConsoleRuntime) ControlState {
 	return controls.New(frontendPort, maintenance)
 }

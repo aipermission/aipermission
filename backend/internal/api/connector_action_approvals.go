@@ -3,16 +3,15 @@ package api
 import (
 	"context"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-type declineConnectorActionApprovalRequest = gatewayaccess.ConnectorApprovalNoteRequest
-type runConnectorActionApprovalRequest = gatewayaccess.ConnectorApprovalNoteRequest
-type connectorActionApprovalItem = gatewayaccess.ConnectorApprovalItem
+type declineConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNoteRequest
+type runConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNoteRequest
+type connectorActionApprovalItem = connectormgmt.ConnectorApprovalItem
 
 func connectorActionApprovalItemFromRequest(item connectormgmt.ActionRequest) connectorActionApprovalItem {
-	return gatewayaccess.ConnectorApprovalItemFromRequest(item)
+	return connectormgmt.ConnectorApprovalItemFromRequest(item)
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
@@ -28,5 +27,5 @@ func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, run
 	if err != nil {
 		return connectorActionApprovalItem{}, err
 	}
-	return gatewayaccess.ConnectorApprovalItemForResponse(ctx, workflow, item)
+	return connectormgmt.ConnectorApprovalItemForResponse(ctx, workflow, item)
 }

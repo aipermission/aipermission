@@ -1,7 +1,11 @@
 package architecture
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -169,6 +173,50 @@ func TestGatewayBoundariesStayIndependentFromAPI(t *testing.T) {
 				t.Errorf("%s must not depend on the HTTP/API composition root", importer)
 			}
 		}
+	}
+}
+
+func TestGatewayBoundariesDoNotExposeMutableValues(t *testing.T) {
+	packages := []string{
+		"gatewayaccess",
+		"gatewayconnectoractions",
+		"gatewayconnectorapi",
+		"gatewayconnectormanagement",
+		"gatewayconnectors",
+		"gatewayinfrastructure",
+		"gatewayoperations",
+		"gatewayvault",
+	}
+	for _, name := range packages {
+		t.Run(name, func(t *testing.T) {
+			files, err := filepath.Glob(filepath.Join("..", "..", "internal", name, "*.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range files {
+				if strings.HasSuffix(path, "_test.go") {
+					continue
+				}
+				file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+				if err != nil {
+					t.Fatalf("parse %s: %v", path, err)
+				}
+				for _, declaration := range file.Decls {
+					general, ok := declaration.(*ast.GenDecl)
+					if !ok || general.Tok != token.VAR {
+						continue
+					}
+					for _, specification := range general.Specs {
+						value := specification.(*ast.ValueSpec)
+						for _, identifier := range value.Names {
+							if identifier.IsExported() && !strings.HasPrefix(identifier.Name, "Err") {
+								t.Errorf("%s exposes mutable package variable %s; use a const, type, or function", path, identifier.Name)
+							}
+						}
+					}
+				}
+			}
+		})
 	}
 }
 

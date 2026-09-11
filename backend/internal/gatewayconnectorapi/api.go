@@ -2,21 +2,10 @@
 package gatewayconnectorapi
 
 import (
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	connectorports "github.com/aipermission/aipermission/backend/internal/applicationconnectorports"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-)
-
-var (
-	NewLiveConsoleHTTPHandlers    = connectorapi.NewLiveConsoleHTTPHandlers
-	NewRegistry                   = connectorapi.NewRegistry
-	PresentedErrorMessage         = connectorapi.PresentedErrorMessage
-	NewPorts                      = connectorports.New
-	DataRuntime                   = connectorports.DataRuntime
-	LiveRuntime                   = connectorports.LiveRuntime
-	PortActionRuntime             = connectorports.ActionRuntime
-	PortCredentialResourceRuntime = connectorports.CredentialResourceRuntime
-	RequireRuntimeID              = connectorports.RequireRuntimeID
-	RequireTargetRuntimeID        = connectorports.RequireTargetRuntimeID
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 type ActionRuntime = connectorapi.ActionRuntime
@@ -49,3 +38,5 @@ type TransferAuthorization = connectorapi.TransferAuthorization
 type TransferBatch = connectorapi.TransferBatch
 type PortsComponent = connectorports.Component
 type PortsDependencies = connectorports.Dependencies
+type ActionResponse = actions.Response
+type ActionRequest = connectortargets.ActionRequest

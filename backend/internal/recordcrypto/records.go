@@ -12,6 +12,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
+type JSONDecrypter interface {
+	DecryptRecordJSON(string, any, vault.RecordContext) error
+}
+
 const (
 	EnvelopeVersion      = "1"
 	markerKey            = "encrypted_record_envelope_version"
@@ -70,7 +74,7 @@ func EncryptJSON(secretVault *vault.Vault, workspaceID string, recordType Record
 	return secretVault.EncryptRecordJSON(value, Context(workspaceID, recordType, recordID))
 }
 
-func DecryptJSON(secretVault *vault.Vault, workspaceID string, recordType RecordType, recordID int64, encrypted string, target any) error {
+func DecryptJSON(secretVault JSONDecrypter, workspaceID string, recordType RecordType, recordID int64, encrypted string, target any) error {
 	if err := validateRecordType(recordType); err != nil {
 		return err
 	}

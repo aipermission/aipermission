@@ -15,17 +15,21 @@ type Options struct {
 	RuntimeInstanceIDGenerator func() (string, error)
 }
 
+type ConnectorRegistry = connectors.Registry
+type ConnectorAdapterRegistry = connectorapi.Registry
+type MaintenanceConsoleRuntime = console.MaintenanceConsoleRuntime
+
 type Option func(*Options)
 
-func WithConnectorRegistry(registry *connectors.Registry) Option {
+func WithConnectorRegistry(registry *ConnectorRegistry) Option {
 	return func(options *Options) { options.Registry = registry }
 }
 
-func WithConnectorAdapterRegistry(registry *connectorapi.Registry) Option {
+func WithConnectorAdapterRegistry(registry *ConnectorAdapterRegistry) Option {
 	return func(options *Options) { options.AdapterRegistry = registry }
 }
 
-func WithMaintenanceConsole(runtime console.MaintenanceConsoleRuntime) Option {
+func WithMaintenanceConsole(runtime MaintenanceConsoleRuntime) Option {
 	return func(options *Options) { options.MaintenanceConsole = runtime }
 }
 
