@@ -420,7 +420,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
-	runtime.ConnectorPort().SetConsoleSessionManager(console.NewManager(fixture.db, func(openCtx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	runtime.ConnectorPort().ConfigureConsoleSessions(func(openCtx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
 		return &console.RuntimeSession{
 			Stdin:        discardWriteCloser{},
@@ -440,7 +440,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 			},
 			Close: func() error { return nil },
 		}, nil
-	}, fixture.server.runtimeRedactor(runtime)))
+	}, fixture.server.runtimeRedactor(runtime))
 	if err := fixture.server.configureVaultSessionRuntime(runtime); err != nil {
 		t.Fatal(err)
 	}

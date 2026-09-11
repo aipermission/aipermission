@@ -13,6 +13,6 @@ type Port interface {
 	ConnectorAdapterRegistry() *connectorapi.Registry
 	ResourceScopes() connectorruntime.ResourceScopes
 	ConsoleSessionManager() *console.Manager
-	SetConsoleSessionManager(*console.Manager)
+	ConfigureConsoleSessions(console.RuntimeOpener, func(string) string)
 	ConnectorScope(string, connectorruntime.SecretAccessorFactory) *connectorruntime.Scope
 }

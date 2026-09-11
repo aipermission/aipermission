@@ -6,7 +6,6 @@ import (
 	"log"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (s *Server) isUnlocked() bool {
@@ -72,9 +71,7 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRu
 		return fmt.Errorf("read workspace security settings: %w", err)
 	}
 	runtime.SecurityPort().RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
-	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(
-		runtime.StoragePort().DatabaseHandle(), s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime),
-	))
+	runtime.ConnectorPort().ConfigureConsoleSessions(s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		return fmt.Errorf("initialize command request runtime: %w", err)
 	}

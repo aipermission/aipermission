@@ -62,9 +62,9 @@ func (s *State) ConsoleSessionManager() *console.Manager {
 	return s.consoleSessions
 }
 
-func (s *State) SetConsoleSessionManager(manager *console.Manager) {
+func (s *State) ConfigureConsoleSessions(openRuntime console.RuntimeOpener, redact func(string) string) {
 	if s != nil {
-		s.consoleSessions = manager
+		s.consoleSessions = console.NewManager(s.database, openRuntime, redact)
 	}
 }
 
