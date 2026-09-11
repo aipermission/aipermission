@@ -192,7 +192,7 @@ func assertS3TransferSizeLimits(t *testing.T, scenario s3TransferRouteScenario) 
 		t.Fatalf("oversized download status=%d body=%s", oversizedDownload.Code, oversizedDownload.Body.String())
 	}
 	runtime := fixture.server.activeRuntime()
-	pendingBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
+	pendingBatch, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).CreateBatch(context.Background(), filetransfer.CreateBatchRequest{
 		RuntimeID: scenario.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceMCP,
 		Status: filetransfer.StatusPendingApproval,
 		Items: []filetransfer.CreateRequest{
@@ -217,7 +217,7 @@ func assertS3TransferSizeLimits(t *testing.T, scenario s3TransferRouteScenario) 
 	if !requireTransferJobs(t, fixture.server, runtime).Wait(waitCtx) {
 		t.Fatal("oversized approved download batch did not settle")
 	}
-	rejectedBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).GetBatch(context.Background(), pendingBatch.ID)
+	rejectedBatch, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).GetBatch(context.Background(), pendingBatch.ID)
 	if err != nil || rejectedBatch.Status != filetransfer.StatusFailed {
 		t.Fatalf("oversized approved batch = %#v, %v", rejectedBatch, err)
 	}

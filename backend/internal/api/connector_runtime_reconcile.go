@@ -5,7 +5,7 @@ import (
 )
 
 func (s *Server) reconcileConnectorRuntimeSurfaces(ctx context.Context, runtime databaseRuntime) error {
-	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil {
+	if runtime == nil || runtime.Storage.DatabaseHandle() == nil {
 		return nil
 	}
 	return s.connectorCatalog(runtime).ReconcileRuntimeSurfaces(ctx)

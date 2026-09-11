@@ -8,24 +8,14 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-type uiSessionIdentityRuntime struct {
-	gatewayinfra.Runtime
-	identity      gatewayinfra.Identity
-	retryIdentity string
-}
-
-func (runtime uiSessionIdentityRuntime) WorkspaceIdentity() gatewayinfra.Identity {
-	return runtime.identity
-}
-
-func (runtime uiSessionIdentityRuntime) UIRetryIdentifier() string {
-	return runtime.retryIdentity
-}
-
-func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
+func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *Server {
+	t.Helper()
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
 	server := &Server{
 		config: configuration, access: gatewayaccess.NewComponent(port),
@@ -34,15 +24,27 @@ func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 		),
 	}
 	if retryIdentity != "" {
-		server.infrastructure.ActivateWorkspace(uiSessionIdentityRuntime{
-			identity: gatewayinfra.Identity{ID: databaseID, Path: configuration.DataPath}, retryIdentity: retryIdentity,
+		database := openAPITestDB(t)
+		secretVault, err := vault.New("test-password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime, err := server.infrastructure.AdoptWorkspace(t.Context(), gatewayinfra.AdoptInput{
+			ID: databaseID, Path: configuration.DataPath, Database: database, Vault: secretVault,
+			TokenStore: tokens.NewStore(database), ConfiguredGatewaySecret: "test-password",
+			Registry: testConnectorRegistry(t), AdapterRegistry: connectorapi.NewRegistry(),
+			RuntimeInstanceID: func() (string, error) { return "ui-session-runtime-" + port, nil },
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server.infrastructure.ActivateWorkspace(runtime)
 	}
 	return server
 }
 
 func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
-	srv := uiSessionTestServer("", databasecatalog.DefaultDatabaseID(""), "")
+	srv := uiSessionTestServer(t, "", databasecatalog.DefaultDatabaseID(""), "")
 
 	issueResponse := httptest.NewRecorder()
 	err := srv.issueUISessionLocked(issueResponse)
@@ -65,8 +67,8 @@ func TestUISessionCookiesUseSecureLocalBoundary(t *testing.T) {
 }
 
 func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
-	first := uiSessionTestServer("3210", "default", "retry-one")
-	second := uiSessionTestServer("3212", "default", "retry-two")
+	first := uiSessionTestServer(t, "3210", "default", "retry-one")
+	second := uiSessionTestServer(t, "3212", "default", "retry-two")
 
 	firstResponse := httptest.NewRecorder()
 	err := first.issueUISessionLocked(firstResponse)
@@ -128,7 +130,7 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 }
 
 func TestEnsureUIWorkspaceCookieReplacesStaleDatabaseIdentity(t *testing.T) {
-	srv := uiSessionTestServer("3212", "second", "current-retry")
+	srv := uiSessionTestServer(t, "3212", "second", "current-retry")
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	request.AddCookie(&http.Cookie{Name: "aipermission_workspace_3212", Value: "old-workspace"})
 	recorder := httptest.NewRecorder()

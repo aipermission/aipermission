@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -162,6 +161,7 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 		modulePath + "/internal/gatewayoperations/backup":             true,
 		modulePath + "/internal/gatewayoperations/transfer":           true,
 		modulePath + "/internal/gatewayvault":                         true,
+		modulePath + "/internal/gatewayworkspace":                     true,
 	}
 	for _, imported := range allPackageImports(t)[apiPackage] {
 		if strings.HasPrefix(imported, modulePath+"/internal/") && !allowed[imported] {
@@ -351,64 +351,9 @@ func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
 	}
 }
 
-func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
-	roots, err := filepath.Glob(filepath.Join("..", "..", "internal", "gateway*"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, root := range roots {
-		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-			if err != nil {
-				return err
-			}
-			workspaceAliases := map[string]bool{}
-			for _, imported := range file.Imports {
-				importPath := strings.Trim(imported.Path.Value, `"`)
-				if importPath != modulePath+"/internal/workspaceruntime" {
-					continue
-				}
-				name := pathpkg.Base(importPath)
-				if imported.Name != nil {
-					name = imported.Name.Name
-				}
-				workspaceAliases[name] = true
-			}
-			if len(workspaceAliases) == 0 {
-				return nil
-			}
-			for _, declaration := range file.Decls {
-				switch typed := declaration.(type) {
-				case *ast.FuncDecl:
-					if typed.Name.IsExported() && referencesConcreteWorkspaceRuntime(typed.Type, workspaceAliases) {
-						t.Errorf("%s exports concrete workspaceruntime.Runtime through %s", path, typed.Name.Name)
-					}
-				case *ast.GenDecl:
-					for _, specification := range typed.Specs {
-						typeSpec, ok := specification.(*ast.TypeSpec)
-						if ok && typeSpec.Name.IsExported() && referencesConcreteWorkspaceRuntime(typeSpec.Type, workspaceAliases) {
-							t.Errorf("%s exports concrete workspaceruntime.Runtime through %s", path, typeSpec.Name.Name)
-						}
-					}
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("inspect %s: %v", root, err)
-		}
-	}
-}
-
-func TestConcreteWorkspaceRuntimeStaysInsideGatewayFactory(t *testing.T) {
+func TestConcreteWorkspaceRuntimeStaysInsideGatewayOwner(t *testing.T) {
 	concreteRuntime := modulePath + "/internal/workspaceruntime"
-	allowedImporter := modulePath + "/internal/gatewayworkspace/runtime"
+	allowedImporter := modulePath + "/internal/gatewayworkspace"
 	for importer, imports := range allPackageImports(t) {
 		if importer == concreteRuntime || strings.HasPrefix(importer, concreteRuntime+"/") {
 			continue
@@ -427,33 +372,22 @@ func TestConcreteWorkspaceRuntimeStaysInsideGatewayFactory(t *testing.T) {
 	}
 }
 
-func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
-	for _, path := range []string{
-		filepath.Join("..", "gatewayworkspace", "runtimecontract", "runtime.go"),
+func TestGatewayWorkspaceOwnsExplicitRuntimeComposition(t *testing.T) {
+	for _, retired := range []string{
+		filepath.Join("..", "gatewayworkspace", "runtimecontract"),
 		filepath.Join("..", "gatewayworkspace", "runtime", "runtime.go"),
-		filepath.Join("..", "gatewayworkspace", "lifecycle", "lifecycle.go"),
-		filepath.Join("..", "gatewayworkspace", "workspace.go"),
-		filepath.Join("..", "gatewayinfrastructure", "infrastructure.go"),
 	} {
-		t.Run(filepath.ToSlash(path), func(t *testing.T) {
-			assertNamedRuntimeInterface(t, path)
-		})
-	}
-	statePackage := modulePath + "/internal/gatewayinfrastructure"
-	for _, imported := range allPackageImports(t)[statePackage] {
-		if imported == modulePath+"/internal/workspaceruntime" {
-			t.Fatalf("%s must store the gateway-owned runtime contract", statePackage)
+		if _, err := os.Stat(retired); !os.IsNotExist(err) {
+			t.Errorf("%s must remain retired; workspace composition belongs to gatewayworkspace.Runtime", retired)
 		}
 	}
-}
 
-func assertNamedRuntimeInterface(t *testing.T, path string) {
-	t.Helper()
+	path := filepath.Join("..", "gatewayworkspace", "workspace.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	wantFields := map[string]bool{"Identity": false, "Storage": false, "Connectors": false, "Security": false, "Observation": false, "owner": false}
 	for _, declaration := range file.Decls {
 		general, ok := declaration.(*ast.GenDecl)
 		if !ok || general.Tok != token.TYPE {
@@ -464,35 +398,44 @@ func assertNamedRuntimeInterface(t *testing.T, path string) {
 			if typeSpec.Name.Name != "Runtime" {
 				continue
 			}
-			found = true
-			if typeSpec.Assign.IsValid() {
-				t.Fatal("gateway workspace Runtime must be a boundary-owned interface, not an alias")
+			structure, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				t.Fatal("gateway workspace Runtime must be an explicit composition struct")
 			}
-			if _, ok := typeSpec.Type.(*ast.InterfaceType); !ok {
-				t.Fatal("gateway workspace Runtime must remain an interface")
+			for _, field := range structure.Fields.List {
+				for _, name := range field.Names {
+					if _, tracked := wantFields[name.Name]; tracked {
+						wantFields[name.Name] = true
+					}
+				}
 			}
 		}
 	}
-	if !found {
-		t.Fatalf("%s: Runtime contract is missing", path)
+	for field, found := range wantFields {
+		if !found {
+			t.Errorf("gateway workspace Runtime composition is missing %s", field)
+		}
 	}
 }
 
-func referencesConcreteWorkspaceRuntime(node ast.Node, workspaceAliases map[string]bool) bool {
-	found := false
-	ast.Inspect(node, func(candidate ast.Node) bool {
-		selector, ok := candidate.(*ast.SelectorExpr)
-		if !ok || selector.Sel.Name != "Runtime" {
-			return true
+func TestConcreteWorkspaceRuntimeHasNoServiceLocatorGetters(t *testing.T) {
+	path := filepath.Join("..", "workspaceruntime", "runtime.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := map[string]bool{
+		"StoragePort": true, "ConnectorPort": true, "SecurityPort": true, "ObservationPort": true,
+		"WorkspaceIdentifier": true, "RuntimeIdentifier": true, "DatabaseIdentifier": true,
+		"DatabasePath": true, "GatewaySecretValue": true, "UIRetryIdentifier": true,
+		"ActionIdentity": true, "IdentityReady": true, "IsMCPStarted": true,
+	}
+	for _, declaration := range file.Decls {
+		method, ok := declaration.(*ast.FuncDecl)
+		if ok && method.Recv != nil && forbidden[method.Name.Name] {
+			t.Errorf("concrete workspace runtime exposes service-locator method %s", method.Name.Name)
 		}
-		identifier, ok := selector.X.(*ast.Ident)
-		if ok && workspaceAliases[identifier.Name] {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
+	}
 }
 
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {

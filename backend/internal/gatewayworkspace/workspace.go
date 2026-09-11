@@ -5,39 +5,102 @@ package gatewayworkspace
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/catalog"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/lifecycle"
-	runtimefactory "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
+	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimeinput"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
+	runtimeshutdown "github.com/aipermission/aipermission/backend/internal/workspaceruntime/shutdown"
 )
 
-// Runtime is the workspace-owned view of an unlocked database runtime.
-type Runtime interface {
-	runtimecontract.Runtime
+type RuntimeIdentity struct {
+	DatabaseID   string
+	DatabasePath string
+	WorkspaceID  string
+	RuntimeID    string
+	UIRetryID    string
 }
-type Vault = vault.Vault
-type TokenStore = tokens.Store
+
+func (identity RuntimeIdentity) Ready() bool {
+	return identity.WorkspaceID != "" && identity.RuntimeID != ""
+}
+
+// Runtime is an explicit composition DTO. The concrete encrypted runtime is
+// retained privately for teardown; consumers receive only owned feature ports.
+type Runtime struct {
+	Identity    RuntimeIdentity
+	Storage     storage.Port
+	Connectors  connectorstate.Port
+	Security    security.Port
+	Observation observation.Port
+	owner       *workspaceruntime.Runtime
+}
+
 type AdoptInput = runtimeinput.Adopt
 type OpenInput = runtimeinput.Open
-type Identity = lifecycle.Identity
+type Identity = workspacelifecycle.Identity
 type HTTPDependencies = lifecycle.HTTPDependencies
 type HTTPHandlers = lifecycle.HTTPHandlers
 type PasswordAttempt = lifecycle.PasswordAttempt
-type ActionWorkflow = runtimefactory.ActionWorkflow
-type CommandWorkflow = runtimefactory.CommandWorkflow
-type TransferWorkflow = runtimefactory.TransferWorkflow
+type ActionWorkflow = runtimeshutdown.ActionWorkflow
+type CommandWorkflow = runtimeshutdown.CommandWorkflow
+type TransferWorkflow = runtimeshutdown.TransferWorkflow
+
+func (runtime *Runtime) WorkspaceIdentity() workspacelifecycle.Identity {
+	if runtime == nil {
+		return workspacelifecycle.Identity{}
+	}
+	return workspacelifecycle.Identity{ID: runtime.Identity.DatabaseID, Path: runtime.Identity.DatabasePath, RetryIdentity: runtime.Identity.UIRetryID}
+}
+
+func (runtime *Runtime) WorkspaceDatabase() *sql.DB {
+	if runtime == nil || runtime.Storage == nil {
+		return nil
+	}
+	return runtime.Storage.DatabaseHandle()
+}
+
+func composeRuntime(owner *workspaceruntime.Runtime) (*Runtime, error) {
+	if owner == nil || owner.WorkspaceUUID == "" || owner.RuntimeInstanceID == "" {
+		return nil, fmt.Errorf("workspace runtime identity is unavailable")
+	}
+	return &Runtime{
+		Identity: RuntimeIdentity{
+			DatabaseID: owner.ID, DatabasePath: owner.Path,
+			WorkspaceID: owner.WorkspaceUUID, RuntimeID: owner.RuntimeInstanceID,
+			UIRetryID: owner.UIRetryIdentity,
+		},
+		Storage: &owner.Storage, Connectors: &owner.Connectors, Security: &owner.Security, Observation: &owner.Observation, owner: owner,
+	}, nil
+}
+
+func (runtime *Runtime) ConfiguredGatewaySecret() string {
+	if runtime == nil || runtime.owner == nil {
+		return ""
+	}
+	return runtime.owner.GatewaySecret
+}
+
+func (runtime *Runtime) TagActionIdentity(canonical []byte) (string, error) {
+	if runtime == nil || runtime.owner == nil {
+		return "", fmt.Errorf("workspace action identity is unavailable")
+	}
+	return workspaceruntime.TagActionIdentity(runtime.owner, canonical)
+}
 
 type Dependencies struct {
 	DataPath              string
-	Open                  func(string, string, string) (Runtime, error)
-	Close                 func(Runtime) error
-	OnActivated, OnOpened func(Runtime)
+	Open                  func(string, string, string) (*Runtime, error)
+	Close                 func(*Runtime) error
+	OnActivated, OnOpened func(*Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
 	ValidateNewPassword   func(context.Context, *sql.DB, string, string) error
@@ -58,24 +121,25 @@ type Component struct {
 	lifecycle *lifecycle.Component
 }
 
-func NewComponent(path string, describe func(Runtime) Identity) *Component {
+func NewComponent(path string, describe func(*Runtime) workspacelifecycle.Identity) *Component {
 	catalog.Scavenge(path, time.Now())
 	if describe == nil {
-		describe = func(runtime Runtime) Identity {
+		describe = func(runtime *Runtime) workspacelifecycle.Identity {
 			if runtime == nil {
-				return Identity{}
+				return workspacelifecycle.Identity{}
 			}
 			return runtime.WorkspaceIdentity()
 		}
 	}
-	return &Component{lifecycle: lifecycle.NewComponent(path, catalog.DefaultID(path), func(runtime lifecycle.Runtime) lifecycle.Identity {
-		return describe(runtime)
+	return &Component{lifecycle: lifecycle.NewComponent(path, catalog.DefaultID(path), func(runtime lifecycle.Runtime) workspacelifecycle.Identity {
+		owned, _ := runtime.(*Runtime)
+		return describe(owned)
 	})}
 }
 
 func (component *Component) Configure(dependencies Dependencies) error {
 	if component == nil || component.lifecycle == nil {
-		return ErrInitialization
+		return InitializationError()
 	}
 	var open func(string, string, string) (lifecycle.Runtime, error)
 	if dependencies.Open != nil {
@@ -85,14 +149,28 @@ func (component *Component) Configure(dependencies Dependencies) error {
 	}
 	var closeRuntime func(lifecycle.Runtime) error
 	if dependencies.Close != nil {
-		closeRuntime = func(runtime lifecycle.Runtime) error { return dependencies.Close(runtime) }
+		closeRuntime = func(runtime lifecycle.Runtime) error {
+			owned, ok := runtime.(*Runtime)
+			if !ok {
+				return InitializationError()
+			}
+			return dependencies.Close(owned)
+		}
 	}
 	var onActivated, onOpened func(lifecycle.Runtime)
 	if dependencies.OnActivated != nil {
-		onActivated = func(runtime lifecycle.Runtime) { dependencies.OnActivated(runtime) }
+		onActivated = func(runtime lifecycle.Runtime) {
+			if owned, ok := runtime.(*Runtime); ok {
+				dependencies.OnActivated(owned)
+			}
+		}
 	}
 	if dependencies.OnOpened != nil {
-		onOpened = func(runtime lifecycle.Runtime) { dependencies.OnOpened(runtime) }
+		onOpened = func(runtime lifecycle.Runtime) {
+			if owned, ok := runtime.(*Runtime); ok {
+				dependencies.OnOpened(owned)
+			}
+		}
 	}
 	return component.lifecycle.Configure(lifecycle.Dependencies{
 		DataPath: dependencies.DataPath, Open: open, Close: closeRuntime,
@@ -106,37 +184,43 @@ func (component *Component) Configure(dependencies Dependencies) error {
 func (component *Component) IsUnlocked() bool {
 	return component != nil && component.lifecycle != nil && component.lifecycle.IsUnlocked()
 }
-func (component *Component) Selection() Identity {
+func (component *Component) Selection() workspacelifecycle.Identity {
 	if component == nil || component.lifecycle == nil {
-		return Identity{}
+		return workspacelifecycle.Identity{}
 	}
 	return component.lifecycle.Selection()
 }
-func (component *Component) Lookup(id string) (Runtime, bool) {
+func (component *Component) Lookup(id string) (*Runtime, bool) {
 	if component == nil || component.lifecycle == nil {
 		return nil, false
 	}
-	return component.lifecycle.Lookup(id)
+	runtime, ok := component.lifecycle.Lookup(id)
+	owned, ownedOK := runtime.(*Runtime)
+	return owned, ok && ownedOK
 }
-func (component *Component) Activate(runtime Runtime) {
+func (component *Component) Activate(runtime *Runtime) {
 	if component != nil && component.lifecycle != nil {
 		component.lifecycle.Activate(runtime)
 	}
 }
-func (component *Component) Active() Runtime {
+func (component *Component) Active() *Runtime {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
-	return component.lifecycle.Active()
+	runtime := component.lifecycle.Active()
+	owned, _ := runtime.(*Runtime)
+	return owned
 }
-func (component *Component) Snapshot() []Runtime {
+func (component *Component) Snapshot() []*Runtime {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
 	items := component.lifecycle.Snapshot()
-	runtimes := make([]Runtime, len(items))
-	for index, runtime := range items {
-		runtimes[index] = runtime
+	runtimes := make([]*Runtime, 0, len(items))
+	for _, runtime := range items {
+		if owned, ok := runtime.(*Runtime); ok {
+			runtimes = append(runtimes, owned)
+		}
 	}
 	return runtimes
 }
@@ -148,7 +232,7 @@ func (component *Component) Len() int {
 }
 func (component *Component) DatabaseName() (string, error) {
 	if component == nil || component.lifecycle == nil {
-		return "", ErrInitialization
+		return "", InitializationError()
 	}
 	return component.lifecycle.DatabaseName()
 }
@@ -166,7 +250,7 @@ func (component *Component) AcquireMutation() func() {
 }
 func (component *Component) Import(ctx context.Context, input workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error) {
 	if component == nil || component.lifecycle == nil {
-		return workspacelifecycle.Transition{}, ErrInitialization
+		return workspacelifecycle.Transition{}, InitializationError()
 	}
 	return component.lifecycle.Import(ctx, input)
 }
@@ -176,24 +260,48 @@ func (component *Component) CloseAll() error {
 	}
 	return component.lifecycle.CloseAll()
 }
-func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
+func (component *Component) HTTP(dependencies lifecycle.HTTPDependencies) lifecycle.HTTPHandlers {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
 	return component.lifecycle.HTTP(dependencies)
 }
 
-func (component *Component) Adopt(ctx context.Context, input AdoptInput) (Runtime, error) {
-	return runtimefactory.Adopt(ctx, input)
+func (component *Component) Adopt(ctx context.Context, input runtimeinput.Adopt) (*Runtime, error) {
+	state, err := foundation.Adopt(ctx, foundation.AdoptInput{
+		ID: input.ID, Path: input.Path, Database: input.Database, Vault: input.Vault,
+		TokenStore: input.TokenStore, ConfiguredGatewaySecret: input.ConfiguredGatewaySecret,
+		Registry: input.Registry, AdapterRegistry: input.AdapterRegistry, RuntimeInstanceID: input.RuntimeInstanceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return composeRuntime(workspaceruntime.New(state))
 }
-func (component *Component) Open(ctx context.Context, input OpenInput) (Runtime, error) {
-	return runtimefactory.Open(ctx, input)
+func (component *Component) Open(ctx context.Context, input runtimeinput.Open) (*Runtime, error) {
+	state, err := foundation.Open(ctx, foundation.OpenInput{
+		ID: input.ID, Path: input.Path, Password: input.Password,
+		ConfiguredGatewaySecret: input.ConfiguredGatewaySecret,
+		Registry:                input.Registry, AdapterRegistry: input.AdapterRegistry,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return composeRuntime(workspaceruntime.New(state))
 }
-func (component *Component) Discard(runtime Runtime, resolveTransfers func() TransferWorkflow) error {
-	return runtimefactory.Discard(runtime, resolveTransfers)
+func (component *Component) Discard(runtime *Runtime, resolveTransfers runtimeshutdown.TransferWorkflowResolver) error {
+	if runtime == nil {
+		return nil
+	}
+	err := runtimeshutdown.Discard(runtime.owner, resolveTransfers)
+	return err
 }
-func (component *Component) Close(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
-	return runtimefactory.Close(runtime, resolveActions, resolveCommands, resolveTransfers)
+func (component *Component) Close(runtime *Runtime, resolveActions runtimeshutdown.ActionWorkflowResolver, resolveCommands runtimeshutdown.CommandWorkflowResolver, resolveTransfers runtimeshutdown.TransferWorkflowResolver) error {
+	if runtime == nil {
+		return nil
+	}
+	err := runtimeshutdown.Close(runtime.owner, resolveActions, resolveCommands, resolveTransfers)
+	return err
 }
 func (component *Component) Move(currentPath, targetPath string) error {
 	return catalog.Move(currentPath, targetPath)
@@ -215,8 +323,6 @@ func (component *Component) PasswordPolicyError(err error) error {
 	return lifecycle.PasswordPolicyError(err)
 }
 
-var (
-	ErrInitialization = lifecycle.ErrInitialization
-)
+func InitializationError() error { return lifecycle.InitializationError() }
 
 var _ LifecyclePort = (*Component)(nil)

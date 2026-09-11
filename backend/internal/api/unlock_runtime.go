@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 func (s *Server) isUnlocked() bool {
@@ -66,12 +68,12 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRu
 	if err := s.reconcileConnectorRuntimeSurfaces(ctx, runtime); err != nil {
 		return fmt.Errorf("reconcile connector runtime surfaces: %w", err)
 	}
-	settings, err := runtime.SecurityPort().PolicyService().ReadSettings(ctx)
+	settings, err := runtime.Security.PolicyService().ReadSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("read workspace security settings: %w", err)
 	}
-	runtime.SecurityPort().RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
-	runtime.ConnectorPort().ConfigureConsoleSessions(s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
+	runtime.Security.RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
+	runtime.Connectors.ConfigureConsoleSessions(s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		return fmt.Errorf("initialize command request runtime: %w", err)
 	}
@@ -87,9 +89,9 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRu
 
 func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {
 	if err := s.infrastructure.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
-		return s.transfers.Lifecycle(runtime)
+		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
 	}); err != nil {
-		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
+		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.Identity.DatabaseID, err)
 	}
 	s.releaseRuntimeApplications(runtime)
 }
@@ -114,9 +116,13 @@ func (s *Server) closeRuntime(runtime databaseRuntime) error {
 	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionShutdownWorkflow(runtime)
 	}, func() (gatewayinfra.CommandWorkflow, error) {
-		return s.commandRuntime(runtime)
+		workflow, err := s.commandRuntime(runtime)
+		if errors.Is(err, gatewayoperations.ErrCommandRuntimeUnavailable) {
+			return nil, nil
+		}
+		return workflow, err
 	}, func() gatewayinfra.TransferWorkflow {
-		return s.transfers.Lifecycle(runtime)
+		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
 	})
 }
 
@@ -124,7 +130,7 @@ func (s *Server) releaseRuntimeApplications(runtime databaseRuntime) {
 	if s == nil || runtime == nil {
 		return
 	}
-	s.access.ReleaseCommandRuntime(runtime.RuntimeIdentifier())
+	s.access.ReleaseCommandRuntime(runtime.Identity.RuntimeID)
 	s.connectorActions.ReleaseWorkspace(s.connectorActionWorkspace(runtime))
 	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
 }

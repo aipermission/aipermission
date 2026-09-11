@@ -13,7 +13,7 @@ func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAut
 		runtimes = s.unlockedRuntimeSnapshot()
 		sources := make([]gatewayaccess.MCPTokenSource, 0, len(runtimes))
 		for _, runtime := range runtimes {
-			sources = append(sources, runtime.StoragePort().TokenStore())
+			sources = append(sources, runtime.Storage.TokenStore())
 		}
 		return sources
 	})

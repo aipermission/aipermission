@@ -88,7 +88,7 @@ func TestNilComponentFailsClosed(t *testing.T) {
 
 func TestPrincipalConstructionRequiresReadyRuntime(t *testing.T) {
 	var component *Component
-	runtime := testRuntimeIdentity{workspaceID: "workspace", runtimeID: "runtime", ready: true}
+	runtime := RuntimeIdentity{WorkspaceID: "workspace", RuntimeID: "runtime"}
 	local, err := component.LocalPrincipal(runtime)
 	if err != nil || !local.IsLocalOperator() {
 		t.Fatalf("local principal = %#v, %v", local, err)
@@ -97,20 +97,10 @@ func TestPrincipalConstructionRequiresReadyRuntime(t *testing.T) {
 	if err != nil || !token.IsMCPToken() || token.TokenID != 7 {
 		t.Fatalf("token principal = %#v, %v", token, err)
 	}
-	if _, err := component.LocalPrincipal(testRuntimeIdentity{}); !errors.Is(err, ErrInvalidPrincipal) {
+	if _, err := component.LocalPrincipal(RuntimeIdentity{}); !errors.Is(err, ErrInvalidPrincipal) {
 		t.Fatalf("unready runtime error = %v", err)
 	}
 }
-
-type testRuntimeIdentity struct {
-	workspaceID string
-	runtimeID   string
-	ready       bool
-}
-
-func (runtime testRuntimeIdentity) WorkspaceIdentifier() string { return runtime.workspaceID }
-func (runtime testRuntimeIdentity) RuntimeIdentifier() string   { return runtime.runtimeID }
-func (runtime testRuntimeIdentity) IdentityReady() bool         { return runtime.ready }
 
 func TestComponentOwnsCompleteHTTPHandlerSet(t *testing.T) {
 	component := NewComponent("3212")

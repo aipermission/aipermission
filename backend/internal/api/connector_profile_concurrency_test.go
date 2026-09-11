@@ -59,7 +59,7 @@ func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	encrypted, err := recordcrypto.EncryptJSON(
-		fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier(),
+		fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID,
 		recordcrypto.ConnectorCredentialProfile, profile.ID,
 		map[string]any{"first_secret": "old-first", "second_secret": "old-second"},
 	)
@@ -108,7 +108,7 @@ func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
 	}
 	var secret map[string]any
 	if err := recordcrypto.DecryptJSON(
-		fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier(),
+		fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID,
 		recordcrypto.ConnectorCredentialProfile, profile.ID, stored.EncryptedSecretJSON, &secret,
 	); err != nil {
 		t.Fatal(err)

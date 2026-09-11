@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	workspacehttp "github.com/aipermission/aipermission/backend/internal/workspacelifecycle/httpapi"
 )
 
 type Runtime interface {
-	runtimecontract.Runtime
+	WorkspaceIdentity() workspacelifecycle.Identity
+	WorkspaceDatabase() *sql.DB
 }
 type Identity = workspacelifecycle.Identity
 
@@ -43,10 +43,7 @@ type HTTPHandlers interface {
 	ChangePassword(http.ResponseWriter, *http.Request)
 }
 
-var (
-	ErrAuthentication = workspacelifecycle.ErrAuthentication
-	ErrInitialization = workspacelifecycle.ErrInitialization
-)
+func InitializationError() error { return workspacelifecycle.ErrInitialization }
 
 type Dependencies struct {
 	DataPath              string
@@ -73,7 +70,7 @@ func NewComponent(path, id string, describe func(Runtime) Identity) *Component {
 
 func (component *Component) Configure(dependencies Dependencies) error {
 	if component == nil || component.registry == nil {
-		return ErrInitialization
+		return InitializationError()
 	}
 	service, err := newService(dependencies, component.registry)
 	if err != nil {
@@ -138,7 +135,7 @@ func (component *Component) Len() int {
 
 func (component *Component) DatabaseName() (string, error) {
 	if component == nil || component.service == nil {
-		return "", ErrInitialization
+		return "", InitializationError()
 	}
 	status, err := component.service.Status()
 	return status.DatabaseName, err
@@ -160,7 +157,7 @@ func (component *Component) AcquireMutation() func() {
 
 func (component *Component) Import(ctx context.Context, input workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error) {
 	if component == nil || component.service == nil {
-		return workspacelifecycle.Transition{}, ErrInitialization
+		return workspacelifecycle.Transition{}, InitializationError()
 	}
 	return component.service.Import(ctx, input)
 }

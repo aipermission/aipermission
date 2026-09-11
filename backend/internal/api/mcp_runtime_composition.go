@@ -14,12 +14,12 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 		return gatewayaccess.MCPRuntimeScope{}, false
 	}
 	return gatewayaccess.MCPRuntimeScope{
-		State: runtime.SecurityPort().RuntimeControlState(),
+		State: runtime.Security.RuntimeControlState(),
 		StartEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err
 		},
-		AcquireStop: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireStop: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err != nil {

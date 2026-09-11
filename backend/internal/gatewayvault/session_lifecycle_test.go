@@ -123,7 +123,7 @@ func TestSessionLifecycleAuthorizationFailureDoesNotRunOperation(t *testing.T) {
 
 func TestSessionLifecycleRejectsIncompleteRuntime(t *testing.T) {
 	_, err := New(Dependencies{}).SessionLifecycle(SessionLifecycleRuntime{})
-	if !errors.Is(err, ErrInvalidatorUnavailable) {
-		t.Fatalf("error = %v, want %v", err, ErrInvalidatorUnavailable)
+	if !errors.Is(err, InvalidatorUnavailableError()) {
+		t.Fatalf("error = %v, want invalidator unavailable", err)
 	}
 }

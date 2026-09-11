@@ -16,6 +16,7 @@ import (
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
 type Server struct {
@@ -34,7 +35,7 @@ type Server struct {
 	publishDatabaseOverride func(string, string) error
 }
 
-type databaseRuntime = gatewayinfra.Runtime
+type databaseRuntime = *gatewayworkspace.Runtime
 
 type ServerOption = gatewayinfra.ServerOption
 
@@ -54,7 +55,7 @@ func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOpti
 	return gatewayinfra.WithRuntimeInstanceIDGenerator(generator)
 }
 
-func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *gatewayinfra.Vault, tokenStore *gatewayinfra.TokenStore, options ...ServerOption) (*Server, error) {
+func NewServer(configuration RuntimeConfiguration, adopted gatewayinfra.AdoptInput, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
 	registry := infrastructure.ConnectorRegistry()
@@ -69,12 +70,13 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
-	runtime, err := infrastructure.AdoptWorkspace(context.Background(), gatewayinfra.AdoptInput{
-		ID: infrastructure.WorkspaceSelection().ID, Path: cfg.DataPath, Database: database, Vault: secretVault,
-		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
-		Registry: registry, AdapterRegistry: infrastructure.ConnectorAdapterRegistry(),
-		RuntimeInstanceID: infrastructure.RuntimeInstanceIDGenerator(),
-	})
+	adopted.ID = infrastructure.WorkspaceSelection().ID
+	adopted.Path = cfg.DataPath
+	adopted.ConfiguredGatewaySecret = cfg.GatewaySecret
+	adopted.Registry = registry
+	adopted.AdapterRegistry = infrastructure.ConnectorAdapterRegistry()
+	adopted.RuntimeInstanceID = infrastructure.RuntimeInstanceIDGenerator()
+	runtime, err := infrastructure.AdoptWorkspace(context.Background(), adopted)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +118,8 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime databaseRuntime) {
-			if runtime != nil && runtime.GatewaySecretValue() != "" {
-				s.config.GatewaySecret = runtime.GatewaySecretValue()
+			if runtime != nil && runtime.ConfiguredGatewaySecret() != "" {
+				s.config.GatewaySecret = runtime.ConfiguredGatewaySecret()
 			}
 		},
 		OnOpened: s.initializeRetention,
@@ -146,23 +148,23 @@ func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 }
 
 func (s *Server) connectorRegistry() *connectors.Registry {
-	if s != nil && s.infrastructure != nil && s.infrastructure.ConnectorRegistry() != nil {
-		return s.infrastructure.ConnectorRegistry()
+	if s == nil || s.infrastructure == nil {
+		return nil
 	}
-	return connectors.NewRegistry()
+	return s.infrastructure.ConnectorRegistry()
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
-	if s != nil && s.infrastructure != nil && s.infrastructure.ConnectorAdapterRegistry() != nil {
-		return s.infrastructure.ConnectorAdapterRegistry()
+	if s == nil || s.infrastructure == nil {
+		return nil
 	}
-	return connectorapi.NewRegistry()
+	return s.infrastructure.ConnectorAdapterRegistry()
 }
 
 func runtimeConnectorRegistry(runtime databaseRuntime) *connectors.Registry {
-	return runtime.ConnectorPort().ConnectorRegistry()
+	return runtime.Connectors.ConnectorRegistry()
 }
 
 func runtimeConnectorAdapterRegistry(runtime databaseRuntime) *connectorapi.Registry {
-	return runtime.ConnectorPort().ConnectorAdapterRegistry()
+	return runtime.Connectors.ConnectorAdapterRegistry()
 }

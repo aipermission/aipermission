@@ -49,7 +49,7 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (gatewayvault.Proj
 		return gatewayvault.ProjectVaultHTTPScope{}, false
 	}
 	return gatewayvault.ProjectVaultHTTPScope{
-		Runtime: owner, RuntimeID: runtime.DatabaseIdentifier(),
+		Runtime: owner, RuntimeID: runtime.Identity.DatabaseID,
 		SessionCatalog: s.vaultApplication().SessionCatalog(s.vaultRuntime(runtime)),
 	}, true
 }

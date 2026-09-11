@@ -45,8 +45,8 @@ func gatewayConnectorActionComponent() *gatewayactions.Component {
 func gatewayConnectorActionWorkspace(runtime databaseRuntime) gatewayactions.Workspace {
 	workspace := gatewayactions.Workspace{}
 	if runtime != nil {
-		workspace.Storage.Database = runtime.StoragePort().DatabaseHandle()
-		workspace.Storage.Registry = runtime.ConnectorPort().ConnectorRegistry()
+		workspace.Storage.Database = runtime.Storage.DatabaseHandle()
+		workspace.Storage.Registry = runtime.Connectors.ConnectorRegistry()
 	}
 	return workspace
 }
@@ -173,7 +173,7 @@ func connectorActionTestRuntime(t *testing.T, database *sql.DB, secretVault *vau
 		database, secretVault, tokens.NewStore(database), testConnectorRegistry(t),
 		connectorActionTestWorkspaceID, identityKey,
 	)
-	runtime.SetMCPStarted(true)
+	runtime.Security.RuntimeControlState().SetMCPStarted(true)
 	return runtime
 }
 
@@ -213,10 +213,10 @@ func newConnectorActionTestRuntime(
 	if err != nil {
 		t.Fatalf("adopt test runtime: %v", err)
 	}
-	if runtime.WorkspaceIdentifier() != workspaceUUID {
-		t.Fatalf("workspace identifier = %q, want %q", runtime.WorkspaceIdentifier(), workspaceUUID)
+	if runtime.Identity.WorkspaceID != workspaceUUID {
+		t.Fatalf("workspace identifier = %q, want %q", runtime.Identity.WorkspaceID, workspaceUUID)
 	}
-	if !bytes.Equal(runtime.ActionIdentity(), actionIdentityKey) {
+	if !bytes.Equal(runtime.Identity.ActionKey, actionIdentityKey) {
 		t.Fatal("test runtime action identity does not match fixture")
 	}
 	return runtime
@@ -237,11 +237,11 @@ func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
 }
 
 func createSecurityPolicyRule(ctx context.Context, runtime databaseRuntime, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
-	return runtime.SecurityPort().PolicyService().CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.StoragePort().DatabaseHandle()))
+	return runtime.Security.PolicyService().CreateRule(ctx, input, securityPolicyTestMutationRunner(runtime.Storage.DatabaseHandle()))
 }
 
 func setSecurityPolicySettings(ctx context.Context, runtime databaseRuntime, settings securitypolicy.Settings) error {
-	_, err := runtime.SecurityPort().PolicyService().UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.StoragePort().DatabaseHandle()))
+	_, err := runtime.Security.PolicyService().UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(runtime.Storage.DatabaseHandle()))
 	return err
 }
 

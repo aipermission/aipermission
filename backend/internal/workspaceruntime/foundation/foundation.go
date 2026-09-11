@@ -49,6 +49,9 @@ type AdoptInput struct {
 }
 
 func Adopt(ctx context.Context, input AdoptInput) (State, error) {
+	if input.Database == nil || input.Vault == nil || input.Registry == nil || input.AdapterRegistry == nil || input.RuntimeInstanceID == nil {
+		return State{}, fmt.Errorf("adopt workspace runtime: required composition dependency is unavailable")
+	}
 	identityState, err := identity.Adopt(
 		ctx, input.Database, input.Vault, input.ConfiguredGatewaySecret, input.RuntimeInstanceID,
 	)
@@ -63,6 +66,9 @@ func Adopt(ctx context.Context, input AdoptInput) (State, error) {
 }
 
 func Open(ctx context.Context, input OpenInput) (State, error) {
+	if input.Registry == nil || input.AdapterRegistry == nil {
+		return State{}, fmt.Errorf("open workspace runtime: connector registries are required")
+	}
 	ownership, err := db.AcquireDatabaseOwnership(input.Path)
 	if err != nil {
 		return State{}, err

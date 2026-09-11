@@ -42,8 +42,8 @@ func (s *Server) connectorPeerTrustApplication() *connectorports.PeerTrustCoordi
 		for _, runtime := range runtimes {
 			boundRuntime := runtime
 			workspaces = append(workspaces, connectorports.PeerTrustWorkspace{
-				Identifier:       runtime.DatabaseIdentifier(),
-				AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+				Identifier:       runtime.Identity.DatabaseID,
+				AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 				InvalidateAll: func(ctx context.Context, reason string) error {
 					lifecycle, err := s.vaultSessionLifecycle(boundRuntime)
 					if err != nil {
@@ -71,9 +71,9 @@ func connectorBaseWorkspace(runtime databaseRuntime) connectorports.Workspace {
 	if runtime == nil {
 		return connectorports.Workspace{}
 	}
-	database := runtime.StoragePort().DatabaseHandle()
+	database := runtime.Storage.DatabaseHandle()
 	return connectorports.NewWorkspace(
-		runtime.ConnectorPort(), database, runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery,
+		runtime.Connectors, database, runtime.Security.VaultDeliveryCoordinator().AcquireDelivery,
 	)
 }
 
@@ -93,10 +93,11 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorports
 	}
 	workspace.Transfers = connectorports.WorkspaceTransferPorts{
 		RunDownloadBatch: func(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
-			if !s.transfers.WorkspaceReady(runtime) {
+			workspace := fileTransferWorkspaceIdentity(runtime)
+			if !s.transfers.WorkspaceReady(workspace) {
 				return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 			}
-			batch, err := s.transfers.CreateAndLaunchDownloadBatch(ctx, runtime, s.fileTransferHTTPHandlers(), authorization, runtimeID, paths, archiveName, source)
+			batch, err := s.transfers.CreateAndLaunchDownloadBatch(ctx, workspace, s.fileTransferHTTPHandlers(), authorization, runtimeID, paths, archiveName, source)
 			return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
 		},
 		RuntimeCapabilities: func(kind string) connectors.RuntimeCapabilityResolver {

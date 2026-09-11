@@ -11,20 +11,20 @@ func observationRuntime(runtime databaseRuntime) gatewayoperations.ObservationRu
 		return gatewayoperations.ObservationRuntime{}
 	}
 	return gatewayoperations.ObservationRuntime{
-		Database:   runtime.StoragePort().DatabaseHandle(),
-		DatabaseID: runtime.DatabaseIdentifier(),
-		Registry:   runtime.ConnectorPort().ConnectorRegistry(),
-		MCPStarted: runtime.IsMCPStarted(),
+		Database:   runtime.Storage.DatabaseHandle(),
+		DatabaseID: runtime.Identity.DatabaseID,
+		Registry:   runtime.Connectors.ConnectorRegistry(),
+		MCPStarted: runtime.Security.RuntimeControlState().MCPStarted(),
 		PrepareRedactor: func(ctx context.Context) func(string) string {
-			if runtime.SecurityPort().PolicyService() == nil {
+			if runtime.Security.PolicyService() == nil {
 				return nil
 			}
-			return runtime.SecurityPort().PolicyService().PrepareRedactor(ctx)
+			return runtime.Security.PolicyService().PrepareRedactor(ctx)
 		},
-		AuditDispatcher:     runtime.ObservationPort().AuditDispatcherService,
-		SetAuditDispatcher:  runtime.ObservationPort().SetAuditDispatcherService,
-		RetentionService:    runtime.ObservationPort().RetentionService,
-		SetRetentionService: runtime.ObservationPort().SetRetentionService,
+		AuditDispatcher:     runtime.Observation.AuditDispatcherService,
+		SetAuditDispatcher:  runtime.Observation.SetAuditDispatcherService,
+		RetentionService:    runtime.Observation.RetentionService,
+		SetRetentionService: runtime.Observation.SetRetentionService,
 	}
 }
 

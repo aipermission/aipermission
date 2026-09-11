@@ -15,17 +15,17 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.Access
 		return gatewayaccess.AccessScope{}, false
 	}
 	return gatewayaccess.AccessScope{
-		Database: runtime.StoragePort().DatabaseHandle(),
-		Tokens:   runtime.StoragePort().TokenStore(),
+		Database: runtime.Storage.DatabaseHandle(),
+		Tokens:   runtime.Storage.TokenStore(),
 		Registry: runtimeConnectorRegistry(runtime),
 		ReusableTokens: func(ctx context.Context) (bool, error) {
-			settings, err := runtime.SecurityPort().PolicyService().ReadSettings(ctx)
+			settings, err := runtime.Security.PolicyService().ReadSettings(ctx)
 			return settings.ReusableTokens, err
 		},
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		FinishTokenInvalidation: func(ctx context.Context, tokenID int64, sessionIDs []int64) {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err == nil {

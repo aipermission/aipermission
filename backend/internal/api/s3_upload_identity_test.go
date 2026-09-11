@@ -57,7 +57,7 @@ func TestS3MultipartOriginalFilenameIdentity(t *testing.T) {
 				t.Fatal("multipart upload did not finish")
 			}
 			cancel()
-			item, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).Get(context.Background(), batch.Items[0].ID)
+			item, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).Get(context.Background(), batch.Items[0].ID)
 			if err != nil || item.Status != filetransfer.StatusCompleted {
 				t.Fatalf("upload: %#v %v", item, err)
 			}

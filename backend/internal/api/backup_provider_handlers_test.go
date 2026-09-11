@@ -20,6 +20,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -308,13 +309,13 @@ func TestFirstRunRemoteRestoreKeepsCredentialsTransient(t *testing.T) {
 		t.Fatalf("transient restore failed: %d %s", restore.Code, restore.Body.String())
 	}
 	var providerCount int
-	if err := server.activeRuntime().StoragePort().DatabaseHandle().QueryRow(`SELECT COUNT(*) FROM backup_providers`).Scan(&providerCount); err != nil {
+	if err := server.activeRuntime().Storage.DatabaseHandle().QueryRow(`SELECT COUNT(*) FROM backup_providers`).Scan(&providerCount); err != nil {
 		t.Fatal(err)
 	}
 	if providerCount != 0 {
 		t.Fatal("first-run credentials were persisted as a provider")
 	}
-	baseline, err := backups.ReadServiceBaseline(context.Background(), server.activeRuntime().StoragePort().DatabaseHandle(), remote.server.URL, "workspace-restore")
+	baseline, err := backups.ReadServiceBaseline(context.Background(), server.activeRuntime().Storage.DatabaseHandle(), remote.server.URL, "workspace-restore")
 	if err != nil || baseline == nil || baseline.BackupID != "bkp_restore" {
 		t.Fatalf("restored database did not retain its remote baseline: %#v err=%v", baseline, err)
 	}
@@ -334,7 +335,7 @@ func newBackupAPITestFixture(t *testing.T, password string) backupAPITestFixture
 	srv, err := NewServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: path,
 		GatewaySecret: "backup-api-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
-	}, database, secretVault, tokens.NewStore(database))
+	}, gatewayinfra.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokens.NewStore(database)})
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}

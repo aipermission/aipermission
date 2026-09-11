@@ -14,15 +14,15 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 	if runtime == nil {
 		return gatewayvault.Runtime{}
 	}
-	delivery := runtime.SecurityPort().VaultDeliveryCoordinator()
+	delivery := runtime.Security.VaultDeliveryCoordinator()
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
-			Database: runtime.StoragePort().DatabaseHandle(), SecretVault: runtime.StoragePort().SecretVault(),
-			Tokens: runtime.StoragePort().TokenStore(), WorkspaceID: runtime.WorkspaceIdentifier(), DatabaseID: runtime.DatabaseIdentifier(),
+			Database: runtime.Storage.DatabaseHandle(), SecretVault: runtime.Storage.SecretVault(),
+			Tokens: runtime.Storage.TokenStore(), WorkspaceID: runtime.Identity.WorkspaceID, DatabaseID: runtime.Identity.DatabaseID,
 		},
 		Session: gatewayvault.SessionRuntime{
-			Sessions: runtime.ConnectorPort().ConsoleSessionManager(), Leases: runtime.SecurityPort().VaultLeaseStore(),
-			RuntimeInstanceID: runtime.RuntimeIdentifier(), MCPStarted: runtime.IsMCPStarted,
+			Sessions: runtime.Connectors.ConsoleSessionManager(), Leases: runtime.Security.VaultLeaseStore(),
+			RuntimeInstanceID: runtime.Identity.RuntimeID, MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
 			AcquireDelivery: delivery.AcquireDelivery, AcquireExclusive: delivery.AcquireExclusive,
 		},
 		Project: gatewayvault.ProjectRuntimePorts{

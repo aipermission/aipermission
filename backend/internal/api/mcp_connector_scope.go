@@ -15,7 +15,7 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 		return gatewayaccess.MCPScope{}, false
 	}
 	return gatewayaccess.MCPScope{
-		Database: auth.runtime.StoragePort().DatabaseHandle(), Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
+		Database: auth.runtime.Storage.DatabaseHandle(), Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
 			permissions, err := s.connectorCatalog(auth.runtime).ProjectScopedSupportedConnectorPermissions(ctx, auth.TokenID)
 			if err != nil {
@@ -52,7 +52,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	return gatewayaccess.MCPActionScope{
-		Database: auth.runtime.StoragePort().DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
+		Database: auth.runtime.Storage.DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: s.mcpConnectorOutputAuthorization(auth.runtime),
 		Call: func(ctx context.Context, call domainactions.Call) (domainactions.CallResult, error) {
 			return s.callConnectorAction(ctx, auth.runtime, call)
@@ -71,8 +71,8 @@ func (s *Server) mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatew
 		return nil
 	}
 	return &gatewayaccess.MCPOutputAuthorization{
-		Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(), Leases: runtime.SecurityPort().VaultLeaseStore(),
-		Delivery: s.connectorActionApplication().Delivery(runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: runtime.IsMCPStarted,
+		Database: runtime.Storage.DatabaseHandle(), Tokens: runtime.Storage.TokenStore(), Leases: runtime.Security.VaultLeaseStore(),
+		Delivery: s.connectorActionApplication().Delivery(runtime.Security.VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(runtime, tokenID)
 		},

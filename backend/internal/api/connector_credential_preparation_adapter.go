@@ -23,6 +23,6 @@ func connectorCredentialStorage(runtime databaseRuntime) connectormgmt.Credentia
 		return connectormgmt.CredentialStorage{}
 	}
 	return connectormgmt.CredentialStorage{
-		Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
+		Vault: runtime.Storage.SecretVault(), WorkspaceID: runtime.Identity.WorkspaceID,
 	}
 }

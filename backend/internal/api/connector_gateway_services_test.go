@@ -84,12 +84,12 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 		{runtime: first, id: firstRequest.ID},
 		{runtime: second, id: secondRequest.ID},
 	} {
-		current, err := vaultrequests.NewStore(item.runtime.StoragePort().DatabaseHandle()).Get(ctx, item.id)
+		current, err := vaultrequests.NewStore(item.runtime.Storage.DatabaseHandle()).Get(ctx, item.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if current.Status != vaultrequests.StatusStale {
-			t.Fatalf("workspace %q request status = %q", item.runtime.DatabaseIdentifier(), current.Status)
+			t.Fatalf("workspace %q request status = %q", item.runtime.Identity.DatabaseID, current.Status)
 		}
 	}
 }
@@ -97,15 +97,15 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 func createRuntimeScopedVaultRequest(t *testing.T, runtime databaseRuntime, suffix string) vaultrequests.Request {
 	t.Helper()
 	ctx := context.Background()
-	project, err := projectstore.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, "Trust "+suffix)
+	project, err := projectstore.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, "Trust "+suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := tokens.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
+	token, err := tokens.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := connectortargets.NewStore(runtime.StoragePort().DatabaseHandle())
+	targets := connectortargets.NewStore(runtime.Storage.DatabaseHandle())
 	target, err := targets.CreateTarget(ctx, connectortargets.CreateTargetInput{
 		ProjectID: project.ID, ConnectorKind: "test", Name: "trust-" + suffix,
 	})
@@ -127,7 +127,7 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime databaseRuntime, suff
 		t.Fatal(err)
 	}
 	runtimeID := surface.ID
-	request, _, err := vaultrequests.NewStore(runtime.StoragePort().DatabaseHandle()).Create(ctx, vaultrequests.CreateInput{
+	request, _, err := vaultrequests.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, vaultrequests.CreateInput{
 		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
 		ActionName:          vaultrequests.ActionRestartSession,
 		Input:               map[string]any{"target_ref": "test:" + suffix},

@@ -10,12 +10,19 @@ import (
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
-func (s *Server) fileTransferWorkspace(w http.ResponseWriter) (gatewaytransfer.FileTransferWorkspace, bool) {
+func (s *Server) fileTransferWorkspace(w http.ResponseWriter) (gatewaytransfer.Workspace, bool) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
 	if !ok {
-		return nil, false
+		return gatewaytransfer.Workspace{}, false
 	}
-	return runtime, true
+	return fileTransferWorkspaceIdentity(runtime), true
+}
+
+func fileTransferWorkspaceIdentity(runtime databaseRuntime) gatewaytransfer.Workspace {
+	if runtime == nil {
+		return gatewaytransfer.Workspace{}
+	}
+	return gatewaytransfer.Workspace{RuntimeID: runtime.Identity.RuntimeID}
 }
 
 func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
@@ -23,8 +30,8 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
 	return s.transfers.InitializeWorkspace(
-		runtime,
-		runtime.StoragePort().DatabaseHandle(),
+		fileTransferWorkspaceIdentity(runtime),
+		runtime.Storage.DatabaseHandle(),
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},
@@ -35,13 +42,13 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 }
 
 func (s *Server) stopFileTransferRuntime(runtime databaseRuntime) {
-	if lifecycle := s.transfers.Lifecycle(runtime); lifecycle != nil {
+	if lifecycle := s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime)); lifecycle != nil {
 		lifecycle.Abort()
 	}
 }
 
 func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (gatewaytransfer.FileTransferConnectorPorts, error) {
-	if server == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil {
+	if server == nil || runtime == nil || runtime.Storage.DatabaseHandle() == nil || runtime.Storage.SecretVault() == nil {
 		return gatewaytransfer.FileTransferConnectorPorts{}, fmt.Errorf("file transfer connector runtime is unavailable")
 	}
 	target, _, _, err := server.connectorCatalog(runtime).TargetProfileByRuntimeID(ctx, runtimeID)

@@ -25,3 +25,10 @@ func TestNilStateConsoleSessionConfigurationIsSafe(t *testing.T) {
 		t.Fatal("nil state exposed a console session manager")
 	}
 }
+
+func TestMissingRegistriesFailClosed(t *testing.T) {
+	state := New(nil, nil, &sql.DB{}, nil, "workspace")
+	if state.ConnectorRegistry() != nil || state.ConnectorAdapterRegistry() != nil {
+		t.Fatal("missing registry wiring was replaced with an empty registry")
+	}
+}

@@ -109,7 +109,7 @@ func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) 
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	runtime.SetMCPStarted(true)
+	runtime.Security.RuntimeControlState().SetMCPStarted(true)
 	server := &Server{}
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -445,7 +445,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 		dispatchStartedAt string
 	}{
 		{name: "another runtime owns the lease", owner: "another-runtime"},
-		{name: "dispatch already started", owner: runtime.RuntimeIdentifier(), dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+		{name: "dispatch already started", owner: runtime.Identity.RuntimeID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
@@ -493,7 +493,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.SetMCPStarted(true)
+	runtime.Security.RuntimeControlState().SetMCPStarted(true)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -572,7 +572,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.SetMCPStarted(true)
+	runtime.Security.RuntimeControlState().SetMCPStarted(true)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -611,7 +611,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err != nil || !created {
 		t.Fatalf("insert running request: created=%v err=%v", created, err)
 	}
-	runtime.SetMCPStarted(false)
+	runtime.Security.RuntimeControlState().SetMCPStarted(false)
 	principal, err := server.tokenExecutionPrincipal(runtime, tokenID)
 	if err != nil {
 		t.Fatal(err)
@@ -874,7 +874,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
 	var decryptedPayload connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(secretVault, runtime.WorkspaceIdentifier(), recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
+	if err := recordcrypto.DecryptJSON(secretVault, runtime.Identity.WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
@@ -1099,7 +1099,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert action request: %v", err)
 	}
-	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.WorkspaceIdentifier(), recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
+	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.Identity.WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
 	if err != nil {
 		t.Fatalf("encrypt action request: %v", err)
 	}

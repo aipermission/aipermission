@@ -14,7 +14,7 @@ func requireTransferJobs(t testing.TB, server *Server, runtime databaseRuntime) 
 	if server == nil || server.transfers == nil {
 		t.Fatal("file transfer test component is unavailable")
 	}
-	jobs, err := server.transfers.WorkspaceJobs(runtime)
+	jobs, err := server.transfers.WorkspaceJobs(fileTransferWorkspaceIdentity(runtime))
 	if err != nil {
 		t.Fatalf("file transfer test jobs: %v", err)
 	}

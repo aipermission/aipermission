@@ -13,7 +13,7 @@ func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (gatewayvault.Vaul
 		return gatewayvault.VaultApprovalHTTPScope{}, false
 	}
 	return gatewayvault.VaultApprovalHTTPScope{
-		MCPStarted: runtime.IsMCPStarted,
+		MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
 		Runtime: func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
 			return s.vaultRequestRuntime(ctx, runtime)
 		},

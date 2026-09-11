@@ -26,22 +26,22 @@ func TestComponentOptionsPreserveInjectedCatalogsAndIdentityGenerator(t *testing
 
 func TestNilComponentWorkspaceOperationsFailClosed(t *testing.T) {
 	var component *Component
-	if _, err := component.AdoptWorkspace(t.Context(), AdoptInput{}); !errors.Is(err, ErrInitialization) {
+	if _, err := component.AdoptWorkspace(t.Context(), AdoptInput{}); !errors.Is(err, InitializationError()) {
 		t.Fatalf("adopt error = %v", err)
 	}
-	if _, err := component.OpenWorkspace(t.Context(), OpenInput{}); !errors.Is(err, ErrInitialization) {
+	if _, err := component.OpenWorkspace(t.Context(), OpenInput{}); !errors.Is(err, InitializationError()) {
 		t.Fatalf("open error = %v", err)
 	}
-	if err := component.CloseWorkspace(nil, nil, nil, nil); !errors.Is(err, ErrInitialization) {
+	if err := component.CloseWorkspace(nil, nil, nil, nil); !errors.Is(err, InitializationError()) {
 		t.Fatalf("close error = %v", err)
 	}
-	if err := component.MoveDatabase("source", "target"); !errors.Is(err, ErrInitialization) {
+	if err := component.MoveDatabase("source", "target"); !errors.Is(err, InitializationError()) {
 		t.Fatalf("move error = %v", err)
 	}
 	if component.WorkspaceHTTP(WorkspaceHTTPDependencies{}) != nil {
 		t.Fatal("nil component exposed workspace handlers")
 	}
-	if _, err := component.AcquireBackupOperation(t.Context()); !errors.Is(err, ErrInitialization) {
+	if _, err := component.AcquireBackupOperation(t.Context()); !errors.Is(err, InitializationError()) {
 		t.Fatalf("backup operation error = %v", err)
 	}
 }

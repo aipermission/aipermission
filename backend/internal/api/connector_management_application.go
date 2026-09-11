@@ -10,7 +10,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
@@ -66,17 +65,17 @@ func (s *Server) connectorCatalog(runtime databaseRuntime) connectormgmt.Catalog
 		return s.connectorManagementApplication().Catalog(nil, nil)
 	}
 	return s.connectorManagementApplication().Catalog(
-		runtime.StoragePort().DatabaseHandle(), runtimeConnectorRegistry(runtime),
+		runtime.Storage.DatabaseHandle(), runtimeConnectorRegistry(runtime),
 	)
 }
 
-func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) connectormgmt.Workspace {
+func (s *Server) connectorManagementWorkspace(runtime databaseRuntime) connectormgmt.Workspace {
 	preparation := s.connectorCredentialPreparationPorts(runtime)
 	return connectormgmt.Workspace{
 		Storage: connectormgmt.StoragePorts{
-			Database:         runtime.StoragePort().DatabaseHandle(),
-			Registry:         runtime.ConnectorPort().ConnectorRegistry(),
-			AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+			Database:         runtime.Storage.DatabaseHandle(),
+			Registry:         runtime.Connectors.ConnectorRegistry(),
+			AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 			Transaction: func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 					return mutate(tx, connectormgmt.AuditAppender(appendAudit))

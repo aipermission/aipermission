@@ -24,6 +24,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/maintenanceconsole"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -76,7 +77,7 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, database, secretVault, tokenStore,
+	}, gatewayinfra.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokenStore},
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 		WithMaintenanceConsole(maintenanceconsole.NewRuntime()),
@@ -85,7 +86,7 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		t.Fatalf("new server: %v", err)
 	}
 	sshKeyStore := testSSHKeyStore(t, srv.activeRuntime())
-	srv.activeRuntime().SetMCPStarted(true)
+	srv.activeRuntime().Security.RuntimeControlState().SetMCPStarted(true)
 	authorizeTestUISession(srv)
 	t.Cleanup(func() {
 		srv.Close()
@@ -96,10 +97,10 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 
 func testSSHKeyStore(t *testing.T, runtime databaseRuntime) *sshkeys.Store {
 	t.Helper()
-	if runtime == nil || runtime.ConnectorPort().ResourceScopes() == nil {
+	if runtime == nil || runtime.Connectors.ResourceScopes() == nil {
 		t.Fatalf("ssh key resource store is not available")
 	}
-	return sshkeys.NewResourceStore(runtime.ConnectorPort().ResourceScopes().Scope("ssh", "private_key"))
+	return sshkeys.NewResourceStore(runtime.Connectors.ResourceScopes().Scope("ssh", "private_key"))
 }
 
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {
@@ -377,7 +378,7 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
+	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,

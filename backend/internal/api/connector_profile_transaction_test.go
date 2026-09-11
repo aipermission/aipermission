@@ -190,7 +190,7 @@ func TestCredentialEditTransactionBoundaries(t *testing.T) {
 					t.Fatal("secret revision did not advance exactly once")
 				}
 				var secret map[string]any
-				if err := recordcrypto.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, after.ID, after.EncryptedSecretJSON, &secret); err != nil {
+				if err := recordcrypto.DecryptJSON(runtime.Storage.SecretVault(), runtime.Identity.WorkspaceID, recordcrypto.ConnectorCredentialProfile, after.ID, after.EncryptedSecretJSON, &secret); err != nil {
 					t.Fatal(err)
 				}
 				if secret["secret_access_key"] != "replacement-fixture-value" {

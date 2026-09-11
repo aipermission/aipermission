@@ -17,15 +17,15 @@ func (s *Server) configureVaultSessionRuntime(runtime databaseRuntime) error {
 }
 
 func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.SessionLifecycle, error) {
-	if s == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil ||
-		runtime.SecurityPort().VaultLeaseStore() == nil || runtime.ConnectorPort().ConsoleSessionManager() == nil {
+	if s == nil || runtime == nil || runtime.Storage.DatabaseHandle() == nil ||
+		runtime.Security.VaultLeaseStore() == nil || runtime.Connectors.ConsoleSessionManager() == nil {
 		return nil, gatewayvault.ErrInvalidatorUnavailable
 	}
-	delivery := runtime.SecurityPort().VaultDeliveryCoordinator()
+	delivery := runtime.Security.VaultDeliveryCoordinator()
 	return s.vaultApplication().SessionLifecycle(gatewayvault.SessionLifecycleRuntime{
-		Database: runtime.StoragePort().DatabaseHandle(),
-		Leases:   runtime.SecurityPort().VaultLeaseStore(),
-		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
+		Database: runtime.Storage.DatabaseHandle(),
+		Leases:   runtime.Security.VaultLeaseStore(),
+		Sessions: runtime.Connectors.ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},
@@ -38,7 +38,7 @@ func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.S
 		},
 		AcquireDelivery: delivery.AcquireDelivery,
 		InstallAuthorizer: func(guard gatewayvault.SessionAuthorizationGuard) {
-			runtime.ConnectorPort().ConsoleSessionManager().SetAuthorizer(func(
+			runtime.Connectors.ConsoleSessionManager().SetAuthorizer(func(
 				ctx context.Context,
 				principal gatewayaccess.Principal,
 				session gatewayoperations.SessionAuthorization,
@@ -46,12 +46,12 @@ func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.S
 				run func() error,
 			) error {
 				return guard(ctx, func() error {
-					return runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, session, operation)
+					return runtime.Security.VaultLeaseStore().Authorize(ctx, principal, session, operation)
 				}, run)
 			})
 		},
 		InstallSessionClosed: func(hook func(gatewayvault.VaultSessionReference)) {
-			runtime.ConnectorPort().ConsoleSessionManager().SetSessionClosedHook(func(handle gatewayoperations.SessionHandle) {
+			runtime.Connectors.ConsoleSessionManager().SetSessionClosedHook(func(handle gatewayoperations.SessionHandle) {
 				hook(gatewayvault.VaultSessionReference{
 					SessionID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation,
 				})

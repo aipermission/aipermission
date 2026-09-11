@@ -16,7 +16,7 @@ func (s *Server) messageQueueScope(w http.ResponseWriter) (gatewayoperations.Mes
 }
 
 func (s *Server) messageQueueStore(runtime databaseRuntime) *gatewayoperations.MessageStore {
-	return gatewayoperations.NewMessageStore(runtime.StoragePort().DatabaseHandle(), func(ctx context.Context, value string) string {
+	return gatewayoperations.NewMessageStore(runtime.Storage.DatabaseHandle(), func(ctx context.Context, value string) string {
 		return s.redactForPersistence(ctx, runtime, value)
 	})
 }

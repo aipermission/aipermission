@@ -1,15 +1,22 @@
 package workspaceruntime
 
 import (
-	"database/sql"
+	"errors"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
 )
+
+func TagActionIdentity(runtime *Runtime, canonical []byte) (string, error) {
+	if runtime == nil {
+		return "", errors.New("workspace action identity is unavailable")
+	}
+	return actions.IdentityTag(runtime.ActionIdentityKey, canonical)
+}
 
 type Runtime struct {
 	ID                string
@@ -23,26 +30,6 @@ type Runtime struct {
 	Connectors        connectorstate.State
 	Security          security.State
 	Observation       observation.State
-}
-
-type Port interface {
-	WorkspaceIdentity() workspacelifecycle.Identity
-	WorkspaceDatabase() *sql.DB
-	StoragePort() storage.Port
-	ConnectorPort() connectorstate.Port
-	SecurityPort() security.Port
-	ObservationPort() observation.Port
-	WorkspaceIdentifier() string
-	RuntimeIdentifier() string
-	DatabaseIdentifier() string
-	DatabasePath() string
-	GatewaySecretValue() string
-	UIRetryIdentifier() string
-	ActionIdentity() []byte
-	ClearActionIdentity()
-	IdentityReady() bool
-	IsMCPStarted() bool
-	SetMCPStarted(bool)
 }
 
 func New(state foundation.State) *Runtime {
@@ -60,118 +47,5 @@ func New(state foundation.State) *Runtime {
 			state.Registry, state.AdapterRegistry, state.Database, state.Identity.Vault, state.Identity.WorkspaceUUID,
 		),
 		Security: security.New(state.Database),
-	}
-}
-
-func (r *Runtime) WorkspaceIdentity() workspacelifecycle.Identity {
-	if r == nil {
-		return workspacelifecycle.Identity{}
-	}
-	return workspacelifecycle.Identity{
-		ID: r.ID, Path: r.Path, RetryIdentity: r.UIRetryIdentity,
-	}
-}
-
-func (r *Runtime) WorkspaceDatabase() *sql.DB {
-	if r == nil {
-		return nil
-	}
-	return r.Storage.DatabaseHandle()
-}
-
-func (r *Runtime) StoragePort() storage.Port {
-	if r == nil {
-		return (*storage.State)(nil)
-	}
-	return &r.Storage
-}
-
-func (r *Runtime) ConnectorPort() connectorstate.Port {
-	if r == nil {
-		return (*connectorstate.State)(nil)
-	}
-	return &r.Connectors
-}
-
-func (r *Runtime) SecurityPort() security.Port {
-	if r == nil {
-		return (*security.State)(nil)
-	}
-	return &r.Security
-}
-
-func (r *Runtime) ObservationPort() observation.Port {
-	if r == nil {
-		return (*observation.State)(nil)
-	}
-	return &r.Observation
-}
-
-func (r *Runtime) WorkspaceIdentifier() string {
-	if r == nil {
-		return ""
-	}
-	return r.WorkspaceUUID
-}
-
-func (r *Runtime) RuntimeIdentifier() string {
-	if r == nil {
-		return ""
-	}
-	return r.RuntimeInstanceID
-}
-
-func (r *Runtime) DatabaseIdentifier() string {
-	if r == nil {
-		return ""
-	}
-	return r.ID
-}
-
-func (r *Runtime) DatabasePath() string {
-	if r == nil {
-		return ""
-	}
-	return r.Path
-}
-
-func (r *Runtime) GatewaySecretValue() string {
-	if r == nil {
-		return ""
-	}
-	return r.GatewaySecret
-}
-
-func (r *Runtime) UIRetryIdentifier() string {
-	if r == nil {
-		return ""
-	}
-	return r.UIRetryIdentity
-}
-
-func (r *Runtime) ActionIdentity() []byte {
-	if r == nil {
-		return nil
-	}
-	return r.ActionIdentityKey
-}
-
-func (r *Runtime) ClearActionIdentity() {
-	if r != nil {
-		r.ActionIdentityKey = nil
-	}
-}
-
-func (r *Runtime) IdentityReady() bool {
-	return r != nil && r.WorkspaceUUID != "" && r.RuntimeInstanceID != ""
-}
-
-func (r *Runtime) IsMCPStarted() bool {
-	return r != nil && r.Security.RuntimeControlState().MCPStarted()
-}
-
-func (r *Runtime) SetMCPStarted(enabled bool) {
-	if r != nil {
-		r.Security.RuntimeControlState().SetMCPStarted(enabled)
 	}
 }

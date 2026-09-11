@@ -25,7 +25,7 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 	}
 	return &gatewayaccess.CommandBulkHTTPRuntime{
 		Requests: requests,
-		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
+		Sessions: runtime.Connectors.ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},

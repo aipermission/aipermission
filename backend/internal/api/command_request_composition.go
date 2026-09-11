@@ -8,12 +8,12 @@ import (
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	return s.access.InitializeCommandRuntime(runtime.RuntimeIdentifier(), gatewayaccess.CommandRuntimeDependencies{
-		Database: runtime.StoragePort().DatabaseHandle(), Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
+	return s.access.InitializeCommandRuntime(runtime.Identity.RuntimeID, gatewayaccess.CommandRuntimeDependencies{
+		Database: runtime.Storage.DatabaseHandle(), Vault: runtime.Storage.SecretVault(), WorkspaceID: runtime.Identity.WorkspaceID,
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},
-		Sessions: runtime.ConnectorPort().ConsoleSessionManager(), BackgroundTimeout: mcpBackgroundCommandTimeout,
+		Sessions: runtime.Connectors.ConsoleSessionManager(), BackgroundTimeout: mcpBackgroundCommandTimeout,
 	})
 }
 
@@ -21,7 +21,7 @@ func (s *Server) commandRuntime(runtime databaseRuntime) (*gatewayaccess.Command
 	if runtime == nil {
 		return nil, gatewayaccess.ErrCommandRuntimeUnavailable
 	}
-	return s.access.CommandRuntime(runtime.RuntimeIdentifier())
+	return s.access.CommandRuntime(runtime.Identity.RuntimeID)
 }
 
 func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.CommandHTTPReader, bool) {

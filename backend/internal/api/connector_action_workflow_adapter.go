@@ -30,16 +30,16 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) gatewayaction
 	if runtime == nil {
 		return gatewayactions.Workspace{}
 	}
-	delivery := runtime.SecurityPort().VaultDeliveryCoordinator()
+	delivery := runtime.Security.VaultDeliveryCoordinator()
 	return gatewayactions.Workspace{
 		Storage: gatewayactions.ActionStorage{
-			Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(),
-			Registry: runtime.ConnectorPort().ConnectorRegistry(), SecretVault: runtime.StoragePort().SecretVault(),
-			WorkspaceID: runtime.WorkspaceIdentifier(),
+			Database: runtime.Storage.DatabaseHandle(), Tokens: runtime.Storage.TokenStore(),
+			Registry: runtime.Connectors.ConnectorRegistry(), SecretVault: runtime.Storage.SecretVault(),
+			WorkspaceID: runtime.Identity.WorkspaceID,
 		},
 		Identity: gatewayactions.ActionIdentity{
-			Key: runtime.ActionIdentity(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
-			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
+			Key: runtime.Identity.ActionKey, RuntimeInstanceID: runtime.Identity.RuntimeID,
+			MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() }, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
 		},
 		Workflow: gatewayactions.WorkflowPorts{
 			AcquireSecret: delivery.AcquireDelivery,

@@ -13,11 +13,11 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgm
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
 	return connectormgmt.ConnectorApprovalScope{
-		Database: runtime.StoragePort().DatabaseHandle(),
+		Database: runtime.Storage.DatabaseHandle(),
 		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
 			return s.connectorActionApprovalWorkflow(runtime)
 		},
-		MCPStarted: runtime.IsMCPStarted,
+		MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},

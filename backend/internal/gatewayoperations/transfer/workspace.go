@@ -13,12 +13,14 @@ import (
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
-// FileTransferWorkspace is the transfer-owned portion of an unlocked workspace.
-type FileTransferWorkspace interface {
-	transferapp.Workspace
+// Workspace is the transfer-owned identity of an unlocked workspace.
+type Workspace struct {
+	RuntimeID string
 }
 
-type FileTransferWorkspaceScope func(http.ResponseWriter) (FileTransferWorkspace, bool)
+func (workspace Workspace) RuntimeIdentifier() string { return workspace.RuntimeID }
+
+type FileTransferWorkspaceScope func(http.ResponseWriter) (Workspace, bool)
 
 // CredentialBoundary keeps the transfer-owned redaction primitive behind the
 // transfer composition contract.
@@ -60,12 +62,12 @@ type Component struct {
 func NewComponent() *Component { return &Component{} }
 
 func (component *Component) InitializeWorkspace(
-	workspace FileTransferWorkspace,
+	workspace Workspace,
 	database *sql.DB,
 	observe transferapp.ObservationAudit,
 	resolve FileTransferConnectorPortsResolver,
 ) error {
-	if workspace == nil {
+	if workspace.RuntimeID == "" {
 		return fmt.Errorf("file transfer workspace state is unavailable")
 	}
 	if component == nil {
@@ -97,7 +99,7 @@ func (component *Component) NewHTTPHandlers(dependencies FileTransferHTTPDepende
 			if !ok {
 				return nil, false
 			}
-			if workspace == nil {
+			if workspace.RuntimeID == "" {
 				writeInternalError(w)
 				return nil, false
 			}
@@ -118,7 +120,7 @@ func (component *Component) NewHTTPHandlers(dependencies FileTransferHTTPDepende
 
 func (component *Component) CreateAndLaunchDownloadBatch(
 	ctx context.Context,
-	workspace FileTransferWorkspace,
+	workspace Workspace,
 	handlers *FileTransferHTTPHandlers,
 	authorization connectorapi.TransferAuthorization,
 	runtimeID int64,
@@ -126,7 +128,7 @@ func (component *Component) CreateAndLaunchDownloadBatch(
 	archiveName string,
 	source string,
 ) (filetransfer.BatchRecord, error) {
-	if workspace == nil {
+	if workspace.RuntimeID == "" {
 		return filetransfer.BatchRecord{}, fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
 	if component == nil || handlers == nil {
@@ -139,11 +141,11 @@ func (component *Component) CreateAndLaunchDownloadBatch(
 	return handlers.CreateAndLaunchDownloadBatch(ctx, runtime, authorization, runtimeID, remotePaths, archiveName, source)
 }
 
-func (component *Component) WorkspaceReady(workspace FileTransferWorkspace) bool {
-	return component != nil && workspace != nil && component.runtimes.WorkspaceReady(workspace)
+func (component *Component) WorkspaceReady(workspace Workspace) bool {
+	return component != nil && workspace.RuntimeID != "" && component.runtimes.WorkspaceReady(workspace)
 }
 
-func (component *Component) WorkspaceJobs(workspace FileTransferWorkspace) (transferapp.Jobs, error) {
+func (component *Component) WorkspaceJobs(workspace Workspace) (transferapp.Jobs, error) {
 	if component == nil {
 		return nil, fmt.Errorf("file transfer component is unavailable")
 	}
@@ -158,11 +160,11 @@ type WorkspaceLifecycle interface {
 
 type workspaceLifecycle struct {
 	manager   *transferapp.Manager
-	workspace FileTransferWorkspace
+	workspace Workspace
 }
 
-func (component *Component) Lifecycle(workspace FileTransferWorkspace) WorkspaceLifecycle {
-	if component == nil || workspace == nil {
+func (component *Component) Lifecycle(workspace Workspace) WorkspaceLifecycle {
+	if component == nil || workspace.RuntimeID == "" {
 		return nil
 	}
 	return workspaceLifecycle{manager: &component.runtimes, workspace: workspace}

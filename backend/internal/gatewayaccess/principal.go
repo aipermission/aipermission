@@ -2,22 +2,25 @@ package gatewayaccess
 
 import "github.com/aipermission/aipermission/backend/internal/executionprincipal"
 
-type RuntimeIdentity interface {
-	WorkspaceIdentifier() string
-	RuntimeIdentifier() string
-	IdentityReady() bool
+type RuntimeIdentity struct {
+	WorkspaceID string
+	RuntimeID   string
 }
 
-func (*Component) LocalPrincipal(runtime RuntimeIdentity) (Principal, error) {
-	if runtime == nil || !runtime.IdentityReady() {
-		return Principal{}, ErrInvalidPrincipal
-	}
-	return executionprincipal.LocalOperator(runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
+func (identity RuntimeIdentity) Ready() bool {
+	return identity.WorkspaceID != "" && identity.RuntimeID != ""
 }
 
-func (*Component) TokenPrincipal(runtime RuntimeIdentity, tokenID int64) (Principal, error) {
-	if runtime == nil || !runtime.IdentityReady() {
+func (*Component) LocalPrincipal(identity RuntimeIdentity) (Principal, error) {
+	if !identity.Ready() {
 		return Principal{}, ErrInvalidPrincipal
 	}
-	return executionprincipal.MCPToken(tokenID, runtime.WorkspaceIdentifier(), runtime.RuntimeIdentifier())
+	return executionprincipal.LocalOperator(identity.WorkspaceID, identity.RuntimeID)
+}
+
+func (*Component) TokenPrincipal(identity RuntimeIdentity, tokenID int64) (Principal, error) {
+	if !identity.Ready() {
+		return Principal{}, ErrInvalidPrincipal
+	}
+	return executionprincipal.MCPToken(tokenID, identity.WorkspaceID, identity.RuntimeID)
 }

@@ -15,7 +15,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		return nil, false
 	}
 	return &connectorapi.LiveConsoleHTTPRuntime{
-		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
+		Sessions: runtime.Connectors.ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},

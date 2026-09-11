@@ -18,8 +18,8 @@ func (s *Server) backupApplication() *gatewaybackup.Component {
 				return gatewaybackup.Runtime{}, false
 			}
 			return gatewaybackup.Runtime{
-				Database: runtime.StoragePort().DatabaseHandle(), SecretVault: runtime.StoragePort().SecretVault(),
-				DatabaseID: runtime.DatabaseIdentifier(), DatabasePath: runtime.DatabasePath(), WorkspaceID: runtime.WorkspaceIdentifier(),
+				Database: runtime.Storage.DatabaseHandle(), SecretVault: runtime.Storage.SecretVault(),
+				DatabaseID: runtime.Identity.DatabaseID, DatabasePath: runtime.Identity.DatabasePath, WorkspaceID: runtime.Identity.WorkspaceID,
 				Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 					return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 				},

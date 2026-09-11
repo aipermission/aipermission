@@ -35,17 +35,17 @@ func New(
 }
 
 func (s *State) ConnectorRegistry() *connectorcatalog.Registry {
-	if s != nil && s.registry != nil {
-		return s.registry
+	if s == nil {
+		return nil
 	}
-	return connectorcatalog.NewRegistry()
+	return s.registry
 }
 
 func (s *State) ConnectorAdapterRegistry() *connectorapi.Registry {
-	if s != nil && s.adapterRegistry != nil {
-		return s.adapterRegistry
+	if s == nil {
+		return nil
 	}
-	return connectorapi.NewRegistry()
+	return s.adapterRegistry
 }
 
 func (s *State) ResourceScopes() connectorruntime.ResourceScopes {

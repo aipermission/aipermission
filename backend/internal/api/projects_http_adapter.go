@@ -14,11 +14,11 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectS
 		return gatewayvault.ProjectScope{}, false
 	}
 	return gatewayvault.ProjectScope{
-		Database: runtime.StoragePort().DatabaseHandle(),
+		Database: runtime.Storage.DatabaseHandle(),
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		Invalidate: func(ctx context.Context, projectID int64) error {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err != nil {

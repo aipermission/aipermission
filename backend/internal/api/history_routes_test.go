@@ -364,7 +364,7 @@ func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) 
 	if sshRuntimeHistoryPage.Total != 1 || len(sshRuntimeHistoryPage.Items) != 1 || sshRuntimeHistoryPage.Items[0].SourceRefID != dockerID {
 		t.Fatalf("ssh runtime filter should isolate the live-console command row, got %#v", sshRuntimeHistoryPage)
 	}
-	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier())
+	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
 	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
 		TokenID:              &token.ID,
 		TargetID:             pgTarget.ID,
@@ -412,7 +412,7 @@ func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) 
 	if err != nil {
 		t.Fatalf("create second postgres profile: %v", err)
 	}
-	encryptedOtherSecret, err := recordcrypto.EncryptJSON(fixture.server.activeRuntime().StoragePort().SecretVault(), fixture.server.activeRuntime().WorkspaceIdentifier(), recordcrypto.ConnectorCredentialProfile, secondPGProfile.ID, map[string]any{"password": "other-secret"})
+	encryptedOtherSecret, err := recordcrypto.EncryptJSON(fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID, recordcrypto.ConnectorCredentialProfile, secondPGProfile.ID, map[string]any{"password": "other-secret"})
 	if err != nil {
 		t.Fatalf("encrypt second profile secret: %v", err)
 	}

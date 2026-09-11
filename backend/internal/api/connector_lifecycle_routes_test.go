@@ -95,8 +95,8 @@ func TestTargetsListHidesArchivedAndMismatchedProfiles(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
 	store := connectortargets.NewStore(fixture.db)
-	secretVault := fixture.server.activeRuntime().StoragePort().SecretVault()
-	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault, fixture.server.activeRuntime().WorkspaceIdentifier())
+	secretVault := fixture.server.activeRuntime().Storage.SecretVault()
+	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault, fixture.server.activeRuntime().Identity.WorkspaceID)
 
 	if response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/targets", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"target_id":`+strconv.FormatInt(target.ID, 10)) {
 		t.Fatalf("active profile should be listed: %d %s", response.Code, response.Body.String())
