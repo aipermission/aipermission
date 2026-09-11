@@ -9,8 +9,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 type Lifecycle interface {
@@ -23,18 +23,26 @@ type PasswordAttempt interface {
 	Failure()
 }
 
+type Runtime struct {
+	Database      *sql.DB
+	SecretVault   *vault.Vault
+	DatabaseID    string
+	DatabasePath  string
+	WorkspaceID   string
+	Mutate        func(context.Context, string, func() any, func(*sql.Tx) error) error
+	AuditRequired func(context.Context, string, any) error
+	Observe       func(context.Context, string, any)
+}
+
 type Dependencies struct {
 	DataPath            string
 	Lifecycle           Lifecycle
-	ActiveRuntime       func(http.ResponseWriter) (workspaceruntime.Port, bool)
+	ActiveRuntime       func(http.ResponseWriter) (Runtime, bool)
 	CurrentDatabaseName func() string
 	HasSession          func(*http.Request) bool
 	BeginAttempt        func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
 	IssuePrepared       func(http.ResponseWriter, uisession.Prepared) error
 	AcquireOperation    backups.OperationLease
-	Mutate              func(context.Context, workspaceruntime.Port, string, func() any, func(*sql.Tx) error) error
-	AuditRequired       func(context.Context, workspaceruntime.Port, string, any) error
-	Observe             func(context.Context, workspaceruntime.Port, string, any)
 }
 
 type Component struct{ dependencies Dependencies }

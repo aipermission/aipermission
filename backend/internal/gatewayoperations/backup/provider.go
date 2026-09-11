@@ -10,13 +10,12 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
-type providerSecretCodec struct{ runtime workspaceruntime.Port }
+type providerSecretCodec struct{ runtime Runtime }
 
 func (codec providerSecretCodec) EncryptProviderSecret(id int64, secret map[string]any) (string, error) {
-	return recordcrypto.EncryptJSON(codec.runtime.StoragePort().SecretVault(), codec.runtime.WorkspaceIdentifier(), recordcrypto.BackupProvider, id, secret)
+	return recordcrypto.EncryptJSON(codec.runtime.SecretVault, codec.runtime.WorkspaceID, recordcrypto.BackupProvider, id, secret)
 }
 
 func (codec providerSecretCodec) DecryptProviderSecret(provider backups.Provider) (map[string]any, error) {
@@ -24,7 +23,7 @@ func (codec providerSecretCodec) DecryptProviderSecret(provider backups.Provider
 		return map[string]any{}, nil
 	}
 	secret := map[string]any{}
-	err := recordcrypto.DecryptJSON(codec.runtime.StoragePort().SecretVault(), codec.runtime.WorkspaceIdentifier(), recordcrypto.BackupProvider, provider.ID, provider.EncryptedSecretJSON, &secret)
+	err := recordcrypto.DecryptJSON(codec.runtime.SecretVault, codec.runtime.WorkspaceID, recordcrypto.BackupProvider, provider.ID, provider.EncryptedSecretJSON, &secret)
 	return secret, err
 }
 
@@ -34,21 +33,21 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 		return backups.HTTPScope{}, false
 	}
 	return backups.HTTPScope{
-		Database: runtime.StoragePort().DatabaseHandle(), DatabaseID: runtime.DatabaseIdentifier(),
-		DatabaseName: component.dependencies.CurrentDatabaseName(), DatabasePath: runtime.DatabasePath(),
-		WorkspaceUUID: runtime.WorkspaceIdentifier(), InstallationDataPath: component.dependencies.DataPath,
+		Database: runtime.Database, DatabaseID: runtime.DatabaseID,
+		DatabaseName: component.dependencies.CurrentDatabaseName(), DatabasePath: runtime.DatabasePath,
+		WorkspaceUUID: runtime.WorkspaceID, InstallationDataPath: component.dependencies.DataPath,
 		Secrets: providerSecretCodec{runtime: runtime}, AcquireOperation: component.dependencies.AcquireOperation,
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return component.dependencies.Mutate(ctx, runtime, action, payload, mutate)
+			return runtime.Mutate(ctx, action, payload, mutate)
 		},
 		AuditRequired: func(ctx context.Context, action string, payload any) error {
-			return component.dependencies.AuditRequired(ctx, runtime, action, payload)
+			return runtime.AuditRequired(ctx, action, payload)
 		},
 		Observe: func(ctx context.Context, action string, payload any) {
-			component.dependencies.Observe(ctx, runtime, action, payload)
+			runtime.Observe(ctx, action, payload)
 		},
 		CreateSnapshot: func(ctx context.Context) (backups.DatabaseSnapshot, error) {
-			snapshot, err := backups.CreateDatabaseSnapshot(ctx, backups.SnapshotSource{Database: runtime.StoragePort().DatabaseHandle(), DatabaseID: runtime.DatabaseIdentifier(), Path: runtime.DatabasePath()})
+			snapshot, err := backups.CreateDatabaseSnapshot(ctx, backups.SnapshotSource{Database: runtime.Database, DatabaseID: runtime.DatabaseID, Path: runtime.DatabasePath})
 			return backups.DatabaseSnapshot{Path: snapshot.Path}, err
 		},
 		AuthorizePassword: func(response http.ResponseWriter, request *http.Request, password string) bool {
@@ -56,7 +55,7 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 			if !ok {
 				return false
 			}
-			if err := dbpkg.ValidateEncrypted(runtime.DatabasePath(), password); err != nil {
+			if err := dbpkg.ValidateEncrypted(runtime.DatabasePath, password); err != nil {
 				attempt.Failure()
 				httptransport.WriteError(response, http.StatusUnauthorized, "invalid current database password")
 				return false

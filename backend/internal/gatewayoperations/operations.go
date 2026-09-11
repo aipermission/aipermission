@@ -13,6 +13,7 @@ import (
 
 type BackupApplication struct{ *backupapp.Component }
 type BackupDependencies backupapp.Dependencies
+type BackupRuntime = backupapp.Runtime
 type ImportDatabaseRequest backupapp.ImportDatabaseRequest
 type BackupPasswordAttempt = backupapp.PasswordAttempt
 type TransientRestoreRequest backupapp.TransientRestoreRequest
