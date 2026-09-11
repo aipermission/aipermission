@@ -71,10 +71,10 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.W
 	}
 	workspace.Targets = connectorapi.WorkspaceTargetPorts{
 		Delete: func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
-			return (connectorTargetHandlers{s}).connectorDeleteTargetRecord(ctx, runtime, target, payload)
+			return s.connectorLifecycleApplication(runtime).DeleteTarget(ctx, target, payload)
 		},
 		Finalize: func(ctx context.Context, target connectormgmt.Target, reason string, payload map[string]any) (int64, error) {
-			return (connectorTargetHandlers{s}).connectorFinalizeDeletedTarget(ctx, runtime, target, reason, payload)
+			return s.connectorLifecycleApplication(runtime).FinalizeDeletedTarget(ctx, target, reason)
 		},
 		Audit: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)

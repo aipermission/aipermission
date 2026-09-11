@@ -2,61 +2,14 @@ package api
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"net/http"
 	"strings"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s connectorTargetHandlers) invalidateConnectorActionRequestsForTarget(ctx context.Context, runtime databaseRuntime, targetID int64, profileID int64, reason string, includeRunning bool) (int64, error) {
-	if runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || targetID < 1 {
-		return 0, nil
-	}
-	input := connectormgmt.InvalidateActionRequestsForTargetInput{
-		TargetID: targetID, ProfileID: profileID,
-		Error:         s.redactForPersistence(ctx, runtime, reason),
-		RunningError:  s.redactForPersistence(ctx, runtime, "connector configuration changed after dispatch; the external outcome is unknown and must be inspected before retrying"),
-		ApprovalDrift: connectorLifecycleApprovalDrift(profileID), IncludeRunning: includeRunning,
-	}
-	var result connectormgmt.InvalidateActionRequestsForTargetResult
-	err := s.withAuditedMutation(
-		ctx, runtime, "gateway", nil, 0, "connector_action.requests.invalidated",
-		func() any {
-			return map[string]any{
-				"target_id": targetID, "profile_id": profileID,
-				"request_ids": result.IDs, "stale_request_ids": result.StaleIDs,
-				"outcome_unknown_request_ids": result.OutcomeUnknownIDs, "affected": result.Affected,
-			}
-		},
-		func(tx *sql.Tx) error {
-			var err error
-			result, err = connectormgmt.NewTxStore(tx).InvalidateActionRequestsForTarget(ctx, input)
-			if err == nil && result.Affected == 0 {
-				return errAuditedMutationUnchanged
-			}
-			return err
-		},
-	)
-	if errors.Is(err, errAuditedMutationUnchanged) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return result.Affected, nil
-}
-
 func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectormgmt.Store, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
 	return s.connectorManagementApplication().EnsureRuntimeSurfaces(ctx, store, target, profile)
-}
-
-func connectorLifecycleApprovalDrift(profileID int64) string {
-	if profileID > 0 {
-		return "profile"
-	}
-	return "target"
 }
 
 func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWriter, r *http.Request) {

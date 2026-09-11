@@ -113,7 +113,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 		},
 		Lifecycle: connectormgmt.LifecyclePorts{
 			AfterChange: func(ctx context.Context, change connectormgmt.TargetLifecycleChange) error {
-				return (connectorTargetHandlers{s}).afterConnectorCredentialLifecycleChange(ctx, runtime, change.TargetID, change.ProfileID, change.StaleReason, change.UserMessage, change.IncludeRunning)
+				return s.connectorLifecycleApplication(runtime).AfterCredentialChange(ctx, change)
 			},
 		},
 		Network: connectormgmt.NetworkPorts{

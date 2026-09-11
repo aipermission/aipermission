@@ -2,12 +2,9 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"path/filepath"
 	"sort"
-
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 var errInvalidConnectorRuntime = errors.New("invalid connector runtime")
@@ -59,44 +56,4 @@ func (s *Server) connectorChangeVaultPeerTrust(ctx context.Context, change func(
 		}
 	}
 	return change()
-}
-
-// ConnectorDeleteTargetRecord atomically deletes a connector target and
-// records its shared lifecycle audit event. Connector-owned adapters perform
-// remote cleanup before crossing this irreversible local boundary.
-func (s connectorTargetHandlers) connectorDeleteTargetRecord(ctx context.Context, dbRuntime databaseRuntime, target connectormgmt.Target, payload map[string]any) error {
-	if payload == nil {
-		payload = map[string]any{}
-	}
-	payload["target_id"] = target.ID
-	payload["connector_kind"] = target.ConnectorKind
-	payload["name"] = target.Name
-	return s.withAuditedMutation(
-		ctx, dbRuntime, "user", nil, 0, "connector.target.deleted",
-		func() any { return payload },
-		func(tx *sql.Tx) error { return connectormgmt.NewTxStore(tx).DeleteTarget(ctx, target.ID) },
-	)
-}
-
-// ConnectorFinalizeDeletedTarget applies the shared post-delete lifecycle:
-// pending connector action requests are marked stale after the target record
-// and its audit event commit atomically.
-func (s connectorTargetHandlers) connectorFinalizeDeletedTarget(ctx context.Context, dbRuntime databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) (int64, error) {
-	if staleReason == "" {
-		staleReason = "connector target was deleted; ask the AI to send a fresh request"
-	}
-	if err := s.invalidateVaultSessionsForTargetProfile(
-		ctx,
-		dbRuntime,
-		target.ID,
-		0,
-		"connector target was deleted; send a fresh Vault request",
-	); err != nil {
-		return 0, err
-	}
-	staleRequests, err := s.invalidateConnectorActionRequestsForTarget(ctx, dbRuntime, target.ID, 0, staleReason, true)
-	if err != nil {
-		return 0, err
-	}
-	return staleRequests, nil
 }

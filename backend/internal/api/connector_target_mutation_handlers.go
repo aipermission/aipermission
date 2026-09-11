@@ -34,11 +34,12 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 		)
 		return
 	}
-	if err := s.connectorDeleteTargetRecord(r.Context(), runtime, target, nil); err != nil {
+	lifecycle := s.connectorLifecycleApplication(runtime)
+	if err := lifecycle.DeleteTarget(r.Context(), target, nil); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}
-	if _, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, "connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
+	if _, err := lifecycle.FinalizeDeletedTarget(r.Context(), target, "connector target was deleted; ask the AI to send a fresh request"); err != nil {
 		writeInternalError(w)
 		return
 	}
@@ -46,7 +47,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 }
 
 func (s connectorTargetHandlers) finalizeDeletedConnectorTarget(w http.ResponseWriter, r *http.Request, runtime databaseRuntime, target connectormgmt.Target, staleReason string, payload map[string]any) bool {
-	_, err := s.connectorFinalizeDeletedTarget(r.Context(), runtime, target, staleReason, payload)
+	_, err := s.connectorLifecycleApplication(runtime).FinalizeDeletedTarget(r.Context(), target, staleReason)
 	if err != nil {
 		writeInternalError(w)
 		return false
