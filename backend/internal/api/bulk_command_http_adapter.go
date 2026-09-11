@@ -55,7 +55,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime,
 	if err != nil {
 		return gatewayaccess.CommandBulkTarget{}, err
 	}
-	target, profile, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
+	target, profile, err := s.connectorCatalog(runtime).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
 		return gatewayaccess.CommandBulkTarget{}, err
 	}
@@ -83,7 +83,7 @@ func (s *Server) consoleErrorPresenter(ctx context.Context, runtime databaseRunt
 	if err != nil {
 		return nil
 	}
-	target, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
+	target, _, err := s.connectorCatalog(runtime).ResolveActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil
 	}

@@ -24,7 +24,15 @@ func (s *Server) connectorCredentialResourceDependencies() connectormgmt.Credent
 }
 
 func (s *Server) connectorManagementApplication() *connectormgmt.Component {
+	if s == nil || s.connectorManagement == nil {
+		panic("connector management component is not initialized")
+	}
+	return s.connectorManagement
+}
+
+func (s *Server) newConnectorManagementApplication() *connectormgmt.Component {
 	return connectormgmt.New(connectormgmt.Dependencies{
+		Approvals: s.connectorApprovalHTTPScope,
 		Active: func(w http.ResponseWriter) (connectormgmt.Workspace, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)
 			if !ok {
@@ -47,6 +55,15 @@ func (s *Server) connectorManagementApplication() *connectormgmt.Component {
 			},
 		},
 	})
+}
+
+func (s *Server) connectorCatalog(runtime databaseRuntime) connectormgmt.Catalog {
+	if runtime == nil {
+		return s.connectorManagementApplication().Catalog(nil, nil)
+	}
+	return s.connectorManagementApplication().Catalog(
+		runtime.StoragePort().DatabaseHandle(), runtimeConnectorRegistry(runtime),
+	)
 }
 
 func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) connectormgmt.Workspace {

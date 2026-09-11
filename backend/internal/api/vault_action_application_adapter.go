@@ -29,7 +29,7 @@ func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, 
 	if action == "" {
 		return connectormgmt.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
 	}
-	permission, err := connectormgmt.NewStore(port.runtime.StoragePort().DatabaseHandle()).GetActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
+	permission, err := port.server.connectorCatalog(port.runtime).ActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
 	if err != nil || (permission.ExecutionRule != connectormgmt.ActionPermissionAlwaysRun && permission.ExecutionRule != connectormgmt.ActionPermissionApprovalRequired) {
 		return connectormgmt.ActionPermission{}, "", errors.New("Vault session apply requires an active Prompt or Always connector action permission")
 	}

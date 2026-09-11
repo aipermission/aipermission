@@ -9,6 +9,7 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
@@ -17,6 +18,7 @@ type Server struct {
 	config                  serverConfig
 	access                  *gatewayaccess.Component
 	connectorActions        *gatewayactions.Component
+	connectorManagement     *connectormgmt.Component
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
 	observation             gatewayoperations.Observation
@@ -53,6 +55,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
+	server.connectorManagement = server.newConnectorManagementApplication()
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
@@ -90,6 +93,7 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
+	server.connectorManagement = server.newConnectorManagementApplication()
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))
 	}

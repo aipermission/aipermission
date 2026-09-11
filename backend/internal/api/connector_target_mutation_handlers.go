@@ -15,8 +15,7 @@ func (s connectorTargetHandlers) deleteConnectorTarget(w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
-	target, err := store.GetTarget(r.Context(), id)
+	target, err := s.connectorCatalog(runtime).Target(r.Context(), id)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return

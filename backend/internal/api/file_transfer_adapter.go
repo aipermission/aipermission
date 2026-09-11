@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/httpapi"
 )
 
@@ -38,7 +37,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 	if server == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil || runtime.StoragePort().SecretVault() == nil {
 		return filetransferhttp.ConnectorPorts{}, fmt.Errorf("file transfer connector runtime is unavailable")
 	}
-	target, _, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).TargetProfileByRuntimeID(ctx, runtimeID)
+	target, _, _, err := server.connectorManagementApplication().TargetProfileByRuntimeID(ctx, runtime.StoragePort().DatabaseHandle(), runtimeID)
 	if err != nil {
 		return filetransferhttp.ConnectorPorts{}, err
 	}

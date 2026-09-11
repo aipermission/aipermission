@@ -10,8 +10,8 @@ type declineConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNote
 type runConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNoteRequest
 type connectorActionApprovalItem = connectormgmt.ConnectorApprovalItem
 
-func connectorActionApprovalItemFromRequest(item connectormgmt.ActionRequest) connectorActionApprovalItem {
-	return connectormgmt.ConnectorApprovalItemFromRequest(item)
+func (s *Server) connectorActionApprovalItemFromRequest(item connectormgmt.ActionRequest) connectorActionApprovalItem {
+	return s.connectorManagementApplication().ConnectorApprovalItemFromRequest(item)
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
@@ -27,5 +27,5 @@ func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, run
 	if err != nil {
 		return connectorActionApprovalItem{}, err
 	}
-	return connectormgmt.ConnectorApprovalItemForResponse(ctx, workflow, item)
+	return s.connectorManagementApplication().ConnectorApprovalItemForResponse(ctx, workflow, item)
 }

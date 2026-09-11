@@ -3,8 +3,6 @@ package api
 import (
 	"net/http"
 	"strings"
-
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
 func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter, r *http.Request) {
@@ -22,13 +20,13 @@ func (s connectorTargetHandlers) testConnectorTargetDraft(w http.ResponseWriter,
 		writeError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	config, err := connectormgmt.NormalizeTargetConfig(connector, request.Config)
+	config, err := s.connectorManagementApplication().NormalizeTargetConfig(connector, request.Config)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	request.Config = config
-	if err := s.validateConnectorTransportConfig(r.Context(), connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()), request.ProjectID, request.Config); err != nil {
+	if err := s.validateConnectorTransportConfig(r.Context(), runtime, request.ProjectID, request.Config); err != nil {
 		handleConnectorTargetError(w, err)
 		return
 	}

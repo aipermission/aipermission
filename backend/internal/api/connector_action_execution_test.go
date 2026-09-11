@@ -759,6 +759,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
+	server.connectorManagement = server.newConnectorManagementApplication()
 	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "approval preview token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
@@ -847,7 +848,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("history input drifted from redacted request input: history=%s request=%s", historyInputJSON, inputJSON)
 	}
 	mcpResponse := mcpconnector.ResponseFromRequest(nil, request)
-	approvalResponse := connectorActionApprovalItemFromRequest(request)
+	approvalResponse := server.connectorActionApprovalItemFromRequest(request)
 	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
 		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
@@ -867,7 +868,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if exactApproval.Preview["client_secret"] != actions.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a normalized sensitive value: %#v", exactApproval.Preview)
 	}
-	redactedApproval := connectorActionApprovalItemFromRequest(request)
+	redactedApproval := server.connectorActionApprovalItemFromRequest(request)
 	if redactedApproval.Preview["body"] == "password=visible-for-approval internal_abc123" {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}

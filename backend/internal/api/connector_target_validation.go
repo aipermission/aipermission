@@ -5,15 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) validateConnectorTransportConfig(ctx context.Context, store *connectormgmt.Store, projectID int64, config map[string]any) error {
-	return connectormgmt.ValidateTransport(ctx, store, projectID, config, func(kind string) bool {
-		adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
-		return adapter != nil
-	})
+func (s *Server) validateConnectorTransportConfig(ctx context.Context, runtime databaseRuntime, projectID int64, config map[string]any) error {
+	return s.connectorCatalog(runtime).ValidateTargetTransport(ctx, projectID, config)
 }
 
 func handleConnectorTargetError(w http.ResponseWriter, err error) {

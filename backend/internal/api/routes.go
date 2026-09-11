@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -23,7 +22,7 @@ func (s *Server) routes() {
 	})
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
-	connectorQueries := connectormgmt.NewHTTPHandlers(connectorManagement.QueryScope)
+	connectorHTTP := connectorManagement.HTTPHandlers()
 	connectorTargets := connectorTargetHandlers{s}
 	mcp := mcpHandlers{s}
 
@@ -47,7 +46,7 @@ func (s *Server) routes() {
 		Console:            connectorapi.NewLiveConsoleHTTPHandlers(s.consoleSessionHTTPScope),
 		BulkConsole:        s.access.NewBulkHTTPHandlers(s.bulkCommandHTTPScope),
 		CommandRequests:    s.access.NewCommandHTTPHandlers(s.commandRequestHTTPScope),
-		ConnectorApprovals: connectormgmt.NewConnectorApprovalHTTPHandlers(s.connectorApprovalHTTPScope),
+		ConnectorApprovals: connectorHTTP.Approvals,
 		LocalActions:       s.localConnectorActionHTTP(),
 		History:            observation.History,
 
@@ -56,21 +55,17 @@ func (s *Server) routes() {
 		VaultApprovals: gatewayvault.NewVaultApprovalHTTPHandlers(s.vaultRequestHTTPScope),
 		FileTransfers:  s.fileTransferHTTPHandlers(),
 
-		ConnectorQueries: connectorQueries,
-		CombinedMutations: connectormgmt.NewCombinedMutationHTTPHandler(
-			connectorManagement.CombinedMutationScope,
-		),
-		TargetMutations: connectormgmt.NewTargetMutationHTTPHandler(connectorManagement.TargetMutationScope),
-		HostPing:        connectormgmt.NewHostPingHTTPHandler(connectorManagement.HostPingScope),
-		TestTarget:      connectorTargets.testConnectorTargetDraft,
-		DeleteTarget:    connectorTargets.deleteConnectorTarget,
-		ProfileMutations: connectormgmt.NewProfileMutationHTTPHandler(
-			connectorManagement.ProfileMutationScope,
-		),
-		ProfileProvision: connectormgmt.NewProvisioningHTTPHandler(connectorManagement.ProvisioningScope),
-		ProfileBackup:    connectormgmt.NewProfileBackupHTTPHandler(connectorManagement.ProfileBackupScope),
-		ProfileDelete:    connectormgmt.NewProfileDeletionHTTPHandler(connectorManagement.ProfileDeletionScope),
-		ProfileTest:      connectormgmt.NewProfileTestingHTTPHandler(connectorManagement.ProfileTestingScope),
+		ConnectorQueries:  connectorHTTP.Queries,
+		CombinedMutations: connectorHTTP.CombinedMutations,
+		TargetMutations:   connectorHTTP.TargetMutations,
+		HostPing:          connectorHTTP.HostPing,
+		TestTarget:        connectorTargets.testConnectorTargetDraft,
+		DeleteTarget:      connectorTargets.deleteConnectorTarget,
+		ProfileMutations:  connectorHTTP.ProfileMutations,
+		ProfileProvision:  connectorHTTP.ProfileProvision,
+		ProfileBackup:     connectorHTTP.ProfileBackup,
+		ProfileDelete:     connectorHTTP.ProfileDelete,
+		ProfileTest:       connectorHTTP.ProfileTest,
 
 		Messages: gatewayoperations.NewMessageHTTPHandlers(s.messageQueueScope), Audit: observation.Audit,
 		MCPRuntime:          s.access.NewMCPRuntimeHTTPHandlers(s.mcpRuntimeHTTPScope),

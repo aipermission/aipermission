@@ -13,7 +13,7 @@ func (s *Server) runtimeConsoleOpener(runtime databaseRuntime) gatewayoperations
 		if err != nil {
 			return nil, err
 		}
-		target, _, err := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle()).ResolveConnectorActionTarget(ctx, targetRef)
+		target, _, err := s.connectorCatalog(runtime).ResolveActionTarget(ctx, targetRef)
 		if err != nil {
 			return nil, err
 		}

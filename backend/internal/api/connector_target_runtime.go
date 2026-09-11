@@ -1,16 +1,9 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"strings"
-
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
-
-func (s *Server) ensureConnectorRuntimeSurfacesForProfile(ctx context.Context, store *connectormgmt.Store, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
-	return s.connectorManagementApplication().EnsureRuntimeSurfaces(ctx, store, target, profile)
-}
 
 func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := s.activeRuntimeOrLocked(w)
@@ -22,8 +15,7 @@ func (s connectorTargetHandlers) runConnectorTargetOperation(w http.ResponseWrit
 		return
 	}
 	operation := strings.TrimSpace(r.PathValue("operation"))
-	store := connectormgmt.NewStore(runtime.StoragePort().DatabaseHandle())
-	target, err := store.GetTarget(r.Context(), targetID)
+	target, err := s.connectorCatalog(runtime).Target(r.Context(), targetID)
 	if err != nil {
 		handleConnectorTargetError(w, err)
 		return

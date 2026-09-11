@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -59,7 +60,9 @@ func TestPreparedCredentialUpdateFailsAtomically(t *testing.T) {
 				}
 				_, err = connectormanagement.UpdatePreparedCredentialProfile(
 					t.Context(), connectortargets.NewTxStore(tx), changed, stale, prepared,
-					fixture.server.connectorCredentialPreparationPorts(runtime), fixture.server.ensureConnectorRuntimeSurfacesForProfile,
+					fixture.server.connectorCredentialPreparationPorts(runtime), func(ctx context.Context, _ *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+						return fixture.server.connectorCatalog(runtime).EnsureRuntimeSurfacesInTx(ctx, tx, target, profile)
+					},
 				)
 				return err
 			})

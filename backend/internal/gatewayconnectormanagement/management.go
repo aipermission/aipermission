@@ -2,7 +2,6 @@
 package gatewayconnectormanagement
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -42,15 +41,10 @@ type UpdateTargetWithProfileRequest = connectormanagement.UpdateTargetWithProfil
 type ActionPermission = connectortargets.ActionPermission
 type ActionRequest = connectortargets.ActionRequest
 type CredentialProfile = connectortargets.CredentialProfile
-type InvalidateActionRequestsForTargetInput = connectortargets.InvalidateActionRequestsForTargetInput
-type InvalidateActionRequestsForTargetResult = connectortargets.InvalidateActionRequestsForTargetResult
-type ListTargetsFilter = connectortargets.ListTargetsFilter
 type RuntimeSurface = connectortargets.RuntimeSurface
-type Store = connectortargets.Store
 type Target = connectortargets.Target
 type ValidationError = connectortargets.ValidationError
 type ConnectorApprovalItem = connectorapproval.Item
 type ConnectorApprovalNoteRequest = connectorapproval.NoteRequest
 type ConnectorApprovalScope = connectorapproval.Scope
 type ConnectorApprovalWorkflow = connectorapproval.Workflow
-type CapabilityStore = accesscontrol.CapabilityStore

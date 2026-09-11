@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -63,12 +64,41 @@ type CapabilityDependencies struct {
 
 type Dependencies struct {
 	Active       func(http.ResponseWriter) (Workspace, bool)
+	Approvals    connectorapproval.ScopeProvider
 	Capabilities CapabilityDependencies
 }
 
 type Component struct{ dependencies Dependencies }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
+
+type HTTPHandlers struct {
+	Queries           *connectormanagement.HTTPHandlers
+	Approvals         *connectorapproval.HTTPHandlers
+	CombinedMutations *connectormanagement.CombinedMutationHTTPHandler
+	TargetMutations   *connectormanagement.TargetMutationHTTPHandler
+	HostPing          *connectormanagement.HostPingHTTPHandler
+	ProfileMutations  *connectormanagement.ProfileMutationHTTPHandler
+	ProfileProvision  *connectormanagement.ProvisioningHTTPHandler
+	ProfileBackup     *connectormanagement.ProfileBackupHTTPHandler
+	ProfileDelete     *connectormanagement.ProfileDeletionHTTPHandler
+	ProfileTest       *connectormanagement.ProfileTestingHTTPHandler
+}
+
+func (component *Component) HTTPHandlers() HTTPHandlers {
+	return HTTPHandlers{
+		Queries:           connectormanagement.NewHTTPHandlers(component.QueryScope),
+		Approvals:         connectorapproval.NewHTTPHandlers(component.dependencies.Approvals),
+		CombinedMutations: connectormanagement.NewCombinedMutationHTTPHandler(component.CombinedMutationScope),
+		TargetMutations:   connectormanagement.NewTargetMutationHTTPHandler(component.TargetMutationScope),
+		HostPing:          connectormanagement.NewHostPingHTTPHandler(component.HostPingScope),
+		ProfileMutations:  connectormanagement.NewProfileMutationHTTPHandler(component.ProfileMutationScope),
+		ProfileProvision:  connectormanagement.NewProvisioningHTTPHandler(component.ProvisioningScope),
+		ProfileBackup:     connectormanagement.NewProfileBackupHTTPHandler(component.ProfileBackupScope),
+		ProfileDelete:     connectormanagement.NewProfileDeletionHTTPHandler(component.ProfileDeletionScope),
+		ProfileTest:       connectormanagement.NewProfileTestingHTTPHandler(component.ProfileTestingScope),
+	}
+}
 
 func (component *Component) active(w http.ResponseWriter) (Workspace, bool) {
 	if component == nil || component.dependencies.Active == nil {
@@ -114,7 +144,7 @@ func (component *Component) targetMutation(workspace Workspace) connectormanagem
 		AcquireExclusive: workspace.Storage.AcquireExclusive,
 		WithTransaction:  workspace.Storage.Transaction,
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
+			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
 			return workspace.Lifecycle.AfterChange(ctx, change)
@@ -139,7 +169,7 @@ func (component *Component) profileMutation(workspace Workspace) connectormanage
 			return workspace.Credentials.BeforeCreate(ctx, target)
 		},
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
+			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
 			return workspace.Lifecycle.AfterChange(ctx, change)
@@ -161,7 +191,7 @@ func (component *Component) CombinedMutationScope(w http.ResponseWriter) (connec
 	}, true
 }
 
-func (component *Component) EnsureRuntimeSurfaces(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (component *Component) ensureRuntimeSurfaces(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 	if store == nil {
 		return nil
 	}
@@ -198,7 +228,7 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 		EncryptSecret:   workspace.Storage.EncryptSecret,
 		WithTransaction: workspace.Storage.Transaction,
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return component.EnsureRuntimeSurfaces(ctx, store, target, profile)
+			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AuditRequired: func(ctx context.Context, action string, payload any) error {
 			return workspace.Observation.AuditRequired(ctx, action, payload)
