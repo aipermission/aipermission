@@ -8,10 +8,10 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type ScopeRuntime interface {

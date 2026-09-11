@@ -1,4 +1,6 @@
-package gatewayconnectorapi
+// Package connectorports binds connector contracts to workspace-scoped
+// gateway capabilities without re-exporting connector-owned types.
+package connectorports
 
 import (
 	"context"
@@ -6,12 +8,13 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
+	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 var ErrRuntimeUnavailable = errors.New("connector runtime is unavailable")
@@ -61,8 +64,6 @@ type PortsDependencies struct {
 }
 
 type PortsComponent struct{ dependencies PortsDependencies }
-
-type TargetLifecycleRuntimePort = connectortransport.TargetLifecycleRuntimePort
 
 func NewPorts(dependencies PortsDependencies) *PortsComponent {
 	return &PortsComponent{dependencies: dependencies}
@@ -116,7 +117,7 @@ func (gateway PeerGateway) ConnectorTrustStorePath() string {
 type RouteGateway struct{ PeerGateway }
 
 func (gateway RouteGateway) ConnectorActiveRuntimeAvailable(w http.ResponseWriter) bool {
-	return gateway.component != nil && gateway.component.dependencies.Routes.ActiveRuntime(w)
+	return gateway.component != nil && gateway.component.dependencies.Routes.ActiveRuntime != nil && gateway.component.dependencies.Routes.ActiveRuntime(w)
 }
 
 func (gateway RouteGateway) ConnectorChangeVaultPeerTrust(ctx context.Context, change func() error) error {
@@ -140,8 +141,9 @@ func (component *PortsComponent) LiveConsoleGateway(workspace Workspace) LiveCon
 	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), workspace: workspace}
 }
 
-func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*connectorapi.RuntimeSession, error) {
-	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil {
+func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*console.RuntimeSession, error) {
+	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil ||
+		gateway.component.dependencies.LiveConsole.TransportAdapter == nil || gateway.component.dependencies.LiveConsole.TargetAdapter == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	store := connectortargets.NewStore(gateway.workspace.runtime.Database)
@@ -161,7 +163,7 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.RuntimeOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), console.RuntimeOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
 }
 
 type RuntimeActionGateway struct {

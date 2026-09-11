@@ -94,7 +94,7 @@ Connector work has two classes:
 
 If a connector cannot fit the normal structured path, treat that as a design
 review signal before adding gateway-owned adapter capabilities. Adapter
-capabilities must be expressed through the typed `internal/connectorapi`
+capabilities must be expressed through the typed `internal/gatewayconnectorapi`
 interfaces so runtime-integrated connectors do not invent parallel server,
 runtime, lifecycle, or credential-resource contracts.
 
@@ -105,8 +105,8 @@ peer-identity, action-completion, transfer, or lifecycle capabilities only when
 that operation needs them. Raw database handles, Vault handles, untyped resource
 maps, the concrete runtime, and the concrete gateway must never cross this
 boundary. Keep read-only peer identity access separate from trust-store mutation.
-The connector API and API composition layer have regression tests for both the
-declared interfaces and the concrete facade method sets; expanding one is an
+The connector contract and API composition layer have regression tests for both the
+declared interfaces and the concrete port method sets; expanding one is an
 architecture change that requires review.
 
 Built-in runtime adapters are constructed explicitly. Each connector-owned

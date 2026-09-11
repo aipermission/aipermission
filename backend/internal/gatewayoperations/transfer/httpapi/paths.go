@@ -9,9 +9,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 

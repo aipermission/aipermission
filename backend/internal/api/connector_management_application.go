@@ -7,9 +7,11 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
 type provisionConnectorCredentialProfileRequest = connectormgmt.ProvisionRequest
@@ -107,7 +109,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 				}
 				return nil
 			},
-			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectorapi.TargetView, profile connectorapi.CredentialProfileView) bool {
+			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
 				adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind)
 				if adapter == nil {
 					return false
@@ -151,8 +153,8 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 			OperationGateway: s.connectorPorts.TargetOperationGatewayProvider(s.connectorPortsWorkspace(runtime)),
 		},
 		Network: connectormgmt.NetworkPorts{
-			Probe: func(ctx context.Context, request connectorapi.NetworkDialRequest) error {
-				transport := connectorapi.NetworkTransport(s.connectorWorkspace(runtime), s.connectorAPIAdapterFor, s.connectorTrustStorePath)
+			Probe: func(ctx context.Context, request connectors.NetworkDialRequest) error {
+				transport := connectorports.NetworkTransport(s.connectorWorkspace(runtime), s.connectorAPIAdapterFor, s.connectorTrustStorePath)
 				connection, err := transport.DialConnectorTCP(ctx, request)
 				if err != nil {
 					return err

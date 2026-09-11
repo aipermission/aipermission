@@ -8,12 +8,12 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )

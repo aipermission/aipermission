@@ -1,6 +1,6 @@
 package api
 
-import "github.com/aipermission/aipermission/backend/internal/connectorapi"
+import connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 
 type startDownloadRequest struct {
 	RuntimeID      int64  `json:"runtime_id"`

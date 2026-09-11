@@ -188,22 +188,23 @@ layer. The adapter is responsible for polling/finalizing the action, redacting
 intermediate responses, syncing history, and providing MCP assistant hints.
 Connector packages should not add their own request lifecycle tables.
 
-Connector-specific gateway capabilities use the adapter contracts in
-`internal/connectorapi`. Connector-owned adapter implementations are resolved
-through the generic bridge in `internal/api/connector_api_adapters.go`. SSH uses
+Connector-specific gateway capabilities use the canonical adapter contracts in
+`internal/gatewayconnectorapi`. Connector-owned adapter implementations are
+resolved through the generic composition component. SSH uses
 those contracts for persistent PTY sessions, SFTP/file transfer, host-key
 approval, generated/imported gateway keys, and remote authorized_keys cleanup.
 The generic HTTP handlers should ask the adapter what the connector supports;
 they should not branch on `kind == "ssh"` or `kind == "postgres"`.
 
-Adapter contracts are typed in `internal/connectorapi`. Runtime-backed
+Adapter contracts are owned by `internal/gatewayconnectorapi`. Runtime-backed
 connectors receive operation-specific runtime and gateway ports such as
 `ConnectorDataRuntime`, `ActionRuntime`, `TransferRuntime`,
 `RuntimeActionGateway`, and `FileTransferGateway`. Lifecycle operations use
 separate `TargetDeletionGateway`, `TargetOperationGateway`, peer-identity, or
 console-restart ports so connection tests and credential canonicalization do
 not inherit mutation authority. Do not create connector-local copies of those
-interfaces. Extending the adapter surface should mean extending `connectorapi`
+interfaces. Extending the adapter surface should mean extending
+`gatewayconnectorapi`
 once and updating every affected adapter and exact-method-set test.
 
 New connectors such as HTTP API connectors should follow the

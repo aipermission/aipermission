@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type adapter struct{}

@@ -4,11 +4,11 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type isolatedTestAdapter struct{}

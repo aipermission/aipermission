@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 

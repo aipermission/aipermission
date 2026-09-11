@@ -6,10 +6,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func BrowseRemoteFilesAction(ctx context.Context, server connectorapi.RuntimeActionGateway, runtime connectorapi.ActionRuntime, runtimeID int64, remotePath string) (connectors.ActionResult, error) {

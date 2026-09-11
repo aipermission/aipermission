@@ -8,11 +8,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 var kubeConsoleNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)

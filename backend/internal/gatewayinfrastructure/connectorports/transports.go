@@ -1,10 +1,10 @@
-package gatewayconnectorapi
+package connectorports
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func transportDependencies(workspace Workspace, adapterFor func(string) connectorapi.Adapter, trustStorePath func() string) connectortransport.Dependencies {

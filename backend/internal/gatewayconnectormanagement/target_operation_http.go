@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 

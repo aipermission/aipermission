@@ -13,8 +13,9 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -82,7 +83,7 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 
 func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T) {
 	database := openAPITestDB(t)
-	transport := connectorapi.NetworkTransport(connectorBaseWorkspace(newTestDatabaseRuntime(t, database)), nil, nil)
+	transport := connectorports.NetworkTransport(connectorBaseWorkspace(newTestDatabaseRuntime(t, database)), nil, nil)
 
 	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
 		Mode:               "over_fixture",
@@ -96,7 +97,7 @@ func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T)
 }
 
 func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
-	transport := connectorapi.CommandTransport(connectorapi.Workspace{}, nil, nil)
+	transport := connectorports.CommandTransport(connectorports.Workspace{}, nil, nil)
 	_, err := transport.RunConnectorCommand(t.Context(), connectors.CommandRunRequest{
 		Mode:    "over_fixture",
 		Command: "fixture status",
@@ -109,7 +110,7 @@ func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
 func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := connectorapi.ApprovedNetworkTransport(connectorBaseWorkspace(runtime), nil, nil, nil)
+	transport := connectorports.ApprovedNetworkTransport(connectorBaseWorkspace(runtime), nil, nil, nil)
 
 	_, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		Mode:               "over_ssh",
@@ -118,7 +119,7 @@ func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 		SourceTargetRef:    "postgres:1:1",
 		TransportTargetRef: "ssh:2:2",
 	})
-	if !errors.Is(err, connectorapi.ErrApprovalChanged) {
+	if !errors.Is(err, connectortransport.ErrApprovalChanged) {
 		t.Fatalf("undeclared transport dependency error = %v", err)
 	}
 }
@@ -149,14 +150,14 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 		t.Fatalf("update transport profile: %v", err)
 	}
 
-	transport := connectorapi.ApprovedNetworkTransport(
+	transport := connectorports.ApprovedNetworkTransport(
 		(&Server{}).connectorWorkspace(newTestDatabaseRuntime(t, database)), nil, nil, dependencies,
 	)
 	connection, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		SourceProjectID: targetView.ProjectID, Mode: "over_ssh", Host: "127.0.0.1", Port: 5432,
 		TransportTargetRef: profile.TargetRef,
 	})
-	if !errors.Is(err, connectorapi.ErrApprovalChanged) {
+	if !errors.Is(err, connectortransport.ErrApprovalChanged) {
 		if connection != nil {
 			_ = connection.Close()
 		}

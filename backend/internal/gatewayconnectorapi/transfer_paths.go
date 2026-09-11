@@ -1,4 +1,4 @@
-package connectorapi
+package gatewayconnectorapi
 
 // FileTransferPathPolicy keeps remote identities separate from filesystem paths.
 // Adapters without this capability retain the gateway's filesystem semantics.

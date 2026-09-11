@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"

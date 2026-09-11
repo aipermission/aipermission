@@ -1,11 +1,11 @@
 package adaptercontainers
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	dockerapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/docker/apiadapter"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	kubernetesapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes/apiadapter"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func Register(registry *connectorapi.Registry) error {

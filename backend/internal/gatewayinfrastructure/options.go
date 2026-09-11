@@ -1,10 +1,10 @@
 package gatewayinfrastructure
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type componentOptions struct {

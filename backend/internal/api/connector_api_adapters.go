@@ -2,24 +2,36 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
+
+func (s *Server) connectorRunningHint(request connectormgmt.ActionRequest) string {
+	adapter, _ := s.connectorAPIAdapterFor(request.ConnectorKind).(connectorapi.RuntimeAdapter)
+	if adapter == nil {
+		return ""
+	}
+	return strings.TrimSpace(adapter.RunningHint(request))
+}
 
 func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []actions.ResolvedDependency) connectorapi.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
 	capabilities, _ := resolver.(connectorRuntimeCapabilities)
 	if capabilities == nil {
 		capabilities = connectorRuntimeCapabilities{}
 	}
 	workspace := server.connectorWorkspace(runtime)
-	capabilities[connectorapi.NetworkTransportCapabilityName] = connectorapi.ApprovedNetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
-	capabilities[connectorapi.CommandTransportCapabilityName] = connectorapi.ApprovedCommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
+	capabilities[connectors.NetworkTransportCapabilityName] = connectorports.ApprovedNetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
+	capabilities[connectors.CommandTransportCapabilityName] = connectorports.ApprovedCommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
 	return capabilities
 }
 
@@ -32,19 +44,19 @@ func (s *Server) connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAda
 	return adapter
 }
 
-type connectorRuntimeCapabilities map[string]connectorapi.RuntimeCapability
+type connectorRuntimeCapabilities map[string]connectors.RuntimeCapability
 
-func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectorapi.RuntimeCapability {
+func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.RuntimeCapability {
 	return c[name]
 }
 
-func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectorapi.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectors.RuntimeCapabilityResolver {
 	capabilities := connectorRuntimeCapabilities{}
 	if server != nil && runtime != nil {
 		workspace := server.connectorWorkspace(runtime)
-		networkTransport := connectorapi.NetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
+		networkTransport := connectorports.NetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
 		capabilities[networkTransport.ConnectorRuntimeCapability()] = networkTransport
-		commandTransport := connectorapi.CommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
+		commandTransport := connectorports.CommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
 		capabilities[commandTransport.ConnectorRuntimeCapability()] = commandTransport
 	}
 	if server != nil {

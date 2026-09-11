@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	filetransferhttp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/httpapi"
 )
 
@@ -46,7 +47,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 		return filetransferhttp.ConnectorPorts{}, err
 	}
 	boundary := server.connectorActionApplication().NewCredentialBoundary(nil)
-	transferRuntime := connectors.TransferRuntimeWithSecretAccessor(server.connectorWorkspace(runtime), target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
+	transferRuntime := connectorports.TransferRuntimeWithSecretAccessor(server.connectorWorkspace(runtime), target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
 		boundary.AddStructured(secrets)
 		return connectorSecretAccessor{values: secrets, boundary: boundary}
 	})

@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 var errTransferCredentialResourcesReadOnly = errors.New("file transfer credential resources are read-only")

@@ -3,12 +3,12 @@
 package builtin
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/adaptercontainers"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/adapterresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/catalogdata"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/catalogruntime"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type Catalog struct {

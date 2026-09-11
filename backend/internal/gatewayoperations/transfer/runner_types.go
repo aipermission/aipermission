@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 var ErrRuntimeClosing = errors.New("file transfer runtime is shutting down")

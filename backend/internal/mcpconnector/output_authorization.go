@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 

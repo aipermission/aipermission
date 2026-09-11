@@ -9,7 +9,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
 func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
@@ -18,7 +18,6 @@ func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
 		value   any
 		methods []string
 	}{
-		{name: "lifecycle runtime", value: connectorports.TargetLifecycleRuntimePort{}, methods: []string{"ConnectorConsoleSessions", "ConnectorLocalExecutionPrincipal", "CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
 		{name: "peer gateway", value: connectorports.PeerGateway{}, methods: []string{"ConnectorTrustStorePath"}},
 		{name: "live console gateway", value: connectorports.LiveConsoleGateway{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
 		{name: "route gateway", value: connectorports.RouteGateway{}, methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},

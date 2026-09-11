@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"

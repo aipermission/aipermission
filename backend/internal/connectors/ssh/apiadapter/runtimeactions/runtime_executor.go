@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
@@ -14,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 const (

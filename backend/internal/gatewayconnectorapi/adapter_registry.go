@@ -1,7 +1,7 @@
-// Package connectorapi owns the optional gateway adapter registry for
+// Package gatewayconnectorapi owns the optional gateway adapter registry for
 // connector capabilities that cannot be implemented by the structured action
 // interface alone.
-package connectorapi
+package gatewayconnectorapi
 
 import (
 	"context"
@@ -204,9 +204,6 @@ type TransferBatch struct {
 	Status    string
 	ItemCount int
 }
-
-type RuntimeSession = console.RuntimeSession
-type RuntimeOpenRequest = console.RuntimeOpenRequest
 
 // RuntimeCapabilityGateway exposes connector-owned runtime capabilities to
 // adapters executing outside the structured action pipeline.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 )
 
 type deadlineRecorder struct {
@@ -119,8 +119,8 @@ func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
 			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, ConnectorActionRequestTimeout)
 		}
 	}
-	if ConnectorActionRequestTimeout <= connectorapi.MaxCommandTimeout {
-		t.Fatalf("connector action timeout %s must exceed command timeout %s", ConnectorActionRequestTimeout, connectorapi.MaxCommandTimeout)
+	if ConnectorActionRequestTimeout <= connectortransport.MaxCommandTimeout {
+		t.Fatalf("connector action timeout %s must exceed command timeout %s", ConnectorActionRequestTimeout, connectortransport.MaxCommandTimeout)
 	}
 }
 

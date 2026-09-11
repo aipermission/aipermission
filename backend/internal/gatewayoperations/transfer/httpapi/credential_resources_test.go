@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type mutableCredentialResourceStore struct {

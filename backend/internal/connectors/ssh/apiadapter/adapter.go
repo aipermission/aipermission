@@ -5,11 +5,11 @@
 package apiadapter
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/running"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/runtimeactions"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/transport"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type adapter struct {

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, error) {

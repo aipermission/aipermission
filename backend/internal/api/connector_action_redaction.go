@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {

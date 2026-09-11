@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 

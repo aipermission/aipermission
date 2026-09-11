@@ -1,11 +1,11 @@
 package adapterresources
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	s3apiadapter "github.com/aipermission/aipermission/backend/internal/connectors/s3/apiadapter"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	sshapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func Register(registry *connectorapi.Registry) error {

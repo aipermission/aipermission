@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type adapter struct{}

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
@@ -20,8 +20,8 @@ func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 		DecodeJSON: decodeJSON,
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: connectormgmt.WriteTargetError,
-		Response: func(request connectormgmt.ActionRequest, result connectorapi.ActionResult, replayed bool) any {
-			response := connectorapi.MCPResponseFromResult(s.connectorAdapterRegistry(), request, result)
+		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
+			response := actions.MCPResponseFromResult(request, result, s.connectorRunningHint)
 			response.Replayed = replayed
 			return response
 		},
@@ -34,7 +34,7 @@ func writeConnectorActionTerminalPersistenceError(w http.ResponseWriter, err err
 		return false
 	}
 	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-		"status": connectorapi.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown",
+		"status": connectors.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown",
 		"request_id": persistence.RequestID, "error": actions.TerminalPersistenceErrorText,
 		"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
 	})

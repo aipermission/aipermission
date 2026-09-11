@@ -5,9 +5,9 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 

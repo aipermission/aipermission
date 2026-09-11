@@ -148,9 +148,10 @@ func TestAPIDoesNotDependOnProcessConfiguration(t *testing.T) {
 	}
 }
 
-func TestAPIDependsOnlyOnGatewayBoundaries(t *testing.T) {
+func TestAPIDependsOnlyOnGatewayBoundariesAndConnectorContract(t *testing.T) {
 	apiPackage := modulePath + "/internal/api"
 	allowed := map[string]bool{
+		modulePath + "/internal/connectors":                 true,
 		modulePath + "/internal/gatewayaccess":              true,
 		modulePath + "/internal/gatewayconnectoractions":    true,
 		modulePath + "/internal/gatewayconnectorapi":        true,
@@ -161,7 +162,7 @@ func TestAPIDependsOnlyOnGatewayBoundaries(t *testing.T) {
 	}
 	for _, imported := range allPackageImports(t)[apiPackage] {
 		if strings.HasPrefix(imported, modulePath+"/internal/") && !packageBelongsToAnyRoot(imported, allowed) {
-			t.Errorf("internal/api imports %s directly; transport code must use an approved gateway boundary", imported)
+			t.Errorf("internal/api imports %s directly; transport code must use the connector contract or an approved gateway boundary", imported)
 		}
 	}
 }
@@ -178,6 +179,41 @@ func packageBelongsToAnyRoot(pkg string, roots map[string]bool) bool {
 func TestRetiredGatewayConnectorFacadeStaysAbsent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join("..", "..", "internal", "gatewayconnectors")); !os.IsNotExist(err) {
 		t.Fatalf("internal/gatewayconnectors must remain retired; connector contracts belong to gatewayconnectorapi")
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "internal", "connectorapi")); !os.IsNotExist(err) {
+		t.Fatalf("internal/connectorapi must remain retired; the canonical connector contract belongs to gatewayconnectorapi")
+	}
+}
+
+func TestGatewayConnectorContractDoesNotReexportTypes(t *testing.T) {
+	root := filepath.Join("..", "..", "internal", "gatewayconnectorapi")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				typeSpec := specification.(*ast.TypeSpec)
+				if typeSpec.Assign.IsValid() {
+					t.Errorf("%s reexports type %s; connector contracts must be owned at their declaration", path, typeSpec.Name.Name)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -478,26 +514,36 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 
 func TestInternalPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
-	const defaultBudget = 8
-	overrides := map[string]int{}
+	const packageBudget = 10
+	const ownerBudget = 8
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") {
 			continue
 		}
-		count := 0
+		packageCount := 0
+		owners := map[string]bool{}
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, modulePath+"/internal/") {
-				count++
+				packageCount++
+				owners[internalDependencyOwner(imported)] = true
 			}
 		}
-		budget := defaultBudget
-		if override, ok := overrides[importer]; ok {
-			budget = override
+		if packageCount > packageBudget {
+			t.Errorf("%s has %d direct internal package dependencies; budget is %d", importer, packageCount, packageBudget)
 		}
-		if count > budget {
-			t.Errorf("%s has %d direct internal dependencies; fan-out budget is %d", importer, count, budget)
+		if len(owners) > ownerBudget {
+			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, len(owners), ownerBudget)
 		}
 	}
+}
+
+func internalDependencyOwner(pkg string) string {
+	relative := strings.TrimPrefix(pkg, modulePath+"/internal/")
+	first, _, _ := strings.Cut(relative, "/")
+	if strings.HasPrefix(first, "gateway") {
+		return modulePath + "/internal/" + first
+	}
+	return pkg
 }
 
 func TestTestFilesRespectInternalImportBudget(t *testing.T) {

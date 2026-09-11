@@ -8,8 +8,8 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )

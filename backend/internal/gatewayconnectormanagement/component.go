@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type Transaction func(context.Context, func(*sql.Tx, connectormanagement.AuditAppender) error) error

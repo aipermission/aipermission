@@ -1,4 +1,4 @@
-package gatewayconnectorapi
+package connectorports
 
 import (
 	"context"

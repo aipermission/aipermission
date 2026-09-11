@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func TestComponentOptionsPreserveInjectedCatalogsAndIdentityGenerator(t *testing.T) {

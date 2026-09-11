@@ -99,7 +99,7 @@ New connector PR checklist:
   permission, approval, history, audit, or MCP tool families
 - document any intentional runtime adapter exception before using
   `RuntimeContext.Capabilities`; runtime adapters must use the shared typed
-  `internal/connectorapi` contracts instead of connector-local server/runtime
+  `internal/gatewayconnectorapi` contracts instead of connector-local server/runtime
   interfaces
 - keep frontend template metadata valid; supported icons are documented in
   `docs/development/add-a-connector.md`, and missing required slots/model

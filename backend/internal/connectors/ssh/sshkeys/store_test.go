@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )

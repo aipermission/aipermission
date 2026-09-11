@@ -3,10 +3,10 @@ package management
 import (
 	"context"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func (Management) LiveConsoleCapabilityKind() string {

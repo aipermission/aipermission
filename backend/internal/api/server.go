@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -19,7 +21,7 @@ type Server struct {
 	config                  serverConfig
 	access                  *gatewayaccess.Component
 	connectorActions        *gatewayactions.Component
-	connectorPorts          *connectorapi.PortsComponent
+	connectorPorts          *connectorports.PortsComponent
 	connectorManagement     *connectormgmt.Component
 	vault                   *gatewayvault.Component
 	infrastructure          *gatewayinfra.Component
@@ -34,7 +36,7 @@ type databaseRuntime = gatewayinfra.Runtime
 
 type ServerOption = gatewayinfra.ServerOption
 
-func WithConnectorRegistry(registry *connectorapi.ConnectorRegistry) ServerOption {
+func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
 	return gatewayinfra.WithConnectorRegistry(registry)
 }
 
@@ -139,11 +141,11 @@ func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 	return runtime.WorkspaceIdentity()
 }
 
-func (s *Server) connectorRegistry() *connectorapi.ConnectorRegistry {
+func (s *Server) connectorRegistry() *connectors.Registry {
 	if s != nil && s.infrastructure != nil && s.infrastructure.ConnectorRegistry() != nil {
 		return s.infrastructure.ConnectorRegistry()
 	}
-	return connectorapi.NewConnectorRegistry()
+	return connectors.NewRegistry()
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
@@ -153,7 +155,7 @@ func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
 	return connectorapi.NewRegistry()
 }
 
-func runtimeConnectorRegistry(runtime databaseRuntime) *connectorapi.ConnectorRegistry {
+func runtimeConnectorRegistry(runtime databaseRuntime) *connectors.Registry {
 	return runtime.ConnectorPort().ConnectorRegistry()
 }
 

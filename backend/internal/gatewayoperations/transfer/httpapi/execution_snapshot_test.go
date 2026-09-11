@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 

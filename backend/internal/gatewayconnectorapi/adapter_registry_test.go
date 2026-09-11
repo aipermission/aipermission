@@ -1,4 +1,4 @@
-package connectorapi
+package gatewayconnectorapi
 
 import (
 	"net/http"

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )

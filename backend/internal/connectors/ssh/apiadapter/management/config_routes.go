@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshconfig"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func (Management) approveHostKey(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {

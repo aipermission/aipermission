@@ -17,7 +17,7 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
-	gatewayconnectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -207,7 +207,7 @@ func newConnectorActionTestRuntime(
 		TokenStore:              tokenStore,
 		ConfiguredGatewaySecret: "test-password",
 		Registry:                registry,
-		AdapterRegistry:         gatewayconnectorapi.NewRegistry(),
+		AdapterRegistry:         connectorapi.NewRegistry(),
 		RuntimeInstanceID:       func() (string, error) { return "test-runtime", nil },
 	})
 	if err != nil {

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 const maxConfigParseBytes = 256 * 1024

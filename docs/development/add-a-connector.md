@@ -83,14 +83,14 @@ These rules are part of the connector contract:
 "redis"` branches to generic pages.
 
 Connector-specific gateway capabilities live behind adapter contracts in
-`internal/connectorapi` and are registered through the connector adapter
+`internal/gatewayconnectorapi` and are registered through the connector adapter
 registry. SSH uses those contracts for persistent PTY sessions, SFTP transfer, host-key approval, key
 generation/import, reviewed TCP transport, reviewed command transport, and
 remote authorized_keys cleanup. Generic route handlers must ask the adapter
 what the connector supports instead of branching on a connector kind.
 
 Adapter methods use the smallest applicable consumer-owned ports in
-`internal/connectorapi`, such as `ConnectorDataRuntime`, `ActionRuntime`,
+`internal/gatewayconnectorapi`, such as `ConnectorDataRuntime`, `ActionRuntime`,
 `TransferRuntime`, `TargetLifecycleRuntime`, `RuntimeActionGateway`,
 `FileTransferGateway`, `TargetDeletionGateway`, or `TargetOperationGateway`.
 Connection tests receive read-only peer identity rather than lifecycle
@@ -270,7 +270,7 @@ fresh action request.
 Synchronous connector actions can return `completed`, `failed`, or `error`
 directly from `ExecuteAction`. Long-running `running` actions require an
 explicit connector-owned runtime adapter built on the typed
-`internal/connectorapi` contracts. The generic gateway resolves that adapter so
+`internal/gatewayconnectorapi` contracts. The generic gateway resolves that adapter so
 polling, output finalization, redaction, history sync, and MCP assistant hints
 stay centralized. Do not invent connector-local polling tables.
 
@@ -500,13 +500,13 @@ Not expected for a normal connector:
 - project-specific tables, routes, filters, or token-scope checks
 - route-level branches such as `if kind == "redis"` or `if kind === "redis"`
 - connector-specific command/session/file-transfer tables
-- direct imports of `internal/api` or `internal/connectorapi`
+- direct imports of `internal/api`
 
 If a connector cannot fit the normal structured path, stop and write a design
 note first. Runtime-integrated connectors are maintainer-reviewed exceptions
 for reusable gateway capabilities such as live terminals, SFTP transfer,
 host-key approval, or another long-running local runtime surface. Those
-capabilities must be expressed once through typed `internal/connectorapi`
+capabilities must be expressed once through typed `internal/gatewayconnectorapi`
 contracts and then wired through generic handlers; they must not become
 connector-local shortcuts.
 
