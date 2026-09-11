@@ -66,38 +66,6 @@ func (component *Component) DatabasePasswordFailureCount(key string) int {
 	}
 	return component.databasePasswordLimiter.FailureCount(key)
 }
-func (component *Component) WaitMCPIP(ctx context.Context, key string) error {
-	if component == nil || component.mcpIPLimiter == nil {
-		return ErrComponentUnavailable
-	}
-	return component.mcpIPLimiter.Wait(ctx, key)
-}
-func (component *Component) RecordMCPIPFailure(key string) {
-	if component != nil && component.mcpIPLimiter != nil {
-		component.mcpIPLimiter.RecordFailure(key)
-	}
-}
-func (component *Component) RecordMCPIPSuccess(key string) {
-	if component != nil && component.mcpIPLimiter != nil {
-		component.mcpIPLimiter.RecordSuccess(key)
-	}
-}
-func (component *Component) WaitMCPToken(ctx context.Context, key string) error {
-	if component == nil || component.mcpTokenLimiter == nil {
-		return ErrComponentUnavailable
-	}
-	return component.mcpTokenLimiter.Wait(ctx, key)
-}
-func (component *Component) RecordMCPTokenFailure(key string) {
-	if component != nil && component.mcpTokenLimiter != nil {
-		component.mcpTokenLimiter.RecordFailure(key)
-	}
-}
-func (component *Component) RecordMCPTokenSuccess(key string) {
-	if component != nil && component.mcpTokenLimiter != nil {
-		component.mcpTokenLimiter.RecordSuccess(key)
-	}
-}
 func (component *Component) AllowVaultReveal(key string) bool {
 	return component != nil && component.vaultRevealLimiter != nil && component.vaultRevealLimiter.Allow(key)
 }

@@ -3,80 +3,46 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strings"
-	"time"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAuthContext, bool) {
-	ipLimitKey := s.access.RuntimeKey(r, "mcp")
-	if err := s.access.WaitMCPIP(r.Context(), ipLimitKey); err != nil {
-		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
-		return mcpAuthContext{}, false
-	}
-	tokenValue := strings.TrimSpace(r.Header.Get("X-API-Key"))
-	if tokenValue == "" {
-		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-		kind, value, ok := strings.Cut(authHeader, " ")
-		if ok && strings.EqualFold(kind, "Bearer") {
-			tokenValue = strings.TrimSpace(value)
+	var runtimes []databaseRuntime
+	authentication, err := s.access.AuthenticateMCP(r, func() []gatewayaccess.MCPTokenSource {
+		runtimes = s.unlockedRuntimeSnapshot()
+		sources := make([]gatewayaccess.MCPTokenSource, 0, len(runtimes))
+		for _, runtime := range runtimes {
+			sources = append(sources, runtime.StoragePort().TokenStore())
 		}
-	}
-	if tokenValue == "" {
-		s.access.RecordMCPIPFailure(ipLimitKey)
-		writeError(w, http.StatusUnauthorized, "missing API token")
+		return sources
+	})
+	if err != nil {
+		writeMCPAuthenticationError(w, err)
 		return mcpAuthContext{}, false
 	}
-	tokenLimitKey := s.mcpTokenRateLimitKey(tokenValue)
-	if err := s.access.WaitMCPToken(r.Context(), tokenLimitKey); err != nil {
-		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
+	if authentication.SourceIndex < 0 || authentication.SourceIndex >= len(runtimes) {
+		writeInternalError(w)
 		return mcpAuthContext{}, false
 	}
-
-	runtimes := s.unlockedRuntimeSnapshot()
-	matches := []mcpAuthContext{}
-	tokenHash := s.access.HashToken(tokenValue)
-	now := time.Now().UTC()
-	for _, runtime := range runtimes {
-		authenticated, err := runtime.StoragePort().TokenStore().AuthenticateHash(r.Context(), tokenHash, now)
-		if errors.Is(err, gatewayaccess.ErrTokenNotFound) {
-			continue
-		}
-		if err != nil {
-			writeInternalError(w)
-			return mcpAuthContext{}, false
-		}
-		auth := mcpAuthContext{TokenID: authenticated.ID, Name: authenticated.Name, runtime: runtime}
-		matches = append(matches, auth)
-	}
-	if len(matches) > 1 {
-		s.access.RecordMCPIPSuccess(ipLimitKey)
-		s.access.RecordMCPTokenSuccess(tokenLimitKey)
-		writeError(w, http.StatusConflict, "API token matches multiple unlocked databases; lock or revoke duplicate token copies before using MCP")
-		return mcpAuthContext{}, false
-	}
-	if len(matches) == 1 {
-		s.access.RecordMCPIPSuccess(ipLimitKey)
-		s.access.RecordMCPTokenSuccess(tokenLimitKey)
-		return matches[0], true
-	}
-	if len(runtimes) == 0 {
-		writeError(w, http.StatusLocked, "database is locked")
-		return mcpAuthContext{}, false
-	}
-
-	s.access.RecordMCPIPFailure(ipLimitKey)
-	s.access.RecordMCPTokenFailure(tokenLimitKey)
-	writeError(w, http.StatusUnauthorized, "invalid, revoked, or expired API token")
-	return mcpAuthContext{}, false
+	return mcpAuthContext{
+		TokenID: authentication.TokenID, Name: authentication.Name, runtime: runtimes[authentication.SourceIndex],
+	}, true
 }
 
-func (s *Server) mcpTokenRateLimitKey(tokenValue string) string {
-	tokenHash := strings.TrimPrefix(s.access.HashToken(tokenValue), "sha256:")
-	const fingerprintLength = 24
-	if len(tokenHash) > fingerprintLength {
-		tokenHash = tokenHash[:fingerprintLength]
+func writeMCPAuthenticationError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, gatewayaccess.ErrMCPAuthenticationTimeout):
+		writeError(w, http.StatusRequestTimeout, "authentication request timed out")
+	case errors.Is(err, gatewayaccess.ErrMCPTokenMissing):
+		writeError(w, http.StatusUnauthorized, "missing API token")
+	case errors.Is(err, gatewayaccess.ErrMCPTokenInvalid):
+		writeError(w, http.StatusUnauthorized, "invalid, revoked, or expired API token")
+	case errors.Is(err, gatewayaccess.ErrMCPTokenDuplicate):
+		writeError(w, http.StatusConflict, "API token matches multiple unlocked databases; lock or revoke duplicate token copies before using MCP")
+	case errors.Is(err, gatewayaccess.ErrMCPDatabaseLocked):
+		writeError(w, http.StatusLocked, "database is locked")
+	default:
+		writeInternalError(w)
 	}
-	return "mcp-token:" + tokenHash
 }
