@@ -179,6 +179,12 @@ func (i *Invalidator) SessionClosed(ctx context.Context, handle console.SessionH
 	return i.persistence.Revoke(ctx, handle.ID, handle.Generation)
 }
 
+func (i *Invalidator) SessionClosedReference(ctx context.Context, reference Reference) error {
+	return i.SessionClosed(ctx, console.SessionHandle{
+		ID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
+	})
+}
+
 func (i *Invalidator) closeReferences(ctx context.Context, references []Reference) error {
 	if err := i.validate(); err != nil {
 		return err

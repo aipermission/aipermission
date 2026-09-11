@@ -37,7 +37,11 @@ func (s *Server) connectorPeerTrustApplication() *connectorapi.PeerTrustCoordina
 				Identifier:       runtime.DatabaseIdentifier(),
 				AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 				InvalidateAll: func(ctx context.Context, reason string) error {
-					return s.invalidateAllVaultSessions(ctx, boundRuntime, reason)
+					lifecycle, err := s.vaultSessionLifecycle(boundRuntime)
+					if err != nil {
+						return err
+					}
+					return lifecycle.InvalidateAll(ctx, reason)
 				},
 			})
 		}

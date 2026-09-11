@@ -30,7 +30,11 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 		Project: gatewayvault.ProjectRuntimePorts{
 			RuntimeOrCreate: runtime.OperationsPort().ProjectVaultOrCreate,
 			InvalidateSessions: func(ctx context.Context, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
-				return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
+				lifecycle, err := s.vaultSessionLifecycle(runtime)
+				if err != nil {
+					return err
+				}
+				return lifecycle.InvalidateMutation(ctx, sessions, scope)
 			},
 			SessionEnvironment: func(ctx context.Context, runtimeID int64) (bool, error) {
 				err := requireSessionEnvironmentCapability(ctx, s, runtime, runtimeID)

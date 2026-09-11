@@ -9,32 +9,53 @@ import (
 )
 
 func (s *Server) configureVaultSessionRuntime(runtime databaseRuntime) error {
-	if runtime == nil || runtime.ConnectorPort().ConsoleSessionManager() == nil || runtime.SecurityPort().VaultLeaseStore() == nil {
-		return gatewayvault.ErrInvalidatorUnavailable
-	}
-	owner, err := s.vaultSessionInvalidator(runtime)
+	owner, err := s.vaultSessionLifecycle(runtime)
 	if err != nil {
 		return err
 	}
-	runtime.ConnectorPort().ConsoleSessionManager().SetAuthorizer(func(
-		ctx context.Context,
-		principal gatewayaccess.Principal,
-		session gatewayoperations.SessionAuthorization,
-		operation gatewayoperations.SessionOperation,
-		run func() error,
-	) error {
-		release, err := runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery(ctx)
-		if err != nil {
-			return err
-		}
-		defer release()
-		if err := runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, session, operation); err != nil {
-			return err
-		}
-		return run()
+	return owner.Configure()
+}
+
+func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.SessionLifecycle, error) {
+	if s == nil || runtime == nil || runtime.StoragePort().DatabaseHandle() == nil ||
+		runtime.SecurityPort().VaultLeaseStore() == nil || runtime.ConnectorPort().ConsoleSessionManager() == nil {
+		return nil, gatewayvault.ErrInvalidatorUnavailable
+	}
+	delivery := runtime.SecurityPort().VaultDeliveryCoordinator()
+	return s.vaultApplication().SessionLifecycle(gatewayvault.SessionLifecycleRuntime{
+		Database: runtime.StoragePort().DatabaseHandle(),
+		Leases:   runtime.SecurityPort().VaultLeaseStore(),
+		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
+		Principal: func() (gatewayaccess.Principal, error) {
+			return localExecutionPrincipal(runtime)
+		},
+		Requests: func(ctx context.Context) (gatewayvault.RequestInvalidator, error) {
+			owner, err := s.vaultRequestRuntime(ctx, runtime)
+			if err != nil {
+				return nil, err
+			}
+			return owner, nil
+		},
+		AcquireDelivery: delivery.AcquireDelivery,
+		InstallAuthorizer: func(guard gatewayvault.SessionAuthorizationGuard) {
+			runtime.ConnectorPort().ConsoleSessionManager().SetAuthorizer(func(
+				ctx context.Context,
+				principal gatewayaccess.Principal,
+				session gatewayoperations.SessionAuthorization,
+				operation gatewayoperations.SessionOperation,
+				run func() error,
+			) error {
+				return guard(ctx, func() error {
+					return runtime.SecurityPort().VaultLeaseStore().Authorize(ctx, principal, session, operation)
+				}, run)
+			})
+		},
+		InstallSessionClosed: func(hook func(gatewayvault.VaultSessionReference)) {
+			runtime.ConnectorPort().ConsoleSessionManager().SetSessionClosedHook(func(handle gatewayoperations.SessionHandle) {
+				hook(gatewayvault.VaultSessionReference{
+					SessionID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation,
+				})
+			})
+		},
 	})
-	runtime.ConnectorPort().ConsoleSessionManager().SetSessionClosedHook(func(handle gatewayoperations.SessionHandle) {
-		_ = owner.SessionClosed(context.Background(), handle)
-	})
-	return nil
 }

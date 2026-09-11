@@ -21,7 +21,11 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 		},
 		AcquireStop: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
-			if err := s.invalidateAllVaultSessions(ctx, runtime, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
+			lifecycle, err := s.vaultSessionLifecycle(runtime)
+			if err != nil {
+				return err
+			}
+			if err := lifecycle.InvalidateAll(ctx, "MCP execution stopped; send a fresh Vault request after it starts"); err != nil {
 				return err
 			}
 			owner, err := s.vaultRequestRuntime(ctx, runtime)

@@ -22,7 +22,11 @@ func (s *Server) connectorLifecycleApplication(runtime databaseRuntime) *connect
 			return s.redactForPersistence(ctx, runtime, value)
 		},
 		InvalidateVault: func(ctx context.Context, targetID, profileID int64, reason string) error {
-			return s.invalidateVaultSessionsForTargetProfile(ctx, runtime, targetID, profileID, reason)
+			lifecycle, err := s.vaultSessionLifecycle(runtime)
+			if err != nil {
+				return err
+			}
+			return lifecycle.InvalidateTargetProfile(ctx, targetID, profileID, reason)
 		},
 	})
 }

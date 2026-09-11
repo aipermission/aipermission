@@ -20,7 +20,11 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectS
 		},
 		AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
 		Invalidate: func(ctx context.Context, projectID int64) error {
-			return s.invalidateVaultProjectSessions(ctx, runtime, projectID, "project was archived; send a fresh Vault request")
+			lifecycle, err := s.vaultSessionLifecycle(runtime)
+			if err != nil {
+				return err
+			}
+			return lifecycle.InvalidateProject(ctx, projectID, "project was archived; send a fresh Vault request")
 		},
 	}, true
 }
