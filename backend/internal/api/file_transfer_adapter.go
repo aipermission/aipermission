@@ -14,7 +14,7 @@ func (s *Server) fileTransferWorkspace(w http.ResponseWriter) (filetransferhttp.
 	if !ok {
 		return nil, false
 	}
-	return runtime.OperationsPort(), true
+	return runtime, true
 }
 
 func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
@@ -22,7 +22,7 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
 	return filetransferhttp.InitializeWorkspaceRuntime(
-		runtime.OperationsPort(),
+		runtime,
 		runtime.StoragePort().DatabaseHandle(),
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
@@ -31,6 +31,10 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 			return connectorFileTransferPortsForID(ctx, s, runtime, runtimeID)
 		},
 	)
+}
+
+func (s *Server) stopFileTransferRuntime(runtime databaseRuntime) {
+	filetransferhttp.StopWorkspaceRuntime(runtime)
 }
 
 func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (filetransferhttp.ConnectorPorts, error) {

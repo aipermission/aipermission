@@ -81,7 +81,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
 	if err := server.configureVaultSessionRuntime(runtime); err != nil {
-		runtime.OperationsPort().FileTransferLifecycle().Stop()
+		server.stopFileTransferRuntime(runtime)
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)

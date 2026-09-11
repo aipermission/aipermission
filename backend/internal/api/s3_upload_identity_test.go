@@ -52,7 +52,7 @@ func TestS3MultipartOriginalFilenameIdentity(t *testing.T) {
 				t.Fatalf("stored locator = %q, want %q", batch.Items[0].RemotePath, want)
 			}
 			waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if !runtime.OperationsPort().FileTransferLifecycle().Registry().Wait(waitCtx) {
+			if !requireTransferJobs(t, runtime).Wait(waitCtx) {
 				cancel()
 				t.Fatal("multipart upload did not finish")
 			}

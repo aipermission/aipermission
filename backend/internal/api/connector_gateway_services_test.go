@@ -20,8 +20,8 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	defer cancelTransfer()
 	batchCtx, cancelBatch := context.WithCancel(context.Background())
 	defer cancelBatch()
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(1, cancelTransfer)
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(1, cancelBatch)
+	requireTransferJobs(t, runtime).RegisterFileCancel(1, cancelTransfer)
+	requireTransferJobs(t, runtime).RegisterBatchCancel(1, cancelBatch)
 
 	fixture.server.Close()
 
@@ -35,7 +35,7 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	}
 	lateCtx, cancelLate := context.WithCancel(context.Background())
 	defer cancelLate()
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(2, cancelLate)
+	requireTransferJobs(t, runtime).RegisterFileCancel(2, cancelLate)
 	if lateCtx.Err() == nil {
 		t.Fatal("closed runtime accepted a late transfer")
 	}

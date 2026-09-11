@@ -6,7 +6,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	gatewayconnectors "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
 	gatewayobservation "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/operations"
 	gatewaysecurity "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
 	gatewaystorage "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
@@ -42,10 +41,6 @@ func (runtime *adapter) StoragePort() gatewaystorage.Port {
 
 func (runtime *adapter) ConnectorPort() gatewayconnectors.Port {
 	return runtime.Runtime.ConnectorPort()
-}
-
-func (runtime *adapter) OperationsPort() gatewayoperations.Port {
-	return runtime.Runtime.OperationsPort()
 }
 
 func (runtime *adapter) ComponentStatePort() componentstate.Port {

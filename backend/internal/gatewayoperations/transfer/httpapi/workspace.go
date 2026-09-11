@@ -13,11 +13,7 @@ import (
 )
 
 // WorkspaceRuntime is the transfer-owned portion of an unlocked workspace.
-type WorkspaceRuntime interface {
-	FileTransferRuntime() *transferapp.Runtime
-	SetFileTransferRuntime(*transferapp.Runtime)
-	FileTransferLifecycle() *transferapp.Lifecycle
-}
+type WorkspaceRuntime = transferapp.Workspace
 
 type WorkspaceScope func(http.ResponseWriter) (WorkspaceRuntime, bool)
 
@@ -42,13 +38,13 @@ func InitializeWorkspaceRuntime(
 	observe transferapp.ObservationAudit,
 	resolve ConnectorPortsResolver,
 ) error {
-	if workspace == nil || workspace.FileTransferLifecycle() == nil {
-		return fmt.Errorf("file transfer workspace lifecycle is unavailable")
+	if workspace == nil {
+		return fmt.Errorf("file transfer workspace state is unavailable")
 	}
 	if resolve == nil {
 		return fmt.Errorf("file transfer connector resolver is unavailable")
 	}
-	runtime, err := workspace.FileTransferLifecycle().NewRuntime(database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
+	return transferapp.InitializeWorkspace(workspace, database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
 		ports, err := resolve(ctx, runtimeID)
 		if err != nil {
 			return transferapp.ConnectorPorts{}, err
@@ -58,11 +54,6 @@ func InitializeWorkspaceRuntime(
 			CredentialBoundary: ports.CredentialBoundary,
 		}, nil
 	})
-	if err != nil {
-		return err
-	}
-	workspace.SetFileTransferRuntime(runtime)
-	return nil
 }
 
 func NewWorkspaceHandlers(dependencies WorkspaceDependencies) *Handlers {
@@ -76,11 +67,16 @@ func NewWorkspaceHandlers(dependencies WorkspaceDependencies) *Handlers {
 			if !ok {
 				return nil, false
 			}
-			if workspace == nil || workspace.FileTransferRuntime() == nil {
+			if workspace == nil {
 				writeInternalError(w)
 				return nil, false
 			}
-			return workspace.FileTransferRuntime(), true
+			runtime, err := transferapp.RuntimeForWorkspace(workspace)
+			if err != nil {
+				writeInternalError(w)
+				return nil, false
+			}
+			return runtime, true
 		},
 		AdapterFor: dependencies.AdapterFor, DataPath: dependencies.DataPath,
 	})
@@ -95,8 +91,20 @@ func (s Handlers) CreateAndLaunchDownloadBatchForWorkspace(
 	archiveName string,
 	source string,
 ) (filetransfer.BatchRecord, error) {
-	if workspace == nil || workspace.FileTransferRuntime() == nil {
+	if workspace == nil {
 		return filetransfer.BatchRecord{}, fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	return s.CreateAndLaunchDownloadBatch(ctx, workspace.FileTransferRuntime(), authorization, runtimeID, remotePaths, archiveName, source)
+	runtime, err := transferapp.RuntimeForWorkspace(workspace)
+	if err != nil {
+		return filetransfer.BatchRecord{}, err
+	}
+	return s.CreateAndLaunchDownloadBatch(ctx, runtime, authorization, runtimeID, remotePaths, archiveName, source)
+}
+
+func WorkspaceReady(workspace WorkspaceRuntime) bool {
+	return workspace != nil && transferapp.WorkspaceReady(workspace)
+}
+
+func StopWorkspaceRuntime(workspace WorkspaceRuntime) {
+	transferapp.StopWorkspace(workspace)
 }

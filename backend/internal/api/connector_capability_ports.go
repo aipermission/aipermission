@@ -7,6 +7,7 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	filetransferhttp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/httpapi"
 )
 
 func (s *Server) connectorPortsApplication() *connectorapi.PortsComponent {
@@ -91,10 +92,10 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.W
 	}
 	workspace.Transfers = connectorapi.WorkspaceTransferPorts{
 		RunDownloadBatch: func(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
-			if runtime.OperationsPort().FileTransferRuntime() == nil {
+			if !filetransferhttp.WorkspaceReady(runtime) {
 				return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 			}
-			batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatchForWorkspace(ctx, runtime.OperationsPort(), authorization, runtimeID, paths, archiveName, source)
+			batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatchForWorkspace(ctx, runtime, authorization, runtimeID, paths, archiveName, source)
 			return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
 		},
 		RuntimeCapabilities: func(kind string) connectorapi.RuntimeCapabilityResolver {

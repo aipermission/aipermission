@@ -29,8 +29,8 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	control := &transferjobs.Control{}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterControl(batch.ID, control)
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(batch.ID, cancel)
+	requireTransferJobs(t, runtime).RegisterBatchControl(batch.ID, control)
+	requireTransferJobs(t, runtime).RegisterBatchCancel(batch.ID, cancel)
 	request := func(action string, wantCode int, wantStatus string) {
 		t.Helper()
 		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
@@ -93,8 +93,8 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Files.RegisterCancel(item.ID, cancel)
-	defer runtime.OperationsPort().FileTransferLifecycle().Registry().Files.UnregisterCancel(item.ID)
+	requireTransferJobs(t, runtime).RegisterFileCancel(item.ID, cancel)
+	defer requireTransferJobs(t, runtime).UnregisterFileCancel(item.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -139,8 +139,8 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.RegisterCancel(batch.ID, cancel)
-	defer runtime.OperationsPort().FileTransferLifecycle().Registry().Batches.UnregisterCancel(batch.ID)
+	requireTransferJobs(t, runtime).RegisterBatchCancel(batch.ID, cancel)
+	defer requireTransferJobs(t, runtime).UnregisterBatchCancel(batch.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {

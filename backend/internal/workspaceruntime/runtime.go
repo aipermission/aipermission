@@ -8,7 +8,6 @@ import (
 	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/connectors"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/observation"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/security"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/storage"
 )
@@ -23,7 +22,6 @@ type Runtime struct {
 	ActionIdentityKey []byte
 	Storage           storage.State
 	Connectors        connectorstate.State
-	Operations        operations.State
 	Security          security.State
 	Observation       observation.State
 	Components        componentstate.State
@@ -34,7 +32,6 @@ type Port interface {
 	WorkspaceDatabase() *sql.DB
 	StoragePort() storage.Port
 	ConnectorPort() connectorstate.Port
-	OperationsPort() operations.Port
 	SecurityPort() security.Port
 	ObservationPort() observation.Port
 	ComponentStatePort() componentstate.Port
@@ -65,7 +62,6 @@ func New(state foundation.State) *Runtime {
 		Connectors: connectorstate.New(
 			state.Registry, state.AdapterRegistry, state.Database, state.Identity.Vault, state.Identity.WorkspaceUUID,
 		),
-		Operations: operations.New(),
 		Components: componentstate.New(),
 		Security:   security.New(state.Database),
 	}
@@ -99,13 +95,6 @@ func (r *Runtime) ConnectorPort() connectorstate.Port {
 		return (*connectorstate.State)(nil)
 	}
 	return &r.Connectors
-}
-
-func (r *Runtime) OperationsPort() operations.Port {
-	if r == nil {
-		return (*operations.State)(nil)
-	}
-	return &r.Operations
 }
 
 func (r *Runtime) ComponentStatePort() componentstate.Port {

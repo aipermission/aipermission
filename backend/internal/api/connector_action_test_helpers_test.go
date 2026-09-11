@@ -219,7 +219,6 @@ func newConnectorActionTestRuntime(
 	if !bytes.Equal(runtime.ActionIdentity(), actionIdentityKey) {
 		t.Fatal("test runtime action identity does not match fixture")
 	}
-	t.Cleanup(runtime.OperationsPort().FileTransferLifecycle().Stop)
 	return runtime
 }
 

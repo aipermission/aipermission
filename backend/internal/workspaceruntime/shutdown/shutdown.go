@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
@@ -47,26 +48,23 @@ func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver,
 		sessions.CloseAll()
 	}
 	stopCommandRequests(runtime.DatabaseIdentifier(), resolveCommands)
-	operations := runtime.OperationsPort()
-	if transfers := operations.FileTransferRuntime(); transfers == nil {
-		operations.FileTransferLifecycle().Stop()
+	initialized, drained, err := transferapp.ShutdownWorkspace(
+		runtime, transferWait, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped,
+	)
+	if !initialized {
 		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.DatabaseIdentifier())
-	} else {
-		drained, err := transfers.Shutdown(
-			transferWait, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped,
-		)
-		if err != nil {
-			log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
-		}
-		if !drained {
-			go func() {
-				operations.FileTransferLifecycle().Wait(context.Background())
-				if err := closeStorage(runtime); err != nil {
-					log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
-				}
-			}()
-			return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", transferWait)
-		}
+	}
+	if err != nil {
+		log.Printf("mark running file transfers failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
+	}
+	if !drained {
+		go func() {
+			transferapp.WaitWorkspace(context.Background(), runtime)
+			if err := closeStorage(runtime); err != nil {
+				log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
+			}
+		}()
+		return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", transferWait)
 	}
 	return closeStorage(runtime)
 }
@@ -94,7 +92,7 @@ func Discard(runtime workspaceruntime.Port) error {
 	if runtime == nil {
 		return nil
 	}
-	runtime.OperationsPort().FileTransferLifecycle().Stop()
+	transferapp.StopWorkspace(runtime)
 	return closeStorage(runtime)
 }
 
