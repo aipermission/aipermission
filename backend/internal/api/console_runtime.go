@@ -19,7 +19,7 @@ func (s *Server) runtimeConsoleOpener(runtime databaseRuntime) gatewayoperations
 		}
 		adapter := s.connectorLiveConsoleTransportAdapterFor(target.ConnectorKind)
 		if adapter == nil {
-			return nil, connectormgmt.ErrInvalidTargetRef
+			return nil, connectormgmt.InvalidTargetRefError()
 		}
 		return adapter.OpenLiveConsole(ctx, s.connectorPortsApplication().LiveConsoleGateway(s.connectorPortsWorkspace(runtime)), s.connectorLiveRuntime(runtime, target.ConnectorKind), request)
 	}

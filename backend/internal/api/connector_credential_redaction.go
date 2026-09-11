@@ -1,5 +1,5 @@
 package api
 
-import "github.com/aipermission/aipermission/backend/internal/actionresult"
+import gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 
-type connectorCredentialBoundary = actionresult.CredentialBoundary
+type connectorCredentialBoundary = gatewayactions.CredentialBoundary

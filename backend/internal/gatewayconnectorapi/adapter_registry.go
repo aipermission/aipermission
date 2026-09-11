@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -349,8 +348,8 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 // RuntimeAdapter lets a connector provide gateway-owned async/runtime services.
 type RuntimeAdapter interface {
 	RuntimeCapabilities(server RuntimeActionGateway, runtime ActionRuntime) map[string]connectors.RuntimeCapability
-	SupportsRunning(prepared actions.PreparedRequest) bool
-	FinishRunning(server ActionFinishGateway, runtime ActionRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error
+	SupportsRunning(prepared connectors.RuntimeActionContext) bool
+	FinishRunning(context.Context, ActionFinishGateway, ActionRuntime, int64, connectors.RuntimeActionContext, executionprincipal.Principal, connectors.ActionHandles) error
 	RunningHint(request connectortargets.ActionRequest) string
 }
 

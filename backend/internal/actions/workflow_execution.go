@@ -250,10 +250,17 @@ func (r *Runtime) ExecuteInserted(ctx context.Context, prepared PreparedRequest,
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = options.FollowupTool
 		}
-		go func() {
+		launched := r.launchFinalizer(func(finalizerCtx context.Context) {
 			defer r.ClearCredentialBoundary(request.ID)
-			r.runningActions.FinishRunning(request.ID, prepared, principal, result.Handles)
-		}()
+			r.runningActions.FinishRunning(finalizerCtx, request.ID, prepared, principal, result.Handles)
+		})
+		if !launched {
+			finished, finishErr := r.Finish(ctx, request.ID, connectors.ResultOutcomeUnknown, nil, "", "connector action runtime is shutting down", prepared.ActionDefinition.OutputHint)
+			if finishErr != nil {
+				return CallResult{}, NewTerminalPersistenceError(request.ID, finishErr)
+			}
+			return CallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Error: finished.Error}}, nil
+		}
 		clearBoundary = false
 		return CallResult{Request: request, Permission: options.Permission, Result: result}, nil
 	}

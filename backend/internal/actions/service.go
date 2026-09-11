@@ -62,13 +62,7 @@ type PreparedRequest struct {
 	Dependencies     []ResolvedDependency
 }
 
-// ResolvedDependency is a non-secret target/profile snapshot whose state can
-// affect execution of the prepared action.
-type ResolvedDependency struct {
-	Purpose string
-	Target  connectors.TargetView
-	Profile connectors.CredentialProfileView
-}
+type ResolvedDependency = connectors.ResolvedDependency
 
 // Service owns the generic target -> connector -> prepared action boundary.
 type Service struct {

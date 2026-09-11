@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
@@ -23,7 +22,7 @@ func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []domainactions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
 	capabilities, _ := resolver.(connectorRuntimeCapabilities)
 	if capabilities == nil {

@@ -13,14 +13,14 @@ func (identity RuntimeIdentity) Ready() bool {
 
 func (*Component) LocalPrincipal(identity RuntimeIdentity) (Principal, error) {
 	if !identity.Ready() {
-		return Principal{}, ErrInvalidPrincipal
+		return Principal{}, InvalidPrincipalError()
 	}
 	return executionprincipal.LocalOperator(identity.WorkspaceID, identity.RuntimeID)
 }
 
 func (*Component) TokenPrincipal(identity RuntimeIdentity, tokenID int64) (Principal, error) {
 	if !identity.Ready() {
-		return Principal{}, ErrInvalidPrincipal
+		return Principal{}, InvalidPrincipalError()
 	}
 	return executionprincipal.MCPToken(tokenID, identity.WorkspaceID, identity.RuntimeID)
 }

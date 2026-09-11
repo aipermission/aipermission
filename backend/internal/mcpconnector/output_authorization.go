@@ -21,10 +21,14 @@ type OutputAuthorization struct {
 	Database   *sql.DB
 	Tokens     *tokens.Store
 	Leases     *vaultsessions.Store
-	Delivery   actions.DeliveryGate
+	Delivery   DeliveryGate
 	MCPStarted func() bool
 	Principal  func(int64) (executionprincipal.Principal, error)
 	Now        func() time.Time
+}
+
+type DeliveryGate interface {
+	Acquire(context.Context) (func(), error)
 }
 
 func (authorization *OutputAuthorization) ResponseForToken(

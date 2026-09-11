@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
@@ -117,7 +118,7 @@ func (s *Server) connectorManagementWorkspace(runtime databaseRuntime) connector
 				return true
 			},
 			RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
-				redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, details, s.connectorSensitiveOutputFields(), nil, boundary)
+				redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, details, s.connectorSensitiveOutputFields(), nil, gatewayactions.AdoptCredentialBoundary(boundary))
 				if err != nil || redacted == nil {
 					return nil, err
 				}

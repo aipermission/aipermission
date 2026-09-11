@@ -2,19 +2,22 @@
 package gatewayconnectormanagement
 
 import (
+	"errors"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-var (
-	ErrCredentialProfileUpdateConflict = connectortargets.ErrCredentialProfileUpdateConflict
-	ErrInvalidTargetRef                = connectortargets.ErrInvalidTargetRef
-	ErrRuntimeSurfaceNotFound          = connectortargets.ErrRuntimeSurfaceNotFound
-	ErrTargetNotFound                  = connectortargets.ErrTargetNotFound
-	ErrTargetProfileNotFound           = connectortargets.ErrTargetProfileNotFound
-	ErrTargetUpdateConflict            = connectortargets.ErrTargetUpdateConflict
-)
+func InvalidTargetRefError() error { return connectortargets.ErrInvalidTargetRef }
+
+func IsInvalidTargetRef(err error) bool { return errors.Is(err, connectortargets.ErrInvalidTargetRef) }
+func IsRuntimeSurfaceNotFound(err error) bool {
+	return errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound)
+}
+func IsTargetNotFound(err error) bool { return errors.Is(err, connectortargets.ErrTargetNotFound) }
+func IsTargetProfileNotFound(err error) bool {
+	return errors.Is(err, connectortargets.ErrTargetProfileNotFound)
+}
 
 const (
 	ActionPermissionAlwaysRun        = connectortargets.ActionPermissionAlwaysRun

@@ -181,7 +181,7 @@ func (r *Runtime) CallIdentityHash(tokenID *int64, source, targetRef, actionName
 	if err != nil {
 		return "", fmt.Errorf("encode connector action idempotency identity: %w", err)
 	}
-	return IdentityTag(r.identityKey, encoded)
+	return r.identityTag(encoded)
 }
 
 func (r *Runtime) Replay(ctx context.Context, tokenID *int64, call Call) (CallResult, bool, error) {

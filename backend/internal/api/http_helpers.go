@@ -55,7 +55,7 @@ func parseInt64Query(w http.ResponseWriter, value string, name string) (int64, b
 
 func handleTokenError(w http.ResponseWriter, err error) {
 	handleDomainError(w, err, httpDomainError{
-		NotFound:        gatewayaccess.ErrTokenNotFound,
+		NotFound:        gatewayaccess.TokenNotFoundError(),
 		NotFoundMessage: "token not found",
 		FailureMessage:  "token operation failed",
 		Validation: func(err error) (string, bool) {

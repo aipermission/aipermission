@@ -5,8 +5,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
-func (*Component) NewCredentialBoundary(secrets map[string]any) actions.CredentialBoundary {
-	return actions.NewCredentialBoundary(secrets)
+func (*Component) NewCredentialBoundary(secrets map[string]any) CredentialBoundary {
+	return newCredentialBoundary(actions.NewCredentialBoundary(secrets))
 }
 
 func (*Component) SensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {

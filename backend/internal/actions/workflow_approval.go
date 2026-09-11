@@ -337,10 +337,13 @@ func (r *Runtime) executePending(ctx context.Context, execution pendingExecution
 		if result.Handles.FollowupTool == "" {
 			result.Handles.FollowupTool = "get_connector_action_request"
 		}
-		go func() {
+		launched := r.launchFinalizer(func(finalizerCtx context.Context) {
 			defer r.ClearCredentialBoundary(item.ID)
-			r.runningActions.FinishRunning(item.ID, prepared, execution.principal, result.Handles)
-		}()
+			r.runningActions.FinishRunning(finalizerCtx, item.ID, prepared, execution.principal, result.Handles)
+		})
+		if !launched {
+			return r.Finish(ctx, item.ID, connectors.ResultOutcomeUnknown, nil, "", "connector action runtime is shutting down", prepared.ActionDefinition.OutputHint)
+		}
 		clearBoundary = false
 		running, getErr := connectortargets.NewStore(r.database).GetActionRequest(context.Background(), item.ID)
 		if getErr != nil {

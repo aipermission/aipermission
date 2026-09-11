@@ -8,7 +8,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func MCPResponseFromResult(request connectortargets.ActionRequest, result connectors.ActionResult, resolveRunningHint func(connectortargets.ActionRequest) string) actions.Response {
+func MCPResponseFromResult(request connectortargets.ActionRequest, result connectors.ActionResult, resolveRunningHint func(connectortargets.ActionRequest) string) Response {
 	runningHint := ""
 	if request.Status == connectors.ResultRunning {
 		if resolveRunningHint != nil {
@@ -18,5 +18,5 @@ func MCPResponseFromResult(request connectortargets.ActionRequest, result connec
 			runningHint = "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
 		}
 	}
-	return actions.FromResult(request, result, runningHint)
+	return wrapResponse(actions.FromResult(request, result, runningHint))
 }

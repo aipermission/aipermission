@@ -73,6 +73,23 @@ type CredentialProfileView struct {
 	SecretRevision string         `json:"secret_revision,omitempty"`
 }
 
+// ResolvedDependency is a non-secret target/profile snapshot used by generic
+// connector capabilities while preparing an action.
+type ResolvedDependency struct {
+	Purpose string
+	Target  TargetView
+	Profile CredentialProfileView
+}
+
+// RuntimeActionContext is the non-secret action projection exposed to optional
+// connector runtime adapters.
+type RuntimeActionContext struct {
+	TargetConnectorKind string
+	ActionName          string
+	TargetRef           string
+	OutputHint          OutputHint
+}
+
 // ActionDefinition is the machine-readable action contract returned by a
 // connector.
 type ActionDefinition struct {

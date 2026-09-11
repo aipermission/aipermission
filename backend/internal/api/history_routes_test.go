@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -133,7 +134,7 @@ func TestCommandRequestInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
 		t.Fatalf("install history rejection trigger: %v", err)
 	}
 
-	_, err := requireCommandRuntime(t, fixture.server, fixture.server.activeRuntime()).Insert(t.Context(), commandrequests.Insert{
+	_, err := requireCommandRuntime(t, fixture.server, fixture.server.activeRuntime()).Insert(t.Context(), gatewayoperations.CommandInsert{
 		RuntimeID: target.ID,
 		Source:    commandRequestSourceManual,
 		Command:   "echo rollback",

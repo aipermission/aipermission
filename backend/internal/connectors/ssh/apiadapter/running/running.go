@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
@@ -23,8 +22,8 @@ const (
 
 type Running struct{}
 
-func (Running) SupportsRunning(prepared actions.PreparedRequest) bool {
-	return prepared.Target.ConnectorKind == sshconnector.Kind && prepared.Action.ActionName == sshconnector.ActionExec
+func (Running) SupportsRunning(prepared connectors.RuntimeActionContext) bool {
+	return prepared.TargetConnectorKind == sshconnector.Kind && prepared.ActionName == sshconnector.ActionExec
 }
 
 func (Running) RunningHint(request connectortargets.ActionRequest) string {
@@ -34,24 +33,24 @@ func (Running) RunningHint(request connectortargets.ActionRequest) string {
 	return ""
 }
 
-func (Running) FinishRunning(server connectorapi.ActionFinishGateway, runtime connectorapi.ActionRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error {
+func (Running) FinishRunning(parent context.Context, server connectorapi.ActionFinishGateway, runtime connectorapi.ActionRuntime, requestID int64, prepared connectors.RuntimeActionContext, principal executionprincipal.Principal, handles connectors.ActionHandles) error {
 	if server == nil {
 		return errors.New("finish running connector action: gateway server is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), backgroundCommandTimeout)
+	ctx, cancel := context.WithTimeout(parent, backgroundCommandTimeout)
 	defer cancel()
 	handle := runtimeactions.ExactSessionHandle(handles.SessionID, handles.SessionGeneration)
-	runtimeID, resolveErr := management.RuntimeIDForTargetRef(context.Background(), runtime, prepared.Action.TargetRef)
+	runtimeID, resolveErr := management.RuntimeIDForTargetRef(ctx, runtime, prepared.TargetRef)
 	if resolveErr != nil || handles.SessionID < 1 || handles.SessionGeneration < 1 {
 		if resolveErr == nil {
 			resolveErr = errors.New("running connector action did not return an exact console session handle")
 		}
-		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
+		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.OutputHint)
 	}
 	handle.RuntimeID = runtimeID
 	sessions, err := management.ConsoleSessions(runtime)
 	if err != nil {
-		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
+		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.OutputHint)
 	}
 	result, err := sessions.WaitActive(ctx, principal, handle)
 	status := connectors.ResultStatus("")
@@ -84,7 +83,7 @@ func (Running) FinishRunning(server connectorapi.ActionFinishGateway, runtime co
 	if status == "" {
 		return errors.New("finish running connector action: empty result status")
 	}
-	return finishRunningActionRequest(server, runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
+	return finishRunningActionRequest(server, runtime, requestID, status, output, displayText, errorText, prepared.OutputHint)
 }
 
 type actionRequestFinisher interface {

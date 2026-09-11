@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -18,6 +20,20 @@ import (
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
+
+func sha256Hex(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func connectorActionApprovalSnapshots(token tokens.Token, permission connectortargets.ActionPermission) (actions.ApprovalTokenSnapshot, actions.ApprovalPermissionSnapshot) {
+	return actions.ApprovalTokenSnapshot{
+			ID: token.ID, ExpiresAt: token.ExpiresAt, RevokedAt: token.RevokedAt,
+		}, actions.ApprovalPermissionSnapshot{
+			Rule: string(permission.ExecutionRule), ExpiresAt: permission.ExpiresAt,
+			ProjectID: permission.ProjectID, ProjectName: permission.ProjectName, ProjectSlug: permission.ProjectSlug,
+		}
+}
 
 func testConnectorApprovalContext(prepared actions.PreparedRequest, token tokens.Token, permission connectortargets.ActionPermission, capturedAt string) (string, string, error) {
 	tokenSnapshot, permissionSnapshot := connectorActionApprovalSnapshots(token, permission)

@@ -11,9 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
-var (
-	ErrInvalidatorUnavailable = vaultsessions.ErrInvalidatorUnavailable
-)
+func InvalidatorUnavailableError() error { return vaultsessions.ErrInvalidatorUnavailable }
 
 const (
 	ActionGenerateItem = vaultrequests.ActionGenerateItem

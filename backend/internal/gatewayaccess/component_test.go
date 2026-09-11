@@ -97,7 +97,7 @@ func TestPrincipalConstructionRequiresReadyRuntime(t *testing.T) {
 	if err != nil || !token.IsMCPToken() || token.TokenID != 7 {
 		t.Fatalf("token principal = %#v, %v", token, err)
 	}
-	if _, err := component.LocalPrincipal(RuntimeIdentity{}); !errors.Is(err, ErrInvalidPrincipal) {
+	if _, err := component.LocalPrincipal(RuntimeIdentity{}); !errors.Is(err, InvalidPrincipalError()) {
 		t.Fatalf("unready runtime error = %v", err)
 	}
 }

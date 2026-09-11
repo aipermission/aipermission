@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 
-	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -20,7 +19,7 @@ func (s *Server) connectorActionApplication() *gatewayactions.Component {
 func (s *Server) newConnectorActionApplication() *gatewayactions.Component {
 	return gatewayactions.New(gatewayactions.Dependencies{
 		MaxJSONBytes: connectorActionJSONBodyBytes,
-		SupportsRunning: func(prepared domainactions.PreparedRequest) bool {
+		SupportsRunning: func(prepared gatewayactions.PreparedRequest) bool {
 			return s != nil && s.connectorActionSupportsRunning(prepared)
 		},
 	})
@@ -38,7 +37,7 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) gatewayaction
 			WorkspaceID: runtime.Identity.WorkspaceID,
 		},
 		Identity: gatewayactions.ActionIdentity{
-			Key: runtime.Identity.ActionKey, RuntimeInstanceID: runtime.Identity.RuntimeID,
+			Tag: runtime.TagActionIdentity, RuntimeInstanceID: runtime.Identity.RuntimeID,
 			MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() }, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
 		},
 		Workflow: gatewayactions.WorkflowPorts{
@@ -52,19 +51,19 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) gatewayaction
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 			},
-			Transaction: func(ctx context.Context, mutate func(*sql.Tx, domainactions.AuditAppender) error) error {
+			Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
 				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-					return mutate(tx, domainactions.AuditAppender(appendAudit))
+					return mutate(tx, gatewayactions.AuditAppender(appendAudit))
 				})
 			},
 			Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
-			Capabilities: func(kind string, dependencies []domainactions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+			Capabilities: func(kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 				return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
 			},
-			FinishRunning: func(id int64, prepared domainactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
-				s.finishActiveConnectorActionRequest(runtime, id, prepared, principal, handles)
+			FinishRunning: func(ctx context.Context, id int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+				s.finishActiveConnectorActionRequest(ctx, runtime, id, prepared, principal, handles)
 			},
 		},
 	}

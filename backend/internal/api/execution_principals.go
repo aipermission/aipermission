@@ -19,7 +19,7 @@ func runtimeAccessIdentity(runtime databaseRuntime) gatewayaccess.RuntimeIdentit
 
 func ensureRuntimeIdentity(runtime databaseRuntime) error {
 	if runtime == nil || !runtime.Identity.Ready() {
-		return gatewayaccess.ErrInvalidPrincipal
+		return gatewayaccess.InvalidPrincipalError()
 	}
 	return nil
 }

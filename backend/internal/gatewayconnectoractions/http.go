@@ -64,7 +64,7 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		handlers.dependencies.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}
-	result, err := handlers.component.RunLocal(r.Context(), runtime, actions.Call{
+	result, err := handlers.component.RunLocal(r.Context(), runtime, Call{
 		Source: actions.SourceManual, TargetRef: request.TargetRef, ActionName: request.ActionName,
 		Input: request.Input, Reason: request.Reason, IdempotencyKey: request.IdempotencyKey,
 	})

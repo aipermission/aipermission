@@ -684,7 +684,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 		IdempotencyKey: "local-persistence-request-1",
 	}
 	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
-	var persistenceErr *connectorActionTerminalPersistenceError
+	var persistenceErr *actions.TerminalPersistenceError
 	if !errors.As(err, &persistenceErr) || persistenceErr.RequestID < 1 {
 		t.Fatalf("expected typed terminal persistence error, got %v", err)
 	}
@@ -803,7 +803,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		},
 	}
 
-	request, _, err := server.insertConnectorActionRequest(context.Background(), runtime, tokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultApprovalPending, "", "")
+	request, _, err := server.insertConnectorActionRequest(context.Background(), runtime, tokenID, ownPreparedConnectorAction(prepared), connectortargets.ActionPermission{}, connectors.ResultApprovalPending, "", "")
 	if err != nil {
 		t.Fatalf("insert connector action request: %v", err)
 	}

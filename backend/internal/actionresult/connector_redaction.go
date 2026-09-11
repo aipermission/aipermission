@@ -12,6 +12,21 @@ var ErrRedactorUnavailable = errors.New("connector action redactor is unavailabl
 
 type TextRedactor func(context.Context, string) string
 
+// RedactionBoundary is the minimum last-mile credential capability accepted
+// by the result projector. Owners can adapt their boundary without exporting
+// its storage representation.
+type RedactionBoundary interface {
+	Redact(string) string
+	RedactKey(string) string
+}
+
+func effectiveRedactionBoundary(boundary RedactionBoundary) RedactionBoundary {
+	if boundary == nil {
+		return CredentialBoundary{}
+	}
+	return boundary
+}
+
 // Redactor owns connector action projection policy. Workspace-level secret
 // discovery remains behind the injected text redactors.
 type Redactor struct {
@@ -31,14 +46,15 @@ func (r *Redactor) Value(ctx context.Context, value any, sensitiveFields map[str
 	return r.ValueWithLimits(ctx, value, sensitiveFields, capabilityFields, CredentialBoundary{}, DefaultLimits())
 }
 
-func (r *Redactor) ValueWithCredentialBoundary(ctx context.Context, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary CredentialBoundary) (any, error) {
+func (r *Redactor) ValueWithCredentialBoundary(ctx context.Context, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary RedactionBoundary) (any, error) {
 	return r.ValueWithLimits(ctx, value, sensitiveFields, capabilityFields, boundary, DefaultLimits())
 }
 
-func (r *Redactor) ValueWithLimits(ctx context.Context, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary CredentialBoundary, sourceLimits Limits) (any, error) {
+func (r *Redactor) ValueWithLimits(ctx context.Context, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary RedactionBoundary, sourceLimits Limits) (any, error) {
 	if r == nil || r.persistText == nil || r.capabilityText == nil {
 		return nil, ErrRedactorUnavailable
 	}
+	boundary = effectiveRedactionBoundary(boundary)
 	return CanonicalizeAndRedactWithSourceLimits(value, sourceLimits, DefaultLimits(), RedactionOptions{
 		SensitiveField: func(key string) bool {
 			return outputFieldSensitive(key, sensitiveFields)
@@ -62,14 +78,15 @@ func (r *Redactor) Result(ctx context.Context, result connectors.ActionResult, h
 	return r.ResultWithCredentialBoundary(ctx, result, CredentialBoundary{}, hints...)
 }
 
-func (r *Redactor) Text(ctx context.Context, value string, boundary CredentialBoundary) (string, error) {
+func (r *Redactor) Text(ctx context.Context, value string, boundary RedactionBoundary) (string, error) {
 	if r == nil || r.persistText == nil {
 		return "", ErrRedactorUnavailable
 	}
+	boundary = effectiveRedactionBoundary(boundary)
 	return boundary.Redact(r.persistText(ctx, value)), nil
 }
 
-func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result connectors.ActionResult, boundary CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result connectors.ActionResult, boundary RedactionBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	if r == nil || r.persistText == nil {
 		return connectors.ActionResult{}, ErrRedactorUnavailable
 	}

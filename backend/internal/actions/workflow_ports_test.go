@@ -63,7 +63,7 @@ type workflowTestRunningActions struct{}
 
 func (workflowTestRunningActions) SupportsRunning(PreparedRequest) bool { return false }
 
-func (workflowTestRunningActions) FinishRunning(int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles) {
+func (workflowTestRunningActions) FinishRunning(context.Context, int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles) {
 }
 
 func workflowTestDependencies(delivery DeliveryGate) RuntimeDependencies {
@@ -76,11 +76,13 @@ func workflowTestDependencies(delivery DeliveryGate) RuntimeDependencies {
 		panic(err)
 	}
 	return RuntimeDependencies{
-		Database:      &sql.DB{},
-		Tokens:        workflowTestTokenReader{},
-		Registry:      connectors.NewRegistry(),
-		Targets:       &fakeResolver{},
-		IdentityKey:   make([]byte, 32),
+		Database: &sql.DB{},
+		Tokens:   workflowTestTokenReader{},
+		Registry: connectors.NewRegistry(),
+		Targets:  &fakeResolver{},
+		IdentityTag: func(value []byte) (string, error) {
+			return IdentityTag(make([]byte, 32), value)
+		},
 		Delivery:      delivery,
 		MCPStarted:    func() bool { return true },
 		Identity:      func() (string, string, error) { return "workspace", "runtime", nil },
@@ -94,11 +96,63 @@ func workflowTestDependencies(delivery DeliveryGate) RuntimeDependencies {
 	}
 }
 
-func TestNewRuntimeRejectsMissingIdentityKey(t *testing.T) {
+func TestNewRuntimeRejectsMissingIdentityTagger(t *testing.T) {
 	dependencies := workflowTestDependencies(&workflowTestDelivery{})
-	dependencies.IdentityKey = nil
+	dependencies.IdentityTag = nil
 	if _, err := NewRuntime(dependencies); !errors.Is(err, ErrWorkflowUnavailable) {
 		t.Fatalf("NewRuntime() error = %v, want %v", err, ErrWorkflowUnavailable)
+	}
+}
+
+func TestStopFinalizersCancelsDrainsAndClosesAdmission(t *testing.T) {
+	runtime, err := NewRuntime(workflowTestDependencies(&workflowTestDelivery{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	if !runtime.launchFinalizer(func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		close(finished)
+	}) {
+		t.Fatal("finalizer was not admitted before shutdown")
+	}
+	<-started
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := runtime.StopFinalizers(ctx); err != nil {
+		t.Fatalf("StopFinalizers() error = %v", err)
+	}
+	select {
+	case <-finished:
+	default:
+		t.Fatal("StopFinalizers returned before the active finalizer exited")
+	}
+	if runtime.launchFinalizer(func(context.Context) {}) {
+		t.Fatal("finalizer was admitted after shutdown")
+	}
+}
+
+func TestStopFinalizersReportsBoundedWaitWithoutLosingDrain(t *testing.T) {
+	runtime, err := NewRuntime(workflowTestDependencies(&workflowTestDelivery{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	if !runtime.launchFinalizer(func(context.Context) { <-release }) {
+		t.Fatal("finalizer was not admitted")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if err := runtime.StopFinalizers(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("StopFinalizers() error = %v, want deadline exceeded", err)
+	}
+	close(release)
+	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
+	defer drainCancel()
+	if err := runtime.StopFinalizers(drainCtx); err != nil {
+		t.Fatalf("second StopFinalizers() did not observe eventual drain: %v", err)
 	}
 }
 

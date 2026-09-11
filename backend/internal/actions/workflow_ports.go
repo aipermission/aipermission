@@ -51,10 +51,11 @@ type MutationPort interface {
 }
 
 type RuntimeIdentity func() (workspaceID string, runtimeInstanceID string, err error)
+type IdentityTagger func([]byte) (string, error)
 type CapabilityProvider func(string, []ResolvedDependency) connectors.RuntimeCapabilityResolver
 type RunningActions interface {
 	SupportsRunning(PreparedRequest) bool
-	FinishRunning(int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)
+	FinishRunning(context.Context, int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)
 }
 
 type RuntimeDependencies struct {
@@ -62,7 +63,7 @@ type RuntimeDependencies struct {
 	Tokens         TokenReader
 	Registry       *connectors.Registry
 	Targets        TargetResolver
-	IdentityKey    []byte
+	IdentityTag    IdentityTagger
 	Delivery       DeliveryGate
 	MCPStarted     func() bool
 	Identity       RuntimeIdentity
@@ -81,7 +82,7 @@ type Runtime struct {
 	database       *sql.DB
 	tokens         TokenReader
 	service        *Service
-	identityKey    []byte
+	identityTag    IdentityTagger
 	delivery       DeliveryGate
 	mcpStarted     func() bool
 	identity       RuntimeIdentity
@@ -93,16 +94,21 @@ type Runtime struct {
 	now            func() time.Time
 	logf           func(string, ...any)
 
-	boundaryMu     sync.RWMutex
-	boundaries     map[int64]actionresult.CredentialBoundary
-	recoveryMu     sync.Mutex
-	recoveryCancel context.CancelFunc
-	recoveryDone   chan struct{}
+	boundaryMu      sync.RWMutex
+	boundaries      map[int64]actionresult.CredentialBoundary
+	recoveryMu      sync.Mutex
+	recoveryCancel  context.CancelFunc
+	recoveryDone    chan struct{}
+	finalizerMu     sync.Mutex
+	finalizerCtx    context.Context
+	finalizerCancel context.CancelFunc
+	finalizerWG     sync.WaitGroup
+	finalizerClosed bool
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if dependencies.Database == nil || dependencies.Tokens == nil || dependencies.Registry == nil || dependencies.Targets == nil ||
-		len(dependencies.IdentityKey) != 32 ||
+		dependencies.IdentityTag == nil ||
 		dependencies.Delivery == nil || dependencies.MCPStarted == nil ||
 		dependencies.Identity == nil || dependencies.Redactor == nil || dependencies.SealedRecords == nil ||
 		dependencies.Mutations == nil || dependencies.Capabilities == nil || dependencies.RunningActions == nil {
@@ -116,19 +122,67 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if logf == nil {
 		logf = log.Printf
 	}
+	finalizerCtx, finalizerCancel := context.WithCancel(context.Background())
 	return &Runtime{
 		database: dependencies.Database, tokens: dependencies.Tokens,
-		service: NewService(dependencies.Registry, dependencies.Targets), identityKey: dependencies.IdentityKey,
+		service: NewService(dependencies.Registry, dependencies.Targets), identityTag: dependencies.IdentityTag,
 		delivery: dependencies.Delivery, mcpStarted: dependencies.MCPStarted, identity: dependencies.Identity,
 		redactor: dependencies.Redactor, sealedRecords: dependencies.SealedRecords, mutations: dependencies.Mutations,
 		capabilities: dependencies.Capabilities, runningActions: dependencies.RunningActions, now: now, logf: logf,
-		boundaries: make(map[int64]actionresult.CredentialBoundary),
+		boundaries:   make(map[int64]actionresult.CredentialBoundary),
+		finalizerCtx: finalizerCtx, finalizerCancel: finalizerCancel,
 	}, nil
+}
+
+func (r *Runtime) launchFinalizer(run func(context.Context)) bool {
+	if r == nil || run == nil {
+		return false
+	}
+	r.finalizerMu.Lock()
+	if r.finalizerClosed || r.finalizerCtx == nil {
+		r.finalizerMu.Unlock()
+		return false
+	}
+	ctx := r.finalizerCtx
+	r.finalizerWG.Add(1)
+	r.finalizerMu.Unlock()
+	go func() {
+		defer r.finalizerWG.Done()
+		run(ctx)
+	}()
+	return true
+}
+
+// StopFinalizers prevents new background completions, cancels active ones,
+// and waits until they can no longer access workspace-owned storage.
+func (r *Runtime) StopFinalizers(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.finalizerMu.Lock()
+	r.finalizerClosed = true
+	cancel := r.finalizerCancel
+	r.finalizerCancel = nil
+	r.finalizerMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		r.finalizerWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (r *Runtime) validate() error {
 	if r == nil || r.database == nil || r.tokens == nil || r.service == nil ||
-		r.delivery == nil || r.mcpStarted == nil || r.identity == nil || r.redactor == nil ||
+		r.identityTag == nil || r.delivery == nil || r.mcpStarted == nil || r.identity == nil || r.redactor == nil ||
 		r.sealedRecords == nil || r.mutations == nil || r.capabilities == nil || r.runningActions == nil || r.now == nil {
 		return ErrWorkflowUnavailable
 	}

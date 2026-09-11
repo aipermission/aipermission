@@ -28,12 +28,28 @@ type ActionCallRequest struct {
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 }
 
+type ActionCall struct {
+	Source         string
+	TokenID        int64
+	TargetRef      string
+	ActionName     string
+	Input          map[string]any
+	Reason         string
+	IdempotencyKey string
+}
+
+type ActionCallResult struct {
+	Request  connectortargets.ActionRequest
+	Result   connectors.ActionResult
+	Replayed bool
+}
+
 type ActionScope struct {
 	Database        *sql.DB
 	AdapterRegistry *connectorapi.Registry
 	TokenID         int64
 	Output          *OutputAuthorization
-	Call            func(context.Context, actions.Call) (actions.CallResult, error)
+	Call            func(context.Context, ActionCall) (ActionCallResult, error)
 	Observe         func(context.Context, string, any)
 	Redact          func(context.Context, string) string
 }
@@ -75,8 +91,8 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}
-	result, err := scope.Call(r.Context(), actions.Call{
-		Source: actions.SourceMCP, TokenID: scope.TokenID, TargetRef: request.TargetRef,
+	result, err := scope.Call(r.Context(), ActionCall{
+		Source: "mcp", TokenID: scope.TokenID, TargetRef: request.TargetRef,
 		ActionName: request.ActionName, Input: request.Input, Reason: request.Reason,
 		IdempotencyKey: request.IdempotencyKey,
 	})

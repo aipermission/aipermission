@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 )
 
 func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPScope, bool) {
@@ -51,11 +51,17 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return gatewayaccess.MCPActionScope{}, false
 	}
+	call := s.connectorActionApplication().MCPCall(s.connectorActionWorkspace(auth.runtime))
 	return gatewayaccess.MCPActionScope{
 		Database: auth.runtime.Storage.DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: s.mcpConnectorOutputAuthorization(auth.runtime),
-		Call: func(ctx context.Context, call domainactions.Call) (domainactions.CallResult, error) {
-			return s.callConnectorAction(ctx, auth.runtime, call)
+		Call: func(ctx context.Context, request gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error) {
+			result, err := call(ctx, gatewayactions.Call{
+				Source: request.Source, TokenID: request.TokenID, TargetRef: request.TargetRef,
+				ActionName: request.ActionName, Input: request.Input, Reason: request.Reason,
+				IdempotencyKey: request.IdempotencyKey,
+			})
+			return gatewayaccess.MCPActionCallResult{Request: result.Request, Result: result.Result, Replayed: result.Replayed}, err
 		},
 		Observe: func(ctx context.Context, action string, payload any) {
 			s.writeObservationAudit(ctx, auth.runtime, "mcp", int64Ptr(auth.TokenID), 0, action, payload)

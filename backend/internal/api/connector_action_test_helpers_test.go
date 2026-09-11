@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -30,12 +29,28 @@ const connectorActionTestWorkspaceID = "connector-action-test-workspace"
 const connectorActionPersistenceUnknownMessage = actions.PersistenceUnknownMessage
 const connectorActionLeaseExpiredBeforeDispatchMessage = actions.LeaseExpiredBeforeDispatchMessage
 
-type connectorActionExecutionOptions = actions.ExecutionOptions
+type connectorActionExecutionOptions = gatewayactions.ExecutionOptions
 type connectorActionExecutionEnvelope = actions.ExecutionEnvelope
 
-func prepareConnectorAction(runtime databaseRuntime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+func prepareConnectorAction(runtime databaseRuntime, ctx context.Context, request actions.PrepareRequest) (gatewayactions.PreparedRequest, error) {
 	workspace := gatewayConnectorActionWorkspace(runtime)
-	return gatewayConnectorActionComponent().Prepare(workspace, ctx, request)
+	return gatewayConnectorActionComponent().Prepare(workspace, ctx, gatewayactions.PrepareRequest{
+		Source: request.Source, TargetRef: request.TargetRef, ActionName: request.ActionName,
+		Input: request.Input, Reason: request.Reason, CreatedAt: request.CreatedAt,
+	})
+}
+
+func ownPreparedConnectorAction(prepared actions.PreparedRequest) gatewayactions.PreparedRequest {
+	return gatewayactions.PreparedRequest{
+		Target: prepared.Target, Profile: prepared.Profile, ConnectorVersion: prepared.ConnectorVersion,
+		ActionDefinition: prepared.ActionDefinition, Action: prepared.Action,
+		Requested: gatewayactions.PrepareRequest{
+			Source: prepared.Requested.Source, TargetRef: prepared.Requested.TargetRef,
+			ActionName: prepared.Requested.ActionName, Input: prepared.Requested.Input,
+			Reason: prepared.Requested.Reason, CreatedAt: prepared.Requested.CreatedAt,
+		},
+		IdempotencyInput: prepared.IdempotencyInput, Dependencies: prepared.Dependencies,
+	}
 }
 
 func gatewayConnectorActionComponent() *gatewayactions.Component {
@@ -51,7 +66,7 @@ func gatewayConnectorActionWorkspace(runtime databaseRuntime) gatewayactions.Wor
 	return workspace
 }
 
-func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID int64, prepared gatewayactions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
 	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -59,7 +74,7 @@ func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime datab
 	return persistence.InsertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey)
 }
 
-func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
+func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID *int64, prepared gatewayactions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
 	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -67,18 +82,18 @@ func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runti
 	return persistence.InsertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
 }
 
-func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (connectorActionCallResult, error) {
+func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared gatewayactions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (gatewayactions.CallResult, error) {
 	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
-		return connectorActionCallResult{}, err
+		return gatewayactions.CallResult{}, err
 	}
 	return dispatch.ExecuteInserted(ctx, prepared, request, principal, options)
 }
 
-func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest) (actions.ExecutionSnapshot, error) {
+func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared gatewayactions.PreparedRequest) (gatewayactions.ExecutionSnapshot, error) {
 	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
-		return actions.ExecutionSnapshot{}, err
+		return gatewayactions.ExecutionSnapshot{}, err
 	}
 	return dispatch.Snapshot(ctx, prepared)
 }
@@ -216,8 +231,13 @@ func newConnectorActionTestRuntime(
 	if runtime.Identity.WorkspaceID != workspaceUUID {
 		t.Fatalf("workspace identifier = %q, want %q", runtime.Identity.WorkspaceID, workspaceUUID)
 	}
-	if !bytes.Equal(runtime.Identity.ActionKey, actionIdentityKey) {
-		t.Fatal("test runtime action identity does not match fixture")
+	wantTag, err := actions.IdentityTag(actionIdentityKey, []byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotTag, err := runtime.TagActionIdentity([]byte("test"))
+	if err != nil || gotTag != wantTag {
+		t.Fatalf("test runtime action identity tag = %q, %v; want %q", gotTag, err, wantTag)
 	}
 	return runtime
 }

@@ -3,7 +3,6 @@ package gatewayaccess
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
@@ -12,14 +11,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
-var (
-	ErrBulkTargetNotFound        = commandrequests.ErrBulkTargetNotFound
-	ErrCommandRuntimeUnavailable = commandrequests.ErrRuntimeUnavailable
-
-	ErrInvalidPrincipal = executionprincipal.ErrInvalid
-
-	ErrTokenNotFound = tokens.ErrNotFound
-)
+func InvalidPrincipalError() error { return executionprincipal.ErrInvalid }
+func TokenNotFoundError() error    { return tokens.ErrNotFound }
 
 const (
 	CSRFCookieBase      = uisession.CSRFCookieBase
@@ -30,12 +23,10 @@ const (
 )
 
 type AccessScope = accesscontrol.Scope
-type CommandBulkAuditAppender = commandrequests.BulkAuditAppender
-type CommandBulkHTTPRuntime = commandrequests.BulkHTTPRuntime
-type CommandBulkTarget = commandrequests.BulkTarget
-type CommandHTTPReader = commandrequests.HTTPReader
 type Principal = executionprincipal.Principal
 type MCPActionScope = mcpconnector.ActionScope
+type MCPActionCall = mcpconnector.ActionCall
+type MCPActionCallResult = mcpconnector.ActionCallResult
 type MCPOutputAuthorization = mcpconnector.OutputAuthorization
 type MCPPermission = mcpconnector.Permission
 type MCPScope = mcpconnector.Scope

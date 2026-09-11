@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -74,7 +75,7 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 
 	rawCommand := "curl -H 'Authorization: Bearer secret-token-1234567890' https://example.invalid"
 	requests := requireCommandRuntime(t, fixture.server, runtime)
-	id, err := requests.Insert(ctx, commandrequests.Insert{
+	id, err := requests.Insert(ctx, gatewayoperations.CommandInsert{
 		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
 		Command: rawCommand, Reason: "password=secret-value", Status: "pending_approval",
 	})
@@ -108,14 +109,14 @@ func TestCommandRequestErrorsAreRedactedBeforePersistence(t *testing.T) {
 	server := fixture.createKeyAndServer(t, "worker-1")
 	runtime := fixture.server.activeRuntime()
 	requests := requireCommandRuntime(t, fixture.server, runtime)
-	id, err := requests.Insert(ctx, commandrequests.Insert{
+	id, err := requests.Insert(ctx, gatewayoperations.CommandInsert{
 		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
 		Command: "echo ok", Reason: "test", Status: "running",
 	})
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
 	}
-	if err := requests.Finish(ctx, commandrequests.Completion{
+	if err := requests.Finish(ctx, gatewayoperations.CommandCompletion{
 		ID: id, Status: "error", ExitCode: 1, Error: "ssh failed password=super-secret",
 	}); err != nil {
 		t.Fatalf("finish command request: %v", err)

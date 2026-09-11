@@ -20,7 +20,7 @@ import (
 
 type Dependencies struct {
 	MaxJSONBytes    int
-	SupportsRunning func(actions.PreparedRequest) bool
+	SupportsRunning func(PreparedRequest) bool
 }
 
 type Component struct {
@@ -39,7 +39,7 @@ type ApprovalWorkflow interface {
 }
 
 type ShutdownWorkflow interface {
-	StopRecovery()
+	Shutdown(context.Context) error
 	MarkRunningOutcomeUnknown(context.Context, string) error
 }
 
@@ -55,32 +55,14 @@ func (workflow *workflowHandle) DeclinePending(ctx context.Context, id int64, no
 	return workflow.runtime.DeclinePending(ctx, id, note)
 }
 
-func (workflow *workflowHandle) StopRecovery() { workflow.runtime.StopRecovery() }
+func (workflow *workflowHandle) Shutdown(ctx context.Context) error {
+	workflow.runtime.StopRecovery()
+	return workflow.runtime.StopFinalizers(ctx)
+}
 
 func (workflow *workflowHandle) MarkRunningOutcomeUnknown(ctx context.Context, reason string) error {
 	return workflow.runtime.MarkRunningOutcomeUnknown(ctx, reason)
 }
-
-type SecretAccessor struct {
-	Values   map[string]any
-	Boundary actions.CredentialBoundary
-}
-
-func (accessor SecretAccessor) GetSecret(_ context.Context, name string) (string, error) {
-	value, ok := accessor.Values[name]
-	if !ok || value == nil {
-		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
-	}
-	text := fmt.Sprint(value)
-	accessor.Boundary.Add(text)
-	return text, nil
-}
-
-func (accessor SecretAccessor) RegisterSensitiveValue(value string) { accessor.Boundary.Add(value) }
-
-type NoopEventSink struct{}
-
-func (NoopEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
 
 type tokenReader struct{ runtime Workspace }
 
@@ -102,7 +84,11 @@ type deliveryGate struct {
 	acquire func(context.Context) (func(), error)
 }
 
-func (*Component) Delivery(acquire func(context.Context) (func(), error)) actions.DeliveryGate {
+type DeliveryGate interface {
+	Acquire(context.Context) (func(), error)
+}
+
+func (*Component) Delivery(acquire func(context.Context) (func(), error)) DeliveryGate {
 	return deliveryGate{acquire: acquire}
 }
 
@@ -150,7 +136,9 @@ func (port mutationPort) WithMutation(ctx context.Context, actor string, tokenID
 	return port.runtime.Workflow.Mutate(ctx, actor, tokenID, runtimeID, action, payload, mutate)
 }
 func (port mutationPort) WithTransaction(ctx context.Context, mutate func(*sql.Tx, actions.AuditAppender) error) error {
-	return port.runtime.Workflow.Transaction(ctx, mutate)
+	return port.runtime.Workflow.Transaction(ctx, func(tx *sql.Tx, appendAudit AuditAppender) error {
+		return mutate(tx, actions.AuditAppender(appendAudit))
+	})
 }
 func (port mutationPort) Observe(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 	port.runtime.Workflow.Observe(ctx, actor, tokenID, runtimeID, action, payload)
@@ -162,10 +150,10 @@ type runningPort struct {
 }
 
 func (port runningPort) SupportsRunning(prepared actions.PreparedRequest) bool {
-	return port.component.dependencies.SupportsRunning(prepared)
+	return port.component.dependencies.SupportsRunning(wrapPreparedRequest(prepared))
 }
-func (port runningPort) FinishRunning(id int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
-	port.runtime.Workflow.FinishRunning(id, prepared, principal, handles)
+func (port runningPort) FinishRunning(ctx context.Context, id int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) {
+	port.runtime.Workflow.FinishRunning(ctx, id, wrapPreparedRequest(prepared), principal, handles)
 }
 
 type targetResolver struct{ store *connectortargets.Store }
@@ -199,7 +187,7 @@ func (component *Component) workflow(runtime Workspace) (*workflowHandle, error)
 		}
 		workflow, err := actions.NewRuntime(actions.RuntimeDependencies{
 			Database: runtime.Storage.Database, Tokens: tokenReader{runtime: runtime}, Registry: runtime.Storage.Registry,
-			Targets: targetResolver{store: connectortargets.NewStore(runtime.Storage.Database)}, IdentityKey: runtime.Identity.Key,
+			Targets: targetResolver{store: connectortargets.NewStore(runtime.Storage.Database)}, IdentityTag: runtime.Identity.Tag,
 			Delivery: component.Delivery(runtime.Workflow.AcquireSecret), MCPStarted: runtime.Identity.MCPStarted,
 			Identity: func() (string, string, error) {
 				if runtime.Identity.Ensure == nil {
@@ -238,21 +226,44 @@ func (component *Component) Shutdown(runtime Workspace) (ShutdownWorkflow, error
 	return component.workflow(runtime)
 }
 
-func (component *Component) Call(ctx context.Context, runtime Workspace, call actions.Call) (actions.CallResult, error) {
+func (component *Component) Call(ctx context.Context, runtime Workspace, call Call) (CallResult, error) {
 	workflow, err := component.workflow(runtime)
 	if err != nil {
-		return actions.CallResult{}, err
+		return CallResult{}, err
 	}
-	return workflow.runtime.Call(ctx, call)
+	result, err := workflow.runtime.Call(ctx, call.domain())
+	return wrapCallResult(result), err
 }
 
-func (component *Component) RunLocal(ctx context.Context, runtime Workspace, call actions.Call) (actions.CallResult, error) {
+func (component *Component) RunLocal(ctx context.Context, runtime Workspace, call Call) (CallResult, error) {
 	workflow, err := component.workflow(runtime)
 	if err != nil {
-		return actions.CallResult{}, err
+		return CallResult{}, err
 	}
-	return workflow.runtime.RunLocal(ctx, call)
+	result, err := workflow.runtime.RunLocal(ctx, call.domain())
+	return wrapCallResult(result), err
 }
+
+func (component *Component) MCPCall(runtime Workspace) func(context.Context, Call) (CallResult, error) {
+	return func(ctx context.Context, call Call) (CallResult, error) {
+		workflow, err := component.workflow(runtime)
+		if err != nil {
+			return CallResult{}, err
+		}
+		result, err := workflow.runtime.Call(ctx, call.domain())
+		return wrapCallResult(result), err
+	}
+}
+
+func TerminalPersistenceRequestID(err error) (int64, bool) {
+	var persistence *actions.TerminalPersistenceError
+	if !errors.As(err, &persistence) {
+		return 0, false
+	}
+	return persistence.RequestID, true
+}
+
+func TerminalPersistenceErrorText() string { return actions.TerminalPersistenceErrorText }
 
 func (component *Component) Finish(ctx context.Context, runtime Workspace, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	workflow, err := component.workflow(runtime)
@@ -284,6 +295,9 @@ func (component *Component) ReleaseWorkspace(runtime Workspace) {
 	}
 	if workflow, ok := component.workflows.Delete(runtime.Identity.RuntimeInstanceID); ok && workflow != nil && workflow.runtime != nil {
 		workflow.runtime.StopRecovery()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = workflow.runtime.StopFinalizers(ctx)
 	}
 }
 
@@ -302,7 +316,7 @@ func (component *Component) redactor(runtime Workspace) (*actions.Redactor, erro
 	)
 }
 
-func (component *Component) RedactValue(ctx context.Context, runtime Workspace, value any, sensitiveFields, capabilityFields map[string]bool, boundary actions.CredentialBoundary) (any, error) {
+func (component *Component) RedactValue(ctx context.Context, runtime Workspace, value any, sensitiveFields, capabilityFields map[string]bool, boundary CredentialBoundary) (any, error) {
 	redactor, err := component.redactor(runtime)
 	if err != nil {
 		return nil, err
@@ -318,7 +332,7 @@ func (component *Component) RedactResult(ctx context.Context, runtime Workspace,
 	return redactor.Result(ctx, result, hints...)
 }
 
-func (component *Component) RedactResultWithCredentialBoundary(ctx context.Context, runtime Workspace, result connectors.ActionResult, boundary actions.CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+func (component *Component) RedactResultWithCredentialBoundary(ctx context.Context, runtime Workspace, result connectors.ActionResult, boundary CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	redactor, err := component.redactor(runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -342,9 +356,10 @@ func (component *Component) RedactPreview(ctx context.Context, runtime Workspace
 	return redactor.Preview(ctx, preview, sensitiveFields, hints...)
 }
 
-func (*Component) Prepare(runtime Workspace, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+func (*Component) Prepare(runtime Workspace, ctx context.Context, request PrepareRequest) (PreparedRequest, error) {
 	if runtime.Storage.Database == nil || runtime.Storage.Registry == nil {
-		return actions.PreparedRequest{}, errors.New("database runtime is not available")
+		return PreparedRequest{}, errors.New("database runtime is not available")
 	}
-	return actions.NewService(runtime.Storage.Registry, targetResolver{store: connectortargets.NewStore(runtime.Storage.Database)}).Prepare(ctx, request)
+	prepared, err := actions.NewService(runtime.Storage.Registry, targetResolver{store: connectortargets.NewStore(runtime.Storage.Database)}).Prepare(ctx, request.domain())
+	return wrapPreparedRequest(prepared), err
 }

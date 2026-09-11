@@ -67,3 +67,23 @@ func TestRedactorInputHonorsConfiguredEncodedLimit(t *testing.T) {
 		t.Fatal("oversized connector input was accepted")
 	}
 }
+
+func TestRedactorTreatsNilBoundaryAsEmpty(t *testing.T) {
+	redactor, err := NewRedactor(
+		func(_ context.Context, value string) string { return value },
+		func(_ context.Context, value string) string { return value },
+		1024,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := redactor.ResultWithCredentialBoundary(t.Context(), connectors.ActionResult{
+		Status: connectors.ResultCompleted, DisplayText: "visible", Output: map[string]any{"value": "visible"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.DisplayText != "visible" || result.Output.(map[string]any)["value"] != "visible" {
+		t.Fatalf("nil boundary changed output: %#v", result)
+	}
+}

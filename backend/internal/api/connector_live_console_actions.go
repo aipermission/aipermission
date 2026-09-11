@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -19,7 +18,7 @@ func (s *Server) liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime d
 			continue
 		}
 		ref, err := adapter.LiveConsoleTargetRef(ctx, s.connectorLiveRuntime(runtime, info.Kind), runtimeID)
-		if errors.Is(err, connectormgmt.ErrRuntimeSurfaceNotFound) {
+		if connectormgmt.IsRuntimeSurfaceNotFound(err) {
 			continue
 		}
 		if err != nil {
@@ -30,5 +29,5 @@ func (s *Server) liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime d
 		}
 		return ref, nil
 	}
-	return "", connectormgmt.ErrInvalidTargetRef
+	return "", connectormgmt.InvalidTargetRefError()
 }

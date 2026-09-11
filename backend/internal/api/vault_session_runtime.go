@@ -19,7 +19,7 @@ func (s *Server) configureVaultSessionRuntime(runtime databaseRuntime) error {
 func (s *Server) vaultSessionLifecycle(runtime databaseRuntime) (*gatewayvault.SessionLifecycle, error) {
 	if s == nil || runtime == nil || runtime.Storage.DatabaseHandle() == nil ||
 		runtime.Security.VaultLeaseStore() == nil || runtime.Connectors.ConsoleSessionManager() == nil {
-		return nil, gatewayvault.ErrInvalidatorUnavailable
+		return nil, gatewayvault.InvalidatorUnavailableError()
 	}
 	delivery := runtime.Security.VaultDeliveryCoordinator()
 	return s.vaultApplication().SessionLifecycle(gatewayvault.SessionLifecycleRuntime{
