@@ -4,7 +4,6 @@ package gatewayoperations
 import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
-	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
@@ -27,6 +26,5 @@ type SessionAuthorization = console.SessionAuthorization
 type SessionHandle = console.SessionHandle
 type SessionOperation = console.SessionOperation
 type MaintenanceHTTPScope = consolehttp.MaintenanceHTTPScope
-type HTTPBoundary = gatewayhttp.Boundary
 type MessageScope = messagequeue.Scope
 type MessageStore = messagequeue.Store

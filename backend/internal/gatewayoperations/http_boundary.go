@@ -1,6 +1,6 @@
-// Package gatewayhttp owns the local-only browser, lifecycle, and timeout
-// boundary applied around gateway HTTP routes.
-package gatewayhttp
+// Package gatewayoperations owns the local-only browser, lifecycle, and
+// timeout boundary applied around gateway HTTP routes.
+package gatewayoperations
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type Lifecycle interface {
 	AcquireRead() func()
 }
 
-type Boundary struct {
+type HTTPBoundary struct {
 	Routes            http.Handler
 	Lifecycle         Lifecycle
 	IsUnlocked        func() bool
@@ -36,7 +36,7 @@ type Boundary struct {
 	WriteError        func(http.ResponseWriter, int, string)
 }
 
-func (boundary Boundary) Handler() http.Handler {
+func (boundary HTTPBoundary) Handler() http.Handler {
 	handler := http.HandlerFunc(boundary.serveHTTP)
 	return ResponsePolicy(boundary.localOnly(boundary.cors(WithRequestDeadline(handler, OrdinaryRequestTimeout))))
 }
@@ -50,7 +50,7 @@ func ResponsePolicy(next http.Handler) http.Handler {
 	})
 }
 
-func (boundary Boundary) localOnly(next http.Handler) http.Handler {
+func (boundary HTTPBoundary) localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if boundary.IsLocalRemoteAddr == nil || !boundary.IsLocalRemoteAddr(r.RemoteAddr) {
 			boundary.writeError(w, http.StatusForbidden, "remote gateway access is disabled; connect from localhost")
@@ -64,7 +64,7 @@ func (boundary Boundary) localOnly(next http.Handler) http.Handler {
 	})
 }
 
-func (boundary Boundary) cors(next http.Handler) http.Handler {
+func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		if origin != "" {
@@ -86,7 +86,7 @@ func (boundary Boundary) cors(next http.Handler) http.Handler {
 	})
 }
 
-func (boundary Boundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
+func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if IsStateChangingMethod(r.Method) && !boundary.safeBrowserMutationSource(r) {
 		boundary.writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
@@ -123,7 +123,7 @@ func (boundary Boundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	boundary.Routes.ServeHTTP(w, r)
 }
 
-func (boundary Boundary) safeBrowserMutationSource(r *http.Request) bool {
+func (boundary HTTPBoundary) safeBrowserMutationSource(r *http.Request) bool {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin != "" {
 		return boundary.allowedOrigin(origin) && safeFetchSite(r.Header.Get("Sec-Fetch-Site"))
@@ -137,11 +137,11 @@ func (boundary Boundary) safeBrowserMutationSource(r *http.Request) bool {
 	return !looksLikeBrowserMutation(r) && safeFetchSite(r.Header.Get("Sec-Fetch-Site"))
 }
 
-func (boundary Boundary) allowedOrigin(origin string) bool {
+func (boundary HTTPBoundary) allowedOrigin(origin string) bool {
 	return origin == "" || boundary.AllowsOrigin != nil && boundary.AllowsOrigin(origin)
 }
 
-func (boundary Boundary) writeError(w http.ResponseWriter, status int, message string) {
+func (boundary HTTPBoundary) writeError(w http.ResponseWriter, status int, message string) {
 	if boundary.WriteError != nil {
 		boundary.WriteError(w, status, message)
 		return
@@ -168,6 +168,9 @@ func IsStateChangingMethod(method string) bool {
 }
 
 func IsLifecycleMutation(path string) bool {
+	if strings.HasPrefix(path, "/api/backup/providers/") && strings.HasSuffix(path, "/restore") {
+		return true
+	}
 	switch path {
 	case "/api/unlock/setup", "/api/unlock", "/api/lock", "/api/databases/rename", "/api/databases/delete",
 		"/api/databases/delete-locked", "/api/databases/switch", "/api/databases/change-password", "/api/backup/import", "/api/backup/remote/restore":

@@ -6,7 +6,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
-	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
@@ -27,10 +26,6 @@ func NewConsoleManager(db *sql.DB, openRuntime console.RuntimeOpener, redact fun
 
 func NewMaintenanceHTTPHandlers(scope consolehttp.MaintenanceHTTPScopeProvider) *consolehttp.MaintenanceHTTPHandlers {
 	return consolehttp.NewMaintenanceHTTPHandlers(scope)
-}
-
-func IsStateChangingMethod(method string) bool {
-	return gatewayhttp.IsStateChangingMethod(method)
 }
 
 func SetAttachmentHeaders(w http.ResponseWriter, filename string, contentType string) {
