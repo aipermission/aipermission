@@ -5,7 +5,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/applicationvault"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -16,12 +15,7 @@ var (
 )
 
 const (
-	CSRFCookieBase      = uisession.CSRFCookieBase
-	CSRFHeaderName      = uisession.CSRFHeaderName
-	SessionCookieBase   = uisession.SessionCookieBase
-	SessionMaxAge       = uisession.SessionMaxAge
-	WorkspaceCookieBase = uisession.WorkspaceCookieBase
-	ActionGenerateItem  = vaultrequests.ActionGenerateItem
+	ActionGenerateItem = vaultrequests.ActionGenerateItem
 )
 
 type Application = applicationvault.Component
@@ -34,7 +28,6 @@ type ProjectVaultRuntime = projectvault.Runtime
 type SessionMutationScope = projectvault.SessionMutationScope
 type SessionReference = projectvault.SessionReference
 type SessionSelection = projectvault.SessionSelection
-type PreparedUISession = uisession.Prepared
 type VaultConnectorPort = vaultactions.ConnectorPort
 type PeerIdentityExpectation = vaultactions.PeerIdentityExpectation
 type VaultActionRuntime = vaultactions.Runtime

@@ -5,7 +5,6 @@ import (
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseWriter, runtime databaseRuntime, profile connectormgmt.CredentialProfile) (map[string]any, bool) {
@@ -13,7 +12,7 @@ func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseW
 	if profile.EncryptedSecretJSON == "" {
 		return secrets, true
 	}
-	if err := gatewayvault.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), gatewayvault.ConnectorCredentialProfileRecord(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := connectormgmt.DecryptCredentialProfileJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		writeInternalError(w)
 		return nil, false
 	}

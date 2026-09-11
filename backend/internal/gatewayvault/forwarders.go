@@ -8,8 +8,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/applicationvault"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -32,26 +30,6 @@ func EnsureWorkspaceUUID(ctx context.Context, db *sql.DB) (string, error) {
 
 func NewProjectVaultHTTPHandlers(scope projectvault.HTTPScopeProvider) *projectvault.HTTPHandlers {
 	return projectvault.NewHTTPHandlers(scope)
-}
-
-func DecryptJSON(secretVault recordcrypto.JSONDecrypter, workspaceID string, recordType recordcrypto.RecordType, recordID int64, encrypted string, target any) error {
-	return recordcrypto.DecryptJSON(secretVault, workspaceID, recordType, recordID, encrypted, target)
-}
-
-func ConnectorCredentialProfileRecord() recordcrypto.RecordType {
-	return recordcrypto.ConnectorCredentialProfile
-}
-
-func IsUIExempt(path string) bool {
-	return uisession.IsExempt(path)
-}
-
-func PrepareUISession() (uisession.Prepared, error) {
-	return uisession.Prepare()
-}
-
-func UISessionRetryIdentity(instanceID string) string {
-	return uisession.RetryIdentity(instanceID)
 }
 
 func NewVaultApprovalHTTPHandlers(scope vaultrequests.HTTPScopeProvider) *vaultrequests.HTTPHandlers {

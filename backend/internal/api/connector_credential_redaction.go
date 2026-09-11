@@ -5,7 +5,6 @@ import (
 
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 type connectorCredentialBoundary = actions.CredentialBoundary
@@ -27,7 +26,7 @@ func connectorCredentialBoundaryForRuntimeID(ctx context.Context, runtime databa
 		return actions.CredentialBoundary{}, nil
 	}
 	secrets := map[string]any{}
-	if err := gatewayvault.DecryptJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), gatewayvault.ConnectorCredentialProfileRecord(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
+	if err := connectormgmt.DecryptCredentialProfileJSON(runtime.StoragePort().SecretVault(), runtime.WorkspaceIdentifier(), profile.ID, profile.EncryptedSecretJSON, &secrets); err != nil {
 		return actions.CredentialBoundary{}, err
 	}
 	return actions.NewCredentialBoundary(secrets), nil

@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
 func NewCapabilityStore(db *sql.DB) *accesscontrol.CapabilityStore {
@@ -75,4 +76,16 @@ func RedactBasic(value string) string {
 
 func HashToken(value string) string {
 	return tokens.HashToken(value)
+}
+
+func IsUIExempt(path string) bool {
+	return uisession.IsExempt(path)
+}
+
+func PrepareUISession() (uisession.Prepared, error) {
+	return uisession.Prepare()
+}
+
+func UISessionRetryIdentity(instanceID string) string {
+	return uisession.RetryIdentity(instanceID)
 }

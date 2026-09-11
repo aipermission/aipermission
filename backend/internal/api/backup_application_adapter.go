@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"net/http"
 
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 type importDatabaseRequest = gatewayoperations.ImportDatabaseRequest
@@ -21,7 +21,7 @@ func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayoperations.BackupPasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
-		IssuePrepared: func(w http.ResponseWriter, prepared gatewayvault.PreparedUISession) error {
+		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 			return s.issuePreparedUISessionLocked(w, prepared)
 		},
 		AcquireOperation: s.controlState.BackupOperations.Acquire,

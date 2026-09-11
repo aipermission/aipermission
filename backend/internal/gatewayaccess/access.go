@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
 var (
@@ -26,6 +27,11 @@ const (
 	RunningAssistantHint = commandrequests.RunningAssistantHint
 	CommandSourceMCP     = commandrequests.SourceMCP
 	CommandSourceManual  = commandrequests.SourceManual
+	CSRFCookieBase       = uisession.CSRFCookieBase
+	CSRFHeaderName       = uisession.CSRFHeaderName
+	SessionCookieBase    = uisession.SessionCookieBase
+	SessionMaxAge        = uisession.SessionMaxAge
+	WorkspaceCookieBase  = uisession.WorkspaceCookieBase
 )
 
 type AccessScope = accesscontrol.Scope
@@ -46,3 +52,4 @@ type SecurityHTTPScope = securitypolicy.HTTPScope
 type SecuritySettings = securitypolicy.Settings
 type Token = tokens.Token
 type TokenValidationError = tokens.ValidationError
+type PreparedUISession = uisession.Prepared

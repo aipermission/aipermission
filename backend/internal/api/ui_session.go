@@ -3,21 +3,21 @@ package api
 import (
 	"net/http"
 
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 const (
-	uiSessionCookieName   = gatewayvault.SessionCookieBase
-	uiCSRFCookieName      = gatewayvault.CSRFCookieBase
-	uiWorkspaceCookieName = gatewayvault.WorkspaceCookieBase
-	uiCSRFHeaderName      = gatewayvault.CSRFHeaderName
-	uiSessionMaxAge       = gatewayvault.SessionMaxAge
+	uiSessionCookieName   = gatewayaccess.SessionCookieBase
+	uiCSRFCookieName      = gatewayaccess.CSRFCookieBase
+	uiWorkspaceCookieName = gatewayaccess.WorkspaceCookieBase
+	uiCSRFHeaderName      = gatewayaccess.CSRFHeaderName
+	uiSessionMaxAge       = gatewayaccess.SessionMaxAge
 )
 
-type preparedUISession = gatewayvault.PreparedUISession
+type preparedUISession = gatewayaccess.PreparedUISession
 
-func prepareUISession() (preparedUISession, error) { return gatewayvault.PrepareUISession() }
+func prepareUISession() (preparedUISession, error) { return gatewayaccess.PrepareUISession() }
 
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
@@ -53,11 +53,11 @@ func (s *Server) activeUIWorkspaceLocked() (string, string) {
 }
 
 func uiRetryIdentity(instanceID string) string {
-	return gatewayvault.UISessionRetryIdentity(instanceID)
+	return gatewayaccess.UISessionRetryIdentity(instanceID)
 }
 
-func isUISessionExempt(path string) bool { return gatewayvault.IsUIExempt(path) }
+func isUISessionExempt(path string) bool { return gatewayaccess.IsUIExempt(path) }
 
 func requiresUICSRF(method, path string) bool {
-	return !gatewayvault.IsUIExempt(path) && gatewayoperations.IsStateChangingMethod(method)
+	return !gatewayaccess.IsUIExempt(path) && gatewayoperations.IsStateChangingMethod(method)
 }
