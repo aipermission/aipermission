@@ -444,9 +444,8 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
 	const defaultBudget = 8
 	overrides := map[string]int{
-		// Composition roots are explicit exceptions. These ceilings match the
-		// post-decomposition graph and must ratchet down after dependencies move.
-		modulePath + "/internal/connectors/builtin":        16,
+		// This remaining composition exception must ratchet down after the SSH
+		// adapter is decomposed into capability-owned packages.
 		modulePath + "/internal/connectors/ssh/apiadapter": 14,
 	}
 	for importer, imports := range importsByPackage {

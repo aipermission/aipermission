@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,19 +16,28 @@ export const releaseData = JSON.parse(readFileSync(join(currentDir, "release.gen
 export const releaseManifest = JSON.parse(readFileSync(join(sourceDir, "..", "..", "release-manifest.json"), "utf8"));
 export const connectorTemplateRegistrySource = readFileSync(join(connectorTemplatesDir, "registry.jsx"), "utf8");
 export const connectorTemplateCatalogSource = readFileSync(join(connectorTemplatesDir, "catalog.js"), "utf8");
-export const backendConnectorRegistrySource = readFileSync(
-  join(sourceDir, "..", "..", "backend", "internal", "connectors", "builtin", "registry.go"),
-  "utf8",
-);
+const backendConnectorRegistryDir = join(sourceDir, "..", "..", "backend", "internal", "connectors", "builtin");
+export const backendConnectorRegistrySources = readdirSync(backendConnectorRegistryDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => join(backendConnectorRegistryDir, entry.name, "register.go"))
+  .filter((filename) => existsSync(filename))
+  .map((filename) => readFileSync(filename, "utf8"));
 export const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name)
   .sort();
 
-export function backendRegisteredConnectorKinds(source) {
-  const connectorImports = new Map();
-  for (const match of source.matchAll(/(\w+)\s+"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g)) {
-    connectorImports.set(match[1], match[2].split("/")[0]);
+export function backendRegisteredConnectorKinds(sources) {
+  const kinds = new Set();
+  for (const source of sources) {
+    const connectorImports = new Map();
+    for (const match of source.matchAll(/(\w+)\s+"github\.com\/aipermission\/aipermission\/backend\/internal\/connectors\/([^"]+)"/g)) {
+      connectorImports.set(match[1], match[2].split("/")[0]);
+    }
+    for (const match of source.matchAll(/(\w+)\.New\(\)/g)) {
+      const kind = connectorImports.get(match[1]);
+      if (kind) kinds.add(kind);
+    }
   }
-  return [...new Set([...source.matchAll(/(\w+)\.New\(\)/g)].map((match) => connectorImports.get(match[1])).filter(Boolean))].sort();
+  return [...kinds].sort();
 }

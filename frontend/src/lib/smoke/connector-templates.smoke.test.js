@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  backendConnectorRegistrySource,
+  backendConnectorRegistrySources,
   backendRegisteredConnectorKinds,
   connectorTemplateCatalogSource,
   connectorTemplateKinds,
@@ -19,7 +19,7 @@ test("connector templates are discovered dynamically", () => {
 });
 
 test("frontend and backend connector catalogs stay aligned", () => {
-  assert.deepEqual(backendRegisteredConnectorKinds(backendConnectorRegistrySource), connectorTemplateKinds);
+  assert.deepEqual(backendRegisteredConnectorKinds(backendConnectorRegistrySources), connectorTemplateKinds);
   for (const kind of connectorTemplateKinds) {
     const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
     const metadata = JSON.parse(readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8"));

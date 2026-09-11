@@ -5,20 +5,10 @@ package builtin
 import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
-	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
-	dockerapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/docker/apiadapter"
-	kafkaconnector "github.com/aipermission/aipermission/backend/internal/connectors/kafka"
-	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
-	kubernetesapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes/apiadapter"
-	mailconnector "github.com/aipermission/aipermission/backend/internal/connectors/mail"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
-	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
-	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
-	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
-	s3apiadapter "github.com/aipermission/aipermission/backend/internal/connectors/s3/apiadapter"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	sshapiadapter "github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/adaptercontainers"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/adapterresources"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/catalogdata"
+	"github.com/aipermission/aipermission/backend/internal/connectors/builtin/catalogruntime"
 )
 
 type Catalog struct {
@@ -28,19 +18,11 @@ type Catalog struct {
 
 // RegisterAll adds all built-in connectors to the provided registry.
 func RegisterAll(registry *connectors.Registry) error {
-	for _, connector := range []connectors.Connector{
-		clickhouseconnector.New(),
-		dockerconnector.New(),
-		kafkaconnector.New(),
-		kubernetesconnector.New(),
-		mailconnector.New(),
-		postgresconnector.New(),
-		rabbitmqconnector.New(),
-		redisconnector.New(),
-		s3connector.New(),
-		sshconnector.New(),
+	for _, register := range []func(*connectors.Registry) error{
+		catalogdata.Register,
+		catalogruntime.Register,
 	} {
-		if err := registry.Register(connector); err != nil {
+		if err := register(registry); err != nil {
 			return err
 		}
 	}
@@ -57,17 +39,11 @@ func NewRegistry() (*connectors.Registry, error) {
 }
 
 func RegisterAdapters(registry *connectorapi.Registry) error {
-	registrations := []struct {
-		kind    string
-		adapter connectorapi.Adapter
-	}{
-		{kind: dockerconnector.Kind, adapter: dockerapiadapter.New()},
-		{kind: kubernetesconnector.Kind, adapter: kubernetesapiadapter.New()},
-		{kind: s3connector.Kind, adapter: s3apiadapter.New()},
-		{kind: sshconnector.Kind, adapter: sshapiadapter.New()},
-	}
-	for _, registration := range registrations {
-		if err := registry.Register(registration.kind, registration.adapter); err != nil {
+	for _, register := range []func(*connectorapi.Registry) error{
+		adaptercontainers.Register,
+		adapterresources.Register,
+	} {
+		if err := register(registry); err != nil {
 			return err
 		}
 	}
