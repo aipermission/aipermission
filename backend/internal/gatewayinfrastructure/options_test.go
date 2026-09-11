@@ -11,7 +11,7 @@ import (
 func TestComponentOptionsPreserveInjectedCatalogsAndIdentityGenerator(t *testing.T) {
 	registry := connectors.NewRegistry()
 	adapters := connectorapi.NewRegistry()
-	component := NewComponent("test.aipdb", "3212", nil,
+	component := NewComponent("test.aipdb", nil,
 		WithConnectorRegistry(registry),
 		WithConnectorAdapterRegistry(adapters),
 		WithRuntimeInstanceIDGenerator(func() (string, error) { return "runtime-fixture", nil }),
@@ -47,7 +47,7 @@ func TestNilComponentWorkspaceOperationsFailClosed(t *testing.T) {
 }
 
 func TestComponentOptionsFailSafeToDefaultCatalogs(t *testing.T) {
-	component := NewComponent("test.aipdb", "3212", nil,
+	component := NewComponent("test.aipdb", nil,
 		WithConnectorRegistry(nil),
 		WithConnectorAdapterRegistry(nil),
 		WithRuntimeInstanceIDGenerator(nil),

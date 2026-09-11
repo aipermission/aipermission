@@ -1,0 +1,150 @@
+package gatewayaccess
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	"github.com/aipermission/aipermission/backend/internal/uisession"
+)
+
+const (
+	AuthLockoutFailures      = 8
+	MCPGlobalDelayFailures   = 32
+	MCPGlobalLockoutFailures = 64
+)
+
+var ErrComponentUnavailable = errors.New("gateway access component is unavailable")
+
+// Component owns process-scoped authentication throttles and browser session
+// state. These controls intentionally survive workspace switches.
+type Component struct {
+	databasePasswordLimiter *runtimecontrol.Auth
+	mcpIPLimiter            *runtimecontrol.Auth
+	mcpTokenLimiter         *runtimecontrol.Auth
+	vaultRevealLimiter      *runtimecontrol.Window
+	vaultGenerateLimiter    *runtimecontrol.Window
+	vaultRequestMu          sync.RWMutex
+	vaultRequestLimiter     *runtimecontrol.Window
+	uiSessions              *uisession.Manager
+}
+
+func NewComponent(frontendPort string) *Component {
+	return &Component{
+		databasePasswordLimiter: runtimecontrol.NewAuth(1, AuthLockoutFailures),
+		mcpIPLimiter:            runtimecontrol.NewAuth(MCPGlobalDelayFailures, MCPGlobalLockoutFailures),
+		mcpTokenLimiter:         runtimecontrol.NewAuth(1, AuthLockoutFailures),
+		vaultRevealLimiter:      runtimecontrol.NewWindow(8, time.Minute),
+		vaultGenerateLimiter:    runtimecontrol.NewWindow(10, time.Minute),
+		vaultRequestLimiter:     runtimecontrol.NewWindow(30, time.Minute),
+		uiSessions:              uisession.New(frontendPort),
+	}
+}
+
+func (component *Component) WaitDatabasePassword(ctx context.Context, key string) error {
+	if component == nil || component.databasePasswordLimiter == nil {
+		return ErrComponentUnavailable
+	}
+	return component.databasePasswordLimiter.Wait(ctx, key)
+}
+func (component *Component) RecordDatabasePasswordFailure(key string) {
+	if component != nil && component.databasePasswordLimiter != nil {
+		component.databasePasswordLimiter.RecordFailure(key)
+	}
+}
+func (component *Component) RecordDatabasePasswordSuccess(key string) {
+	if component != nil && component.databasePasswordLimiter != nil {
+		component.databasePasswordLimiter.RecordSuccess(key)
+	}
+}
+func (component *Component) DatabasePasswordFailureCount(key string) int {
+	if component == nil || component.databasePasswordLimiter == nil {
+		return 0
+	}
+	return component.databasePasswordLimiter.FailureCount(key)
+}
+func (component *Component) WaitMCPIP(ctx context.Context, key string) error {
+	if component == nil || component.mcpIPLimiter == nil {
+		return ErrComponentUnavailable
+	}
+	return component.mcpIPLimiter.Wait(ctx, key)
+}
+func (component *Component) RecordMCPIPFailure(key string) {
+	if component != nil && component.mcpIPLimiter != nil {
+		component.mcpIPLimiter.RecordFailure(key)
+	}
+}
+func (component *Component) RecordMCPIPSuccess(key string) {
+	if component != nil && component.mcpIPLimiter != nil {
+		component.mcpIPLimiter.RecordSuccess(key)
+	}
+}
+func (component *Component) WaitMCPToken(ctx context.Context, key string) error {
+	if component == nil || component.mcpTokenLimiter == nil {
+		return ErrComponentUnavailable
+	}
+	return component.mcpTokenLimiter.Wait(ctx, key)
+}
+func (component *Component) RecordMCPTokenFailure(key string) {
+	if component != nil && component.mcpTokenLimiter != nil {
+		component.mcpTokenLimiter.RecordFailure(key)
+	}
+}
+func (component *Component) RecordMCPTokenSuccess(key string) {
+	if component != nil && component.mcpTokenLimiter != nil {
+		component.mcpTokenLimiter.RecordSuccess(key)
+	}
+}
+func (component *Component) AllowVaultReveal(key string) bool {
+	return component != nil && component.vaultRevealLimiter != nil && component.vaultRevealLimiter.Allow(key)
+}
+func (component *Component) AllowVaultGenerate(key string) bool {
+	return component != nil && component.vaultGenerateLimiter != nil && component.vaultGenerateLimiter.Allow(key)
+}
+func (component *Component) AllowVaultRequest(key string) bool {
+	if component == nil {
+		return false
+	}
+	component.vaultRequestMu.RLock()
+	limiter := component.vaultRequestLimiter
+	component.vaultRequestMu.RUnlock()
+	return limiter != nil && limiter.Allow(key)
+}
+func (component *Component) ConfigureVaultRequestLimit(limit int, window time.Duration) {
+	if component != nil {
+		component.vaultRequestMu.Lock()
+		component.vaultRequestLimiter = runtimecontrol.NewWindow(limit, window)
+		component.vaultRequestMu.Unlock()
+	}
+}
+func (component *Component) IssueUISession(w http.ResponseWriter, databaseID, retryIdentity string) error {
+	if component == nil || component.uiSessions == nil {
+		return ErrComponentUnavailable
+	}
+	return component.uiSessions.Issue(w, databaseID, retryIdentity)
+}
+func (component *Component) IssuePreparedUISession(w http.ResponseWriter, prepared PreparedUISession, databaseID, retryIdentity string) error {
+	if component == nil || component.uiSessions == nil {
+		return ErrComponentUnavailable
+	}
+	return component.uiSessions.IssuePrepared(w, prepared, databaseID, retryIdentity)
+}
+func (component *Component) ClearUISessions(w http.ResponseWriter) {
+	if component != nil && component.uiSessions != nil {
+		component.uiSessions.Clear(w)
+	}
+}
+func (component *Component) ValidUISession(r *http.Request, databaseID string) bool {
+	return component != nil && component.uiSessions != nil && component.uiSessions.Valid(r, databaseID)
+}
+func (component *Component) ValidUICSRF(r *http.Request) bool {
+	return component != nil && component.uiSessions != nil && component.uiSessions.ValidCSRF(r)
+}
+func (component *Component) EnsureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request, retryIdentity string) {
+	if component != nil && component.uiSessions != nil {
+		component.uiSessions.EnsureWorkspaceCookie(w, r, retryIdentity)
+	}
+}

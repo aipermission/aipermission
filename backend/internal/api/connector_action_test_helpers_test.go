@@ -181,7 +181,7 @@ func newConnectorActionTestRuntime(
 	actionIdentityKey []byte,
 ) databaseRuntime {
 	t.Helper()
-	infrastructure := gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), "3212", nil)
+	infrastructure := gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil)
 	runtime, err := infrastructure.AdoptWorkspace(t.Context(), gatewayinfra.AdoptInput{
 		ID:                      workspaceUUID,
 		Database:                database,

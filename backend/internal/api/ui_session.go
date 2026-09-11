@@ -22,26 +22,26 @@ func prepareUISession() (preparedUISession, error) { return gatewayaccess.Prepar
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
-	return s.infrastructure.IssueUISession(w, databaseID, retryIdentity)
+	return s.access.IssueUISession(w, databaseID, retryIdentity)
 }
 
 // issuePreparedUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared preparedUISession) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
-	return s.infrastructure.IssuePreparedUISession(w, prepared, databaseID, retryIdentity)
+	return s.access.IssuePreparedUISession(w, prepared, databaseID, retryIdentity)
 }
 
-func (s *Server) clearUISessions(w http.ResponseWriter) { s.infrastructure.ClearUISessions(w) }
+func (s *Server) clearUISessions(w http.ResponseWriter) { s.access.ClearUISessions(w) }
 
 func (s *Server) hasValidUISession(r *http.Request) bool {
-	return s.infrastructure.ValidUISession(r, s.workspaceSelection().ID)
+	return s.access.ValidUISession(r, s.workspaceSelection().ID)
 }
 
-func (s *Server) hasValidUICSRF(r *http.Request) bool { return s.infrastructure.ValidUICSRF(r) }
+func (s *Server) hasValidUICSRF(r *http.Request) bool { return s.access.ValidUICSRF(r) }
 
 func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request) {
 	_, retryIdentity := s.activeUIWorkspaceLocked()
-	s.infrastructure.EnsureUIWorkspaceCookie(w, r, retryIdentity)
+	s.access.EnsureUIWorkspaceCookie(w, r, retryIdentity)
 }
 
 func (s *Server) activeUIWorkspaceLocked() (string, string) {

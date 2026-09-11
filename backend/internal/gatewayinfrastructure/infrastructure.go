@@ -3,12 +3,6 @@ package gatewayinfrastructure
 
 import "github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 
-const (
-	AuthLockoutFailures      = 8
-	MCPGlobalDelayFailures   = 32
-	MCPGlobalLockoutFailures = 64
-)
-
 var ErrInitialization = gatewayworkspace.ErrInitialization
 
 type Runtime = gatewayworkspace.Runtime

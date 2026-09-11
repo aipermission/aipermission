@@ -301,7 +301,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 		Reason:         "Create a token for the approved autonomous workflow.",
 		IdempotencyKey: "always-generate-token-1",
 	}
-	fixture.server.infrastructure.ConfigureVaultRequestLimit(1, time.Minute)
+	fixture.server.access.ConfigureVaultRequestLimit(1, time.Minute)
 	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
 	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
 		strings.Contains(call.Body.String(), `"retry_after_seconds"`) ||

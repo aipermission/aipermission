@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
@@ -13,6 +14,7 @@ import (
 
 type Server struct {
 	config                  serverConfig
+	access                  *gatewayaccess.Component
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
 	observation             gatewayoperations.Observation
@@ -43,10 +45,10 @@ func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOpti
 
 func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *gatewayinfra.Vault, tokenStore *gatewayinfra.TokenStore, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
 	registry := infrastructure.ConnectorRegistry()
 	server := &Server{
-		config: cfg, infrastructure: infrastructure, mux: http.NewServeMux(),
+		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
@@ -80,9 +82,9 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
 	server := &Server{
-		config: cfg, infrastructure: infrastructure, mux: http.NewServeMux(),
+		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))

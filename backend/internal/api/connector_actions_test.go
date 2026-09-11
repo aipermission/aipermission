@@ -57,7 +57,7 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	catalog := newTestConnectorCatalog(t)
 	server := &Server{infrastructure: gatewayinfra.NewComponent(
-		"test.db", "8080", describeDatabaseRuntime,
+		"test.db", describeDatabaseRuntime,
 		gatewayinfra.WithConnectorAdapterRegistry(catalog.adapters),
 	)}
 	database := openAPITestDB(t)

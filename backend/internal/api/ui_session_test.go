@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
@@ -27,9 +28,9 @@ func (runtime uiSessionIdentityRuntime) UIRetryIdentifier() string {
 func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
 	server := &Server{
-		config: configuration,
+		config: configuration, access: gatewayaccess.NewComponent(port),
 		infrastructure: gatewayinfra.NewComponent(
-			configuration.DataPath, port, describeDatabaseRuntime,
+			configuration.DataPath, describeDatabaseRuntime,
 		),
 	}
 	if retryIdentity != "" {

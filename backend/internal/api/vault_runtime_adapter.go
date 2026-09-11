@@ -56,7 +56,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				return s.withAuditedMutation(ctx, runtime, "mcp", &tokenID, 0, action, payload, mutate)
 			},
 			AllowGenerate: func(tokenID int64) bool {
-				return s.infrastructure.AllowVaultGenerate(
+				return s.access.AllowVaultGenerate(
 					fmt.Sprintf("vault-generate:%s:%d", runtime.DatabaseIdentifier(), tokenID),
 				)
 			},
@@ -70,7 +70,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
 			AllowRequest: func(tokenID int64) bool {
-				return s.infrastructure.AllowVaultRequest(
+				return s.access.AllowVaultRequest(
 					"vault-request:" + runtime.DatabaseIdentifier() + ":" + strconv.FormatInt(tokenID, 10),
 				)
 			},

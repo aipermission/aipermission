@@ -108,7 +108,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{infrastructure: gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), "3212", nil)}
+	server := &Server{infrastructure: gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil)}
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
 	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
-	failures := server.infrastructure.DatabasePasswordFailureCount(limitKey)
+	failures := server.access.DatabasePasswordFailureCount(limitKey)
 	if failures != 1 {
 		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
 	}
@@ -484,7 +484,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
 	}
-	if failures := server.infrastructure.DatabasePasswordFailureCount(limitKey); failures != 0 {
+	if failures := server.access.DatabasePasswordFailureCount(limitKey); failures != 0 {
 		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {
