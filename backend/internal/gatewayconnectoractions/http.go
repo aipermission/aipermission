@@ -8,11 +8,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 type LocalHTTPDependencies struct {
-	ActiveRuntime     func(http.ResponseWriter) (workspaceruntime.Port, bool)
+	ActiveRuntime     func(http.ResponseWriter) (Workspace, bool)
 	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
 	WriteError        func(http.ResponseWriter, int, string)
 	WriteErrorCode    func(http.ResponseWriter, int, string, string)
@@ -58,7 +57,7 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len([]byte(request.Reason)) > 2<<10 {
-		handlers.dependencies.WriteError(w, http.StatusBadRequest, handlers.component.dependencies.RedactBasic(r.Context(), runtime, "reason must be 2048 bytes or less"))
+		handlers.dependencies.WriteError(w, http.StatusBadRequest, runtime.Workflow.RedactBasic(r.Context(), "reason must be 2048 bytes or less"))
 		return
 	}
 	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
@@ -77,7 +76,7 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 			if result.Replayed {
 				auditAction = "connector_action.manual.replayed"
 			}
-			handlers.component.dependencies.Observe(r.Context(), runtime, "user", nil, 0, auditAction, map[string]any{
+			runtime.Workflow.Observe(r.Context(), "user", nil, 0, auditAction, map[string]any{
 				"request_id": result.Request.ID, "target_ref": request.TargetRef, "connector_kind": result.Request.ConnectorKind,
 				"action_name": request.ActionName, "replayed": result.Replayed,
 			})
@@ -102,5 +101,5 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		handlers.dependencies.HandleTargetError(w, err)
 		return
 	}
-	handlers.dependencies.WriteErrorCode(w, http.StatusBadRequest, handlers.component.dependencies.RedactBasic(r.Context(), runtime, err.Error()), connectors.ErrorCode(err))
+	handlers.dependencies.WriteErrorCode(w, http.StatusBadRequest, runtime.Workflow.RedactBasic(r.Context(), err.Error()), connectors.ErrorCode(err))
 }

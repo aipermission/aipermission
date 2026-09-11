@@ -14,7 +14,11 @@ type localConnectorActionRequest = actions.LocalRequest
 
 func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 	return s.connectorActionApplication().LocalHTTP(actions.LocalHTTPDependencies{
-		ActiveRuntime: s.activeRuntimeOrLocked, DecodeJSON: decodeJSON,
+		ActiveRuntime: func(w http.ResponseWriter) (actions.Workspace, bool) {
+			runtime, ok := s.activeRuntimeOrLocked(w)
+			return s.connectorActionWorkspace(runtime), ok
+		},
+		DecodeJSON: decodeJSON,
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: handleConnectorTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {

@@ -7,5 +7,10 @@ import (
 )
 
 func prepareConnectorAction(runtime databaseRuntime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
-	return actions.Prepare(runtime, ctx, request)
+	workspace := actions.Workspace{}
+	if runtime != nil {
+		workspace.Storage.Database = runtime.StoragePort().DatabaseHandle()
+		workspace.Storage.Registry = runtime.ConnectorPort().ConnectorRegistry()
+	}
+	return actions.Prepare(workspace, ctx, request)
 }
