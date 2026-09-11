@@ -68,7 +68,7 @@ type deliveryGate struct {
 	acquire func(context.Context) (func(), error)
 }
 
-func Delivery(acquire func(context.Context) (func(), error)) actions.DeliveryGate {
+func (*Component) Delivery(acquire func(context.Context) (func(), error)) actions.DeliveryGate {
 	return deliveryGate{acquire: acquire}
 }
 
@@ -166,7 +166,7 @@ func (component *Component) Workflow(runtime Workspace) (*actions.Runtime, error
 		workflow, err := actions.NewRuntime(actions.RuntimeDependencies{
 			Database: runtime.Storage.Database, Tokens: tokenReader{runtime: runtime}, Registry: runtime.Storage.Registry,
 			Targets: targetResolver{store: connectortargets.NewStore(runtime.Storage.Database)}, IdentityKey: runtime.Identity.Key,
-			Delivery: Delivery(runtime.Workflow.AcquireSecret), MCPStarted: runtime.Identity.MCPStarted,
+			Delivery: component.Delivery(runtime.Workflow.AcquireSecret), MCPStarted: runtime.Identity.MCPStarted,
 			Identity: func() (string, string, error) {
 				if runtime.Identity.Ensure == nil {
 					return "", "", actions.ErrWorkflowUnavailable
@@ -222,7 +222,7 @@ func (component *Component) StartRecovery(runtime Workspace) {
 	}
 }
 
-func StopRecovery(runtime Workspace) {
+func (component *Component) StopRecovery(runtime Workspace) {
 	if runtime.Workflow.Current != nil {
 		if workflow := runtime.Workflow.Current(); workflow != nil {
 			workflow.StopRecovery()
@@ -245,7 +245,7 @@ func (component *Component) Redactor(runtime Workspace) (*actions.Redactor, erro
 	)
 }
 
-func Prepare(runtime Workspace, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+func (*Component) Prepare(runtime Workspace, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
 	if runtime.Storage.Database == nil || runtime.Storage.Registry == nil {
 		return actions.PreparedRequest{}, errors.New("database runtime is not available")
 	}

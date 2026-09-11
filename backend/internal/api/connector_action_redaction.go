@@ -51,6 +51,6 @@ func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime datab
 	return redactor.Preview(ctx, preview, sensitiveFields, hints...)
 }
 
-func connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
-	return actions.SensitiveOutputFields(hints...)
+func (s *Server) connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {
+	return s.connectorActionApplication().SensitiveOutputFields(hints...)
 }

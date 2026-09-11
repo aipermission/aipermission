@@ -10,9 +10,18 @@ import (
 )
 
 func (s *Server) connectorActionApplication() *actions.Component {
+	if s != nil && s.connectorActions != nil {
+		return s.connectorActions
+	}
+	return s.newConnectorActionApplication()
+}
+
+func (s *Server) newConnectorActionApplication() *actions.Component {
 	return actions.New(actions.Dependencies{
-		MaxJSONBytes:    connectorActionJSONBodyBytes,
-		SupportsRunning: s.connectorActionSupportsRunning,
+		MaxJSONBytes: connectorActionJSONBodyBytes,
+		SupportsRunning: func(prepared actions.PreparedRequest) bool {
+			return s != nil && s.connectorActionSupportsRunning(prepared)
+		},
 	})
 }
 

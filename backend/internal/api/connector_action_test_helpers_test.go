@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	gatewayconnectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -31,6 +32,24 @@ const connectorActionLeaseExpiredBeforeDispatchMessage = actions.LeaseExpiredBef
 
 type connectorActionExecutionOptions = actions.ExecutionOptions
 type connectorActionExecutionEnvelope = actions.ExecutionEnvelope
+
+func prepareConnectorAction(runtime databaseRuntime, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {
+	workspace := gatewayConnectorActionWorkspace(runtime)
+	return gatewayConnectorActionComponent().Prepare(workspace, ctx, request)
+}
+
+func gatewayConnectorActionComponent() *gatewayactions.Component {
+	return gatewayactions.New(gatewayactions.Dependencies{})
+}
+
+func gatewayConnectorActionWorkspace(runtime databaseRuntime) gatewayactions.Workspace {
+	workspace := gatewayactions.Workspace{}
+	if runtime != nil {
+		workspace.Storage.Database = runtime.StoragePort().DatabaseHandle()
+		workspace.Storage.Registry = runtime.ConnectorPort().ConnectorRegistry()
+	}
+	return workspace
+}
 
 func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
 	workflow, err := s.connectorActionWorkflow(runtime)

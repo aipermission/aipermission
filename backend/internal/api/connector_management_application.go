@@ -97,7 +97,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 				return true
 			},
 			RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
-				redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, details, connectorSensitiveOutputFields(), nil, boundary)
+				redacted, err := s.redactedConnectorValueWithCredentialBoundary(ctx, runtime, details, s.connectorSensitiveOutputFields(), nil, boundary)
 				if err != nil || redacted == nil {
 					return nil, err
 				}

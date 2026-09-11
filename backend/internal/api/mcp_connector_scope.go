@@ -75,7 +75,7 @@ func (s *Server) mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatew
 	}
 	return &gatewayaccess.MCPOutputAuthorization{
 		Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(), Leases: runtime.SecurityPort().VaultLeaseStore(),
-		Delivery: actions.Delivery(runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: runtime.IsMCPStarted,
+		Delivery: s.connectorActionApplication().Delivery(runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: runtime.IsMCPStarted,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(runtime, tokenID)
 		},
