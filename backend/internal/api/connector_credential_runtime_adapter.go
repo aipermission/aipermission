@@ -9,7 +9,7 @@ import (
 
 func (s *Server) connectorCredentialRuntimePorts(runtime databaseRuntime) connectormgmt.CredentialRuntimePorts {
 	return connectormgmt.RuntimeCredentialPorts(
-		runtime,
+		connectorCredentialStorage(runtime),
 		func(kind string) connectors.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
 		},

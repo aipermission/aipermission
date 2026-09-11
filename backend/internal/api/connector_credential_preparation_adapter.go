@@ -7,7 +7,7 @@ import (
 )
 
 func (s *Server) connectorCredentialPreparationPorts(runtime databaseRuntime) connectormgmt.CredentialPreparationPorts {
-	return connectormgmt.RuntimeCredentialPreparation(runtime, func(connectorKind string) connectormgmt.CredentialCanonicalizer {
+	return connectormgmt.RuntimeCredentialPreparation(connectorCredentialStorage(runtime), func(connectorKind string) connectormgmt.CredentialCanonicalizer {
 		adapter := s.connectorCredentialCanonicalizerFor(connectorKind)
 		if adapter == nil {
 			return nil
@@ -16,4 +16,13 @@ func (s *Server) connectorCredentialPreparationPorts(runtime databaseRuntime) co
 			return adapter.CanonicalCredentialPublic(ctx, connectorDataRuntimePort(runtime, connectorKind), credentialKind, public)
 		}
 	})
+}
+
+func connectorCredentialStorage(runtime databaseRuntime) connectormgmt.CredentialStorage {
+	if runtime == nil {
+		return connectormgmt.CredentialStorage{}
+	}
+	return connectormgmt.CredentialStorage{
+		Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
+	}
 }

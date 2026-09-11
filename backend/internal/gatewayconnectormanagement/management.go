@@ -29,6 +29,7 @@ type CreateTargetWithProfileRequest = connectormanagement.CreateTargetWithProfil
 type CredentialBoundary = connectormanagement.CredentialBoundary
 type CredentialCanonicalizer = connectormanagement.CredentialCanonicalizer
 type CredentialPreparationPorts = connectormanagement.CredentialPreparationPorts
+type CredentialStorage = connectormanagement.CredentialStorage
 type CredentialProfileInput = connectormanagement.CredentialProfileInput
 type CredentialRuntimePorts = connectormanagement.CredentialRuntimePorts
 type PreparedCredentialProfile = connectormanagement.PreparedCredentialProfile

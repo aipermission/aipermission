@@ -11,7 +11,7 @@ import (
 
 func TestRuntimeCredentialPreparationCopiesPublicFieldsWithoutCanonicalizer(t *testing.T) {
 	input := map[string]any{"host": "database.internal"}
-	ports := RuntimeCredentialPreparation(nil, nil)
+	ports := RuntimeCredentialPreparation(CredentialStorage{}, nil)
 	result, err := ports.Canonicalize(t.Context(), "fixture", "password", input)
 	if err != nil {
 		t.Fatal(err)
@@ -23,7 +23,7 @@ func TestRuntimeCredentialPreparationCopiesPublicFieldsWithoutCanonicalizer(t *t
 }
 
 func TestRuntimeCredentialPortsBuildsScopedSecretAccessor(t *testing.T) {
-	ports := RuntimeCredentialPorts(nil, nil, nil, nil)
+	ports := RuntimeCredentialPorts(CredentialStorage{}, nil, nil, nil)
 	boundary := actionresult.NewCredentialBoundary(nil)
 	runtimeContext := ports.RuntimeContext(
 		connectortargets.Target{ID: 4, ConnectorKind: "fixture", Name: "target", Config: map[string]any{"mode": "direct"}},

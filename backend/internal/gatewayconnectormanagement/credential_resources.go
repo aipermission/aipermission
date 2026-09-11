@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 type CredentialResourceAdapter interface {
@@ -18,7 +17,6 @@ type CredentialResourceAdapter interface {
 
 type CredentialResourceDependencies struct {
 	Adapter    func(string) CredentialResourceAdapter
-	Runtime    func(workspaceruntime.Port, string) connectorapi.CredentialResourceRuntime
 	WriteError func(http.ResponseWriter, int, string)
 }
 
@@ -53,7 +51,7 @@ func (handlers CredentialResourceHandlers) Delete(w http.ResponseWriter, r *http
 type credentialResourceOperation func(CredentialResourceAdapter, http.ResponseWriter, *http.Request, connectorapi.CredentialResourceRuntime)
 
 func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Request, operation credentialResourceOperation) {
-	runtime, ok := handlers.component.active(w)
+	workspace, ok := handlers.component.active(w)
 	if !ok {
 		return
 	}
@@ -63,5 +61,9 @@ func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Re
 		handlers.dependencies.WriteError(w, http.StatusNotFound, "connector credential resources are not supported")
 		return
 	}
-	operation(adapter, w, r, handlers.dependencies.Runtime(runtime, kind))
+	if workspace.Credentials.ResourceRuntime == nil {
+		handlers.dependencies.WriteError(w, http.StatusServiceUnavailable, "connector credential runtime is unavailable")
+		return
+	}
+	operation(adapter, w, r, workspace.Credentials.ResourceRuntime(kind))
 }

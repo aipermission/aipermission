@@ -9,7 +9,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 func ProjectScopedSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
@@ -68,12 +67,12 @@ func NormalizeTargetConfig(connector connectors.Connector, config map[string]any
 	return connectormanagement.NormalizeTargetConfig(connector, config)
 }
 
-func RuntimeCredentialPorts(runtime workspaceruntime.Port, capabilities connectormanagement.RuntimeCapabilities, redactResult connectormanagement.ResultRedactor, redactText connectormanagement.TextRedactor) connectormanagement.CredentialRuntimePorts {
-	return connectormanagement.RuntimeCredentialPorts(runtime, capabilities, redactResult, redactText)
+func RuntimeCredentialPorts(storage connectormanagement.CredentialStorage, capabilities connectormanagement.RuntimeCapabilities, redactResult connectormanagement.ResultRedactor, redactText connectormanagement.TextRedactor) connectormanagement.CredentialRuntimePorts {
+	return connectormanagement.RuntimeCredentialPorts(storage, capabilities, redactResult, redactText)
 }
 
-func RuntimeCredentialPreparation(runtime workspaceruntime.Port, provider connectormanagement.CredentialCanonicalizerProvider) connectormanagement.CredentialPreparationPorts {
-	return connectormanagement.RuntimeCredentialPreparation(runtime, provider)
+func RuntimeCredentialPreparation(storage connectormanagement.CredentialStorage, provider connectormanagement.CredentialCanonicalizerProvider) connectormanagement.CredentialPreparationPorts {
+	return connectormanagement.RuntimeCredentialPreparation(storage, provider)
 }
 
 func NewStore(db *sql.DB) *connectortargets.Store {
