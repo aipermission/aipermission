@@ -394,7 +394,27 @@ func TestConcreteWorkspaceRuntimeStaysInsideGatewayFactory(t *testing.T) {
 }
 
 func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
-	path := filepath.Join("..", "gatewayworkspace", "runtimecontract", "runtime.go")
+	for _, path := range []string{
+		filepath.Join("..", "gatewayworkspace", "runtimecontract", "runtime.go"),
+		filepath.Join("..", "gatewayworkspace", "runtime", "runtime.go"),
+		filepath.Join("..", "gatewayworkspace", "lifecycle", "lifecycle.go"),
+		filepath.Join("..", "gatewayworkspace", "workspace.go"),
+		filepath.Join("..", "gatewayinfrastructure", "infrastructure.go"),
+	} {
+		t.Run(filepath.ToSlash(path), func(t *testing.T) {
+			assertNamedRuntimeInterface(t, path)
+		})
+	}
+	statePackage := modulePath + "/internal/gatewayinfrastructure"
+	for _, imported := range allPackageImports(t)[statePackage] {
+		if imported == modulePath+"/internal/workspaceruntime" {
+			t.Fatalf("%s must store the gateway-owned runtime contract", statePackage)
+		}
+	}
+}
+
+func assertNamedRuntimeInterface(t *testing.T, path string) {
+	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -420,13 +440,7 @@ func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("gateway workspace Runtime contract is missing")
-	}
-	statePackage := modulePath + "/internal/gatewayinfrastructure"
-	for _, imported := range allPackageImports(t)[statePackage] {
-		if imported == modulePath+"/internal/workspaceruntime" {
-			t.Fatalf("%s must store the gateway-owned runtime contract", statePackage)
-		}
+		t.Fatalf("%s: Runtime contract is missing", path)
 	}
 }
 

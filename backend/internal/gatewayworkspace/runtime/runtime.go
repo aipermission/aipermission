@@ -10,7 +10,12 @@ import (
 	runtimeshutdown "github.com/aipermission/aipermission/backend/internal/workspaceruntime/shutdown"
 )
 
-type Runtime = runtimecontract.Runtime
+// Runtime is the constructor boundary returned to workspace lifecycle code.
+// The named interface prevents the concrete workspaceruntime implementation
+// from becoming part of the public gateway contract.
+type Runtime interface {
+	runtimecontract.Runtime
+}
 
 type ActionWorkflow = runtimeshutdown.ActionWorkflow
 type CommandWorkflow = runtimeshutdown.CommandWorkflow

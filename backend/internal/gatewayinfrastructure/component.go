@@ -33,10 +33,12 @@ func NewComponent(dataPath string, describe func(Runtime) Identity, options ...S
 	}
 	resolved := resolveOptions(options)
 	return &Component{
-		connectorRegistry:          resolved.Registry,
-		connectorAdapterRegistry:   resolved.AdapterRegistry,
-		maintenanceConsole:         resolved.MaintenanceConsole,
-		workspace:                  gatewayworkspace.NewComponent(dataPath, describe),
+		connectorRegistry:        resolved.Registry,
+		connectorAdapterRegistry: resolved.AdapterRegistry,
+		maintenanceConsole:       resolved.MaintenanceConsole,
+		workspace: gatewayworkspace.NewComponent(dataPath, func(runtime gatewayworkspace.Runtime) gatewayworkspace.Identity {
+			return describe(runtime)
+		}),
 		runtimeInstanceIDGenerator: resolved.RuntimeInstanceIDGenerator,
 	}
 }
@@ -62,11 +64,34 @@ func (component *Component) ConnectorAdapterRegistry() *connectorapi.Registry {
 	return component.connectorAdapterRegistry
 }
 
-func (component *Component) ConfigureWorkspaceLifecycle(dependencies gatewayworkspace.Dependencies) error {
+func (component *Component) ConfigureWorkspaceLifecycle(dependencies WorkspaceDependencies) error {
 	if component == nil || component.workspace == nil {
 		return gatewayworkspace.ErrInitialization
 	}
-	return component.workspace.Configure(dependencies)
+	var open func(string, string, string) (gatewayworkspace.Runtime, error)
+	if dependencies.Open != nil {
+		open = func(path, id, password string) (gatewayworkspace.Runtime, error) {
+			return dependencies.Open(path, id, password)
+		}
+	}
+	var closeRuntime func(gatewayworkspace.Runtime) error
+	if dependencies.Close != nil {
+		closeRuntime = func(runtime gatewayworkspace.Runtime) error { return dependencies.Close(runtime) }
+	}
+	var onActivated, onOpened func(gatewayworkspace.Runtime)
+	if dependencies.OnActivated != nil {
+		onActivated = func(runtime gatewayworkspace.Runtime) { dependencies.OnActivated(runtime) }
+	}
+	if dependencies.OnOpened != nil {
+		onOpened = func(runtime gatewayworkspace.Runtime) { dependencies.OnOpened(runtime) }
+	}
+	return component.workspace.Configure(gatewayworkspace.Dependencies{
+		DataPath: dependencies.DataPath,
+		Open:     open, Close: closeRuntime, OnActivated: onActivated, OnOpened: onOpened,
+		Move: dependencies.Move, Delete: dependencies.Delete,
+		ValidateNewPassword: dependencies.ValidateNewPassword,
+		Publish:             dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
+	})
 }
 
 func (component *Component) WorkspaceLifecycle() WorkspaceLifecyclePort {
@@ -111,7 +136,12 @@ func (component *Component) WorkspaceSnapshot() []Runtime {
 	if component == nil || component.workspace == nil {
 		return nil
 	}
-	return component.workspace.Snapshot()
+	items := component.workspace.Snapshot()
+	runtimes := make([]Runtime, len(items))
+	for index, runtime := range items {
+		runtimes[index] = runtime
+	}
+	return runtimes
 }
 
 func (component *Component) WorkspaceCount() int {

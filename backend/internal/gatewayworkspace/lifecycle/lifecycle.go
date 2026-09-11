@@ -12,7 +12,9 @@ import (
 	workspacehttp "github.com/aipermission/aipermission/backend/internal/workspacelifecycle/httpapi"
 )
 
-type Runtime = runtimecontract.Runtime
+type Runtime interface {
+	runtimecontract.Runtime
+}
 type Identity = workspacelifecycle.Identity
 
 type PasswordAttempt interface {
