@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"math"
 	"net"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 	"unicode"
@@ -16,7 +15,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 func decodeDraftRequest(value any) (draftTargetRequest, error) {
@@ -42,94 +40,6 @@ func operationProfileID(profiles []connectors.CredentialProfileView, requestedPr
 		return 0, connectortargets.ValidationError("profile_id is required when an SSH connector target has multiple credential profiles")
 	}
 	return profiles[0].ID, nil
-}
-
-func execOutput(result console.ExecResult) map[string]any {
-	return map[string]any{
-		"command":     result.Command,
-		"stdout":      console.PlainOutput(result.Output),
-		"stderr":      "",
-		"exit_code":   result.ExitCode,
-		"running":     result.Running,
-		"session_id":  result.SessionID,
-		"duration_ms": result.DurationMS,
-	}
-}
-
-func stringPayload(payload map[string]any, name string) string {
-	value, ok := payload[name]
-	if !ok || value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	default:
-		return fmt.Sprint(typed)
-	}
-}
-
-func intPayload(payload map[string]any, name string, fallback int) int {
-	value, ok := payload[name]
-	if !ok || value == nil {
-		return fallback
-	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		return fallback
-	}
-}
-
-func stringSlicePayload(payload map[string]any, name string) []string {
-	value, ok := payload[name]
-	if !ok || value == nil {
-		return nil
-	}
-	switch typed := value.(type) {
-	case []string:
-		return typed
-	case []any:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, fmt.Sprint(item))
-		}
-		return out
-	case string:
-		if typed == "" {
-			return nil
-		}
-		return []string{typed}
-	default:
-		return []string{fmt.Sprint(typed)}
-	}
-}
-
-func browseParent(remotePath string) string {
-	if remotePath == "" || remotePath == "/" || remotePath == "." {
-		return "/"
-	}
-	parent := path.Dir(remotePath)
-	if parent == "." {
-		return "/"
-	}
-	return parent
-}
-
-func normalizeRemoteDirectoryPath(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", nil
-	}
-	if strings.ContainsAny(value, "\x00\r\n") {
-		return "", fmt.Errorf("path cannot contain control characters")
-	}
-	return value, nil
 }
 
 func decodeJSON(r *http.Request, target any) error {
@@ -187,11 +97,11 @@ func handleMaterialError(w http.ResponseWriter, err error) {
 	}
 }
 
-func connectionFailureMessage(err error) string {
+func ConnectionFailureMessage(err error) string {
 	return failureMessage("server connection test failed", err)
 }
 
-func commandFailureMessage(err error) string {
+func CommandFailureMessage(err error) string {
 	return failureMessage("command execution failed", err)
 }
 
@@ -224,7 +134,7 @@ func safeErrorDetail(err error) string {
 	return strings.TrimSpace(strings.ToLower(err.Error()))
 }
 
-func writeUnknownHostKeyError(w http.ResponseWriter, err error) bool {
+func WriteUnknownHostKeyError(w http.ResponseWriter, err error) bool {
 	var unknown *execution.UnknownHostKeyError
 	if errors.As(err, &unknown) {
 		writeHostKeyConflict(w, "ssh host key approval required", "unknown_ssh_host_key", unknownHostKeyDTOFromUnknown(unknown))

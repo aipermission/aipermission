@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (adapter) LiveConsoleCapabilityKind() string {
+func (Management) LiveConsoleCapabilityKind() string {
 	return connectortargets.RuntimeCapabilityLiveConsole
 }
 
-func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (string, error) {
+func (Management) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (string, error) {
 	contextValue, _ := ctx.(context.Context)
 	if contextValue == nil {
 		contextValue = context.Background()
@@ -28,7 +28,7 @@ func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.Li
 	return connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID), nil
 }
 
-func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
+func (Management) LiveConsoleTargetMetadata(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
 	metadata := map[string]any{}
 	if host := stringConfigValue(target.Config, "host"); host != "" {
 		metadata["host"] = host

@@ -1,4 +1,4 @@
-package apiadapter
+package runtimeactions
 
 import (
 	"context"
@@ -27,6 +27,13 @@ func TestRuntimeCapabilityForActionSeparatesConsoleAndFileTransfers(t *testing.T
 		if got := runtimeCapabilityForAction(testCase.action); got != testCase.want {
 			t.Fatalf("capability for %s = %q, want %q", testCase.action, got, testCase.want)
 		}
+	}
+}
+
+func TestReadConsoleReturnsExactSessionHandle(t *testing.T) {
+	handles := exactSessionActionHandles(console.Record{ID: 12, Generation: 34})
+	if handles.SessionID != 12 || handles.SessionGeneration != 34 {
+		t.Fatalf("read console handle = %#v", handles)
 	}
 }
 

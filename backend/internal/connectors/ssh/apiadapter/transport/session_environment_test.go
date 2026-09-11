@@ -1,10 +1,8 @@
-package apiadapter
+package transport
 
 import (
 	"bytes"
 	"testing"
-
-	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 func TestStartupInputAfterConnect(t *testing.T) {
@@ -35,12 +33,5 @@ func TestSessionEnvironmentBootstrapOwnsItsProtocol(t *testing.T) {
 	}
 	if command := bootstrap.Command(); command == "" {
 		t.Fatal("bootstrap command is empty")
-	}
-}
-
-func TestReadConsoleReturnsExactSessionHandle(t *testing.T) {
-	handles := exactSessionActionHandles(console.Record{ID: 12, Generation: 34})
-	if handles.SessionID != 12 || handles.SessionGeneration != 34 {
-		t.Fatalf("read console handle = %#v", handles)
 	}
 }

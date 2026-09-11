@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"context"
@@ -16,11 +16,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (adapter) BeforeCreateCredentialProfile(context.Context, connectorapi.TargetLifecycleRuntime, connectortargets.Target) error {
+func (Management) BeforeCreateCredentialProfile(context.Context, connectorapi.TargetLifecycleRuntime, connectortargets.Target) error {
 	return nil
 }
 
-func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.ConsoleRestartGateway, runtime connectorapi.TargetLifecycleRuntime, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (Management) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.ConsoleRestartGateway, runtime connectorapi.TargetLifecycleRuntime, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
 	gateway, err := consoleRestartGatewayFrom(handler)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (adapter) BeforeDeleteCredentialProfile(ctx context.Context, handler connec
 	return nil
 }
 
-func (adapter) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectortargets.Target) {
+func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectortargets.Target) {
 	if w == nil || r == nil {
 		return
 	}
@@ -71,7 +71,7 @@ func (adapter) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.R
 				handleTargetError(w, err)
 				return
 			}
-			remoteTarget, privateKey, err := targetMaterial(r.Context(), runtime, runtimeID)
+			remoteTarget, privateKey, err := TargetMaterialForRuntime(r.Context(), runtime, runtimeID)
 			if err != nil {
 				handleMaterialError(w, err)
 				return
@@ -93,7 +93,7 @@ func (adapter) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.R
 			}
 			cleanupSeen[cleanupKey] = true
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			result, err := execution.RunCommand(ctx, executionTarget(gateway, remoteTarget, privateKey), removeAuthorizedKeyCommand(key.PublicKey))
+			result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, remoteTarget, privateKey), removeAuthorizedKeyCommand(key.PublicKey))
 			cancel()
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
@@ -149,11 +149,11 @@ func (adapter) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.R
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
 }
 
-func (adapter) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
+func (Management) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := peerIdentityFrom(handler)
+	gateway, err := PeerIdentityFrom(handler)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -167,14 +167,14 @@ func (adapter) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w
 		handleTargetError(w, err)
 		return
 	}
-	remoteTarget, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	remoteTarget, privateKey, err := TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
 		handleMaterialError(w, err)
 		return
 	}
-	result, err := execution.RunCommand(ctx, executionTarget(gateway, remoteTarget, privateKey), command)
+	result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, remoteTarget, privateKey), command)
 	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
+		if WriteUnknownHostKeyError(w, err) {
 			return
 		}
 		writeJSON(w, http.StatusOK, targetTestResponse{
@@ -183,7 +183,7 @@ func (adapter) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w
 			ConnectorKind: target.ConnectorKind,
 			OK:            false,
 			Status:        "connection_failed",
-			Message:       connectionFailureMessage(err),
+			Message:       ConnectionFailureMessage(err),
 			DurationMS:    time.Since(start).Milliseconds(),
 		})
 		return
@@ -205,11 +205,11 @@ func (adapter) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w
 	})
 }
 
-func (adapter) TestDraft(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, requestValue any) {
+func (Management) TestDraft(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, requestValue any) {
 	if w == nil || r == nil {
 		return
 	}
-	gateway, err := peerIdentityFrom(handler)
+	gateway, err := PeerIdentityFrom(handler)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -246,14 +246,14 @@ func (adapter) TestDraft(handler connectorapi.PeerIdentityGateway, w http.Respon
 		KnownHostsPath: gateway.ConnectorTrustStorePath(),
 	}, command)
 	if err != nil {
-		if writeUnknownHostKeyError(w, err) {
+		if WriteUnknownHostKeyError(w, err) {
 			return
 		}
 		writeJSON(w, http.StatusOK, targetTestResponse{
 			ConnectorKind: sshconnector.Kind,
 			OK:            false,
 			Status:        "connection_failed",
-			Message:       connectionFailureMessage(err),
+			Message:       ConnectionFailureMessage(err),
 			DurationMS:    time.Since(start).Milliseconds(),
 		})
 		return
@@ -273,7 +273,7 @@ func (adapter) TestDraft(handler connectorapi.PeerIdentityGateway, w http.Respon
 	})
 }
 
-func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectortargets.Target, operation string) {
+func (Management) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectortargets.Target, operation string) {
 	if w == nil || r == nil {
 		return
 	}
@@ -298,14 +298,14 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w
 		return
 	}
 	targetRef := connectors.FormatTargetRef(sshconnector.Kind, target.ID, profileID)
-	runtimeID, err := runtimeIDForTargetRef(r.Context(), runtime, targetRef)
+	runtimeID, err := RuntimeIDForTargetRef(r.Context(), runtime, targetRef)
 	if err != nil {
 		handleTargetError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	remoteTarget, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	remoteTarget, privateKey, err := TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
 		handleMaterialError(w, err)
 		return
@@ -314,10 +314,10 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w
 	case "docker-check":
 		response, err := dockerCheckForTarget(ctx, gateway, remoteTarget, privateKey)
 		if err != nil {
-			if writeUnknownHostKeyError(w, err) {
+			if WriteUnknownHostKeyError(w, err) {
 				return
 			}
-			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
+			writeError(w, http.StatusBadGateway, CommandFailureMessage(err))
 			return
 		}
 		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
@@ -334,10 +334,10 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w
 		}
 		response, err := dockerLogsForTarget(ctx, gateway, remoteTarget, privateKey, containerRef, input.Tail)
 		if err != nil {
-			if writeUnknownHostKeyError(w, err) {
+			if WriteUnknownHostKeyError(w, err) {
 				return
 			}
-			writeError(w, http.StatusBadGateway, commandFailureMessage(err))
+			writeError(w, http.StatusBadGateway, CommandFailureMessage(err))
 			return
 		}
 		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
@@ -351,20 +351,20 @@ func (adapter) RunTargetOperation(handler connectorapi.TargetOperationGateway, w
 	}
 }
 
-func (adapter) CanonicalCredentialPublic(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
+func (Management) CanonicalCredentialPublic(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, credentialKind string, public map[string]any) (map[string]any, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return canonicalCredentialPublic(ctx, runtime, credentialKind, public)
 }
 
-func dockerCheckForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
+func dockerCheckForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target TargetMaterial, privateKey sshkeys.PrivateKey) (dockerCheckResponse, error) {
 	const command = `if ! command -v docker >/dev/null 2>&1; then
   printf '__AIPERMISSION_DOCKER_UNAVAILABLE__\n'
   exit 0
 fi
 docker ps --format '{{json .}}'`
-	result, err := execution.RunCommand(ctx, executionTarget(gateway, target, privateKey), command)
+	result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, target, privateKey), command)
 	if err != nil {
 		return dockerCheckResponse{}, err
 	}
@@ -384,14 +384,14 @@ docker ps --format '{{json .}}'`
 	}, nil
 }
 
-func dockerLogsForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
+func dockerLogsForTarget(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target TargetMaterial, privateKey sshkeys.PrivateKey, containerRef string, tailValue int) (dockerLogsResponse, error) {
 	tail := normalizeDockerLogsTail(tailValue)
 	command := fmt.Sprintf(`if ! command -v docker >/dev/null 2>&1; then
   printf 'docker command is not available\n' >&2
   exit 127
 fi
 docker logs --tail %s --timestamps %s`, strconv.Itoa(tail), shellQuote(containerRef))
-	result, err := execution.RunCommand(ctx, executionTarget(gateway, target, privateKey), command)
+	result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, target, privateKey), command)
 	if err != nil {
 		return dockerLogsResponse{}, err
 	}

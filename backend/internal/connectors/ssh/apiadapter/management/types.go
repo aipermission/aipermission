@@ -1,18 +1,6 @@
-package apiadapter
+package management
 
-import (
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
-)
-
-type LiveConsoleOptions struct {
-	ForceShellCommand        string
-	StartupInputAfterConnect string
-	Generation               int64
-	HasEnvironment           bool
-	Environment              *sessionenv.Envelope
-}
-
-type sshTargetMaterial struct {
+type TargetMaterial struct {
 	ID                       int64
 	Name                     string
 	Host                     string

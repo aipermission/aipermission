@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (adapter) ListCredentialResources(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) ListCredentialResources(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -30,7 +30,7 @@ func (adapter) ListCredentialResources(w http.ResponseWriter, r *http.Request, r
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (adapter) CreateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) CreateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -52,7 +52,7 @@ func (adapter) CreateCredentialResource(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) ImportCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) ImportCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -74,7 +74,7 @@ func (adapter) ImportCredentialResource(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusCreated, item)
 }
 
-func (adapter) GetCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) GetCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -95,7 +95,7 @@ func (adapter) GetCredentialResource(w http.ResponseWriter, r *http.Request, run
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) UpdateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) UpdateCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (adapter) UpdateCredentialResource(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (adapter) DeleteCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
+func (Management) DeleteCredentialResource(w http.ResponseWriter, r *http.Request, runtime connectorapi.CredentialResourceRuntime) {
 	if w == nil || r == nil {
 		return
 	}

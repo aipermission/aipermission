@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"encoding/json"

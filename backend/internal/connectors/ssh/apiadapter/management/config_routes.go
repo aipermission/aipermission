@@ -1,4 +1,4 @@
-package apiadapter
+package management
 
 import (
 	"net"
@@ -11,7 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshconfig"
 )
 
-func (adapter) approveHostKey(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
+func (Management) approveHostKey(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
 	gateway, err := routeGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)
@@ -67,7 +67,7 @@ func (adapter) approveHostKey(server connectorapi.RouteGateway, w http.ResponseW
 	})
 }
 
-func (adapter) discoverConfig(server connectorapi.RouteGateway, w http.ResponseWriter, _ *http.Request) {
+func (Management) discoverConfig(server connectorapi.RouteGateway, w http.ResponseWriter, _ *http.Request) {
 	gateway, err := routeGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)
@@ -84,7 +84,7 @@ func (adapter) discoverConfig(server connectorapi.RouteGateway, w http.ResponseW
 	writeJSON(w, http.StatusOK, map[string]any{"items": entries})
 }
 
-func (adapter) parseConfig(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
+func (Management) parseConfig(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
 	gateway, err := routeGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)

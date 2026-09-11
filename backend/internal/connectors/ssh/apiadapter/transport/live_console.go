@@ -1,4 +1,4 @@
-package apiadapter
+package transport
 
 import (
 	"bytes"
@@ -11,42 +11,40 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"golang.org/x/crypto/ssh"
 )
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
-	gateway, err := peerIdentityFrom(server)
+type Transport struct{}
+
+func (Transport) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return nil, err
 	}
-	target, privateKey, err := targetMaterial(ctx, runtime, request.RuntimeID)
+	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
-	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey, request.Rows, request.Cols, LiveConsoleOptions{
+	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey.PrivateKey, request.Rows, request.Cols, LiveConsoleOptions{
 		Generation:        request.Generation,
 		HasEnvironment:    request.HasEnvironment,
 		ForceShellCommand: strings.TrimSpace(stringPayload(request.Params, "force_shell_command")),
 	})
 }
 
-func (adapter) ExpectedLiveConsolePeerIdentities(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) ([]string, error) {
-	gateway, err := peerIdentityFrom(server)
+func (Transport) ExpectedLiveConsolePeerIdentities(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) ([]string, error) {
+	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return nil, err
 	}
-	target, _, err := targetMaterial(ctx, runtime, runtimeID)
+	target, _, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
@@ -56,7 +54,7 @@ func (adapter) ExpectedLiveConsolePeerIdentities(ctx context.Context, server con
 	)
 }
 
-func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target sshTargetMaterial, privateKey sshkeys.PrivateKey, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
+func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target management.TargetMaterial, privateKey string, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
 	if strings.TrimSpace(options.ForceShellCommand) != "" {
 		target.ForceShellCommand = strings.TrimSpace(options.ForceShellCommand)
 	}
@@ -67,7 +65,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 	if hasEnvironment && target.ForceShellCommand != "" {
 		return nil, errors.New("session environment is not supported with a forced shell command")
 	}
-	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
+	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
 	if err != nil {
 		return nil, fmt.Errorf("parse private key: %w", err)
 	}
@@ -244,26 +242,26 @@ func writeEnvironmentBootstrapCommand(stdin io.Writer, startupInput string, comm
 	return nil
 }
 
-func (adapter) DialConnectorTCP(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, targetRef string, network string, address string) (net.Conn, error) {
+func (Transport) DialConnectorTCP(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, targetRef string, network string, address string) (net.Conn, error) {
 	if network == "" {
 		network = "tcp"
 	}
 	if network != "tcp" {
 		return nil, fmt.Errorf("unsupported SSH connector transport network %q", network)
 	}
-	gateway, err := peerIdentityFrom(server)
+	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return nil, err
 	}
-	runtimeID, err := runtimeIDForTargetRef(ctx, runtime, targetRef)
+	runtimeID, err := management.RuntimeIDForTargetRef(ctx, runtime, targetRef)
 	if err != nil {
 		return nil, err
 	}
-	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
-	client, err := execution.DialSSH(ctx, executionTarget(gateway, target, privateKey))
+	client, err := execution.DialSSH(ctx, management.ExecutionTarget(gateway, target, privateKey))
 	if err != nil {
 		return nil, err
 	}
@@ -309,20 +307,20 @@ func (conn sshTCPConn) Close() error {
 	return clientErr
 }
 
-func (adapter) RunConnectorCommand(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, targetRef string, command string) (connectors.CommandRunResult, error) {
-	gateway, err := peerIdentityFrom(server)
+func (Transport) RunConnectorCommand(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, targetRef string, command string) (connectors.CommandRunResult, error) {
+	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return connectors.CommandRunResult{}, err
 	}
-	runtimeID, err := runtimeIDForTargetRef(ctx, runtime, targetRef)
+	runtimeID, err := management.RuntimeIDForTargetRef(ctx, runtime, targetRef)
 	if err != nil {
 		return connectors.CommandRunResult{}, err
 	}
-	target, privateKey, err := targetMaterial(ctx, runtime, runtimeID)
+	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
 		return connectors.CommandRunResult{}, fmt.Errorf("resolve ssh material: %w", err)
 	}
-	result, err := execution.RunCommand(ctx, executionTarget(gateway, target, privateKey), command)
+	result, err := execution.RunCommand(ctx, management.ExecutionTarget(gateway, target, privateKey), command)
 	return connectors.CommandRunResult{
 		Stdout:          result.Stdout,
 		Stderr:          result.Stderr,
@@ -330,82 +328,4 @@ func (adapter) RunConnectorCommand(ctx context.Context, server connectorapi.Peer
 		DurationMS:      result.DurationMS,
 		DispatchStarted: result.DispatchStarted,
 	}, err
-}
-
-func (adapter) SupportsRunning(prepared actions.PreparedRequest) bool {
-	return prepared.Target.ConnectorKind == sshconnector.Kind && prepared.Action.ActionName == sshconnector.ActionExec
-}
-
-func (adapter) RunningHint(request connectortargets.ActionRequest) string {
-	if request.ConnectorKind == sshconnector.Kind && request.ActionName == sshconnector.ActionExec {
-		return "Wait 3 seconds, then call get_connector_action_request again. For SSH exec actions, inspect live output with the read_console connector action before sending another long-running command to the same target. If the action appears stuck, use the restart_console_session connector action for that target."
-	}
-	return ""
-}
-
-func (adapter) FinishRunning(server connectorapi.ActionFinishGateway, runtime connectorapi.ActionRuntime, requestID int64, prepared actions.PreparedRequest, principal executionprincipal.Principal, handles connectors.ActionHandles) error {
-	if server == nil {
-		return errors.New("finish running connector action: gateway server is unavailable")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), backgroundCommandTimeout)
-	defer cancel()
-	handle := console.SessionHandle{ID: handles.SessionID, RuntimeID: 0, Generation: handles.SessionGeneration}
-	runtimeID, resolveErr := runtimeIDForTargetRef(context.Background(), runtime, prepared.Action.TargetRef)
-	if resolveErr != nil || handles.SessionID < 1 || handles.SessionGeneration < 1 {
-		if resolveErr == nil {
-			resolveErr = errors.New("running connector action did not return an exact console session handle")
-		}
-		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", resolveErr.Error(), prepared.ActionDefinition.OutputHint)
-	}
-	handle.RuntimeID = runtimeID
-	sessions, err := consoleSessions(runtime)
-	if err != nil {
-		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.ActionDefinition.OutputHint)
-	}
-	result, err := sessions.WaitActive(ctx, principal, handle)
-	status := connectors.ResultStatus("")
-	var output any
-	var displayText string
-	var errorText string
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			interruptCtx, interruptCancel := context.WithTimeout(context.Background(), finishRequestTimeout)
-			interruptErr := sessions.InterruptActive(interruptCtx, principal, handle)
-			interruptCancel()
-			if interruptErr != nil {
-				errorText = fmt.Sprintf("connector action timed out and the active console could not be interrupted: %v", interruptErr)
-			} else {
-				errorText = "connector action timed out while running in background"
-			}
-			status = connectors.ResultError
-		} else {
-			status = connectors.ResultError
-			errorText = err.Error()
-		}
-	} else {
-		status = connectors.ResultCompleted
-		if result.ExitCode != 0 {
-			status = connectors.ResultFailed
-		}
-		output = execOutput(result)
-		displayText = result.Output
-	}
-	if status == "" {
-		return errors.New("finish running connector action: empty result status")
-	}
-	return finishRunningActionRequest(server, runtime, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
-}
-
-type actionRequestFinisher interface {
-	ConnectorFinishActionRequest(context.Context, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
-}
-
-func finishRunningActionRequest(server actionRequestFinisher, runtime connectorapi.ActionRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hint connectors.OutputHint) error {
-	ctx, cancel := context.WithTimeout(context.Background(), finishRequestTimeout)
-	defer cancel()
-	_, err := server.ConnectorFinishActionRequest(ctx, requestID, status, output, displayText, errorText, hint)
-	if err != nil {
-		return fmt.Errorf("persist running connector action result: %w", err)
-	}
-	return nil
 }

@@ -5,60 +5,40 @@
 package apiadapter
 
 import (
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/running"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/runtimeactions"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/transport"
 )
 
-const (
-	consoleConnectTimeout    = 15 * time.Second
-	initialExecTimeout       = 3 * time.Second
-	backgroundCommandTimeout = 30 * time.Minute
-	finishRequestTimeout     = 10 * time.Second
-	maxConfigParseBytes      = 256 * 1024
-)
-
-type adapter struct{}
+type adapter struct {
+	management.Management
+	running.Running
+	runtimeactions.RuntimeActions
+	transport.Transport
+}
 
 func New() connectorapi.Adapter {
 	return adapter{}
 }
 
-func (a adapter) Routes() []connectorapi.RouteDefinition {
-	return []connectorapi.RouteDefinition{
-		{Method: "POST", Path: "/api/ssh-host-keys/approve", Handler: a.approveHostKey},
-		{Method: "GET", Path: "/api/ssh-config/discover", Handler: a.discoverConfig},
-		{Method: "POST", Path: "/api/ssh-config/parse", Handler: a.parseConfig},
-	}
-}
-
-func (adapter) RuntimeCapabilities(server connectorapi.RuntimeActionGateway, runtime connectorapi.ActionRuntime) map[string]connectors.RuntimeCapability {
-	return map[string]connectors.RuntimeCapability{
-		sshconnector.RuntimeServiceName:             runtimeExecutor{server: server, runtime: runtime},
-		connectors.SessionEnvironmentCapabilityName: sessionEnvironmentCapability{},
-	}
-}
-
-func (adapter) WriteConnectorError(w http.ResponseWriter, err error) bool {
-	if w == nil {
-		return false
-	}
-	return writeUnknownHostKeyError(w, err)
-}
-
-func (adapter) ConnectorErrorMessage(prefix string, err error) string {
-	switch strings.TrimSpace(prefix) {
-	case "command execution failed":
-		return commandFailureMessage(err)
-	default:
-		return connectionFailureMessage(err)
-	}
-}
-
-func (adapter) LiveConsoleActionName() string {
-	return sshconnector.ActionExec
-}
+var (
+	_ connectorapi.CommandTransportAdapter           = adapter{}
+	_ connectorapi.CredentialCanonicalizer           = adapter{}
+	_ connectorapi.CredentialProfileLifecycleAdapter = adapter{}
+	_ connectorapi.CredentialProfileTester           = adapter{}
+	_ connectorapi.CredentialResourceAdapter         = adapter{}
+	_ connectorapi.DraftTester                       = adapter{}
+	_ connectorapi.ErrorPresenter                    = adapter{}
+	_ connectorapi.FileTransferAdapter               = adapter{}
+	_ connectorapi.LiveConsoleAdapter                = adapter{}
+	_ connectorapi.LiveConsolePeerIdentityAdapter    = adapter{}
+	_ connectorapi.LiveConsoleTargetAdapter          = adapter{}
+	_ connectorapi.LiveConsoleTransportAdapter       = adapter{}
+	_ connectorapi.RouteRegistrar                    = adapter{}
+	_ connectorapi.RuntimeAdapter                    = adapter{}
+	_ connectorapi.TargetDeleter                     = adapter{}
+	_ connectorapi.TargetOperationRunner             = adapter{}
+	_ connectorapi.TCPTransportAdapter               = adapter{}
+)

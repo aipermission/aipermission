@@ -443,11 +443,7 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 func TestInternalPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
 	const defaultBudget = 8
-	overrides := map[string]int{
-		// This remaining composition exception must ratchet down after the SSH
-		// adapter is decomposed into capability-owned packages.
-		modulePath + "/internal/connectors/ssh/apiadapter": 14,
-	}
+	overrides := map[string]int{}
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") {
 			continue
