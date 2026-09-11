@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type SessionAuthorizationGuard func(context.Context, func() error, func() error) error
 type SessionAuthorizerInstaller func(SessionAuthorizationGuard)
-type SessionClosedHookInstaller func(func(vaultsessions.Reference))
+type SessionClosedHookInstaller func(func(VaultSessionReference))
 
 type SessionLifecycleRuntime struct {
 	Database             *sql.DB
@@ -65,16 +64,18 @@ func (lifecycle *SessionLifecycle) Configure() error {
 		}
 		return run()
 	})
-	lifecycle.runtime.InstallSessionClosed(func(reference vaultsessions.Reference) {
-		_ = lifecycle.invalidator.SessionClosedReference(context.Background(), reference)
+	lifecycle.runtime.InstallSessionClosed(func(reference VaultSessionReference) {
+		_ = lifecycle.invalidator.SessionClosedReference(context.Background(), vaultsessions.Reference{
+			SessionID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
+		})
 	})
 	return nil
 }
 
 func (lifecycle *SessionLifecycle) InvalidateMutation(
 	ctx context.Context,
-	sessions []projectvault.SessionReference,
-	scope projectvault.SessionMutationScope,
+	sessions []SessionReference,
+	scope SessionMutationScope,
 ) error {
 	if err := lifecycle.validate(); err != nil {
 		return err

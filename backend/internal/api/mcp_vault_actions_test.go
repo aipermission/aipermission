@@ -511,7 +511,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	human := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", connectorapi.LiveConsoleCreateHTTPRequest{
 		RuntimeID: target.ID, Name: "Local Vault session", CloseExisting: true,
 		Cols: 100, Rows: 30,
-		VaultItems: []projectvault.SessionSelection{{
+		VaultItems: []connectorapi.LiveConsoleVaultSelection{{
 			ItemID: item.ID, SourceProjectID: project.ID,
 		}},
 	})

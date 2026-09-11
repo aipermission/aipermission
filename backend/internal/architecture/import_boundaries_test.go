@@ -217,6 +217,8 @@ func TestGatewayVaultOwnsTransportContracts(t *testing.T) {
 		"ProjectScope": true, "ProjectVaultHTTPScope": true,
 		"VaultRequestApplication": true, "VaultApprovalHTTPScope": true,
 		"VaultMCPHTTPScope": true, "RequestInvalidator": true,
+		"SessionMutationScope": true, "SessionReference": true,
+		"SessionSelection": true, "VaultSessionReference": true,
 	}
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {

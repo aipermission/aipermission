@@ -18,13 +18,27 @@ import (
 type actionProjectPort struct{ database *sql.DB }
 
 type VaultActionApplication interface {
-	BuildEnvironmentPlan(context.Context, int64, []projectvault.SessionSelection) (vaultactions.EnvironmentPlan, error)
+	BuildEnvironmentPlan(context.Context, int64, []SessionSelection) (vaultactions.EnvironmentPlan, error)
 	Prepare(context.Context, int64, string, string, map[string]any) (vaultrequests.PreparedAction, error)
 	AuthorizeOutput(context.Context, vaultrequests.Request) bool
 	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
 	Execute(context.Context, vaultrequests.Request) (any, error)
 	Compensate(context.Context, vaultrequests.Request, any) error
 	IsStale(error) bool
+}
+
+type vaultActionApplication struct{ *vaultactions.Runtime }
+
+func (application vaultActionApplication) BuildEnvironmentPlan(ctx context.Context, runtimeID int64, selections []SessionSelection) (vaultactions.EnvironmentPlan, error) {
+	items := make([]projectvault.SessionSelection, len(selections))
+	for index, selection := range selections {
+		items[index] = projectvault.SessionSelection{
+			ItemID: selection.ItemID, SourceProjectID: selection.SourceProjectID,
+			ReplaceExisting: selection.ReplaceExisting, BindingID: selection.BindingID,
+			BindingRevision: selection.BindingRevision,
+		}
+	}
+	return application.Runtime.BuildEnvironmentPlan(ctx, runtimeID, items)
 }
 
 func (port actionProjectPort) ResolveRef(ctx context.Context, ref string) (vaultactions.Project, bool, error) {
@@ -144,5 +158,5 @@ func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplicati
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault action application: %w", err)
 	}
-	return owner, nil
+	return vaultActionApplication{Runtime: owner}, nil
 }

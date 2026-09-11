@@ -38,10 +38,18 @@ type LiveConsoleRestartResult struct {
 	CanceledRunningRequests int64
 }
 
+type LiveConsoleVaultSelection struct {
+	ItemID          int64 `json:"item_id"`
+	SourceProjectID int64 `json:"source_project_id"`
+	ReplaceExisting bool  `json:"replace_existing"`
+	BindingID       int64 `json:"binding_id,omitempty"`
+	BindingRevision int64 `json:"binding_revision,omitempty"`
+}
+
 type LiveConsoleHTTPRuntime struct {
 	Sessions         LiveConsoleSessions
 	Principal        func() (executionprincipal.Principal, error)
-	PlanEnvironment  func(context.Context, int64, []projectvault.SessionSelection) (LiveConsoleEnvironmentPlan, error)
+	PlanEnvironment  func(context.Context, int64, []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error)
 	ErrorAdapter     func(context.Context, int64) ErrorPresenter
 	CancelForSession func(context.Context, int64, string) error
 	RestartRuntime   func(context.Context, int64, string) (LiveConsoleRestartResult, error)
@@ -56,13 +64,13 @@ type LiveConsoleHTTPHandlers struct {
 }
 
 type LiveConsoleCreateHTTPRequest struct {
-	RuntimeID     int64                           `json:"runtime_id"`
-	Name          string                          `json:"name"`
-	CloseExisting bool                            `json:"close_existing"`
-	Cols          int                             `json:"cols"`
-	Rows          int                             `json:"rows"`
-	Params        map[string]any                  `json:"params,omitempty"`
-	VaultItems    []projectvault.SessionSelection `json:"vault_items,omitempty"`
+	RuntimeID     int64                       `json:"runtime_id"`
+	Name          string                      `json:"name"`
+	CloseExisting bool                        `json:"close_existing"`
+	Cols          int                         `json:"cols"`
+	Rows          int                         `json:"rows"`
+	Params        map[string]any              `json:"params,omitempty"`
+	VaultItems    []LiveConsoleVaultSelection `json:"vault_items,omitempty"`
 }
 
 func NewLiveConsoleHTTPHandlers(scope LiveConsoleHTTPScopeProvider) *LiveConsoleHTTPHandlers {

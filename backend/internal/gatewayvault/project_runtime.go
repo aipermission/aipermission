@@ -89,9 +89,15 @@ func (component *Component) ProjectRuntime(runtime Runtime) (ProjectVaultApplica
 		}
 		owner, err := projectvault.NewRuntime(projectvault.RuntimeDependencies{
 			Store: store, Delivery: deliveryGate{runtime: runtime}, Mutations: mutationPort{component: component, runtime: runtime},
-			InvalidateSessions: runtime.Project.InvalidateSessions,
-			BindingTargets:     bindingTargets{component: component, runtime: runtime},
-			AllowGenerate:      component.dependencies.AllowGenerate, AllowReveal: component.dependencies.AllowReveal,
+			InvalidateSessions: func(ctx context.Context, sessions []projectvault.SessionReference, scope projectvault.SessionMutationScope) error {
+				items := make([]SessionReference, len(sessions))
+				for index, session := range sessions {
+					items[index] = SessionReference{SessionID: session.SessionID, RuntimeID: session.RuntimeID, Generation: session.Generation}
+				}
+				return runtime.Project.InvalidateSessions(ctx, items, SessionMutationScope{ItemID: scope.ItemID, BindingID: scope.BindingID})
+			},
+			BindingTargets: bindingTargets{component: component, runtime: runtime},
+			AllowGenerate:  component.dependencies.AllowGenerate, AllowReveal: component.dependencies.AllowReveal,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initialize Project Vault runtime: %w", err)

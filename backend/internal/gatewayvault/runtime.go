@@ -6,7 +6,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -42,7 +41,7 @@ type SessionRuntime struct {
 
 type ProjectRuntimePorts struct {
 	State              componentstate.Port
-	InvalidateSessions func(context.Context, []projectvault.SessionReference, projectvault.SessionMutationScope) error
+	InvalidateSessions func(context.Context, []SessionReference, SessionMutationScope) error
 	SessionEnvironment func(context.Context, int64) (bool, error)
 	Mutate             func(context.Context, string, func() any, func(*sql.Tx) error) error
 	Observe            func(context.Context, string, any) error

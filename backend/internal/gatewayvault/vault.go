@@ -34,9 +34,24 @@ type ProjectVaultHTTPScope struct {
 	SessionCatalog projectvault.SessionOptionsCatalog
 }
 
-type SessionMutationScope = projectvault.SessionMutationScope
-type SessionReference = projectvault.SessionReference
-type SessionSelection = projectvault.SessionSelection
+type SessionMutationScope struct {
+	ItemID    int64
+	BindingID int64
+}
+
+type SessionReference struct {
+	SessionID  int64
+	RuntimeID  int64
+	Generation int64
+}
+
+type SessionSelection struct {
+	ItemID          int64
+	SourceProjectID int64
+	ReplaceExisting bool
+	BindingID       int64
+	BindingRevision int64
+}
 
 type VaultRequestApplication interface {
 	List(context.Context, string, int) ([]vaultrequests.Request, error)
@@ -68,7 +83,11 @@ type VaultMCPHTTPScope struct {
 	MetadataRead  func(context.Context, int64) (bool, error)
 }
 
-type VaultSessionReference = vaultsessions.Reference
+type VaultSessionReference struct {
+	SessionID  int64
+	RuntimeID  int64
+	Generation int64
+}
 
 type RequestInvalidator interface {
 	StalePendingForContext(context.Context, int64, int64, string) error

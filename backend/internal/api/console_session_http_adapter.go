@@ -19,12 +19,20 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},
-		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []gatewayvault.SessionSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
+		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []connectorapi.LiveConsoleVaultSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
 			application, err := s.vaultActionApplication(runtime)
 			if err != nil {
 				return connectorapi.LiveConsoleEnvironmentPlan{}, err
 			}
-			plan, err := application.BuildEnvironmentPlan(ctx, runtimeID, selections)
+			items := make([]gatewayvault.SessionSelection, len(selections))
+			for index, selection := range selections {
+				items[index] = gatewayvault.SessionSelection{
+					ItemID: selection.ItemID, SourceProjectID: selection.SourceProjectID,
+					ReplaceExisting: selection.ReplaceExisting, BindingID: selection.BindingID,
+					BindingRevision: selection.BindingRevision,
+				}
+			}
+			plan, err := application.BuildEnvironmentPlan(ctx, runtimeID, items)
 			if err != nil {
 				return connectorapi.LiveConsoleEnvironmentPlan{}, err
 			}

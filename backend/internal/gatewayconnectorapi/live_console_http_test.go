@@ -10,7 +10,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/gorilla/websocket"
 )
 
@@ -88,8 +87,10 @@ func request(method, target, body string) *http.Request {
 func TestCreateBuildsEnvironmentAndObservesSession(t *testing.T) {
 	sessions := &fakeSessions{created: console.Record{ID: 7, RuntimeID: 9, Name: "shell"}}
 	runtime := testRuntime(t, sessions)
-	runtime.PlanEnvironment = func(_ context.Context, runtimeID int64, selections []projectvault.SessionSelection) (LiveConsoleEnvironmentPlan, error) {
-		if runtimeID != 9 || len(selections) != 1 {
+	runtime.PlanEnvironment = func(_ context.Context, runtimeID int64, selections []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error) {
+		if runtimeID != 9 || len(selections) != 1 || selections[0] != (LiveConsoleVaultSelection{
+			ItemID: 12, SourceProjectID: 3, ReplaceExisting: true, BindingID: 4, BindingRevision: 5,
+		}) {
 			t.Fatalf("environment request = runtime %d selections %#v", runtimeID, selections)
 		}
 		return LiveConsoleEnvironmentPlan{ItemIDs: []int64{12}, ContentHash: "content", Prepare: func(context.Context, string) (console.EnvironmentPreparation, error) {
@@ -105,7 +106,7 @@ func TestCreateBuildsEnvironmentAndObservesSession(t *testing.T) {
 	}
 	handlers := NewLiveConsoleHTTPHandlers(func(http.ResponseWriter) (*LiveConsoleHTTPRuntime, bool) { return runtime, true })
 	response := httptest.NewRecorder()
-	handlers.Create(response, request(http.MethodPost, "/api/console/sessions", `{"runtime_id":9,"name":"shell","vault_items":[{"item_id":12,"source_project_id":3}]}`))
+	handlers.Create(response, request(http.MethodPost, "/api/console/sessions", `{"runtime_id":9,"name":"shell","vault_items":[{"item_id":12,"source_project_id":3,"replace_existing":true,"binding_id":4,"binding_revision":5}]}`))
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
