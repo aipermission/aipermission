@@ -5,10 +5,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 )
 
 func NewLiveConsoleHTTPHandlers(scope connectorapi.LiveConsoleHTTPScopeProvider) *connectorapi.LiveConsoleHTTPHandlers {
@@ -46,11 +44,3 @@ func FormatTargetRef(connectorKind string, targetID int64, profileID int64) stri
 }
 
 func NewConnectorRegistry() *connectors.Registry { return connectors.NewRegistry() }
-
-func NewApproved(dependencies []actions.ResolvedDependency) connectortransport.Approved {
-	return connectortransport.NewApproved(dependencies)
-}
-
-func ScopeWithSecretAccessor(runtime connectortransport.Runtime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
-	return connectortransport.ScopeWithSecretAccessor(runtime, kind, accessor)
-}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
@@ -30,8 +31,7 @@ type LiveConsoleDependencies struct {
 }
 
 type Workspace struct {
-	Database  *sql.DB
-	Connector connectortransport.Runtime
+	runtime   connectortransport.Runtime
 	Principal func() (executionprincipal.Principal, error)
 	Actions   WorkspaceActionPorts
 	Transfers WorkspaceTransferPorts
@@ -68,28 +68,40 @@ func NewPorts(dependencies PortsDependencies) *PortsComponent {
 	return &PortsComponent{dependencies: dependencies}
 }
 
-func NewTransportRuntime(scopes connectortransport.ScopeRuntime, database *sql.DB, acquireDelivery func(context.Context) (func(), error)) connectortransport.Runtime {
-	return connectortransport.Runtime{Scopes: scopes, Database: database, AcquireDelivery: acquireDelivery}
+func NewWorkspace(scopes connectortransport.ScopeRuntime, database *sql.DB, acquireDelivery func(context.Context) (func(), error)) Workspace {
+	return Workspace{runtime: connectortransport.Runtime{Scopes: scopes, Database: database, AcquireDelivery: acquireDelivery}}
+}
+
+func (workspace Workspace) WithPrincipal(principal func() (executionprincipal.Principal, error)) Workspace {
+	workspace.Principal = principal
+	return workspace
 }
 
 func DataRuntime(workspace Workspace, kind string) connectorapi.ConnectorDataRuntime {
-	return connectortransport.DataRuntime(workspace.Connector, kind)
+	return connectortransport.DataRuntime(workspace.runtime, kind)
 }
 
 func LiveRuntime(workspace Workspace, kind string) connectorapi.LiveConsoleRuntime {
-	return connectortransport.LiveRuntime(workspace.Connector, kind)
+	return connectortransport.LiveRuntime(workspace.runtime, kind)
 }
 
 func PortActionRuntime(workspace Workspace, kind string) connectorapi.ActionRuntime {
-	return connectortransport.ActionRuntime(workspace.Connector, kind)
+	return connectortransport.ActionRuntime(workspace.runtime, kind)
 }
 
 func PortCredentialResourceRuntime(workspace Workspace, kind string) connectorapi.CredentialResourceRuntime {
-	return connectortransport.CredentialResourceRuntime(workspace.Connector, kind)
+	return connectortransport.CredentialResourceRuntime(workspace.runtime, kind)
+}
+
+type SecretAccessorFactory func(map[string]any) connectors.SecretAccessor
+
+func TransferRuntimeWithSecretAccessor(workspace Workspace, kind string, accessor SecretAccessorFactory) connectorapi.TransferRuntime {
+	scope := connectortransport.ScopeWithSecretAccessor(workspace.runtime, kind, connectorruntime.SecretAccessorFactory(accessor))
+	return scope.TransferRuntime()
 }
 
 func (component *PortsComponent) TargetLifecycleRuntime(workspace Workspace, kind string) connectorapi.TargetLifecycleRuntime {
-	return connectortransport.TargetLifecycleRuntime(workspace.Connector, kind, workspace.Principal)
+	return connectortransport.TargetLifecycleRuntime(workspace.runtime, kind, workspace.Principal)
 }
 
 type PeerGateway struct{ component *PortsComponent }
@@ -129,10 +141,10 @@ func (component *PortsComponent) LiveConsoleGateway(workspace Workspace) LiveCon
 }
 
 func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*connectorapi.RuntimeSession, error) {
-	if gateway.component == nil || gateway.workspace.Database == nil || gateway.workspace.Connector.Scopes == nil {
+	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	store := connectortargets.NewStore(gateway.workspace.Database)
+	store := connectortargets.NewStore(gateway.workspace.runtime.Database)
 	target, profile, err := store.ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil {
 		return nil, err
@@ -166,7 +178,7 @@ func (gateway RuntimeActionGateway) ConnectorRestartConsoleSession(ctx context.C
 	if gateway.workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
 	}
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
 	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
@@ -176,7 +188,7 @@ func (gateway RuntimeActionGateway) ConnectorCreateAndRunDownloadBatch(ctx conte
 	if gateway.workspace.Transfers.RunDownloadBatch == nil {
 		return connectorapi.TransferBatch{}, ErrRuntimeUnavailable
 	}
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
 		return connectorapi.TransferBatch{}, err
 	}
 	return gateway.workspace.Transfers.RunDownloadBatch(ctx, authorization, runtimeID, paths, archiveName, source)
@@ -193,10 +205,10 @@ func (component *PortsComponent) ActionFinishPorts(workspace Workspace, kind str
 }
 
 func (gateway ActionFinishGateway) ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
-	if gateway.workspace.Database == nil || gateway.workspace.Actions.Finish == nil {
+	if gateway.workspace.runtime.Database == nil || gateway.workspace.Actions.Finish == nil {
 		return connectortargets.ActionRequest{}, ErrRuntimeUnavailable
 	}
-	request, err := connectortargets.NewStore(gateway.workspace.Database).GetActionRequest(ctx, requestID)
+	request, err := connectortargets.NewStore(gateway.workspace.runtime.Database).GetActionRequest(ctx, requestID)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -238,7 +250,7 @@ func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.
 	if gateway.workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
 	}
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, runtimeID); err != nil {
+	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
 	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
@@ -276,17 +288,17 @@ func (component *PortsComponent) TargetOperationGateway(workspace Workspace, kin
 }
 
 func (gateway TargetOperationGateway) ConnectorWriteAudit(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-	if gateway.workspace.Targets.Audit != nil && connectortransport.RequireTargetRuntimeID(ctx, gateway.workspace.Connector, gateway.kind, gateway.targetID, runtimeID) == nil {
+	if gateway.workspace.Targets.Audit != nil && connectortransport.RequireTargetRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, gateway.targetID, runtimeID) == nil {
 		gateway.workspace.Targets.Audit(ctx, actor, tokenID, runtimeID, action, payload)
 	}
 }
 
 func RequireRuntimeID(ctx context.Context, workspace Workspace, kind string, runtimeID int64) error {
-	return connectortransport.RequireRuntimeID(ctx, workspace.Connector, kind, runtimeID)
+	return connectortransport.RequireRuntimeID(ctx, workspace.runtime, kind, runtimeID)
 }
 
 func RequireTargetRuntimeID(ctx context.Context, workspace Workspace, kind string, targetID, runtimeID int64) error {
-	return connectortransport.RequireTargetRuntimeID(ctx, workspace.Connector, kind, targetID, runtimeID)
+	return connectortransport.RequireTargetRuntimeID(ctx, workspace.runtime, kind, targetID, runtimeID)
 }
 
 var (

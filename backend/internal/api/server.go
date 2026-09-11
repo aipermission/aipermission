@@ -18,6 +18,7 @@ type Server struct {
 	config                  serverConfig
 	access                  *gatewayaccess.Component
 	connectorActions        *gatewayactions.Component
+	connectorPorts          *connectorapi.PortsComponent
 	connectorManagement     *connectormgmt.Component
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
@@ -55,6 +56,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
+	server.connectorPorts = server.newConnectorPortsApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
@@ -93,6 +95,7 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
+	server.connectorPorts = server.newConnectorPortsApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))

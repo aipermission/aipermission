@@ -10,6 +10,13 @@ import (
 )
 
 func (s *Server) connectorPortsApplication() *connectorapi.PortsComponent {
+	if s == nil || s.connectorPorts == nil {
+		panic("connector ports component is not initialized")
+	}
+	return s.connectorPorts
+}
+
+func (s *Server) newConnectorPortsApplication() *connectorapi.PortsComponent {
 	return connectorapi.NewPorts(connectorapi.PortsDependencies{
 		Peer: connectorapi.PeerDependencies{TrustStorePath: s.connectorTrustStorePath},
 		Routes: connectorapi.RouteDependencies{
@@ -51,9 +58,9 @@ func (s *Server) connectorPeerTrustApplication() *connectorapi.PeerTrustCoordina
 func (s *Server) connectorWorkspace(runtime databaseRuntime) connectorapi.Workspace {
 	workspace := connectorBaseWorkspace(runtime)
 	if runtime != nil {
-		workspace.Principal = func() (gatewayaccess.Principal, error) {
+		workspace = workspace.WithPrincipal(func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
-		}
+		})
 	}
 	return workspace
 }
@@ -63,12 +70,9 @@ func connectorBaseWorkspace(runtime databaseRuntime) connectorapi.Workspace {
 		return connectorapi.Workspace{}
 	}
 	database := runtime.StoragePort().DatabaseHandle()
-	return connectorapi.Workspace{
-		Database: database,
-		Connector: connectorapi.NewTransportRuntime(
-			runtime.ConnectorPort(), database, runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery,
-		),
-	}
+	return connectorapi.NewWorkspace(
+		runtime.ConnectorPort(), database, runtime.SecurityPort().VaultDeliveryCoordinator().AcquireDelivery,
+	)
 }
 
 func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.Workspace {

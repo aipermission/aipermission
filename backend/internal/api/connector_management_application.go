@@ -134,7 +134,8 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 		},
 		Network: connectormgmt.NetworkPorts{
 			Probe: func(ctx context.Context, request connectorapi.NetworkDialRequest) error {
-				connection, err := (connectorNetworkTransport{server: s, runtime: runtime}).DialConnectorTCP(ctx, request)
+				transport := connectorapi.NetworkTransport(s.connectorWorkspace(runtime), s.connectorAPIAdapterFor, s.connectorTrustStorePath)
+				connection, err := transport.DialConnectorTCP(ctx, request)
 				if err != nil {
 					return err
 				}

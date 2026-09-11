@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 )
 
@@ -104,8 +105,8 @@ func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
 			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, gatewayhttp.ConnectorActionRequestTimeout)
 		}
 	}
-	if gatewayhttp.ConnectorActionRequestTimeout <= maxConnectorCommandTimeout {
-		t.Fatalf("connector action timeout %s must exceed command timeout %s", gatewayhttp.ConnectorActionRequestTimeout, maxConnectorCommandTimeout)
+	if gatewayhttp.ConnectorActionRequestTimeout <= connectorapi.MaxCommandTimeout {
+		t.Fatalf("connector action timeout %s must exceed command timeout %s", gatewayhttp.ConnectorActionRequestTimeout, connectorapi.MaxCommandTimeout)
 	}
 }
 

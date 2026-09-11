@@ -17,9 +17,9 @@ func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime 
 	if capabilities == nil {
 		capabilities = connectorRuntimeCapabilities{}
 	}
-	approved := newApprovedConnectorTransports(dependencies)
-	capabilities[connectorapi.NetworkTransportCapabilityName] = connectorNetworkTransport{server: server, runtime: runtime, approved: approved}
-	capabilities[connectorapi.CommandTransportCapabilityName] = connectorCommandTransport{server: server, runtime: runtime, approved: approved}
+	workspace := server.connectorWorkspace(runtime)
+	capabilities[connectorapi.NetworkTransportCapabilityName] = connectorapi.ApprovedNetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
+	capabilities[connectorapi.CommandTransportCapabilityName] = connectorapi.ApprovedCommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
 	return capabilities
 }
 
@@ -41,19 +41,22 @@ func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectorap
 func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectorapi.RuntimeCapabilityResolver {
 	capabilities := connectorRuntimeCapabilities{}
 	if server != nil && runtime != nil {
-		networkTransport := connectorNetworkTransport{server: server, runtime: runtime}
+		workspace := server.connectorWorkspace(runtime)
+		networkTransport := connectorapi.NetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
 		capabilities[networkTransport.ConnectorRuntimeCapability()] = networkTransport
-		commandTransport := connectorCommandTransport{server: server, runtime: runtime}
+		commandTransport := connectorapi.CommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath)
 		capabilities[commandTransport.ConnectorRuntimeCapability()] = commandTransport
 	}
-	adapter := server.connectorRuntimeAdapterFor(kind)
-	if adapter != nil {
-		gatewayPort, runtimePort := server.connectorPortsApplication().RuntimeActionPorts(server.connectorPortsWorkspace(runtime), kind)
-		for name, capability := range adapter.RuntimeCapabilities(gatewayPort, runtimePort) {
-			if name == "" || capability == nil {
-				continue
+	if server != nil {
+		adapter := server.connectorRuntimeAdapterFor(kind)
+		if adapter != nil {
+			gatewayPort, runtimePort := server.connectorPortsApplication().RuntimeActionPorts(server.connectorPortsWorkspace(runtime), kind)
+			for name, capability := range adapter.RuntimeCapabilities(gatewayPort, runtimePort) {
+				if name == "" || capability == nil {
+					continue
+				}
+				capabilities[name] = capability
 			}
-			capabilities[name] = capability
 		}
 	}
 	if len(capabilities) == 0 {
