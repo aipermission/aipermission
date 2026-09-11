@@ -1,7 +1,6 @@
 package gatewayaccess
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"sync"
@@ -44,23 +43,7 @@ func NewComponent(frontendPort string) *Component {
 	}
 }
 
-func (component *Component) WaitDatabasePassword(ctx context.Context, key string) error {
-	if component == nil || component.databasePasswordLimiter == nil {
-		return ErrComponentUnavailable
-	}
-	return component.databasePasswordLimiter.Wait(ctx, key)
-}
-func (component *Component) RecordDatabasePasswordFailure(key string) {
-	if component != nil && component.databasePasswordLimiter != nil {
-		component.databasePasswordLimiter.RecordFailure(key)
-	}
-}
-func (component *Component) RecordDatabasePasswordSuccess(key string) {
-	if component != nil && component.databasePasswordLimiter != nil {
-		component.databasePasswordLimiter.RecordSuccess(key)
-	}
-}
-func (component *Component) DatabasePasswordFailureCount(key string) int {
+func (component *Component) databasePasswordFailureCount(key string) int {
 	if component == nil || component.databasePasswordLimiter == nil {
 		return 0
 	}

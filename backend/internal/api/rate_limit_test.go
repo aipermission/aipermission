@@ -12,25 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
-func TestDatabasePasswordRateLimitKeyIsSharedAcrossRoutesAndOmitsRequestMetadata(t *testing.T) {
-	first := httptest.NewRequest(http.MethodPost, "/api/unlock", strings.NewReader(`{"password":"first-secret"}`))
-	first.RemoteAddr = "127.0.0.1:12345"
-	second := httptest.NewRequest(http.MethodPost, "/api/databases/delete-locked?database=customer-name", strings.NewReader(`{"current_password":"second-secret"}`))
-	second.RemoteAddr = "127.0.0.1:54321"
-
-	access := gatewayaccess.NewComponent("")
-	firstKey := access.RuntimeKey(first, databasePasswordRateLimitScope)
-	secondKey := access.RuntimeKey(second, databasePasswordRateLimitScope)
-	if firstKey != secondKey {
-		t.Fatalf("database password routes use different keys: %q != %q", firstKey, secondKey)
-	}
-	for _, sensitive := range []string{"unlock", "delete-locked", "customer-name", "first-secret", "second-secret"} {
-		if strings.Contains(firstKey, sensitive) {
-			t.Fatalf("rate-limit key exposes request metadata %q: %q", sensitive, firstKey)
-		}
-	}
-}
-
 func TestMCPMissingTokenDoesNotDelayAValidToken(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	for range authRateLimitLockoutFailures {

@@ -22,8 +22,6 @@ var (
 )
 
 const (
-	RuleAlwaysRun       = accesscontrol.RuleAlwaysRun
-	VaultMetadataRead   = accesscontrol.VaultMetadataRead
 	CSRFCookieBase      = uisession.CSRFCookieBase
 	CSRFHeaderName      = uisession.CSRFHeaderName
 	SessionCookieBase   = uisession.SessionCookieBase

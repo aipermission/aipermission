@@ -33,14 +33,14 @@ func readSecuritySettings(ctx context.Context, runtime databaseRuntime) (gateway
 
 func (s *Server) redactForPersistence(ctx context.Context, runtime databaseRuntime, value string) string {
 	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
-		return s.access.RedactBasic(value)
+		return s.access.RedactFallback(value)
 	}
 	return runtime.SecurityPort().PolicyService().Redact(ctx, value)
 }
 
 func (s *Server) runtimeRedactor(runtime databaseRuntime) func(string) string {
 	if runtime == nil || runtime.SecurityPort().PolicyService() == nil {
-		return s.access.RedactBasic
+		return s.access.RedactFallback
 	}
 	return runtime.SecurityPort().PolicyService().Redactor()
 }

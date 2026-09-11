@@ -15,26 +15,22 @@ const (
 )
 
 type databasePasswordAttempt struct {
-	access *gatewayaccess.Component
-	key    string
+	attempt gatewayaccess.PasswordAttempt
 }
 
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
-	attempt := databasePasswordAttempt{
-		access: s.access,
-		key:    s.access.RuntimeKey(r, databasePasswordRateLimitScope),
-	}
-	if err := attempt.access.WaitDatabasePassword(r.Context(), attempt.key); err != nil {
+	attempt, err := s.access.BeginPasswordAttempt(r, databasePasswordRateLimitScope)
+	if err != nil {
 		writeError(w, http.StatusRequestTimeout, "database password verification timed out")
 		return databasePasswordAttempt{}, false
 	}
-	return attempt, true
+	return databasePasswordAttempt{attempt: attempt}, true
 }
 
 func (attempt databasePasswordAttempt) failure() {
-	attempt.access.RecordDatabasePasswordFailure(attempt.key)
+	attempt.attempt.Failure()
 }
 
 func (attempt databasePasswordAttempt) success() {
-	attempt.access.RecordDatabasePasswordSuccess(attempt.key)
+	attempt.attempt.Success()
 }

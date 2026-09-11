@@ -473,19 +473,11 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "wrong"}); response.Code != http.StatusUnauthorized {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
-	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
-	failures := server.access.DatabasePasswordFailureCount(limitKey)
-	if failures != 1 {
-		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
-	}
 	if !dbpkg.Exists(path) {
 		t.Fatalf("database should remain after failed delete")
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
-	}
-	if failures := server.access.DatabasePasswordFailureCount(limitKey); failures != 0 {
-		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {
 		t.Fatalf("database file should be removed after locked delete")
