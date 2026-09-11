@@ -1,8 +1,8 @@
 # API Package
 
-`internal/api` owns HTTP routing and request/response boundaries. Keep this package focused on:
+`internal/api` is the HTTP/MCP composition boundary. Keep this package focused on:
 
-- route registration
+- wiring gateway-owned route and handler groups
 - local-only HTTP boundary checks
 - UI session and CSRF checks
 - MCP HTTP handlers
@@ -19,7 +19,7 @@ must not construct or import the concrete process implementation.
 
 Current contributor map:
 
-- `routes.go`: route surface, handler group wiring, and health/status handlers
+- `routes.go`: gateway handler-group composition; `internal/gatewayinfrastructure/routes.go` owns the route table and accepts the health/status handlers
 - `http_boundary.go`, `http_security.go`, `ui_session.go`: local browser trust boundary
 - `unlock*.go`, `databases.go`: encrypted database and workspace lifecycle
 - `mcp*.go`: MCP auth, connector tool endpoints, and response shaping

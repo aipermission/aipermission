@@ -116,11 +116,40 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 	}
 }
 
-func TestAPIUsesActionApplicationBoundary(t *testing.T) {
-	implementation := modulePath + "/internal/actionresult"
+func TestAPIUsesConnectorActionOwnerBoundary(t *testing.T) {
+	for _, implementation := range []string{modulePath + "/internal/actionresult", modulePath + "/internal/actions"} {
+		for _, imported := range allPackageImports(t)[modulePath+"/internal/api"] {
+			if imported == implementation || strings.HasPrefix(imported, implementation+"/") {
+				t.Fatalf("internal/api must consume connector action contracts through gatewayconnectoractions instead of %s", implementation)
+			}
+		}
+	}
+}
+
+func TestAPIUsesWorkspaceAndCommandOwnerBoundaries(t *testing.T) {
+	forbidden := []string{
+		modulePath + "/internal/commandrequests",
+		modulePath + "/internal/gatewayworkspace",
+	}
 	for _, imported := range allPackageImports(t)[modulePath+"/internal/api"] {
-		if imported == implementation || strings.HasPrefix(imported, implementation+"/") {
-			t.Fatalf("internal/api must consume safe action projections through internal/actions instead of %s", implementation)
+		for _, implementation := range forbidden {
+			if imported == implementation || strings.HasPrefix(imported, implementation+"/") {
+				t.Errorf("internal/api imports %s directly instead of its owning gateway boundary", implementation)
+			}
+		}
+	}
+}
+
+func TestGatewayAccessDoesNotOwnCommandRuntime(t *testing.T) {
+	imports := allPackageImports(t)[modulePath+"/internal/gatewayaccess"]
+	for _, forbidden := range []string{
+		modulePath + "/internal/commandrequests",
+		modulePath + "/internal/runtimeindex",
+	} {
+		for _, imported := range imports {
+			if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
+				t.Errorf("gatewayaccess imports %s; command lifecycle belongs to gatewayoperations", forbidden)
+			}
 		}
 	}
 }
@@ -161,7 +190,6 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 		modulePath + "/internal/gatewayoperations/backup":             true,
 		modulePath + "/internal/gatewayoperations/transfer":           true,
 		modulePath + "/internal/gatewayvault":                         true,
-		modulePath + "/internal/gatewayworkspace":                     true,
 	}
 	for _, imported := range allPackageImports(t)[apiPackage] {
 		if strings.HasPrefix(imported, modulePath+"/internal/") && !allowed[imported] {
@@ -208,6 +236,32 @@ func TestGatewayConnectorContractDoesNotReexportTypes(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConnectorActionBoundaryDoesNotExposeImplementationTypes(t *testing.T) {
+	command := exec.Command("go", "doc", "./internal/gatewayconnectoractions")
+	command.Dir = "../.."
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go doc gatewayconnectoractions: %v\n%s", err, output)
+	}
+	for _, implementation := range []string{"actions.", "actionresult."} {
+		if strings.Contains(string(output), implementation) {
+			t.Errorf("gatewayconnectoractions public contract exposes implementation selector %q:\n%s", implementation, output)
+		}
+	}
+}
+
+func TestCommandBoundaryDoesNotExposeCommandRequestTypes(t *testing.T) {
+	command := exec.Command("go", "doc", "./internal/gatewayoperations")
+	command.Dir = "../.."
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go doc gatewayoperations: %v\n%s", err, output)
+	}
+	if strings.Contains(string(output), "commandrequests.") {
+		t.Errorf("gatewayoperations public contract exposes commandrequests implementation types:\n%s", output)
 	}
 }
 
@@ -272,46 +326,54 @@ func TestApplicationFacadePackagesStayRetired(t *testing.T) {
 }
 
 func TestGatewayBoundariesDoNotExposeMutableValues(t *testing.T) {
-	packages := []string{
-		"gatewayaccess",
-		"gatewayconnectoractions",
-		"gatewayconnectorapi",
-		"gatewayconnectormanagement",
-		"gatewayconnectors",
-		"gatewayinfrastructure",
-		"gatewayoperations",
-		"gatewayvault",
-	}
-	for _, name := range packages {
-		t.Run(name, func(t *testing.T) {
-			files, err := filepath.Glob(filepath.Join("..", "..", "internal", name, "*.go"))
-			if err != nil {
-				t.Fatal(err)
+	root := filepath.Join("..", "..", "internal")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		owner := strings.Split(filepath.ToSlash(relative), "/")[0]
+		if !strings.HasPrefix(owner, "gateway") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.VAR {
+				continue
 			}
-			for _, path := range files {
-				if strings.HasSuffix(path, "_test.go") {
-					continue
-				}
-				file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-				if err != nil {
-					t.Fatalf("parse %s: %v", path, err)
-				}
-				for _, declaration := range file.Decls {
-					general, ok := declaration.(*ast.GenDecl)
-					if !ok || general.Tok != token.VAR {
+			for _, specification := range general.Specs {
+				value := specification.(*ast.ValueSpec)
+				for index, identifier := range value.Names {
+					if !identifier.IsExported() {
 						continue
 					}
-					for _, specification := range general.Specs {
-						value := specification.(*ast.ValueSpec)
-						for _, identifier := range value.Names {
-							if identifier.IsExported() && !strings.HasPrefix(identifier.Name, "Err") {
-								t.Errorf("%s exposes mutable package variable %s; use a const, type, or function", path, identifier.Name)
-							}
-						}
+					initializer := ast.Expr(nil)
+					if index < len(value.Values) {
+						initializer = value.Values[index]
+					} else if len(value.Values) == 1 {
+						initializer = value.Values[0]
+					}
+					_, selectorAlias := initializer.(*ast.SelectorExpr)
+					if !strings.HasPrefix(identifier.Name, "Err") || selectorAlias {
+						t.Errorf("%s exposes mutable package variable %s; owned sentinel errors may use errors.New, all other values must use a const, type, or function", path, identifier.Name)
 					}
 				}
 			}
-		})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway mutable values: %v", err)
 	}
 }
 
