@@ -14,7 +14,7 @@ type transientBackupRestoreRequest = gatewayoperations.TransientRestoreRequest
 
 func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
 	return gatewayoperations.NewBackupApplication(gatewayoperations.BackupDependencies{
-		DataPath: s.config.DataPath, Lifecycle: s.workspaceState.Lifecycle,
+		DataPath: s.config.DataPath, Lifecycle: s.infrastructure.WorkspaceLifecycle(),
 		ActiveRuntime: func(w http.ResponseWriter) (gatewayoperations.BackupRuntime, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)
 			if !ok {
@@ -42,6 +42,6 @@ func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
 		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 			return s.issuePreparedUISessionLocked(w, prepared)
 		},
-		AcquireOperation: s.controlState.BackupOperations.Acquire,
+		AcquireOperation: s.infrastructure.AcquireBackupOperation,
 	})
 }

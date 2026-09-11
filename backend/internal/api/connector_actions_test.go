@@ -13,6 +13,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -55,8 +56,10 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	catalog := newTestConnectorCatalog(t)
-	server := &Server{}
-	server.connectorState.AdapterRegistry = catalog.adapters
+	server := &Server{infrastructure: gatewayinfra.NewComponent(
+		"test.db", "8080", describeDatabaseRuntime,
+		gatewayinfra.WithConnectorAdapterRegistry(catalog.adapters),
+	)}
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
 	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)

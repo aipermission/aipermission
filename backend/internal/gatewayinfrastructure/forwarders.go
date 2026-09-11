@@ -8,7 +8,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
 	"github.com/aipermission/aipermission/backend/internal/gatewayroutes"
-	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
@@ -38,14 +37,6 @@ func Health(w http.ResponseWriter, arg1 *http.Request) {
 
 func RegisterRoutes(mux *http.ServeMux, d gatewayroutes.Dependencies) {
 	gatewayroutes.Register(mux, d)
-}
-
-func NewConnectorState(registry *gatewaystate.ConnectorRegistry, adapters *gatewaystate.ConnectorAdapterRegistry) gatewaystate.ConnectorState {
-	return gatewaystate.NewConnectorState(registry, adapters)
-}
-
-func NewControlState(frontendPort string, maintenance gatewaystate.MaintenanceConsoleRuntime) gatewaystate.ControlState {
-	return gatewaystate.NewControlState(frontendPort, maintenance)
 }
 
 func Scavenge(path string, now time.Time) {

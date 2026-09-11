@@ -16,10 +16,10 @@ func (s *Server) vaultApplication() *gatewayvault.Component {
 			return adapter.LiveConsoleCapabilityKind(), true
 		},
 		AllowGenerate: func(key string) bool {
-			return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(key)
+			return s.infrastructure.AllowVaultGenerate(key)
 		},
 		AllowReveal: func(key string) bool {
-			return s.controlState.VaultRevealLimiter != nil && s.controlState.VaultRevealLimiter.Allow(key)
+			return s.infrastructure.AllowVaultReveal(key)
 		},
 	})
 }

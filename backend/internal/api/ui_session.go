@@ -22,31 +22,31 @@ func prepareUISession() (preparedUISession, error) { return gatewayaccess.Prepar
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
-	return s.controlState.UISessions.Issue(w, databaseID, retryIdentity)
+	return s.infrastructure.IssueUISession(w, databaseID, retryIdentity)
 }
 
 // issuePreparedUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared preparedUISession) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
-	return s.controlState.UISessions.IssuePrepared(w, prepared, databaseID, retryIdentity)
+	return s.infrastructure.IssuePreparedUISession(w, prepared, databaseID, retryIdentity)
 }
 
-func (s *Server) clearUISessions(w http.ResponseWriter) { s.controlState.UISessions.Clear(w) }
+func (s *Server) clearUISessions(w http.ResponseWriter) { s.infrastructure.ClearUISessions(w) }
 
 func (s *Server) hasValidUISession(r *http.Request) bool {
-	return s.controlState.UISessions.Valid(r, s.workspaceSelection().ID)
+	return s.infrastructure.ValidUISession(r, s.workspaceSelection().ID)
 }
 
-func (s *Server) hasValidUICSRF(r *http.Request) bool { return s.controlState.UISessions.ValidCSRF(r) }
+func (s *Server) hasValidUICSRF(r *http.Request) bool { return s.infrastructure.ValidUICSRF(r) }
 
 func (s *Server) ensureUIWorkspaceCookie(w http.ResponseWriter, r *http.Request) {
 	_, retryIdentity := s.activeUIWorkspaceLocked()
-	s.controlState.UISessions.EnsureWorkspaceCookie(w, r, retryIdentity)
+	s.infrastructure.EnsureUIWorkspaceCookie(w, r, retryIdentity)
 }
 
 func (s *Server) activeUIWorkspaceLocked() (string, string) {
 	databaseID := s.workspaceSelection().ID
-	if runtime, ok := s.workspaceState.Registry.Lookup(databaseID); ok && runtime != nil {
+	if runtime, ok := s.infrastructure.LookupWorkspace(databaseID); ok && runtime != nil {
 		return databaseID, runtime.UIRetryIdentifier()
 	}
 	return databaseID, ""

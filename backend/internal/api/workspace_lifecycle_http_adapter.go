@@ -18,7 +18,7 @@ type changeDatabasePasswordRequest = gatewayinfra.ChangePasswordRequest
 
 func (s *Server) workspaceLifecycleHTTPHandlers() *gatewayinfra.WorkspaceHTTPHandlers {
 	return gatewayinfra.NewWorkspaceHTTP(gatewayinfra.WorkspaceHTTPDependencies{
-		Lifecycle: s.workspaceState.Lifecycle,
+		Lifecycle: s.infrastructure.WorkspaceLifecycle(),
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayinfra.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
@@ -30,7 +30,7 @@ func (s *Server) workspaceLifecycleHTTPHandlers() *gatewayinfra.WorkspaceHTTPHan
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	status, err := s.workspaceState.Lifecycle.Status()
+	status, err := s.infrastructure.WorkspaceLifecycle().Status()
 	if err == nil && status.DatabaseName != "" {
 		return status.DatabaseName
 	}

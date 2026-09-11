@@ -8,7 +8,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
 type uiSessionIdentityRuntime struct {
@@ -27,15 +26,17 @@ func (runtime uiSessionIdentityRuntime) UIRetryIdentifier() string {
 
 func uiSessionTestServer(port, databaseID, retryIdentity string) *Server {
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
-	registry := gatewayinfra.NewRegistry(configuration.DataPath, databaseID, describeDatabaseRuntime)
+	server := &Server{
+		config: configuration,
+		infrastructure: gatewayinfra.NewComponent(
+			configuration.DataPath, port, describeDatabaseRuntime,
+		),
+	}
 	if retryIdentity != "" {
-		registry.Activate(uiSessionIdentityRuntime{
+		server.infrastructure.ActivateWorkspace(uiSessionIdentityRuntime{
 			identity: gatewayinfra.Identity{ID: databaseID, Path: configuration.DataPath}, retryIdentity: retryIdentity,
 		})
 	}
-	server := &Server{config: configuration}
-	server.workspaceState.Registry = registry
-	server.controlState.UISessions = uisession.New(port)
 	return server
 }
 

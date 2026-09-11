@@ -9,7 +9,7 @@ import (
 
 func (s *Server) Handler() http.Handler {
 	return gatewayoperations.HTTPBoundary{
-		Routes: s.mux, Lifecycle: s.workspaceState.Lifecycle, IsUnlocked: s.isUnlocked,
+		Routes: s.mux, Lifecycle: s.infrastructure.WorkspaceLifecycle(), IsUnlocked: s.isUnlocked,
 		IsLocalRemoteAddr: s.config.IsLocalRemoteAddr, IsLocalhostHeader: s.config.IsLocalhostHeader,
 		AllowsOrigin: s.config.AllowsOrigin, HasSession: s.hasValidUISession,
 		EnsureWorkspace: s.ensureUIWorkspaceCookie, HasCSRF: s.hasValidUICSRF,
@@ -19,10 +19,10 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) Close() {
-	release := s.workspaceState.Lifecycle.AcquireMutation()
+	release := s.infrastructure.WorkspaceLifecycle().AcquireMutation()
 	defer release()
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
-	if err := s.workspaceState.Lifecycle.CloseAll(); err != nil {
+	if err := s.infrastructure.WorkspaceLifecycle().CloseAll(); err != nil {
 		log.Printf("close unlocked database resources failed: %v", err)
 	}
 }

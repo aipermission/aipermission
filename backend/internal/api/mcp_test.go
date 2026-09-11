@@ -28,7 +28,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
@@ -224,9 +223,6 @@ func performJSONWithOptions(handler http.Handler, method string, path string, to
 }
 
 func authorizeTestUISession(srv *Server) {
-	if srv.controlState.UISessions == nil {
-		srv.controlState.UISessions = uisession.New(srv.config.FrontendPort)
-	}
 	response := httptest.NewRecorder()
 	err := srv.issueUISessionLocked(response)
 	if err != nil {

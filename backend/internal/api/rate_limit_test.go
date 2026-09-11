@@ -52,7 +52,7 @@ func TestMCPAuthenticationDoesNotShareTokenBackoff(t *testing.T) {
 	}
 	brokenKey := mcpTokenRateLimitKey("broken-client-token")
 	for range authRateLimitLockoutFailures {
-		fixture.server.controlState.MCPTokenAuthLimiter.RecordFailure(brokenKey)
+		fixture.server.infrastructure.MCPTokenLimiter().RecordFailure(brokenKey)
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", validToken.TokenValue, nil)

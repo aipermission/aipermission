@@ -11,38 +11,38 @@ import (
 )
 
 func (s *Server) isUnlocked() bool {
-	if s.workspaceState.Registry == nil {
-		return false
-	}
-	return s.workspaceState.Registry.IsUnlocked()
+	return s != nil && s.infrastructure != nil && s.infrastructure.WorkspaceIsUnlocked()
 }
 
 func (s *Server) workspaceSelection() gatewayinfra.Identity {
-	if s.workspaceState.Registry == nil {
+	if s == nil {
+		return gatewayinfra.Identity{}
+	}
+	if s.infrastructure == nil {
 		return gatewayinfra.Identity{
 			ID: gatewayinfra.DefaultID(s.config.DataPath), Path: s.config.DataPath,
 		}
 	}
-	return s.workspaceState.Registry.Selection()
+	return s.infrastructure.WorkspaceSelection()
 }
 
 func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (databaseRuntime, error) {
-	if s.workspaceState.OpenRuntime != nil {
-		return s.workspaceState.OpenRuntime(path, id, password)
+	if s.openRuntimeOverride != nil {
+		return s.openRuntimeOverride(path, id, password)
 	}
 	return s.openRuntime(path, id, password)
 }
 
 func (s *Server) moveDatabase(currentPath string, targetPath string) error {
-	if s.workspaceState.MoveDatabase != nil {
-		return s.workspaceState.MoveDatabase(currentPath, targetPath)
+	if s.moveDatabaseOverride != nil {
+		return s.moveDatabaseOverride(currentPath, targetPath)
 	}
 	return gatewayinfra.Move(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
-	if s.workspaceState.PublishDatabase != nil {
-		return s.workspaceState.PublishDatabase(sourcePath, targetPath)
+	if s.publishDatabaseOverride != nil {
+		return s.publishDatabaseOverride(sourcePath, targetPath)
 	}
 	return gatewayinfra.Publish(sourcePath, targetPath)
 }
@@ -94,22 +94,14 @@ func (s *Server) currentDataPath() string {
 }
 
 func (s *Server) unlockedRuntimeSnapshot() []databaseRuntime {
-	if s.workspaceState.Lifecycle != nil {
-		return s.workspaceState.Lifecycle.Snapshot()
-	}
-	return s.workspaceState.Registry.Snapshot()
+	return s.infrastructure.WorkspaceSnapshot()
 }
 
 func (s *Server) activeRuntime() databaseRuntime {
-	if s.workspaceState.Registry == nil {
+	if s == nil || s.infrastructure == nil {
 		return nil
 	}
-	if s.workspaceState.Lifecycle != nil {
-		runtime, _ := s.workspaceState.Lifecycle.Active()
-		return runtime
-	}
-	runtime, _ := s.workspaceState.Registry.Active()
-	return runtime
+	return s.infrastructure.ActiveWorkspace()
 }
 
 func (s *Server) closeRuntime(runtime databaseRuntime) error {

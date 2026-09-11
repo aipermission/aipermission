@@ -13,7 +13,7 @@ func (s *Server) maintenanceConsoleHTTPScope(w http.ResponseWriter) (gatewayoper
 		return gatewayoperations.MaintenanceHTTPScope{}, false
 	}
 	return gatewayoperations.MaintenanceHTTPScope{
-		Runtime: s.controlState.MaintenanceConsole,
+		Runtime: s.infrastructure.MaintenanceConsole(),
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
@@ -22,7 +22,7 @@ func (s *Server) maintenanceConsoleHTTPScope(w http.ResponseWriter) (gatewayoper
 }
 
 func (s *Server) closeMaintenanceConsoleForLifecycle(reason string) bool {
-	if s == nil || s.controlState.MaintenanceConsole == nil || !s.controlState.MaintenanceConsole.Close() {
+	if s == nil || s.infrastructure == nil || s.infrastructure.MaintenanceConsole() == nil || !s.infrastructure.MaintenanceConsole().Close() {
 		return false
 	}
 	if runtime := s.activeRuntime(); runtime != nil {

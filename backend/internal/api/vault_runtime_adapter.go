@@ -56,7 +56,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				return s.withAuditedMutation(ctx, runtime, "mcp", &tokenID, 0, action, payload, mutate)
 			},
 			AllowGenerate: func(tokenID int64) bool {
-				return s.controlState.VaultGenerateLimiter != nil && s.controlState.VaultGenerateLimiter.Allow(
+				return s.infrastructure.AllowVaultGenerate(
 					fmt.Sprintf("vault-generate:%s:%d", runtime.DatabaseIdentifier(), tokenID),
 				)
 			},
@@ -70,8 +70,8 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
 			AllowRequest: func(tokenID int64) bool {
-				return s.controlState.VaultRequestLimiter != nil && s.controlState.VaultRequestLimiter.Allow(
-					"vault-request:"+runtime.DatabaseIdentifier()+":"+strconv.FormatInt(tokenID, 10),
+				return s.infrastructure.AllowVaultRequest(
+					"vault-request:" + runtime.DatabaseIdentifier() + ":" + strconv.FormatInt(tokenID, 10),
 				)
 			},
 			RepairProjection: func(ctx context.Context, id int64) error {

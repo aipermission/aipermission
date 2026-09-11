@@ -23,9 +23,6 @@ var (
 type ServerOption = gatewayoptions.Option
 type RouteBackup = gatewayroutes.Backup
 type RouteDependencies = gatewayroutes.Dependencies
-type ConnectorState = gatewaystate.ConnectorState
-type ControlState = gatewaystate.ControlState
-type WorkspaceState = gatewaystate.WorkspaceState
 type Runtime = gatewayworkspace.Runtime
 type WorkspaceRegistry = gatewayworkspace.Registry
 type WorkspaceService = gatewayworkspace.Service

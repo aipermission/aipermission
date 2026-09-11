@@ -13,12 +13,13 @@ import (
 )
 
 type Server struct {
-	config         serverConfig
-	workspaceState gatewayinfra.WorkspaceState
-	connectorState gatewayinfra.ConnectorState
-	controlState   gatewayinfra.ControlState
-	mux            *http.ServeMux
-	observation    gatewayoperations.Observation
+	config                  serverConfig
+	infrastructure          *gatewayinfra.Component
+	mux                     *http.ServeMux
+	observation             gatewayoperations.Observation
+	openRuntimeOverride     func(string, string, string) (databaseRuntime, error)
+	moveDatabaseOverride    func(string, string) error
+	publishDatabaseOverride func(string, string) error
 }
 
 type databaseRuntime = gatewayinfra.Runtime
@@ -45,16 +46,10 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	cfg := snapshotRuntimeConfiguration(configuration)
 	gatewayinfra.Scavenge(cfg.DataPath, time.Now())
 	activeID := gatewayinfra.DefaultID(cfg.DataPath)
-	resolved := gatewayinfra.ResolveOptions(options)
-	registry := resolved.Registry
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
+	registry := infrastructure.ConnectorRegistry()
 	server := &Server{
-		config: cfg,
-		workspaceState: gatewayinfra.WorkspaceState{
-			Registry: gatewayinfra.NewRegistry(cfg.DataPath, activeID, describeDatabaseRuntime),
-		},
-		connectorState: gatewayinfra.NewConnectorState(registry, resolved.AdapterRegistry),
-		controlState:   gatewayinfra.NewControlState(cfg.FrontendPort, resolved.MaintenanceConsole),
-		mux:            http.NewServeMux(),
+		config: cfg, infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
@@ -62,8 +57,8 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	runtime, err := gatewayinfra.Adopt(context.Background(), gatewayinfra.AdoptInput{
 		ID: activeID, Path: cfg.DataPath, Database: database, Vault: secretVault,
 		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
-		Registry: registry, AdapterRegistry: resolved.AdapterRegistry,
-		RuntimeInstanceID: resolved.RuntimeInstanceIDGenerator,
+		Registry: registry, AdapterRegistry: infrastructure.ConnectorAdapterRegistry(),
+		RuntimeInstanceID: infrastructure.RuntimeInstanceIDGenerator(),
 	})
 	if err != nil {
 		return nil, err
@@ -80,7 +75,7 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	server.configureAuditDispatcher(runtime)
-	server.workspaceState.Registry.Activate(runtime)
+	server.infrastructure.ActivateWorkspace(runtime)
 	server.initializeRetention(runtime)
 	server.routes()
 	return server, nil
@@ -89,15 +84,9 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	gatewayinfra.Scavenge(cfg.DataPath, time.Now())
-	resolved := gatewayinfra.ResolveOptions(options)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
 	server := &Server{
-		config: cfg,
-		workspaceState: gatewayinfra.WorkspaceState{
-			Registry: gatewayinfra.NewRegistry(cfg.DataPath, gatewayinfra.DefaultID(cfg.DataPath), describeDatabaseRuntime),
-		},
-		connectorState: gatewayinfra.NewConnectorState(resolved.Registry, resolved.AdapterRegistry),
-		controlState:   gatewayinfra.NewControlState(cfg.FrontendPort, resolved.MaintenanceConsole),
-		mux:            http.NewServeMux(),
+		config: cfg, infrastructure: infrastructure, mux: http.NewServeMux(),
 	}
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))
@@ -107,9 +96,8 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 }
 
 func (s *Server) initializeWorkspaceLifecycle() error {
-	lifecycle, err := gatewayinfra.NewService(gatewayinfra.WorkspaceDependencies{
+	err := s.infrastructure.ConfigureWorkspaceLifecycle(gatewayinfra.WorkspaceDependencies{
 		DataPath:      s.config.DataPath,
-		Registry:      s.workspaceState.Registry,
 		Open:          s.openRuntimeForLifecycle,
 		Close:         s.closeRuntime,
 		Move:          s.moveDatabase,
@@ -136,7 +124,6 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 	if err != nil {
 		return fmt.Errorf("initialize workspace lifecycle: %w", err)
 	}
-	s.workspaceState.Lifecycle = lifecycle
 	return nil
 }
 
@@ -148,15 +135,15 @@ func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 }
 
 func (s *Server) connectorRegistry() *connectorapi.ConnectorRegistry {
-	if s != nil && s.connectorState.Registry != nil {
-		return s.connectorState.Registry
+	if s != nil && s.infrastructure != nil && s.infrastructure.ConnectorRegistry() != nil {
+		return s.infrastructure.ConnectorRegistry()
 	}
 	return connectorapi.NewConnectorRegistry()
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
-	if s != nil && s.connectorState.AdapterRegistry != nil {
-		return s.connectorState.AdapterRegistry
+	if s != nil && s.infrastructure != nil && s.infrastructure.ConnectorAdapterRegistry() != nil {
+		return s.infrastructure.ConnectorAdapterRegistry()
 	}
 	return connectorapi.NewRegistry()
 }

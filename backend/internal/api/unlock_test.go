@@ -404,7 +404,7 @@ func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	oldPath := server.currentDataPath()
-	server.workspaceState.MoveDatabase = func(string, string) error { return errors.New("injected move failure") }
+	server.moveDatabaseOverride = func(string, string) error { return errors.New("injected move failure") }
 
 	response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{
 		DatabaseName:    "Renamed Project",
@@ -530,7 +530,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
 	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
-	failures := server.controlState.AuthLimiter.FailureCount(limitKey)
+	failures := server.infrastructure.DatabasePasswordLimiter().FailureCount(limitKey)
 	if failures != 1 {
 		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
 	}
@@ -540,7 +540,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
 	}
-	if failures := server.controlState.AuthLimiter.FailureCount(limitKey); failures != 0 {
+	if failures := server.infrastructure.DatabasePasswordLimiter().FailureCount(limitKey); failures != 0 {
 		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {
@@ -800,7 +800,7 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read source db: %v", err)
 	}
-	server.workspaceState.OpenRuntime = func(path string, id string, password string) (databaseRuntime, error) {
+	server.openRuntimeOverride = func(path string, id string, password string) (databaseRuntime, error) {
 		if id == "imported-project" {
 			return nil, errors.New("injected runtime open failure")
 		}
@@ -849,7 +849,7 @@ func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.workspaceState.PublishDatabase = func(source string, target string) error {
+	server.publishDatabaseOverride = func(source string, target string) error {
 		if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
 			return err
 		}

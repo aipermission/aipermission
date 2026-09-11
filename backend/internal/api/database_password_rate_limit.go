@@ -22,7 +22,7 @@ type databasePasswordAttempt struct {
 
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
 	attempt := databasePasswordAttempt{
-		limiter: s.controlState.AuthLimiter,
+		limiter: s.infrastructure.DatabasePasswordLimiter(),
 		key:     gatewayaccess.RuntimeKey(r, databasePasswordRateLimitScope),
 	}
 	if err := attempt.limiter.Wait(r.Context(), attempt.key); err != nil {

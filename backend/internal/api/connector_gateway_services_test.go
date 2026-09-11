@@ -39,8 +39,8 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	if lateCtx.Err() == nil {
 		t.Fatal("closed runtime accepted a late transfer")
 	}
-	if fixture.server.workspaceState.Registry.Len() != 0 || fixture.server.activeRuntime() != nil {
-		t.Fatalf("server close retained unlocked runtime state: workspaces=%d", fixture.server.workspaceState.Registry.Len())
+	if fixture.server.infrastructure.WorkspaceCount() != 0 || fixture.server.activeRuntime() != nil {
+		t.Fatalf("server close retained unlocked runtime state: workspaces=%d", fixture.server.infrastructure.WorkspaceCount())
 	}
 }
 
@@ -61,8 +61,8 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.server.workspaceState.Registry.Activate(second)
-	fixture.server.workspaceState.Registry.Activate(first)
+	fixture.server.infrastructure.ActivateWorkspace(second)
+	fixture.server.infrastructure.ActivateWorkspace(first)
 
 	firstRequest := createRuntimeScopedVaultRequest(t, first, "first")
 	secondRequest := createRuntimeScopedVaultRequest(t, second, "second")
