@@ -77,7 +77,7 @@ beforeEach(() => {
 it("owns debounced Vault listing and create lifecycle", async () => {
   const user = userEvent.setup();
   render(<CollectionHarness />);
-  expect(await screen.findByTestId("project")).toHaveTextContent("My Project");
+  await waitFor(() => expect(screen.getByTestId("project")).toHaveTextContent("My Project"));
   await waitFor(() => expect(screen.getByTestId("items")).toHaveTextContent("KEY"));
   await user.click(screen.getByRole("button", { name: "Open" }));
   expect(screen.getByTestId("editor")).toHaveTextContent("true:4");
@@ -111,7 +111,7 @@ it("does not let a late create close a newly opened editor", async () => {
   });
   apiPost.mockReturnValue(save);
   render(<CollectionHarness />);
-  expect(await screen.findByTestId("project")).toHaveTextContent("My Project");
+  await waitFor(() => expect(screen.getByTestId("project")).toHaveTextContent("My Project"));
 
   await user.click(screen.getByRole("button", { name: "Open" }));
   await user.click(screen.getByRole("button", { name: "Fill" }));
@@ -130,7 +130,7 @@ it("does not let a late create close a newly opened editor", async () => {
 it("updates Vault metadata without replacing the existing value", async () => {
   const user = userEvent.setup();
   render(<CollectionHarness />);
-  expect(await screen.findByTestId("project")).toHaveTextContent("My Project");
+  await waitFor(() => expect(screen.getByTestId("project")).toHaveTextContent("My Project"));
 
   await user.click(screen.getByRole("button", { name: "Edit" }));
   expect(screen.getByTestId("editor")).toHaveTextContent("true:4:existing_key");
