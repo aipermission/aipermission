@@ -17,6 +17,7 @@ var errForeignRuntime = errors.New("workspace runtime was not created by the gat
 type Runtime = runtimecontract.Runtime
 
 type ActionWorkflow = runtimeshutdown.ActionWorkflow
+type CommandWorkflow = runtimeshutdown.CommandWorkflow
 
 func Adopt(ctx context.Context, input runtimeinput.Adopt) (Runtime, error) {
 	state, err := foundation.Adopt(ctx, foundation.AdoptInput{
@@ -50,12 +51,12 @@ func Discard(value Runtime) error {
 	return runtimeshutdown.Discard(runtime)
 }
 
-func Close(value Runtime, resolve func() (ActionWorkflow, error)) error {
+func Close(value Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
 	runtime, err := concreteRuntime(value)
 	if err != nil {
 		return err
 	}
-	return runtimeshutdown.Close(runtime, resolve)
+	return runtimeshutdown.Close(runtime, resolveActions, resolveCommands)
 }
 
 func concreteRuntime(value Runtime) (*workspaceruntime.Runtime, error) {

@@ -13,6 +13,13 @@ type actionWorkflowSpy struct {
 	message string
 }
 
+type commandWorkflowSpy struct{ message string }
+
+func (workflow *commandWorkflowSpy) CancelRunning(_ context.Context, message string) error {
+	workflow.message = message
+	return nil
+}
+
 func (workflow *actionWorkflowSpy) StopRecovery() { workflow.stopped = true }
 
 func (workflow *actionWorkflowSpy) MarkRunningOutcomeUnknown(_ context.Context, message string) error {
@@ -23,10 +30,13 @@ func (workflow *actionWorkflowSpy) MarkRunningOutcomeUnknown(_ context.Context, 
 func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 	runtime := &workspaceruntime.Runtime{ID: "workspace-one", ActionIdentityKey: make([]byte, 32)}
 	workflow := &actionWorkflowSpy{}
+	commands := &commandWorkflowSpy{}
 	resolveCalls := 0
 	if err := Close(runtime, func() (ActionWorkflow, error) {
 		resolveCalls++
 		return workflow, nil
+	}, func() (CommandWorkflow, error) {
+		return commands, nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +45,9 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 	}
 	if workflow.message != runtimeoutcome.ConnectorActionUnknown {
 		t.Fatalf("outcome message=%q", workflow.message)
+	}
+	if commands.message != runtimeoutcome.CommandCanceled {
+		t.Fatalf("command outcome message=%q", commands.message)
 	}
 	if runtime.ActionIdentityKey != nil {
 		t.Fatal("action identity key was retained")

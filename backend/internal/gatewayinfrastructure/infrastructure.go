@@ -8,6 +8,7 @@ var ErrInitialization = gatewayworkspace.ErrInitialization
 type Runtime = gatewayworkspace.Runtime
 type WorkspaceLifecyclePort interface{ gatewayworkspace.LifecyclePort }
 type ActionWorkflow = gatewayworkspace.ActionWorkflow
+type CommandWorkflow = gatewayworkspace.CommandWorkflow
 type AdoptInput = gatewayworkspace.AdoptInput
 type WorkspaceDependencies = gatewayworkspace.Dependencies
 type WorkspaceHTTPDependencies = gatewayworkspace.HTTPDependencies

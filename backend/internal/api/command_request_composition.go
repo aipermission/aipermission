@@ -8,18 +8,20 @@ import (
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	owner, err := s.access.NewCommandWorkspaceRuntime(gatewayaccess.CommandWorkspaceRuntimeDependencies{
+	return s.access.InitializeCommandRuntime(runtime.ComponentStatePort(), gatewayaccess.CommandRuntimeDependencies{
 		Database: runtime.StoragePort().DatabaseHandle(), Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},
 		Sessions: runtime.ConnectorPort().ConsoleSessionManager(), BackgroundTimeout: mcpBackgroundCommandTimeout,
 	})
-	if err != nil {
-		return err
+}
+
+func (s *Server) commandRuntime(runtime databaseRuntime) (gatewayaccess.CommandRuntime, error) {
+	if runtime == nil {
+		return nil, gatewayaccess.ErrCommandRuntimeUnavailable
 	}
-	runtime.OperationsPort().SetCommandRequestRuntime(owner)
-	return nil
+	return s.access.CommandRuntime(runtime.ComponentStatePort())
 }
 
 func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.CommandHTTPReader, bool) {
@@ -27,9 +29,10 @@ func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.C
 	if !ok {
 		return nil, false
 	}
-	if runtime.OperationsPort().CommandRequestRuntime() == nil {
+	owner, err := s.commandRuntime(runtime)
+	if err != nil {
 		writeInternalError(w)
 		return nil, false
 	}
-	return runtime.OperationsPort().CommandRequestRuntime(), true
+	return owner, true
 }

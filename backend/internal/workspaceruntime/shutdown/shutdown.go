@@ -23,10 +23,16 @@ type ActionWorkflow interface {
 
 type ActionWorkflowResolver func() (ActionWorkflow, error)
 
+type CommandWorkflow interface {
+	CancelRunning(context.Context, string) error
+}
+
+type CommandWorkflowResolver func() (CommandWorkflow, error)
+
 // Close stops runtime workers and sessions before releasing encrypted storage.
 // If transfer workers outlive the bounded wait, storage closes asynchronously
 // after they exit so no worker can touch a closed database.
-func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver) error {
+func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver) error {
 	if runtime == nil {
 		return nil
 	}
@@ -40,12 +46,8 @@ func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver)
 	if sessions := runtime.ConnectorPort().ConsoleSessionManager(); sessions != nil {
 		sessions.CloseAll()
 	}
+	stopCommandRequests(runtime.DatabaseIdentifier(), resolveCommands)
 	operations := runtime.OperationsPort()
-	if requests := operations.CommandRequestRuntime(); requests != nil {
-		if err := requests.CancelRunning(context.Background(), runtimeoutcome.CommandCanceled); err != nil {
-			log.Printf("mark running command requests failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
-		}
-	}
 	if transfers := operations.FileTransferRuntime(); transfers == nil {
 		operations.FileTransferLifecycle().Stop()
 		log.Printf("file transfer shutdown runtime unavailable workspace=%s", runtime.DatabaseIdentifier())
@@ -67,6 +69,23 @@ func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver)
 		}
 	}
 	return closeStorage(runtime)
+}
+
+func stopCommandRequests(workspaceID string, resolve CommandWorkflowResolver) {
+	if resolve == nil {
+		return
+	}
+	requests, err := resolve()
+	if err != nil {
+		log.Printf("initialize command request shutdown workspace=%s error=%v", workspaceID, err)
+		return
+	}
+	if requests == nil {
+		return
+	}
+	if err := requests.CancelRunning(context.Background(), runtimeoutcome.CommandCanceled); err != nil {
+		log.Printf("mark running command requests failed workspace=%s error=%v", workspaceID, err)
+	}
 }
 
 // Discard releases a partially opened runtime without running normal shutdown

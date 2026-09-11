@@ -30,10 +30,6 @@ func (*Component) NewCommandHTTPHandlers(scope commandrequests.HTTPScopeProvider
 	return commandrequests.NewHTTPHandlers(scope)
 }
 
-func (*Component) NewCommandWorkspaceRuntime(dependencies commandrequests.WorkspaceRuntimeDependencies) (*commandrequests.Runtime, error) {
-	return commandrequests.NewWorkspaceRuntime(dependencies)
-}
-
 func (*Component) PrincipalLocalOperator(workspaceID string, runtimeInstanceID string) (executionprincipal.Principal, error) {
 	return executionprincipal.LocalOperator(workspaceID, runtimeInstanceID)
 }

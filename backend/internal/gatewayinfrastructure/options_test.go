@@ -32,7 +32,7 @@ func TestNilComponentWorkspaceOperationsFailClosed(t *testing.T) {
 	if _, err := component.OpenWorkspace(t.Context(), OpenInput{}); !errors.Is(err, ErrInitialization) {
 		t.Fatalf("open error = %v", err)
 	}
-	if err := component.CloseWorkspace(nil, nil); !errors.Is(err, ErrInitialization) {
+	if err := component.CloseWorkspace(nil, nil, nil); !errors.Is(err, ErrInitialization) {
 		t.Fatalf("close error = %v", err)
 	}
 	if err := component.MoveDatabase("source", "target"); !errors.Is(err, ErrInitialization) {

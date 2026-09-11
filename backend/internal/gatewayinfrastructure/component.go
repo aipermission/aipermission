@@ -142,11 +142,11 @@ func (component *Component) DiscardWorkspace(runtime Runtime) error {
 	return component.workspace.Discard(runtime)
 }
 
-func (component *Component) CloseWorkspace(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
+func (component *Component) CloseWorkspace(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
 	if component == nil || component.workspace == nil {
 		return gatewayworkspace.ErrInitialization
 	}
-	return component.workspace.Close(runtime, resolve)
+	return component.workspace.Close(runtime, resolveActions, resolveCommands)
 }
 
 func (component *Component) MoveDatabase(currentPath, targetPath string) error {

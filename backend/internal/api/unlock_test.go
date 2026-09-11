@@ -1020,7 +1020,7 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create token: %v", err)
 	}
-	requestID, err := runtime.OperationsPort().CommandRequestRuntime().Insert(t.Context(), commandrequests.Insert{
+	requestID, err := requireCommandRuntime(t, server, runtime).Insert(t.Context(), commandrequests.Insert{
 		TokenID: &token.ID, RuntimeID: target.ID, Source: commandrequests.SourceMCP,
 		Command: "sleep 60", Reason: "test lock cleanup", Status: "running",
 	})

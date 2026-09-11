@@ -41,10 +41,11 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 			return adapter
 		},
 		CancelForSession: func(ctx context.Context, sessionID int64, errorText string) error {
-			if runtime.OperationsPort().CommandRequestRuntime() == nil {
+			requests, err := s.commandRuntime(runtime)
+			if err != nil {
 				return gatewayaccess.ErrCommandRuntimeUnavailable
 			}
-			return runtime.OperationsPort().CommandRequestRuntime().CancelRunningForSession(ctx, sessionID, errorText)
+			return requests.CancelRunningForSession(ctx, sessionID, errorText)
 		},
 		RestartRuntime: func(ctx context.Context, runtimeID int64, errorText string) (connectorapi.LiveConsoleRestartResult, error) {
 			principal, err := s.localExecutionPrincipal(runtime)

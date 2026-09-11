@@ -73,7 +73,8 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 	runtime := fixture.server.activeRuntime()
 
 	rawCommand := "curl -H 'Authorization: Bearer secret-token-1234567890' https://example.invalid"
-	id, err := runtime.OperationsPort().CommandRequestRuntime().Insert(ctx, commandrequests.Insert{
+	requests := requireCommandRuntime(t, fixture.server, runtime)
+	id, err := requests.Insert(ctx, commandrequests.Insert{
 		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
 		Command: rawCommand, Reason: "password=secret-value", Status: "pending_approval",
 	})
@@ -81,14 +82,14 @@ func TestCommandRequestKeepsEncryptedRawCommandForExecution(t *testing.T) {
 		t.Fatalf("insert command request: %v", err)
 	}
 
-	record, err := runtime.OperationsPort().CommandRequestRuntime().Get(ctx, id, token.ID, commandRequestSourceMCP)
+	record, err := requests.Get(ctx, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}
 	if strings.Contains(record.Command, "secret-token-1234567890") || strings.Contains(record.Reason, "secret-value") {
 		t.Fatalf("display fields should be redacted: %#v", record)
 	}
-	executionCommand, err := runtime.OperationsPort().CommandRequestRuntime().ExecutionCommand(ctx, id)
+	executionCommand, err := requests.ExecutionCommand(ctx, id)
 	if err != nil {
 		t.Fatalf("read execution command: %v", err)
 	}
@@ -106,19 +107,20 @@ func TestCommandRequestErrorsAreRedactedBeforePersistence(t *testing.T) {
 	}
 	server := fixture.createKeyAndServer(t, "worker-1")
 	runtime := fixture.server.activeRuntime()
-	id, err := runtime.OperationsPort().CommandRequestRuntime().Insert(ctx, commandrequests.Insert{
+	requests := requireCommandRuntime(t, fixture.server, runtime)
+	id, err := requests.Insert(ctx, commandrequests.Insert{
 		TokenID: &token.ID, RuntimeID: server.ID, Source: commandrequests.SourceMCP,
 		Command: "echo ok", Reason: "test", Status: "running",
 	})
 	if err != nil {
 		t.Fatalf("insert command request: %v", err)
 	}
-	if err := runtime.OperationsPort().CommandRequestRuntime().Finish(ctx, commandrequests.Completion{
+	if err := requests.Finish(ctx, commandrequests.Completion{
 		ID: id, Status: "error", ExitCode: 1, Error: "ssh failed password=super-secret",
 	}); err != nil {
 		t.Fatalf("finish command request: %v", err)
 	}
-	record, err := runtime.OperationsPort().CommandRequestRuntime().Get(ctx, id, token.ID, commandRequestSourceMCP)
+	record, err := requests.Get(ctx, id, token.ID, commandRequestSourceMCP)
 	if err != nil {
 		t.Fatalf("get command request: %v", err)
 	}

@@ -17,12 +17,13 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.Com
 	if !ok {
 		return nil, false
 	}
-	if runtime.OperationsPort().CommandRequestRuntime() == nil {
+	requests, err := s.commandRuntime(runtime)
+	if err != nil {
 		writeInternalError(w)
 		return nil, false
 	}
 	return &gatewayaccess.CommandBulkHTTPRuntime{
-		Requests: runtime.OperationsPort().CommandRequestRuntime(),
+		Requests: requests,
 		Sessions: runtime.ConnectorPort().ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)

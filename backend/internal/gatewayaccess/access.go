@@ -36,7 +36,6 @@ type CommandBulkAuditAppender = commandrequests.BulkAuditAppender
 type CommandBulkHTTPRuntime = commandrequests.BulkHTTPRuntime
 type CommandBulkTarget = commandrequests.BulkTarget
 type CommandHTTPReader = commandrequests.HTTPReader
-type CommandWorkspaceRuntimeDependencies = commandrequests.WorkspaceRuntimeDependencies
 type Principal = executionprincipal.Principal
 type MCPActionScope = mcpconnector.ActionScope
 type MCPOutputAuthorization = mcpconnector.OutputAuthorization

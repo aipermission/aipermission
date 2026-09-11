@@ -28,6 +28,7 @@ type HTTPDependencies = lifecycle.HTTPDependencies
 type HTTPHandlers = lifecycle.HTTPHandlers
 type PasswordAttempt = lifecycle.PasswordAttempt
 type ActionWorkflow = runtimefactory.ActionWorkflow
+type CommandWorkflow = runtimefactory.CommandWorkflow
 
 type LifecyclePort interface {
 	AcquireRead() func()
@@ -144,8 +145,8 @@ func (component *Component) Open(ctx context.Context, input OpenInput) (Runtime,
 	return runtimefactory.Open(ctx, input)
 }
 func (component *Component) Discard(runtime Runtime) error { return runtimefactory.Discard(runtime) }
-func (component *Component) Close(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
-	return runtimefactory.Close(runtime, resolve)
+func (component *Component) Close(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
+	return runtimefactory.Close(runtime, resolveActions, resolveCommands)
 }
 func (component *Component) Move(currentPath, targetPath string) error {
 	return catalog.Move(currentPath, targetPath)
