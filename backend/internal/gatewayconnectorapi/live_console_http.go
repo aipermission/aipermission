@@ -13,7 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
-	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/gorilla/websocket"
 )
 
@@ -47,14 +46,15 @@ type LiveConsoleVaultSelection struct {
 }
 
 type LiveConsoleHTTPRuntime struct {
-	Sessions         LiveConsoleSessions
-	Principal        func() (executionprincipal.Principal, error)
-	PlanEnvironment  func(context.Context, int64, []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error)
-	ErrorAdapter     func(context.Context, int64) ErrorPresenter
-	CancelForSession func(context.Context, int64, string) error
-	RestartRuntime   func(context.Context, int64, string) (LiveConsoleRestartResult, error)
-	Observe          func(context.Context, int64, string, map[string]any)
-	UpgradeWebSocket func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)
+	Sessions                LiveConsoleSessions
+	Principal               func() (executionprincipal.Principal, error)
+	PlanEnvironment         func(context.Context, int64, []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error)
+	PresentEnvironmentError func(error) (int, string, bool)
+	ErrorAdapter            func(context.Context, int64) ErrorPresenter
+	CancelForSession        func(context.Context, int64, string) error
+	RestartRuntime          func(context.Context, int64, string) (LiveConsoleRestartResult, error)
+	Observe                 func(context.Context, int64, string, map[string]any)
+	UpgradeWebSocket        func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)
 }
 
 type LiveConsoleHTTPScopeProvider func(http.ResponseWriter) (*LiveConsoleHTTPRuntime, bool)
@@ -127,7 +127,7 @@ func (h *LiveConsoleHTTPHandlers) Create(w http.ResponseWriter, r *http.Request)
 		var err error
 		environment, err = runtime.PlanEnvironment(r.Context(), input.RuntimeID, input.VaultItems)
 		if err != nil {
-			writeEnvironmentError(w, err)
+			writeEnvironmentError(w, runtime.PresentEnvironmentError, err)
 			return
 		}
 		request.PrepareEnvironment = environment.Prepare
@@ -339,18 +339,20 @@ func (runtime *LiveConsoleHTTPRuntime) observe(ctx context.Context, runtimeID in
 	}
 }
 
-func writeEnvironmentError(w http.ResponseWriter, err error) {
-	var validation projectvault.ValidationError
+func writeEnvironmentError(w http.ResponseWriter, present func(error) (int, string, bool), err error) {
 	switch {
 	case errors.Is(err, connectors.ErrSessionEnvironmentUnsupported):
 		httptransport.WriteError(w, http.StatusConflict, "this connector runtime does not support Vault session environments")
-	case errors.As(err, &validation):
-		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
-	case errors.Is(err, projectvault.ErrNotFound):
-		httptransport.WriteError(w, http.StatusNotFound, "vault item not found")
-	case errors.Is(err, projectvault.ErrStale):
-		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	default:
+		if present != nil {
+			if status, message, ok := present(err); ok {
+				message = strings.TrimSpace(message)
+				if status >= http.StatusBadRequest && status <= 599 && message != "" {
+					httptransport.WriteError(w, status, message)
+					return
+				}
+			}
+		}
 		httptransport.WriteInternalError(w)
 	}
 }

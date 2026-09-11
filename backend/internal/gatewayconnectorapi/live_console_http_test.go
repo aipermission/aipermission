@@ -8,10 +8,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/gorilla/websocket"
 )
+
+func TestEnvironmentErrorsUseConnectorNeutralPresentation(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		present func(error) (int, string, bool)
+		status  int
+		body    string
+	}{
+		{name: "unsupported", err: connectors.ErrSessionEnvironmentUnsupported, status: http.StatusConflict, body: "does not support"},
+		{name: "validation", err: errors.New("invalid selection"), present: func(error) (int, string, bool) {
+			return http.StatusBadRequest, "invalid selection", true
+		}, status: http.StatusBadRequest, body: "invalid selection"},
+		{name: "not found", err: errors.New("missing"), present: func(error) (int, string, bool) {
+			return http.StatusNotFound, "vault item not found", true
+		}, status: http.StatusNotFound, body: "vault item not found"},
+		{name: "stale", err: errors.New("stale"), present: func(error) (int, string, bool) {
+			return http.StatusConflict, "refresh and try again", true
+		}, status: http.StatusConflict, body: "refresh and try again"},
+		{name: "unknown", err: errors.New("unknown"), present: func(error) (int, string, bool) {
+			return 0, "", false
+		}, status: http.StatusInternalServerError, body: "internal server error"},
+		{name: "invalid presentation", err: errors.New("unknown"), present: func(error) (int, string, bool) {
+			return http.StatusOK, "misclassified", true
+		}, status: http.StatusInternalServerError, body: "internal server error"},
+		{name: "missing presenter", err: errors.New("unknown"), status: http.StatusInternalServerError, body: "internal server error"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writeEnvironmentError(response, test.present, test.err)
+			if response.Code != test.status || !strings.Contains(strings.ToLower(response.Body.String()), test.body) {
+				t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+			}
+		})
+	}
+}
 
 type fakeSessions struct {
 	items         []console.Record

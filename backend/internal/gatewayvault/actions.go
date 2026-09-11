@@ -15,6 +15,28 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
+type SessionEnvironmentErrorKind uint8
+
+const (
+	SessionEnvironmentValidation SessionEnvironmentErrorKind = iota + 1
+	SessionEnvironmentNotFound
+	SessionEnvironmentStale
+)
+
+func ClassifySessionEnvironmentError(err error) (SessionEnvironmentErrorKind, string, bool) {
+	var validation projectvault.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		return SessionEnvironmentValidation, validation.Error(), true
+	case errors.Is(err, projectvault.ErrNotFound):
+		return SessionEnvironmentNotFound, "vault item not found", true
+	case errors.Is(err, projectvault.ErrStale):
+		return SessionEnvironmentStale, err.Error(), true
+	default:
+		return 0, "", false
+	}
+}
+
 type actionProjectPort struct{ database *sql.DB }
 
 type VaultActionApplication interface {

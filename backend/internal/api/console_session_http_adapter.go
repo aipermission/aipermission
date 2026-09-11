@@ -44,6 +44,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 				ItemIDs: ids, ContentHash: plan.EnvironmentContentHash, Prepare: plan.Prepare,
 			}, nil
 		},
+		PresentEnvironmentError: presentVaultSessionEnvironmentError,
 		ErrorAdapter: func(ctx context.Context, runtimeID int64) connectorapi.ErrorPresenter {
 			adapter, _ := s.consoleErrorPresenter(ctx, runtime, runtimeID).(connectorapi.ErrorPresenter)
 			return adapter
@@ -70,4 +71,21 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		},
 		UpgradeWebSocket: s.upgradeWebSocket,
 	}, true
+}
+
+func presentVaultSessionEnvironmentError(err error) (int, string, bool) {
+	kind, message, ok := gatewayvault.ClassifySessionEnvironmentError(err)
+	if !ok {
+		return 0, "", false
+	}
+	switch kind {
+	case gatewayvault.SessionEnvironmentValidation:
+		return http.StatusBadRequest, message, true
+	case gatewayvault.SessionEnvironmentNotFound:
+		return http.StatusNotFound, message, true
+	case gatewayvault.SessionEnvironmentStale:
+		return http.StatusConflict, message, true
+	default:
+		return 0, "", false
+	}
 }
