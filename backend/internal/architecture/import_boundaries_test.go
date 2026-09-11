@@ -99,7 +99,7 @@ func TestExtractedDomainPackagesStayIndependentFromAPI(t *testing.T) {
 		modulePath + "/internal/retention/sqlstore",
 		modulePath + "/internal/console/terminaltext",
 		modulePath + "/internal/databasecatalog",
-		modulePath + "/internal/filetransfer/httpapi",
+		modulePath + "/internal/gatewayoperations/transfer/httpapi",
 		modulePath + "/internal/history",
 		modulePath + "/internal/legacymigration",
 		modulePath + "/internal/maintenanceconsole",
@@ -153,15 +153,29 @@ func TestAPIDependsOnlyOnGatewayBoundaries(t *testing.T) {
 		modulePath + "/internal/gatewayconnectoractions":    true,
 		modulePath + "/internal/gatewayconnectorapi":        true,
 		modulePath + "/internal/gatewayconnectormanagement": true,
-		modulePath + "/internal/gatewayconnectors":          true,
 		modulePath + "/internal/gatewayinfrastructure":      true,
 		modulePath + "/internal/gatewayoperations":          true,
 		modulePath + "/internal/gatewayvault":               true,
 	}
 	for _, imported := range allPackageImports(t)[apiPackage] {
-		if strings.HasPrefix(imported, modulePath+"/internal/") && !allowed[imported] {
+		if strings.HasPrefix(imported, modulePath+"/internal/") && !packageBelongsToAnyRoot(imported, allowed) {
 			t.Errorf("internal/api imports %s directly; transport code must use an approved gateway boundary", imported)
 		}
+	}
+}
+
+func packageBelongsToAnyRoot(pkg string, roots map[string]bool) bool {
+	for root := range roots {
+		if pkg == root || strings.HasPrefix(pkg, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRetiredGatewayConnectorFacadeStaysAbsent(t *testing.T) {
+	if _, err := os.Stat(filepath.Join("..", "..", "internal", "gatewayconnectors")); !os.IsNotExist(err) {
+		t.Fatalf("internal/gatewayconnectors must remain retired; connector contracts belong to gatewayconnectorapi")
 	}
 }
 

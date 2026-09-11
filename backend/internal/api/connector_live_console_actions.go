@@ -8,7 +8,6 @@ import (
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func prepareLiveConsoleConnectorAction(runtime databaseRuntime, ctx context.Context, runtimeID int64, request actions.PrepareRequest) (actions.PreparedRequest, error) {
@@ -24,7 +23,7 @@ func prepareLiveConsoleConnectorAction(runtime databaseRuntime, ctx context.Cont
 	if !ok || adapter.LiveConsoleActionName() == "" {
 		return actions.PreparedRequest{}, connectormgmt.ErrInvalidTargetRef
 	}
-	request.TargetRef = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
+	request.TargetRef = connectorapi.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
 	request.ActionName = adapter.LiveConsoleActionName()
 	return prepareConnectorAction(runtime, ctx, request)
 }

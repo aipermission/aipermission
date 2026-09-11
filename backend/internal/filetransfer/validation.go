@@ -7,6 +7,21 @@ import (
 	"unicode"
 )
 
+func FormatByteLimit(size int64) string {
+	const (
+		mib = int64(1 << 20)
+		gib = int64(1 << 30)
+	)
+	switch {
+	case size >= gib && size%gib == 0:
+		return fmt.Sprintf("%d GiB", size/gib)
+	case size >= mib && size%mib == 0:
+		return fmt.Sprintf("%d MiB", size/mib)
+	default:
+		return fmt.Sprintf("%d bytes", size)
+	}
+}
+
 func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	request.Direction = strings.TrimSpace(request.Direction)
 	request.Source = strings.TrimSpace(request.Source)

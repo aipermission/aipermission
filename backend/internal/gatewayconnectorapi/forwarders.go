@@ -1,11 +1,14 @@
 package gatewayconnectorapi
 
 import (
+	"strings"
+
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 )
 
 func NewLiveConsoleHTTPHandlers(scope connectorapi.LiveConsoleHTTPScopeProvider) *connectorapi.LiveConsoleHTTPHandlers {
@@ -21,5 +24,33 @@ func PresentedErrorMessage(adapter any, prefix string, err error) string {
 }
 
 func MCPResponseFromResult(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) actions.Response {
-	return mcpconnector.ResponseFromResult(adapterRegistry, request, result)
+	runningHint := ""
+	if request.Status == connectors.ResultRunning {
+		adapter, _ := adapterRegistry.For(request.ConnectorKind).(connectorapi.RuntimeAdapter)
+		if adapter != nil {
+			runningHint = strings.TrimSpace(adapter.RunningHint(request))
+		}
+		if runningHint == "" {
+			runningHint = "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
+		}
+	}
+	return actions.FromResult(request, result, runningHint)
+}
+
+func ErrorCode(err error) string { return connectors.ErrorCode(err) }
+
+func ErrorStatus(err error) connectors.ResultStatus { return connectors.ErrorStatus(err) }
+
+func FormatTargetRef(connectorKind string, targetID int64, profileID int64) string {
+	return connectors.FormatTargetRef(connectorKind, targetID, profileID)
+}
+
+func NewConnectorRegistry() *connectors.Registry { return connectors.NewRegistry() }
+
+func NewApproved(dependencies []actions.ResolvedDependency) connectortransport.Approved {
+	return connectortransport.NewApproved(dependencies)
+}
+
+func ScopeWithSecretAccessor(runtime connectortransport.Runtime, kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {
+	return connectortransport.ScopeWithSecretAccessor(runtime, kind, accessor)
 }

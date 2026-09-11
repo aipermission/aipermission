@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) error {

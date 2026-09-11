@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
 var errTransferExecutionStale = errors.New("file transfer credential or target changed after execution was accepted")
@@ -24,7 +25,7 @@ type transferExecution struct {
 	boundary      actionresult.CredentialBoundary
 }
 
-func (h Handlers) resolveTransferExecution(ctx context.Context, runtime *Runtime, runtimeID int64) (transferExecution, error) {
+func (h Handlers) resolveTransferExecution(ctx context.Context, runtime *transferapp.Runtime, runtimeID int64) (transferExecution, error) {
 	ports, err := connectorFileTransferPortsForID(ctx, runtime, runtimeID)
 	if err != nil {
 		return transferExecution{}, err
@@ -65,6 +66,14 @@ func (execution transferExecution) authorizedBy(authorization connectorapi.Trans
 		authorization.TargetID == execution.target.ID && authorization.TargetRef == execution.target.Ref && authorization.TargetUpdatedAt == execution.target.UpdatedAt &&
 		authorization.ProfileID == execution.profile.ID && authorization.ProfileUpdatedAt == execution.profile.UpdatedAt &&
 		authorization.ProfileSecretRevision == execution.profile.SecretRevision
+}
+
+func (execution transferExecution) runnerExecution() transferapp.Execution {
+	return transferapp.Execution{
+		RuntimeID: execution.runtimeID,
+		Adapter:   execution.adapter, Gateway: execution.gateway, Runtime: execution.runtime,
+		Boundary: execution.boundary,
+	}
 }
 
 type boundTransferRuntime struct {

@@ -43,13 +43,13 @@ func (s Handlers) ListFileTransferBatches(w http.ResponseWriter, r *http.Request
 		}
 		filter.RuntimeID = id
 	}
-	items, total, err := runtime.store.ListBatches(r.Context(), filter)
+	items, total, err := runtime.Storage().ListBatches(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	for index := range items {
-		batchItems, err := runtime.store.ListBatchItems(r.Context(), items[index].ID)
+		batchItems, err := runtime.Storage().ListBatchItems(r.Context(), items[index].ID)
 		if err != nil {
 			writeInternalError(w)
 			return
@@ -68,7 +68,7 @@ func (s Handlers) GetFileTransferBatch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := runtime.store.GetBatch(r.Context(), id)
+	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer batch not found")
 		return
@@ -89,7 +89,7 @@ func (s Handlers) PauseFileTransferBatch(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	control := runtime.jobs.Batches.Control(id)
+	control := runtime.BatchControl(id)
 	if control == nil {
 		writeError(w, http.StatusConflict, "file transfer batch is not active")
 		return
@@ -98,7 +98,7 @@ func (s Handlers) PauseFileTransferBatch(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, "file transfer batch is already paused")
 		return
 	}
-	changed, err := runtime.store.PauseBatch(context.Background(), id)
+	changed, err := runtime.Storage().PauseBatch(context.Background(), id)
 	if err != nil {
 		control.Resume()
 		writeInternalError(w)
@@ -109,7 +109,7 @@ func (s Handlers) PauseFileTransferBatch(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, "file transfer batch is not running")
 		return
 	}
-	item, err := runtime.store.GetBatch(r.Context(), id)
+	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -126,12 +126,12 @@ func (s Handlers) ResumeFileTransferBatch(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	control := runtime.jobs.Batches.Control(id)
+	control := runtime.BatchControl(id)
 	if control == nil {
 		writeError(w, http.StatusConflict, "file transfer batch is not active")
 		return
 	}
-	changed, err := runtime.store.ResumeBatch(context.Background(), id)
+	changed, err := runtime.Storage().ResumeBatch(context.Background(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -142,7 +142,7 @@ func (s Handlers) ResumeFileTransferBatch(w http.ResponseWriter, r *http.Request
 	}
 	control.Resume()
 	s.writeObservationAudit(context.Background(), runtime, "user", nil, 0, "file_transfer.batch.resumed", map[string]any{"batch_id": id})
-	item, err := runtime.store.GetBatch(r.Context(), id)
+	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -159,19 +159,19 @@ func (s Handlers) CancelFileTransferBatch(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	changed, err := runtime.store.CancelBatch(context.Background(), id, "canceled by local user")
+	changed, err := runtime.Storage().CancelBatch(context.Background(), id, "canceled by local user")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	if changed {
-		runtime.jobs.Batches.Cancel(id)
-		if control := runtime.jobs.Batches.Control(id); control != nil {
+		runtime.CancelBatchJob(id)
+		if control := runtime.BatchControl(id); control != nil {
 			control.Resume()
 		}
-		s.cleanupBatchTemps(runtime, id)
+		s.runner.CleanupBatchTemps(runtime, id)
 	}
-	item, err := runtime.store.GetBatch(r.Context(), id)
+	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -192,7 +192,7 @@ func (s Handlers) UpdateFileTransferBatchQueue(w http.ResponseWriter, r *http.Re
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	removed, err := runtime.store.UpdatePausedBatchQueue(r.Context(), id, request.ItemIDs)
+	removed, err := runtime.Storage().UpdatePausedBatchQueue(r.Context(), id, request.ItemIDs)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer batch not found")
 		return
@@ -210,11 +210,11 @@ func (s Handlers) UpdateFileTransferBatchQueue(w http.ResponseWriter, r *http.Re
 		return
 	}
 	for _, item := range removed {
-		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
-	item, err := runtime.store.GetBatch(r.Context(), id)
+	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -235,7 +235,7 @@ func (s Handlers) ApproveFileTransferBatch(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	batch, rejected, err := runtime.store.ApproveBatch(r.Context(), id, filetransfer.BatchApprovalRequest{
+	batch, rejected, err := runtime.Storage().ApproveBatch(r.Context(), id, filetransfer.BatchApprovalRequest{
 		ApprovedItemIDs: request.ItemIDs,
 		Note:            request.Note,
 	})
@@ -256,7 +256,7 @@ func (s Handlers) ApproveFileTransferBatch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	for _, item := range rejected {
-		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
@@ -267,8 +267,14 @@ func (s Handlers) ApproveFileTransferBatch(w http.ResponseWriter, r *http.Reques
 		"note":           strings.TrimSpace(request.Note),
 	})
 	if len(request.ItemIDs) > 0 {
-		if err := s.launchTransferBatch(r.Context(), runtime, batch.ID, batch.Overwrite, nil); err != nil {
-			s.rejectBatchLaunch(runtime, batch.ID)
+		execution, resolveErr := s.resolveTransferExecution(r.Context(), runtime, batch.RuntimeID)
+		if resolveErr != nil {
+			s.runner.RejectBatchLaunch(runtime, batch.ID)
+			writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
+			return
+		}
+		if err := s.runner.LaunchBatch(r.Context(), runtime, batch.ID, batch.Overwrite, execution.runnerExecution()); err != nil {
+			s.runner.RejectBatchLaunch(runtime, batch.ID)
 			writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
 			return
 		}
@@ -289,7 +295,7 @@ func (s Handlers) DeclineFileTransferBatch(w http.ResponseWriter, r *http.Reques
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	batch, rejected, err := runtime.store.DeclineBatch(r.Context(), id, request.Note)
+	batch, rejected, err := runtime.Storage().DeclineBatch(r.Context(), id, request.Note)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer batch not found")
 		return
@@ -303,7 +309,7 @@ func (s Handlers) DeclineFileTransferBatch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	for _, item := range rejected {
-		if item.TempPath != "" && s.tempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
@@ -324,7 +330,7 @@ func (s Handlers) DownloadFileTransferBatch(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	batch, err := runtime.store.GetBatch(r.Context(), id)
+	batch, err := runtime.Storage().GetBatch(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer batch not found")
 		return
@@ -359,7 +365,7 @@ func (s Handlers) serveDownloadBatch(w http.ResponseWriter, r *http.Request, bat
 	if fileName == "" {
 		fileName = "aipermission-download"
 	}
-	if servePath == "" || !s.tempPathAllowed(servePath) {
+	if servePath == "" || !s.runner.TempPathAllowed(servePath) {
 		writeError(w, http.StatusGone, "download file is no longer available")
 		return
 	}

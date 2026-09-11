@@ -15,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
 func (s Handlers) StartUpload(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,7 @@ func (s Handlers) StartUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tempPath, size, checksum, err := s.stageUploadFile(file)
+	tempPath, size, checksum, err := s.runner.StageUploadFile(file)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -80,11 +81,11 @@ func (s Handlers) StartUpload(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
-	if replay, replayErr := runtime.store.GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
+	if replay, replayErr := runtime.Storage().GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
 		_ = os.Remove(tempPath)
 		if fileTransferCanLaunch(replay.Status) {
-			if err := s.launchUpload(r.Context(), runtime, replay.ID, overwrite, &execution); err != nil {
-				s.rejectTransferLaunch(runtime, replay.ID)
+			if err := s.runner.LaunchUpload(r.Context(), runtime, replay.ID, overwrite, execution.runnerExecution()); err != nil {
+				s.runner.RejectTransferLaunch(runtime, replay.ID)
 				writeError(w, http.StatusServiceUnavailable, "file transfer could not start")
 				return
 			}
@@ -101,7 +102,7 @@ func (s Handlers) StartUpload(w http.ResponseWriter, r *http.Request) {
 	if ok := s.checkUploadOverwrite(w, r, execution, remotePath, overwrite, tempPath); !ok {
 		return
 	}
-	record, created, err := runtime.store.CreateIdempotent(r.Context(), filetransfer.CreateRequest{
+	record, created, err := runtime.Storage().CreateIdempotent(r.Context(), filetransfer.CreateRequest{
 		RuntimeID:  runtimeID,
 		Direction:  filetransfer.DirectionUpload,
 		Source:     filetransfer.SourceUI,
@@ -131,8 +132,8 @@ func (s Handlers) StartUpload(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if fileTransferCanLaunch(record.Status) {
-		if err := s.launchUpload(r.Context(), runtime, record.ID, overwrite, &execution); err != nil {
-			s.rejectTransferLaunch(runtime, record.ID)
+		if err := s.runner.LaunchUpload(r.Context(), runtime, record.ID, overwrite, execution.runnerExecution()); err != nil {
+			s.runner.RejectTransferLaunch(runtime, record.ID)
 			writeError(w, http.StatusServiceUnavailable, "file transfer could not start")
 			return
 		}
@@ -157,8 +158,8 @@ func (s Handlers) StartUploadBatch(w http.ResponseWriter, r *http.Request) {
 			"overwrite":  createdBatch.overwrite,
 		})
 	}
-	if err := s.launchTransferBatch(r.Context(), runtime, createdBatch.batch.ID, createdBatch.overwrite, &createdBatch.execution); err != nil {
-		s.rejectBatchLaunch(runtime, createdBatch.batch.ID)
+	if err := s.runner.LaunchBatch(r.Context(), runtime, createdBatch.batch.ID, createdBatch.overwrite, createdBatch.execution.runnerExecution()); err != nil {
+		s.runner.RejectBatchLaunch(runtime, createdBatch.batch.ID)
 		writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
 		return
 	}
@@ -173,7 +174,7 @@ type uploadBatchCreation struct {
 	execution transferExecution
 }
 
-func (s Handlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *Runtime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (uploadBatchCreation, bool) {
+func (s Handlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.Request, runtime *transferapp.Runtime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (uploadBatchCreation, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFileTransferBatchBytes+maxFileTransferMultipartOverhead)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart upload")
@@ -205,7 +206,7 @@ func (s Handlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusBadRequest, "file is required")
 			return uploadBatchCreation{}, false
 		}
-		tempPath, size, checksum, err := s.stageUploadFile(file)
+		tempPath, size, checksum, err := s.runner.StageUploadFile(file)
 		_ = file.Close()
 		if err != nil {
 			cleanupTempPaths(tempPaths)
@@ -244,7 +245,7 @@ func (s Handlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.
 			writeInternalError(w)
 			return uploadBatchCreation{}, false
 		}
-		if replay, replayErr := runtime.store.GetIdempotentBatch(r.Context(), claim); replayErr == nil {
+		if replay, replayErr := runtime.Storage().GetIdempotentBatch(r.Context(), claim); replayErr == nil {
 			cleanupTempPaths(tempPaths)
 			return uploadBatchCreation{batch: replay, runtimeID: runtimeID, overwrite: overwrite, execution: plan.execution}, true
 		} else if !errors.Is(replayErr, filetransfer.ErrIdempotencyNotFound) {
@@ -279,9 +280,9 @@ func (s Handlers) createUploadBatchFromMultipart(w http.ResponseWriter, r *http.
 	var batch filetransfer.BatchRecord
 	created := true
 	if source == filetransfer.SourceUI {
-		batch, created, err = runtime.store.CreateBatchIdempotent(r.Context(), createRequest, claim)
+		batch, created, err = runtime.Storage().CreateBatchIdempotent(r.Context(), createRequest, claim)
 	} else {
-		batch, err = runtime.store.CreateBatch(r.Context(), createRequest)
+		batch, err = runtime.Storage().CreateBatch(r.Context(), createRequest)
 	}
 	if err != nil {
 		cleanupTempPaths(tempPaths)
@@ -309,7 +310,7 @@ type uploadBatchMultipartPlan struct {
 	execution      transferExecution
 }
 
-func (s Handlers) prepareUploadBatchMultipart(w http.ResponseWriter, r *http.Request, runtime *Runtime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (uploadBatchMultipartPlan, bool) {
+func (s Handlers) prepareUploadBatchMultipart(w http.ResponseWriter, r *http.Request, runtime *transferapp.Runtime, source string, status *string, authorize func(runtimeID int64) bool, prepare func(runtimeID int64, remoteDir string, fileNames []string, overwrite bool) bool) (uploadBatchMultipartPlan, bool) {
 	plan := uploadBatchMultipartPlan{idempotencyKey: strings.TrimSpace(r.FormValue("idempotency_key"))}
 	if source == filetransfer.SourceUI && !requireFileTransferIdempotencyKey(w, plan.idempotencyKey) {
 		return uploadBatchMultipartPlan{}, false
@@ -387,17 +388,17 @@ func (s Handlers) prepareUploadBatchMultipart(w http.ResponseWriter, r *http.Req
 
 func validateStagedUploadSize(size int64, currentBatchBytes int64) (int64, error) {
 	if size < 0 || size > maxFileTransferObjectBytes {
-		return currentBatchBytes, fmt.Errorf("upload object cannot exceed %s", formatFileTransferLimit(maxFileTransferObjectBytes))
+		return currentBatchBytes, fmt.Errorf("upload object cannot exceed %s", filetransfer.FormatByteLimit(maxFileTransferObjectBytes))
 	}
 	if currentBatchBytes > maxFileTransferBatchBytes-size {
-		return currentBatchBytes, fmt.Errorf("upload batch cannot exceed %s total size", formatFileTransferLimit(maxFileTransferBatchBytes))
+		return currentBatchBytes, fmt.Errorf("upload batch cannot exceed %s total size", filetransfer.FormatByteLimit(maxFileTransferBatchBytes))
 	}
 	return currentBatchBytes + size, nil
 }
 
 func validateDownloadObjectSize(size int64) error {
 	if size < 0 || size > maxFileTransferObjectBytes {
-		return fmt.Errorf("download object cannot exceed %s", formatFileTransferLimit(maxFileTransferObjectBytes))
+		return fmt.Errorf("download object cannot exceed %s", filetransfer.FormatByteLimit(maxFileTransferObjectBytes))
 	}
 	return nil
 }
@@ -432,10 +433,10 @@ func (s Handlers) StartDownload(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
-	if replay, replayErr := runtime.store.GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
+	if replay, replayErr := runtime.Storage().GetIdempotentTransfer(r.Context(), claim); replayErr == nil {
 		if fileTransferCanLaunch(replay.Status) {
-			if err := s.launchDownload(r.Context(), runtime, replay.ID, &execution); err != nil {
-				s.rejectTransferLaunch(runtime, replay.ID)
+			if err := s.runner.LaunchDownload(r.Context(), runtime, replay.ID, execution.runnerExecution()); err != nil {
+				s.runner.RejectTransferLaunch(runtime, replay.ID)
 				writeError(w, http.StatusServiceUnavailable, "file transfer could not start")
 				return
 			}
@@ -461,13 +462,13 @@ func (s Handlers) StartDownload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	}
-	tempPath, err := s.reserveDownloadTempFile()
+	tempPath, err := s.runner.ReserveDownloadTempFile()
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	fileName := safeFileName(path.Base(remotePath))
-	record, created, err := runtime.store.CreateIdempotent(r.Context(), filetransfer.CreateRequest{
+	record, created, err := runtime.Storage().CreateIdempotent(r.Context(), filetransfer.CreateRequest{
 		RuntimeID:  request.RuntimeID,
 		Direction:  filetransfer.DirectionDownload,
 		Source:     filetransfer.SourceUI,
@@ -494,8 +495,8 @@ func (s Handlers) StartDownload(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if fileTransferCanLaunch(record.Status) {
-		if err := s.launchDownload(r.Context(), runtime, record.ID, &execution); err != nil {
-			s.rejectTransferLaunch(runtime, record.ID)
+		if err := s.runner.LaunchDownload(r.Context(), runtime, record.ID, execution.runnerExecution()); err != nil {
+			s.runner.RejectTransferLaunch(runtime, record.ID)
 			writeError(w, http.StatusServiceUnavailable, "file transfer could not start")
 			return
 		}
@@ -543,8 +544,8 @@ func (s Handlers) StartDownloadBatch(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if batch.Status == filetransfer.StatusPending || batch.Status == filetransfer.StatusPaused {
-		if err := s.launchTransferBatch(r.Context(), runtime, batch.ID, false, &execution); err != nil {
-			s.rejectBatchLaunch(runtime, batch.ID)
+		if err := s.runner.LaunchBatch(r.Context(), runtime, batch.ID, false, execution.runnerExecution()); err != nil {
+			s.runner.RejectBatchLaunch(runtime, batch.ID)
 			writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
 			return
 		}
@@ -552,7 +553,7 @@ func (s Handlers) StartDownloadBatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, batch)
 }
 
-func (s Handlers) createDownloadBatch(ctx context.Context, runtime *Runtime, accepted *transferExecution, runtimeID int64, remotePaths []string, archiveName string, source string, status string, idempotencyKey string) (filetransfer.BatchRecord, bool, error) {
+func (s Handlers) createDownloadBatch(ctx context.Context, runtime *transferapp.Runtime, accepted *transferExecution, runtimeID int64, remotePaths []string, archiveName string, source string, status string, idempotencyKey string) (filetransfer.BatchRecord, bool, error) {
 	if err := validateDownloadBatchInput(runtimeID, remotePaths, source, idempotencyKey); err != nil {
 		return filetransfer.BatchRecord{}, false, err
 	}
@@ -587,9 +588,9 @@ func (s Handlers) createDownloadBatch(ctx context.Context, runtime *Runtime, acc
 	var batch filetransfer.BatchRecord
 	created := true
 	if source == filetransfer.SourceUI {
-		batch, created, err = runtime.store.CreateBatchIdempotent(ctx, createRequest, claim)
+		batch, created, err = runtime.Storage().CreateBatchIdempotent(ctx, createRequest, claim)
 	} else {
-		batch, err = runtime.store.CreateBatch(ctx, createRequest)
+		batch, err = runtime.Storage().CreateBatch(ctx, createRequest)
 	}
 	if err != nil {
 		cleanupTempPaths(tempPaths)
@@ -603,7 +604,7 @@ func (s Handlers) createDownloadBatch(ctx context.Context, runtime *Runtime, acc
 
 // CreateAndLaunchDownloadBatch creates and synchronously registers a
 // connector-owned batch before returning control to an asynchronous action.
-func (s Handlers) CreateAndLaunchDownloadBatch(ctx context.Context, runtime *Runtime, authorization connectorapi.TransferAuthorization, runtimeID int64, remotePaths []string, archiveName string, source string) (filetransfer.BatchRecord, error) {
+func (s Handlers) CreateAndLaunchDownloadBatch(ctx context.Context, runtime *transferapp.Runtime, authorization connectorapi.TransferAuthorization, runtimeID int64, remotePaths []string, archiveName string, source string) (filetransfer.BatchRecord, error) {
 	execution, err := s.resolveTransferExecution(ctx, runtime, runtimeID)
 	if err != nil {
 		return filetransfer.BatchRecord{}, err
@@ -615,14 +616,14 @@ func (s Handlers) CreateAndLaunchDownloadBatch(ctx context.Context, runtime *Run
 	if err != nil {
 		return filetransfer.BatchRecord{}, err
 	}
-	if err := s.launchTransferBatch(ctx, runtime, batch.ID, false, &execution); err != nil {
-		s.rejectBatchLaunch(runtime, batch.ID)
+	if err := s.runner.LaunchBatch(ctx, runtime, batch.ID, false, execution.runnerExecution()); err != nil {
+		s.runner.RejectBatchLaunch(runtime, batch.ID)
 		return filetransfer.BatchRecord{}, err
 	}
 	return batch, nil
 }
 
-func (s Handlers) writeFileTransferStartError(w http.ResponseWriter, ctx context.Context, runtime *Runtime, runtimeID int64, err error) bool {
+func (s Handlers) writeFileTransferStartError(w http.ResponseWriter, ctx context.Context, runtime *transferapp.Runtime, runtimeID int64, err error) bool {
 	if writeFileTransferIdempotencyError(w, err) {
 		return true
 	}
@@ -652,7 +653,7 @@ func (s Handlers) DownloadTransferredFile(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	item, err := runtime.store.Get(r.Context(), id)
+	item, err := runtime.Storage().Get(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer not found")
 		return
@@ -669,7 +670,7 @@ func (s Handlers) DownloadTransferredFile(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusConflict, "file transfer is not completed")
 		return
 	}
-	if item.TempPath == "" || !s.tempPathAllowed(item.TempPath) {
+	if item.TempPath == "" || !s.runner.TempPathAllowed(item.TempPath) {
 		writeError(w, http.StatusGone, "download file is no longer available")
 		return
 	}

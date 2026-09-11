@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
 type downloadBatchPlan struct {
@@ -43,7 +44,7 @@ func validateDownloadBatchInput(runtimeID int64, remotePaths []string, source st
 	return nil
 }
 
-func (s Handlers) downloadBatchExecution(ctx context.Context, runtime *Runtime, accepted *transferExecution, runtimeID int64) (transferExecution, error) {
+func (s Handlers) downloadBatchExecution(ctx context.Context, runtime *transferapp.Runtime, accepted *transferExecution, runtimeID int64) (transferExecution, error) {
 	if accepted == nil {
 		return s.resolveTransferExecution(ctx, runtime, runtimeID)
 	}
@@ -95,7 +96,7 @@ func (plan *downloadBatchPlan) assignDefaultArchiveName() {
 	}
 }
 
-func downloadBatchIdempotency(ctx context.Context, runtime *Runtime, runtimeID int64, source string, idempotencyKey string, plan downloadBatchPlan) (filetransfer.IdempotencyClaim, *filetransfer.BatchRecord, error) {
+func downloadBatchIdempotency(ctx context.Context, runtime *transferapp.Runtime, runtimeID int64, source string, idempotencyKey string, plan downloadBatchPlan) (filetransfer.IdempotencyClaim, *filetransfer.BatchRecord, error) {
 	if source != filetransfer.SourceUI {
 		return filetransfer.IdempotencyClaim{}, nil, nil
 	}
@@ -108,7 +109,7 @@ func downloadBatchIdempotency(ctx context.Context, runtime *Runtime, runtimeID i
 	if err != nil {
 		return filetransfer.IdempotencyClaim{}, nil, err
 	}
-	replay, err := runtime.store.GetIdempotentBatch(ctx, claim)
+	replay, err := runtime.Storage().GetIdempotentBatch(ctx, claim)
 	if err == nil {
 		return claim, &replay, nil
 	}
@@ -132,10 +133,10 @@ func (s Handlers) prepareDownloadBatchItems(ctx context.Context, execution trans
 			return nil, tempPaths, err
 		}
 		if totalSize > maxFileTransferBatchBytes-size {
-			return nil, tempPaths, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed "+formatFileTransferLimit(maxFileTransferBatchBytes)+" total size")
+			return nil, tempPaths, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed "+filetransfer.FormatByteLimit(maxFileTransferBatchBytes)+" total size")
 		}
 		totalSize += size
-		tempPath, err := s.reserveDownloadTempFile()
+		tempPath, err := s.runner.ReserveDownloadTempFile()
 		if err != nil {
 			return nil, tempPaths, err
 		}

@@ -10,7 +10,6 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayaccess.CommandBulkHTTPRuntime, bool) {
@@ -66,9 +65,9 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime,
 	}
 	name := target.Name
 	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
-		metadata := adapter.LiveConsoleTargetMetadata(connectors.TargetView{
+		metadata := adapter.LiveConsoleTargetMetadata(connectorapi.TargetView{
 			ID: target.ID, ConnectorKind: target.ConnectorKind, Name: target.Name, Config: target.Config,
-		}, connectors.CredentialProfileView{
+		}, connectorapi.CredentialProfileView{
 			ID: profile.ID, TargetID: profile.TargetID, ConnectorKind: profile.ConnectorKind,
 			Kind: profile.Kind, Label: profile.Label, Public: profile.Public,
 		})

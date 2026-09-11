@@ -1,17 +1,22 @@
-package filetransferhttp
+package transfer
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
+	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
 func TestNewRuntimeRejectsMissingRequiredDependencies(t *testing.T) {
-	fixture := newTransferTestFixture(t)
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "transfer.aipdb"), "TransferPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
 	valid := RuntimeDependencies{
-		Database:     fixture.database,
-		Jobs:         &transferjobs.Registry{},
+		Database: database, Jobs: &transferjobs.Registry{},
 		Finalization: transferjobs.NewFinalizationLifetime(),
 		Observe:      func(context.Context, string, *int64, int64, string, any) {},
 		ConnectorPorts: func(context.Context, int64) (ConnectorPorts, error) {
@@ -38,18 +43,26 @@ func TestNewRuntimeRejectsMissingRequiredDependencies(t *testing.T) {
 	}
 }
 
-func TestConnectorPortsRejectUninitializedCredentialBoundary(t *testing.T) {
-	fixture := newTransferTestFixture(t)
-	execution := fixture.execution(t)
-	fixture.runtime.connectorPorts = func(context.Context, int64) (ConnectorPorts, error) {
-		return ConnectorPorts{
-			ConnectorKind: "fixture",
-			Gateway:       testTransferGateway{},
-			Runtime:       execution.runtime,
-		}, nil
+func TestLifecycleOwnsRegistryAndFinalizationLifetime(t *testing.T) {
+	lifecycle := NewLifecycle()
+	if lifecycle.Registry() == nil || !lifecycle.finalization.Valid() {
+		t.Fatal("new lifecycle is incomplete")
 	}
+	if !lifecycle.Wait(t.Context()) {
+		t.Fatal("empty lifecycle did not drain")
+	}
+	lifecycle.Stop()
+	select {
+	case <-lifecycle.finalization.Context().Done():
+	default:
+		t.Fatal("stopped lifecycle retained its finalization context")
+	}
+}
 
-	if _, err := connectorFileTransferPortsForID(t.Context(), fixture.runtime, fixture.runtimeID); err == nil {
-		t.Fatal("uninitialized credential boundary was accepted")
+func TestNilLifecycleFailsClosed(t *testing.T) {
+	var lifecycle *Lifecycle
+	if lifecycle.Registry() != nil || !lifecycle.Wait(context.Background()) {
+		t.Fatal("nil lifecycle did not remain inert")
 	}
+	lifecycle.Stop()
 }

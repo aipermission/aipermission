@@ -5,14 +5,14 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
-	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
 type State struct {
 	CommandRequests   *commandrequests.Runtime
-	FileTransfers     *filetransferhttp.Runtime
-	TransferLifecycle *filetransferhttp.Lifecycle
+	FileTransfers     *transferapp.Runtime
+	TransferLifecycle *transferapp.Lifecycle
 	actionWorkflowMu  sync.Mutex
 	actionWorkflow    *actions.Runtime
 	projectVaultMu    sync.Mutex
@@ -22,16 +22,16 @@ type State struct {
 type Port interface {
 	CommandRequestRuntime() *commandrequests.Runtime
 	SetCommandRequestRuntime(*commandrequests.Runtime)
-	FileTransferRuntime() *filetransferhttp.Runtime
-	SetFileTransferRuntime(*filetransferhttp.Runtime)
-	FileTransferLifecycle() *filetransferhttp.Lifecycle
+	FileTransferRuntime() *transferapp.Runtime
+	SetFileTransferRuntime(*transferapp.Runtime)
+	FileTransferLifecycle() *transferapp.Lifecycle
 	ActionWorkflow() *actions.Runtime
 	ActionWorkflowOrCreate(func() (*actions.Runtime, error)) (*actions.Runtime, error)
 	ProjectVaultOrCreate(func() (*projectvault.Runtime, error)) (*projectvault.Runtime, error)
 }
 
 func New() State {
-	return State{TransferLifecycle: filetransferhttp.NewLifecycle()}
+	return State{TransferLifecycle: transferapp.NewLifecycle()}
 }
 
 func (s *State) CommandRequestRuntime() *commandrequests.Runtime {
@@ -47,20 +47,20 @@ func (s *State) SetCommandRequestRuntime(runtime *commandrequests.Runtime) {
 	}
 }
 
-func (s *State) FileTransferRuntime() *filetransferhttp.Runtime {
+func (s *State) FileTransferRuntime() *transferapp.Runtime {
 	if s == nil {
 		return nil
 	}
 	return s.FileTransfers
 }
 
-func (s *State) SetFileTransferRuntime(runtime *filetransferhttp.Runtime) {
+func (s *State) SetFileTransferRuntime(runtime *transferapp.Runtime) {
 	if s != nil {
 		s.FileTransfers = runtime
 	}
 }
 
-func (s *State) FileTransferLifecycle() *filetransferhttp.Lifecycle {
+func (s *State) FileTransferLifecycle() *transferapp.Lifecycle {
 	if s == nil {
 		return nil
 	}

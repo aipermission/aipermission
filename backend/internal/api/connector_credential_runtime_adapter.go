@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) connectorCredentialRuntimePorts(runtime databaseRuntime) connectormgmt.CredentialRuntimePorts {

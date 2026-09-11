@@ -1,10 +1,11 @@
-package filetransferhttp
+package transfer
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
@@ -12,17 +13,17 @@ import (
 
 var errFileTransferTimedOut = errors.New("file transfer timed out")
 
-func (s Handlers) failFileTransfer(runtime *Runtime, transferID int64, execution *transferExecution, err error, failureKind string) bool {
+func (s Runner) failFileTransfer(runtime *Runtime, transferID int64, execution *Execution, err error, failureKind string) bool {
 	message := "file transfer failed"
 	if execution != nil {
-		message = execution.boundary.Redact(fileTransferFailureMessage(err))
+		message = execution.Boundary.Redact(fileTransferFailureMessage(err))
 	}
 	return s.persistFileTransferTerminal(runtime, transferID, func(ctx context.Context) (bool, error) {
 		return runtime.store.FailWithKind(ctx, transferID, message, failureKind)
 	})
 }
 
-func (s Handlers) finishFileTransferError(runtime *Runtime, transferID int64, ctx context.Context, execution *transferExecution, err error) bool {
+func (s Runner) finishFileTransferError(runtime *Runtime, transferID int64, ctx context.Context, execution *Execution, err error) bool {
 	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
 		return s.failFileTransfer(runtime, transferID, execution, err, filetransfer.FailureKindOutcomeUnknown)
 	}
@@ -36,10 +37,10 @@ func (s Handlers) finishFileTransferError(runtime *Runtime, transferID int64, ct
 	}
 }
 
-func (s Handlers) finishFileTransferBatchError(runtime *Runtime, batchID int64, ctx context.Context, execution *transferExecution, err error) bool {
+func (s Runner) finishFileTransferBatchError(runtime *Runtime, batchID int64, ctx context.Context, execution *Execution, err error) bool {
 	message := "file transfer batch failed"
 	if execution != nil {
-		message = execution.boundary.Redact(fileTransferFailureMessage(err))
+		message = execution.Boundary.Redact(fileTransferFailureMessage(err))
 	}
 	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
 		return s.persistFileTransferBatchTerminal(runtime, batchID, func(ctx context.Context) (bool, error) {
@@ -80,20 +81,20 @@ func classifyFileTransferInterruption(ctx context.Context, err error) fileTransf
 	return fileTransferNotInterrupted
 }
 
-func (s Handlers) cancelFileTransferRecord(runtime *Runtime, transferID int64, message string) bool {
+func (s Runner) cancelFileTransferRecord(runtime *Runtime, transferID int64, message string) bool {
 	return s.persistFileTransferTerminal(runtime, transferID, func(ctx context.Context) (bool, error) {
 		return runtime.store.Cancel(ctx, transferID, message)
 	})
 }
 
-func (s Handlers) persistFileTransferTerminal(runtime *Runtime, transferID int64, persist func(context.Context) (bool, error)) bool {
+func (s Runner) persistFileTransferTerminal(runtime *Runtime, transferID int64, persist func(context.Context) (bool, error)) bool {
 	return transferjobs.PersistTerminal(runtime.finalization.Context(), "file transfer", transferID, persist, func(ctx context.Context) (string, error) {
 		item, err := runtime.store.Get(ctx, transferID)
 		return item.Status, err
 	})
 }
 
-func (s Handlers) persistFileTransferBatchTerminal(runtime *Runtime, batchID int64, persist func(context.Context) (bool, error)) bool {
+func (s Runner) persistFileTransferBatchTerminal(runtime *Runtime, batchID int64, persist func(context.Context) (bool, error)) bool {
 	return transferjobs.PersistTerminal(runtime.finalization.Context(), "file transfer batch", batchID, persist, func(ctx context.Context) (string, error) {
 		item, err := runtime.store.GetBatch(ctx, batchID)
 		return item.Status, err
@@ -108,4 +109,18 @@ func fileTransferFailureMessage(err error) string {
 		return errFileTransferTimedOut.Error()
 	}
 	return fmt.Sprintf("file transfer failed: %v", err)
+}
+
+func credentialSafeErrorMessage(execution *Execution, prefix string, err error) string {
+	if err == nil || execution == nil {
+		return prefix
+	}
+	if execution.Boundary.Redact(err.Error()) != err.Error() {
+		return prefix
+	}
+	message := connectorapi.PresentedErrorMessage(execution.Adapter, prefix, err)
+	if execution.Boundary.Redact(message) != message {
+		return prefix
+	}
+	return message
 }

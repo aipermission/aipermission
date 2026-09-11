@@ -6,7 +6,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	consolehttp "github.com/aipermission/aipermission/backend/internal/console/httpapi"
-	filetransferhttp "github.com/aipermission/aipermission/backend/internal/filetransfer/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayhttp"
 	backupapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
@@ -28,10 +27,6 @@ func NewConsoleManager(db *sql.DB, openRuntime console.RuntimeOpener, redact fun
 
 func NewMaintenanceHTTPHandlers(scope consolehttp.MaintenanceHTTPScopeProvider) *consolehttp.MaintenanceHTTPHandlers {
 	return consolehttp.NewMaintenanceHTTPHandlers(scope)
-}
-
-func NewFileTransferHandlers(dependencies filetransferhttp.Dependencies) *filetransferhttp.Handlers {
-	return filetransferhttp.NewHandlers(dependencies)
 }
 
 func IsStateChangingMethod(method string) bool {

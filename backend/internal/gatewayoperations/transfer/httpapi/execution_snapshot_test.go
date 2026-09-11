@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
 func TestTransferStartUsesOneAcceptedExecutionSnapshot(t *testing.T) {
@@ -27,12 +28,12 @@ func TestTransferStartUsesOneAcceptedExecutionSnapshot(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			fixture := newTransferTestFixture(t)
-			fixture.handlers.scope = func(http.ResponseWriter) (*Runtime, bool) {
+			fixture.handlers.scope = func(http.ResponseWriter) (*transferapp.Runtime, bool) {
 				return fixture.runtime, true
 			}
-			original := fixture.runtime.connectorPorts
+			original := fixture.resolver.resolve
 			var resolutions atomic.Int32
-			fixture.runtime.connectorPorts = func(ctx context.Context, runtimeID int64) (ConnectorPorts, error) {
+			fixture.resolver.resolve = func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
 				resolutions.Add(1)
 				return original(ctx, runtimeID)
 			}
@@ -44,7 +45,7 @@ func TestTransferStartUsesOneAcceptedExecutionSnapshot(t *testing.T) {
 			if got := resolutions.Load(); got != 1 {
 				t.Fatalf("execution resolutions = %d, want 1", got)
 			}
-			if !fixture.runtime.jobs.Wait(t.Context()) {
+			if !fixture.jobs.Wait(t.Context()) {
 				t.Fatal("transfer runner did not drain")
 			}
 		})
@@ -78,12 +79,12 @@ func TestTransferBrowseUsesOneAcceptedExecutionSnapshot(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			fixture := newTransferTestFixtureWithAdapter(t, successfulBrowseTransferAdapter{})
-			fixture.handlers.scope = func(http.ResponseWriter) (*Runtime, bool) {
+			fixture.handlers.scope = func(http.ResponseWriter) (*transferapp.Runtime, bool) {
 				return fixture.runtime, true
 			}
-			original := fixture.runtime.connectorPorts
+			original := fixture.resolver.resolve
 			var resolutions atomic.Int32
-			fixture.runtime.connectorPorts = func(ctx context.Context, runtimeID int64) (ConnectorPorts, error) {
+			fixture.resolver.resolve = func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
 				resolutions.Add(1)
 				return original(ctx, runtimeID)
 			}

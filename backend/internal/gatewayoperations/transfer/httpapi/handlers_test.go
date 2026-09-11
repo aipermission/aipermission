@@ -3,7 +3,6 @@ package filetransferhttp
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -66,39 +64,6 @@ func TestFileTransferConnectorErrorsDoNotReflectCredentials(t *testing.T) {
 	}
 }
 
-func TestClassifyFileTransferInterruption(t *testing.T) {
-	canceledCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer deadlineCancel()
-
-	tests := []struct {
-		name string
-		ctx  context.Context
-		err  error
-		want fileTransferInterruption
-	}{
-		{name: "deadline context", ctx: deadlineCtx, err: context.Canceled, want: fileTransferTimedOut},
-		{name: "deadline error", ctx: context.Background(), err: context.DeadlineExceeded, want: fileTransferTimedOut},
-		{name: "user cancellation", ctx: canceledCtx, err: context.Canceled, want: fileTransferCanceledByUser},
-		{name: "connector cancellation without local cancel", ctx: context.Background(), err: context.Canceled, want: fileTransferNotInterrupted},
-		{name: "ordinary failure", ctx: context.Background(), err: errors.New("network failed"), want: fileTransferNotInterrupted},
-	}
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := classifyFileTransferInterruption(testCase.ctx, testCase.err); got != testCase.want {
-				t.Fatalf("classification=%d want=%d", got, testCase.want)
-			}
-		})
-	}
-}
-
-func TestFileTransferFailureMessageKeepsTimeoutExplicit(t *testing.T) {
-	if got := fileTransferFailureMessage(errFileTransferTimedOut); got != "file transfer timed out" {
-		t.Fatalf("timeout message=%q", got)
-	}
-}
-
 func TestValidateStagedUploadSizeEnforcesObjectAndBatchLimits(t *testing.T) {
 	if total, err := validateStagedUploadSize(maxFileTransferObjectBytes, maxFileTransferObjectBytes); err != nil || total != maxFileTransferBatchBytes {
 		t.Fatalf("expected exact limits to pass: total=%d err=%v", total, err)
@@ -113,7 +78,7 @@ func TestValidateStagedUploadSizeEnforcesObjectAndBatchLimits(t *testing.T) {
 
 func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 	handlers := NewHandlers(Dependencies{DataPath: filepath.Join(t.TempDir(), "data", "test.aipdb")})
-	root, err := handlers.ensureFileTransferTempRoot()
+	root, err := handlers.runner.EnsureTempRoot()
 	if err != nil {
 		t.Fatalf("create transfer temp root: %v", err)
 	}
@@ -127,7 +92,7 @@ func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 		t.Fatalf("write text: %v", err)
 	}
 
-	archivePath, err := handlers.createDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
+	archivePath, err := handlers.runner.CreateDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
 		{Status: filetransfer.StatusCompleted, TempPath: innerZipPath, FileName: "inner.zip", RemotePath: "/tmp/inner.zip"},
 		{Status: filetransfer.StatusCompleted, TempPath: textPath, FileName: "readme.txt", RemotePath: "/tmp/readme.txt"},
 	}})
@@ -168,7 +133,7 @@ func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 
 func TestDownloadArchivePreservesRelativeRemoteHierarchy(t *testing.T) {
 	handlers := NewHandlers(Dependencies{DataPath: filepath.Join(t.TempDir(), "data", "test.aipdb")})
-	root, err := handlers.ensureFileTransferTempRoot()
+	root, err := handlers.runner.EnsureTempRoot()
 	if err != nil {
 		t.Fatalf("create transfer temp root: %v", err)
 	}
@@ -181,7 +146,7 @@ func TestDownloadArchivePreservesRelativeRemoteHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archivePath, err := handlers.createDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
+	archivePath, err := handlers.runner.CreateDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
 		{Status: filetransfer.StatusCompleted, TempPath: firstPath, FileName: "a.txt", RemotePath: "/daily/a.txt"},
 		{Status: filetransfer.StatusCompleted, TempPath: secondPath, FileName: "b.txt", RemotePath: "/daily/nested/b.txt"},
 	}})

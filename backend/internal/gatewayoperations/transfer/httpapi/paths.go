@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
 func transferUploadFilename(adapter any, header *multipart.FileHeader) (string, error) {
@@ -36,7 +37,7 @@ func writeTransferPathError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, err.Error())
 }
 
-func (s Handlers) resolveAndNormalizeTransferPath(ctx context.Context, runtime *Runtime, runtimeID int64, value string, directory bool) (string, transferExecution, error) {
+func (s Handlers) resolveAndNormalizeTransferPath(ctx context.Context, runtime *transferapp.Runtime, runtimeID int64, value string, directory bool) (string, transferExecution, error) {
 	if err := validateTransferPathSyntax(value); err != nil {
 		return "", transferExecution{}, err
 	}

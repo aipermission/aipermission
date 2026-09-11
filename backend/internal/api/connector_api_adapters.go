@@ -5,22 +5,21 @@ import (
 
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []actions.ResolvedDependency) connectorapi.RuntimeCapabilityResolver {
 	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
 	capabilities, _ := resolver.(connectorRuntimeCapabilities)
 	if capabilities == nil {
 		capabilities = connectorRuntimeCapabilities{}
 	}
 	approved := newApprovedConnectorTransports(dependencies)
-	capabilities[connectors.NetworkTransportCapabilityName] = connectorNetworkTransport{server: server, runtime: runtime, approved: approved}
-	capabilities[connectors.CommandTransportCapabilityName] = connectorCommandTransport{server: server, runtime: runtime, approved: approved}
+	capabilities[connectorapi.NetworkTransportCapabilityName] = connectorNetworkTransport{server: server, runtime: runtime, approved: approved}
+	capabilities[connectorapi.CommandTransportCapabilityName] = connectorCommandTransport{server: server, runtime: runtime, approved: approved}
 	return capabilities
 }
 
@@ -33,13 +32,13 @@ func (s *Server) connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAda
 	return adapter
 }
 
-type connectorRuntimeCapabilities map[string]connectors.RuntimeCapability
+type connectorRuntimeCapabilities map[string]connectorapi.RuntimeCapability
 
-func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.RuntimeCapability {
+func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectorapi.RuntimeCapability {
 	return c[name]
 }
 
-func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectorapi.RuntimeCapabilityResolver {
 	capabilities := connectorRuntimeCapabilities{}
 	if server != nil && runtime != nil {
 		networkTransport := connectorNetworkTransport{server: server, runtime: runtime}

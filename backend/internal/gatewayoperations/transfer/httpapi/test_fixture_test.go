@@ -13,14 +13,27 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
 type transferTestFixture struct {
 	database  *sql.DB
-	runtime   *Runtime
+	runtime   *transferapp.Runtime
 	handlers  *Handlers
 	runtimeID int64
+	resolver  *testConnectorPortsResolver
+	jobs      *transferjobs.Registry
+	store     *filetransfer.Store
+}
+
+type testConnectorPortsResolver struct {
+	resolve transferapp.ConnectorPortsResolver
+}
+
+func (r *testConnectorPortsResolver) Resolve(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
+	return r.resolve(ctx, runtimeID)
 }
 
 func (fixture transferTestFixture) execution(t *testing.T) transferExecution {
@@ -87,15 +100,17 @@ func newTransferTestFixtureWithAdapter(t *testing.T, transferAdapter connectorap
 			return testSecretAccessor{}
 		},
 	})
-	runtime, err := NewRuntime(RuntimeDependencies{
+	resolver := &testConnectorPortsResolver{}
+	resolver.resolve = func(context.Context, int64) (transferapp.ConnectorPorts, error) {
+		return transferapp.ConnectorPorts{
+			ConnectorKind: target.ConnectorKind, Gateway: testTransferGateway{},
+			Runtime: connectorScope.TransferRuntime(), CredentialBoundary: actionresult.NewCredentialBoundary(nil),
+		}, nil
+	}
+	runtime, err := transferapp.NewRuntime(transferapp.RuntimeDependencies{
 		Database: database, Jobs: jobs, Finalization: finalization,
-		Observe: func(context.Context, string, *int64, int64, string, any) {},
-		ConnectorPorts: func(context.Context, int64) (ConnectorPorts, error) {
-			return ConnectorPorts{
-				ConnectorKind: target.ConnectorKind, Gateway: testTransferGateway{},
-				Runtime: connectorScope.TransferRuntime(), CredentialBoundary: actionresult.NewCredentialBoundary(nil),
-			}, nil
-		},
+		Observe:        func(context.Context, string, *int64, int64, string, any) {},
+		ConnectorPorts: resolver.Resolve,
 	})
 	if err != nil {
 		t.Fatalf("create transfer runtime: %v", err)
@@ -113,7 +128,10 @@ func newTransferTestFixtureWithAdapter(t *testing.T, transferAdapter connectorap
 		jobs.Close()
 		finalization.Stop()
 	})
-	return transferTestFixture{database: database, runtime: runtime, handlers: handlers, runtimeID: surface.ID}
+	return transferTestFixture{
+		database: database, runtime: runtime, handlers: handlers, runtimeID: surface.ID,
+		resolver: resolver, jobs: jobs, store: filetransfer.NewStore(database),
+	}
 }
 
 type testSecretAccessor struct{}

@@ -4,7 +4,22 @@ package gatewayconnectorapi
 import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
+)
+
+const (
+	CommandTransportCapabilityName   = connectors.CommandTransportCapabilityName
+	NetworkTransportCapabilityName   = connectors.NetworkTransportCapabilityName
+	SessionEnvironmentCapabilityName = connectors.SessionEnvironmentCapabilityName
+	MaxCommandTimeout                = connectortransport.MaxCommandTimeout
+	ResultOutcomeUnknown             = connectors.ResultOutcomeUnknown
+)
+
+var (
+	ErrSessionEnvironmentUnsupported = connectors.ErrSessionEnvironmentUnsupported
+	ErrApprovalChanged               = connectortransport.ErrApprovalChanged
 )
 
 type ActionRuntime = connectorapi.ActionRuntime
@@ -37,3 +52,22 @@ type TransferAuthorization = connectorapi.TransferAuthorization
 type TransferBatch = connectorapi.TransferBatch
 type ActionResponse = actions.Response
 type ActionRequest = connectortargets.ActionRequest
+type ActionHandles = connectors.ActionHandles
+type ActionResult = connectors.ActionResult
+type CommandRunRequest = connectors.CommandRunRequest
+type CommandRunResult = connectors.CommandRunResult
+type CredentialProfileView = connectors.CredentialProfileView
+type NetworkDialRequest = connectors.NetworkDialRequest
+type OutputHint = connectors.OutputHint
+type ConnectorRegistry = connectors.Registry
+type ResultStatus = connectors.ResultStatus
+type RuntimeCapability = connectors.RuntimeCapability
+type RuntimeCapabilityResolver = connectors.RuntimeCapabilityResolver
+type SecretAccessor = connectors.SecretAccessor
+type SessionEnvironmentCapability = connectors.SessionEnvironmentCapability
+type TargetView = connectors.TargetView
+type AdapterProvider = connectortransport.AdapterProvider
+type Approved = connectortransport.Approved
+type Dependencies = connectortransport.Dependencies
+type Command = connectortransport.Command
+type Network = connectortransport.Network

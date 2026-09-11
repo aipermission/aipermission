@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s connectorTargetHandlers) decryptConnectorProfileSecrets(w http.ResponseWriter, runtime databaseRuntime, profile connectormgmt.CredentialProfile) (map[string]any, bool) {

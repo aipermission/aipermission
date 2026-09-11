@@ -1,4 +1,4 @@
-package filetransferhttp
+package transfer
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
-// Lifecycle owns the worker registry and outcome-persistence lifetime for one
-// unlocked workspace. API composition does not need their concrete types.
+// Lifecycle owns transfer workers and terminal-state persistence for one
+// unlocked workspace.
 type Lifecycle struct {
 	jobs         transferjobs.Registry
 	finalization transferjobs.FinalizationLifetime
@@ -18,26 +18,18 @@ func NewLifecycle() *Lifecycle {
 	return &Lifecycle{finalization: transferjobs.NewFinalizationLifetime()}
 }
 
-func (l *Lifecycle) runtimeDependencies(
-	database *sql.DB,
-	observe ObservationAudit,
-	connectorPorts ConnectorPortsResolver,
-) RuntimeDependencies {
-	if l == nil {
-		return RuntimeDependencies{}
-	}
-	return RuntimeDependencies{
-		Database: database, Jobs: &l.jobs, Finalization: l.finalization,
-		Observe: observe, ConnectorPorts: connectorPorts,
-	}
-}
-
 func (l *Lifecycle) NewRuntime(
 	database *sql.DB,
 	observe ObservationAudit,
 	connectorPorts ConnectorPortsResolver,
 ) (*Runtime, error) {
-	return NewRuntime(l.runtimeDependencies(database, observe, connectorPorts))
+	if l == nil {
+		return NewRuntime(RuntimeDependencies{})
+	}
+	return NewRuntime(RuntimeDependencies{
+		Database: database, Jobs: &l.jobs, Finalization: l.finalization,
+		Observe: observe, ConnectorPorts: connectorPorts,
+	})
 }
 
 func (l *Lifecycle) Stop() {
@@ -46,8 +38,6 @@ func (l *Lifecycle) Stop() {
 	}
 }
 
-// Registry exposes worker controls to tests and local runtime wiring while the
-// workspace lifecycle remains the sole owner of their shutdown.
 func (l *Lifecycle) Registry() *transferjobs.Registry {
 	if l == nil {
 		return nil

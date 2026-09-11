@@ -7,7 +7,6 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 )
 
 func (s *Server) connectorPortsApplication() *connectorapi.PortsComponent {
@@ -75,7 +74,7 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.W
 			result, err := s.restartServerConsoleSession(ctx, runtime, principal, runtimeID, runningError)
 			return connectorapi.ConsoleRestartResult{ClosedSessionIDs: result.ClosedSessionIDs, CanceledRunningRequests: result.CanceledRunningRequests}, err
 		},
-		Finish: func(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
+		Finish: func(ctx context.Context, requestID int64, status connectorapi.ResultStatus, output any, displayText, errorText string, hints ...connectorapi.OutputHint) (connectormgmt.ActionRequest, error) {
 			return s.finishConnectorActionRequest(ctx, runtime, requestID, status, output, displayText, errorText, hints...)
 		},
 	}
@@ -84,10 +83,10 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorapi.W
 			if runtime.OperationsPort().FileTransferRuntime() == nil {
 				return connectorapi.TransferBatch{}, errInvalidConnectorRuntime
 			}
-			batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatch(ctx, runtime.OperationsPort().FileTransferRuntime(), authorization, runtimeID, paths, archiveName, source)
+			batch, err := s.fileTransferHTTPHandlers().CreateAndLaunchDownloadBatchForWorkspace(ctx, runtime.OperationsPort(), authorization, runtimeID, paths, archiveName, source)
 			return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, err
 		},
-		RuntimeCapabilities: func(kind string) connectors.RuntimeCapabilityResolver {
+		RuntimeCapabilities: func(kind string) connectorapi.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
 		},
 	}

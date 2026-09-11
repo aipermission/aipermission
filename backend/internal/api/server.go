@@ -8,7 +8,6 @@ import (
 	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
@@ -26,7 +25,7 @@ type databaseRuntime = gatewayinfra.Runtime
 
 type ServerOption = gatewayinfra.ServerOption
 
-func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
+func WithConnectorRegistry(registry *connectorapi.ConnectorRegistry) ServerOption {
 	return gatewayinfra.WithConnectorRegistry(registry)
 }
 
@@ -148,11 +147,11 @@ func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 	return runtime.WorkspaceIdentity()
 }
 
-func (s *Server) connectorRegistry() *connectors.Registry {
+func (s *Server) connectorRegistry() *connectorapi.ConnectorRegistry {
 	if s != nil && s.connectorState.Registry != nil {
 		return s.connectorState.Registry
 	}
-	return connectors.NewRegistry()
+	return connectorapi.NewConnectorRegistry()
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
@@ -162,7 +161,7 @@ func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
 	return connectorapi.NewRegistry()
 }
 
-func runtimeConnectorRegistry(runtime databaseRuntime) *connectors.Registry {
+func runtimeConnectorRegistry(runtime databaseRuntime) *connectorapi.ConnectorRegistry {
 	return runtime.ConnectorPort().ConnectorRegistry()
 }
 

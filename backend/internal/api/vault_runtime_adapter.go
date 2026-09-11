@@ -8,7 +8,7 @@ import (
 	"log"
 	"strconv"
 
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 

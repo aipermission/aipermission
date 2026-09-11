@@ -4,7 +4,7 @@ import (
 	"context"
 
 	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
+	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func (s *Server) connectorActionRedactor(runtime databaseRuntime) (*actions.Redactor, error) {

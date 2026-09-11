@@ -3,7 +3,6 @@ package filetransferhttp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -21,21 +20,6 @@ const (
 	fileTransferBatchTimeout         = 6 * time.Hour
 	fileTransferTempTTL              = 30 * time.Minute
 )
-
-func formatFileTransferLimit(size int64) string {
-	const (
-		mib = int64(1 << 20)
-		gib = int64(1 << 30)
-	)
-	switch {
-	case size >= gib && size%gib == 0:
-		return fmt.Sprintf("%d GiB", size/gib)
-	case size >= mib && size%mib == 0:
-		return fmt.Sprintf("%d MiB", size/mib)
-	default:
-		return fmt.Sprintf("%d bytes", size)
-	}
-}
 
 type startDownloadRequest struct {
 	RuntimeID      int64  `json:"runtime_id"`
@@ -170,7 +154,7 @@ func (s Handlers) ListFileTransfers(w http.ResponseWriter, r *http.Request) {
 		filter.RuntimeID = id
 	}
 
-	items, total, err := runtime.store.List(r.Context(), filter)
+	items, total, err := runtime.Storage().List(r.Context(), filter)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -187,7 +171,7 @@ func (s Handlers) GetFileTransfer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := runtime.store.Get(r.Context(), id)
+	item, err := runtime.Storage().Get(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer not found")
 		return
@@ -306,7 +290,7 @@ func (s Handlers) CancelFileTransfer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := runtime.store.Get(r.Context(), id)
+	item, err := runtime.Storage().Get(r.Context(), id)
 	if errors.Is(err, filetransfer.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "file transfer not found")
 		return
@@ -319,16 +303,16 @@ func (s Handlers) CancelFileTransfer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "file transfer is not running")
 		return
 	}
-	changed, err := runtime.store.Cancel(context.Background(), id, "canceled by local user")
+	changed, err := runtime.Storage().Cancel(context.Background(), id, "canceled by local user")
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
 	if changed {
-		runtime.jobs.Files.Cancel(id)
-		s.removeTransferTemp(runtime, id)
+		runtime.CancelFileJob(id)
+		s.runner.RemoveTransferTemp(runtime, id)
 	}
-	updated, err := runtime.store.Get(r.Context(), id)
+	updated, err := runtime.Storage().Get(r.Context(), id)
 	if err != nil {
 		writeInternalError(w)
 		return

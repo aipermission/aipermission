@@ -9,7 +9,6 @@ import (
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectors"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
@@ -89,7 +88,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 				}
 				return nil
 			},
-			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
+			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectorapi.TargetView, profile connectorapi.CredentialProfileView) bool {
 				adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind)
 				if adapter == nil {
 					return false
@@ -117,7 +116,7 @@ func (s *Server) connectorManagementWorkspace(runtime gatewayinfra.Runtime) conn
 			},
 		},
 		Network: connectormgmt.NetworkPorts{
-			Probe: func(ctx context.Context, request connectors.NetworkDialRequest) error {
+			Probe: func(ctx context.Context, request connectorapi.NetworkDialRequest) error {
 				connection, err := (connectorNetworkTransport{server: s, runtime: runtime}).DialConnectorTCP(ctx, request)
 				if err != nil {
 					return err
