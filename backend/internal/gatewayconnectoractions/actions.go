@@ -3,7 +3,6 @@ package gatewayconnectoractions
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	applicationactions "github.com/aipermission/aipermission/backend/internal/applicationconnectoractions"
 )
 
 const (
@@ -28,10 +27,3 @@ type Redactor = actions.Redactor
 type ResolvedDependency = actions.ResolvedDependency
 type Runtime = actions.Runtime
 type TerminalPersistenceError = actions.TerminalPersistenceError
-type Component = applicationactions.Component
-type Dependencies = applicationactions.Dependencies
-type LocalHTTPDependencies = applicationactions.LocalHTTPDependencies
-type LocalHTTPHandlers = applicationactions.LocalHTTPHandlers
-type LocalRequest = applicationactions.LocalRequest
-type NoopEventSink = applicationactions.NoopEventSink
-type SecretAccessor = applicationactions.SecretAccessor

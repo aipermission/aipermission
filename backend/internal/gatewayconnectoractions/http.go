@@ -1,4 +1,4 @@
-package applicationconnectoractions
+package gatewayconnectoractions
 
 import (
 	"errors"

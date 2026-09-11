@@ -1,6 +1,6 @@
-// Package applicationconnectoractions composes connector action workflows
+// Package gatewayconnectoractions composes connector action workflows
 // around an active encrypted workspace runtime.
-package applicationconnectoractions
+package gatewayconnectoractions
 
 import (
 	"context"
