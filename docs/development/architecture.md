@@ -120,9 +120,10 @@ place.
 ## Backend Boundaries
 
 - `internal/api`: HTTP routes, MCP authentication and delivery fencing, UI
-  session/CSRF, audit adapters, and workspace lifecycle composition. Domain
-  services own action, Vault-request, transfer-job, and runtime-state rules;
-  handlers adapt those services to the unlocked database runtime.
+  session/CSRF, audit adapters, and workspace lifecycle composition. It imports
+  only explicitly approved gateway packages and never their runtime internals.
+  Domain services own action, Vault-request, transfer-job, and runtime-state
+  rules; handlers adapt those services to the unlocked database runtime.
 - `internal/connectors`: connector contracts and built-in connector
   implementations. Connector packages describe target schemas, credential
   schemas, help/actions, validation, and execution. They do not own
@@ -171,11 +172,17 @@ place.
   transfer primitives, and host key verification owned by the SSH connector.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
+- `internal/gatewayoperations`: the backup, observation, message, and
+  maintenance application boundary. Its `transfer` boundary owns file-transfer
+  authorization snapshots, connector adapter dispatch, routes, and workspace
+  initialization. The transfer boundary's `runtime` child owns workers and
+  lifecycle state; `internal/api` may import the boundary, never that child.
 - `internal/transferjobs`: file/batch cancellation and pause gates isolated per
   unlocked runtime, plus terminal persistence recovery through narrow storage
   ports. Runtime shutdown closes the registry and immediately cancels late
-  registrations. API routes keep permission, adapter dispatch, and audit
-  responsibility; `transferjobs` owns cancellation concurrency and the rule
+  registrations. The `gatewayoperations/transfer` boundary keeps permission,
+  adapter dispatch, and audit responsibility; `transferjobs` owns cancellation
+  concurrency and the rule
   that an uncertain local finalization must never turn a possibly completed
   remote transfer into a retry-safe failure. A pause cycle uses one broadcast
   channel so canceled waiters do not accumulate while a batch remains paused.

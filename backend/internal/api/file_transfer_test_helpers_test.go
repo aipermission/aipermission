@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
 func requireTransferJobs(t testing.TB, runtime databaseRuntime) transferapp.Jobs {

@@ -1,0 +1,93 @@
+package gatewaytransfer
+
+import (
+	"context"
+	"errors"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"path"
+	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
+)
+
+func transferUploadFilename(adapter any, header *multipart.FileHeader) (string, error) {
+	if _, exact := adapter.(connectorapi.FileTransferPathPolicy); exact {
+		_, params, err := mime.ParseMediaType(header.Header.Get("Content-Disposition"))
+		if err != nil {
+			return "", err
+		}
+		return params["filename"], nil
+	}
+	if err := filetransfer.ValidateFileName(header.Filename); err != nil {
+		return "", err
+	}
+	return header.Filename, nil
+}
+
+func writeTransferPathError(w http.ResponseWriter, err error) {
+	if errors.Is(err, connectortargets.ErrTargetProfileNotFound) || errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+		handleConnectorTargetRuntimeError(w, err)
+		return
+	}
+	writeError(w, http.StatusBadRequest, err.Error())
+}
+
+func (s FileTransferHTTPHandlers) resolveAndNormalizeTransferPath(ctx context.Context, runtime *transferapp.Runtime, runtimeID int64, value string, directory bool) (string, transferExecution, error) {
+	if err := validateTransferPathSyntax(value); err != nil {
+		return "", transferExecution{}, err
+	}
+	execution, err := s.resolveTransferExecution(ctx, runtime, runtimeID)
+	if err != nil {
+		return "", transferExecution{}, err
+	}
+	normalized, err := normalizeTransferPathForAdapter(execution.adapter, value, directory)
+	return normalized, execution, err
+}
+
+func normalizeTransferPathForAdapter(adapter connectorapi.FileTransferAdapter, value string, directory bool) (string, error) {
+	if err := validateTransferPathSyntax(value); err != nil {
+		return "", err
+	}
+	if policy, ok := adapter.(connectorapi.FileTransferPathPolicy); ok {
+		return policy.NormalizeTransferPath(value, directory)
+	}
+	if directory {
+		return normalizeRemoteDirectoryPath(value)
+	}
+	return normalizeRemoteFilePath(value)
+}
+
+func validateTransferPathSyntax(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && !strings.HasPrefix(trimmed, "/") && !strings.HasPrefix(trimmed, "~") {
+		return errors.New("remote path must be absolute")
+	}
+	return nil
+}
+
+func transferParent(adapter any, value string) string {
+	if policy, ok := adapter.(connectorapi.FileTransferPathPolicy); ok {
+		return policy.ParentTransferPath(value)
+	}
+	parent := path.Dir(value)
+	if parent == "." || parent == value {
+		return "/"
+	}
+	return parent
+}
+
+func transferUploadPath(adapter any, directory, relative string) (string, error) {
+	if policy, ok := adapter.(connectorapi.FileTransferPathPolicy); ok {
+		return policy.JoinTransferPath(directory, relative)
+	}
+	name, err := normalizeRelativeTransferPath(relative)
+	if err != nil {
+		return "", err
+	}
+	return normalizeRemoteFilePath(joinRemoteRelativePath(directory, name))
+}
