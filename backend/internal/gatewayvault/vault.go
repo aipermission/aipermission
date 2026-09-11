@@ -2,7 +2,6 @@
 package gatewayvault
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/applicationvault"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -18,10 +17,6 @@ const (
 	ActionGenerateItem = vaultrequests.ActionGenerateItem
 )
 
-type Application = applicationvault.Component
-type ActionDependencies = applicationvault.ActionDependencies
-type ProjectDependencies = applicationvault.ProjectDependencies
-type RequestDependencies = applicationvault.RequestDependencies
 type ProjectScope = projects.Scope
 type ProjectVaultHTTPScope = projectvault.HTTPScope
 type ProjectVaultRuntime = projectvault.Runtime

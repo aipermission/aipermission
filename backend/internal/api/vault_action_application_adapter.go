@@ -64,7 +64,7 @@ func (s *Server) vaultActionApplication(runtime databaseRuntime) (*gatewayvault.
 	return component.ActionRuntime(runtime)
 }
 
-func (s *Server) configureVaultActions(component *gatewayvault.Application) {
+func (s *Server) configureVaultActions(component *gatewayvault.Component) {
 	component.ConfigureActions(gatewayvault.ActionDependencies{
 		Connector: func(runtime gatewayinfra.Runtime) gatewayvault.VaultConnectorPort {
 			return vaultActionConnectorPort{server: s, runtime: runtime}

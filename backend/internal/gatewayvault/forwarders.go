@@ -5,16 +5,11 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/applicationvault"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
-
-func NewApplication(projects applicationvault.ProjectDependencies) *applicationvault.Component {
-	return applicationvault.New(projects)
-}
 
 func NewProjectsHTTPHandlers(scope projects.ScopeProvider) *projects.HTTPHandlers {
 	return projects.NewHTTPHandlers(scope)

@@ -1,6 +1,4 @@
-// Package applicationvault composes Project Vault and agent Vault operations
-// without exposing encrypted workspace state to HTTP or MCP transports.
-package applicationvault
+package gatewayvault
 
 import (
 	"context"

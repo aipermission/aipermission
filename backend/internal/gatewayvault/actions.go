@@ -1,4 +1,4 @@
-package applicationvault
+package gatewayvault
 
 import (
 	"context"

@@ -11,8 +11,8 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) vaultApplication() *gatewayvault.Application {
-	return gatewayvault.NewApplication(gatewayvault.ProjectDependencies{
+func (s *Server) vaultApplication() *gatewayvault.Component {
+	return gatewayvault.New(gatewayvault.ProjectDependencies{
 		InvalidateSessions: func(ctx context.Context, runtime gatewayinfra.Runtime, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
 			return s.invalidateVaultMutationAfterCommit(ctx, runtime, sessions, scope)
 		},
