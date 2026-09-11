@@ -32,6 +32,41 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	}
 }
 
+func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-close-all", "127.0.0.1", 22)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin:  &recordingWriteCloser{},
+			Stdout: strings.NewReader("closing output"),
+			Wait: func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	if _, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+	}); err != nil {
+		t.Fatalf("create active session: %v", err)
+	}
+
+	manager.CloseAll()
+	if count := manager.activeSessionCount(); count != 0 {
+		t.Fatalf("sessions retained after CloseAll: %d", count)
+	}
+	if _, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "late", Principal: testExecutionPrincipal(),
+	}); !errors.Is(err, ErrManagerClosed) {
+		t.Fatalf("late create error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
 func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {

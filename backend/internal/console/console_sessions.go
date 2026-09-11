@@ -37,6 +37,7 @@ var ErrClientLimit = errors.New("console session client limit reached")
 var ErrInputTooLarge = errors.New("console input is too large")
 var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
 var ErrCommandOutcomeUnknown = errors.New("command was dispatched but its outcome could not be authorized")
+var ErrManagerClosed = errors.New("console session manager is closed")
 
 type InactiveError struct {
 	Status string
@@ -169,6 +170,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[int64]*managedConsoleSession
+	closed   bool
 
 	lifecycleMu sync.Mutex
 	lifecycle   map[int64]*sync.Mutex

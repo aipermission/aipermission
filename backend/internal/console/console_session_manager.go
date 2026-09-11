@@ -171,6 +171,11 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 	var err error
 	now := time.Now().UTC().Format(time.RFC3339)
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		destroyCreateEnvironment(request)
+		return Record{}, nil, ErrManagerClosed
+	}
 	var generation int64
 	err = m.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(generation), 0) + 1 FROM console_sessions WHERE runtime_id = ?`, request.RuntimeID).Scan(&generation)
 	if err != nil {
@@ -632,7 +637,11 @@ func (m *Manager) runtimeLifecycle(runtimeID int64) *sync.Mutex {
 }
 
 func (m *Manager) CloseAll() {
+	if m == nil {
+		return
+	}
 	m.mu.Lock()
+	m.closed = true
 	sessions := make([]*managedConsoleSession, 0, len(m.sessions))
 	for _, session := range m.sessions {
 		sessions = append(sessions, session)
@@ -640,6 +649,9 @@ func (m *Manager) CloseAll() {
 	m.mu.Unlock()
 	for _, session := range sessions {
 		session.close()
+	}
+	for _, session := range sessions {
+		<-session.done
 	}
 }
 
