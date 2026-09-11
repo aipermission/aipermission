@@ -1,15 +1,12 @@
 // Package gatewayinfrastructure exposes process, routing, and workspace composition contracts to the API boundary.
 package gatewayinfrastructure
 
-import (
-	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
-)
+import "github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 
 const (
-	AuthLockoutFailures      = gatewaystate.AuthLockoutFailures
-	MCPGlobalDelayFailures   = gatewaystate.MCPGlobalDelayFailures
-	MCPGlobalLockoutFailures = gatewaystate.MCPGlobalLockoutFailures
+	AuthLockoutFailures      = 8
+	MCPGlobalDelayFailures   = 32
+	MCPGlobalLockoutFailures = 64
 )
 
 var (

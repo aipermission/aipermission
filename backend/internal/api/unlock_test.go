@@ -25,7 +25,6 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
@@ -107,15 +106,15 @@ func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
 }
 
 func TestDatabaseInitializationFailureDoesNotConsumePasswordAttempts(t *testing.T) {
-	limiter := runtimecontrol.NewAuth(1, authRateLimitLockoutFailures)
-	attempt := databasePasswordAttempt{limiter: limiter, key: "unlock:test"}
+	server := NewLockedServer(fixtureConfigForLockedTest(t))
+	attempt := databasePasswordAttempt{infrastructure: server.infrastructure, key: "unlock:test"}
 	attempt.failure()
 	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: rewrite failed", workspacelifecycle.ErrInitialization))
-	if delay := limiter.Delay(attempt.key); delay != 0 {
-		t.Fatalf("initialization failure retained password backoff: %s", delay)
+	if failures := server.infrastructure.DatabasePasswordFailureCount(attempt.key); failures != 0 {
+		t.Fatalf("initialization failure retained password failures: %d", failures)
 	}
 	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: validation failed", workspacelifecycle.ErrAuthentication))
-	if delay := limiter.Delay(attempt.key); delay == 0 {
+	if failures := server.infrastructure.DatabasePasswordFailureCount(attempt.key); failures == 0 {
 		t.Fatal("authentication failure did not consume password attempt")
 	}
 }
@@ -530,7 +529,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 		t.Fatalf("delete locked database with wrong password should fail, got %d %s", response.Code, response.Body.String())
 	}
 	limitKey := databasePasswordRateLimitScope + ":127.0.0.1"
-	failures := server.infrastructure.DatabasePasswordLimiter().FailureCount(limitKey)
+	failures := server.infrastructure.DatabasePasswordFailureCount(limitKey)
 	if failures != 1 {
 		t.Fatalf("wrong password recorded %d shared failures, want 1", failures)
 	}
@@ -540,7 +539,7 @@ func TestDeleteLockedDatabaseRequiresPassword(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/databases/delete-locked", "", deleteLockedDatabaseRequest{DatabaseID: id, CurrentPassword: "OldPassword123"}); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"deleted"`) {
 		t.Fatalf("delete locked database failed: %d %s", response.Code, response.Body.String())
 	}
-	if failures := server.infrastructure.DatabasePasswordLimiter().FailureCount(limitKey); failures != 0 {
+	if failures := server.infrastructure.DatabasePasswordFailureCount(limitKey); failures != 0 {
 		t.Fatal("successful password verification did not clear shared backoff")
 	}
 	if dbpkg.Exists(path) {

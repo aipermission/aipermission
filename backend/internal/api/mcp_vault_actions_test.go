@@ -19,7 +19,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -302,7 +301,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 		Reason:         "Create a token for the approved autonomous workflow.",
 		IdempotencyKey: "always-generate-token-1",
 	}
-	fixture.server.infrastructure.ConfigureVaultRequestLimiter(runtimecontrol.NewWindow(1, time.Minute))
+	fixture.server.infrastructure.ConfigureVaultRequestLimit(1, time.Minute)
 	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
 	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
 		strings.Contains(call.Body.String(), `"retry_after_seconds"`) ||

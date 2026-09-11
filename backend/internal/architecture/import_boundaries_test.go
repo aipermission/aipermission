@@ -335,7 +335,7 @@ func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
 	if !found {
 		t.Fatal("gateway workspace Runtime contract is missing")
 	}
-	statePackage := modulePath + "/internal/gatewaystate/workspaces"
+	statePackage := modulePath + "/internal/gatewayinfrastructure"
 	for _, imported := range allPackageImports(t)[statePackage] {
 		if imported == modulePath+"/internal/workspaceruntime" {
 			t.Fatalf("%s must store the gateway-owned runtime contract", statePackage)

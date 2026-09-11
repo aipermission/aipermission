@@ -16,16 +16,16 @@ const (
 )
 
 type databasePasswordAttempt struct {
-	limiter *gatewayaccess.Auth
-	key     string
+	infrastructure *gatewayinfra.Component
+	key            string
 }
 
 func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Request) (databasePasswordAttempt, bool) {
 	attempt := databasePasswordAttempt{
-		limiter: s.infrastructure.DatabasePasswordLimiter(),
-		key:     gatewayaccess.RuntimeKey(r, databasePasswordRateLimitScope),
+		infrastructure: s.infrastructure,
+		key:            gatewayaccess.RuntimeKey(r, databasePasswordRateLimitScope),
 	}
-	if err := attempt.limiter.Wait(r.Context(), attempt.key); err != nil {
+	if err := attempt.infrastructure.WaitDatabasePassword(r.Context(), attempt.key); err != nil {
 		writeError(w, http.StatusRequestTimeout, "database password verification timed out")
 		return databasePasswordAttempt{}, false
 	}
@@ -33,9 +33,9 @@ func (s *Server) beginDatabasePasswordAttempt(w http.ResponseWriter, r *http.Req
 }
 
 func (attempt databasePasswordAttempt) failure() {
-	attempt.limiter.RecordFailure(attempt.key)
+	attempt.infrastructure.RecordDatabasePasswordFailure(attempt.key)
 }
 
 func (attempt databasePasswordAttempt) success() {
-	attempt.limiter.RecordSuccess(attempt.key)
+	attempt.infrastructure.RecordDatabasePasswordSuccess(attempt.key)
 }
