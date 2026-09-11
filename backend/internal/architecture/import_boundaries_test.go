@@ -159,6 +159,7 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 		modulePath + "/internal/gatewayinfrastructure":                true,
 		modulePath + "/internal/gatewayinfrastructure/connectorports": true,
 		modulePath + "/internal/gatewayoperations":                    true,
+		modulePath + "/internal/gatewayoperations/backup":             true,
 		modulePath + "/internal/gatewayoperations/transfer":           true,
 		modulePath + "/internal/gatewayvault":                         true,
 	}
@@ -507,7 +508,9 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 
 func TestInternalPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
-	const packageBudget = 10
+	// Composition packages may import multiple explicitly approved packages from
+	// one owner; the stricter owner budget below prevents boundary sprawl.
+	const packageBudget = 11
 	const ownerBudget = 8
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") {

@@ -6,21 +6,18 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	gatewaybackup "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 )
 
-type importDatabaseRequest = gatewayoperations.ImportDatabaseRequest
-type transientBackupRestoreRequest = gatewayoperations.TransientRestoreRequest
-
-func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
-	return gatewayoperations.NewBackupApplication(gatewayoperations.BackupDependencies{
+func (s *Server) backupApplication() *gatewaybackup.Component {
+	return gatewaybackup.New(gatewaybackup.Dependencies{
 		DataPath: s.config.DataPath, Lifecycle: s.infrastructure.WorkspaceLifecycle(),
-		ActiveRuntime: func(w http.ResponseWriter) (gatewayoperations.BackupRuntime, bool) {
+		ActiveRuntime: func(w http.ResponseWriter) (gatewaybackup.Runtime, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)
 			if !ok {
-				return gatewayoperations.BackupRuntime{}, false
+				return gatewaybackup.Runtime{}, false
 			}
-			return gatewayoperations.BackupRuntime{
+			return gatewaybackup.Runtime{
 				Database: runtime.StoragePort().DatabaseHandle(), SecretVault: runtime.StoragePort().SecretVault(),
 				DatabaseID: runtime.DatabaseIdentifier(), DatabasePath: runtime.DatabasePath(), WorkspaceID: runtime.WorkspaceIdentifier(),
 				Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
@@ -36,7 +33,7 @@ func (s *Server) backupApplication() *gatewayoperations.BackupApplication {
 		},
 		CurrentDatabaseName: s.currentDatabaseNameLocked,
 		HasSession:          s.hasValidUISession,
-		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayoperations.BackupPasswordAttempt, bool) {
+		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewaybackup.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
 		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {

@@ -1,4 +1,4 @@
-package gatewayoperations
+package backup
 
 import (
 	"net/http"
@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestBackupApplicationMissingOperationLeaseFailsClosed(t *testing.T) {
-	application := NewBackupApplication(BackupDependencies{})
+func TestComponentMissingOperationLeaseFailsClosed(t *testing.T) {
+	application := New(Dependencies{})
 	handlers := application.HTTPHandlers()
 	response := httptest.NewRecorder()
 	handlers.Download(response, httptest.NewRequest(http.MethodGet, "/api/database/download", nil))

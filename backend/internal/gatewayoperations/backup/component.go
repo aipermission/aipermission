@@ -5,6 +5,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
@@ -12,6 +13,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
+
+var ErrOperationUnavailable = errors.New("backup operation lease is unavailable")
 
 type Lifecycle interface {
 	AcquireRead() func()
@@ -47,7 +50,14 @@ type Dependencies struct {
 
 type Component struct{ dependencies Dependencies }
 
-func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
+func New(dependencies Dependencies) *Component {
+	if dependencies.AcquireOperation == nil {
+		dependencies.AcquireOperation = func(context.Context) (func(), error) {
+			return nil, ErrOperationUnavailable
+		}
+	}
+	return &Component{dependencies: dependencies}
+}
 
 type Handlers struct {
 	Download        http.HandlerFunc
