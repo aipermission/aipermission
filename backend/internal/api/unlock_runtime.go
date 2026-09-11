@@ -53,31 +53,39 @@ func (s *Server) openRuntime(path string, id string, password string) (databaseR
 	if err != nil {
 		return nil, err
 	}
-	if err := s.reconcileConnectorRuntimeSurfaces(context.Background(), runtime); err != nil {
-		s.discardOpeningRuntime(runtime)
-		return nil, fmt.Errorf("reconcile connector runtime surfaces: %w", err)
-	}
-	settings, err := runtime.SecurityPort().PolicyService().ReadSettings(context.Background())
-	if err != nil {
+	if err := s.initializeOpenedRuntime(context.Background(), runtime); err != nil {
 		s.discardOpeningRuntime(runtime)
 		return nil, err
 	}
+	return runtime, nil
+}
+
+func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRuntime) error {
+	if runtime == nil {
+		return fmt.Errorf("initialize workspace runtime: runtime is unavailable")
+	}
+	if err := s.reconcileConnectorRuntimeSurfaces(ctx, runtime); err != nil {
+		return fmt.Errorf("reconcile connector runtime surfaces: %w", err)
+	}
+	settings, err := runtime.SecurityPort().PolicyService().ReadSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("read workspace security settings: %w", err)
+	}
 	runtime.SecurityPort().RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
-	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(runtime.StoragePort().DatabaseHandle(), s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime)))
+	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(
+		runtime.StoragePort().DatabaseHandle(), s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime),
+	))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
-		s.discardOpeningRuntime(runtime)
-		return nil, fmt.Errorf("initialize command request runtime: %w", err)
+		return fmt.Errorf("initialize command request runtime: %w", err)
 	}
 	if err := s.initializeFileTransferRuntime(runtime); err != nil {
-		s.discardOpeningRuntime(runtime)
-		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
+		return fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
 	if err := s.configureVaultSessionRuntime(runtime); err != nil {
-		s.discardOpeningRuntime(runtime)
-		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
+		return fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	s.configureAuditDispatcher(runtime)
-	return runtime, nil
+	return nil
 }
 
 func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {

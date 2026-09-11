@@ -73,18 +73,10 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err != nil {
 		return nil, err
 	}
-	runtime.ConnectorPort().SetConsoleSessionManager(gatewayoperations.NewConsoleManager(database, server.runtimeConsoleOpener(runtime), server.runtimeRedactor(runtime)))
-	if err := server.initializeCommandRequestRuntime(runtime); err != nil {
-		return nil, fmt.Errorf("initialize command request runtime: %w", err)
+	if err := server.initializeOpenedRuntime(context.Background(), runtime); err != nil {
+		server.discardOpeningRuntime(runtime)
+		return nil, err
 	}
-	if err := server.initializeFileTransferRuntime(runtime); err != nil {
-		return nil, fmt.Errorf("initialize file transfer runtime: %w", err)
-	}
-	if err := server.configureVaultSessionRuntime(runtime); err != nil {
-		server.stopFileTransferRuntime(runtime)
-		return nil, fmt.Errorf("initialize Vault session runtime: %w", err)
-	}
-	server.configureAuditDispatcher(runtime)
 	server.infrastructure.ActivateWorkspace(runtime)
 	server.initializeRetention(runtime)
 	server.routes()

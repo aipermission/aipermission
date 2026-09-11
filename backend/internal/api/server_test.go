@@ -57,3 +57,42 @@ func TestNewServerReturnsRuntimeIdentityError(t *testing.T) {
 		t.Fatalf("runtime identity failure should prevent construction: server=%v err=%v", server, err)
 	}
 }
+
+func TestNewServerBootstrapsTheAdoptedWorkspaceRuntime(t *testing.T) {
+	path := t.TempDir() + "/test.db"
+	database, err := dbpkg.OpenEncrypted(path, "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO settings (key, value, updated_at)
+		VALUES ('mcp_start_enabled', 'true', datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`); err != nil {
+		t.Fatal(err)
+	}
+	secretVault, err := vault.New("test-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(
+		config.Config{DataPath: path, GatewaySecret: "test-gateway-secret"},
+		database,
+		secretVault,
+		tokens.NewStore(database),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := server.activeRuntime()
+	if runtime == nil || !runtime.IsMCPStarted() {
+		t.Fatal("adopted workspace did not apply its MCP startup setting")
+	}
+	if runtime.ConnectorPort().ConsoleSessionManager() == nil {
+		t.Fatal("adopted workspace did not initialize its console manager")
+	}
+	if _, err := server.commandRuntime(runtime); err != nil {
+		t.Fatalf("adopted workspace command runtime: %v", err)
+	}
+	if err := server.closeRuntime(runtime); err != nil {
+		t.Fatalf("close adopted workspace: %v", err)
+	}
+}
