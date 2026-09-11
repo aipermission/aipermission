@@ -53,7 +53,7 @@ type ActionRuntimePorts struct {
 }
 
 type RequestRuntimePorts struct {
-	Store              func(context.Context) *vaultrequests.Store
+	Store              func(context.Context) vaultrequests.RequestStore
 	Mutate             func(context.Context, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
 	Observe            func(context.Context, string, *int64, int64, string, any)
 	AllowRequest       func(int64) bool

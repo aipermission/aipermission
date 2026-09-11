@@ -60,8 +60,25 @@ type MutationPort interface {
 	Observe(context.Context, string, *int64, int64, string, any)
 }
 
+// RequestStore is the persistence behavior required by the request workflow.
+// Its private raw lookup keeps audit identity reads inside this package.
+type RequestStore interface {
+	Get(context.Context, int64) (Request, error)
+	GetByIdempotencyKey(context.Context, int64, string) (Request, error)
+	List(context.Context, string, int) ([]Request, error)
+	StalePending(context.Context, int64, string) (Request, error)
+	StalePendingForContext(context.Context, int64, int64, string) error
+	StalePendingForProject(context.Context, int64, string) error
+	StalePendingForRuntimes(context.Context, []int64, string) error
+	StalePendingForAction(context.Context, string, string) error
+	FailRunning(context.Context, string) error
+	getRaw(context.Context, int64) (Request, error)
+}
+
+var _ RequestStore = (*Store)(nil)
+
 type RuntimeDependencies struct {
-	Store            *Store
+	Store            RequestStore
 	Mutations        MutationPort
 	Prepare          ActionPreparer
 	AuthorizeOutput  OutputAuthorizer
@@ -76,7 +93,7 @@ type RuntimeDependencies struct {
 }
 
 type Runtime struct {
-	store            *Store
+	store            RequestStore
 	mutations        MutationPort
 	prepare          ActionPreparer
 	authorizeOutput  OutputAuthorizer

@@ -160,8 +160,8 @@ func (component *Component) VaultRequestStore(ctx context.Context, runtime Runti
 	})
 }
 
-func (component *Component) VaultRequestStoreFactory(runtime Runtime) func(context.Context) *vaultrequests.Store {
-	return func(ctx context.Context) *vaultrequests.Store {
+func (component *Component) VaultRequestStoreFactory(runtime Runtime) func(context.Context) vaultrequests.RequestStore {
+	return func(ctx context.Context) vaultrequests.RequestStore {
 		return component.VaultRequestStore(ctx, runtime)
 	}
 }
