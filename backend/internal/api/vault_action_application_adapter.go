@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -25,15 +24,9 @@ func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, 
 	if !ok {
 		return connectormgmt.ActionPermission{}, "", errors.New("this connector does not expose a live console action")
 	}
-	action := strings.TrimSpace(liveConsole.LiveConsoleActionName())
-	if action == "" {
-		return connectormgmt.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
-	}
+	action := liveConsole.LiveConsoleActionName()
 	permission, err := port.server.connectorCatalog(port.runtime).ActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
-	if err != nil || (permission.ExecutionRule != connectormgmt.ActionPermissionAlwaysRun && permission.ExecutionRule != connectormgmt.ActionPermissionApprovalRequired) {
-		return connectormgmt.ActionPermission{}, "", errors.New("Vault session apply requires an active Prompt or Always connector action permission")
-	}
-	return permission, action, nil
+	return permission, action, err
 }
 
 func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context, surface connectormgmt.RuntimeSurface) (gatewayvault.PeerIdentityExpectation, error) {

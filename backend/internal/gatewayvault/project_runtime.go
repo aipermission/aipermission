@@ -18,6 +18,7 @@ type Dependencies struct {
 	LiveConsoleKind func(string) (string, bool)
 	AllowGenerate   func(string) bool
 	AllowReveal     func(string) bool
+	AllowRequest    func(string) bool
 }
 
 type Component struct {

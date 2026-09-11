@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -66,6 +68,32 @@ func (port actionItemPort) Delete(ctx context.Context, id, valueVersion, metadat
 
 type actionDeliveryPort struct{ runtime Runtime }
 
+type actionConnectorPort struct{ delegate ConnectorPort }
+
+func (port actionConnectorPort) SessionEnvironmentVersion(ctx context.Context, runtimeID int64) (string, error) {
+	return port.delegate.SessionEnvironmentVersion(ctx, runtimeID)
+}
+
+func (port actionConnectorPort) LiveConsolePermission(ctx context.Context, tokenID, targetID, profileID int64, kind string) (connectortargets.ActionPermission, string, error) {
+	permission, action, err := port.delegate.LiveConsolePermission(ctx, tokenID, targetID, profileID, kind)
+	if err != nil {
+		return connectortargets.ActionPermission{}, "", err
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return connectortargets.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
+	}
+	if permission.ExecutionRule != connectortargets.ActionPermissionAlwaysRun && permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
+		return connectortargets.ActionPermission{}, "", errors.New("Vault session apply requires an active Prompt or Always connector action permission")
+	}
+	return permission, action, nil
+}
+
+func (port actionConnectorPort) ExpectedPeerIdentities(ctx context.Context, surface connectortargets.RuntimeSurface) (vaultactions.PeerIdentityExpectation, error) {
+	expectation, err := port.delegate.ExpectedPeerIdentities(ctx, surface)
+	return vaultactions.PeerIdentityExpectation{Items: expectation.Items, Required: expectation.Required}, err
+}
+
 func (port actionDeliveryPort) AcquireDelivery(ctx context.Context) (func(), error) {
 	if port.runtime.Session.AcquireDelivery == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
@@ -93,7 +121,8 @@ func (port actionMutationPort) WithMutation(ctx context.Context, tokenID int64, 
 
 func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.Tokens == nil || runtime.Session.Sessions == nil ||
-		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Action.AllowGenerate == nil || runtime.Session.MCPStarted == nil {
+		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Session.MCPStarted == nil ||
+		runtime.Storage.DatabaseID == "" || component.dependencies.AllowGenerate == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
 	items, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)
@@ -105,10 +134,12 @@ func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplicati
 		Projects: actionProjectPort{database: runtime.Storage.Database}, SessionItems: actionItemPort{store: items},
 		ItemMutations: actionItemPort{store: items}, Sessions: runtime.Session.Sessions,
 		Leases: runtime.Session.Leases, PersistedLeases: vaultsessions.NewPersistence(runtime.Storage.Database),
-		Connector: runtime.Action.Connector, Delivery: actionDeliveryPort{runtime: runtime},
+		Connector: actionConnectorPort{delegate: runtime.Action.Connector}, Delivery: actionDeliveryPort{runtime: runtime},
 		Mutations: actionMutationPort{component: component, runtime: runtime}, WorkspaceID: runtime.Storage.WorkspaceID,
 		RuntimeInstanceID: runtime.Session.RuntimeInstanceID, MCPStarted: runtime.Session.MCPStarted,
-		AllowGenerate: runtime.Action.AllowGenerate,
+		AllowGenerate: func(tokenID int64) bool {
+			return component.dependencies.AllowGenerate(fmt.Sprintf("vault-generate:%s:%d", runtime.Storage.DatabaseID, tokenID))
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault action application: %w", err)

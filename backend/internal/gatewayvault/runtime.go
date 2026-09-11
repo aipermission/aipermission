@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -27,6 +28,7 @@ type StorageRuntime struct {
 	SecretVault *vault.Vault
 	Tokens      vaultactions.TokenReader
 	WorkspaceID string
+	DatabaseID  string
 }
 
 type SessionRuntime struct {
@@ -47,16 +49,27 @@ type ProjectRuntimePorts struct {
 }
 
 type ActionRuntimePorts struct {
-	Connector     vaultactions.ConnectorPort
-	Mutate        func(context.Context, int64, string, func() any, func(*sql.Tx) error) error
-	AllowGenerate func(int64) bool
+	Connector ConnectorPort
+	Mutate    func(context.Context, int64, string, func() any, func(*sql.Tx) error) error
 }
 
 type RequestRuntimePorts struct {
 	Store              func(context.Context) vaultrequests.RequestStore
 	Mutate             func(context.Context, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
 	Observe            func(context.Context, string, *int64, int64, string, any)
-	AllowRequest       func(int64) bool
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
+}
+
+// ConnectorPort supplies connector facts to Vault. Execution policy remains
+// owned by this package so transport composition cannot silently broaden it.
+type ConnectorPort interface {
+	SessionEnvironmentVersion(context.Context, int64) (string, error)
+	LiveConsolePermission(context.Context, int64, int64, int64, string) (connectortargets.ActionPermission, string, error)
+	ExpectedPeerIdentities(context.Context, connectortargets.RuntimeSurface) (PeerIdentityExpectation, error)
+}
+
+type PeerIdentityExpectation struct {
+	Items    []string
+	Required bool
 }

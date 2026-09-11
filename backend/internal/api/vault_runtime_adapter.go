@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -20,7 +18,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
 			Database: runtime.StoragePort().DatabaseHandle(), SecretVault: runtime.StoragePort().SecretVault(),
-			Tokens: runtime.StoragePort().TokenStore(), WorkspaceID: runtime.WorkspaceIdentifier(),
+			Tokens: runtime.StoragePort().TokenStore(), WorkspaceID: runtime.WorkspaceIdentifier(), DatabaseID: runtime.DatabaseIdentifier(),
 		},
 		Session: gatewayvault.SessionRuntime{
 			Sessions: runtime.ConnectorPort().ConsoleSessionManager(), Leases: runtime.SecurityPort().VaultLeaseStore(),
@@ -55,11 +53,6 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 			Mutate: func(ctx context.Context, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return s.withAuditedMutation(ctx, runtime, "mcp", &tokenID, 0, action, payload, mutate)
 			},
-			AllowGenerate: func(tokenID int64) bool {
-				return s.access.AllowVaultGenerate(
-					fmt.Sprintf("vault-generate:%s:%d", runtime.DatabaseIdentifier(), tokenID),
-				)
-			},
 		},
 		Requests: gatewayvault.RequestRuntimePorts{
 			Store: s.observation.VaultRequestStoreFactory(observationRuntime(runtime)),
@@ -68,11 +61,6 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 			},
 			Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
-			},
-			AllowRequest: func(tokenID int64) bool {
-				return s.access.AllowVaultRequest(
-					"vault-request:" + runtime.DatabaseIdentifier() + ":" + strconv.FormatInt(tokenID, 10),
-				)
 			},
 			RepairProjection: func(ctx context.Context, id int64) error {
 				if err := s.observation.SyncVaultActionRequest(ctx, observationRuntime(runtime), id); err != nil {

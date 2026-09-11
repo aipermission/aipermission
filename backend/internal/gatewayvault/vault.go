@@ -4,7 +4,6 @@ package gatewayvault
 import (
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -22,8 +21,6 @@ type ProjectVaultHTTPScope = projectvault.HTTPScope
 type SessionMutationScope = projectvault.SessionMutationScope
 type SessionReference = projectvault.SessionReference
 type SessionSelection = projectvault.SessionSelection
-type VaultConnectorPort = vaultactions.ConnectorPort
-type PeerIdentityExpectation = vaultactions.PeerIdentityExpectation
 type VaultApprovalHTTPScope = vaultrequests.HTTPScope
 type VaultMCPHTTPScope = vaultrequests.MCPHTTPScope
 type VaultRequestApplication = vaultrequests.Application

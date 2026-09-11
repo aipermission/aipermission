@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
@@ -27,7 +28,7 @@ func (port requestMutationPort) Observe(ctx context.Context, actor string, token
 }
 
 func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime) (VaultRequestApplication, error) {
-	if component == nil || runtime.Storage.Database == nil || runtime.Requests.Store == nil || runtime.Requests.AllowRequest == nil ||
+	if component == nil || runtime.Storage.Database == nil || runtime.Storage.DatabaseID == "" || runtime.Requests.Store == nil || component.dependencies.AllowRequest == nil ||
 		runtime.Requests.RepairProjection == nil || runtime.Requests.RedactRequestError == nil || runtime.Session.MCPStarted == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
@@ -38,8 +39,10 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 	owner, err := vaultrequests.NewRuntime(vaultrequests.RuntimeDependencies{
 		Store: runtime.Requests.Store(ctx), Mutations: requestMutationPort{component: component, runtime: runtime},
 		Prepare: actions.Prepare, AuthorizeOutput: actions.AuthorizeOutput,
-		AllowRequest: runtime.Requests.AllowRequest,
-		Execute:      actions.Execute, Compensate: actions.Compensate,
+		AllowRequest: func(tokenID int64) bool {
+			return component.dependencies.AllowRequest("vault-request:" + runtime.Storage.DatabaseID + ":" + strconv.FormatInt(tokenID, 10))
+		},
+		Execute: actions.Execute, Compensate: actions.Compensate,
 		RepairProjection: func(ctx context.Context, id int64) error {
 			return runtime.Requests.RepairProjection(ctx, id)
 		},

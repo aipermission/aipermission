@@ -28,6 +28,9 @@ func (s *Server) newVaultApplication() *gatewayvault.Component {
 		AllowReveal: func(key string) bool {
 			return s.access.AllowVaultReveal(key)
 		},
+		AllowRequest: func(key string) bool {
+			return s.access.AllowVaultRequest(key)
+		},
 	})
 }
 
