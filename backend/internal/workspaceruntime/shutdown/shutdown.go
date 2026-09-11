@@ -10,8 +10,8 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
 const transferWait = 10 * time.Second
@@ -33,7 +33,7 @@ type CommandWorkflowResolver func() (CommandWorkflow, error)
 // Close stops runtime workers and sessions before releasing encrypted storage.
 // If transfer workers outlive the bounded wait, storage closes asynchronously
 // after they exit so no worker can touch a closed database.
-func Close(runtime workspaceruntime.Port, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver) error {
+func Close(runtime runtimecontract.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver) error {
 	if runtime == nil {
 		return nil
 	}
@@ -88,7 +88,7 @@ func stopCommandRequests(workspaceID string, resolve CommandWorkflowResolver) {
 
 // Discard releases a partially opened runtime without running normal shutdown
 // recovery against state that was never published.
-func Discard(runtime workspaceruntime.Port) error {
+func Discard(runtime runtimecontract.Runtime) error {
 	if runtime == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func Discard(runtime workspaceruntime.Port) error {
 	return closeStorage(runtime)
 }
 
-func stopConnectorActions(runtime workspaceruntime.Port, resolve ActionWorkflowResolver) {
+func stopConnectorActions(runtime runtimecontract.Runtime, resolve ActionWorkflowResolver) {
 	if resolve == nil {
 		return
 	}
@@ -114,7 +114,7 @@ func stopConnectorActions(runtime workspaceruntime.Port, resolve ActionWorkflowR
 	}
 }
 
-func closeStorage(runtime workspaceruntime.Port) error {
+func closeStorage(runtime runtimecontract.Runtime) error {
 	if dispatcher := runtime.ObservationPort().AuditDispatcherService(); dispatcher != nil {
 		dispatcher.Stop()
 	}

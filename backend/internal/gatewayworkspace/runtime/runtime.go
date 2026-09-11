@@ -2,17 +2,13 @@ package runtime
 
 import (
 	"context"
-	"errors"
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimeinput"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/gatewayadapter"
 	runtimeshutdown "github.com/aipermission/aipermission/backend/internal/workspaceruntime/shutdown"
 )
-
-var errForeignRuntime = errors.New("workspace runtime was not created by the gateway workspace factory")
 
 type Runtime = runtimecontract.Runtime
 
@@ -28,7 +24,7 @@ func Adopt(ctx context.Context, input runtimeinput.Adopt) (Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gatewayadapter.Wrap(workspaceruntime.New(state)), nil
+	return workspaceruntime.New(state), nil
 }
 
 func Open(ctx context.Context, input runtimeinput.Open) (Runtime, error) {
@@ -40,32 +36,13 @@ func Open(ctx context.Context, input runtimeinput.Open) (Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gatewayadapter.Wrap(workspaceruntime.New(state)), nil
+	return workspaceruntime.New(state), nil
 }
 
 func Discard(value Runtime) error {
-	runtime, err := concreteRuntime(value)
-	if err != nil {
-		return err
-	}
-	return runtimeshutdown.Discard(runtime)
+	return runtimeshutdown.Discard(value)
 }
 
 func Close(value Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
-	runtime, err := concreteRuntime(value)
-	if err != nil {
-		return err
-	}
-	return runtimeshutdown.Close(runtime, resolveActions, resolveCommands)
-}
-
-func concreteRuntime(value Runtime) (*workspaceruntime.Runtime, error) {
-	if value == nil {
-		return nil, nil
-	}
-	runtime, ok := gatewayadapter.Unwrap(value)
-	if !ok {
-		return nil, errForeignRuntime
-	}
-	return runtime, nil
+	return runtimeshutdown.Close(value, resolveActions, resolveCommands)
 }

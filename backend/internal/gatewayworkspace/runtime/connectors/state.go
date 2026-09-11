@@ -11,22 +11,13 @@ import (
 )
 
 type State struct {
-	Registry        *connectorcatalog.Registry
-	AdapterRegistry *connectorapi.Registry
-	Resources       connectorruntime.ResourceScopes
-	ConsoleSessions *console.Manager
+	registry        *connectorcatalog.Registry
+	adapterRegistry *connectorapi.Registry
+	resources       connectorruntime.ResourceScopes
+	consoleSessions *console.Manager
 	database        *sql.DB
 	vault           *vault.Vault
 	workspaceID     string
-}
-
-type Port interface {
-	ConnectorRegistry() *connectorcatalog.Registry
-	ConnectorAdapterRegistry() *connectorapi.Registry
-	ResourceScopes() connectorruntime.ResourceScopes
-	ConsoleSessionManager() *console.Manager
-	SetConsoleSessionManager(*console.Manager)
-	ConnectorScope(string, connectorruntime.SecretAccessorFactory) *connectorruntime.Scope
 }
 
 func New(
@@ -37,25 +28,22 @@ func New(
 	workspaceUUID string,
 ) State {
 	return State{
-		Registry:        registry,
-		AdapterRegistry: adapterRegistry,
-		Resources:       connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
-		database:        database,
-		vault:           secretVault,
-		workspaceID:     workspaceUUID,
+		registry: registry, adapterRegistry: adapterRegistry,
+		resources: connectorruntime.NewResourceScopes(database, secretVault, workspaceUUID),
+		database:  database, vault: secretVault, workspaceID: workspaceUUID,
 	}
 }
 
 func (s *State) ConnectorRegistry() *connectorcatalog.Registry {
-	if s != nil && s.Registry != nil {
-		return s.Registry
+	if s != nil && s.registry != nil {
+		return s.registry
 	}
 	return connectorcatalog.NewRegistry()
 }
 
 func (s *State) ConnectorAdapterRegistry() *connectorapi.Registry {
-	if s != nil && s.AdapterRegistry != nil {
-		return s.AdapterRegistry
+	if s != nil && s.adapterRegistry != nil {
+		return s.adapterRegistry
 	}
 	return connectorapi.NewRegistry()
 }
@@ -64,19 +52,19 @@ func (s *State) ResourceScopes() connectorruntime.ResourceScopes {
 	if s == nil {
 		return nil
 	}
-	return s.Resources
+	return s.resources
 }
 
 func (s *State) ConsoleSessionManager() *console.Manager {
 	if s == nil {
 		return nil
 	}
-	return s.ConsoleSessions
+	return s.consoleSessions
 }
 
 func (s *State) SetConsoleSessionManager(manager *console.Manager) {
 	if s != nil {
-		s.ConsoleSessions = manager
+		s.consoleSessions = manager
 	}
 }
 
@@ -86,6 +74,8 @@ func (s *State) ConnectorScope(kind string, accessor connectorruntime.SecretAcce
 	}
 	return connectorruntime.NewScope(kind, connectorruntime.Dependencies{
 		Database: s.database, Vault: s.vault, WorkspaceID: s.workspaceID,
-		Resources: s.Resources, ConsoleSessions: s.ConsoleSessions, SecretAccessor: accessor,
+		Resources: s.resources, ConsoleSessions: s.consoleSessions, SecretAccessor: accessor,
 	})
 }
+
+var _ Port = (*State)(nil)

@@ -9,50 +9,42 @@ import (
 )
 
 type State struct {
-	Policy        *securitypolicy.Service
-	Runtime       runtimecontrol.State
-	VaultLeases   *vaultsessions.Store
-	VaultDelivery vaultsessions.DeliveryCoordinator
-}
-
-type Port interface {
-	PolicyService() *securitypolicy.Service
-	RuntimeControlState() *runtimecontrol.State
-	VaultLeaseStore() *vaultsessions.Store
-	VaultDeliveryCoordinator() *vaultsessions.DeliveryCoordinator
+	policy        *securitypolicy.Service
+	runtime       runtimecontrol.State
+	vaultLeases   *vaultsessions.Store
+	vaultDelivery vaultsessions.DeliveryCoordinator
 }
 
 func New(database *sql.DB) State {
-	return State{
-		Policy:      securitypolicy.NewService(database),
-		VaultLeases: vaultsessions.NewStore(),
-	}
+	return State{policy: securitypolicy.NewService(database), vaultLeases: vaultsessions.NewStore()}
 }
 
 func (s *State) PolicyService() *securitypolicy.Service {
 	if s == nil {
 		return nil
 	}
-	return s.Policy
+	return s.policy
 }
 
 func (s *State) RuntimeControlState() *runtimecontrol.State {
 	if s == nil {
 		return nil
 	}
-	return &s.Runtime
+	return &s.runtime
 }
 
 func (s *State) VaultLeaseStore() *vaultsessions.Store {
 	if s == nil {
 		return nil
 	}
-	return s.VaultLeases
+	return s.vaultLeases
 }
 
 func (s *State) VaultDeliveryCoordinator() *vaultsessions.DeliveryCoordinator {
 	if s == nil {
 		return nil
 	}
-	return &s.VaultDelivery
+	return &s.vaultDelivery
 }
+
+var _ Port = (*State)(nil)

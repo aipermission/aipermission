@@ -306,6 +306,27 @@ func TestGatewayBoundariesDoNotExposeConcreteWorkspaceRuntime(t *testing.T) {
 	}
 }
 
+func TestConcreteWorkspaceRuntimeStaysInsideGatewayFactory(t *testing.T) {
+	concreteRuntime := modulePath + "/internal/workspaceruntime"
+	allowedImporter := modulePath + "/internal/gatewayworkspace/runtime"
+	for importer, imports := range allPackageImports(t) {
+		if importer == concreteRuntime || strings.HasPrefix(importer, concreteRuntime+"/") {
+			continue
+		}
+		for _, imported := range imports {
+			if imported == concreteRuntime && importer != allowedImporter {
+				t.Errorf("%s imports the concrete workspace runtime; only %s may construct it", importer, allowedImporter)
+			}
+		}
+	}
+	for _, retired := range []string{"connectors", "gatewayadapter", "observation", "security", "storage"} {
+		path := filepath.Join("..", "..", "internal", "workspaceruntime", retired)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s must stay retired; workspace components belong to the gateway runtime boundary", path)
+		}
+	}
+}
+
 func TestGatewayWorkspaceOwnsRuntimeContract(t *testing.T) {
 	path := filepath.Join("..", "gatewayworkspace", "runtimecontract", "runtime.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)

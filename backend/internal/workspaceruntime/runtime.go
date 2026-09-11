@@ -4,12 +4,12 @@ import (
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
+	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
-	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/connectors"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/observation"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/security"
-	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/storage"
 )
 
 type Runtime struct {
@@ -80,7 +80,7 @@ func (r *Runtime) WorkspaceDatabase() *sql.DB {
 	if r == nil {
 		return nil
 	}
-	return r.Storage.Database
+	return r.Storage.DatabaseHandle()
 }
 
 func (r *Runtime) StoragePort() storage.Port {
@@ -178,11 +178,11 @@ func (r *Runtime) IdentityReady() bool {
 }
 
 func (r *Runtime) IsMCPStarted() bool {
-	return r != nil && r.Security.Runtime.MCPStarted()
+	return r != nil && r.Security.RuntimeControlState().MCPStarted()
 }
 
 func (r *Runtime) SetMCPStarted(enabled bool) {
 	if r != nil {
-		r.Security.Runtime.SetMCPStarted(enabled)
+		r.Security.RuntimeControlState().SetMCPStarted(enabled)
 	}
 }

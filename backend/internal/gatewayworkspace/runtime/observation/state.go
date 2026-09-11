@@ -6,27 +6,20 @@ import (
 )
 
 type State struct {
-	AuditDispatcher *observability.Dispatcher
-	Retention       *retention.Service
-}
-
-type Port interface {
-	AuditDispatcherService() *observability.Dispatcher
-	SetAuditDispatcherService(*observability.Dispatcher)
-	RetentionService() *retention.Service
-	SetRetentionService(*retention.Service)
+	auditDispatcher *observability.Dispatcher
+	retention       *retention.Service
 }
 
 func (s *State) AuditDispatcherService() *observability.Dispatcher {
 	if s == nil {
 		return nil
 	}
-	return s.AuditDispatcher
+	return s.auditDispatcher
 }
 
 func (s *State) SetAuditDispatcherService(dispatcher *observability.Dispatcher) {
 	if s != nil {
-		s.AuditDispatcher = dispatcher
+		s.auditDispatcher = dispatcher
 	}
 }
 
@@ -34,11 +27,13 @@ func (s *State) RetentionService() *retention.Service {
 	if s == nil {
 		return nil
 	}
-	return s.Retention
+	return s.retention
 }
 
 func (s *State) SetRetentionService(service *retention.Service) {
 	if s != nil {
-		s.Retention = service
+		s.retention = service
 	}
 }
+
+var _ Port = (*State)(nil)

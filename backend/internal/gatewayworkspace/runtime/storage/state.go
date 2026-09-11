@@ -9,62 +9,51 @@ import (
 )
 
 type State struct {
-	Database  *sql.DB
-	Vault     *vault.Vault
-	Tokens    *tokens.Store
-	Ownership *db.DatabaseOwnership
-}
-
-type Port interface {
-	DatabaseHandle() *sql.DB
-	SecretVault() *vault.Vault
-	TokenStore() *tokens.Store
-	DatabaseOwnership() *db.DatabaseOwnership
-	ClearDatabaseOwnership()
+	database  *sql.DB
+	vault     *vault.Vault
+	tokens    *tokens.Store
+	ownership *db.DatabaseOwnership
 }
 
 func New(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, workspaceUUID string, ownership *db.DatabaseOwnership) State {
 	if tokenStore == nil {
 		tokenStore = tokens.NewEncryptedStore(database, secretVault, workspaceUUID)
 	}
-	return State{
-		Database:  database,
-		Vault:     secretVault,
-		Tokens:    tokenStore,
-		Ownership: ownership,
-	}
+	return State{database: database, vault: secretVault, tokens: tokenStore, ownership: ownership}
 }
 
 func (s *State) DatabaseHandle() *sql.DB {
 	if s == nil {
 		return nil
 	}
-	return s.Database
+	return s.database
 }
 
 func (s *State) SecretVault() *vault.Vault {
 	if s == nil {
 		return nil
 	}
-	return s.Vault
+	return s.vault
 }
 
 func (s *State) TokenStore() *tokens.Store {
 	if s == nil {
 		return nil
 	}
-	return s.Tokens
+	return s.tokens
 }
 
 func (s *State) DatabaseOwnership() *db.DatabaseOwnership {
 	if s == nil {
 		return nil
 	}
-	return s.Ownership
+	return s.ownership
 }
 
 func (s *State) ClearDatabaseOwnership() {
 	if s != nil {
-		s.Ownership = nil
+		s.ownership = nil
 	}
 }
+
+var _ Port = (*State)(nil)
