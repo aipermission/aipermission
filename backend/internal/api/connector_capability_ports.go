@@ -18,12 +18,30 @@ func (s *Server) connectorPortsApplication() *connectorapi.PortsComponent {
 				_, ok := s.activeRuntimeOrLocked(w)
 				return ok
 			},
-			ChangePeerTrust: s.connectorChangeVaultPeerTrust,
+			PeerTrust: s.connectorPeerTrustApplication(),
 		},
 		LiveConsole: connectorapi.LiveConsoleDependencies{
 			TransportAdapter: s.connectorLiveConsoleTransportAdapterFor,
 			TargetAdapter:    s.connectorLiveConsoleTargetAdapterFor,
 		},
+	})
+}
+
+func (s *Server) connectorPeerTrustApplication() *connectorapi.PeerTrustCoordinator {
+	return connectorapi.NewPeerTrustCoordinator(func() []connectorapi.PeerTrustWorkspace {
+		runtimes := s.unlockedRuntimeSnapshot()
+		workspaces := make([]connectorapi.PeerTrustWorkspace, 0, len(runtimes))
+		for _, runtime := range runtimes {
+			boundRuntime := runtime
+			workspaces = append(workspaces, connectorapi.PeerTrustWorkspace{
+				Identifier:       runtime.DatabaseIdentifier(),
+				AcquireExclusive: runtime.SecurityPort().VaultDeliveryCoordinator().AcquireExclusive,
+				InvalidateAll: func(ctx context.Context, reason string) error {
+					return s.invalidateAllVaultSessions(ctx, boundRuntime, reason)
+				},
+			})
+		}
+		return workspaces
 	})
 }
 

@@ -20,8 +20,8 @@ type PeerDependencies struct {
 }
 
 type RouteDependencies struct {
-	ActiveRuntime   func(http.ResponseWriter) bool
-	ChangePeerTrust func(context.Context, func() error) error
+	ActiveRuntime func(http.ResponseWriter) bool
+	PeerTrust     *PeerTrustCoordinator
 }
 
 type LiveConsoleDependencies struct {
@@ -108,7 +108,10 @@ func (gateway RouteGateway) ConnectorActiveRuntimeAvailable(w http.ResponseWrite
 }
 
 func (gateway RouteGateway) ConnectorChangeVaultPeerTrust(ctx context.Context, change func() error) error {
-	return gateway.component.dependencies.Routes.ChangePeerTrust(ctx, change)
+	if gateway.component == nil || gateway.component.dependencies.Routes.PeerTrust == nil {
+		return ErrPeerTrustUnavailable
+	}
+	return gateway.component.dependencies.Routes.PeerTrust.Change(ctx, change)
 }
 
 func (component *PortsComponent) PeerGateway() PeerGateway { return PeerGateway{component: component} }
