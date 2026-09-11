@@ -5,29 +5,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
-
-func ResolveOptions(options []gatewayoptions.Option) gatewayoptions.Options {
-	return gatewayoptions.Resolve(options)
-}
-
-func WithConnectorAdapterRegistry(registry *gatewayoptions.ConnectorAdapterRegistry) gatewayoptions.Option {
-	return gatewayoptions.WithConnectorAdapterRegistry(registry)
-}
-
-func WithConnectorRegistry(registry *gatewayoptions.ConnectorRegistry) gatewayoptions.Option {
-	return gatewayoptions.WithConnectorRegistry(registry)
-}
-
-func WithMaintenanceConsole(runtime gatewayoptions.MaintenanceConsoleRuntime) gatewayoptions.Option {
-	return gatewayoptions.WithMaintenanceConsole(runtime)
-}
-
-func WithRuntimeInstanceIDGenerator(generator func() (string, error)) gatewayoptions.Option {
-	return gatewayoptions.WithRuntimeInstanceIDGenerator(generator)
-}
 
 func Scavenge(path string, now time.Time) {
 	gatewayworkspace.Scavenge(path, now)

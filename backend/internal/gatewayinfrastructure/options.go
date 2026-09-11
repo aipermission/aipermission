@@ -1,5 +1,4 @@
-// Package gatewayoptions owns gateway construction options and their defaults.
-package gatewayoptions
+package gatewayinfrastructure
 
 import (
 	"github.com/aipermission/aipermission/backend/internal/connectorapi"
@@ -8,37 +7,33 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
 
-type Options struct {
+type componentOptions struct {
 	Registry                   *connectors.Registry
 	AdapterRegistry            *connectorapi.Registry
 	MaintenanceConsole         console.MaintenanceConsoleRuntime
 	RuntimeInstanceIDGenerator func() (string, error)
 }
 
-type ConnectorRegistry = connectors.Registry
-type ConnectorAdapterRegistry = connectorapi.Registry
-type MaintenanceConsoleRuntime = console.MaintenanceConsoleRuntime
+type ServerOption func(*componentOptions)
 
-type Option func(*Options)
-
-func WithConnectorRegistry(registry *ConnectorRegistry) Option {
-	return func(options *Options) { options.Registry = registry }
+func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
+	return func(options *componentOptions) { options.Registry = registry }
 }
 
-func WithConnectorAdapterRegistry(registry *ConnectorAdapterRegistry) Option {
-	return func(options *Options) { options.AdapterRegistry = registry }
+func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
+	return func(options *componentOptions) { options.AdapterRegistry = registry }
 }
 
-func WithMaintenanceConsole(runtime MaintenanceConsoleRuntime) Option {
-	return func(options *Options) { options.MaintenanceConsole = runtime }
+func WithMaintenanceConsole(runtime console.MaintenanceConsoleRuntime) ServerOption {
+	return func(options *componentOptions) { options.MaintenanceConsole = runtime }
 }
 
-func WithRuntimeInstanceIDGenerator(generator func() (string, error)) Option {
-	return func(options *Options) { options.RuntimeInstanceIDGenerator = generator }
+func WithRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOption {
+	return func(options *componentOptions) { options.RuntimeInstanceIDGenerator = generator }
 }
 
-func Resolve(options []Option) Options {
-	resolved := Options{
+func resolveOptions(options []ServerOption) componentOptions {
+	resolved := componentOptions{
 		Registry: connectors.NewRegistry(), AdapterRegistry: connectorapi.NewRegistry(),
 		RuntimeInstanceIDGenerator: executionprincipal.NewRuntimeInstanceID,
 	}

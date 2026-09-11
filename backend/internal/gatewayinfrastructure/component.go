@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/gatewayoptions"
+	"github.com/aipermission/aipermission/backend/internal/connectorapi"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/gatewaystate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
@@ -21,7 +23,15 @@ type Component struct {
 }
 
 func NewComponent(dataPath, frontendPort string, describe func(Runtime) Identity, options ...ServerOption) *Component {
-	resolved := gatewayoptions.Resolve(options)
+	if describe == nil {
+		describe = func(runtime Runtime) Identity {
+			if runtime == nil {
+				return Identity{}
+			}
+			return runtime.WorkspaceIdentity()
+		}
+	}
+	resolved := resolveOptions(options)
 	return &Component{
 		connectors: gatewaystate.NewConnectorState(resolved.Registry, resolved.AdapterRegistry),
 		controls:   gatewaystate.NewControlState(frontendPort, resolved.MaintenanceConsole),
@@ -39,14 +49,14 @@ func (component *Component) RuntimeInstanceIDGenerator() func() (string, error) 
 	return component.runtimeInstanceIDGenerator
 }
 
-func (component *Component) ConnectorRegistry() *gatewayoptions.ConnectorRegistry {
+func (component *Component) ConnectorRegistry() *connectors.Registry {
 	if component == nil {
 		return nil
 	}
 	return component.connectors.Registry
 }
 
-func (component *Component) ConnectorAdapterRegistry() *gatewayoptions.ConnectorAdapterRegistry {
+func (component *Component) ConnectorAdapterRegistry() *connectorapi.Registry {
 	if component == nil {
 		return nil
 	}
@@ -92,7 +102,7 @@ func (component *Component) LookupWorkspace(id string) (Runtime, bool) {
 }
 
 func (component *Component) ActivateWorkspace(runtime Runtime) {
-	if component != nil && component.workspaces.Registry != nil {
+	if component != nil && component.workspaces.Registry != nil && runtime != nil {
 		component.workspaces.Registry.Activate(runtime)
 	}
 }
@@ -180,7 +190,7 @@ func (component *Component) EnsureUIWorkspaceCookie(w http.ResponseWriter, r *ht
 	component.controls.UISessions.EnsureWorkspaceCookie(w, r, retryIdentity)
 }
 
-func (component *Component) MaintenanceConsole() gatewayoptions.MaintenanceConsoleRuntime {
+func (component *Component) MaintenanceConsole() console.MaintenanceConsoleRuntime {
 	if component == nil {
 		return nil
 	}
