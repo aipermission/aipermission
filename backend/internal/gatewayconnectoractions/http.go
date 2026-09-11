@@ -64,25 +64,21 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		handlers.dependencies.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}
-	workflow, err := handlers.component.Workflow(runtime)
+	result, err := handlers.component.RunLocal(r.Context(), runtime, actions.Call{
+		Source: actions.SourceManual, TargetRef: request.TargetRef, ActionName: request.ActionName,
+		Input: request.Input, Reason: request.Reason, IdempotencyKey: request.IdempotencyKey,
+	})
 	if err == nil {
-		var result actions.CallResult
-		result, err = workflow.RunLocal(r.Context(), actions.Call{
-			Source: actions.SourceManual, TargetRef: request.TargetRef, ActionName: request.ActionName,
-			Input: request.Input, Reason: request.Reason, IdempotencyKey: request.IdempotencyKey,
-		})
-		if err == nil {
-			auditAction := "connector_action.manual." + string(result.Result.Status)
-			if result.Replayed {
-				auditAction = "connector_action.manual.replayed"
-			}
-			runtime.Workflow.Observe(r.Context(), "user", nil, 0, auditAction, map[string]any{
-				"request_id": result.Request.ID, "target_ref": request.TargetRef, "connector_kind": result.Request.ConnectorKind,
-				"action_name": request.ActionName, "replayed": result.Replayed,
-			})
-			handlers.dependencies.WriteJSON(w, http.StatusOK, handlers.dependencies.Response(result.Request, result.Result, result.Replayed))
-			return
+		auditAction := "connector_action.manual." + string(result.Result.Status)
+		if result.Replayed {
+			auditAction = "connector_action.manual.replayed"
 		}
+		runtime.Workflow.Observe(r.Context(), "user", nil, 0, auditAction, map[string]any{
+			"request_id": result.Request.ID, "target_ref": request.TargetRef, "connector_kind": result.Request.ConnectorKind,
+			"action_name": request.ActionName, "replayed": result.Replayed,
+		})
+		handlers.dependencies.WriteJSON(w, http.StatusOK, handlers.dependencies.Response(result.Request, result.Result, result.Replayed))
+		return
 	}
 	var persistence *actions.TerminalPersistenceError
 	if errors.As(err, &persistence) {

@@ -80,20 +80,16 @@ func Discard(runtime workspaceruntime.Port) error {
 }
 
 func stopConnectorActions(runtime workspaceruntime.Port, resolve ActionWorkflowResolver) {
-	var workflow ActionWorkflow
-	if existing := runtime.OperationsPort().ActionWorkflow(); existing != nil {
-		workflow = existing
+	if resolve == nil {
+		return
+	}
+	workflow, err := resolve()
+	if err != nil {
+		log.Printf("initialize connector action shutdown workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
+		return
 	}
 	if workflow == nil {
-		if resolve == nil {
-			return
-		}
-		var err error
-		workflow, err = resolve()
-		if err != nil {
-			log.Printf("initialize connector action shutdown workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
-			return
-		}
+		return
 	}
 	workflow.StopRecovery()
 	if err := workflow.MarkRunningOutcomeUnknown(context.Background(), runtimeoutcome.ConnectorActionUnknown); err != nil {

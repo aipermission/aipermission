@@ -11,6 +11,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 )
 
 const approvalNoteMaxBytes = 8 << 10
@@ -260,7 +261,7 @@ func (r *Runtime) markPendingRunning(ctx context.Context, item connectortargets.
 			if item.TokenID == nil {
 				return errors.New("connector approval token is missing")
 			}
-			return r.enqueueUserNote(ctx, tx, *item.TokenID, "Operator approved the connector action with note: "+userNote)
+			return messagequeue.EnqueueUserNote(ctx, tx, *item.TokenID, "Operator approved the connector action with note: "+userNote)
 		},
 	)
 	return running, err

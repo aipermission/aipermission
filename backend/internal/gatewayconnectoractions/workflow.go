@@ -13,9 +13,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
 
 type Dependencies struct {
@@ -26,6 +26,37 @@ type Dependencies struct {
 type Component struct{ dependencies Dependencies }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
+
+type workflowHandle struct{ runtime *actions.Runtime }
+
+type ApprovalWorkflow interface {
+	ApprovalPreview(context.Context, connectortargets.ActionRequest) (map[string]any, error)
+	RunPending(context.Context, int64, string) (connectortargets.ActionRequest, error)
+	DeclinePending(context.Context, int64, string) (connectortargets.ActionRequest, error)
+}
+
+type ShutdownWorkflow interface {
+	StopRecovery()
+	MarkRunningOutcomeUnknown(context.Context, string) error
+}
+
+func (workflow *workflowHandle) ApprovalPreview(ctx context.Context, request connectortargets.ActionRequest) (map[string]any, error) {
+	return workflow.runtime.ApprovalPreview(ctx, request)
+}
+
+func (workflow *workflowHandle) RunPending(ctx context.Context, id int64, note string) (connectortargets.ActionRequest, error) {
+	return workflow.runtime.RunPending(ctx, id, note)
+}
+
+func (workflow *workflowHandle) DeclinePending(ctx context.Context, id int64, note string) (connectortargets.ActionRequest, error) {
+	return workflow.runtime.DeclinePending(ctx, id, note)
+}
+
+func (workflow *workflowHandle) StopRecovery() { workflow.runtime.StopRecovery() }
+
+func (workflow *workflowHandle) MarkRunningOutcomeUnknown(ctx context.Context, reason string) error {
+	return workflow.runtime.MarkRunningOutcomeUnknown(ctx, reason)
+}
 
 type SecretAccessor struct {
 	Values   map[string]any
@@ -147,11 +178,11 @@ func (resolver targetResolver) ResolveActionTarget(ctx context.Context, ref stri
 	return actions.ResolvedTarget{}, err
 }
 
-func (component *Component) Workflow(runtime Workspace) (*actions.Runtime, error) {
+func (component *Component) workflow(runtime Workspace) (*workflowHandle, error) {
 	if component == nil || component.dependencies.SupportsRunning == nil || !runtime.workflowReady() {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	return runtime.Workflow.OrCreate(func() (*actions.Runtime, error) {
+	workflow, err := runtimeops.LoadOrCreateState(runtime.Workflow.State, func() (*workflowHandle, error) {
 		redactor, err := actions.NewRedactor(
 			func(ctx context.Context, value string) string {
 				return runtime.Workflow.RedactBasic(ctx, value)
@@ -181,56 +212,66 @@ func (component *Component) Workflow(runtime Workspace) (*actions.Runtime, error
 				return runtime.Workflow.Capabilities(kind, dependencies)
 			},
 			RunningActions: runningPort{component: component, runtime: runtime},
-			EnqueueUserNote: func(ctx context.Context, tx *sql.Tx, tokenID int64, message string) error {
-				return messagequeue.EnqueueUserNote(ctx, tx, tokenID, message)
-			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initialize connector action workflow: %w", err)
 		}
-		return workflow, nil
+		return &workflowHandle{runtime: workflow}, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	if workflow == nil || workflow.runtime == nil {
+		return nil, actions.ErrWorkflowUnavailable
+	}
+	return workflow, nil
+}
+
+func (component *Component) Approval(runtime Workspace) (ApprovalWorkflow, error) {
+	return component.workflow(runtime)
+}
+
+func (component *Component) Shutdown(runtime Workspace) (ShutdownWorkflow, error) {
+	return component.workflow(runtime)
 }
 
 func (component *Component) Call(ctx context.Context, runtime Workspace, call actions.Call) (actions.CallResult, error) {
-	workflow, err := component.Workflow(runtime)
+	workflow, err := component.workflow(runtime)
 	if err != nil {
 		return actions.CallResult{}, err
 	}
-	return workflow.Call(ctx, call)
+	return workflow.runtime.Call(ctx, call)
 }
 
 func (component *Component) RunLocal(ctx context.Context, runtime Workspace, call actions.Call) (actions.CallResult, error) {
-	workflow, err := component.Workflow(runtime)
+	workflow, err := component.workflow(runtime)
 	if err != nil {
 		return actions.CallResult{}, err
 	}
-	return workflow.RunLocal(ctx, call)
+	return workflow.runtime.RunLocal(ctx, call)
 }
 
 func (component *Component) Finish(ctx context.Context, runtime Workspace, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
-	workflow, err := component.Workflow(runtime)
+	workflow, err := component.workflow(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	return workflow.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
+	return workflow.runtime.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
 }
 
 func (component *Component) StartRecovery(runtime Workspace) {
-	if workflow, err := component.Workflow(runtime); err == nil {
-		workflow.StartRecovery()
+	if workflow, err := component.workflow(runtime); err == nil {
+		workflow.runtime.StartRecovery()
 	}
 }
 
 func (component *Component) StopRecovery(runtime Workspace) {
-	if runtime.Workflow.Current != nil {
-		if workflow := runtime.Workflow.Current(); workflow != nil {
-			workflow.StopRecovery()
-		}
+	if workflow, ok := runtimeops.LoadState[*workflowHandle](runtime.Workflow.State); ok {
+		workflow.runtime.StopRecovery()
 	}
 }
 
-func (component *Component) Redactor(runtime Workspace) (*actions.Redactor, error) {
+func (component *Component) redactor(runtime Workspace) (*actions.Redactor, error) {
 	if component == nil || runtime.Workflow.RedactBasic == nil || runtime.Workflow.RedactCustom == nil {
 		return nil, actions.ErrWorkflowUnavailable
 	}
@@ -243,6 +284,46 @@ func (component *Component) Redactor(runtime Workspace) (*actions.Redactor, erro
 		},
 		component.dependencies.MaxJSONBytes,
 	)
+}
+
+func (component *Component) RedactValue(ctx context.Context, runtime Workspace, value any, sensitiveFields, capabilityFields map[string]bool, boundary actions.CredentialBoundary) (any, error) {
+	redactor, err := component.redactor(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return redactor.ValueWithCredentialBoundary(ctx, value, sensitiveFields, capabilityFields, boundary)
+}
+
+func (component *Component) RedactResult(ctx context.Context, runtime Workspace, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+	redactor, err := component.redactor(runtime)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return redactor.Result(ctx, result, hints...)
+}
+
+func (component *Component) RedactResultWithCredentialBoundary(ctx context.Context, runtime Workspace, result connectors.ActionResult, boundary actions.CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+	redactor, err := component.redactor(runtime)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	return redactor.ResultWithCredentialBoundary(ctx, result, boundary, hints...)
+}
+
+func (component *Component) RedactInput(ctx context.Context, runtime Workspace, input map[string]any, sensitiveFields []string) (map[string]any, error) {
+	redactor, err := component.redactor(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return redactor.Input(ctx, input, sensitiveFields)
+}
+
+func (component *Component) RedactPreview(ctx context.Context, runtime Workspace, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
+	redactor, err := component.redactor(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return redactor.Preview(ctx, preview, sensitiveFields, hints...)
 }
 
 func (*Component) Prepare(runtime Workspace, ctx context.Context, request actions.PrepareRequest) (actions.PreparedRequest, error) {

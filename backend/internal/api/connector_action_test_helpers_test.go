@@ -52,91 +52,90 @@ func gatewayConnectorActionWorkspace(runtime databaseRuntime) gatewayactions.Wor
 }
 
 func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID int64, prepared actions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	return workflow.InsertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey)
+	return persistence.InsertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey)
 }
 
 func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime databaseRuntime, tokenID *int64, prepared actions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	return workflow.InsertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
+	return persistence.InsertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
 }
 
 func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (connectorActionCallResult, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectorActionCallResult{}, err
 	}
-	return workflow.ExecuteInserted(ctx, prepared, request, principal, options)
+	return dispatch.ExecuteInserted(ctx, prepared, request, principal, options)
 }
 
 func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime databaseRuntime, prepared actions.PreparedRequest) (actions.ExecutionSnapshot, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return actions.ExecutionSnapshot{}, err
 	}
-	return workflow.Snapshot(ctx, prepared)
+	return dispatch.Snapshot(ctx, prepared)
 }
 
 func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Context, runtime databaseRuntime, request connectortargets.ActionRequest, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	return workflow.CaptureSessionHandleIfReturned(ctx, request, handles)
+	return dispatch.CaptureSessionHandleIfReturned(ctx, request, handles)
 }
 
 func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Server, runtime databaseRuntime, requestID int64) (connectorCredentialBoundary, error) {
-	workflow, err := server.connectorActionWorkflow(runtime)
+	recovery, err := server.connectorActionApplication().Recovery(server.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectorCredentialBoundary{}, err
 	}
-	return workflow.CredentialBoundaryForRequest(ctx, requestID)
+	return recovery.CredentialBoundaryForRequest(ctx, requestID)
 }
 
 func (s *Server) trackConnectorCredentialBoundary(runtime databaseRuntime, requestID int64, boundary connectorCredentialBoundary) error {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return err
 	}
-	workflow.TrackCredentialBoundary(requestID, boundary)
+	recovery.TrackCredentialBoundary(requestID, boundary)
 	return nil
 }
 
 func (s *Server) connectorCredentialBoundary(runtime databaseRuntime, requestID int64) (connectorCredentialBoundary, bool) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectorCredentialBoundary{}, false
 	}
-	return workflow.CredentialBoundary(requestID)
+	return recovery.CredentialBoundary(requestID)
 }
 
 func (s *Server) recoverOrphanedConnectorActions(ctx context.Context, runtime databaseRuntime, now time.Time) {
-	workflow, err := s.connectorActionWorkflow(runtime)
-	if err == nil {
-		workflow.Recover(ctx, now)
+	if recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime)); err == nil {
+		recovery.Recover(ctx, now)
 	}
 }
 
 func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runtime databaseRuntime, requestID int64, now time.Time) (connectortargets.ActionRequest, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
-	return workflow.PersistExpiredRecovery(ctx, requestID, now)
+	return recovery.PersistExpiredRecovery(ctx, requestID, now)
 }
 
 func (s *Server) beginConnectorActionDispatch(ctx context.Context, runtime databaseRuntime, requestID int64) (connectortargets.ActionRequest, bool, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	return workflow.BeginDispatch(ctx, requestID)
+	return dispatch.BeginDispatch(ctx, requestID)
 }
 
 func connectorActionExecutionFailureStatus(err error) connectors.ResultStatus {

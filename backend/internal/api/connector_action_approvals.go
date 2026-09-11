@@ -15,7 +15,7 @@ func (s *Server) connectorActionApprovalItemFromRequest(item connectormgmt.Actio
 }
 
 func (s *Server) runPendingConnectorAction(ctx context.Context, runtime databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	workflow, err := s.connectorActionApprovalWorkflow(runtime)
 	if err != nil {
 		return connectormgmt.ActionRequest{}, err
 	}
@@ -23,7 +23,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime database
 }
 
 func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime databaseRuntime, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
-	workflow, err := s.connectorActionWorkflow(runtime)
+	workflow, err := s.connectorActionApprovalWorkflow(runtime)
 	if err != nil {
 		return connectorActionApprovalItem{}, err
 	}

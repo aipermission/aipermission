@@ -81,7 +81,7 @@ func TestActionWorkflowMarksRunningConnectorActionsOutcomeUnknown(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow, err := server.connectorActionWorkflow(runtime)
+	workflow, err := server.connectorActionShutdownWorkflow(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}

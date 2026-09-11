@@ -41,7 +41,7 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Works
 			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return s.ensureRuntimeIdentity(runtime) },
 		},
 		Workflow: actions.WorkflowPorts{
-			Current: runtime.OperationsPort().ActionWorkflow, OrCreate: runtime.OperationsPort().ActionWorkflowOrCreate,
+			State:         runtime.OperationsPort().ActionWorkflowState(),
 			AcquireSecret: delivery.AcquireDelivery,
 			RedactBasic: func(ctx context.Context, value string) string {
 				return s.redactForPersistence(ctx, runtime, value)
@@ -70,6 +70,10 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Works
 	}
 }
 
-func (s *Server) connectorActionWorkflow(runtime databaseRuntime) (*actions.Runtime, error) {
-	return s.connectorActionApplication().Workflow(s.connectorActionWorkspace(runtime))
+func (s *Server) connectorActionApprovalWorkflow(runtime databaseRuntime) (actions.ApprovalWorkflow, error) {
+	return s.connectorActionApplication().Approval(s.connectorActionWorkspace(runtime))
+}
+
+func (s *Server) connectorActionShutdownWorkflow(runtime databaseRuntime) (actions.ShutdownWorkflow, error) {
+	return s.connectorActionApplication().Shutdown(s.connectorActionWorkspace(runtime))
 }

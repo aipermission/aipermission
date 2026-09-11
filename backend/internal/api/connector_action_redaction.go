@@ -3,52 +3,27 @@ package api
 import (
 	"context"
 
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectors "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func (s *Server) connectorActionRedactor(runtime databaseRuntime) (*actions.Redactor, error) {
-	return s.connectorActionApplication().Redactor(s.connectorActionWorkspace(runtime))
-}
-
 func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime databaseRuntime, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return nil, err
-	}
-	return redactor.ValueWithCredentialBoundary(ctx, value, sensitiveFields, capabilityFields, boundary)
+	return s.connectorActionApplication().RedactValue(ctx, s.connectorActionWorkspace(runtime), value, sensitiveFields, capabilityFields, boundary)
 }
 
 func (s *Server) redactConnectorActionResult(ctx context.Context, runtime databaseRuntime, result connectors.ActionResult, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	return redactor.Result(ctx, result, hints...)
+	return s.connectorActionApplication().RedactResult(ctx, s.connectorActionWorkspace(runtime), result, hints...)
 }
 
 func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime databaseRuntime, result connectors.ActionResult, boundary connectorCredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return connectors.ActionResult{}, err
-	}
-	return redactor.ResultWithCredentialBoundary(ctx, result, boundary, hints...)
+	return s.connectorActionApplication().RedactResultWithCredentialBoundary(ctx, s.connectorActionWorkspace(runtime), result, boundary, hints...)
 }
 
 func (s *Server) redactConnectorActionInput(ctx context.Context, runtime databaseRuntime, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return nil, err
-	}
-	return redactor.Input(ctx, input, sensitiveInputFields)
+	return s.connectorActionApplication().RedactInput(ctx, s.connectorActionWorkspace(runtime), input, sensitiveInputFields)
 }
 
 func (s *Server) redactConnectorActionPreview(ctx context.Context, runtime databaseRuntime, preview map[string]any, sensitiveFields []string, hints ...connectors.OutputHint) (map[string]any, error) {
-	redactor, err := s.connectorActionRedactor(runtime)
-	if err != nil {
-		return nil, err
-	}
-	return redactor.Preview(ctx, preview, sensitiveFields, hints...)
+	return s.connectorActionApplication().RedactPreview(ctx, s.connectorActionWorkspace(runtime), preview, sensitiveFields, hints...)
 }
 
 func (s *Server) connectorSensitiveOutputFields(hints ...connectors.OutputHint) map[string]bool {

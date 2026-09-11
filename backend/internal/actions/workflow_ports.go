@@ -52,50 +52,46 @@ type MutationPort interface {
 
 type RuntimeIdentity func() (workspaceID string, runtimeInstanceID string, err error)
 type CapabilityProvider func(string, []ResolvedDependency) connectors.RuntimeCapabilityResolver
-type UserNoteEnqueuer func(context.Context, *sql.Tx, int64, string) error
-
 type RunningActions interface {
 	SupportsRunning(PreparedRequest) bool
 	FinishRunning(int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)
 }
 
 type RuntimeDependencies struct {
-	Database        *sql.DB
-	Tokens          TokenReader
-	Registry        *connectors.Registry
-	Targets         TargetResolver
-	IdentityKey     []byte
-	Delivery        DeliveryGate
-	MCPStarted      func() bool
-	Identity        RuntimeIdentity
-	Redactor        *actionresult.Redactor
-	SealedRecords   SealedRecords
-	Mutations       MutationPort
-	Capabilities    CapabilityProvider
-	RunningActions  RunningActions
-	EnqueueUserNote UserNoteEnqueuer
-	Now             func() time.Time
-	Logf            func(string, ...any)
+	Database       *sql.DB
+	Tokens         TokenReader
+	Registry       *connectors.Registry
+	Targets        TargetResolver
+	IdentityKey    []byte
+	Delivery       DeliveryGate
+	MCPStarted     func() bool
+	Identity       RuntimeIdentity
+	Redactor       *actionresult.Redactor
+	SealedRecords  SealedRecords
+	Mutations      MutationPort
+	Capabilities   CapabilityProvider
+	RunningActions RunningActions
+	Now            func() time.Time
+	Logf           func(string, ...any)
 }
 
 // Runtime owns one unlocked workspace's connector action lifecycle. Its ports
 // deliberately exclude HTTP and gateway composition types.
 type Runtime struct {
-	database        *sql.DB
-	tokens          TokenReader
-	service         *Service
-	identityKey     []byte
-	delivery        DeliveryGate
-	mcpStarted      func() bool
-	identity        RuntimeIdentity
-	redactor        *actionresult.Redactor
-	sealedRecords   SealedRecords
-	mutations       MutationPort
-	capabilities    CapabilityProvider
-	runningActions  RunningActions
-	enqueueUserNote UserNoteEnqueuer
-	now             func() time.Time
-	logf            func(string, ...any)
+	database       *sql.DB
+	tokens         TokenReader
+	service        *Service
+	identityKey    []byte
+	delivery       DeliveryGate
+	mcpStarted     func() bool
+	identity       RuntimeIdentity
+	redactor       *actionresult.Redactor
+	sealedRecords  SealedRecords
+	mutations      MutationPort
+	capabilities   CapabilityProvider
+	runningActions RunningActions
+	now            func() time.Time
+	logf           func(string, ...any)
 
 	boundaryMu     sync.RWMutex
 	boundaries     map[int64]actionresult.CredentialBoundary
@@ -109,8 +105,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 		len(dependencies.IdentityKey) != 32 ||
 		dependencies.Delivery == nil || dependencies.MCPStarted == nil ||
 		dependencies.Identity == nil || dependencies.Redactor == nil || dependencies.SealedRecords == nil ||
-		dependencies.Mutations == nil || dependencies.Capabilities == nil || dependencies.RunningActions == nil ||
-		dependencies.EnqueueUserNote == nil {
+		dependencies.Mutations == nil || dependencies.Capabilities == nil || dependencies.RunningActions == nil {
 		return nil, ErrWorkflowUnavailable
 	}
 	now := dependencies.Now
@@ -126,8 +121,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 		service: NewService(dependencies.Registry, dependencies.Targets), identityKey: dependencies.IdentityKey,
 		delivery: dependencies.Delivery, mcpStarted: dependencies.MCPStarted, identity: dependencies.Identity,
 		redactor: dependencies.Redactor, sealedRecords: dependencies.SealedRecords, mutations: dependencies.Mutations,
-		capabilities: dependencies.Capabilities, runningActions: dependencies.RunningActions,
-		enqueueUserNote: dependencies.EnqueueUserNote, now: now, logf: logf,
+		capabilities: dependencies.Capabilities, runningActions: dependencies.RunningActions, now: now, logf: logf,
 		boundaries: make(map[int64]actionresult.CredentialBoundary),
 	}, nil
 }
@@ -135,8 +129,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 func (r *Runtime) validate() error {
 	if r == nil || r.database == nil || r.tokens == nil || r.service == nil ||
 		r.delivery == nil || r.mcpStarted == nil || r.identity == nil || r.redactor == nil ||
-		r.sealedRecords == nil || r.mutations == nil || r.capabilities == nil || r.runningActions == nil ||
-		r.enqueueUserNote == nil || r.now == nil {
+		r.sealedRecords == nil || r.mutations == nil || r.capabilities == nil || r.runningActions == nil || r.now == nil {
 		return ErrWorkflowUnavailable
 	}
 	return nil

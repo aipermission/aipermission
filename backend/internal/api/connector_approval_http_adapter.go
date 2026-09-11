@@ -15,7 +15,7 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgm
 	return connectormgmt.ConnectorApprovalScope{
 		Database: runtime.StoragePort().DatabaseHandle(),
 		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
-			return s.connectorActionWorkflow(runtime)
+			return s.connectorActionApprovalWorkflow(runtime)
 		},
 		MCPStarted: runtime.IsMCPStarted,
 		Redact: func(ctx context.Context, value string) string {

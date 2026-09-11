@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	runtimeops "github.com/aipermission/aipermission/backend/internal/workspaceruntime/operations"
 )
 
 // Workspace is the action-owner view of one unlocked workspace.
@@ -34,8 +35,7 @@ type ActionIdentity struct {
 }
 
 type WorkflowPorts struct {
-	Current       func() *actions.Runtime
-	OrCreate      func(func() (*actions.Runtime, error)) (*actions.Runtime, error)
+	State         *runtimeops.StateSlot
 	AcquireSecret func(context.Context) (func(), error)
 	RedactBasic   func(context.Context, string) string
 	RedactCustom  func(context.Context, string) string
@@ -49,7 +49,7 @@ type WorkflowPorts struct {
 func (workspace Workspace) workflowReady() bool {
 	return workspace.Storage.Database != nil && workspace.Storage.Tokens != nil && workspace.Storage.Registry != nil &&
 		workspace.Storage.SecretVault != nil && workspace.Identity.MCPStarted != nil && workspace.Identity.Ensure != nil &&
-		workspace.Workflow.OrCreate != nil && workspace.Workflow.AcquireSecret != nil && workspace.Workflow.RedactBasic != nil &&
+		workspace.Workflow.State != nil && workspace.Workflow.AcquireSecret != nil && workspace.Workflow.RedactBasic != nil &&
 		workspace.Workflow.RedactCustom != nil && workspace.Workflow.Mutate != nil && workspace.Workflow.Transaction != nil &&
 		workspace.Workflow.Observe != nil && workspace.Workflow.Capabilities != nil && workspace.Workflow.FinishRunning != nil
 }

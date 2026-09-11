@@ -103,6 +103,6 @@ func (s *Server) activeRuntime() databaseRuntime {
 
 func (s *Server) closeRuntime(runtime databaseRuntime) error {
 	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
-		return s.connectorActionWorkflow(runtime)
+		return s.connectorActionShutdownWorkflow(runtime)
 	})
 }

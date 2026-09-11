@@ -91,9 +91,6 @@ func workflowTestDependencies(delivery DeliveryGate) RuntimeDependencies {
 			return nil
 		},
 		RunningActions: workflowTestRunningActions{},
-		EnqueueUserNote: func(context.Context, *sql.Tx, int64, string) error {
-			return nil
-		},
 	}
 }
 
