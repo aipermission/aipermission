@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -24,10 +23,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
 func newLockedAPITestServer(t *testing.T) *Server {
@@ -43,43 +42,6 @@ func newLockedAPITestServer(t *testing.T) *Server {
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 	)
-}
-
-func TestDatabaseUnlockErrorsSeparateAuthenticationFromInitialization(t *testing.T) {
-	tests := []struct {
-		name       string
-		err        error
-		wantStatus int
-		wantBody   string
-	}{
-		{
-			name:       "database already owned",
-			err:        dbpkg.ErrDatabaseInUse,
-			wantStatus: http.StatusConflict,
-			wantBody:   "database is in use by another AIPermission process",
-		},
-		{
-			name:       "authentication",
-			err:        fmt.Errorf("%w: encrypted database validation failed", workspacelifecycle.ErrAuthentication),
-			wantStatus: http.StatusUnauthorized,
-			wantBody:   "invalid unlock password or database",
-		},
-		{
-			name:       "initialization",
-			err:        fmt.Errorf("%w: migrate encrypted records: invalid envelope", workspacelifecycle.ErrInitialization),
-			wantStatus: http.StatusConflict,
-			wantBody:   "database initialization failed",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			writeDatabaseUnlockError(response, test.err)
-			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), test.wantBody) {
-				t.Fatalf("response = %d %s", response.Code, response.Body.String())
-			}
-		})
-	}
 }
 
 func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
@@ -102,20 +64,6 @@ func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
 	}
 	if err := secondServer.closeRuntime(second); err != nil {
 		t.Fatalf("close second runtime: %v", err)
-	}
-}
-
-func TestDatabaseInitializationFailureDoesNotConsumePasswordAttempts(t *testing.T) {
-	server := NewLockedServer(fixtureConfigForLockedTest(t))
-	attempt := databasePasswordAttempt{infrastructure: server.infrastructure, key: "unlock:test"}
-	attempt.failure()
-	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: rewrite failed", workspacelifecycle.ErrInitialization))
-	if failures := server.infrastructure.DatabasePasswordFailureCount(attempt.key); failures != 0 {
-		t.Fatalf("initialization failure retained password failures: %d", failures)
-	}
-	recordDatabaseUnlockAttempt(attempt, fmt.Errorf("%w: validation failed", workspacelifecycle.ErrAuthentication))
-	if failures := server.infrastructure.DatabasePasswordFailureCount(attempt.key); failures == 0 {
-		t.Fatal("authentication failure did not consume password attempt")
 	}
 }
 
@@ -160,7 +108,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := &Server{infrastructure: gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), "3212", nil)}
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
@@ -459,9 +407,6 @@ func TestUnlockRejectsMissingDatabaseAndBadIDs(t *testing.T) {
 	handler := server.Handler()
 	defer server.Close()
 
-	if (errPasswordMismatch{}).Error() != "password confirmation does not match" {
-		t.Fatalf("unexpected password mismatch message")
-	}
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{Password: ""}); response.Code != http.StatusBadRequest {
 		t.Fatalf("missing password should fail, got %d", response.Code)
 	}

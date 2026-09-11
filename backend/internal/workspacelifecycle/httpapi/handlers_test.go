@@ -3,12 +3,14 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
@@ -16,6 +18,7 @@ type fakeLifecycle struct {
 	unlocked    bool
 	status      workspacelifecycle.Status
 	renameError error
+	unlockError error
 	lockCalls   int
 }
 
@@ -25,7 +28,7 @@ func (f *fakeLifecycle) Setup(string, string, string) (workspacelifecycle.Transi
 	return workspacelifecycle.Transition{}, nil
 }
 func (f *fakeLifecycle) Unlock(string, string) (workspacelifecycle.Transition, error) {
-	return workspacelifecycle.Transition{}, nil
+	return workspacelifecycle.Transition{}, f.unlockError
 }
 func (f *fakeLifecycle) Lock(string) (workspacelifecycle.Status, error) {
 	f.lockCalls++
@@ -80,6 +83,51 @@ func TestInvalidLockScopeHasNoLifecycleSideEffects(t *testing.T) {
 	handlers.Lock(response, request)
 	if response.Code != http.StatusBadRequest || maintenanceClosed || lifecycle.lockCalls != 0 {
 		t.Fatalf("code=%d maintenance_closed=%t lock_calls=%d", response.Code, maintenanceClosed, lifecycle.lockCalls)
+	}
+}
+
+func TestUnlockErrorsAndAttemptsAreClassifiedAtTheWorkspaceBoundary(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		wantStatus   int
+		wantBody     string
+		wantFailures int
+		wantSuccess  int
+	}{
+		{
+			name: "database already owned", err: db.ErrDatabaseInUse,
+			wantStatus: http.StatusConflict, wantBody: "database is in use by another AIPermission process", wantSuccess: 1,
+		},
+		{
+			name: "authentication", err: fmt.Errorf("%w: encrypted database validation failed", workspacelifecycle.ErrAuthentication),
+			wantStatus: http.StatusUnauthorized, wantBody: "invalid unlock password or database", wantFailures: 1,
+		},
+		{
+			name: "initialization", err: fmt.Errorf("%w: migrate encrypted records: invalid envelope", workspacelifecycle.ErrInitialization),
+			wantStatus: http.StatusConflict, wantBody: "database initialization failed", wantSuccess: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			attempt := &fakeAttempt{}
+			handlers := New(Dependencies{
+				Lifecycle: &fakeLifecycle{unlockError: test.err},
+				BeginAttempt: func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool) {
+					return attempt, true
+				},
+			})
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/api/unlock", strings.NewReader(`{"password":"LongPassword123"}`))
+			request.Header.Set("Content-Type", "application/json")
+			handlers.Unlock(response, request)
+			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), test.wantBody) {
+				t.Fatalf("response=%d %s", response.Code, response.Body.String())
+			}
+			if attempt.failures != test.wantFailures || attempt.successes != test.wantSuccess {
+				t.Fatalf("attempt successes=%d failures=%d", attempt.successes, attempt.failures)
+			}
+		})
 	}
 }
 

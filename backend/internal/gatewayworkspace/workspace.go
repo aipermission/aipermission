@@ -1,4 +1,5 @@
-// Package gatewayworkspace is the bounded workspace lifecycle and encrypted-runtime composition API.
+// Package gatewayworkspace owns encrypted workspace lifecycle, runtime
+// construction, and database catalog operations for the gateway.
 package gatewayworkspace
 
 import (
@@ -17,8 +18,6 @@ import (
 )
 
 type Runtime = runtimecontract.Runtime
-type Registry = workspacelifecycle.Registry[Runtime]
-type Service = workspacelifecycle.Service[Runtime]
 type Vault = vault.Vault
 type TokenStore = tokens.Store
 type AdoptInput = runtimeinput.Adopt
@@ -28,53 +27,148 @@ type Dependencies = lifecycle.Dependencies
 type HTTPDependencies = lifecycle.HTTPDependencies
 type HTTPHandlers = lifecycle.HTTPHandlers
 type PasswordAttempt = lifecycle.PasswordAttempt
-type UnlockRequest = lifecycle.UnlockRequest
-type SetupRequest = lifecycle.SetupRequest
-type StatusResponse = lifecycle.StatusResponse
-type RenameRequest = lifecycle.RenameRequest
-type DeleteRequest = lifecycle.DeleteRequest
-type DeleteLockedRequest = lifecycle.DeleteLockedRequest
-type SwitchRequest = lifecycle.SwitchRequest
-type ChangePasswordRequest = lifecycle.ChangePasswordRequest
 type ActionWorkflow = runtimefactory.ActionWorkflow
 
+type LifecyclePort interface {
+	AcquireRead() func()
+	AcquireMutation() func()
+	Import(context.Context, workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error)
+	CloseAll() error
+}
+
+// Component is the single owner of workspace registry and lifecycle state.
+// Runtime construction and catalog mutations also enter through this boundary.
+type Component struct {
+	lifecycle *lifecycle.Component
+}
+
+func NewComponent(path string, describe func(Runtime) Identity) *Component {
+	catalog.Scavenge(path, time.Now())
+	if describe == nil {
+		describe = func(runtime Runtime) Identity {
+			if runtime == nil {
+				return Identity{}
+			}
+			return runtime.WorkspaceIdentity()
+		}
+	}
+	return &Component{lifecycle: lifecycle.NewComponent(path, catalog.DefaultID(path), describe)}
+}
+
+func (component *Component) Configure(dependencies Dependencies) error {
+	if component == nil || component.lifecycle == nil {
+		return ErrInitialization
+	}
+	return component.lifecycle.Configure(dependencies)
+}
+
+func (component *Component) IsUnlocked() bool {
+	return component != nil && component.lifecycle != nil && component.lifecycle.IsUnlocked()
+}
+func (component *Component) Selection() Identity {
+	if component == nil || component.lifecycle == nil {
+		return Identity{}
+	}
+	return component.lifecycle.Selection()
+}
+func (component *Component) Lookup(id string) (Runtime, bool) {
+	if component == nil || component.lifecycle == nil {
+		return nil, false
+	}
+	return component.lifecycle.Lookup(id)
+}
+func (component *Component) Activate(runtime Runtime) {
+	if component != nil && component.lifecycle != nil {
+		component.lifecycle.Activate(runtime)
+	}
+}
+func (component *Component) Active() Runtime {
+	if component == nil || component.lifecycle == nil {
+		return nil
+	}
+	return component.lifecycle.Active()
+}
+func (component *Component) Snapshot() []Runtime {
+	if component == nil || component.lifecycle == nil {
+		return nil
+	}
+	return component.lifecycle.Snapshot()
+}
+func (component *Component) Len() int {
+	if component == nil || component.lifecycle == nil {
+		return 0
+	}
+	return component.lifecycle.Len()
+}
+func (component *Component) DatabaseName() (string, error) {
+	if component == nil || component.lifecycle == nil {
+		return "", ErrInitialization
+	}
+	return component.lifecycle.DatabaseName()
+}
+func (component *Component) AcquireRead() func() {
+	if component == nil || component.lifecycle == nil {
+		return func() {}
+	}
+	return component.lifecycle.AcquireRead()
+}
+func (component *Component) AcquireMutation() func() {
+	if component == nil || component.lifecycle == nil {
+		return func() {}
+	}
+	return component.lifecycle.AcquireMutation()
+}
+func (component *Component) Import(ctx context.Context, input workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error) {
+	if component == nil || component.lifecycle == nil {
+		return workspacelifecycle.Transition{}, ErrInitialization
+	}
+	return component.lifecycle.Import(ctx, input)
+}
+func (component *Component) CloseAll() error {
+	if component == nil || component.lifecycle == nil {
+		return nil
+	}
+	return component.lifecycle.CloseAll()
+}
+func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
+	if component == nil || component.lifecycle == nil {
+		return nil
+	}
+	return component.lifecycle.HTTP(dependencies)
+}
+
+func (component *Component) Adopt(ctx context.Context, input AdoptInput) (Runtime, error) {
+	return runtimefactory.Adopt(ctx, input)
+}
+func (component *Component) Open(ctx context.Context, input OpenInput) (Runtime, error) {
+	return runtimefactory.Open(ctx, input)
+}
+func (component *Component) Discard(runtime Runtime) error { return runtimefactory.Discard(runtime) }
+func (component *Component) Close(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
+	return runtimefactory.Close(runtime, resolve)
+}
+func (component *Component) Move(currentPath, targetPath string) error {
+	return catalog.Move(currentPath, targetPath)
+}
+func (component *Component) Delete(path string) error { return catalog.Delete(path) }
+func (component *Component) Publish(sourcePath, targetPath string) error {
+	return catalog.Publish(sourcePath, targetPath)
+}
+func (component *Component) LooksPlaintext(path string) bool { return catalog.LooksPlaintext(path) }
+func (component *Component) HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
+	return lifecycle.HasActiveRemoteBackup(ctx, database)
+}
+
+func (component *Component) ValidateRemoteBackupPassword(password, databaseName string) error {
+	return lifecycle.ValidateRemoteBackupPassword(password, databaseName)
+}
+
+func (component *Component) PasswordPolicyError(err error) error {
+	return lifecycle.PasswordPolicyError(err)
+}
+
 var (
-	ErrDatabaseInUse  = catalog.ErrDatabaseInUse
-	ErrAuthentication = lifecycle.ErrAuthentication
 	ErrInitialization = lifecycle.ErrInitialization
 )
 
-func Scavenge(path string, now time.Time)         { catalog.Scavenge(path, now) }
-func DefaultID(path string) string                { return catalog.DefaultID(path) }
-func Move(currentPath, targetPath string) error   { return catalog.Move(currentPath, targetPath) }
-func Delete(path string) error                    { return catalog.Delete(path) }
-func Publish(sourcePath, targetPath string) error { return catalog.Publish(sourcePath, targetPath) }
-func LooksPlaintext(path string) bool             { return catalog.LooksPlaintext(path) }
-func UnsupportedSchemaMessage(err error) string   { return catalog.UnsupportedSchemaMessage(err) }
-func Adopt(ctx context.Context, input AdoptInput) (Runtime, error) {
-	return runtimefactory.Adopt(ctx, input)
-}
-func Open(ctx context.Context, input OpenInput) (Runtime, error) {
-	return runtimefactory.Open(ctx, input)
-}
-func Discard(runtime Runtime) error { return runtimefactory.Discard(runtime) }
-func Close(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
-	return runtimefactory.Close(runtime, resolve)
-}
-func NewRegistry(path, id string, describe func(Runtime) Identity) *Registry {
-	return lifecycle.NewRegistry(path, id, describe)
-}
-func NewService(dependencies Dependencies) (*Service, error) {
-	return lifecycle.NewService(dependencies)
-}
-func NewHTTP(dependencies HTTPDependencies) *HTTPHandlers { return lifecycle.NewHTTP(dependencies) }
-func ValidatePassword(password, confirmation string) error {
-	return lifecycle.ValidatePassword(password, confirmation)
-}
-func PasswordPolicyError(err error) error { return lifecycle.PasswordPolicyError(err) }
-func ValidateRemoteBackupPassword(password, name string) error {
-	return lifecycle.ValidateRemoteBackupPassword(password, name)
-}
-func HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
-	return lifecycle.HasActiveRemoteBackup(ctx, database)
-}
+var _ LifecyclePort = (*Component)(nil)

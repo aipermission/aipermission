@@ -2,6 +2,7 @@ package gatewayinfrastructure
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"time"
 
@@ -28,8 +29,7 @@ type Component struct {
 	vaultRequestLimiter        *runtimecontrol.Window
 	uiSessions                 *uisession.Manager
 	backupOperations           backups.OperationLimiter
-	workspaceRegistry          *gatewayworkspace.Registry
-	workspaceLifecycle         *gatewayworkspace.Service
+	workspace                  *gatewayworkspace.Component
 	runtimeInstanceIDGenerator func() (string, error)
 }
 
@@ -54,7 +54,7 @@ func NewComponent(dataPath, frontendPort string, describe func(Runtime) Identity
 		vaultGenerateLimiter:       runtimecontrol.NewWindow(10, time.Minute),
 		vaultRequestLimiter:        runtimecontrol.NewWindow(30, time.Minute),
 		uiSessions:                 uisession.New(frontendPort),
-		workspaceRegistry:          gatewayworkspace.NewRegistry(dataPath, gatewayworkspace.DefaultID(dataPath), describe),
+		workspace:                  gatewayworkspace.NewComponent(dataPath, describe),
 		runtimeInstanceIDGenerator: resolved.RuntimeInstanceIDGenerator,
 	}
 }
@@ -81,76 +81,153 @@ func (component *Component) ConnectorAdapterRegistry() *connectorapi.Registry {
 }
 
 func (component *Component) ConfigureWorkspaceLifecycle(dependencies gatewayworkspace.Dependencies) error {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return gatewayworkspace.ErrInitialization
 	}
-	dependencies.Registry = component.workspaceRegistry
-	lifecycle, err := gatewayworkspace.NewService(dependencies)
-	if err != nil {
-		return err
-	}
-	component.workspaceLifecycle = lifecycle
-	return nil
+	return component.workspace.Configure(dependencies)
 }
 
-func (component *Component) WorkspaceLifecycle() *gatewayworkspace.Service {
-	if component == nil {
+func (component *Component) WorkspaceLifecycle() WorkspaceLifecyclePort {
+	if component == nil || component.workspace == nil {
 		return nil
 	}
-	return component.workspaceLifecycle
+	return component.workspace
 }
 
 func (component *Component) WorkspaceIsUnlocked() bool {
-	return component != nil && component.workspaceRegistry != nil && component.workspaceRegistry.IsUnlocked()
+	return component != nil && component.workspace != nil && component.workspace.IsUnlocked()
 }
 
 func (component *Component) WorkspaceSelection() gatewayworkspace.Identity {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return gatewayworkspace.Identity{}
 	}
-	return component.workspaceRegistry.Selection()
+	return component.workspace.Selection()
 }
 
 func (component *Component) LookupWorkspace(id string) (Runtime, bool) {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return nil, false
 	}
-	return component.workspaceRegistry.Lookup(id)
+	return component.workspace.Lookup(id)
 }
 
 func (component *Component) ActivateWorkspace(runtime Runtime) {
-	if component != nil && component.workspaceRegistry != nil && runtime != nil {
-		component.workspaceRegistry.Activate(runtime)
+	if component != nil && component.workspace != nil && runtime != nil {
+		component.workspace.Activate(runtime)
 	}
 }
 
 func (component *Component) ActiveWorkspace() Runtime {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return nil
 	}
-	if component.workspaceLifecycle != nil {
-		runtime, _ := component.workspaceLifecycle.Active()
-		return runtime
-	}
-	runtime, _ := component.workspaceRegistry.Active()
-	return runtime
+	return component.workspace.Active()
 }
 
 func (component *Component) WorkspaceSnapshot() []Runtime {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return nil
 	}
-	if component.workspaceLifecycle != nil {
-		return component.workspaceLifecycle.Snapshot()
-	}
-	return component.workspaceRegistry.Snapshot()
+	return component.workspace.Snapshot()
 }
 
 func (component *Component) WorkspaceCount() int {
-	if component == nil || component.workspaceRegistry == nil {
+	if component == nil || component.workspace == nil {
 		return 0
 	}
-	return component.workspaceRegistry.Len()
+	return component.workspace.Len()
+}
+
+func (component *Component) AdoptWorkspace(ctx context.Context, input AdoptInput) (Runtime, error) {
+	if component == nil || component.workspace == nil {
+		return nil, gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Adopt(ctx, input)
+}
+
+func (component *Component) OpenWorkspace(ctx context.Context, input OpenInput) (Runtime, error) {
+	if component == nil || component.workspace == nil {
+		return nil, gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Open(ctx, input)
+}
+
+func (component *Component) DiscardWorkspace(runtime Runtime) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Discard(runtime)
+}
+
+func (component *Component) CloseWorkspace(runtime Runtime, resolve func() (ActionWorkflow, error)) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Close(runtime, resolve)
+}
+
+func (component *Component) MoveDatabase(currentPath, targetPath string) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Move(currentPath, targetPath)
+}
+
+func (component *Component) PublishDatabase(sourcePath, targetPath string) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Publish(sourcePath, targetPath)
+}
+
+func (component *Component) DeleteDatabase(path string) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.Delete(path)
+}
+
+func (component *Component) LooksPlaintext(path string) bool {
+	if component == nil || component.workspace == nil {
+		return false
+	}
+	return component.workspace.LooksPlaintext(path)
+}
+
+func (component *Component) WorkspaceDatabaseName() (string, error) {
+	if component == nil || component.workspace == nil {
+		return "", gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.DatabaseName()
+}
+
+func (component *Component) WorkspaceHTTP(dependencies WorkspaceHTTPDependencies) WorkspaceHTTPHandlers {
+	if component == nil || component.workspace == nil {
+		return nil
+	}
+	return component.workspace.HTTP(dependencies)
+}
+
+func (component *Component) HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
+	if component == nil || component.workspace == nil {
+		return false, gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.HasActiveRemoteBackup(ctx, database)
+}
+
+func (component *Component) ValidateRemoteBackupPassword(password, databaseName string) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.ValidateRemoteBackupPassword(password, databaseName)
+}
+
+func (component *Component) PasswordPolicyError(err error) error {
+	if component == nil || component.workspace == nil {
+		return gatewayworkspace.ErrInitialization
+	}
+	return component.workspace.PasswordPolicyError(err)
 }
 
 func (component *Component) WaitDatabasePassword(ctx context.Context, key string) error {

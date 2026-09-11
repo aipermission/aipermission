@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -44,8 +43,6 @@ func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOpti
 
 func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault *gatewayinfra.Vault, tokenStore *gatewayinfra.TokenStore, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	gatewayinfra.Scavenge(cfg.DataPath, time.Now())
-	activeID := gatewayinfra.DefaultID(cfg.DataPath)
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
 	registry := infrastructure.ConnectorRegistry()
 	server := &Server{
@@ -54,8 +51,8 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
-	runtime, err := gatewayinfra.Adopt(context.Background(), gatewayinfra.AdoptInput{
-		ID: activeID, Path: cfg.DataPath, Database: database, Vault: secretVault,
+	runtime, err := infrastructure.AdoptWorkspace(context.Background(), gatewayinfra.AdoptInput{
+		ID: infrastructure.WorkspaceSelection().ID, Path: cfg.DataPath, Database: database, Vault: secretVault,
 		TokenStore: tokenStore, ConfiguredGatewaySecret: cfg.GatewaySecret,
 		Registry: registry, AdapterRegistry: infrastructure.ConnectorAdapterRegistry(),
 		RuntimeInstanceID: infrastructure.RuntimeInstanceIDGenerator(),
@@ -83,7 +80,6 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	gatewayinfra.Scavenge(cfg.DataPath, time.Now())
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, cfg.FrontendPort, describeDatabaseRuntime, options...)
 	server := &Server{
 		config: cfg, infrastructure: infrastructure, mux: http.NewServeMux(),
@@ -101,7 +97,7 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		Open:          s.openRuntimeForLifecycle,
 		Close:         s.closeRuntime,
 		Move:          s.moveDatabase,
-		Delete:        gatewayinfra.Delete,
+		Delete:        s.infrastructure.DeleteDatabase,
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime databaseRuntime) {
@@ -111,12 +107,12 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		},
 		OnOpened: s.initializeRetention,
 		ValidateNewPassword: func(ctx context.Context, database *sql.DB, databaseName, password string) error {
-			hasActiveRemoteBackup, err := gatewayinfra.HasActiveRemoteBackup(ctx, database)
+			hasActiveRemoteBackup, err := s.infrastructure.HasActiveRemoteBackup(ctx, database)
 			if err != nil || !hasActiveRemoteBackup {
 				return err
 			}
-			if err := gatewayinfra.ValidateRemoteBackupPassword(password, databaseName); err != nil {
-				return gatewayinfra.PasswordPolicyError(err)
+			if err := s.infrastructure.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+				return s.infrastructure.PasswordPolicyError(err)
 			}
 			return nil
 		},

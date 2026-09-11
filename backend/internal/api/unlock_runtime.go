@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
@@ -19,9 +18,7 @@ func (s *Server) workspaceSelection() gatewayinfra.Identity {
 		return gatewayinfra.Identity{}
 	}
 	if s.infrastructure == nil {
-		return gatewayinfra.Identity{
-			ID: gatewayinfra.DefaultID(s.config.DataPath), Path: s.config.DataPath,
-		}
+		return gatewayinfra.Identity{Path: s.config.DataPath}
 	}
 	return s.infrastructure.WorkspaceSelection()
 }
@@ -37,18 +34,18 @@ func (s *Server) moveDatabase(currentPath string, targetPath string) error {
 	if s.moveDatabaseOverride != nil {
 		return s.moveDatabaseOverride(currentPath, targetPath)
 	}
-	return gatewayinfra.Move(currentPath, targetPath)
+	return s.infrastructure.MoveDatabase(currentPath, targetPath)
 }
 
 func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	if s.publishDatabaseOverride != nil {
 		return s.publishDatabaseOverride(sourcePath, targetPath)
 	}
-	return gatewayinfra.Publish(sourcePath, targetPath)
+	return s.infrastructure.PublishDatabase(sourcePath, targetPath)
 }
 
 func (s *Server) openRuntime(path string, id string, password string) (databaseRuntime, error) {
-	runtime, err := gatewayinfra.Open(context.Background(), gatewayinfra.OpenInput{
+	runtime, err := s.infrastructure.OpenWorkspace(context.Background(), gatewayinfra.OpenInput{
 		ID: id, Path: path, Password: password,
 		ConfiguredGatewaySecret: s.config.GatewaySecret,
 		Registry:                s.connectorRegistry(), AdapterRegistry: s.connectorAdapterRegistry(),
@@ -84,7 +81,7 @@ func (s *Server) openRuntime(path string, id string, password string) (databaseR
 }
 
 func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {
-	if err := gatewayinfra.Discard(runtime); err != nil {
+	if err := s.infrastructure.DiscardWorkspace(runtime); err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 	}
 }
@@ -105,15 +102,7 @@ func (s *Server) activeRuntime() databaseRuntime {
 }
 
 func (s *Server) closeRuntime(runtime databaseRuntime) error {
-	return gatewayinfra.Close(runtime, func() (gatewayinfra.ActionWorkflow, error) {
+	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionWorkflow(runtime)
 	})
-}
-
-func rejectPlaintextDatabase(w http.ResponseWriter, path string) bool {
-	if !gatewayinfra.LooksPlaintext(path) {
-		return false
-	}
-	writeError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")
-	return true
 }
