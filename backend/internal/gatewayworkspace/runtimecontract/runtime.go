@@ -30,7 +30,7 @@ type Runtime interface {
 	UIRetryIdentifier() string
 	ActionIdentity() []byte
 	ClearActionIdentity()
-	EnsureIdentity(func(*sql.DB) (string, error), func() (string, error)) error
+	IdentityReady() bool
 	IsMCPStarted() bool
 	SetMCPStarted(bool)
 }

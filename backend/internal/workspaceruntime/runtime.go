@@ -2,7 +2,6 @@ package workspaceruntime
 
 import (
 	"database/sql"
-	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
@@ -28,7 +27,6 @@ type Runtime struct {
 	Security          security.State
 	Observation       observation.State
 	Components        componentstate.State
-	identityMu        sync.Mutex
 }
 
 type Port interface {
@@ -48,7 +46,7 @@ type Port interface {
 	UIRetryIdentifier() string
 	ActionIdentity() []byte
 	ClearActionIdentity()
-	EnsureIdentity(func(*sql.DB) (string, error), func() (string, error)) error
+	IdentityReady() bool
 	IsMCPStarted() bool
 	SetMCPStarted(bool)
 }
@@ -186,26 +184,8 @@ func (r *Runtime) ClearActionIdentity() {
 	}
 }
 
-func (r *Runtime) EnsureIdentity(
-	ensureWorkspace func(*sql.DB) (string, error),
-	newRuntimeInstance func() (string, error),
-) error {
-	if r == nil {
-		return nil
-	}
-	r.identityMu.Lock()
-	defer r.identityMu.Unlock()
-	var err error
-	if r.WorkspaceUUID == "" {
-		r.WorkspaceUUID, err = ensureWorkspace(r.Storage.Database)
-		if err != nil {
-			return err
-		}
-	}
-	if r.RuntimeInstanceID == "" {
-		r.RuntimeInstanceID, err = newRuntimeInstance()
-	}
-	return err
+func (r *Runtime) IdentityReady() bool {
+	return r != nil && r.WorkspaceUUID != "" && r.RuntimeInstanceID != ""
 }
 
 func (r *Runtime) IsMCPStarted() bool {

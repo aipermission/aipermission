@@ -431,7 +431,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := &Server{}
-	if err := server.ensureRuntimeIdentity(runtime); err != nil {
+	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
 	store := connectortargets.NewStore(database)
@@ -489,7 +489,7 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
 	server := &Server{}
-	if err := server.ensureRuntimeIdentity(runtime); err != nil {
+	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
 	runtime.SetMCPStarted(true)
@@ -568,7 +568,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
 	server := &Server{}
-	if err := server.ensureRuntimeIdentity(runtime); err != nil {
+	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
 	runtime.SetMCPStarted(true)

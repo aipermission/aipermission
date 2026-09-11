@@ -34,10 +34,6 @@ func (*Component) NewCommandWorkspaceRuntime(dependencies commandrequests.Worksp
 	return commandrequests.NewWorkspaceRuntime(dependencies)
 }
 
-func (*Component) NewRuntimeInstanceID() (string, error) {
-	return executionprincipal.NewRuntimeInstanceID()
-}
-
 func (*Component) PrincipalLocalOperator(workspaceID string, runtimeInstanceID string) (executionprincipal.Principal, error) {
 	return executionprincipal.LocalOperator(workspaceID, runtimeInstanceID)
 }
