@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -50,7 +51,15 @@ type FileTransferHTTPDependencies struct {
 	DataPath   string
 }
 
-func InitializeFileTransferWorkspace(
+// Component owns every workspace-scoped transfer runtime for one gateway
+// process. Workspace identity is only used as an opaque index key.
+type Component struct {
+	runtimes transferapp.Manager
+}
+
+func NewComponent() *Component { return &Component{} }
+
+func (component *Component) InitializeWorkspace(
 	workspace FileTransferWorkspace,
 	database *sql.DB,
 	observe transferapp.ObservationAudit,
@@ -59,10 +68,13 @@ func InitializeFileTransferWorkspace(
 	if workspace == nil {
 		return fmt.Errorf("file transfer workspace state is unavailable")
 	}
+	if component == nil {
+		return fmt.Errorf("file transfer component is unavailable")
+	}
 	if resolve == nil {
 		return fmt.Errorf("file transfer connector resolver is unavailable")
 	}
-	return transferapp.InitializeWorkspace(workspace, database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
+	return component.runtimes.InitializeWorkspace(workspace, database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
 		ports, err := resolve(ctx, runtimeID)
 		if err != nil {
 			return transferapp.ConnectorPorts{}, err
@@ -74,7 +86,7 @@ func InitializeFileTransferWorkspace(
 	})
 }
 
-func NewFileTransferHTTPHandlers(dependencies FileTransferHTTPDependencies) *FileTransferHTTPHandlers {
+func (component *Component) NewHTTPHandlers(dependencies FileTransferHTTPDependencies) *FileTransferHTTPHandlers {
 	return newFileTransferHTTPHandlers(fileTransferHandlerDependencies{
 		Scope: func(w http.ResponseWriter) (*transferapp.Runtime, bool) {
 			if dependencies.Scope == nil {
@@ -89,7 +101,11 @@ func NewFileTransferHTTPHandlers(dependencies FileTransferHTTPDependencies) *Fil
 				writeInternalError(w)
 				return nil, false
 			}
-			runtime, err := transferapp.RuntimeForWorkspace(workspace)
+			if component == nil {
+				writeInternalError(w)
+				return nil, false
+			}
+			runtime, err := component.runtimes.RuntimeForWorkspace(workspace)
 			if err != nil {
 				writeInternalError(w)
 				return nil, false
@@ -100,9 +116,10 @@ func NewFileTransferHTTPHandlers(dependencies FileTransferHTTPDependencies) *Fil
 	})
 }
 
-func (s FileTransferHTTPHandlers) CreateAndLaunchDownloadBatchForWorkspace(
+func (component *Component) CreateAndLaunchDownloadBatch(
 	ctx context.Context,
 	workspace FileTransferWorkspace,
+	handlers *FileTransferHTTPHandlers,
 	authorization connectorapi.TransferAuthorization,
 	runtimeID int64,
 	remotePaths []string,
@@ -112,17 +129,53 @@ func (s FileTransferHTTPHandlers) CreateAndLaunchDownloadBatchForWorkspace(
 	if workspace == nil {
 		return filetransfer.BatchRecord{}, fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	runtime, err := transferapp.RuntimeForWorkspace(workspace)
+	if component == nil || handlers == nil {
+		return filetransfer.BatchRecord{}, fmt.Errorf("file transfer component is unavailable")
+	}
+	runtime, err := component.runtimes.RuntimeForWorkspace(workspace)
 	if err != nil {
 		return filetransfer.BatchRecord{}, err
 	}
-	return s.CreateAndLaunchDownloadBatch(ctx, runtime, authorization, runtimeID, remotePaths, archiveName, source)
+	return handlers.CreateAndLaunchDownloadBatch(ctx, runtime, authorization, runtimeID, remotePaths, archiveName, source)
 }
 
-func FileTransferWorkspaceReady(workspace FileTransferWorkspace) bool {
-	return workspace != nil && transferapp.WorkspaceReady(workspace)
+func (component *Component) WorkspaceReady(workspace FileTransferWorkspace) bool {
+	return component != nil && workspace != nil && component.runtimes.WorkspaceReady(workspace)
 }
 
-func StopFileTransferWorkspace(workspace FileTransferWorkspace) {
-	transferapp.StopWorkspace(workspace)
+func (component *Component) WorkspaceJobs(workspace FileTransferWorkspace) (transferapp.Jobs, error) {
+	if component == nil {
+		return nil, fmt.Errorf("file transfer component is unavailable")
+	}
+	return component.runtimes.WorkspaceJobs(workspace)
+}
+
+type WorkspaceLifecycle interface {
+	Shutdown(time.Duration, string, string) (bool, bool, error)
+	Wait(context.Context) bool
+	Abort()
+}
+
+type workspaceLifecycle struct {
+	manager   *transferapp.Manager
+	workspace FileTransferWorkspace
+}
+
+func (component *Component) Lifecycle(workspace FileTransferWorkspace) WorkspaceLifecycle {
+	if component == nil || workspace == nil {
+		return nil
+	}
+	return workspaceLifecycle{manager: &component.runtimes, workspace: workspace}
+}
+
+func (lifecycle workspaceLifecycle) Shutdown(timeout time.Duration, runningMessage, batchMessage string) (bool, bool, error) {
+	return lifecycle.manager.ShutdownWorkspace(lifecycle.workspace, timeout, runningMessage, batchMessage)
+}
+
+func (lifecycle workspaceLifecycle) Wait(ctx context.Context) bool {
+	return lifecycle.manager.WaitWorkspace(ctx, lifecycle.workspace)
+}
+
+func (lifecycle workspaceLifecycle) Abort() {
+	lifecycle.manager.RemoveWorkspace(lifecycle.workspace)
 }

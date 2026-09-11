@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
@@ -30,22 +29,12 @@ func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
 	runtime := &shutdownRuntimeSpy{Runtime: concrete, cleared: make(chan struct{})}
 	release := make(chan struct{})
 	waiting := make(chan struct{})
-	key := componentstate.NewKey[*struct{}]("pending-component")
-	if err := componentstate.RegisterLifecycle(runtime.ComponentStatePort(), key, componentstate.Lifecycle{
-		Name: "pending-component",
-		Close: func(context.Context) (bool, error) {
-			return false, nil
-		},
-		Abort: func() {},
-		Wait: func(context.Context) bool {
-			close(waiting)
-			<-release
-			return true
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := Close(runtime, nil, nil); err == nil {
+	transfer := &transferWorkflowSpy{wait: func(context.Context) bool {
+		close(waiting)
+		<-release
+		return true
+	}}
+	if err := Close(runtime, nil, nil, func() TransferWorkflow { return transfer }); err == nil {
 		t.Fatal("pending component shutdown did not report deferred storage close")
 	}
 	select {
@@ -66,23 +55,30 @@ func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
 
 func TestDiscardAbortsRegisteredComponents(t *testing.T) {
 	runtime := &workspaceruntime.Runtime{ID: "opening", ActionIdentityKey: make([]byte, 32)}
-	aborted := false
-	key := componentstate.NewKey[*struct{}]("opening-component")
-	if err := componentstate.RegisterLifecycle(runtime.ComponentStatePort(), key, componentstate.Lifecycle{
-		Name:  "opening-component",
-		Close: func(context.Context) (bool, error) { return true, nil },
-		Abort: func() { aborted = true },
-		Wait:  func(context.Context) bool { return true },
-	}); err != nil {
+	transfer := &transferWorkflowSpy{}
+	if err := Discard(runtime, func() TransferWorkflow { return transfer }); err != nil {
 		t.Fatal(err)
 	}
-	if err := Discard(runtime); err != nil {
-		t.Fatal(err)
-	}
-	if !aborted {
+	if !transfer.aborted {
 		t.Fatal("discard did not abort the registered component")
 	}
 }
+
+type transferWorkflowSpy struct {
+	aborted bool
+	wait    func(context.Context) bool
+}
+
+func (*transferWorkflowSpy) Shutdown(time.Duration, string, string) (bool, bool, error) {
+	return true, false, nil
+}
+func (workflow *transferWorkflowSpy) Wait(ctx context.Context) bool {
+	if workflow.wait != nil {
+		return workflow.wait(ctx)
+	}
+	return true
+}
+func (workflow *transferWorkflowSpy) Abort() { workflow.aborted = true }
 
 type commandWorkflowSpy struct{ message string }
 
@@ -108,7 +104,7 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 		return workflow, nil
 	}, func() (CommandWorkflow, error) {
 		return commands, nil
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if resolveCalls != 1 || !workflow.stopped {
@@ -127,7 +123,7 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 
 func TestDiscardDoesNotRunActionRecovery(t *testing.T) {
 	runtime := &workspaceruntime.Runtime{ID: "opening", ActionIdentityKey: make([]byte, 32)}
-	if err := Discard(runtime); err != nil {
+	if err := Discard(runtime, nil); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.ActionIdentityKey != nil {

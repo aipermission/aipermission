@@ -4,17 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
-	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
+	"github.com/aipermission/aipermission/backend/internal/runtimeindex"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
-var workspaceRuntimeStateKey = componentstate.NewKey[*workspaceRuntimeHandle]("file-transfer-runtime")
-
 type Workspace interface {
-	ComponentStatePort() componentstate.Port
+	RuntimeIdentifier() string
 }
 
 type workspaceRuntimeHandle struct {
@@ -22,17 +20,16 @@ type workspaceRuntimeHandle struct {
 	runtime   *Runtime
 }
 
-func InitializeWorkspace(
-	workspace Workspace,
-	database *sql.DB,
-	observe ObservationAudit,
-	resolve ConnectorPortsResolver,
-) error {
-	state, err := workspaceState(workspace)
+type Manager struct {
+	runtimes runtimeindex.Index[*workspaceRuntimeHandle]
+}
+
+func (manager *Manager) InitializeWorkspace(workspace Workspace, database *sql.DB, observe ObservationAudit, resolve ConnectorPortsResolver) error {
+	id, err := workspaceID(workspace)
 	if err != nil {
 		return err
 	}
-	handle, err := componentstate.LoadOrCreate(state, workspaceRuntimeStateKey, func() (*workspaceRuntimeHandle, error) {
+	_, err = manager.runtimes.LoadOrCreate(id, func() (*workspaceRuntimeHandle, error) {
 		lifecycle := NewLifecycle()
 		runtime, err := lifecycle.NewRuntime(database, observe, resolve)
 		if err != nil {
@@ -41,25 +38,11 @@ func InitializeWorkspace(
 		}
 		return &workspaceRuntimeHandle{lifecycle: lifecycle, runtime: runtime}, nil
 	})
-	if err != nil {
-		return err
-	}
-	return componentstate.RegisterLifecycle(state, workspaceRuntimeStateKey, componentstate.Lifecycle{
-		Name: "file-transfer",
-		Close: func(ctx context.Context) (bool, error) {
-			return handle.runtime.ShutdownContext(ctx, runtimeoutcome.TransferInterrupted, runtimeoutcome.TransferQueueStopped)
-		},
-		Abort: handle.lifecycle.Stop,
-		Wait:  handle.lifecycle.Wait,
-	})
+	return err
 }
 
-func RuntimeForWorkspace(workspace Workspace) (*Runtime, error) {
-	state, err := workspaceState(workspace)
-	if err != nil {
-		return nil, err
-	}
-	handle, ok, err := componentstate.Load[*workspaceRuntimeHandle](state, workspaceRuntimeStateKey)
+func (manager *Manager) RuntimeForWorkspace(workspace Workspace) (*Runtime, error) {
+	handle, ok, err := manager.loadWorkspaceHandle(workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -69,47 +52,59 @@ func RuntimeForWorkspace(workspace Workspace) (*Runtime, error) {
 	return handle.runtime, nil
 }
 
-func WorkspaceReady(workspace Workspace) bool {
-	_, err := RuntimeForWorkspace(workspace)
+func (manager *Manager) WorkspaceReady(workspace Workspace) bool {
+	_, err := manager.RuntimeForWorkspace(workspace)
 	return err == nil
 }
 
-func ShutdownWorkspace(workspace Workspace, timeout time.Duration, runningMessage, batchMessage string) (bool, bool, error) {
-	state, stateErr := workspaceState(workspace)
-	if stateErr != nil {
-		return false, true, stateErr
-	}
-	handle, ok, err := loadWorkspaceHandle(state)
-	if err != nil || !ok || handle.runtime == nil {
-		stopWorkspaceState(state)
+func (manager *Manager) ShutdownWorkspace(workspace Workspace, timeout time.Duration, runningMessage, batchMessage string) (bool, bool, error) {
+	id, err := workspaceID(workspace)
+	if err != nil {
 		return false, true, err
 	}
+	handle, ok := manager.runtimes.Load(id)
+	if !ok || handle == nil || handle.runtime == nil {
+		manager.StopWorkspace(workspace)
+		return false, true, nil
+	}
 	drained, shutdownErr := handle.runtime.Shutdown(timeout, runningMessage, batchMessage)
+	if drained {
+		manager.runtimes.Delete(id)
+	}
 	return true, drained, shutdownErr
 }
 
-func StopWorkspace(workspace Workspace) {
-	state, err := workspaceState(workspace)
-	if err != nil {
-		return
-	}
-	stopWorkspaceState(state)
-}
-
-func stopWorkspaceState(state componentstate.Port) {
-	handle, ok, err := loadWorkspaceHandle(state)
-	if err == nil && ok && handle.lifecycle != nil {
+func (manager *Manager) StopWorkspace(workspace Workspace) {
+	handle, ok, err := manager.loadWorkspaceHandle(workspace)
+	if err == nil && ok && handle != nil && handle.lifecycle != nil {
 		handle.lifecycle.Stop()
 	}
 }
 
-func WaitWorkspace(ctx context.Context, workspace Workspace) bool {
-	state, err := workspaceState(workspace)
+func (manager *Manager) RemoveWorkspace(workspace Workspace) {
+	id, err := workspaceID(workspace)
+	if err != nil {
+		return
+	}
+	if handle, ok := manager.runtimes.Delete(id); ok && handle != nil && handle.lifecycle != nil {
+		handle.lifecycle.Stop()
+	}
+}
+
+func (manager *Manager) WaitWorkspace(ctx context.Context, workspace Workspace) bool {
+	id, err := workspaceID(workspace)
 	if err != nil {
 		return true
 	}
-	handle, ok, err := loadWorkspaceHandle(state)
-	return err != nil || !ok || handle.lifecycle == nil || handle.lifecycle.Wait(ctx)
+	handle, ok := manager.runtimes.Load(id)
+	if !ok || handle == nil || handle.lifecycle == nil {
+		return true
+	}
+	drained := handle.lifecycle.Wait(ctx)
+	if drained {
+		manager.runtimes.Delete(id)
+	}
+	return drained
 }
 
 type Jobs interface {
@@ -124,16 +119,12 @@ type Jobs interface {
 
 type workspaceJobs struct{ registry *transferjobs.Registry }
 
-func WorkspaceJobs(workspace Workspace) (Jobs, error) {
-	state, err := workspaceState(workspace)
+func (manager *Manager) WorkspaceJobs(workspace Workspace) (Jobs, error) {
+	handle, ok, err := manager.loadWorkspaceHandle(workspace)
 	if err != nil {
 		return nil, err
 	}
-	handle, ok, err := loadWorkspaceHandle(state)
-	if err != nil {
-		return nil, err
-	}
-	if !ok || handle.lifecycle == nil || handle.lifecycle.Registry() == nil {
+	if !ok || handle == nil || handle.lifecycle == nil || handle.lifecycle.Registry() == nil {
 		return nil, fmt.Errorf("file transfer workspace jobs are unavailable")
 	}
 	return workspaceJobs{registry: handle.lifecycle.Registry()}, nil
@@ -155,16 +146,22 @@ func (jobs workspaceJobs) RegisterBatchControl(id int64, control *transferjobs.C
 	jobs.registry.Batches.RegisterControl(id, control)
 }
 
-func loadWorkspaceHandle(state componentstate.Port) (*workspaceRuntimeHandle, bool, error) {
-	if state == nil {
-		return nil, false, nil
+func (manager *Manager) loadWorkspaceHandle(workspace Workspace) (*workspaceRuntimeHandle, bool, error) {
+	id, err := workspaceID(workspace)
+	if err != nil {
+		return nil, false, err
 	}
-	return componentstate.Load[*workspaceRuntimeHandle](state, workspaceRuntimeStateKey)
+	handle, ok := manager.runtimes.Load(id)
+	return handle, ok, nil
 }
 
-func workspaceState(workspace Workspace) (componentstate.Port, error) {
-	if workspace == nil || workspace.ComponentStatePort() == nil {
-		return nil, componentstate.ErrUnavailable
+func workspaceID(workspace Workspace) (string, error) {
+	if workspace == nil {
+		return "", fmt.Errorf("file transfer workspace state is unavailable")
 	}
-	return workspace.ComponentStatePort(), nil
+	id := strings.TrimSpace(workspace.RuntimeIdentifier())
+	if id == "" {
+		return "", fmt.Errorf("file transfer workspace identity is unavailable")
+	}
+	return id, nil
 }

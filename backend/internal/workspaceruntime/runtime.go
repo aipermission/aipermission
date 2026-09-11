@@ -3,7 +3,6 @@ package workspaceruntime
 import (
 	"database/sql"
 
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
@@ -24,7 +23,6 @@ type Runtime struct {
 	Connectors        connectorstate.State
 	Security          security.State
 	Observation       observation.State
-	Components        componentstate.State
 }
 
 type Port interface {
@@ -34,7 +32,6 @@ type Port interface {
 	ConnectorPort() connectorstate.Port
 	SecurityPort() security.Port
 	ObservationPort() observation.Port
-	ComponentStatePort() componentstate.Port
 	WorkspaceIdentifier() string
 	RuntimeIdentifier() string
 	DatabaseIdentifier() string
@@ -62,8 +59,7 @@ func New(state foundation.State) *Runtime {
 		Connectors: connectorstate.New(
 			state.Registry, state.AdapterRegistry, state.Database, state.Identity.Vault, state.Identity.WorkspaceUUID,
 		),
-		Components: componentstate.New(),
-		Security:   security.New(state.Database),
+		Security: security.New(state.Database),
 	}
 }
 
@@ -95,13 +91,6 @@ func (r *Runtime) ConnectorPort() connectorstate.Port {
 		return (*connectorstate.State)(nil)
 	}
 	return &r.Connectors
-}
-
-func (r *Runtime) ComponentStatePort() componentstate.Port {
-	if r == nil {
-		return (*componentstate.State)(nil)
-	}
-	return &r.Components
 }
 
 func (r *Runtime) SecurityPort() security.Port {

@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/runtimeindex"
 )
-
-var projectRuntimeStateKey = componentstate.NewKey[*projectRuntimeHandle]("project-vault-runtime")
 
 type Dependencies struct {
 	LiveConsoleKind func(string) (string, bool)
@@ -22,7 +20,8 @@ type Dependencies struct {
 }
 
 type Component struct {
-	dependencies Dependencies
+	dependencies    Dependencies
+	projectRuntimes runtimeindex.Index[*projectRuntimeHandle]
 }
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
@@ -79,10 +78,10 @@ func (port mutationPort) Observe(ctx context.Context, action string, payload any
 }
 
 func (component *Component) ProjectRuntime(runtime Runtime) (ProjectVaultApplication, error) {
-	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Project.State == nil {
+	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Session.RuntimeInstanceID == "" {
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
-	handle, err := componentstate.LoadOrCreate(runtime.Project.State, projectRuntimeStateKey, func() (*projectRuntimeHandle, error) {
+	handle, err := component.projectRuntimes.LoadOrCreate(runtime.Session.RuntimeInstanceID, func() (*projectRuntimeHandle, error) {
 		store, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)
 		if err != nil {
 			return nil, err
@@ -111,6 +110,12 @@ func (component *Component) ProjectRuntime(runtime Runtime) (ProjectVaultApplica
 		return nil, projectvault.ErrRuntimeUnavailable
 	}
 	return handle.runtime, nil
+}
+
+func (component *Component) ReleaseWorkspace(runtime Runtime) {
+	if component != nil {
+		component.projectRuntimes.Delete(runtime.Session.RuntimeInstanceID)
+	}
 }
 
 type bindingTargets struct {

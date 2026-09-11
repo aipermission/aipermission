@@ -19,6 +19,7 @@ type Runtime interface {
 
 type ActionWorkflow = runtimeshutdown.ActionWorkflow
 type CommandWorkflow = runtimeshutdown.CommandWorkflow
+type TransferWorkflow = runtimeshutdown.TransferWorkflow
 
 func Adopt(ctx context.Context, input runtimeinput.Adopt) (Runtime, error) {
 	state, err := foundation.Adopt(ctx, foundation.AdoptInput{
@@ -44,10 +45,10 @@ func Open(ctx context.Context, input runtimeinput.Open) (Runtime, error) {
 	return workspaceruntime.New(state), nil
 }
 
-func Discard(value Runtime) error {
-	return runtimeshutdown.Discard(value)
+func Discard(value Runtime, resolveTransfers func() TransferWorkflow) error {
+	return runtimeshutdown.Discard(value, resolveTransfers)
 }
 
-func Close(value Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
-	return runtimeshutdown.Close(value, resolveActions, resolveCommands)
+func Close(value Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
+	return runtimeshutdown.Close(value, resolveActions, resolveCommands, resolveTransfers)
 }

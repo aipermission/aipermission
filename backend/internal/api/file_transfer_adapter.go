@@ -22,7 +22,7 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	return gatewaytransfer.InitializeFileTransferWorkspace(
+	return s.transfers.InitializeWorkspace(
 		runtime,
 		runtime.StoragePort().DatabaseHandle(),
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
@@ -35,7 +35,9 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 }
 
 func (s *Server) stopFileTransferRuntime(runtime databaseRuntime) {
-	gatewaytransfer.StopFileTransferWorkspace(runtime)
+	if lifecycle := s.transfers.Lifecycle(runtime); lifecycle != nil {
+		lifecycle.Abort()
+	}
 }
 
 func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (gatewaytransfer.FileTransferConnectorPorts, error) {
@@ -60,7 +62,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 }
 
 func (s *Server) fileTransferHTTPHandlers() *gatewaytransfer.FileTransferHTTPHandlers {
-	return gatewaytransfer.NewFileTransferHTTPHandlers(gatewaytransfer.FileTransferHTTPDependencies{
+	return s.transfers.NewHTTPHandlers(gatewaytransfer.FileTransferHTTPDependencies{
 		Scope:      s.fileTransferWorkspace,
 		AdapterFor: s.connectorFileTransferAdapterFor,
 		DataPath:   s.config.DataPath,

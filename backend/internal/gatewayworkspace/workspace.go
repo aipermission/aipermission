@@ -31,6 +31,7 @@ type HTTPHandlers = lifecycle.HTTPHandlers
 type PasswordAttempt = lifecycle.PasswordAttempt
 type ActionWorkflow = runtimefactory.ActionWorkflow
 type CommandWorkflow = runtimefactory.CommandWorkflow
+type TransferWorkflow = runtimefactory.TransferWorkflow
 
 type Dependencies struct {
 	DataPath              string
@@ -188,9 +189,11 @@ func (component *Component) Adopt(ctx context.Context, input AdoptInput) (Runtim
 func (component *Component) Open(ctx context.Context, input OpenInput) (Runtime, error) {
 	return runtimefactory.Open(ctx, input)
 }
-func (component *Component) Discard(runtime Runtime) error { return runtimefactory.Discard(runtime) }
-func (component *Component) Close(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
-	return runtimefactory.Close(runtime, resolveActions, resolveCommands)
+func (component *Component) Discard(runtime Runtime, resolveTransfers func() TransferWorkflow) error {
+	return runtimefactory.Discard(runtime, resolveTransfers)
+}
+func (component *Component) Close(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
+	return runtimefactory.Close(runtime, resolveActions, resolveCommands, resolveTransfers)
 }
 func (component *Component) Move(currentPath, targetPath string) error {
 	return catalog.Move(currentPath, targetPath)

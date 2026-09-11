@@ -6,15 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 )
-
-type commandTestWorkspace struct{ state componentstate.State }
-
-func (workspace *commandTestWorkspace) ComponentStatePort() componentstate.Port {
-	return &workspace.state
-}
 
 func TestComponentsOwnIndependentAuthenticationState(t *testing.T) {
 	first := NewComponent("3210")
@@ -67,16 +59,15 @@ func TestPasswordAttemptIdentityIsSharedAcrossRoutesAndOmitsRequestMetadata(t *t
 }
 
 func TestCommandRuntimeFailsClosedUntilInitialized(t *testing.T) {
-	workspace := &commandTestWorkspace{state: componentstate.New()}
 	component := NewComponent("3210")
-	if _, err := component.CommandRuntime(workspace); !errors.Is(err, ErrCommandRuntimeUnavailable) {
+	if _, err := component.CommandRuntime("runtime"); !errors.Is(err, ErrCommandRuntimeUnavailable) {
 		t.Fatalf("uninitialized command runtime error = %v", err)
 	}
-	if err := component.InitializeCommandRuntime(workspace, CommandRuntimeDependencies{}); !errors.Is(err, ErrCommandRuntimeUnavailable) {
+	if err := component.InitializeCommandRuntime("runtime", CommandRuntimeDependencies{}); !errors.Is(err, ErrCommandRuntimeUnavailable) {
 		t.Fatalf("invalid command runtime dependencies error = %v", err)
 	}
 	var unavailable *Component
-	if err := unavailable.InitializeCommandRuntime(workspace, CommandRuntimeDependencies{}); !errors.Is(err, ErrComponentUnavailable) {
+	if err := unavailable.InitializeCommandRuntime("runtime", CommandRuntimeDependencies{}); !errors.Is(err, ErrComponentUnavailable) {
 		t.Fatalf("nil component initialization error = %v", err)
 	}
 }

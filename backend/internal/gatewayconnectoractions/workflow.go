@@ -10,22 +10,23 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/runtimeindex"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
-
-var workflowStateKey = componentstate.NewKey[*workflowHandle]("connector-action-workflow")
 
 type Dependencies struct {
 	MaxJSONBytes    int
 	SupportsRunning func(actions.PreparedRequest) bool
 }
 
-type Component struct{ dependencies Dependencies }
+type Component struct {
+	dependencies Dependencies
+	workflows    runtimeindex.Index[*workflowHandle]
+}
 
 func New(dependencies Dependencies) *Component { return &Component{dependencies: dependencies} }
 
@@ -184,7 +185,7 @@ func (component *Component) workflow(runtime Workspace) (*workflowHandle, error)
 	if component == nil || component.dependencies.SupportsRunning == nil || !runtime.workflowReady() {
 		return nil, actions.ErrWorkflowUnavailable
 	}
-	workflow, err := componentstate.LoadOrCreate(runtime.Workflow.State, workflowStateKey, func() (*workflowHandle, error) {
+	workflow, err := component.workflows.LoadOrCreate(runtime.Identity.RuntimeInstanceID, func() (*workflowHandle, error) {
 		redactor, err := actions.NewRedactor(
 			func(ctx context.Context, value string) string {
 				return runtime.Workflow.RedactBasic(ctx, value)
@@ -268,11 +269,20 @@ func (component *Component) StartRecovery(runtime Workspace) {
 }
 
 func (component *Component) StopRecovery(runtime Workspace) {
-	if runtime.Workflow.State == nil {
+	if component == nil {
 		return
 	}
-	workflow, ok, err := componentstate.Load[*workflowHandle](runtime.Workflow.State, workflowStateKey)
-	if err == nil && ok && workflow != nil && workflow.runtime != nil {
+	workflow, ok := component.workflows.Load(runtime.Identity.RuntimeInstanceID)
+	if ok && workflow != nil && workflow.runtime != nil {
+		workflow.runtime.StopRecovery()
+	}
+}
+
+func (component *Component) ReleaseWorkspace(runtime Workspace) {
+	if component == nil {
+		return
+	}
+	if workflow, ok := component.workflows.Delete(runtime.Identity.RuntimeInstanceID); ok && workflow != nil && workflow.runtime != nil {
 		workflow.runtime.StopRecovery()
 	}
 }

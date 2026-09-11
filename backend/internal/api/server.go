@@ -14,6 +14,7 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -27,6 +28,7 @@ type Server struct {
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
 	observation             gatewayoperations.Observation
+	transfers               *gatewaytransfer.Component
 	openRuntimeOverride     func(string, string, string) (databaseRuntime, error)
 	moveDatabaseOverride    func(string, string) error
 	publishDatabaseOverride func(string, string) error
@@ -57,7 +59,8 @@ func NewServer(configuration RuntimeConfiguration, database *sql.DB, secretVault
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
 	registry := infrastructure.ConnectorRegistry()
 	server := &Server{
-		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
+		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
+		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()
@@ -89,7 +92,8 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	cfg := snapshotRuntimeConfiguration(configuration)
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
 	server := &Server{
-		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure, mux: http.NewServeMux(),
+		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
+		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(),
 	}
 	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()

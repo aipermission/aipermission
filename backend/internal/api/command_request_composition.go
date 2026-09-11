@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	return s.access.InitializeCommandRuntime(runtime, gatewayaccess.CommandRuntimeDependencies{
+	return s.access.InitializeCommandRuntime(runtime.RuntimeIdentifier(), gatewayaccess.CommandRuntimeDependencies{
 		Database: runtime.StoragePort().DatabaseHandle(), Vault: runtime.StoragePort().SecretVault(), WorkspaceID: runtime.WorkspaceIdentifier(),
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
@@ -21,7 +21,7 @@ func (s *Server) commandRuntime(runtime databaseRuntime) (*gatewayaccess.Command
 	if runtime == nil {
 		return nil, gatewayaccess.ErrCommandRuntimeUnavailable
 	}
-	return s.access.CommandRuntime(runtime)
+	return s.access.CommandRuntime(runtime.RuntimeIdentifier())
 }
 
 func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (gatewayaccess.CommandHTTPReader, bool) {

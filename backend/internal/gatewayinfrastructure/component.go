@@ -165,18 +165,18 @@ func (component *Component) OpenWorkspace(ctx context.Context, input OpenInput) 
 	return component.workspace.Open(ctx, input)
 }
 
-func (component *Component) DiscardWorkspace(runtime Runtime) error {
+func (component *Component) DiscardWorkspace(runtime Runtime, resolveTransfers func() TransferWorkflow) error {
 	if component == nil || component.workspace == nil {
 		return gatewayworkspace.ErrInitialization
 	}
-	return component.workspace.Discard(runtime)
+	return component.workspace.Discard(runtime, resolveTransfers)
 }
 
-func (component *Component) CloseWorkspace(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error)) error {
+func (component *Component) CloseWorkspace(runtime Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
 	if component == nil || component.workspace == nil {
 		return gatewayworkspace.ErrInitialization
 	}
-	return component.workspace.Close(runtime, resolveActions, resolveCommands)
+	return component.workspace.Close(runtime, resolveActions, resolveCommands, resolveTransfers)
 }
 
 func (component *Component) MoveDatabase(currentPath, targetPath string) error {

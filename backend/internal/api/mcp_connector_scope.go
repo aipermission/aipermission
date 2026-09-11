@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
+	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 )
 
 func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPScope, bool) {
@@ -54,7 +54,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 	return gatewayaccess.MCPActionScope{
 		Database: auth.runtime.StoragePort().DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
 		Output: s.mcpConnectorOutputAuthorization(auth.runtime),
-		Call: func(ctx context.Context, call actions.Call) (actions.CallResult, error) {
+		Call: func(ctx context.Context, call domainactions.Call) (domainactions.CallResult, error) {
 			return s.callConnectorAction(ctx, auth.runtime, call)
 		},
 		Observe: func(ctx context.Context, action string, payload any) {

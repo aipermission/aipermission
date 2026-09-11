@@ -6,7 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	"github.com/aipermission/aipermission/backend/internal/runtimeindex"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 )
 
@@ -29,6 +31,7 @@ type Component struct {
 	vaultRequestMu          sync.RWMutex
 	vaultRequestLimiter     *runtimecontrol.Window
 	uiSessions              *uisession.Manager
+	commandRuntimes         runtimeindex.Index[*commandrequests.Runtime]
 }
 
 func NewComponent(frontendPort string) *Component {

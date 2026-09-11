@@ -18,6 +18,7 @@ type Runtime interface {
 type WorkspaceLifecyclePort interface{ gatewayworkspace.LifecyclePort }
 type ActionWorkflow = gatewayworkspace.ActionWorkflow
 type CommandWorkflow = gatewayworkspace.CommandWorkflow
+type TransferWorkflow = gatewayworkspace.TransferWorkflow
 type AdoptInput = gatewayworkspace.AdoptInput
 
 type WorkspaceDependencies struct {

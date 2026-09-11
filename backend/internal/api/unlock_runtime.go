@@ -86,9 +86,12 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRu
 }
 
 func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {
-	if err := s.infrastructure.DiscardWorkspace(runtime); err != nil {
+	if err := s.infrastructure.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
+		return s.transfers.Lifecycle(runtime)
+	}); err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 	}
+	s.releaseRuntimeApplications(runtime)
 }
 
 func (s *Server) currentDataPath() string {
@@ -107,9 +110,21 @@ func (s *Server) activeRuntime() databaseRuntime {
 }
 
 func (s *Server) closeRuntime(runtime databaseRuntime) error {
+	defer s.releaseRuntimeApplications(runtime)
 	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionShutdownWorkflow(runtime)
 	}, func() (gatewayinfra.CommandWorkflow, error) {
 		return s.commandRuntime(runtime)
+	}, func() gatewayinfra.TransferWorkflow {
+		return s.transfers.Lifecycle(runtime)
 	})
+}
+
+func (s *Server) releaseRuntimeApplications(runtime databaseRuntime) {
+	if s == nil || runtime == nil {
+		return
+	}
+	s.access.ReleaseCommandRuntime(runtime.RuntimeIdentifier())
+	s.connectorActions.ReleaseWorkspace(s.connectorActionWorkspace(runtime))
+	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
 }

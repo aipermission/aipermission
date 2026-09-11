@@ -4,23 +4,24 @@ import (
 	"context"
 	"log"
 
+	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-var errMCPExecutionStopped = actions.ErrMCPExecutionStopped
+var errMCPExecutionStopped = domainactions.ErrMCPExecutionStopped
 
 const (
-	connectorActionApprovalHint     = actions.ApprovalHint
-	connectorActionRunningHint      = actions.RunningHint
-	connectorActionPersistenceError = actions.TerminalPersistenceErrorText
+	connectorActionApprovalHint     = domainactions.ApprovalHint
+	connectorActionRunningHint      = domainactions.RunningHint
+	connectorActionPersistenceError = domainactions.TerminalPersistenceErrorText
 )
 
-type connectorActionCall = actions.Call
-type connectorActionCallResult = actions.CallResult
-type connectorActionTerminalPersistenceError = actions.TerminalPersistenceError
+type connectorActionCall = domainactions.Call
+type connectorActionCallResult = domainactions.CallResult
+type connectorActionTerminalPersistenceError = domainactions.TerminalPersistenceError
 
 type connectorSecretAccessor struct {
 	values   map[string]any
@@ -28,14 +29,14 @@ type connectorSecretAccessor struct {
 }
 
 func (accessor connectorSecretAccessor) GetSecret(ctx context.Context, name string) (string, error) {
-	return (actions.SecretAccessor{Values: accessor.values, Boundary: accessor.boundary}).GetSecret(ctx, name)
+	return (gatewayactions.SecretAccessor{Values: accessor.values, Boundary: accessor.boundary}).GetSecret(ctx, name)
 }
 
 func (accessor connectorSecretAccessor) RegisterSensitiveValue(value string) {
 	accessor.boundary.Add(value)
 }
 
-type noopConnectorEventSink = actions.NoopEventSink
+type noopConnectorEventSink = gatewayactions.NoopEventSink
 
 func (s *Server) callConnectorAction(ctx context.Context, runtime databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
 	return s.connectorActionApplication().Call(ctx, s.connectorActionWorkspace(runtime), call)
@@ -45,7 +46,7 @@ func (s *Server) runLocalConnectorAction(ctx context.Context, runtime databaseRu
 	return s.connectorActionApplication().RunLocal(ctx, s.connectorActionWorkspace(runtime), call)
 }
 
-func (s *Server) finishActiveConnectorActionRequest(runtime databaseRuntime, requestID int64, prepared actions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+func (s *Server) finishActiveConnectorActionRequest(runtime databaseRuntime, requestID int64, prepared domainactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
 	adapter := s.connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	if adapter == nil || !adapter.SupportsRunning(prepared) {
 		return
@@ -56,7 +57,7 @@ func (s *Server) finishActiveConnectorActionRequest(runtime databaseRuntime, req
 	}
 }
 
-func (s *Server) connectorActionSupportsRunning(prepared actions.PreparedRequest) bool {
+func (s *Server) connectorActionSupportsRunning(prepared domainactions.PreparedRequest) bool {
 	adapter := s.connectorRuntimeAdapterFor(prepared.Target.ConnectorKind)
 	return adapter != nil && adapter.SupportsRunning(prepared)
 }

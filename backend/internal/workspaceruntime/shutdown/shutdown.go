@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimecontract"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 )
@@ -30,10 +29,18 @@ type CommandWorkflow interface {
 
 type CommandWorkflowResolver func() (CommandWorkflow, error)
 
+type TransferWorkflow interface {
+	Shutdown(time.Duration, string, string) (bool, bool, error)
+	Wait(context.Context) bool
+	Abort()
+}
+
+type TransferWorkflowResolver func() TransferWorkflow
+
 // Close stops runtime workers and sessions before releasing encrypted storage.
 // If transfer workers outlive the bounded wait, storage closes asynchronously
 // after they exit so no worker can touch a closed database.
-func Close(runtime runtimecontract.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver) error {
+func Close(runtime runtimecontract.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver, resolveTransfers TransferWorkflowResolver) error {
 	if runtime == nil {
 		return nil
 	}
@@ -48,22 +55,32 @@ func Close(runtime runtimecontract.Runtime, resolveActions ActionWorkflowResolve
 		sessions.CloseAll()
 	}
 	stopCommandRequests(runtime.DatabaseIdentifier(), resolveCommands)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), transferWait)
-	report := componentstate.CloseComponents(shutdownCtx, runtime.ComponentStatePort())
-	cancel()
-	if report.Err != nil {
-		log.Printf("workspace component shutdown failed workspace=%s error=%v", runtime.DatabaseIdentifier(), report.Err)
+	transfer, initialized, drained, transferErr := shutdownTransfers(resolveTransfers)
+	if transferErr != nil {
+		log.Printf("workspace transfer shutdown failed workspace=%s error=%v", runtime.DatabaseIdentifier(), transferErr)
 	}
-	if !report.Drained {
+	if initialized && !drained {
 		go func() {
-			componentstate.WaitComponents(context.Background(), runtime.ComponentStatePort())
+			transfer.Wait(context.Background())
 			if err := closeStorage(runtime); err != nil {
 				log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.DatabaseIdentifier(), err)
 			}
 		}()
 		return fmt.Errorf("file transfer shutdown exceeded %s; runtime storage close deferred until workers exit", transferWait)
 	}
-	return closeStorage(runtime)
+	return errors.Join(transferErr, closeStorage(runtime))
+}
+
+func shutdownTransfers(resolve TransferWorkflowResolver) (TransferWorkflow, bool, bool, error) {
+	if resolve == nil {
+		return nil, false, true, nil
+	}
+	workflow := resolve()
+	if workflow == nil {
+		return nil, false, true, nil
+	}
+	initialized, drained, err := workflow.Shutdown(transferWait, "interrupted by workspace shutdown", "queue stopped by workspace shutdown")
+	return workflow, initialized, drained, err
 }
 
 func stopCommandRequests(workspaceID string, resolve CommandWorkflowResolver) {
@@ -85,11 +102,15 @@ func stopCommandRequests(workspaceID string, resolve CommandWorkflowResolver) {
 
 // Discard releases a partially opened runtime without running normal shutdown
 // recovery against state that was never published.
-func Discard(runtime runtimecontract.Runtime) error {
+func Discard(runtime runtimecontract.Runtime, resolveTransfers TransferWorkflowResolver) error {
 	if runtime == nil {
 		return nil
 	}
-	_ = componentstate.AbortComponents(runtime.ComponentStatePort())
+	if resolveTransfers != nil {
+		if transfer := resolveTransfers(); transfer != nil {
+			transfer.Abort()
+		}
+	}
 	return closeStorage(runtime)
 }
 

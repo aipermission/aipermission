@@ -4,44 +4,44 @@ import (
 	"context"
 	"database/sql"
 
+	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 )
 
-func (s *Server) connectorActionApplication() *actions.Component {
+func (s *Server) connectorActionApplication() *gatewayactions.Component {
 	if s != nil && s.connectorActions != nil {
 		return s.connectorActions
 	}
 	return s.newConnectorActionApplication()
 }
 
-func (s *Server) newConnectorActionApplication() *actions.Component {
-	return actions.New(actions.Dependencies{
+func (s *Server) newConnectorActionApplication() *gatewayactions.Component {
+	return gatewayactions.New(gatewayactions.Dependencies{
 		MaxJSONBytes: connectorActionJSONBodyBytes,
-		SupportsRunning: func(prepared actions.PreparedRequest) bool {
+		SupportsRunning: func(prepared domainactions.PreparedRequest) bool {
 			return s != nil && s.connectorActionSupportsRunning(prepared)
 		},
 	})
 }
 
-func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Workspace {
+func (s *Server) connectorActionWorkspace(runtime databaseRuntime) gatewayactions.Workspace {
 	if runtime == nil {
-		return actions.Workspace{}
+		return gatewayactions.Workspace{}
 	}
 	delivery := runtime.SecurityPort().VaultDeliveryCoordinator()
-	return actions.Workspace{
-		Storage: actions.ActionStorage{
+	return gatewayactions.Workspace{
+		Storage: gatewayactions.ActionStorage{
 			Database: runtime.StoragePort().DatabaseHandle(), Tokens: runtime.StoragePort().TokenStore(),
 			Registry: runtime.ConnectorPort().ConnectorRegistry(), SecretVault: runtime.StoragePort().SecretVault(),
 			WorkspaceID: runtime.WorkspaceIdentifier(),
 		},
-		Identity: actions.ActionIdentity{
+		Identity: gatewayactions.ActionIdentity{
 			Key: runtime.ActionIdentity(), RuntimeInstanceID: runtime.RuntimeIdentifier(),
 			MCPStarted: runtime.IsMCPStarted, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
 		},
-		Workflow: actions.WorkflowPorts{
-			State:         runtime.ComponentStatePort(),
+		Workflow: gatewayactions.WorkflowPorts{
 			AcquireSecret: delivery.AcquireDelivery,
 			RedactBasic: func(ctx context.Context, value string) string {
 				return s.redactForPersistence(ctx, runtime, value)
@@ -52,28 +52,28 @@ func (s *Server) connectorActionWorkspace(runtime databaseRuntime) actions.Works
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 			},
-			Transaction: func(ctx context.Context, mutate func(*sql.Tx, actions.AuditAppender) error) error {
+			Transaction: func(ctx context.Context, mutate func(*sql.Tx, domainactions.AuditAppender) error) error {
 				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-					return mutate(tx, actions.AuditAppender(appendAudit))
+					return mutate(tx, domainactions.AuditAppender(appendAudit))
 				})
 			},
 			Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
-			Capabilities: func(kind string, dependencies []actions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+			Capabilities: func(kind string, dependencies []domainactions.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 				return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
 			},
-			FinishRunning: func(id int64, prepared actions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+			FinishRunning: func(id int64, prepared domainactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
 				s.finishActiveConnectorActionRequest(runtime, id, prepared, principal, handles)
 			},
 		},
 	}
 }
 
-func (s *Server) connectorActionApprovalWorkflow(runtime databaseRuntime) (actions.ApprovalWorkflow, error) {
+func (s *Server) connectorActionApprovalWorkflow(runtime databaseRuntime) (gatewayactions.ApprovalWorkflow, error) {
 	return s.connectorActionApplication().Approval(s.connectorActionWorkspace(runtime))
 }
 
-func (s *Server) connectorActionShutdownWorkflow(runtime databaseRuntime) (actions.ShutdownWorkflow, error) {
+func (s *Server) connectorActionShutdownWorkflow(runtime databaseRuntime) (gatewayactions.ShutdownWorkflow, error) {
 	return s.connectorActionApplication().Shutdown(s.connectorActionWorkspace(runtime))
 }

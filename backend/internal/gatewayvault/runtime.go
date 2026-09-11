@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/aipermission/aipermission/backend/internal/componentstate"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -40,7 +39,6 @@ type SessionRuntime struct {
 }
 
 type ProjectRuntimePorts struct {
-	State              componentstate.Port
 	InvalidateSessions func(context.Context, []SessionReference, SessionMutationScope) error
 	SessionEnvironment func(context.Context, int64) (bool, error)
 	Mutate             func(context.Context, string, func() any, func(*sql.Tx) error) error

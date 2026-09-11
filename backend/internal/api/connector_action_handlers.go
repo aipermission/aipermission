@@ -4,16 +4,17 @@ import (
 	"errors"
 	"net/http"
 
+	domainactions "github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	actions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-type localConnectorActionRequest = actions.LocalRequest
+type localConnectorActionRequest = gatewayactions.LocalRequest
 
-func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
-	return s.connectorActionApplication().LocalHTTP(actions.LocalHTTPDependencies{
-		ActiveRuntime: func(w http.ResponseWriter) (actions.Workspace, bool) {
+func (s *Server) localConnectorActionHTTP() gatewayactions.LocalHTTPHandlers {
+	return s.connectorActionApplication().LocalHTTP(gatewayactions.LocalHTTPDependencies{
+		ActiveRuntime: func(w http.ResponseWriter) (gatewayactions.Workspace, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)
 			return s.connectorActionWorkspace(runtime), ok
 		},
@@ -21,7 +22,7 @@ func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: connectormgmt.WriteTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
-			response := actions.MCPResponseFromResult(request, result, s.connectorRunningHint)
+			response := gatewayactions.MCPResponseFromResult(request, result, s.connectorRunningHint)
 			response.Replayed = replayed
 			return response
 		},
@@ -29,13 +30,13 @@ func (s *Server) localConnectorActionHTTP() actions.LocalHTTPHandlers {
 }
 
 func writeConnectorActionTerminalPersistenceError(w http.ResponseWriter, err error) bool {
-	var persistence *actions.TerminalPersistenceError
+	var persistence *domainactions.TerminalPersistenceError
 	if !errors.As(err, &persistence) {
 		return false
 	}
 	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 		"status": connectors.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown",
-		"request_id": persistence.RequestID, "error": actions.TerminalPersistenceErrorText,
+		"request_id": persistence.RequestID, "error": domainactions.TerminalPersistenceErrorText,
 		"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
 	})
 	return true

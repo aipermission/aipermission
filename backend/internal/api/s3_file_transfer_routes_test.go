@@ -214,7 +214,7 @@ func assertS3TransferSizeLimits(t *testing.T, scenario s3TransferRouteScenario) 
 	}
 	waitCtx, cancelOversizedBatch := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelOversizedBatch()
-	if !requireTransferJobs(t, runtime).Wait(waitCtx) {
+	if !requireTransferJobs(t, fixture.server, runtime).Wait(waitCtx) {
 		t.Fatal("oversized approved download batch did not settle")
 	}
 	rejectedBatch, err := filetransfer.NewStore(runtime.StoragePort().DatabaseHandle()).GetBatch(context.Background(), pendingBatch.ID)

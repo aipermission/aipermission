@@ -29,8 +29,8 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	control := &transferjobs.Control{}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	requireTransferJobs(t, runtime).RegisterBatchControl(batch.ID, control)
-	requireTransferJobs(t, runtime).RegisterBatchCancel(batch.ID, cancel)
+	requireTransferJobs(t, fixture.server, runtime).RegisterBatchControl(batch.ID, control)
+	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
 	request := func(action string, wantCode int, wantStatus string) {
 		t.Helper()
 		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
@@ -93,8 +93,8 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	requireTransferJobs(t, runtime).RegisterFileCancel(item.ID, cancel)
-	defer requireTransferJobs(t, runtime).UnregisterFileCancel(item.ID)
+	requireTransferJobs(t, fixture.server, runtime).RegisterFileCancel(item.ID, cancel)
+	defer requireTransferJobs(t, fixture.server, runtime).UnregisterFileCancel(item.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -139,8 +139,8 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	requireTransferJobs(t, runtime).RegisterBatchCancel(batch.ID, cancel)
-	defer requireTransferJobs(t, runtime).UnregisterBatchCancel(batch.ID)
+	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
+	defer requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {

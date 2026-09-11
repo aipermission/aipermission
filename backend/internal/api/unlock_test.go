@@ -24,6 +24,7 @@ import (
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -108,7 +109,10 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{infrastructure: gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil)}
+	server := &Server{
+		infrastructure: gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil),
+		transfers:      gatewaytransfer.NewComponent(),
+	}
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
@@ -143,7 +147,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	workerDone := make(chan filetransfer.Record, 1)
-	if !requireTransferJobs(t, runtime).LaunchFile(record.ID, cancel, func() {
+	if !requireTransferJobs(t, server, runtime).LaunchFile(record.ID, cancel, func() {
 		<-ctx.Done()
 		_, _ = transferStore.FailWithKind(context.Background(), record.ID, "response lost after dispatch", filetransfer.FailureKindOutcomeUnknown)
 		finished, _ := transferStore.Get(context.Background(), record.ID)
