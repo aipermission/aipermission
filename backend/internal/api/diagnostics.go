@@ -1,11 +1,6 @@
 package api
 
-import (
-	"net/http"
-	"time"
-
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-)
+import "net/http"
 
 func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	runtime, ok := h.activeRuntimeOrLocked(w)
@@ -17,9 +12,9 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w)
 		return
 	}
+	formatVersion := h.observation.PrepareDiagnosticsDownload(w)
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
-		"report_format_version": gatewayoperations.ObservationReportFormatVersion(),
+		"report_format_version": formatVersion,
 	})
-	gatewayoperations.SetAttachmentHeaders(w, "aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json", "application/json")
 	writeJSON(w, http.StatusOK, report)
 }

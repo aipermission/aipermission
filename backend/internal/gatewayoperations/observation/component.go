@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	historyhttp "github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/retention"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -183,6 +184,15 @@ func (component *Component) Diagnostics(ctx context.Context, runtime Runtime) (o
 }
 
 func ReportFormatVersion() string { return observability.ReportFormatVersion }
+
+func (component *Component) PrepareDiagnosticsDownload(w http.ResponseWriter) string {
+	httpattachment.SetHeaders(
+		w,
+		"aipermission-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json",
+		"application/json",
+	)
+	return observability.ReportFormatVersion
+}
 
 func pointer(value int64) *int64 { return &value }
 
