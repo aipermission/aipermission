@@ -38,6 +38,7 @@ var ErrInputTooLarge = errors.New("console input is too large")
 var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
 var ErrCommandOutcomeUnknown = errors.New("command was dispatched but its outcome could not be authorized")
 var ErrManagerClosed = errors.New("console session manager is closed")
+var ErrSessionClosing = errors.New("console session is closing")
 
 type InactiveError struct {
 	Status string
@@ -112,9 +113,7 @@ type SessionHandle struct {
 	Generation int64 `json:"generation"`
 }
 
-func (h SessionHandle) Valid() bool {
-	return h.ID > 0 && h.RuntimeID > 0 && h.Generation > 0
-}
+func (h SessionHandle) Valid() bool { return h.ID > 0 && h.RuntimeID > 0 && h.Generation > 0 }
 
 type RuntimeOpenRequest struct {
 	RuntimeID      int64
@@ -241,17 +240,22 @@ type managedConsoleSession struct {
 	exactRedactionClosed   bool
 	manager                *Manager
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	start     chan struct{}
-	done      chan struct{}
-	startOnce sync.Once
-	closeOnce sync.Once
-	closeErr  error
+	ctx        context.Context
+	cancel     context.CancelFunc
+	start      chan struct{}
+	done       chan struct{}
+	startOnce  sync.Once
+	closeOnce  sync.Once
+	closeErr   error
+	workMu     sync.Mutex
+	workWG     sync.WaitGroup
+	workClosed bool
+	persistMu  sync.Mutex
 
 	mu            sync.Mutex
 	execMu        sync.Mutex
 	status        string
+	closing       bool
 	transcript    string
 	rawTranscript string
 	pendingOutput string

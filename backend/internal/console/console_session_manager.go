@@ -487,7 +487,10 @@ func (m *Manager) Resize(id int64, cols int, rows int) {
 	if session == nil {
 		return
 	}
-	session.resize(cols, rows)
+	_ = session.runAuthorizedWork(func() error {
+		session.resize(cols, rows)
+		return nil
+	})
 }
 
 func (m *Manager) Close(ctx context.Context, principal executionprincipal.Principal, id int64) error {
@@ -501,7 +504,7 @@ func (m *Manager) Close(ctx context.Context, principal executionprincipal.Princi
 			return nil
 		}
 		if err := m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
-			session.cancel()
+			session.beginClose()
 			return nil
 		}); err != nil {
 			return err
@@ -585,7 +588,7 @@ func (m *Manager) activeSessionsForRuntime(runtimeID int64) []*managedConsoleSes
 
 func (m *Manager) closeRuntimeSessions(ctx context.Context, runtimeID int64, sessions []*managedConsoleSession) error {
 	for _, session := range sessions {
-		session.cancel()
+		session.beginClose()
 	}
 	for _, session := range sessions {
 		if err := session.waitDone(ctx); err != nil {
@@ -615,10 +618,7 @@ func (m *Manager) closeSessionLocked(ctx context.Context, principal executionpri
 		return ErrNotFound
 	}
 	if err := m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
-		session.mu.Lock()
-		session.status = "closed"
-		session.mu.Unlock()
-		session.cancel()
+		session.beginClose()
 		return nil
 	}); err != nil {
 		return err
@@ -664,7 +664,7 @@ func (m *Manager) BeginCloseAll() {
 	}
 	m.mu.Unlock()
 	for _, session := range sessions {
-		session.cancel()
+		session.beginClose()
 	}
 }
 
@@ -703,12 +703,20 @@ func (m *Manager) authorizeOperation(
 	if session == nil || principal.Validate() != nil || !principal.SameRuntime(session.principal) {
 		return ErrUnauthorized
 	}
-	if principal.IsLocalOperator() || session.environmentContentHash == "" {
-		return run()
-	}
 	m.mu.Lock()
+	closed := m.closed
 	authorize := m.authorize
 	m.mu.Unlock()
+	if closed {
+		return ErrManagerClosed
+	}
+	protectedRun := func() error { return session.runAuthorizedWork(run) }
+	if operation == OperationClose {
+		protectedRun = run
+	}
+	if principal.IsLocalOperator() || session.environmentContentHash == "" {
+		return protectedRun()
+	}
 	if authorize == nil {
 		return ErrUnauthorized
 	}
@@ -716,7 +724,7 @@ func (m *Manager) authorizeOperation(
 		Handle:                 session.handle(),
 		EnvironmentContentHash: session.environmentContentHash,
 		ApprovalContextHash:    session.approvalContextHash,
-	}, operation, run)
+	}, operation, protectedRun)
 }
 
 func (m *Manager) exactSession(handle SessionHandle) (*managedConsoleSession, error) {

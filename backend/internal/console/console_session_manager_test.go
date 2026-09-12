@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -67,6 +70,49 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 		RuntimeID: runtimeID, Name: "late", Principal: testExecutionPrincipal(),
 	}); !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("late create error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestConsoleSessionManagerBeginCloseAllRevokesAttachedLocalClient(t *testing.T) {
+	principal := testExecutionPrincipal()
+	ctx, cancel := context.WithCancel(context.Background())
+	manager := NewManager(nil, nil, nil)
+	session := &managedConsoleSession{
+		id: 1, runtimeID: 2, generation: 3, principal: principal, manager: manager,
+		ctx: ctx, cancel: cancel, status: "connected", clients: map[*websocket.Conn]*sync.Mutex{},
+	}
+	manager.sessions[session.id] = session
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = manager.Attach(w, r, principal, session.id, func(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
+			return upgrader.Upgrade(w, r, nil)
+		})
+	}))
+	t.Cleanup(server.Close)
+	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial attached client: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	if _, _, err := client.ReadMessage(); err != nil {
+		t.Fatalf("read initial snapshot: %v", err)
+	}
+
+	manager.BeginCloseAll()
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, _, err := client.ReadMessage(); err == nil {
+		t.Fatal("attached client remained open after manager shutdown began")
+	}
+	called := false
+	if err := manager.authorizeOperation(t.Context(), principal, session, OperationInput, func() error {
+		called = true
+		return nil
+	}); !errors.Is(err, ErrManagerClosed) {
+		t.Fatalf("post-shutdown local authorization error = %v, want %v", err, ErrManagerClosed)
+	}
+	if called {
+		t.Fatal("post-shutdown local operation executed")
 	}
 }
 
@@ -134,6 +180,48 @@ func TestConsoleSessionManagerCloseAllIsBoundedAndClosesTransportOnce(t *testing
 	}
 	if closeCalls.Load() != 1 {
 		t.Fatalf("transport Close() calls = %d, want 1", closeCalls.Load())
+	}
+}
+
+func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-owned-drain", "127.0.0.1", 22)
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close() })
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Stdout: reader,
+			Wait:  func() error { <-ctx.Done(); return ctx.Err() },
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	record, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := manager.active(record.ID)
+	ownedRelease := make(chan struct{})
+	if !session.runOwnedWork(func() { <-ownedRelease }) {
+		t.Fatal("owned persistence work was not admitted")
+	}
+
+	shortCtx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if err := manager.CloseAll(shortCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseAll() error = %v, want blocked ownership deadline", err)
+	}
+	close(ownedRelease)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.CloseAll(t.Context()); err != nil {
+		t.Fatalf("CloseAll() did not observe full ownership drain: %v", err)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 func (s *managedConsoleSession) run() {
 	defer func() {
 		s.closeExactRedactor()
+		s.drainOwnedWork()
 		if s.environment != nil {
 			s.environment.Destroy()
 		}
@@ -91,16 +92,16 @@ func (s *managedConsoleSession) run() {
 		}
 	}
 
-	pipeDone := make(chan struct{}, 2)
-	pipeCount := 1
+	var pipeWG sync.WaitGroup
+	pipeWG.Add(1)
 	go func() {
-		defer func() { pipeDone <- struct{}{} }()
+		defer pipeWG.Done()
 		s.pipe(runtime.Stdout, s.stdoutExactRedactor)
 	}()
 	if runtime.Stderr != nil {
-		pipeCount++
+		pipeWG.Add(1)
 		go func() {
-			defer func() { pipeDone <- struct{}{} }()
+			defer pipeWG.Done()
 			s.pipe(runtime.Stderr, s.stderrExactRedactor)
 		}()
 	}
@@ -112,7 +113,7 @@ func (s *managedConsoleSession) run() {
 
 	select {
 	case err := <-waitDone:
-		waitConsolePipes(pipeDone, pipeCount)
+		pipeWG.Wait()
 		s.closeExactRedactor()
 		if err != nil && !errors.Is(err, io.EOF) {
 			s.finish("closed", err.Error())
@@ -121,7 +122,7 @@ func (s *managedConsoleSession) run() {
 		s.finish("closed", "")
 	case <-s.ctx.Done():
 		_ = s.closeRuntime()
-		waitConsolePipes(pipeDone, pipeCount)
+		pipeWG.Wait()
 		s.closeExactRedactor()
 		s.finish("closed", "")
 	}
@@ -179,21 +180,6 @@ func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error 
 	return nil
 }
 
-func waitConsolePipes(done <-chan struct{}, count int) {
-	if done == nil || count < 1 {
-		return
-	}
-	timer := time.NewTimer(2 * time.Second)
-	defer timer.Stop()
-	for index := 0; index < count; index++ {
-		select {
-		case <-done:
-		case <-timer.C:
-			return
-		}
-	}
-}
-
 func (s *managedConsoleSession) pipe(reader io.Reader, redactor *sessionenv.Redactor) {
 	buffer := make([]byte, 4096)
 	for {
@@ -211,6 +197,9 @@ func (s *managedConsoleSession) addClient(ws *websocket.Conn) (*sync.Mutex, erro
 	writeMu := &sync.Mutex{}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closing {
+		return nil, ErrSessionClosing
+	}
 	if len(s.clients) >= maxConsoleClientsPerSession {
 		return nil, ErrClientLimit
 	}
@@ -269,7 +258,84 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 }
 
 func (s *managedConsoleSession) close() {
-	s.cancel()
+	s.beginClose()
+}
+
+func (s *managedConsoleSession) beginClose() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.closing = true
+	if s.status == "connecting" || s.status == "connected" {
+		s.status = "closing"
+	}
+	clients := make([]*websocket.Conn, 0, len(s.clients))
+	for client := range s.clients {
+		clients = append(clients, client)
+		delete(s.clients, client)
+	}
+	s.mu.Unlock()
+	s.closeWorkAdmission()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	for _, client := range clients {
+		_ = client.Close()
+	}
+}
+
+func (s *managedConsoleSession) runOwnedWork(run func()) bool {
+	if run == nil || !s.admitOwnedWork() {
+		return false
+	}
+	go func() {
+		defer s.workWG.Done()
+		run()
+	}()
+	return true
+}
+
+func (s *managedConsoleSession) admitOwnedWork() bool {
+	if s == nil {
+		return false
+	}
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
+	if s.workClosed {
+		return false
+	}
+	s.workWG.Add(1)
+	return true
+}
+
+func (s *managedConsoleSession) runAuthorizedWork(run func() error) error {
+	if run == nil || !s.admitOwnedWork() {
+		return ErrSessionClosing
+	}
+	defer s.workWG.Done()
+	return run()
+}
+
+func (s *managedConsoleSession) closeWorkAdmission() {
+	s.workMu.Lock()
+	s.workClosed = true
+	s.workMu.Unlock()
+}
+
+func (s *managedConsoleSession) drainOwnedWork() {
+	if s == nil {
+		return
+	}
+	s.closeWorkAdmission()
+	s.mu.Lock()
+	if s.persistTimer != nil {
+		s.persistTimer.Stop()
+		s.persistTimer = nil
+	}
+	s.mu.Unlock()
+	s.workWG.Wait()
+	s.flushTranscript()
 }
 
 func (s *managedConsoleSession) closeRuntime() error {
@@ -420,16 +486,18 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	}
 	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
 	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
-		s.persistTimer = time.AfterFunc(500*time.Millisecond, s.flushTranscript)
+		s.persistTimer = time.AfterFunc(500*time.Millisecond, func() {
+			s.runOwnedWork(s.flushTranscript)
+		})
 	}
 	manualCompletion := s.manualOutputCompletionLocked()
 	s.clearManualPauseIfPromptReturnedLocked()
 	s.mu.Unlock()
 	if manualCompletion != nil {
-		go s.finishManualOutputCapture(manualCompletion)
+		s.runOwnedWork(func() { s.finishManualOutputCapture(manualCompletion) })
 	}
 	if flushSoon {
-		go s.flushTranscript()
+		s.runOwnedWork(s.flushTranscript)
 	}
 	if displayData != "" {
 		s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
@@ -449,11 +517,13 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 	s.pendingOutput += data
 	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
 	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
-		s.persistTimer = time.AfterFunc(500*time.Millisecond, s.flushTranscript)
+		s.persistTimer = time.AfterFunc(500*time.Millisecond, func() {
+			s.runOwnedWork(s.flushTranscript)
+		})
 	}
 	s.mu.Unlock()
 	if flushSoon {
-		go s.flushTranscript()
+		s.runOwnedWork(s.flushTranscript)
 	}
 	s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
 }
@@ -496,6 +566,8 @@ func (s *managedConsoleSession) flushTranscript() {
 	if s.manager == nil || s.manager.db == nil {
 		return
 	}
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339)
 	s.mu.Lock()
 	if s.persistTimer != nil {
