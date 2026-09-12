@@ -159,6 +159,22 @@ test("rejects production modules above the line budget", () => {
   }
 });
 
+test("classifies compound test filenames as test support", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-test-support-"));
+  try {
+    mkdirSync(join(root, "lib"), { recursive: true });
+    mkdirSync(join(root, "connectors", "templates"), { recursive: true });
+    writeFileSync(join(root, "lib", "fixture.test.fixture.js"), 'import "./production.js";\n');
+    writeFileSync(join(root, "lib", "production.js"), 'import "./fixture.test.fixture.js";\n');
+
+    const result = analyzeSourceTree(root);
+    assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
+    assert.ok(!result.files.some((file) => file.endsWith("fixture.test.fixture.js")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("expands glob edges and rejects template imports into registry and page layers", () => {
   const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-glob-"));
   try {

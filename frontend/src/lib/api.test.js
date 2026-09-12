@@ -634,12 +634,12 @@ test("local connector action retry keys survive browser reload until acknowledge
   };
   const body = { target_ref: "fixture:reload", action_name: "inspect", input: { secret: "not-persisted" }, reason: "test" };
   try {
-    const firstModule = await import(`./api.js?retry-first=${Date.now()}`);
+    const firstModule = await import("./api.js?retry-first");
     await assert.rejects(() => firstModule.apiPost("/api/connector-actions/local-run", body));
     const persisted = await readRetryStoreRecords();
     assert.equal(JSON.stringify(persisted).includes("not-persisted"), false);
 
-    const reloadedModule = await import(`./api.js?retry-reload=${Date.now()}`);
+    const reloadedModule = await import("./api.js?retry-reload");
     await reloadedModule.apiPost("/api/connector-actions/local-run", body);
     await reloadedModule.apiPost("/api/connector-actions/local-run", body);
     assert.equal(keys[0], keys[1]);
@@ -702,7 +702,7 @@ test("local connector action fails closed when browser retry storage is unavaila
     return response(localActionResponse());
   };
   try {
-    const browserModule = await import(`./api.js?retry-storage-denied=${Date.now()}`);
+    const browserModule = await import("./api.js?retry-storage-denied");
     await assert.rejects(
       () => browserModule.apiPost("/api/connector-actions/local-run", { target_ref: "fixture:denied", action_name: "inspect" }),
       /retry storage is unavailable/,

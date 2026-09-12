@@ -1,5 +1,6 @@
 {
   "sourceExtensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
+  "testModuleMarkers": [".test.", ".spec."],
   "maxDependencyFanout": 20,
   "maxProductionModuleLines": 550
 }

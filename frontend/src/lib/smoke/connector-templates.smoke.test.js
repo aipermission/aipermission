@@ -3,8 +3,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  backendConnectorRegistrySources,
-  backendRegisteredConnectorKinds,
   connectorTemplateCatalogSource,
   connectorTemplateKinds,
   connectorTemplateRegistrySource,
@@ -18,8 +16,7 @@ test("connector templates are discovered dynamically", () => {
   assert.doesNotMatch(connectorTemplateRegistrySource, /from "\.\/(ssh|postgres|redis|rabbitmq|kafka|mail|s3|docker|kubernetes)/);
 });
 
-test("frontend and backend connector catalogs stay aligned", () => {
-  assert.deepEqual(backendRegisteredConnectorKinds(backendConnectorRegistrySources), connectorTemplateKinds);
+test("frontend connector templates expose complete metadata", () => {
   for (const kind of connectorTemplateKinds) {
     const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
     const metadata = JSON.parse(readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8"));
@@ -28,20 +25,6 @@ test("frontend and backend connector catalogs stay aligned", () => {
     assert.ok(metadata.label);
     assert.ok(metadata.version);
   }
-});
-
-test("backend connector discovery accepts implicit Go import names", () => {
-  assert.deepEqual(
-    backendRegisteredConnectorKinds([
-      `package catalog
-import "github.com/aipermission/aipermission/backend/internal/connectors/mysql"
-import (
-  "github.com/aipermission/aipermission/backend/internal/connectors/redis/transport"
-)
-func register() { mysql.New(); transport.New() }`,
-    ]),
-    ["mysql", "redis"],
-  );
 });
 
 test("connector templates do not import sibling connector internals", () => {

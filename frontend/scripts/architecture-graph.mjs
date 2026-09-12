@@ -6,6 +6,7 @@ import { parse } from "espree";
 const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
 
 export const sourceExtensions = Object.freeze([...architecturePolicy.sourceExtensions]);
+export const testModuleMarkers = Object.freeze([...architecturePolicy.testModuleMarkers]);
 const executableExtensions = new Set([...sourceExtensions, ".cjs", ".cts", ".mts"]);
 const genericRoots = Object.freeze(["components", "lib", "pages"]);
 
@@ -314,7 +315,7 @@ function forbiddenDependency(sourceLayer, targetLayer) {
 
 function moduleLayer(sourceRoot, file, connectorKinds) {
   const path = displayPath(sourceRoot, file);
-  if (path.startsWith("test/")) return "test-support";
+  if (path.startsWith("test/") || isTestModule(path)) return "test-support";
   if (["App.jsx", "main.jsx"].includes(path)) return "app";
   const first = path.split("/")[0];
   if (genericRoots.includes(first)) return first;
@@ -365,7 +366,7 @@ function sourceFiles(directory) {
     .flatMap((entry) => {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(path);
-      if (!sourceExtensions.includes(extname(entry.name)) || isTestModule(entry.name)) return [];
+      if (!sourceExtensions.includes(extname(entry.name))) return [];
       return [resolve(path)];
     })
     .sort();
@@ -375,17 +376,18 @@ function executableFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) return executableFiles(path);
-    if (!executableExtensions.has(extname(entry.name)) || isTestModule(entry.name)) return [];
+    if (!executableExtensions.has(extname(entry.name))) return [];
     return [resolve(path)];
   });
 }
 
 function isTestModule(filename) {
-  return /\.test\.[^.]+$/.test(filename);
+  return testModuleMarkers.some((marker) => filename.includes(marker));
 }
 
 function isTestSupport(sourceRoot, file) {
-  return displayPath(sourceRoot, file).startsWith("test/");
+  const path = displayPath(sourceRoot, file);
+  return path.startsWith("test/") || isTestModule(path);
 }
 
 function displayPath(sourceRoot, file) {

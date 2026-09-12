@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const frontendArchitecturePolicy = require("../frontend/architecture-policy.json");
+const frontendTestModuleMarkers = frontendArchitecturePolicy.testModuleMarkers;
 const sourceBudgets = [
   { directory: "backend", extensions: new Set([".go"]), maxLines: 1400 },
   {
@@ -57,7 +58,7 @@ function isProductionSource(file) {
 }
 
 function isTestSource(file) {
-  return file.endsWith("_test.go") || file.includes(".test.") || file.includes(".spec.");
+  return file.endsWith("_test.go") || frontendTestModuleMarkers.some((marker) => file.includes(marker));
 }
 
 function walk(directory) {
