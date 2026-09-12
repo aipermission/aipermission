@@ -1,7 +1,9 @@
 package gatewayworkspace
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	connectorcatalog "github.com/aipermission/aipermission/backend/internal/connectors"
@@ -122,5 +124,22 @@ func TestCloseClearsCompositionAndOwnerActionIdentity(t *testing.T) {
 	}
 	if owner.HasActionIdentity() {
 		t.Fatal("workspace close retained action identity material")
+	}
+}
+
+func TestUnavailableWorkspaceLifecycleFailsClosed(t *testing.T) {
+	components := []*Component{nil, {}}
+	for _, component := range components {
+		release, err := component.AcquireReadContext(context.Background())
+		if release != nil || !errors.Is(err, InitializationError()) {
+			t.Fatalf("AcquireReadContext() = (release present: %t, %v), want nil initialization error", release != nil, err)
+		}
+		release, err = component.AcquireMutationContext(context.Background())
+		if release != nil || !errors.Is(err, InitializationError()) {
+			t.Fatalf("AcquireMutationContext() = (release present: %t, %v), want nil initialization error", release != nil, err)
+		}
+		if err := component.CloseAll(context.Background()); !errors.Is(err, InitializationError()) {
+			t.Fatalf("CloseAll() error = %v, want initialization error", err)
+		}
 	}
 }

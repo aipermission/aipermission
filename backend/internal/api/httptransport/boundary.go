@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -99,7 +100,11 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			release, err = boundary.Lifecycle.AcquireReadContext(r.Context())
 		}
 		if err != nil {
-			boundary.writeError(w, http.StatusRequestTimeout, "request expired while waiting for workspace access")
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				boundary.writeError(w, http.StatusRequestTimeout, "request expired while waiting for workspace access")
+			} else {
+				boundary.writeError(w, http.StatusInternalServerError, "workspace access is unavailable")
+			}
 			return
 		}
 		defer release()

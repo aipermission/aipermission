@@ -141,14 +141,14 @@ func (component *Component) DatabaseName() (string, error) {
 
 func (component *Component) AcquireReadContext(ctx context.Context) (func(), error) {
 	if component == nil || component.service == nil {
-		return func() {}, nil
+		return nil, InitializationError()
 	}
 	return component.service.AcquireReadContext(ctx)
 }
 
 func (component *Component) AcquireMutationContext(ctx context.Context) (func(), error) {
 	if component == nil || component.service == nil {
-		return func() {}, nil
+		return nil, InitializationError()
 	}
 	return component.service.AcquireMutationContext(ctx)
 }
@@ -162,7 +162,7 @@ func (component *Component) Import(ctx context.Context, input workspacelifecycle
 
 func (component *Component) CloseAll(ctx context.Context) error {
 	if component == nil || component.service == nil {
-		return nil
+		return InitializationError()
 	}
 	return component.service.CloseAll(ctx)
 }

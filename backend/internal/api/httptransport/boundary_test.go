@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,24 @@ type canceledLifecycle struct{}
 
 func (canceledLifecycle) AcquireMutationContext(ctx context.Context) (func(), error) {
 	return nil, ctx.Err()
+}
+
+type failedLifecycle struct{ err error }
+
+func (l failedLifecycle) AcquireMutationContext(context.Context) (func(), error) { return nil, l.err }
+func (l failedLifecycle) AcquireReadContext(context.Context) (func(), error)     { return nil, l.err }
+
+func TestBoundaryDistinguishesLifecycleFailureFromRequestExpiry(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:            http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("failed lifecycle reached routes") }),
+		Lifecycle:         failedLifecycle{err: errors.New("not initialized")},
+		IsLocalRemoteAddr: func(string) bool { return true }, IsLocalhostHeader: func(string) bool { return true },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
 }
 
 func (canceledLifecycle) AcquireReadContext(ctx context.Context) (func(), error) {

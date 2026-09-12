@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -164,19 +165,25 @@ func (r *Runtime) BeginDispatch(ctx context.Context, requestID int64) (connector
 }
 
 func (r *Runtime) MarkRunningOutcomeUnknown(ctx context.Context, message string) error {
-	store := connectortargets.NewStore(r.database)
-	for {
-		requests, err := store.ListActionRequests(ctx, connectortargets.ActionRequestFilter{Status: string(connectors.ResultRunning), Limit: 100})
+	if err := r.validate(); err != nil {
+		return err
+	}
+	message = strings.TrimSpace(message)
+	return r.mutations.WithTransaction(ctx, func(tx *sql.Tx, appendAudit AuditAppender) error {
+		requests, err := connectortargets.NewTxStore(tx).MarkRunningOutcomeUnknown(ctx, message, r.now().UTC())
 		if err != nil {
 			return err
 		}
-		if len(requests) == 0 {
-			return nil
-		}
 		for _, request := range requests {
-			if _, err := r.Finish(ctx, request.ID, connectors.ResultOutcomeUnknown, nil, "", message); err != nil {
+			if err := appendAudit(tx, "gateway", request.TokenID, 0, "connector_action.request."+string(connectors.ResultOutcomeUnknown), map[string]any{
+				"request_id": request.ID, "project_id": request.ProjectID,
+				"target_id": request.TargetID, "profile_id": request.ProfileID,
+				"connector_kind": request.ConnectorKind, "action_name": request.ActionName,
+				"status": connectors.ResultOutcomeUnknown, "error": message,
+			}); err != nil {
 				return err
 			}
 		}
-	}
+		return nil
+	})
 }
