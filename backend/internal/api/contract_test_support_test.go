@@ -1,0 +1,24 @@
+package api
+
+import (
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+)
+
+// These aliases keep HTTP fixtures terse without adding compatibility names
+// to the production transport package.
+type createConnectorTargetRequest = connectormgmt.CreateTargetRequest
+type createConnectorCredentialProfileRequest = connectormgmt.CredentialProfileInput
+type updateConnectorTargetRequest = connectormgmt.UpdateTargetRequest
+type updateConnectorCredentialProfileRequest = connectormgmt.CredentialProfileInput
+type createConnectorTargetWithProfileRequest = connectormgmt.CreateTargetWithProfileRequest
+type updateConnectorTargetWithProfileRequest = connectormgmt.UpdateTargetWithProfileRequest
+type connectorTargetResponse = connectormgmt.TargetResponse
+type profileSummary = connectormgmt.ProfileSummary
+type preparedConnectorCredentialProfileInput = connectormgmt.PreparedCredentialProfile
+type connectorActionCall = gatewayactions.Call
+type declineConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNoteRequest
+type runConnectorActionApprovalRequest = connectormgmt.ConnectorApprovalNoteRequest
+type localConnectorActionRequest = gatewayactions.LocalRequest
+type provisionConnectorCredentialProfileRequest = connectormgmt.ProvisionRequest
+type connectorCredentialBoundary = gatewayactions.CredentialBoundary

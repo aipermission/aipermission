@@ -3,15 +3,12 @@ package api
 import (
 	"context"
 	"fmt"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
-
-type connectorActionCall = gatewayactions.Call
-type connectorActionCallResult = gatewayactions.CallResult
 
 type connectorSecretAccessor struct {
 	values   map[string]any
@@ -40,11 +37,11 @@ type noopConnectorEventSink struct{}
 
 func (noopConnectorEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
 
-func (s *Server) callConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call connectorActionCall) (connectorActionCallResult, error) {
+func (s *Server) callConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call gatewayactions.Call) (gatewayactions.CallResult, error) {
 	return s.connectorActions.Call(ctx, runtime, call)
 }
 
-func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call connectorActionCall) (connectorActionCallResult, error) {
+func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call gatewayactions.Call) (gatewayactions.CallResult, error) {
 	return s.connectorActions.RunLocal(ctx, runtime, call)
 }
 

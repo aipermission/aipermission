@@ -9,8 +9,6 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
-type localConnectorActionRequest = gatewayactions.LocalRequest
-
 func (s *Server) localConnectorActionHTTP() gatewayactions.LocalHTTPHandlers {
 	return s.connectorActions.LocalHTTP(gatewayinfra.ConnectorLocalHTTPDependencies{
 		ActiveRuntime: s.activeRuntimeOrLocked,

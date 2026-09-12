@@ -2,12 +2,13 @@ package api
 
 import (
 	"context"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
-func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary connectorCredentialBoundary) (any, error) {
+func (s *Server) redactedConnectorValueWithCredentialBoundary(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, value any, sensitiveFields map[string]bool, capabilityFields map[string]bool, boundary gatewayactions.CredentialBoundary) (any, error) {
 	return s.connectorActions.RedactValue(ctx, runtime, value, sensitiveFields, capabilityFields, boundary)
 }
 
@@ -15,7 +16,7 @@ func (s *Server) redactConnectorActionResult(ctx context.Context, runtime *gatew
 	return s.connectorActions.RedactResult(ctx, runtime, result, hints...)
 }
 
-func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, result connectors.ActionResult, boundary connectorCredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
+func (s *Server) redactConnectorActionResultWithCredentialBoundary(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, result connectors.ActionResult, boundary gatewayactions.CredentialBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
 	return s.connectorActions.RedactResultWithCredentialBoundary(ctx, runtime, result, boundary, hints...)
 }
 

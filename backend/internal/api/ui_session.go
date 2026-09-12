@@ -14,8 +14,6 @@ const (
 	uiSessionMaxAge       = gatewayaccess.SessionMaxAge
 )
 
-type preparedUISession = gatewayaccess.PreparedUISession
-
 // issueUISessionLocked requires s.mu to be held by the lifecycle caller.
 func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
@@ -23,7 +21,7 @@ func (s *Server) issueUISessionLocked(w http.ResponseWriter) error {
 }
 
 // issuePreparedUISessionLocked requires s.mu to be held by the lifecycle caller.
-func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared preparedUISession) error {
+func (s *Server) issuePreparedUISessionLocked(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 	databaseID, retryIdentity := s.activeUIWorkspaceLocked()
 	return s.access.IssuePreparedUISession(w, prepared, databaseID, retryIdentity)
 }

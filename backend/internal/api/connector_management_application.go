@@ -3,13 +3,12 @@ package api
 import (
 	"context"
 	"fmt"
+
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
-
-type provisionConnectorCredentialProfileRequest = connectormgmt.ProvisionRequest
 
 func (s *Server) connectorManagementApplication() *gatewayinfra.ConnectorManagementApplication {
 	if s == nil || s.connectorManagement == nil {
