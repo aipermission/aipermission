@@ -29,7 +29,10 @@ func (managementTestConnector) TargetSchema() connectors.Schema {
 func (managementTestConnector) CredentialSchemas() []connectors.CredentialSchema {
 	return []connectors.CredentialSchema{{
 		Kind: "operator", Label: "Operator",
-		Schema: connectors.Schema{Fields: []connectors.Field{{Name: "managed_marker", Type: connectors.FieldString}}},
+		Schema: connectors.Schema{Fields: []connectors.Field{
+			{Name: "managed_marker", Type: connectors.FieldString},
+			{Name: "password", Type: connectors.FieldSecret, Secret: true},
+		}},
 	}}
 }
 func (managementTestConnector) GetHelp(context.Context, connectors.TargetView) (connectors.ConnectorHelp, error) {
@@ -44,6 +47,22 @@ func (managementTestConnector) PrepareAction(context.Context, connectors.ActionR
 	return connectors.PreparedAction{ConnectorKind: managementTestConnectorKind, ActionName: "inspect"}, nil
 }
 func (managementTestConnector) ExecuteAction(context.Context, connectors.RuntimeContext, connectors.PreparedAction) (connectors.ActionResult, error) {
+	return connectors.ActionResult{Status: connectors.ResultCompleted}, nil
+}
+func (managementTestConnector) TestConnection(context.Context, connectors.RuntimeContext) (connectors.TestResult, error) {
+	return connectors.TestResult{
+		Status: connectors.TestOK, Message: "connection ready",
+		Details: map[string]any{"transport": "fixture"},
+	}, nil
+}
+func (managementTestConnector) ProvisionCredentialProfile(context.Context, connectors.RuntimeContext, map[string]any) (connectors.ProvisionedCredentialProfile, error) {
+	return connectors.ProvisionedCredentialProfile{
+		Kind: "operator", Label: "managed", Public: map[string]any{"managed_marker": "generated"},
+		Secret: map[string]any{"password": "managed-secret"}, RiskLabel: "write",
+		Result: connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"created": true}},
+	}, nil
+}
+func (managementTestConnector) CleanupProvisionedCredentialProfile(context.Context, connectors.RuntimeContext, connectors.CredentialProfileView) (connectors.ActionResult, error) {
 	return connectors.ActionResult{Status: connectors.ResultCompleted}, nil
 }
 func (managementTestConnector) PreserveProvisionedCredentialPublic(existing connectors.CredentialProfileView, requested map[string]any) (map[string]any, error) {

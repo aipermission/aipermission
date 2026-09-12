@@ -79,6 +79,17 @@ func TestPrepareCredentialProfileClassifiesInputAndSecretDecodeErrors(t *testing
 	}
 }
 
+func TestCredentialInputErrorDefaultsAndUnwraps(t *testing.T) {
+	if got := (CredentialInputError{}).Error(); got != "invalid credential profile" {
+		t.Fatalf("default error=%q", got)
+	}
+	cause := errors.New("invalid account")
+	wrapped := CredentialInputError{Err: cause}
+	if !errors.Is(wrapped, cause) {
+		t.Fatalf("wrapped error=%v", wrapped)
+	}
+}
+
 func TestEncryptPreparedCredentialSecretUsesProfileBoundPort(t *testing.T) {
 	called := false
 	encrypted, err := EncryptPreparedCredentialSecret(t.Context(), 9, PreparedCredentialProfile{

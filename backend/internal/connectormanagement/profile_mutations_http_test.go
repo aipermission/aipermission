@@ -173,6 +173,39 @@ func TestProfileUpdateRejectsMissingExclusiveRelease(t *testing.T) {
 	}
 }
 
+func TestCredentialPreparationHTTPErrorClassification(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		err        error
+		status     int
+		want       string
+		mustNotSee string
+	}{
+		{
+			name: "input", err: CredentialInputError{Err: errors.New("invalid profile input")},
+			status: http.StatusBadRequest, want: "invalid profile input",
+		},
+		{
+			name: "secret decode", err: errors.Join(ErrCredentialSecretDecode, errors.New("cipher detail")),
+			status: http.StatusInternalServerError, mustNotSee: "cipher detail",
+		},
+		{
+			name: "target validation", err: connectortargets.ValidationError("invalid target field"),
+			status: http.StatusBadRequest, want: "invalid target field",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writeCredentialPreparationError(response, testCase.err)
+			if response.Code != testCase.status ||
+				(testCase.want != "" && !strings.Contains(response.Body.String(), testCase.want)) ||
+				(testCase.mustNotSee != "" && strings.Contains(response.Body.String(), testCase.mustNotSee)) {
+				t.Fatalf("response=%d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func profileMutationTestScope(fixture *managementHTTPFixture, auditActions *[]string) ProfileMutationScope {
 	return ProfileMutationScope{
 		Database: fixture.database,
