@@ -51,9 +51,13 @@ func (sessions *cancelingConsoleSessions) InterruptActive(context.Context, conne
 
 type runningActionRuntime struct {
 	sessions connectorapi.ConsoleSessionRuntime
+	resolve  func(context.Context, string) (connectors.TargetView, connectors.CredentialProfileView, error)
 }
 
-func (runtime runningActionRuntime) ResolveConnectorActionTarget(context.Context, string) (connectors.TargetView, connectors.CredentialProfileView, error) {
+func (runtime runningActionRuntime) ResolveConnectorActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error) {
+	if runtime.resolve != nil {
+		return runtime.resolve(ctx, targetRef)
+	}
 	return connectors.TargetView{ID: 1}, connectors.CredentialProfileView{ID: 2, Label: "default"}, nil
 }
 
@@ -114,5 +118,30 @@ func TestFinishRunningDefersCanceledWorkspaceOutcomeToShutdownCoordinator(t *tes
 	}
 	if sessions.interrupts != 0 {
 		t.Fatalf("shutdown cancellation interrupted an already-closing session %d times", sessions.interrupts)
+	}
+}
+
+func TestFinishRunningDefersCancellationDuringRuntimeResolution(t *testing.T) {
+	parent, cancel := context.WithCancel(t.Context())
+	finisher := &failingActionRequestFinisher{}
+	runtime := runningActionRuntime{resolve: func(ctx context.Context, _ string) (connectors.TargetView, connectors.CredentialProfileView, error) {
+		cancel()
+		<-ctx.Done()
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, ctx.Err()
+	}}
+	err := (Running{}).FinishRunning(
+		parent,
+		finisher,
+		runtime,
+		42,
+		connectors.RuntimeActionContext{TargetRef: "ssh:1:2", TargetConnectorKind: "ssh", ActionName: "exec"},
+		connectorapi.Principal{},
+		connectors.ActionHandles{SessionID: 7, SessionGeneration: 3},
+	)
+	if err != nil {
+		t.Fatalf("FinishRunning() error = %v", err)
+	}
+	if finisher.finishes != 0 {
+		t.Fatalf("resolution cancellation persisted %d terminal outcomes", finisher.finishes)
 	}
 }

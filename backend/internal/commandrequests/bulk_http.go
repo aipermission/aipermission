@@ -205,7 +205,6 @@ func (runtime *BulkHTTPRuntime) run(command string, items []BulkHTTPResponseItem
 				select {
 				case sem <- struct{}{}:
 				case <-workerContext.Done():
-					runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: "command runtime is shutting down"})
 					return
 				}
 				defer func() { <-sem }()
@@ -230,6 +229,9 @@ func (runtime *BulkHTTPRuntime) runOne(workerContext context.Context, item BulkH
 	ctx, cancel := context.WithTimeout(workerContext, timeout)
 	defer cancel()
 	principal, err := runtime.Principal()
+	if workerContext.Err() != nil {
+		return
+	}
 	if err != nil || principal.Validate() != nil {
 		if err == nil {
 			err = executionprincipal.ErrInvalid
@@ -238,6 +240,9 @@ func (runtime *BulkHTTPRuntime) runOne(workerContext context.Context, item BulkH
 		return
 	}
 	result, err := runtime.Sessions.Exec(ctx, principal, item.TargetID, command)
+	if workerContext.Err() != nil {
+		return
+	}
 	if err != nil {
 		message := "command execution failed: " + strings.TrimSpace(err.Error())
 		if runtime.PresentError != nil {

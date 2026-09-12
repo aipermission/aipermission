@@ -22,6 +22,7 @@ type fakeBulkRequestOwner struct {
 	finish         chan Completion
 	setSession     chan [2]int64
 	finishedActive chan console.SessionHandle
+	workerContext  context.Context
 }
 
 func (owner *fakeBulkRequestOwner) Prepare(_ context.Context, insert Insert) (PreparedInsert, error) {
@@ -52,9 +53,48 @@ func (owner *fakeBulkRequestOwner) FinishActive(_ context.Context, _ int64, _ ex
 	owner.finishedActive <- handle
 }
 
-func (*fakeBulkRequestOwner) RunWorker(run func(context.Context)) bool {
-	go run(context.Background())
+func (owner *fakeBulkRequestOwner) RunWorker(run func(context.Context)) bool {
+	ctx := owner.workerContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go run(ctx)
 	return true
+}
+
+type blockingBulkSessions struct {
+	started chan struct{}
+}
+
+func (sessions *blockingBulkSessions) Exec(ctx context.Context, _ executionprincipal.Principal, _ int64, _ string) (console.ExecResult, error) {
+	close(sessions.started)
+	<-ctx.Done()
+	return console.ExecResult{}, errors.New("console session closed")
+}
+
+func TestBulkRunDefersDispatchedShutdownOutcomeToCoordinator(t *testing.T) {
+	runtime, owner, _ := newBulkTestRuntime(t)
+	workerContext, cancelWorker := context.WithCancel(t.Context())
+	owner.workerContext = workerContext
+	started := make(chan struct{})
+	runtime.Sessions = &blockingBulkSessions{started: started}
+	handler := NewBulkHTTPHandlers(func(http.ResponseWriter) (*BulkHTTPRuntime, bool) { return runtime, true })
+	response := httptest.NewRecorder()
+	handler.Run(response, bulkRequest(`{"target_ids":[5],"command":"sleep 30","confirmation":"RUN ON 1 TARGETS"}`))
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("bulk command was not dispatched")
+	}
+	cancelWorker()
+	select {
+	case completion := <-owner.finish:
+		t.Fatalf("shutdown worker persisted terminal completion %#v", completion)
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 type fakeBulkSessions struct {

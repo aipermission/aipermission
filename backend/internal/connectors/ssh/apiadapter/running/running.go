@@ -39,6 +39,9 @@ func (Running) FinishRunning(parent context.Context, server connectorapi.ActionF
 	defer cancel()
 	handle := runtimeactions.ExactSessionHandle(handles.SessionID, handles.SessionGeneration)
 	runtimeID, resolveErr := management.RuntimeIDForTargetRef(ctx, runtime, prepared.TargetRef)
+	if parent.Err() != nil {
+		return nil
+	}
 	if resolveErr != nil || handles.SessionID < 1 || handles.SessionGeneration < 1 {
 		if resolveErr == nil {
 			resolveErr = errors.New("running connector action did not return an exact console session handle")
@@ -47,6 +50,9 @@ func (Running) FinishRunning(parent context.Context, server connectorapi.ActionF
 	}
 	handle.RuntimeID = runtimeID
 	sessions, err := management.ConsoleSessions(runtime)
+	if parent.Err() != nil {
+		return nil
+	}
 	if err != nil {
 		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.OutputHint)
 	}
