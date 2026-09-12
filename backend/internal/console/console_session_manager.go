@@ -533,11 +533,8 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	return m.closeRuntimeLocked(ctx, principal, runtimeID)
 }
 
-// RecoverRuntime closes a runtime whose Vault lease may already be stale.
-// MCP callers may only recover Vault sessions created by the same token;
-// every other session still uses the normal close authorization boundary.
-// beforeClose runs after every active session is authorized and while the
-// runtime lifecycle lock is held, so related state can be settled first.
+// RecoverRuntime closes stale-lease runtimes. MCP callers may recover only Vault
+// sessions from the same token; beforeClose runs after auth under the lifecycle lock.
 func (m *Manager) RecoverRuntime(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, beforeClose func() error) ([]int64, error) {
 	if err := principal.Validate(); err != nil {
 		return nil, err
@@ -654,8 +651,7 @@ func (m *Manager) runtimeLifecycle(runtimeID int64) *sync.Mutex {
 	return lock
 }
 
-// BeginCloseAll rejects new sessions and cancels every active session without
-// waiting for transports to close.
+// BeginCloseAll rejects new sessions and cancels active sessions without waiting.
 func (m *Manager) BeginCloseAll() {
 	if m == nil {
 		return

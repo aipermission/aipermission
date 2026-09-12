@@ -19,11 +19,7 @@ import (
 
 func (s *managedConsoleSession) run() {
 	defer func() {
-		s.closeExactRedactor()
-		s.drainOwnedWork()
-		if s.environment != nil {
-			s.environment.Destroy()
-		}
+		s.destroySensitiveRuntime()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if err := s.finalize(ctx); err != nil {
 			logConsolePersistError("finalize", s.id, err)
@@ -102,6 +98,18 @@ func (s *managedConsoleSession) run() {
 	}
 
 	s.consumeRuntime(runtime)
+}
+
+func (s *managedConsoleSession) destroySensitiveRuntime() {
+	if s == nil {
+		return
+	}
+	// Admitted persistence work must retain the exact redactor until it drains.
+	s.drainOwnedWork()
+	s.closeExactRedactor()
+	if s.environment != nil {
+		s.environment.Destroy()
+	}
 }
 
 func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error {

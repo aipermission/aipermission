@@ -513,6 +513,75 @@ func TestManagedConsoleSessionRedactsVaultValueFromDisplayAndPersistenceText(t *
 	}
 }
 
+func TestManagedConsoleSessionKeepsExactRedactorUntilAdmittedWorkDrains(t *testing.T) {
+	const secret = "aiperm-console-race-canary-49df"
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "RACE_TOKEN", Value: []byte(secret),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	redactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		manager:     &Manager{redact: func(value string) string { return value }},
+		environment: envelope, exactRedactor: redactor,
+	}
+	if !session.admitOwnedWork() {
+		t.Fatal("persistence work was not admitted")
+	}
+
+	workStarted := make(chan struct{})
+	releaseWork := make(chan struct{})
+	redacted := make(chan string, 1)
+	go func() {
+		defer session.workWG.Done()
+		close(workStarted)
+		<-releaseWork
+		redacted <- session.redactForPersistence("command=" + secret)
+	}()
+	<-workStarted
+
+	teardownDone := make(chan struct{})
+	go func() {
+		session.destroySensitiveRuntime()
+		close(teardownDone)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		session.workMu.Lock()
+		closed := session.workClosed
+		session.workMu.Unlock()
+		if closed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("teardown did not close work admission")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	session.mu.Lock()
+	redactorDuringDrain := session.exactRedactor
+	session.mu.Unlock()
+	if redactorDuringDrain == nil {
+		t.Fatal("teardown destroyed the exact redactor before admitted work drained")
+	}
+	close(releaseWork)
+	if value := <-redacted; strings.Contains(value, secret) || !strings.Contains(value, "[REDACTED VAULT VALUE]") {
+		t.Fatalf("admitted persistence work was not redacted: %q", value)
+	}
+	select {
+	case <-teardownDone:
+	case <-time.After(time.Second):
+		t.Fatal("teardown did not complete after admitted work drained")
+	}
+	if session.exactRedactor != nil || !session.exactRedactionClosed {
+		t.Fatal("teardown retained the exact redactor")
+	}
+}
+
 func TestManagedConsoleSessionRejectsInputUntilEnvironmentBootstrapCompletes(t *testing.T) {
 	stdin := &recordingWriteCloser{}
 	session := &managedConsoleSession{status: "connecting", stdin: stdin}
