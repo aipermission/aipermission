@@ -6,6 +6,8 @@ const {
   newestCheckByName,
   releaseVersionFromTag,
   requiredChecks,
+  requiredWorkflowByCheck,
+  verifiedRequiredCheckRuns,
 } = require("./verify-release-source");
 
 test("release source requires the Windows private-config security check", () => {
@@ -13,7 +15,13 @@ test("release source requires the Windows private-config security check", () => 
 });
 
 test("release source requires real-service connector conformance on the same commit", () => {
-  assert.ok(requiredChecks.includes("ClickHouse, Postgres, Valkey, RabbitMQ, and S3"));
+  assert.ok(
+    requiredChecks.includes("ClickHouse, Postgres, Valkey, RabbitMQ, and S3"),
+  );
+});
+
+test("every release check is bound to one reviewed workflow", () => {
+  assert.deepEqual([...requiredWorkflowByCheck.keys()], requiredChecks);
 });
 
 test("releaseVersionFromTag accepts release and prerelease tags", () => {
@@ -83,4 +91,40 @@ test("evaluateRequiredChecks separates pending and failed checks", () => {
       failed: [{ name: "CodeQL", conclusion: "failure" }],
     },
   );
+});
+
+test("release checks require exact push workflow provenance", () => {
+  const check = (id, detailsURL) => ({
+    id,
+    name: "Backend",
+    status: "completed",
+    conclusion: "success",
+    app: { slug: "github-actions" },
+    details_url: detailsURL,
+  });
+  const run = (id, overrides = {}) => ({
+    id,
+    path: ".github/workflows/ci.yml",
+    event: "push",
+    head_branch: "main",
+    head_sha: "release-sha",
+    ...overrides,
+  });
+  const checks = [
+    check(1, "https://github.com/org/repo/actions/runs/10/job/1"),
+    check(2, "https://github.com/org/repo/actions/runs/11/job/2"),
+    check(3, "https://github.com/org/repo/actions/runs/12/job/3"),
+    check(4, "https://github.com/org/repo/actions/runs/13/job/4"),
+    check(5, "https://github.com/org/repo/actions/runs/14/job/5"),
+  ];
+  const runs = [
+    run(10),
+    run(11, { event: "pull_request" }),
+    run(12, { head_branch: "dev" }),
+    run(13, { head_sha: "other-sha" }),
+    run(14, { path: ".github/workflows/untrusted.yml" }),
+  ];
+  assert.deepEqual(verifiedRequiredCheckRuns(checks, runs, "release-sha"), [
+    checks[0],
+  ]);
 });

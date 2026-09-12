@@ -18,6 +18,22 @@ const requiredChecks = [
   "Analyze (javascript-typescript)",
   "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
 ];
+const requiredWorkflowByCheck = new Map([
+  ["Security Hygiene", ".github/workflows/ci.yml"],
+  ["Backend", ".github/workflows/ci.yml"],
+  ["Frontend", ".github/workflows/ci.yml"],
+  ["MCP Package", ".github/workflows/ci.yml"],
+  ["MCP Windows Private Config", ".github/workflows/ci.yml"],
+  ["Docs Hygiene", ".github/workflows/ci.yml"],
+  ["NPM Placeholder Package", ".github/workflows/ci.yml"],
+  ["Container Scan", ".github/workflows/ci.yml"],
+  ["Analyze (go)", ".github/workflows/codeql.yml"],
+  ["Analyze (javascript-typescript)", ".github/workflows/codeql.yml"],
+  [
+    "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
+    ".github/workflows/connector-conformance.yml",
+  ],
+]);
 const advisoryWorkflows = [
   ["native-dependency-freshness.yml", "Native dependency freshness"],
 ];
@@ -71,6 +87,28 @@ function evaluateRequiredChecks(checkRuns, names = requiredChecks) {
     }
   }
   return { pending, failed };
+}
+
+function actionRunID(detailsURL) {
+  const match = /\/actions\/runs\/(\d+)(?:\/|$)/.exec(detailsURL || "");
+  return match?.[1] || "";
+}
+
+function verifiedRequiredCheckRuns(checkRuns, workflowRuns, sha) {
+  const runs = new Map(
+    (workflowRuns || []).map((run) => [String(run.id), run]),
+  );
+  return (checkRuns || []).filter((check) => {
+    const expectedWorkflow = requiredWorkflowByCheck.get(check.name);
+    if (!expectedWorkflow || check.app?.slug !== "github-actions") return false;
+    const run = runs.get(actionRunID(check.details_url));
+    return (
+      run?.path === expectedWorkflow &&
+      run.event === "push" &&
+      run.head_branch === "main" &&
+      run.head_sha === sha
+    );
+  });
 }
 
 function verifyLocalReleaseSource({ sha, tag }) {
@@ -155,10 +193,19 @@ async function waitForRequiredChecks({
   attempts = 60,
   delayMS = 10_000,
 }) {
-  const endpoint = `${apiURL}/repos/${repository}/commits/${sha}/check-runs?per_page=100`;
+  const checksEndpoint = `${apiURL}/repos/${repository}/commits/${sha}/check-runs?per_page=100`;
+  const runsEndpoint = `${apiURL}/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(sha)}&branch=main&event=push&per_page=100`;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const payload = await githubJSON(endpoint, token);
-    const result = evaluateRequiredChecks(payload.check_runs);
+    const [checksPayload, runsPayload] = await Promise.all([
+      githubJSON(checksEndpoint, token),
+      githubJSON(runsEndpoint, token),
+    ]);
+    const verified = verifiedRequiredCheckRuns(
+      checksPayload.check_runs,
+      runsPayload.workflow_runs,
+      sha,
+    );
+    const result = evaluateRequiredChecks(verified);
     if (result.failed.length > 0) {
       throw new Error(
         result.failed
@@ -236,4 +283,6 @@ module.exports = {
   newestCheckByName,
   releaseVersionFromTag,
   requiredChecks,
+  requiredWorkflowByCheck,
+  verifiedRequiredCheckRuns,
 };
