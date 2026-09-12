@@ -43,8 +43,10 @@ type WorkflowPorts struct {
 	Transaction   func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	Observe       func(context.Context, string, *int64, int64, string, any)
 	Capabilities  func(string, []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver
-	FinishRunning func(context.Context, int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)
+	FinishRunning FinishRunning
 }
+
+type FinishRunning func(context.Context, int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)
 
 type AuditAppender func(*sql.Tx, string, *int64, int64, string, any) error
 

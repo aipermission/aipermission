@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -30,24 +29,7 @@ func (s *Server) connectorActionWorkspace(runtime *gatewayinfra.WorkspaceHandle)
 	if runtime == nil {
 		return gatewayactions.Workspace{}
 	}
-	workspace, ok := s.connectorActionOwner.ConnectorActionWorkspace(runtime, gatewayactions.WorkflowPorts{
-		RedactBasic: func(ctx context.Context, value string) string {
-			return s.redactForPersistence(ctx, runtime, value)
-		},
-		RedactCustom: func(ctx context.Context, value string) string {
-			return s.redactCustom(ctx, runtime, value)
-		},
-		Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
-		},
-		Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
-			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-				return mutate(tx, gatewayactions.AuditAppender(appendAudit))
-			})
-		},
-		Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
-		},
+	workspace, ok := s.connectorActionOwner.ConnectorActionWorkspace(runtime, gatewayinfra.ConnectorActionPorts{
 		Capabilities: func(kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
 		},
