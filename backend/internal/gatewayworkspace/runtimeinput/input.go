@@ -15,13 +15,13 @@ type Adopt struct {
 	Database                          *sql.DB
 	Vault                             *vault.Vault
 	TokenStore                        *tokens.Store
-	Registry                          *connectors.Registry
-	AdapterRegistry                   *connectorapi.Registry
+	Registry                          connectors.Catalog
+	AdapterRegistry                   connectorapi.Catalog
 	RuntimeInstanceID                 func() (string, error)
 }
 
 type Open struct {
 	ID, Path, Password, ConfiguredGatewaySecret string
-	Registry                                    *connectors.Registry
-	AdapterRegistry                             *connectorapi.Registry
+	Registry                                    connectors.Catalog
+	AdapterRegistry                             connectorapi.Catalog
 }

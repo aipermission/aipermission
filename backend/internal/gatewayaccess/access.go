@@ -40,7 +40,7 @@ type MutationRunner func(context.Context, string, func() any, func(*sql.Tx) erro
 type AccessScope struct {
 	Database                *sql.DB
 	Tokens                  *tokens.Store
-	Registry                *connectors.Registry
+	Registry                connectors.Catalog
 	ReusableTokens          func(context.Context) (bool, error)
 	Mutate                  MutationRunner
 	AcquireExclusive        func(context.Context) (func(), error)
@@ -66,7 +66,7 @@ type MCPPermission struct {
 
 type MCPScope struct {
 	Database        *sql.DB
-	Registry        *connectors.Registry
+	Registry        connectors.Catalog
 	TokenID         int64
 	Permissions     func(context.Context) ([]MCPPermission, error)
 	MetadataEnabled func(context.Context) (bool, error)

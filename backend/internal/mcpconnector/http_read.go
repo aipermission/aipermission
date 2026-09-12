@@ -51,7 +51,7 @@ type TargetItem struct {
 
 type Scope struct {
 	Database        *sql.DB
-	Registry        *connectors.Registry
+	Registry        connectors.Catalog
 	TokenID         int64
 	Permissions     func(context.Context) ([]Permission, error)
 	MetadataEnabled func(context.Context) (bool, error)

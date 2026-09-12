@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -284,6 +285,18 @@ type Registry struct {
 	adapters map[string]Adapter
 }
 
+// Catalog is the immutable adapter lookup surface used after composition.
+// Registration belongs only to the bootstrap Registry builder.
+type Catalog interface {
+	For(kind string) Adapter
+	Kinds() []string
+	RouteDefinitions(kinds []string) ([]RouteDefinition, error)
+}
+
+type catalogSnapshot struct {
+	adapters map[string]Adapter
+}
+
 func NewRegistry() *Registry {
 	return &Registry{adapters: map[string]Adapter{}}
 }
@@ -297,7 +310,7 @@ func (r *Registry) Register(kind string, adapter Adapter) error {
 	if kind == "" {
 		return errors.New("connector adapter kind is required")
 	}
-	if adapter == nil {
+	if isNilAdapter(adapter) {
 		return fmt.Errorf("connector adapter %q is nil", kind)
 	}
 	if r == nil {
@@ -332,8 +345,78 @@ func (r *Registry) Kinds() []string {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.adapters))
-	for kind := range r.adapters {
+	return adapterKinds(r.adapters)
+}
+
+// Snapshot returns an immutable copy suitable for runtime composition.
+func (r *Registry) Snapshot() Catalog {
+	if r == nil {
+		return catalogSnapshot{adapters: map[string]Adapter{}}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	adapters := make(map[string]Adapter, len(r.adapters))
+	for kind, adapter := range r.adapters {
+		adapters[kind] = adapter
+	}
+	return catalogSnapshot{adapters: adapters}
+}
+
+// SnapshotCatalog copies any read-only catalog into an immutable runtime view.
+func SnapshotCatalog(source Catalog) (Catalog, error) {
+	if source == nil {
+		return catalogSnapshot{adapters: map[string]Adapter{}}, nil
+	}
+	if registry, ok := source.(*Registry); ok {
+		return registry.Snapshot(), nil
+	}
+	kinds := source.Kinds()
+	adapters := make(map[string]Adapter, len(kinds))
+	for _, rawKind := range kinds {
+		kind := strings.TrimSpace(rawKind)
+		if kind == "" || kind != rawKind {
+			return nil, fmt.Errorf("connector adapter catalog contains invalid kind %q", rawKind)
+		}
+		adapter := source.For(kind)
+		if isNilAdapter(adapter) {
+			return nil, fmt.Errorf("connector adapter catalog kind %q is missing", kind)
+		}
+		if _, exists := adapters[kind]; exists {
+			return nil, fmt.Errorf("connector adapter catalog kind %q is duplicated", kind)
+		}
+		adapters[kind] = adapter
+	}
+	return catalogSnapshot{adapters: adapters}, nil
+}
+
+func isNilAdapter(adapter Adapter) bool {
+	if adapter == nil {
+		return true
+	}
+	value := reflect.ValueOf(adapter)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
+func (snapshot catalogSnapshot) For(kind string) Adapter {
+	return snapshot.adapters[strings.TrimSpace(kind)]
+}
+
+func (snapshot catalogSnapshot) Kinds() []string {
+	return adapterKinds(snapshot.adapters)
+}
+
+func (snapshot catalogSnapshot) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
+	return routeDefinitions(snapshot.For, kinds)
+}
+
+func adapterKinds(adapters map[string]Adapter) []string {
+	kinds := make([]string, 0, len(adapters))
+	for kind := range adapters {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
@@ -344,11 +427,15 @@ func (r *Registry) Kinds() []string {
 // connector kinds. The result is deterministic so runtime registration,
 // generated contracts, and tests share one inventory.
 func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
+	return routeDefinitions(r.For, kinds)
+}
+
+func routeDefinitions(adapterFor func(string) Adapter, kinds []string) ([]RouteDefinition, error) {
 	routes := []RouteDefinition{}
 	seen := map[string]string{}
 	for _, rawKind := range kinds {
 		kind := strings.TrimSpace(rawKind)
-		adapter, _ := r.For(kind).(RouteRegistrar)
+		adapter, _ := adapterFor(kind).(RouteRegistrar)
 		if adapter == nil {
 			continue
 		}

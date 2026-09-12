@@ -18,7 +18,7 @@ const MaxProfileRestoreBodyBytes = 256 << 20
 
 type ProfileBackupScope struct {
 	Database *sql.DB
-	Registry *connectors.Registry
+	Registry connectors.Catalog
 	Runtime  CredentialRuntimePorts
 	Observe  func(context.Context, string, map[string]any)
 }

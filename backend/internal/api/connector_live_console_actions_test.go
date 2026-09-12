@@ -40,14 +40,11 @@ func TestLiveConsoleTargetRefPreservesUnexpectedAdapterErrors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fixture := newAPITestFixture(t)
+			fixture := newAPITestFixture(t,
+				withTestConnector(localActionTestConnector{}),
+				withTestConnectorAdapter(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: test.err}),
+			)
 			runtime := fixture.server.activeRuntime()
-			if err := fixture.server.connectorRegistry().Register(localActionTestConnector{}); err != nil {
-				t.Fatal(err)
-			}
-			if err := fixture.server.connectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: test.err}); err != nil {
-				t.Fatal(err)
-			}
 
 			_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 			if !errors.Is(err, test.err) {
@@ -58,14 +55,11 @@ func TestLiveConsoleTargetRefPreservesUnexpectedAdapterErrors(t *testing.T) {
 }
 
 func TestLiveConsoleTargetRefContinuesOnlyForRuntimeNotFound(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	fixture := newAPITestFixture(t,
+		withTestConnector(localActionTestConnector{}),
+		withTestConnectorAdapter(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: connectortargets.ErrRuntimeSurfaceNotFound}),
+	)
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.connectorRegistry().Register(localActionTestConnector{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.server.connectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{err: connectortargets.ErrRuntimeSurfaceNotFound}); err != nil {
-		t.Fatal(err)
-	}
 
 	_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 	if !errors.Is(err, connectortargets.ErrInvalidTargetRef) {
@@ -74,14 +68,11 @@ func TestLiveConsoleTargetRefContinuesOnlyForRuntimeNotFound(t *testing.T) {
 }
 
 func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	fixture := newAPITestFixture(t,
+		withTestConnector(localActionTestConnector{}),
+		withTestConnectorAdapter(localActionTestConnectorKind, liveConsoleLookupTestAdapter{}),
+	)
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.connectorRegistry().Register(localActionTestConnector{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.server.connectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{}); err != nil {
-		t.Fatal(err)
-	}
 
 	_, err := fixture.server.liveConsoleTargetRefForRuntimeID(context.Background(), runtime, 999_999)
 	if err == nil || !strings.Contains(err.Error(), "empty target reference") {
@@ -90,11 +81,13 @@ func TestLiveConsoleTargetRefRejectsEmptySuccessfulReference(t *testing.T) {
 }
 
 func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	fixture := newAPITestFixture(t,
+		withTestConnector(localActionTestConnector{}),
+		withTestConnectorAdapter(localActionTestConnectorKind, liveConsoleLookupTestAdapter{
+			ref: connectors.FormatTargetRef(localActionTestConnectorKind, 1, 1),
+		}),
+	)
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.connectorRegistry().Register(localActionTestConnector{}); err != nil {
-		t.Fatal(err)
-	}
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind,
@@ -114,6 +107,9 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	if target.ID != 1 || profile.ID != 1 {
+		t.Fatalf("fresh fixture target/profile ids = %d/%d, want 1/1", target.ID, profile.ID)
+	}
 	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  localActionTestConnectorKind,
 		TargetID:       target.ID,
@@ -124,11 +120,6 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetRef := connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID)
-	if err := fixture.server.connectorAdapterRegistry().Register(localActionTestConnectorKind, liveConsoleLookupTestAdapter{ref: targetRef}); err != nil {
-		t.Fatal(err)
-	}
-
 	_, err = fixture.server.connectorManagementApplication().ResolveBulkCommandTarget(t.Context(), runtime, fixture.server.connectorKinds(), surface.ID)
 	if !errors.Is(err, gatewayoperations.ErrBulkTargetNotFound) {
 		t.Fatalf("bulk console target error = %v, want bulk target not found", err)

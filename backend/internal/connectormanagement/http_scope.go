@@ -17,7 +17,7 @@ type ConnectorFeatures struct {
 
 type Scope struct {
 	Database                    *sql.DB
-	Registry                    *connectors.Registry
+	Registry                    connectors.Catalog
 	Features                    func(string) ConnectorFeatures
 	SessionEnvironmentSupported func(context.Context, int64) bool
 }

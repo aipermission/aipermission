@@ -7,12 +7,25 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 var identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Registry stores connector implementations by kind.
 type Registry struct {
+	mu     sync.RWMutex
+	byKind map[string]Connector
+}
+
+// Catalog is the immutable connector lookup surface used after composition.
+// Registration belongs only to the bootstrap Registry builder.
+type Catalog interface {
+	Get(kind string) (Connector, bool)
+	List() []ConnectorInfo
+}
+
+type catalogSnapshot struct {
 	byKind map[string]Connector
 }
 
@@ -24,12 +37,20 @@ func NewRegistry() *Registry {
 // Register adds one connector. Connector kinds are stable lowercase
 // identifiers such as "postgres", "redis", or "http_recipe".
 func (r *Registry) Register(connector Connector) error {
+	if r == nil {
+		return fmt.Errorf("connector registry is not configured")
+	}
 	if connector == nil {
 		return fmt.Errorf("connector is nil")
 	}
 	kind := connector.Kind()
 	if !ValidIdentifier(kind) {
 		return fmt.Errorf("invalid connector kind %q", kind)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.byKind == nil {
+		r.byKind = make(map[string]Connector)
 	}
 	if _, exists := r.byKind[kind]; exists {
 		return fmt.Errorf("connector kind %q already registered", kind)
@@ -43,14 +64,77 @@ func (r *Registry) Register(connector Connector) error {
 
 // Get returns a connector by kind.
 func (r *Registry) Get(kind string) (Connector, bool) {
+	if r == nil {
+		return nil, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	connector, ok := r.byKind[kind]
 	return connector, ok
 }
 
 // List returns connector metadata in stable order.
 func (r *Registry) List() []ConnectorInfo {
-	infos := make([]ConnectorInfo, 0, len(r.byKind))
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return connectorInfos(r.byKind)
+}
+
+// Snapshot returns an immutable copy suitable for runtime composition.
+func (r *Registry) Snapshot() Catalog {
+	if r == nil {
+		return catalogSnapshot{byKind: map[string]Connector{}}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	byKind := make(map[string]Connector, len(r.byKind))
 	for kind, connector := range r.byKind {
+		byKind[kind] = connector
+	}
+	return catalogSnapshot{byKind: byKind}
+}
+
+// SnapshotCatalog copies any read-only catalog into an immutable runtime view.
+func SnapshotCatalog(source Catalog) (Catalog, error) {
+	if source == nil {
+		return catalogSnapshot{byKind: map[string]Connector{}}, nil
+	}
+	if registry, ok := source.(*Registry); ok {
+		return registry.Snapshot(), nil
+	}
+	infos := source.List()
+	byKind := make(map[string]Connector, len(infos))
+	for _, info := range infos {
+		connector, ok := source.Get(info.Kind)
+		if !ok || connector == nil {
+			return nil, fmt.Errorf("connector catalog kind %q is missing", info.Kind)
+		}
+		if connector.Kind() != info.Kind {
+			return nil, fmt.Errorf("connector catalog kind %q resolves connector %q", info.Kind, connector.Kind())
+		}
+		if _, exists := byKind[info.Kind]; exists {
+			return nil, fmt.Errorf("connector catalog kind %q is duplicated", info.Kind)
+		}
+		byKind[info.Kind] = connector
+	}
+	return catalogSnapshot{byKind: byKind}, nil
+}
+
+func (snapshot catalogSnapshot) Get(kind string) (Connector, bool) {
+	connector, ok := snapshot.byKind[kind]
+	return connector, ok
+}
+
+func (snapshot catalogSnapshot) List() []ConnectorInfo {
+	return connectorInfos(snapshot.byKind)
+}
+
+func connectorInfos(byKind map[string]Connector) []ConnectorInfo {
+	infos := make([]ConnectorInfo, 0, len(byKind))
+	for kind, connector := range byKind {
 		infos = append(infos, ConnectorInfo{
 			Kind:    kind,
 			Label:   connector.Label(),

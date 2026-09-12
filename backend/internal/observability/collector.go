@@ -19,7 +19,7 @@ const recentErrorOutputLimit = 20
 
 type CollectInput struct {
 	Database               *sql.DB
-	Registry               *connectors.Registry
+	Registry               connectors.Catalog
 	ApplicationVersion     string
 	SupportedSchemaVersion int
 	MCPEnabled             bool

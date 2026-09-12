@@ -119,6 +119,30 @@ func TestRegistryRejectsDuplicateKind(t *testing.T) {
 	}
 }
 
+func TestCatalogSnapshotIsImmutableAndDetachedFromBuilder(t *testing.T) {
+	registry := NewRegistry()
+	first := fakeConnector{kind: "first", label: "First", version: "0.1"}
+	if err := registry.Register(first); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := SnapshotCatalog(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, mutable := snapshot.(interface{ Register(Connector) error }); mutable {
+		t.Fatal("runtime catalog exposes registration")
+	}
+	if err := registry.Register(fakeConnector{kind: "second", label: "Second", version: "0.1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := snapshot.Get("second"); ok {
+		t.Fatal("builder mutation leaked into immutable snapshot")
+	}
+	if got := len(snapshot.List()); got != 1 {
+		t.Fatalf("snapshot connector count = %d, want 1", got)
+	}
+}
+
 func TestRegistryRejectsInvalidConnectorContract(t *testing.T) {
 	tests := []struct {
 		name      string

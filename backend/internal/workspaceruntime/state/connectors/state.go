@@ -14,8 +14,8 @@ import (
 )
 
 type State struct {
-	registry        *connectorcatalog.Registry
-	adapterRegistry *connectorapi.Registry
+	registry        connectorcatalog.Catalog
+	adapterRegistry connectorapi.Catalog
 	resources       connectorruntime.ResourceScopes
 	consoleSessions *console.Manager
 	database        *sql.DB
@@ -24,8 +24,8 @@ type State struct {
 }
 
 func New(
-	registry *connectorcatalog.Registry,
-	adapterRegistry *connectorapi.Registry,
+	registry connectorcatalog.Catalog,
+	adapterRegistry connectorapi.Catalog,
 	database *sql.DB,
 	secretVault *vault.Vault,
 	workspaceUUID string,
@@ -37,14 +37,14 @@ func New(
 	}
 }
 
-func (s *State) ConnectorRegistry() *connectorcatalog.Registry {
+func (s *State) ConnectorRegistry() connectorcatalog.Catalog {
 	if s == nil {
 		return nil
 	}
 	return s.registry
 }
 
-func (s *State) ConnectorAdapterRegistry() *connectorapi.Registry {
+func (s *State) ConnectorAdapterRegistry() connectorapi.Catalog {
 	if s == nil {
 		return nil
 	}

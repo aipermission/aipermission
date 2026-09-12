@@ -102,11 +102,8 @@ func (*provisioningFailureTestConnector) PreserveProvisionedCredentialPublic(_ c
 }
 
 func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{provisionedSecret: "generated-secret"}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatalf("register provisioning connector: %v", err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -166,7 +163,6 @@ func TestProvisionConnectorCredentialProfileCompensatesPersistenceFailure(t *tes
 }
 
 func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{
 		provisionedSecret: "generated-secret",
 		provisionedResult: connectors.ActionResult{
@@ -175,9 +171,7 @@ func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *t
 			DisplayText: "created with generated-secret",
 		},
 	}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatal(err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: provisioningFailureTestConnectorKind, Name: "provision-target", Config: map[string]any{}})
 	if err != nil {
@@ -200,11 +194,8 @@ func TestProvisionConnectorCredentialProfileRedactsAdminAndGeneratedSecrets(t *t
 }
 
 func TestProvisionConnectorCredentialProfileRedactsProvisioningErrors(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{provisionErr: errors.New("remote rejected admin-secret")}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatal(err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{ConnectorKind: provisioningFailureTestConnectorKind, Name: "provision-target", Config: map[string]any{}})
 	if err != nil {
@@ -249,11 +240,8 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			fixture := newAPITestFixture(t)
 			connector := &provisioningFailureTestConnector{cleanupStatus: testCase.cleanupStatus, cleanupErr: testCase.cleanupErr}
-			if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-				t.Fatalf("register provisioning connector: %v", err)
-			}
+			fixture := newAPITestFixture(t, withTestConnector(connector))
 
 			store := connectortargets.NewStore(fixture.db)
 			target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -314,11 +302,8 @@ func TestProvisionConnectorCredentialProfileCompensatesEncryptionFailure(t *test
 }
 
 func TestDeleteManagedCredentialProfileRequiresCompletedRemoteCleanup(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{cleanupStatus: connectors.ResultFailed}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatalf("register provisioning connector: %v", err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -385,14 +370,11 @@ func setProvisionTestProfileSecret(t *testing.T, server *Server, runtime *gatewa
 }
 
 func TestDeleteManagedCredentialProfileAuditsCompletedExternalCleanup(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &provisioningFailureTestConnector{cleanupOutput: map[string]any{
 		"role_name": "app_reader", "ownership_reassigned_to": "postgres", "dropped": true,
 		"password": "cleanup-secret", "admin_echo": "admin-secret", "managed_echo": "managed-secret",
 	}}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatalf("register provisioning connector: %v", err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{

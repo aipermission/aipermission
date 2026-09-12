@@ -38,13 +38,10 @@ func (connector *concurrentCredentialTestConnector) ValidateCredentialProfile(st
 }
 
 func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
-	fixture := newAPITestFixture(t)
 	connector := &concurrentCredentialTestConnector{
 		firstEntered: make(chan struct{}), releaseFirst: make(chan struct{}),
 	}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatalf("register concurrency connector: %v", err)
-	}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind, Name: "concurrent-credential", Config: map[string]any{},

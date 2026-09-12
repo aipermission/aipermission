@@ -51,7 +51,7 @@ type ConnectorRuntimeDependencies struct {
 // connector implementation or constructing a connector workspace.
 type ConnectorRuntimeApplication struct {
 	owner       *ConnectorPortsOwner
-	adapters    *connectorapi.Registry
+	adapters    connectorapi.Catalog
 	ports       *connectorports.PortsComponent
 	execution   ConnectorRuntimeExecutionPorts
 	transfers   ConnectorRuntimeTransferPorts
@@ -59,7 +59,7 @@ type ConnectorRuntimeApplication struct {
 	trust       func() string
 }
 
-func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *OperationsOwner, adapters *connectorapi.Registry, dependencies ConnectorRuntimeDependencies) (*ConnectorRuntimeApplication, error) {
+func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *OperationsOwner, adapters connectorapi.Catalog, dependencies ConnectorRuntimeDependencies) (*ConnectorRuntimeApplication, error) {
 	if owner == nil || operations == nil {
 		return nil, errors.New("connector runtime owners are required")
 	}

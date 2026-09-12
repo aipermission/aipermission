@@ -139,7 +139,7 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 	})
 }
 
-func connectorPermissionInputs(ctx context.Context, registry *connectors.Registry, store *connectortargets.Store, permissions []ConnectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
+func connectorPermissionInputs(ctx context.Context, registry connectors.Catalog, store *connectortargets.Store, permissions []ConnectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
 	inputs := make([]connectortargets.SetActionPermissionInput, 0, len(permissions))
 	for _, permission := range permissions {
 		target, profile, err := store.ResolveTargetProfileViews(ctx, permission.TargetID, permission.ProfileID)
@@ -169,15 +169,15 @@ func connectorPermissionInputs(ctx context.Context, registry *connectors.Registr
 	return inputs, nil
 }
 
-func ActiveSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
+func ActiveSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry connectors.Catalog, tokenID int64) ([]connectortargets.ActionPermission, error) {
 	return supportedConnectorPermissions(ctx, database, registry, tokenID, false)
 }
 
-func ProjectScopedSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64) ([]connectortargets.ActionPermission, error) {
+func ProjectScopedSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry connectors.Catalog, tokenID int64) ([]connectortargets.ActionPermission, error) {
 	return supportedConnectorPermissions(ctx, database, registry, tokenID, true)
 }
 
-func supportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, tokenID int64, projectScoped bool) ([]connectortargets.ActionPermission, error) {
+func supportedConnectorPermissions(ctx context.Context, database *sql.DB, registry connectors.Catalog, tokenID int64, projectScoped bool) ([]connectortargets.ActionPermission, error) {
 	if database == nil || registry == nil {
 		return nil, connectortargets.ValidationError("database runtime is not available")
 	}
@@ -195,7 +195,7 @@ func supportedConnectorPermissions(ctx context.Context, database *sql.DB, regist
 	return filterSupportedConnectorPermissions(ctx, database, registry, permissions)
 }
 
-func filterSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry *connectors.Registry, permissions []connectortargets.ActionPermission) ([]connectortargets.ActionPermission, error) {
+func filterSupportedConnectorPermissions(ctx context.Context, database *sql.DB, registry connectors.Catalog, permissions []connectortargets.ActionPermission) ([]connectortargets.ActionPermission, error) {
 	store := connectortargets.NewStore(database)
 	type actionCatalog struct {
 		names map[string]bool

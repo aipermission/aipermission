@@ -140,7 +140,7 @@ type Identity struct {
 
 type OpenWorkspaceInput struct{ input gatewayworkspace.OpenInput }
 
-func NewOpenWorkspaceInput(id, path, password, gatewaySecret string, registry *connectors.Registry, adapters *connectorapi.Registry) OpenWorkspaceInput {
+func NewOpenWorkspaceInput(id, path, password, gatewaySecret string, registry connectors.Catalog, adapters connectorapi.Catalog) OpenWorkspaceInput {
 	return OpenWorkspaceInput{input: gatewayworkspace.OpenInput{
 		ID: id, Path: path, Password: password, ConfiguredGatewaySecret: gatewaySecret,
 		Registry: registry, AdapterRegistry: adapters,

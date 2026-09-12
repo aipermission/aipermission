@@ -28,7 +28,7 @@ func adaptTransaction(transaction Transaction) func(context.Context, func(*sql.T
 
 type StoragePorts struct {
 	Database         *sql.DB
-	Registry         *connectors.Registry
+	Registry         connectors.Catalog
 	AcquireExclusive func(context.Context) (func(), error)
 	Transaction      Transaction
 	EncryptSecret    func(context.Context, int64, json.RawMessage) (string, error)
@@ -87,7 +87,7 @@ type Dependencies struct {
 	Active       func(http.ResponseWriter) (Workspace, bool)
 	Approvals    ConnectorApprovalScopeProvider
 	Capabilities CapabilityDependencies
-	Adapters     *connectorapi.Registry
+	Adapters     connectorapi.Catalog
 	PeerIdentity connectorapi.PeerIdentityGateway
 }
 

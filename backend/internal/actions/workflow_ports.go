@@ -61,7 +61,7 @@ type RunningActions interface {
 type RuntimeDependencies struct {
 	Database       *sql.DB
 	Tokens         TokenReader
-	Registry       *connectors.Registry
+	Registry       connectors.Catalog
 	Targets        TargetResolver
 	IdentityTag    IdentityTagger
 	Delivery       DeliveryGate

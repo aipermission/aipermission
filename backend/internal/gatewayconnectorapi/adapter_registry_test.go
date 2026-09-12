@@ -10,6 +10,19 @@ import (
 
 type testRouteAdapter []RouteDefinition
 
+type testNilAdapter struct{}
+
+type testCatalog struct {
+	kinds    []string
+	adapters map[string]Adapter
+}
+
+func (catalog testCatalog) For(kind string) Adapter { return catalog.adapters[kind] }
+func (catalog testCatalog) Kinds() []string         { return catalog.kinds }
+func (catalog testCatalog) RouteDefinitions([]string) ([]RouteDefinition, error) {
+	return nil, nil
+}
+
 func (a testRouteAdapter) Routes() []RouteDefinition {
 	return a
 }
@@ -24,6 +37,45 @@ func TestRegisterRejectsDuplicateAdapter(t *testing.T) {
 	}
 	if err := registry.Register("duplicate_test", struct{}{}); err == nil || !strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("expected duplicate registration error, got %v", err)
+	}
+}
+
+func TestAdapterCatalogRejectsTypedNilAdapters(t *testing.T) {
+	var adapter *testNilAdapter
+	registry := NewRegistry()
+	if err := registry.Register("typed_nil", adapter); err == nil || !strings.Contains(err.Error(), "is nil") {
+		t.Fatalf("typed-nil registration error = %v", err)
+	}
+
+	_, err := SnapshotCatalog(testCatalog{
+		kinds:    []string{"typed_nil"},
+		adapters: map[string]Adapter{"typed_nil": adapter},
+	})
+	if err == nil || !strings.Contains(err.Error(), "is missing") {
+		t.Fatalf("typed-nil snapshot error = %v", err)
+	}
+}
+
+func TestAdapterCatalogSnapshotIsImmutableAndDetachedFromBuilder(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register("first", struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := SnapshotCatalog(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, mutable := snapshot.(interface{ Register(string, Adapter) error }); mutable {
+		t.Fatal("runtime adapter catalog exposes registration")
+	}
+	if err := registry.Register("second", struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if adapter := snapshot.For("second"); adapter != nil {
+		t.Fatalf("builder mutation leaked into immutable snapshot: %T", adapter)
+	}
+	if got := snapshot.Kinds(); !slices.Equal(got, []string{"first"}) {
+		t.Fatalf("snapshot adapter kinds = %v, want [first]", got)
 	}
 }
 

@@ -13,10 +13,10 @@ import (
 type Catalog struct {
 	component *Component
 	database  *sql.DB
-	registry  *connectors.Registry
+	registry  connectors.Catalog
 }
 
-func (component *Component) Catalog(database *sql.DB, registry *connectors.Registry) Catalog {
+func (component *Component) Catalog(database *sql.DB, registry connectors.Catalog) Catalog {
 	return Catalog{component: component, database: database, registry: registry}
 }
 

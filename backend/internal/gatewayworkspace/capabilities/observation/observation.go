@@ -12,7 +12,7 @@ import (
 
 type Capability struct {
 	Database            *sql.DB
-	Registry            *connectorcatalog.Registry
+	Registry            connectorcatalog.Catalog
 	MCPStarted          func() bool
 	PrepareRedactor     func(context.Context) func(string) string
 	AuditDispatcher     func() *observability.Dispatcher
@@ -21,7 +21,7 @@ type Capability struct {
 	SetRetentionService func(*retention.Service)
 }
 
-func New(database *sql.DB, registry *connectorcatalog.Registry, mcpStarted func() bool, policy *securitypolicy.Service, auditDispatcher func() *observability.Dispatcher, setAuditDispatcher func(*observability.Dispatcher), retentionService func() *retention.Service, setRetentionService func(*retention.Service)) Capability {
+func New(database *sql.DB, registry connectorcatalog.Catalog, mcpStarted func() bool, policy *securitypolicy.Service, auditDispatcher func() *observability.Dispatcher, setAuditDispatcher func(*observability.Dispatcher), retentionService func() *retention.Service, setRetentionService func(*retention.Service)) Capability {
 	prepareRedactor := func(ctx context.Context) func(string) string {
 		if policy == nil {
 			return nil

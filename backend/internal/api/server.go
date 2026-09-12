@@ -29,14 +29,17 @@ type Server struct {
 	vaultOwner               *gatewayinfra.VaultOwner
 	mux                      *http.ServeMux
 	commands                 gatewayoperations.CommandComponent
-	connectorRegistryOwner   *connectors.Registry
-	connectorAdaptersOwner   *connectorapi.Registry
+	connectorRegistryOwner   connectors.Catalog
+	connectorAdaptersOwner   connectorapi.Catalog
 	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
 }
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	resolved := resolveServerOptions(options)
+	if resolved.err != nil {
+		panic(fmt.Sprintf("snapshot connector catalog: %v", resolved.err))
+	}
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
 	server := newServerComposition(cfg, resolved, infrastructure)
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
@@ -109,14 +112,14 @@ func describeDatabaseRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayinfra
 	return runtime.WorkspaceIdentity()
 }
 
-func (s *Server) connectorRegistry() *connectors.Registry {
+func (s *Server) connectorRegistry() connectors.Catalog {
 	if s == nil {
 		return nil
 	}
 	return s.connectorRegistryOwner
 }
 
-func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
+func (s *Server) connectorAdapterRegistry() connectorapi.Catalog {
 	if s == nil {
 		return nil
 	}

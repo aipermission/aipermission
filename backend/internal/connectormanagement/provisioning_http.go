@@ -34,7 +34,7 @@ type ProvisionResponse struct {
 
 type ProvisioningScope struct {
 	Database              *sql.DB
-	Registry              *connectors.Registry
+	Registry              connectors.Catalog
 	Runtime               CredentialRuntimePorts
 	EncryptSecret         func(context.Context, int64, json.RawMessage) (string, error)
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error

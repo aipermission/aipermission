@@ -343,7 +343,8 @@ func (connector *approvalRetryPolicyConnector) GetActionList(ctx context.Context
 }
 
 func TestConnectorActionApprovalRunRejectsRetryPolicyDrift(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	connector := &approvalRetryPolicyConnector{retryPolicy: connectors.RetryPolicy{Class: connectors.RetryReadOnly}}
+	fixture := newAPITestFixture(t, withTestConnector(connector))
 	ctx := t.Context()
 	store := connectortargets.NewStore(fixture.db)
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "retry-policy-drift"})
@@ -356,10 +357,6 @@ func TestConnectorActionApprovalRunRejectsRetryPolicyDrift(t *testing.T) {
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set permission: %v", err)
-	}
-	connector := &approvalRetryPolicyConnector{retryPolicy: connectors.RetryPolicy{Class: connectors.RetryReadOnly}}
-	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
-		t.Fatalf("register connector: %v", err)
 	}
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
 		Source: commandRequestSourceMCP, TokenID: token.ID,
@@ -571,9 +568,25 @@ func (c approvalExecutionObserverConnector) ExecuteAction(ctx context.Context, r
 }
 
 func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	var fixture apiTestFixture
+	var store *connectortargets.Store
+	var requestID int64
+	observer := approvalExecutionObserverConnector{
+		beforeExecute: func(ctx context.Context) error {
+			request, err := store.GetActionRequest(ctx, requestID)
+			if err != nil {
+				return fmt.Errorf("read request during execution: %w", err)
+			}
+			if request.Status != connectors.ResultRunning {
+				return fmt.Errorf("request status during execution = %q", request.Status)
+			}
+			return nil
+		},
+		executeError: connectors.ClassifyError("fixture_failure", fmt.Errorf("fixture execution failed")),
+	}
+	fixture = newAPITestFixture(t, withTestConnector(observer))
 	ctx := context.Background()
-	store := connectortargets.NewStore(fixture.db)
+	store = connectortargets.NewStore(fixture.db)
 	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
@@ -589,23 +602,6 @@ func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
 		t.Fatalf("set connector permission: %v", err)
 	}
 
-	var requestID int64
-	observer := approvalExecutionObserverConnector{
-		beforeExecute: func(ctx context.Context) error {
-			request, err := store.GetActionRequest(ctx, requestID)
-			if err != nil {
-				return fmt.Errorf("read request during execution: %w", err)
-			}
-			if request.Status != connectors.ResultRunning {
-				return fmt.Errorf("request status during execution = %q", request.Status)
-			}
-			return nil
-		},
-		executeError: connectors.ClassifyError("fixture_failure", fmt.Errorf("fixture execution failed")),
-	}
-	if err := fixture.server.connectorRegistry().Register(observer); err != nil {
-		t.Fatalf("register observer connector: %v", err)
-	}
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
@@ -646,25 +642,10 @@ func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
 }
 
 func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	ctx := context.Background()
-	store := connectortargets.NewStore(fixture.db)
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
-	target, profile := createApprovalObserverTargetProfile(t, store)
-	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
-		TokenID:       token.ID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ActionName:    "echo",
-		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
-	}); err != nil {
-		t.Fatalf("set connector permission: %v", err)
-	}
-
+	var fixture apiTestFixture
+	var store *connectortargets.Store
 	var requestID int64
+	var tokenID int64
 	observer := approvalExecutionObserverConnector{
 		beforeExecute: func(ctx context.Context) error {
 			if _, active := fixture.server.connectorCredentialBoundary(fixture.server.activeRuntime(), requestID); !active {
@@ -683,7 +664,7 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 			if err := fixture.db.QueryRowContext(ctx, `
 				SELECT message FROM message_queue
 				WHERE token_id = ? AND direction = 'user_to_ai'
-				ORDER BY id DESC LIMIT 1`, token.ID).Scan(&note); err != nil {
+				ORDER BY id DESC LIMIT 1`, tokenID).Scan(&note); err != nil {
 				return fmt.Errorf("read operator note during execution: %w", err)
 			}
 			if requestStatus != string(connectors.ResultRunning) || historyStatus != string(connectors.ResultRunning) {
@@ -695,13 +676,26 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 			return nil
 		},
 		result: connectors.ActionResult{
-			Status:      connectors.ResultCompleted,
-			Output:      map[string]any{"echo": "approved"},
-			DisplayText: "approved",
+			Status: connectors.ResultCompleted, Output: map[string]any{"echo": "approved"}, DisplayText: "approved",
 		},
 	}
-	if err := fixture.server.connectorRegistry().Register(observer); err != nil {
-		t.Fatalf("register observer connector: %v", err)
+	fixture = newAPITestFixture(t, withTestConnector(observer))
+	ctx := context.Background()
+	store = connectortargets.NewStore(fixture.db)
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	tokenID = token.ID
+	target, profile := createApprovalObserverTargetProfile(t, store)
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    "echo",
+		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+	}); err != nil {
+		t.Fatalf("set connector permission: %v", err)
 	}
 
 	pending, err := fixture.server.callConnectorAction(ctx, fixture.server.activeRuntime(), connectorActionCall{

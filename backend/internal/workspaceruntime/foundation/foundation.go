@@ -21,8 +21,8 @@ type State struct {
 	Path            string
 	Database        *sql.DB
 	Ownership       *db.DatabaseOwnership
-	Registry        *connectors.Registry
-	AdapterRegistry *connectorapi.Registry
+	Registry        connectors.Catalog
+	AdapterRegistry connectorapi.Catalog
 	TokenStore      *tokens.Store
 	Identity        identity.State
 }
@@ -32,8 +32,8 @@ type OpenInput struct {
 	Path                    string
 	Password                string
 	ConfiguredGatewaySecret string
-	Registry                *connectors.Registry
-	AdapterRegistry         *connectorapi.Registry
+	Registry                connectors.Catalog
+	AdapterRegistry         connectorapi.Catalog
 }
 
 type AdoptInput struct {
@@ -43,8 +43,8 @@ type AdoptInput struct {
 	Vault                   *vault.Vault
 	TokenStore              *tokens.Store
 	ConfiguredGatewaySecret string
-	Registry                *connectors.Registry
-	AdapterRegistry         *connectorapi.Registry
+	Registry                connectors.Catalog
+	AdapterRegistry         connectorapi.Catalog
 	RuntimeInstanceID       func() (string, error)
 }
 

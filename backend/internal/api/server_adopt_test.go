@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
@@ -13,6 +14,9 @@ import (
 func NewServer(configuration RuntimeConfiguration, adopted gatewayworkspace.AdoptInput, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	resolved := resolveServerOptions(options)
+	if resolved.err != nil {
+		return nil, fmt.Errorf("snapshot connector catalog: %w", resolved.err)
+	}
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
 	workspaceOwner := infrastructure.WorkspaceOwner()
 	server := newServerComposition(cfg, resolved, infrastructure)

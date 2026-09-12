@@ -15,11 +15,35 @@ type testConnectorCatalog struct {
 
 func newTestConnectorCatalog(t *testing.T) testConnectorCatalog {
 	t.Helper()
-	catalog, err := builtin.NewCatalog()
-	if err != nil {
-		t.Fatalf("new connector catalog: %v", err)
+	connectorRegistry := connectors.NewRegistry()
+	if err := builtin.RegisterAll(connectorRegistry); err != nil {
+		t.Fatalf("register built-in connectors: %v", err)
 	}
-	return testConnectorCatalog{connectors: catalog.Connectors, adapters: catalog.Adapters}
+	adapterRegistry := connectorapi.NewRegistry()
+	if err := builtin.RegisterAdapters(adapterRegistry); err != nil {
+		t.Fatalf("register built-in connector adapters: %v", err)
+	}
+	return testConnectorCatalog{connectors: connectorRegistry, adapters: adapterRegistry}
+}
+
+type testCatalogOption func(testing.TB, testConnectorCatalog)
+
+func withTestConnector(connector connectors.Connector) testCatalogOption {
+	return func(t testing.TB, catalog testConnectorCatalog) {
+		t.Helper()
+		if err := catalog.connectors.Register(connector); err != nil {
+			t.Fatalf("register test connector: %v", err)
+		}
+	}
+}
+
+func withTestConnectorAdapter(kind string, adapter connectorapi.Adapter) testCatalogOption {
+	return func(t testing.TB, catalog testConnectorCatalog) {
+		t.Helper()
+		if err := catalog.adapters.Register(kind, adapter); err != nil {
+			t.Fatalf("register test connector adapter: %v", err)
+		}
+	}
 }
 
 func testConnectorRegistry(t *testing.T) *connectors.Registry {

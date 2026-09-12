@@ -7,19 +7,30 @@ import (
 )
 
 type serverOptions struct {
-	registry           *connectors.Registry
-	adapterRegistry    *connectorapi.Registry
+	registry           connectors.Catalog
+	adapterRegistry    connectorapi.Catalog
 	maintenanceConsole gatewayoperations.MaintenanceConsoleRuntime
+	err                error
 }
 
 type ServerOption func(*serverOptions)
 
-func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
-	return func(options *serverOptions) { options.registry = registry }
+func WithConnectorRegistry(registry connectors.Catalog) ServerOption {
+	return func(options *serverOptions) {
+		if options.err != nil {
+			return
+		}
+		options.registry, options.err = connectors.SnapshotCatalog(registry)
+	}
 }
 
-func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
-	return func(options *serverOptions) { options.adapterRegistry = registry }
+func WithConnectorAdapterRegistry(registry connectorapi.Catalog) ServerOption {
+	return func(options *serverOptions) {
+		if options.err != nil {
+			return
+		}
+		options.adapterRegistry, options.err = connectorapi.SnapshotCatalog(registry)
+	}
 }
 
 func WithMaintenanceConsole(runtime gatewayoperations.MaintenanceConsoleRuntime) ServerOption {
@@ -28,7 +39,7 @@ func WithMaintenanceConsole(runtime gatewayoperations.MaintenanceConsoleRuntime)
 
 func resolveServerOptions(options []ServerOption) serverOptions {
 	resolved := serverOptions{
-		registry: connectors.NewRegistry(), adapterRegistry: connectorapi.NewRegistry(),
+		registry: connectors.NewRegistry().Snapshot(), adapterRegistry: connectorapi.NewRegistry().Snapshot(),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -36,10 +47,10 @@ func resolveServerOptions(options []ServerOption) serverOptions {
 		}
 	}
 	if resolved.registry == nil {
-		resolved.registry = connectors.NewRegistry()
+		resolved.registry = connectors.NewRegistry().Snapshot()
 	}
 	if resolved.adapterRegistry == nil {
-		resolved.adapterRegistry = connectorapi.NewRegistry()
+		resolved.adapterRegistry = connectorapi.NewRegistry().Snapshot()
 	}
 	return resolved
 }

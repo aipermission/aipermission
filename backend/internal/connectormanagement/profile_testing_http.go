@@ -27,7 +27,7 @@ type ConnectionTestResponse struct {
 
 type ProfileTestingScope struct {
 	Database      *sql.DB
-	Registry      *connectors.Registry
+	Registry      connectors.Catalog
 	Runtime       CredentialRuntimePorts
 	SpecialTest   func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
 	RedactDetails func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)

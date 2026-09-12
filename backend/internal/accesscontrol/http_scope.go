@@ -27,7 +27,7 @@ type MutationRunner func(
 type Scope struct {
 	Database                *sql.DB
 	Tokens                  *tokens.Store
-	Registry                *connectors.Registry
+	Registry                connectors.Catalog
 	ReusableTokens          func(context.Context) (bool, error)
 	Mutate                  MutationRunner
 	AcquireExclusive        func(context.Context) (func(), error)

@@ -23,7 +23,7 @@ type Workspace struct {
 type ActionStorage struct {
 	Database    *sql.DB
 	Tokens      *tokens.Store
-	Registry    *connectors.Registry
+	Registry    connectors.Catalog
 	SecretVault *vault.Vault
 	WorkspaceID string
 }

@@ -42,20 +42,15 @@ func TestNewCatalogRegistersRuntimeAdaptersExplicitly(t *testing.T) {
 	}
 }
 
-func TestNewCatalogDoesNotShareAdapterState(t *testing.T) {
+func TestNewCatalogExposesOnlyImmutableAdapterSnapshots(t *testing.T) {
 	first, err := NewCatalog()
 	if err != nil {
 		t.Fatalf("new first catalog: %v", err)
 	}
-	second, err := NewCatalog()
-	if err != nil {
-		t.Fatalf("new second catalog: %v", err)
-	}
-	if err := first.Adapters.Register("test-only", isolatedTestAdapter{}); err != nil {
-		t.Fatalf("register isolated adapter: %v", err)
-	}
-	if adapter := second.Adapters.For("test-only"); adapter != nil {
-		t.Fatalf("second catalog inherited adapter state: %T", adapter)
+	if _, mutable := first.Adapters.(interface {
+		Register(string, connectorapi.Adapter) error
+	}); mutable {
+		t.Fatal("built-in catalog exposes mutable adapter registration")
 	}
 }
 

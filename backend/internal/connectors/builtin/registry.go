@@ -12,8 +12,8 @@ import (
 )
 
 type Catalog struct {
-	Connectors *connectors.Registry
-	Adapters   *connectorapi.Registry
+	Connectors connectors.Catalog
+	Adapters   connectorapi.Catalog
 }
 
 // RegisterAll adds all built-in connectors to the provided registry.
@@ -67,5 +67,5 @@ func NewCatalog() (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
-	return Catalog{Connectors: connectorRegistry, Adapters: adapterRegistry}, nil
+	return Catalog{Connectors: connectorRegistry.Snapshot(), Adapters: adapterRegistry.Snapshot()}, nil
 }

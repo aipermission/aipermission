@@ -17,12 +17,9 @@ import (
 )
 
 func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	fixture := newAPITestFixture(t, withTestConnector(localActionTestConnector{}))
 	ctx := context.Background()
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.connectorRegistry().Register(localActionTestConnector{}); err != nil {
-		t.Fatalf("register local test connector: %v", err)
-	}
 
 	const credentialSecret = "gateway-credential-never-return-7f3a"
 	const targetOutput = "permitted-target-output-may-be-sensitive-7f3a"

@@ -23,14 +23,14 @@ type VaultMetadataCapability struct{ Database *sql.DB }
 type AccessControlCapability struct {
 	Database *sql.DB
 	Tokens   *tokens.Store
-	Registry *connectorcatalog.Registry
+	Registry connectorcatalog.Catalog
 	Policy   *securitypolicy.Service
 	Delivery *vaultsessions.DeliveryCoordinator
 }
 
 type MCPReadCapability struct {
 	Database *sql.DB
-	Registry *connectorcatalog.Registry
+	Registry connectorcatalog.Catalog
 }
 
 type MCPActionCapability struct {
@@ -78,11 +78,11 @@ func NewVaultMetadata(database *sql.DB) VaultMetadataCapability {
 	return VaultMetadataCapability{Database: database}
 }
 
-func NewAccessControl(database *sql.DB, tokenStore *tokens.Store, registry *connectorcatalog.Registry, policy *securitypolicy.Service, delivery *vaultsessions.DeliveryCoordinator) AccessControlCapability {
+func NewAccessControl(database *sql.DB, tokenStore *tokens.Store, registry connectorcatalog.Catalog, policy *securitypolicy.Service, delivery *vaultsessions.DeliveryCoordinator) AccessControlCapability {
 	return AccessControlCapability{Database: database, Tokens: tokenStore, Registry: registry, Policy: policy, Delivery: delivery}
 }
 
-func NewMCPRead(database *sql.DB, registry *connectorcatalog.Registry) MCPReadCapability {
+func NewMCPRead(database *sql.DB, registry connectorcatalog.Catalog) MCPReadCapability {
 	return MCPReadCapability{Database: database, Registry: registry}
 }
 

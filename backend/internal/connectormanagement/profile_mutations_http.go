@@ -13,7 +13,7 @@ import (
 
 type ProfileMutationScope struct {
 	Database              *sql.DB
-	Registry              *connectors.Registry
+	Registry              connectors.Catalog
 	Preparation           CredentialPreparationPorts
 	AcquireExclusive      func(context.Context) (func(), error)
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error

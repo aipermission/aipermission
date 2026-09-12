@@ -66,12 +66,12 @@ type ResolvedDependency = connectors.ResolvedDependency
 
 // Service owns the generic target -> connector -> prepared action boundary.
 type Service struct {
-	registry *connectors.Registry
+	registry connectors.Catalog
 	targets  TargetResolver
 }
 
 // NewService creates a generic connector action service.
-func NewService(registry *connectors.Registry, targets TargetResolver) *Service {
+func NewService(registry connectors.Catalog, targets TargetResolver) *Service {
 	return &Service{registry: registry, targets: targets}
 }
 

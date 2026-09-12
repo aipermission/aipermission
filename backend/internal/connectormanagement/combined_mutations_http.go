@@ -14,7 +14,7 @@ import (
 
 type CombinedMutationScope struct {
 	Database              *sql.DB
-	Registry              *connectors.Registry
+	Registry              connectors.Catalog
 	Preparation           CredentialPreparationPorts
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)

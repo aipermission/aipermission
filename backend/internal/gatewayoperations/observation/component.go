@@ -28,7 +28,7 @@ type StartActions func()
 type Runtime struct {
 	Database            *sql.DB
 	DatabaseID          string
-	Registry            *connectors.Registry
+	Registry            connectors.Catalog
 	MCPStarted          bool
 	PrepareRedactor     func(context.Context) func(string) string
 	AuditDispatcher     func() *observability.Dispatcher

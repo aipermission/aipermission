@@ -55,7 +55,7 @@ var (
 	testUICookie   *http.Cookie
 )
 
-func newAPITestFixture(t *testing.T) apiTestFixture {
+func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTestFixture {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
 	if err != nil {
@@ -67,6 +67,11 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 	}
 	tokenStore := tokens.NewStore(database)
 	catalog := newTestConnectorCatalog(t)
+	for _, option := range catalogOptions {
+		if option != nil {
+			option(t, catalog)
+		}
+	}
 	srv, err := NewServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",

@@ -102,12 +102,9 @@ func (secretLeakCanaryConnector) ExecuteAction(ctx context.Context, runtime conn
 }
 
 func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
-	fixture := newAPITestFixture(t)
+	fixture := newAPITestFixture(t, withTestConnector(secretLeakCanaryConnector{}))
 	ctx := context.Background()
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.connectorRegistry().Register(secretLeakCanaryConnector{}); err != nil {
-		t.Fatalf("register secret canary connector: %v", err)
-	}
 
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{

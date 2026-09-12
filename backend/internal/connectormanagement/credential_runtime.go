@@ -24,7 +24,7 @@ func (ports CredentialRuntimePorts) valid() bool {
 
 type ManagedCredentialCleanupScope struct {
 	Database *sql.DB
-	Registry *connectors.Registry
+	Registry connectors.Catalog
 	Runtime  CredentialRuntimePorts
 }
 

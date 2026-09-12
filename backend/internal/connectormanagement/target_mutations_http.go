@@ -24,7 +24,7 @@ type TargetLifecycleChange struct {
 
 type TargetMutationScope struct {
 	Database              *sql.DB
-	Registry              *connectors.Registry
+	Registry              connectors.Catalog
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
