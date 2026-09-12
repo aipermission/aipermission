@@ -123,7 +123,14 @@ place.
   `httptransport` child owns route declarations, request deadlines, local-only
   policy, session/CSRF enforcement, and response security policy. API adapters
   translate transport DTOs into narrow gateway-owner ports; they do not own
-  action, Vault-request, transfer-job, or runtime-state rules.
+  action, Vault-request, transfer-job, or runtime-state rules. Child packages
+  under `internal/api` remain transport-only and may not import domain or
+  gateway implementation packages to bypass the composition root.
+- `internal/gatewayinfrastructure`: process and workspace ownership. It keeps
+  raw database, Vault, security, connector-runtime, and observation resources
+  behind an opaque `WorkspaceHandle`, then projects requirement-specific ports
+  or complete HTTP handler sets to the API. The API must not reconstruct raw
+  access or Vault HTTP scopes from those resources.
 - `internal/connectors`: connector contracts and built-in connector
   implementations. Connector packages describe target schemas, credential
   schemas, help/actions, validation, and execution. They do not own

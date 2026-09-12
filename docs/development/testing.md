@@ -37,6 +37,10 @@ This runs:
 - canonical release-note artifact, release-version, and native-dependency
   inventory consistency checks
 - generated OpenAPI route and typed-schema drift
+- architecture guards that keep API child packages transport-only, prohibit
+  direct SQL and raw workspace-scope consumption in production API code, trace
+  the OpenAPI generator to one canonical route source, and keep backend,
+  frontend, and documented connector catalogs aligned
 - backend unit tests with an aggregate summary and reviewed floors for auth,
   permission, approval, Vault, session injection, target lifecycle, and audit
   outbox packages

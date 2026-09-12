@@ -304,6 +304,15 @@ Do not import the SSH connector package from another connector. Ask for a
 generic capability such as `NetworkTransport` or `CommandTransport`; the
 gateway resolves the selected transport profile.
 
+Connector-owned HTTP adapter routes are exceptional and declarative. A
+`gatewayconnectorapi.RouteDefinition` must declare `RoutePolicyUIRead` for a
+safe `GET` or `HEAD` route, or `RoutePolicyUIMutation` for a state-changing
+route. The connector registry and API transport both reject an empty, unknown,
+or method-incompatible policy. This policy selects the shared local UI/session
+and CSRF boundary; it does not replace action permission, approval, audit, or
+connector-side authorization. Prefer an existing generic action or capability
+over adding a custom route.
+
 Every Over SSH prepared action must declare that selected transport through
 `NetworkTransportDependencies` or `CommandTransportDependencies`. The gateway
 then binds approval to that exact target/profile snapshot, rejects attempts to
@@ -462,7 +471,9 @@ expose an adapter constructor from their connector-owned package and register
 it in `RegisterAdapters` beside the structured connector catalog. The gateway
 receives both registries through `builtin.NewCatalog`; package `init()`
 registration and blank side-effect imports are not allowed. Frontend
-registration is folder-based and auto-discovered. Adding a connector should
+registration is folder-based and auto-discovered. Architecture tests require
+the backend registry, frontend template kinds, and generated connector catalog
+to remain identical. Adding a connector should
 require connector files, tests, and docs, but it should not require new generic
 route handlers, permission tables, history tables, audit tables, or MCP tool
 families.
