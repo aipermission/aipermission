@@ -15,6 +15,7 @@ function copyPolicy() {
 test("rejects disabled budgets and broad test markers", () => {
   const candidate = copyPolicy();
   candidate.sourceBudgets[0].productionMaxLines = 0;
+  candidate.backendFanout.familyOwnerMax = 0;
   candidate.frontendArchitecture.testModuleMarkers.push(".jsx");
   const failures = validatePolicy(candidate, []);
   assert.ok(failures.some((failure) => failure.includes("positive integer")));

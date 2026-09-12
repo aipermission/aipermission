@@ -18,6 +18,7 @@ test("reads the exact machine policy consumed by enforcement", () => {
   assert.equal(snapshot["source.backend.maxLines"], 1400);
   assert.equal(snapshot["go.function.default.lines"], 180);
   assert.equal(snapshot["go.fanout.package"], 12);
+  assert.equal(snapshot["go.fanout.ownerFamily"], 25);
   assert.equal(snapshot.repositoryToolingTestPackageBudget, 1500);
   assert.equal(snapshot["test.package.depth.frontend"], 3);
 });
@@ -36,6 +37,18 @@ test("rejects relaxed numeric budgets", () => {
     budgetIncreases(policySnapshot(policy), policySnapshot(current)),
     ["backendPackageBudget increased from 3500 to 3501"],
   );
+});
+
+test("bootstraps and ratchets the aggregate owner-family budget", () => {
+  const current = policySnapshot(policy);
+  const legacy = { ...current };
+  delete legacy["go.fanout.ownerFamily"];
+  assert.deepEqual(budgetIncreases(legacy, current), []);
+
+  const relaxed = { ...current, "go.fanout.ownerFamily": 26 };
+  assert.deepEqual(budgetIncreases(current, relaxed), [
+    "go.fanout.ownerFamily increased from 25 to 26",
+  ]);
 });
 
 test("rejects test package depth increases", () => {

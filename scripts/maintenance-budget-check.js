@@ -109,6 +109,7 @@ function validatePolicy(candidate = policy, target = failures) {
     goTestMaxComplexity: candidate.goFunction?.testMaxComplexity,
     backendPackageFanout: candidate.backendFanout?.packageMax,
     backendOwnerFanout: candidate.backendFanout?.ownerMax,
+    backendOwnerFamilyFanout: candidate.backendFanout?.familyOwnerMax,
     backendTestFileImports: candidate.backendFanout?.testFileInternalImportsMax,
   };
   for (const [name, value] of Object.entries(positiveValues)) {

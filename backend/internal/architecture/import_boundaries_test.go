@@ -846,15 +846,20 @@ func TestHTTPPolicyAndAdapterRegistrationStayInTransportOwner(t *testing.T) {
 func TestConcreteWorkspaceRuntimeStaysInsideGatewayOwner(t *testing.T) {
 	concreteRuntime := modulePath + "/internal/workspaceruntime"
 	allowedImporter := modulePath + "/internal/gatewayworkspace"
-	for importer, imports := range allPackageImports(t) {
-		if importer == concreteRuntime || strings.HasPrefix(importer, concreteRuntime+"/") {
-			continue
-		}
-		for _, imported := range imports {
-			if imported == concreteRuntime && importer != allowedImporter {
-				t.Errorf("%s imports the concrete workspace runtime; only %s may construct it", importer, allowedImporter)
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			for importer, imports := range graph.imports {
+				if importer == concreteRuntime || strings.HasPrefix(importer, concreteRuntime+"/") {
+					continue
+				}
+				for _, imported := range imports {
+					if imported == concreteRuntime && importer != allowedImporter {
+						t.Errorf("%s imports the concrete workspace runtime; only %s may construct it", importer, allowedImporter)
+					}
+				}
 			}
-		}
+		})
 	}
 	for _, retired := range []string{"connectors", "gatewayadapter", "observation", "security", "storage"} {
 		path := filepath.Join("..", "..", "internal", "workspaceruntime", retired)
@@ -933,23 +938,26 @@ func TestConcreteWorkspaceRuntimeHasNoServiceLocatorGetters(t *testing.T) {
 func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T) {
 	allowedRegistry := modulePath + "/internal/connectors/builtin"
 	builtInPackages := builtInConnectorPackages(t)
-	importsByPackage := allPackageImports(t)
-
-	for importer, imports := range importsByPackage {
-		if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") {
-			continue
-		}
-		for _, imported := range imports {
-			importedOwner := builtInConnectorOwner(imported, builtInPackages)
-			if importedOwner == "" {
-				continue
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			for importer, imports := range graph.imports {
+				if importer == allowedRegistry || strings.HasPrefix(importer, allowedRegistry+"/") {
+					continue
+				}
+				for _, imported := range imports {
+					importedOwner := builtInConnectorOwner(imported, builtInPackages)
+					if importedOwner == "" {
+						continue
+					}
+					importerOwner := builtInConnectorOwner(importer, builtInPackages)
+					if importerOwner == importedOwner {
+						continue
+					}
+					t.Errorf("%s imports connector implementation %s; shared runtime and sibling connectors must use the generic connector boundary", importer, imported)
+				}
 			}
-			importerOwner := builtInConnectorOwner(importer, builtInPackages)
-			if importerOwner == importedOwner {
-				continue
-			}
-			t.Fatalf("%s imports connector implementation %s; shared runtime and sibling connectors must use the generic connector boundary", importer, imported)
-		}
+		})
 	}
 }
 
@@ -963,20 +971,25 @@ func TestConnectorPackagesDoNotImportGatewayState(t *testing.T) {
 		modulePath + "/internal/history",
 		modulePath + "/internal/tokens",
 	}
-	for importer, imports := range allPackageImports(t) {
-		if !strings.HasPrefix(importer, connectorRoot) {
-			continue
-		}
-		for _, imported := range imports {
-			for _, forbiddenImport := range forbidden {
-				if imported == forbiddenImport || strings.HasPrefix(imported, forbiddenImport+"/") {
-					t.Fatalf("%s directly imports gateway state %s", importer, imported)
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			for importer, imports := range graph.imports {
+				if !strings.HasPrefix(importer, connectorRoot) {
+					continue
+				}
+				for _, imported := range imports {
+					for _, forbiddenImport := range forbidden {
+						if imported == forbiddenImport || strings.HasPrefix(imported, forbiddenImport+"/") {
+							t.Errorf("%s directly imports gateway state %s", importer, imported)
+						}
+					}
+					if (imported == modulePath+"/internal/vault" || strings.HasPrefix(imported, modulePath+"/internal/vault/")) && importer != allowedVaultOwner {
+						t.Errorf("%s directly imports Vault state %s; encrypted resource ownership belongs in %s", importer, imported, allowedVaultOwner)
+					}
 				}
 			}
-			if (imported == modulePath+"/internal/vault" || strings.HasPrefix(imported, modulePath+"/internal/vault/")) && importer != allowedVaultOwner {
-				t.Fatalf("%s directly imports Vault state %s; encrypted resource ownership belongs in %s", importer, imported, allowedVaultOwner)
-			}
-		}
+		})
 	}
 }
 
@@ -990,22 +1003,57 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 }
 
 func TestBackendPackageFanOutBudgets(t *testing.T) {
-	importsByPackage := allPackageImports(t)
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			assertBackendPackageFanOutBudgets(t, graph.imports)
+		})
+	}
+}
+
+func TestBackendOwnerFamilyFanOutBudgets(t *testing.T) {
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			for family, owners := range ownerFamilyFanOut(graph.imports) {
+				if len(owners) > architecturePolicy.FamilyOwnerMax {
+					t.Errorf("%s family depends on %d internal owners; family fan-out budget is %d", family, len(owners), architecturePolicy.FamilyOwnerMax)
+				}
+			}
+		})
+	}
+}
+
+func ownerFamilyFanOut(importsByPackage map[string][]string) map[string]map[string]bool {
+	result := map[string]map[string]bool{}
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") && !strings.HasPrefix(importer, modulePath+"/cmd/") {
 			continue
 		}
-		packageCount := 0
-		owners := map[string]bool{}
+		family := internalDependencyOwner(importer)
+		if result[family] == nil {
+			result[family] = map[string]bool{}
+		}
 		for _, imported := range imports {
-			if strings.HasPrefix(imported, modulePath+"/internal/") {
-				packageCount++
-				if strings.HasPrefix(imported, importer+"/") {
-					continue
-				}
-				owners[internalDependencyOwner(imported)] = true
+			if !strings.HasPrefix(imported, modulePath+"/internal/") {
+				continue
+			}
+			owner := internalDependencyOwner(imported)
+			if owner != family {
+				result[family][owner] = true
 			}
 		}
+	}
+	return result
+}
+
+func assertBackendPackageFanOutBudgets(t *testing.T, importsByPackage map[string][]string) {
+	t.Helper()
+	for importer, imports := range importsByPackage {
+		if !strings.HasPrefix(importer, modulePath+"/internal/") && !strings.HasPrefix(importer, modulePath+"/cmd/") {
+			continue
+		}
+		packageCount, ownerCount := internalFanOut(importer, imports)
 		packageBudget := architecturePolicy.PackageMax
 		if override, ok := architecturePolicy.Overrides[importer]; ok {
 			packageBudget = override
@@ -1013,9 +1061,67 @@ func TestBackendPackageFanOutBudgets(t *testing.T) {
 		if packageCount > packageBudget {
 			t.Errorf("%s has %d direct internal package dependencies; budget is %d", importer, packageCount, packageBudget)
 		}
-		if len(owners) > architecturePolicy.OwnerMax {
-			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, len(owners), architecturePolicy.OwnerMax)
+		if ownerCount > architecturePolicy.OwnerMax {
+			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, ownerCount, architecturePolicy.OwnerMax)
 		}
+	}
+}
+
+func internalFanOut(importer string, imports []string) (int, int) {
+	packageCount := 0
+	owners := map[string]bool{}
+	for _, imported := range imports {
+		if !strings.HasPrefix(imported, modulePath+"/internal/") {
+			continue
+		}
+		packageCount++
+		if strings.HasPrefix(imported, importer+"/") {
+			continue
+		}
+		owners[internalDependencyOwner(imported)] = true
+	}
+	return packageCount, len(owners)
+}
+
+func TestFanOutBudgetsAreEvaluatedPerBuildContext(t *testing.T) {
+	importer := modulePath + "/internal/platformconsumer"
+	platformImports := func(prefix string) []string {
+		imports := make([]string, 0, 7)
+		for index := 0; index < 7; index++ {
+			imports = append(imports, modulePath+"/internal/"+prefix+strconv.Itoa(index))
+		}
+		return imports
+	}
+	linux := platformImports("linuxowner")
+	windows := platformImports("windowsowner")
+	for name, imports := range map[string][]string{"linux": linux, "windows": windows} {
+		packageCount, ownerCount := internalFanOut(importer, imports)
+		if packageCount > architecturePolicy.PackageMax || ownerCount > architecturePolicy.OwnerMax {
+			t.Fatalf("%s fixture must fit its per-platform fan-out budget: packages=%d owners=%d", name, packageCount, ownerCount)
+		}
+	}
+	packageCount, _ := internalFanOut(importer, append(append([]string{}, linux...), windows...))
+	if packageCount <= architecturePolicy.PackageMax {
+		t.Fatal("regression fixture must demonstrate the false fan-out violation caused by merging platform graphs")
+	}
+}
+
+func TestOwnerFamilyBudgetCannotBeEvadedBySplittingPackages(t *testing.T) {
+	family := modulePath + "/internal/gatewayfixture"
+	imports := map[string][]string{}
+	for packageIndex := 0; packageIndex < 4; packageIndex++ {
+		importer := family + "/part" + strconv.Itoa(packageIndex)
+		for ownerIndex := 0; ownerIndex < 7; ownerIndex++ {
+			imports[importer] = append(imports[importer], modulePath+"/internal/fixture"+strconv.Itoa(packageIndex*7+ownerIndex))
+		}
+		packageCount, ownerCount := internalFanOut(importer, imports[importer])
+		if packageCount > architecturePolicy.PackageMax || ownerCount > architecturePolicy.OwnerMax {
+			t.Fatalf("fixture package must satisfy direct budgets: packages=%d owners=%d", packageCount, ownerCount)
+		}
+	}
+	owners := ownerFamilyFanOut(imports)[family]
+	if len(owners) <= architecturePolicy.FamilyOwnerMax {
+		t.Fatalf("split fixture must exceed aggregate family budget: owners=%d budget=%d", len(owners), architecturePolicy.FamilyOwnerMax)
 	}
 }
 
@@ -1058,11 +1164,22 @@ func TestTestFilesRespectInternalImportBudget(t *testing.T) {
 }
 
 func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
-	importsByPackage := allPackageImports(t)
+	for _, graph := range supportedPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			if cycle := internalDependencyCycle(graph.imports); len(cycle) != 0 {
+				t.Fatalf("internal dependency cycle: %s", strings.Join(cycle, " -> "))
+			}
+		})
+	}
+}
+
+func internalDependencyCycle(importsByPackage map[string][]string) []string {
 	state := map[string]uint8{}
 	stack := []string{}
-	var visit func(string)
-	visit = func(pkg string) {
+	var cycle []string
+	var visit func(string) bool
+	visit = func(pkg string) bool {
 		switch state[pkg] {
 		case 1:
 			cycleStart := 0
@@ -1072,24 +1189,47 @@ func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
 					break
 				}
 			}
-			t.Fatalf("internal dependency cycle: %s", strings.Join(append(stack[cycleStart:], pkg), " -> "))
+			cycle = append(append([]string{}, stack[cycleStart:]...), pkg)
+			return true
 		case 2:
-			return
+			return false
 		}
 		state[pkg] = 1
 		stack = append(stack, pkg)
 		for _, imported := range importsByPackage[pkg] {
-			if strings.HasPrefix(imported, modulePath+"/internal/") {
-				visit(imported)
+			if strings.HasPrefix(imported, modulePath+"/internal/") && visit(imported) {
+				return true
 			}
 		}
 		stack = stack[:len(stack)-1]
 		state[pkg] = 2
+		return false
 	}
 	for pkg := range importsByPackage {
-		if strings.HasPrefix(pkg, modulePath+"/internal/") {
-			visit(pkg)
+		if strings.HasPrefix(pkg, modulePath+"/internal/") && visit(pkg) {
+			return cycle
 		}
+	}
+	return nil
+}
+
+func TestDependencyCyclesAreEvaluatedPerBuildContext(t *testing.T) {
+	left := modulePath + "/internal/platformleft"
+	right := modulePath + "/internal/platformright"
+	linux := map[string][]string{left: {right}, right: nil}
+	windows := map[string][]string{left: nil, right: {left}}
+	if cycle := internalDependencyCycle(linux); cycle != nil {
+		t.Fatalf("Linux fixture unexpectedly contains a cycle: %v", cycle)
+	}
+	if cycle := internalDependencyCycle(windows); cycle != nil {
+		t.Fatalf("Windows fixture unexpectedly contains a cycle: %v", cycle)
+	}
+	merged := flattenImportSets(map[string]map[string]bool{
+		left:  {right: true},
+		right: {left: true},
+	})
+	if cycle := internalDependencyCycle(merged); cycle == nil {
+		t.Fatal("regression fixture must demonstrate the false cycle caused by merging platform graphs")
 	}
 }
 
@@ -1102,58 +1242,4 @@ func builtInConnectorPackages(t *testing.T) []string {
 	}
 	sort.Strings(packages)
 	return packages
-}
-
-func allPackageImports(t *testing.T) map[string][]string {
-	t.Helper()
-	cmd := exec.Command("go", "list", "-buildvcs=false", "-f", `{{.ImportPath}}|{{join .Imports " "}}`, "./...")
-	cmd.Dir = "../.."
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			t.Fatalf("go list ./... failed: %v\n%s", err, string(exitErr.Stderr))
-		}
-		t.Fatalf("go list ./... failed: %v", err)
-	}
-	result := map[string][]string{}
-	for _, line := range strings.Split(string(output), "\n") {
-		importer, imports, ok := strings.Cut(strings.TrimSpace(line), "|")
-		if !ok || importer == "" {
-			continue
-		}
-		seen := map[string]bool{}
-		for _, imported := range strings.Fields(imports) {
-			seen[imported] = true
-		}
-		result[importer] = make([]string, 0, len(seen))
-		for imported := range seen {
-			result[importer] = append(result[importer], imported)
-		}
-		sort.Strings(result[importer])
-	}
-	return result
-}
-
-func packageDependencies(t *testing.T, pkg string) map[string]bool {
-	t.Helper()
-
-	cmd := exec.Command("go", "list", "-buildvcs=false", "-deps", "-f", "{{.ImportPath}}", pkg)
-	cmd.Dir = "../.."
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			t.Fatalf("go list %s failed: %v\n%s", pkg, err, string(exitErr.Stderr))
-		}
-		t.Fatalf("go list %s failed: %v", pkg, err)
-	}
-
-	imports := make(map[string]bool)
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || line == pkg {
-			continue
-		}
-		imports[line] = true
-	}
-	return imports
 }

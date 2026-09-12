@@ -22,6 +22,7 @@ function policySnapshot(input) {
     "go.function.test.complexity": policy.goFunction.testMaxComplexity,
     "go.fanout.package": policy.backendFanout.packageMax,
     "go.fanout.owner": policy.backendFanout.ownerMax,
+    "go.fanout.ownerFamily": policy.backendFanout.familyOwnerMax,
     "go.testImports.maxPerFile":
       policy.backendFanout.testFileInternalImportsMax,
   };
@@ -193,6 +194,7 @@ function inheritedBudget(base, name) {
     "test.package.depth.mcp-tooling": 0,
     "go.function.test.lines": 220,
     "go.function.test.complexity": 60,
+    "go.fanout.ownerFamily": 25,
     "go.testImports.maxPerFile": 14,
   };
   if (Object.hasOwn(bootstrapCeilings, name)) return bootstrapCeilings[name];

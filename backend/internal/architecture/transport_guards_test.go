@@ -78,8 +78,7 @@ func TestAPIProductionTypesAreBoundaryOwned(t *testing.T) {
 }
 
 func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
-	inspectProductionGoFiles(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File) {
-		bindings := packageVariableInitializers(file)
+	inspectProductionGoPackages(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File, bindings map[string][]ast.Expr) {
 		for _, declaration := range file.Decls {
 			general, ok := declaration.(*ast.GenDecl)
 			if !ok || general.Tok != token.VAR {
@@ -101,8 +100,8 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 	})
 }
 
-func packageVariableInitializers(file *ast.File) map[string]ast.Expr {
-	bindings := map[string]ast.Expr{}
+func packageVariableInitializers(file *ast.File) map[string][]ast.Expr {
+	bindings := map[string][]ast.Expr{}
 	for _, declaration := range file.Decls {
 		general, ok := declaration.(*ast.GenDecl)
 		if !ok || general.Tok != token.VAR {
@@ -112,12 +111,51 @@ func packageVariableInitializers(file *ast.File) map[string]ast.Expr {
 			value := specification.(*ast.ValueSpec)
 			for index, identifier := range value.Names {
 				if initializer := valueInitializer(value, index); initializer != nil {
-					bindings[identifier.Name] = initializer
+					bindings[identifier.Name] = append(bindings[identifier.Name], initializer)
 				}
 			}
 		}
 	}
 	return bindings
+}
+
+type parsedProductionGoFile struct {
+	path string
+	file *ast.File
+}
+
+func inspectProductionGoPackages(t *testing.T, root string, inspect func(string, *ast.File, map[string][]ast.Expr)) {
+	t.Helper()
+	packages := map[string][]parsedProductionGoFile{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		key := filepath.Dir(path) + "\x00" + file.Name.Name
+		packages[key] = append(packages[key], parsedProductionGoFile{path: path, file: file})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect production Go packages in %s: %v", root, err)
+	}
+	for _, files := range packages {
+		bindings := map[string][]ast.Expr{}
+		for _, parsed := range files {
+			for name, initializers := range packageVariableInitializers(parsed.file) {
+				bindings[name] = append(bindings[name], initializers...)
+			}
+		}
+		for _, parsed := range files {
+			inspect(parsed.path, parsed.file, bindings)
+		}
+	}
 }
 
 func TestProductionAPIDoesNotConsumeRawWorkspaceScopes(t *testing.T) {
@@ -252,37 +290,86 @@ func importedPackageAliases(file *ast.File, tracked map[string]map[string]bool) 
 	return aliases, dotImports
 }
 
-func mutableFacadeInitializer(expression ast.Expr) bool {
+func mutableFacadeInitializerWithBindings(expression ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
+	return expressionContainsMutableFacade(expression, bindings, visiting, false)
+}
+
+func expressionContainsMutableFacade(expression ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool, directCallee bool) bool {
+	if expression == nil {
+		return false
+	}
 	switch value := expression.(type) {
-	case *ast.ParenExpr:
-		return mutableFacadeInitializer(value.X)
-	case *ast.SelectorExpr, *ast.FuncLit:
+	case *ast.BadExpr, *ast.BasicLit:
+		return false
+	case *ast.Ident:
+		if directCallee || visiting[value.Name] {
+			return false
+		}
+		initializers, ok := bindings[value.Name]
+		if !ok {
+			return false
+		}
+		visiting[value.Name] = true
+		defer delete(visiting, value.Name)
+		for _, initializer := range initializers {
+			if expressionContainsMutableFacade(initializer, bindings, visiting, false) {
+				return true
+			}
+		}
+		return false
+	case *ast.SelectorExpr:
+		if directCallee {
+			return false
+		}
 		return true
+	case *ast.FuncLit:
+		return true
+	case *ast.ParenExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, directCallee)
+	case *ast.Ellipsis:
+		return expressionContainsMutableFacade(value.Elt, bindings, visiting, false)
+	case *ast.CompositeLit:
+		return expressionsContainMutableFacade(value.Elts, bindings, visiting)
+	case *ast.IndexExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.Index, bindings, visiting, false)
+	case *ast.IndexListExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false) ||
+			expressionsContainMutableFacade(value.Indices, bindings, visiting)
+	case *ast.SliceExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.Low, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.High, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.Max, bindings, visiting, false)
+	case *ast.TypeAssertExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false)
 	case *ast.CallExpr:
-		return len(value.Args) == 1 && mutableFacadeInitializer(value.Args[0])
+		if expressionsContainMutableFacade(value.Args, bindings, visiting) {
+			return true
+		}
+		return expressionContainsMutableFacade(value.Fun, bindings, visiting, true)
+	case *ast.StarExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false)
+	case *ast.UnaryExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false)
+	case *ast.BinaryExpr:
+		return expressionContainsMutableFacade(value.X, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.Y, bindings, visiting, false)
+	case *ast.KeyValueExpr:
+		return expressionContainsMutableFacade(value.Key, bindings, visiting, false) ||
+			expressionContainsMutableFacade(value.Value, bindings, visiting, false)
 	default:
 		return false
 	}
 }
 
-func mutableFacadeInitializerWithBindings(expression ast.Expr, bindings map[string]ast.Expr, visiting map[string]bool) bool {
-	identifier, ok := expression.(*ast.Ident)
-	if !ok {
-		return mutableFacadeInitializer(expression)
+func expressionsContainMutableFacade(expressions []ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
+	for _, expression := range expressions {
+		if expressionContainsMutableFacade(expression, bindings, visiting, false) {
+			return true
+		}
 	}
-	if visiting[identifier.Name] {
-		return false
-	}
-	initializer, ok := bindings[identifier.Name]
-	if !ok {
-		return false
-	}
-	visiting[identifier.Name] = true
-	defer delete(visiting, identifier.Name)
-	if mutableFacadeInitializer(initializer) {
-		return true
-	}
-	return mutableFacadeInitializerWithBindings(initializer, bindings, visiting)
+	return false
 }
 
 func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
@@ -297,21 +384,51 @@ import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	if len(dotImports) != 1 || dotImports[0] != modulePath+"/internal/gatewayaccess" {
 		t.Fatalf("tracked dot import escaped detection: %v", dotImports)
 	}
-	for _, source := range []string{"owner.Function", "(owner.Function)", "FunctionType(owner.Function)", "func() {}"} {
+	for _, source := range []string{
+		"owner.Function",
+		"(owner.Function)",
+		"FunctionType(owner.Function)",
+		"func() {}",
+		"[]func(){owner.Function}[0]",
+		`map[string]func(){"run": owner.Function}["run"]`,
+		"struct{ Run func() }{Run: owner.Function}.Run",
+	} {
 		expression, err := parser.ParseExpr(source)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !mutableFacadeInitializer(expression) {
+		if !mutableFacadeInitializerWithBindings(expression, nil, map[string]bool{}) {
 			t.Errorf("mutable facade %q escaped detection", source)
 		}
 	}
-	bindings := map[string]ast.Expr{
-		"local":    mustParseExpression(t, "owner.Function"),
-		"exported": mustParseExpression(t, "local"),
+	for _, source := range []string{
+		`errors.New("sentinel")`,
+		`[]error{errors.New("sentinel")}[0]`,
+	} {
+		expression, err := parser.ParseExpr(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mutableFacadeInitializerWithBindings(expression, nil, map[string]bool{}) {
+			t.Errorf("constructor result %q was mistaken for a mutable facade", source)
+		}
 	}
-	if !mutableFacadeInitializerWithBindings(bindings["exported"], bindings, map[string]bool{}) {
+	bindings := map[string][]ast.Expr{
+		"local":    {mustParseExpression(t, "owner.Function")},
+		"exported": {mustParseExpression(t, "local")},
+	}
+	if !mutableFacadeInitializerWithBindings(bindings["exported"][0], bindings, map[string]bool{}) {
 		t.Fatal("identifier-chain mutable facade escaped detection")
+	}
+	crossFileBindings := map[string][]ast.Expr{
+		"local": {
+			mustParseExpression(t, `errors.New("platform sentinel")`),
+			mustParseExpression(t, "[]func(){owner.Function}[0]"),
+		},
+		"exported": {mustParseExpression(t, "local")},
+	}
+	if !mutableFacadeInitializerWithBindings(crossFileBindings["exported"][0], crossFileBindings, map[string]bool{}) {
+		t.Fatal("nested identifier-chain mutable facade escaped detection")
 	}
 }
 

@@ -171,6 +171,7 @@
   "backendFanout": {
     "packageMax": 12,
     "ownerMax": 8,
+    "familyOwnerMax": 25,
     "testFileInternalImportsMax": 14,
     "overrides": {}
   }
