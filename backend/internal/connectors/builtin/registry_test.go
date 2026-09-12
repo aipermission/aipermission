@@ -2,6 +2,11 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -17,6 +22,56 @@ import (
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
+
+func TestBuiltInRegistryMatchesFrontendConnectorTemplates(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve registry test path")
+	}
+	templates := filepath.Join(filepath.Dir(filename), "..", "..", "..", "..", "frontend", "src", "connectors", "templates")
+	entries, err := os.ReadDir(templates)
+	if err != nil {
+		t.Fatalf("read frontend connector templates: %v", err)
+	}
+	frontendKinds := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name()[0] == '_' {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(templates, entry.Name(), "metadata.json"))
+		if err != nil {
+			t.Fatalf("read %s metadata: %v", entry.Name(), err)
+		}
+		var metadata struct {
+			Kind string `json:"kind"`
+		}
+		if err := json.Unmarshal(content, &metadata); err != nil {
+			t.Fatalf("decode %s metadata: %v", entry.Name(), err)
+		}
+		if metadata.Kind != entry.Name() {
+			t.Fatalf("template directory %q declares kind %q", entry.Name(), metadata.Kind)
+		}
+		frontendKinds = append(frontendKinds, metadata.Kind)
+	}
+	sort.Strings(frontendKinds)
+	backendKinds := make([]string, 0, len(registry.List()))
+	for _, info := range registry.List() {
+		backendKinds = append(backendKinds, info.Kind)
+	}
+	sort.Strings(backendKinds)
+	if len(frontendKinds) != len(backendKinds) {
+		t.Fatalf("frontend kinds=%v backend kinds=%v", frontendKinds, backendKinds)
+	}
+	for index := range frontendKinds {
+		if frontendKinds[index] != backendKinds[index] {
+			t.Fatalf("frontend kinds=%v backend kinds=%v", frontendKinds, backendKinds)
+		}
+	}
+}
 
 func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	registry, err := NewRegistry()

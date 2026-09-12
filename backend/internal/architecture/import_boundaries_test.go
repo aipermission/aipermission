@@ -181,19 +181,27 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 	allowed := map[string]bool{
 		modulePath + "/internal/connectors":                           true,
 		modulePath + "/internal/gatewayaccess":                        true,
+		modulePath + "/internal/gatewayaccess/httpowner":              true,
 		modulePath + "/internal/gatewayconnectoractions":              true,
 		modulePath + "/internal/gatewayconnectorapi":                  true,
 		modulePath + "/internal/gatewayconnectormanagement":           true,
 		modulePath + "/internal/gatewayinfrastructure":                true,
+		modulePath + "/internal/gatewayinfrastructure/bootstrap":      true,
 		modulePath + "/internal/gatewayinfrastructure/connectorports": true,
 		modulePath + "/internal/gatewayoperations":                    true,
-		modulePath + "/internal/gatewayoperations/backup":             true,
 		modulePath + "/internal/gatewayoperations/transfer":           true,
 		modulePath + "/internal/gatewayvault":                         true,
 	}
+	used := map[string]bool{}
 	for _, imported := range allPackageImports(t)[apiPackage] {
 		if strings.HasPrefix(imported, modulePath+"/internal/") && !allowed[imported] {
 			t.Errorf("internal/api imports %s directly; transport code must use an explicitly approved gateway package", imported)
+		}
+		used[imported] = true
+	}
+	for imported := range allowed {
+		if !used[imported] {
+			t.Errorf("internal/api approved import %s is stale; remove unused boundary allowances", imported)
 		}
 	}
 }
@@ -388,6 +396,142 @@ func TestGatewayBoundariesDoNotReintroduceForwarderFiles(t *testing.T) {
 	}
 }
 
+func TestGatewayTypeAliasesAreExplicitCanonicalContracts(t *testing.T) {
+	root := filepath.Join("..", "..", "internal")
+	allowed := map[string]bool{
+		"gatewayaccess/access.go:PreparedUISession":                  true,
+		"gatewayaccess/access.go:Principal":                          true,
+		"gatewayaccess/access.go:SecuritySettings":                   true,
+		"gatewayaccess/access.go:TokenValidationError":               true,
+		"gatewayconnectormanagement/management.go:ActionPermission":  true,
+		"gatewayconnectormanagement/management.go:ActionRequest":     true,
+		"gatewayconnectormanagement/management.go:CredentialProfile": true,
+		"gatewayconnectormanagement/management.go:RuntimeSurface":    true,
+		"gatewayconnectormanagement/management.go:Target":            true,
+		"gatewayconnectormanagement/management.go:ValidationError":   true,
+	}
+	found := map[string]bool{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if !strings.HasPrefix(relative, "gateway") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				typeSpec := specification.(*ast.TypeSpec)
+				if !typeSpec.Assign.IsValid() {
+					continue
+				}
+				key := relative + ":" + typeSpec.Name.Name
+				if !allowed[key] {
+					t.Errorf("%s reexports type %s without an explicit canonical-contract decision", relative, typeSpec.Name.Name)
+					continue
+				}
+				found[key] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway type aliases: %v", err)
+	}
+	for key := range allowed {
+		if !found[key] {
+			t.Errorf("stale gateway type-alias allowance %s", key)
+		}
+	}
+}
+
+func TestWorkspaceHandleRemainsOpaque(t *testing.T) {
+	path := filepath.Join("..", "gatewayinfrastructure", "infrastructure.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec := specification.(*ast.TypeSpec)
+			if typeSpec.Name.Name != "WorkspaceHandle" {
+				continue
+			}
+			found = true
+			structure, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				t.Fatal("WorkspaceHandle must remain an explicit opaque struct")
+			}
+			for _, field := range structure.Fields.List {
+				for _, name := range field.Names {
+					if name.IsExported() {
+						t.Errorf("WorkspaceHandle exposes mutable owner state through field %s", name.Name)
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("gateway infrastructure is missing WorkspaceHandle")
+	}
+}
+
+func TestGatewayInfrastructureDoesNotReturnDatabaseHandles(t *testing.T) {
+	root := filepath.Join("..", "gatewayinfrastructure")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			method, ok := declaration.(*ast.FuncDecl)
+			if !ok || method.Recv == nil || !method.Name.IsExported() || method.Type.Results == nil {
+				continue
+			}
+			for _, result := range method.Type.Results.List {
+				pointer, ok := result.Type.(*ast.StarExpr)
+				if !ok {
+					continue
+				}
+				selector, ok := pointer.X.(*ast.SelectorExpr)
+				if ok && selector.Sel.Name == "DB" {
+					t.Errorf("%s exposes mutable database handle from Component.%s", path, method.Name.Name)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway infrastructure database projections: %v", err)
+	}
+}
+
 func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
 	const routeSource = "internal/gatewayinfrastructure/routes.go"
 	command, err := os.ReadFile(filepath.Join("..", "..", "cmd", "openapi", "main.go"))
@@ -563,7 +707,7 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
 	// Composition packages may import multiple explicitly approved packages from
 	// one owner; the stricter owner budget below prevents boundary sprawl.
-	const packageBudget = 11
+	const packageBudget = 12
 	const ownerBudget = 8
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") {
