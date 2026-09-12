@@ -152,6 +152,8 @@ type Dependencies struct {
 	DataPath              string
 	Open                  func(context.Context, string, string, string) (*Runtime, error)
 	Close                 func(*Runtime) error
+	WaitClosed            func(context.Context, *Runtime) error
+	IsOwned               func(Identity) bool
 	OnActivated, OnOpened func(*Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
@@ -211,6 +213,22 @@ func (component *Component) Configure(dependencies Dependencies) error {
 			return dependencies.Close(owned)
 		}
 	}
+	var waitClosed func(context.Context, lifecycle.Runtime) error
+	if dependencies.WaitClosed != nil {
+		waitClosed = func(ctx context.Context, runtime lifecycle.Runtime) error {
+			owned, ok := runtime.(*Runtime)
+			if !ok {
+				return InitializationError()
+			}
+			return dependencies.WaitClosed(ctx, owned)
+		}
+	}
+	var isOwned func(workspacelifecycle.Identity) bool
+	if dependencies.IsOwned != nil {
+		isOwned = func(identity workspacelifecycle.Identity) bool {
+			return dependencies.IsOwned(Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity})
+		}
+	}
 	var onActivated, onOpened func(lifecycle.Runtime)
 	var validateNewPassword func(context.Context, lifecycle.Runtime, string, string) error
 	if dependencies.OnActivated != nil {
@@ -238,6 +256,7 @@ func (component *Component) Configure(dependencies Dependencies) error {
 	}
 	return component.lifecycle.Configure(lifecycle.Dependencies{
 		DataPath: dependencies.DataPath, Open: open, Close: closeRuntime,
+		WaitClosed: waitClosed, IsOwned: isOwned,
 		OnActivated: onActivated, OnOpened: onOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: validateNewPassword,
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,

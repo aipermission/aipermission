@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -365,6 +366,75 @@ func TestServiceRenameFailureReopensOriginalRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceRenameWaitsForDeferredCloseBeforeMovingFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "aipermission.db")
+	const password = "DatabasePassword123"
+	database, err := db.OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	registry.Activate(runtime)
+	release, closed, waiting, moved := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{}, 1)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
+		Close: func(runtime *serviceRuntime) error {
+			go func() {
+				<-release
+				_ = runtime.database.Close()
+				close(closed)
+			}()
+			return deferredCloseTestError{}
+		},
+		WaitClosed: func(ctx context.Context, _ *serviceRuntime) error {
+			close(waiting)
+			select {
+			case <-closed:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		Move: func(string, string) error {
+			select {
+			case <-closed:
+			default:
+				t.Error("move started before deferred close completed")
+			}
+			moved <- struct{}{}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := service.Rename(t.Context(), "Renamed", password)
+		result <- err
+	}()
+	<-waiting
+	select {
+	case <-moved:
+		t.Fatal("rename moved the file while teardown was pending")
+	default:
+	}
+	close(release)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-moved:
+	default:
+		t.Fatal("rename did not move the file after teardown completed")
+	}
+}
+
 func TestServiceDeleteConfirmationFailsBeforeClosingRuntime(t *testing.T) {
 	registry := NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
 	runtime := &serviceRuntime{identity: Identity{ID: "default", Path: "/data/default.db"}}
@@ -425,5 +495,105 @@ func TestServiceDeleteCloseFailureStillPromotesRemainingRuntime(t *testing.T) {
 	}
 	if active, ok := service.Active(); !ok || active != second || activated != second {
 		t.Fatalf("remaining runtime was not fully promoted: active=%#v activated=%#v", active, activated)
+	}
+}
+
+func TestServiceDeleteCurrentWaitsForDeferredCloseBeforeDeletingFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "aipermission.db")
+	const password = "DatabasePassword123"
+	database, err := db.OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	registry.Activate(runtime)
+	release, closed, waiting, deleted := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{}, 1)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
+		Close: func(runtime *serviceRuntime) error {
+			go func() {
+				<-release
+				_ = runtime.database.Close()
+				close(closed)
+			}()
+			return deferredCloseTestError{}
+		},
+		WaitClosed: func(ctx context.Context, _ *serviceRuntime) error {
+			close(waiting)
+			select {
+			case <-closed:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		Delete: func(string) error {
+			select {
+			case <-closed:
+			default:
+				t.Error("delete started before deferred close completed")
+			}
+			deleted <- struct{}{}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := service.DeleteCurrent(t.Context(), "Default", password)
+		result <- err
+	}()
+	<-waiting
+	select {
+	case <-deleted:
+		t.Fatal("delete removed the file while teardown was pending")
+	default:
+	}
+	close(release)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-deleted:
+	default:
+		t.Fatal("delete did not remove the file after teardown completed")
+	}
+}
+
+func TestServiceDeleteLockedRejectsDatabaseOwnedByDeferredTeardown(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(path, []byte("owned by closing runtime"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	validated, deleted := false, false
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
+		Close: func(*serviceRuntime) error { return nil },
+		IsOwned: func(identity Identity) bool {
+			return identity.ID == "default" && identity.Path == path
+		},
+		Validate: func(string, string) error { validated = true; return nil },
+		Delete:   func(string) error { deleted = true; return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.DeleteLocked("default", "DatabasePassword123"); !errors.Is(err, ErrRuntimeUnlocked) {
+		t.Fatalf("DeleteLocked() error = %v, want ErrRuntimeUnlocked", err)
+	}
+	if validated || deleted {
+		t.Fatalf("owned runtime reached filesystem mutation: validated=%t deleted=%t", validated, deleted)
 	}
 }

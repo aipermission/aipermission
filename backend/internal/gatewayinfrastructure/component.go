@@ -99,6 +99,22 @@ func (component *Component) ownedHandlesSnapshot() []*WorkspaceHandle {
 	return result
 }
 
+func (component *WorkspaceOwner) ownsWorkspaceIdentity(identity gatewayworkspace.Identity) bool {
+	if component == nil || component.ownedHandles == nil {
+		return false
+	}
+	for _, handle := range component.ownedHandles() {
+		if handle == nil || !handle.active.Load() {
+			continue
+		}
+		candidate := handle.WorkspaceIdentity()
+		if candidate.ID == identity.ID && candidate.Path == identity.Path {
+			return true
+		}
+	}
+	return false
+}
+
 func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies WorkspaceDependencies) error {
 	if component == nil || component.workspace == nil {
 		return InitializationError()
@@ -133,7 +149,11 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 	return component.workspace.Configure(gatewayworkspace.Dependencies{
 		DataPath: dependencies.DataPath,
 		Open:     open, Close: closeRuntime, OnActivated: onActivated, OnOpened: onOpened,
-		Move: dependencies.Move, Delete: dependencies.Delete,
+		WaitClosed: func(ctx context.Context, runtime *gatewayworkspace.Runtime) error {
+			return component.WaitWorkspaceClosed(ctx, component.handleFor(runtime))
+		},
+		IsOwned: component.ownsWorkspaceIdentity,
+		Move:    dependencies.Move, Delete: dependencies.Delete,
 		ValidateNewPassword: func(ctx context.Context, runtime *gatewayworkspace.Runtime, databaseName, password string) error {
 			return component.validatePassword(ctx, runtime, databaseName, password)
 		},

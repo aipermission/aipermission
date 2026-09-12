@@ -40,6 +40,8 @@ type Dependencies[T Runtime] struct {
 	Registry            *Registry[T]
 	Open                func(context.Context, string, string, string) (T, error)
 	Close               func(T) error
+	WaitClosed          func(context.Context, T) error
+	IsOwned             func(Identity) bool
 	OnActivated         func(T)
 	OnOpened            func(T)
 	Validate            func(path, password string) error
@@ -57,6 +59,8 @@ type Service[T Runtime] struct {
 	registry            *Registry[T]
 	open                func(context.Context, string, string, string) (T, error)
 	close               func(T) error
+	waitClosed          func(context.Context, T) error
+	isOwned             func(Identity) bool
 	onActivated         func(T)
 	onOpened            func(T)
 	validate            func(path, password string) error
@@ -178,6 +182,7 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 		gate:     newRequestGate(),
 		dataPath: dependencies.DataPath, registry: dependencies.Registry,
 		open: dependencies.Open, close: dependencies.Close,
+		waitClosed: dependencies.WaitClosed, isOwned: dependencies.IsOwned,
 		onActivated: dependencies.OnActivated, onOpened: dependencies.OnOpened,
 		validate: validate, move: move, delete: deleteDatabase,
 		validateNewPassword: dependencies.ValidateNewPassword,
@@ -436,6 +441,19 @@ func (s *Service[T]) transition(status string, runtime T, opened bool) Transitio
 	return Transition{Status: status, State: "unlocked", Identity: runtime.WorkspaceIdentity(), Opened: opened}
 }
 
+func (s *Service[T]) waitForDeferredClose(ctx context.Context, runtime T, closeErr error) error {
+	if !closeWasDeferred(closeErr) {
+		return closeErr
+	}
+	if s.waitClosed == nil {
+		return errors.Join(closeErr, fmt.Errorf("deferred workspace close cannot be observed"))
+	}
+	if err := s.waitClosed(ctx, runtime); err != nil {
+		return errors.Join(closeErr, fmt.Errorf("wait for deferred workspace close: %w", err))
+	}
+	return nil
+}
+
 func (s *Service[T]) Rename(ctx context.Context, databaseName, currentPassword string) (Transition, error) {
 	databaseName = strings.TrimSpace(databaseName)
 	if databaseName == "" {
@@ -463,10 +481,12 @@ func (s *Service[T]) Rename(ctx context.Context, databaseName, currentPassword s
 	}
 	closeErr := s.close(runtime)
 	s.registry.Remove(identity.ID, false)
-	if closeErr != nil {
+	if err := s.waitForDeferredClose(ctx, runtime, closeErr); err != nil {
 		s.registry.Select(identity)
-		s.reopenBestEffort(identity, currentPassword)
-		return Transition{}, afterCredential(closeErr)
+		if !closeWasDeferred(closeErr) {
+			s.reopenBestEffort(identity, currentPassword)
+		}
+		return Transition{}, afterCredential(err)
 	}
 	if err := s.move(identity.Path, newPath); err != nil {
 		s.registry.Select(identity)
@@ -503,8 +523,8 @@ func (s *Service[T]) DeleteCurrent(ctx context.Context, confirmName, currentPass
 	if promotedOK {
 		s.activateLocked(promoted)
 	}
-	if closeErr != nil {
-		return Transition{}, afterCredential(closeErr)
+	if err := s.waitForDeferredClose(ctx, runtime, closeErr); err != nil {
+		return Transition{}, afterCredential(err)
 	}
 	if err := s.delete(identity.Path); err != nil {
 		return Transition{}, afterCredential(err)
@@ -530,6 +550,9 @@ func (s *Service[T]) DeleteLocked(databaseID, password string) (Transition, erro
 		return Transition{}, classify(ErrInvalidRequest, err)
 	}
 	if _, ok := s.registry.Lookup(identity.ID); ok {
+		return Transition{}, ErrRuntimeUnlocked
+	}
+	if s.isOwned != nil && s.isOwned(identity) {
 		return Transition{}, ErrRuntimeUnlocked
 	}
 	if !db.Exists(identity.Path) {

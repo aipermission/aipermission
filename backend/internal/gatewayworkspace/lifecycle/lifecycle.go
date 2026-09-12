@@ -47,6 +47,8 @@ type Dependencies struct {
 	DataPath              string
 	Open                  func(context.Context, string, string, string) (Runtime, error)
 	Close                 func(Runtime) error
+	WaitClosed            func(context.Context, Runtime) error
+	IsOwned               func(workspacelifecycle.Identity) bool
 	OnActivated, OnOpened func(Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
@@ -177,7 +179,8 @@ func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
 func newService(dependencies Dependencies, registry *workspacelifecycle.Registry[Runtime]) (*workspacelifecycle.Service[Runtime], error) {
 	return workspacelifecycle.NewService(workspacelifecycle.Dependencies[Runtime]{
 		DataPath: dependencies.DataPath, Registry: registry, Open: dependencies.Open,
-		Close: dependencies.Close, OnActivated: dependencies.OnActivated, OnOpened: dependencies.OnOpened,
+		Close: dependencies.Close, WaitClosed: dependencies.WaitClosed, IsOwned: dependencies.IsOwned,
+		OnActivated: dependencies.OnActivated, OnOpened: dependencies.OnOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: dependencies.ValidateNewPassword,
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
