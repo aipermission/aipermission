@@ -38,7 +38,10 @@ type runtimeTestOwner struct {
 var runtimeTestOwners sync.Map
 
 func testAdoptInput(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store) gatewayworkspace.AdoptInput {
-	return gatewayworkspace.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokenStore}
+	return gatewayworkspace.AdoptInput{
+		Database: database, Vault: secretVault, TokenStore: tokenStore,
+		RuntimeInstanceID: gatewayaccess.NewRuntimeInstanceID,
+	}
 }
 
 func registerRuntimeTestOwner(runtime *gatewayinfra.WorkspaceHandle, owner runtimeTestOwner) {

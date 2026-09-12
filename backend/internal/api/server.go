@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -35,10 +34,6 @@ type Server struct {
 	connectorRegistryOwner   *connectors.Registry
 	connectorAdaptersOwner   *connectorapi.Registry
 	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
-	runtimeIDGenerator       func() (string, error)
-	workspaceOpen            func(context.Context, string, string, string) (*gatewayinfra.WorkspaceHandle, error)
-	databaseMove             func(string, string) error
-	databasePublish          func(string, string) error
 }
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
@@ -58,21 +53,8 @@ func newServerComposition(cfg serverConfig, resolved serverOptions, infrastructu
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort),
 		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
 		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
-		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
 	}
 	server.bindInfrastructure(infrastructure)
-	server.workspaceOpen = server.openRuntime
-	server.databaseMove = server.workspaceOwner.MoveDatabase
-	server.databasePublish = server.workspaceOwner.PublishDatabase
-	if resolved.openWorkspace != nil {
-		server.workspaceOpen = resolved.openWorkspace
-	}
-	if resolved.moveDatabase != nil {
-		server.databaseMove = resolved.moveDatabase
-	}
-	if resolved.publishDatabase != nil {
-		server.databasePublish = resolved.publishDatabase
-	}
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
@@ -94,13 +76,21 @@ func (s *Server) bindInfrastructure(infrastructure *gatewayinfra.Component) {
 }
 
 func (s *Server) initializeWorkspaceLifecycle() error {
-	err := s.workspaceOwner.ConfigureWorkspaceLifecycle(gatewayinfra.WorkspaceDependencies{
+	err := s.workspaceOwner.ConfigureWorkspaceLifecycle(s.workspaceLifecycleDependencies())
+	if err != nil {
+		return fmt.Errorf("initialize workspace lifecycle: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) workspaceLifecycleDependencies() gatewayinfra.WorkspaceDependencies {
+	return gatewayinfra.WorkspaceDependencies{
 		DataPath:      s.config.DataPath,
-		Open:          s.workspaceOpen,
+		Open:          s.openRuntime,
 		Close:         s.closeRuntime,
-		Move:          s.databaseMove,
+		Move:          s.workspaceOwner.MoveDatabase,
 		Delete:        s.workspaceOwner.DeleteDatabase,
-		Publish:       s.databasePublish,
+		Publish:       s.workspaceOwner.PublishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *gatewayinfra.WorkspaceHandle) {
 			if secret := s.workspaceOwner.ConfiguredGatewaySecret(runtime); secret != "" {
@@ -108,11 +98,7 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 			}
 		},
 		OnOpened: s.initializeRetention,
-	})
-	if err != nil {
-		return fmt.Errorf("initialize workspace lifecycle: %w", err)
 	}
-	return nil
 }
 
 func describeDatabaseRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayinfra.Identity {

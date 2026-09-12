@@ -44,12 +44,12 @@ func TestNewServerReturnsRuntimeIdentityError(t *testing.T) {
 		t.Fatalf("new vault: %v", err)
 	}
 	wantErr := errors.New("random source unavailable")
-	failingGenerator := withRuntimeInstanceIDGenerator(func() (string, error) { return "", wantErr })
+	adopted := testAdoptInput(database, secretVault, tokens.NewStore(database))
+	adopted.RuntimeInstanceID = func() (string, error) { return "", wantErr }
 
 	server, err := NewServer(
 		config.Config{DataPath: t.TempDir() + "/test.db", GatewaySecret: "test-password"},
-		testAdoptInput(database, secretVault, tokens.NewStore(database)),
-		failingGenerator,
+		adopted,
 	)
 	if !errors.Is(err, wantErr) || server != nil {
 		t.Fatalf("runtime identity failure should prevent construction: server=%v err=%v", server, err)

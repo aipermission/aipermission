@@ -76,23 +76,37 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	}
 }
 
-func newLockedAPITestServer(t *testing.T, extraOptions ...ServerOption) *Server {
+func newLockedAPITestServer(t *testing.T) *Server {
+	return newLockedAPITestServerWithWorkspaceDependencies(t, nil)
+}
+
+func newLockedAPITestServerWithWorkspaceDependencies(t *testing.T, change func(*gatewayinfra.WorkspaceDependencies)) *Server {
 	t.Helper()
 	catalog := newTestConnectorCatalog(t)
 	options := []ServerOption{
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 	}
-	options = append(options, extraOptions...)
-	return NewLockedServer(config.Config{
+	configuration := config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	},
-		options...,
-	)
+	}
+	cfg := snapshotRuntimeConfiguration(configuration)
+	resolved := resolveServerOptions(options)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
+	server := newServerComposition(cfg, resolved, infrastructure)
+	dependencies := server.workspaceLifecycleDependencies()
+	if change != nil {
+		change(&dependencies)
+	}
+	if err := server.workspaceOwner.ConfigureWorkspaceLifecycle(dependencies); err != nil {
+		t.Fatalf("initialize test workspace lifecycle: %v", err)
+	}
+	server.routes()
+	return server
 }
 
 func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
@@ -389,9 +403,11 @@ func TestUnlockStatusSurfacesDatabaseCatalogRecoveryFailure(t *testing.T) {
 }
 
 func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
-	server := newLockedAPITestServer(t, withDatabaseMove(func(string, string) error {
-		return errors.New("injected move failure")
-	}))
+	server := newLockedAPITestServerWithWorkspaceDependencies(t, func(dependencies *gatewayinfra.WorkspaceDependencies) {
+		dependencies.Move = func(string, string) error {
+			return errors.New("injected move failure")
+		}
+	})
 	handler := server.Handler()
 	defer server.Close()
 
@@ -794,13 +810,15 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 }
 
 func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
-	var server *Server
-	server = newLockedAPITestServer(t, withWorkspaceOpen(func(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
-		if id == "imported-project" {
-			return nil, errors.New("injected runtime open failure")
+	server := newLockedAPITestServerWithWorkspaceDependencies(t, func(dependencies *gatewayinfra.WorkspaceDependencies) {
+		open := dependencies.Open
+		dependencies.Open = func(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+			if id == "imported-project" {
+				return nil, errors.New("injected runtime open failure")
+			}
+			return open(ctx, path, id, password)
 		}
-		return server.openRuntime(ctx, path, id, password)
-	}))
+	})
 	handler := server.Handler()
 	defer server.Close()
 
@@ -849,12 +867,14 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 }
 
 func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
-	server := newLockedAPITestServer(t, withDatabasePublish(func(source string, target string) error {
-		if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
-			return err
+	server := newLockedAPITestServerWithWorkspaceDependencies(t, func(dependencies *gatewayinfra.WorkspaceDependencies) {
+		dependencies.Publish = func(source string, target string) error {
+			if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
+				return err
+			}
+			return dbpkg.ErrPublishTargetExists
 		}
-		return dbpkg.ErrPublishTargetExists
-	}))
+	})
 	defer server.Close()
 
 	sourcePath := filepath.Join(t.TempDir(), "source.aipdb")

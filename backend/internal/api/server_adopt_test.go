@@ -24,7 +24,6 @@ func NewServer(configuration RuntimeConfiguration, adopted gatewayworkspace.Adop
 	adopted.ConfiguredGatewaySecret = cfg.GatewaySecret
 	adopted.Registry = resolved.registry
 	adopted.AdapterRegistry = resolved.adapterRegistry
-	adopted.RuntimeInstanceID = resolved.runtimeInstanceIDGenerator
 	runtime, err := workspaceOwner.AdoptWorkspace(context.Background(), adopted)
 	if err != nil {
 		return nil, err
