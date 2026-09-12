@@ -20,3 +20,10 @@ export const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withF
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
   .map((entry) => entry.name)
   .sort();
+const repositoryRoot = join(sourceDir, "..", "..");
+const backendCatalogSources = ["catalogdata", "catalogruntime"].map((catalog) =>
+  readFileSync(join(repositoryRoot, "backend", "internal", "connectors", "builtin", catalog, "register.go"), "utf8"),
+);
+export const backendConnectorKinds = backendCatalogSources
+  .flatMap((source) => [...source.matchAll(/\b([a-z][a-z0-9]*)connector\.New\(\)/g)].map((match) => match[1]))
+  .sort();

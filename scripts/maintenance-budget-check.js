@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const frontendArchitecturePolicy = require("../frontend/architecture-policy.json");
+const { isTestSource } = require("./maintenance-source-kind");
 const frontendTestModuleMarkers = frontendArchitecturePolicy.testModuleMarkers;
 const sourceBudgets = [
   { directory: "backend", extensions: new Set([".go"]), maxLines: 1400 },
@@ -53,12 +54,8 @@ function sourceLineCount(file) {
   return source.endsWith("\n") ? lines - 1 : lines;
 }
 
-function isProductionSource(file) {
-	return !isTestSource(file);
-}
-
-function isTestSource(file) {
-  return file.endsWith("_test.go") || frontendTestModuleMarkers.some((marker) => file.includes(marker));
+function isProductionSource(directory, file) {
+	return !isTestSource(directory, file, frontendTestModuleMarkers);
 }
 
 function walk(directory) {
@@ -92,7 +89,7 @@ const testBudgets = [
 for (const budget of testBudgets) {
   const packageLines = new Map();
   for (const file of walk(path.join(root, budget.directory))) {
-    if (!budget.extensions.has(path.extname(file)) || !isTestSource(file)) continue;
+    if (!budget.extensions.has(path.extname(file)) || !isTestSource(budget.directory, file, frontendTestModuleMarkers)) continue;
     const lines = sourceLineCount(file);
     const relativePath = path.relative(root, file);
     if (lines > budget.maxSourceLines) {
@@ -115,7 +112,7 @@ for (const budget of sourceBudgets) {
   for (const file of walk(directory)) {
     if (
       !budget.extensions.has(path.extname(file)) ||
-      !isProductionSource(file)
+	  !isProductionSource(budget.directory, file)
     ) {
       continue;
     }
@@ -136,7 +133,7 @@ for (const budget of sourceBudgets) {
 const backendInternal = path.join(root, "backend/internal");
 const packageLines = new Map();
 for (const file of walk(backendInternal)) {
-  if (path.extname(file) !== ".go" || !isProductionSource(file)) {
+  if (path.extname(file) !== ".go" || !isProductionSource("backend", file)) {
     continue;
   }
   const directory = path.dirname(file);

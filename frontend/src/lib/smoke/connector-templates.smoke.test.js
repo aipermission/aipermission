@@ -3,12 +3,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  backendConnectorKinds,
   connectorTemplateCatalogSource,
   connectorTemplateKinds,
   connectorTemplateRegistrySource,
   connectorTemplatesDir,
   sourceDir,
 } from "./app-smoke-fixtures.test.fixture.js";
+
+test("frontend templates exactly match the built-in backend connector catalog", () => {
+  assert.deepEqual(connectorTemplateKinds, backendConnectorKinds);
+});
 
 test("connector templates are discovered dynamically", () => {
   assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.jsx"/);
