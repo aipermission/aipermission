@@ -12,12 +12,14 @@ const requiredWorkflowByCheck = new Map(
   requiredGates.map((gate) => [gate.name, gate.workflow]),
 );
 const requiredJobNameByCheck = new Map(
-  requiredGates.map((gate) => [gate.name, gate.name]),
+  requiredGates.map((gate) => [gate.name, gate.job_name]),
 );
 const advisoryWorkflows = [
   ["native-dependency-freshness.yml", "Native dependency freshness"],
 ];
 const releaseTagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+const requiredCheckMaxAgeMS = 7 * 24 * 60 * 60 * 1000;
+const allowedClockSkewMS = 5 * 60 * 1000;
 
 function parseArguments(argv) {
   const values = {};
@@ -79,9 +81,118 @@ function actionJobID(detailsURL) {
   return match?.[1] || "";
 }
 
-function verifiedRequiredCheckRuns(checkRuns, workflowRuns, jobs, sha) {
+function requiredWorkflowPaths() {
+  return new Set(requiredWorkflowByCheck.values());
+}
+
+function runRecency(run) {
+  const runNumber = Number(run?.run_number);
+  const id = Number(run?.id);
+  const attempt = Number(run?.run_attempt);
+  return [
+    Number.isFinite(runNumber) ? runNumber : Number.isFinite(id) ? id : -1,
+    Number.isFinite(attempt) ? attempt : 1,
+    Number.isFinite(id) ? id : -1,
+  ];
+}
+
+function isNewerRun(candidate, current) {
+  const left = runRecency(candidate);
+  const right = runRecency(current);
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
+}
+
+function validEvidenceTime(value, now, maxAgeMS) {
+  const timestamp = Date.parse(value || "");
+  return (
+    Number.isFinite(timestamp) &&
+    timestamp >= now - maxAgeMS &&
+    timestamp <= now + allowedClockSkewMS
+  );
+}
+
+function validRunEvidence(run, now, maxAgeMS) {
+  return (
+    validEvidenceTime(run?.created_at, now, maxAgeMS) &&
+    validEvidenceTime(run?.updated_at, now, maxAgeMS)
+  );
+}
+
+function validCheckEvidence(check, now, maxAgeMS) {
+  return (
+    validEvidenceTime(check?.started_at, now, maxAgeMS) &&
+    validEvidenceTime(check?.completed_at, now, maxAgeMS)
+  );
+}
+
+function validJobEvidence(job, now, maxAgeMS) {
+  return (
+    validEvidenceTime(job?.started_at, now, maxAgeMS) &&
+    validEvidenceTime(job?.completed_at, now, maxAgeMS)
+  );
+}
+
+function selectRequiredWorkflowRuns(workflowRuns, sha) {
+  const expected = requiredWorkflowPaths();
+  const selected = new Map();
+  for (const run of workflowRuns || []) {
+    if (
+      !expected.has(run?.path) ||
+      run.event !== "push" ||
+      run.head_branch !== "main" ||
+      run.head_sha !== sha
+    ) {
+      continue;
+    }
+    const current = selected.get(run.path);
+    if (!current || isNewerRun(run, current)) selected.set(run.path, run);
+  }
+  return selected;
+}
+
+function evaluateRequiredWorkflowRuns(
+  workflowRuns,
+  sha,
+  { now = Date.now(), maxAgeMS = requiredCheckMaxAgeMS } = {},
+) {
+  const selected = selectRequiredWorkflowRuns(workflowRuns, sha);
+  const pending = [];
+  const failed = [];
+  for (const workflow of requiredWorkflowPaths()) {
+    const run = selected.get(workflow);
+    if (!run || run.status !== "completed") {
+      pending.push(workflow);
+      continue;
+    }
+    if (run.conclusion !== "success") {
+      failed.push({ workflow, conclusion: run.conclusion || "unknown" });
+      continue;
+    }
+    if (!validRunEvidence(run, now, maxAgeMS)) {
+      failed.push({ workflow, conclusion: "stale_or_invalid_evidence" });
+    }
+  }
+  return { selected, pending, failed };
+}
+
+function verifiedRequiredCheckRuns(
+  checkRuns,
+  workflowRuns,
+  jobs,
+  sha,
+  options = {},
+) {
+  const now = options.now ?? Date.now();
+  const maxAgeMS = options.maxAgeMS ?? requiredCheckMaxAgeMS;
+  const assessment = evaluateRequiredWorkflowRuns(workflowRuns, sha, {
+    now,
+    maxAgeMS,
+  });
   const runs = new Map(
-    (workflowRuns || []).map((run) => [String(run.id), run]),
+    [...assessment.selected.values()].map((run) => [String(run.id), run]),
   );
   const jobsByID = new Map((jobs || []).map((job) => [String(job.id), job]));
   return (checkRuns || []).filter((check) => {
@@ -91,12 +202,19 @@ function verifiedRequiredCheckRuns(checkRuns, workflowRuns, jobs, sha) {
     const job = jobsByID.get(actionJobID(check.details_url));
     return (
       run?.path === expectedWorkflow &&
-      run.event === "push" &&
-      run.head_branch === "main" &&
-      run.head_sha === sha &&
+      run.status === "completed" &&
+      run.conclusion === "success" &&
+      validRunEvidence(run, now, maxAgeMS) &&
       String(job?.run_id) === String(run.id) &&
+      Number(job?.run_attempt || 1) === Number(run.run_attempt || 1) &&
       job?.name === requiredJobNameByCheck.get(check.name) &&
-      String(job?.check_run_url || "").endsWith(`/check-runs/${check.id}`)
+      job.status === "completed" &&
+      job.conclusion === "success" &&
+      String(job?.check_run_url || "").endsWith(`/check-runs/${check.id}`) &&
+      validJobEvidence(job, now, maxAgeMS) &&
+      check.status === "completed" &&
+      check.conclusion === "success" &&
+      validCheckEvidence(check, now, maxAgeMS)
     );
   });
 }
@@ -191,9 +309,18 @@ async function waitForRequiredChecks({
       githubJSON(checksEndpoint, token),
       githubJSON(runsEndpoint, token),
     ]);
-    const candidateRuns = (runsPayload.workflow_runs || []).filter(
-      (run) => run.event === "push" && run.head_branch === "main" && run.head_sha === sha,
+    const runAssessment = evaluateRequiredWorkflowRuns(
+      runsPayload.workflow_runs,
+      sha,
     );
+    if (runAssessment.failed.length > 0) {
+      throw new Error(
+        runAssessment.failed
+          .map((run) => `${run.workflow}: ${run.conclusion}`)
+          .join(", "),
+      );
+    }
+    const candidateRuns = [...runAssessment.selected.values()];
     const jobs = (
       await Promise.all(
         candidateRuns.map(async (run) => {
@@ -201,7 +328,11 @@ async function waitForRequiredChecks({
             `${apiURL}/repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`,
             token,
           );
-          return (payload.jobs || []).map((job) => ({ ...job, run_id: run.id }));
+          return (payload.jobs || []).map((job) => ({
+            ...job,
+            run_id: run.id,
+            run_attempt: job.run_attempt || run.run_attempt || 1,
+          }));
         }),
       )
     ).flat();
@@ -285,11 +416,14 @@ if (require.main === module) {
 }
 
 module.exports = {
+  evaluateRequiredWorkflowRuns,
   evaluateRequiredChecks,
   newestCheckByName,
   releaseVersionFromTag,
   requiredChecks,
   requiredJobNameByCheck,
   requiredWorkflowByCheck,
+  requiredCheckMaxAgeMS,
+  selectRequiredWorkflowRuns,
   verifiedRequiredCheckRuns,
 };
