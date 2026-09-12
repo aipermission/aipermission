@@ -46,7 +46,7 @@ func InitializationError() error { return workspacelifecycle.ErrInitialization }
 
 type Dependencies struct {
 	DataPath              string
-	Open                  func(string, string, string) (Runtime, error)
+	Open                  func(context.Context, string, string, string) (Runtime, error)
 	Close                 func(Runtime) error
 	OnActivated, OnOpened func(Runtime)
 	Move                  func(string, string) error

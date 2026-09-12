@@ -15,14 +15,14 @@ import (
 type Lifecycle interface {
 	IsUnlocked() bool
 	Status() (workspacelifecycle.Status, error)
-	Setup(string, string, string) (workspacelifecycle.Transition, error)
-	Unlock(string, string) (workspacelifecycle.Transition, error)
+	Setup(context.Context, string, string, string) (workspacelifecycle.Transition, error)
+	Unlock(context.Context, string, string) (workspacelifecycle.Transition, error)
 	Lock(string) (workspacelifecycle.Status, error)
 	WillLockAll(string) bool
 	Rename(context.Context, string, string) (workspacelifecycle.Transition, error)
 	DeleteCurrent(context.Context, string, string) (workspacelifecycle.Transition, error)
 	DeleteLocked(string, string) (workspacelifecycle.Transition, error)
-	Switch(string, string) (workspacelifecycle.Transition, error)
+	Switch(context.Context, string, string) (workspacelifecycle.Transition, error)
 	ChangePassword(context.Context, string, string) error
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
@@ -37,7 +38,7 @@ type Runtime interface {
 type Dependencies[T Runtime] struct {
 	DataPath            string
 	Registry            *Registry[T]
-	Open                func(path, id, password string) (T, error)
+	Open                func(context.Context, string, string, string) (T, error)
 	Close               func(T) error
 	OnActivated         func(T)
 	OnOpened            func(T)
@@ -54,7 +55,7 @@ type Service[T Runtime] struct {
 	mu                  sync.RWMutex
 	dataPath            string
 	registry            *Registry[T]
-	open                func(path, id, password string) (T, error)
+	open                func(context.Context, string, string, string) (T, error)
 	close               func(T) error
 	onActivated         func(T)
 	onOpened            func(T)
@@ -240,9 +241,12 @@ func (s *Service[T]) statusLocked() (Status, error) {
 		DatabaseName: selected.Name, Databases: databases}, nil
 }
 
-func (s *Service[T]) Setup(databaseID, databaseName, password string) (Transition, error) {
+func (s *Service[T]) Setup(ctx context.Context, databaseID, databaseName, password string) (Transition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Transition{}, err
+	}
 	if runtime, ok := s.registry.Active(); ok {
 		return s.transition("current", runtime, false), nil
 	}
@@ -257,15 +261,18 @@ func (s *Service[T]) Setup(databaseID, databaseName, password string) (Transitio
 		return Transition{}, fmt.Errorf("encrypted database already exists; unlock it or create a new database")
 	}
 	s.registry.Select(identity)
-	return s.openAndActivateLocked(identity, password, "unlocked")
+	return s.openAndActivateLocked(ctx, identity, password, "unlocked")
 }
 
-func (s *Service[T]) Unlock(databaseID, password string) (Transition, error) {
+func (s *Service[T]) Unlock(ctx context.Context, databaseID, password string) (Transition, error) {
 	if password == "" {
 		return Transition{}, ErrPasswordRequired
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Transition{}, err
+	}
 	identity, err := s.unlockTarget(databaseID)
 	if err != nil {
 		return Transition{}, err
@@ -285,16 +292,19 @@ func (s *Service[T]) Unlock(databaseID, password string) (Transition, error) {
 	}
 	previous := s.registry.Selection()
 	s.registry.Select(identity)
-	transition, err := s.openAndActivateLocked(identity, password, "unlocked")
+	transition, err := s.openAndActivateLocked(ctx, identity, password, "unlocked")
 	if err != nil && s.registry.IsUnlocked() {
 		s.registry.Select(previous)
 	}
 	return transition, err
 }
 
-func (s *Service[T]) Switch(databaseID, password string) (Transition, error) {
+func (s *Service[T]) Switch(ctx context.Context, databaseID, password string) (Transition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Transition{}, err
+	}
 	if !s.registry.IsUnlocked() {
 		return Transition{}, ErrLocked
 	}
@@ -323,7 +333,7 @@ func (s *Service[T]) Switch(databaseID, password string) (Transition, error) {
 	}
 	previous := s.registry.Selection()
 	s.registry.Select(identity)
-	transition, err := s.openAndActivateLocked(identity, password, "switched")
+	transition, err := s.openAndActivateLocked(ctx, identity, password, "switched")
 	if err != nil {
 		s.registry.Select(previous)
 	}
@@ -400,10 +410,13 @@ func (s *Service[T]) CloseAll(ctx context.Context) error {
 	return errors.Join(closeErrors...)
 }
 
-func (s *Service[T]) openAndActivateLocked(identity Identity, password, status string) (Transition, error) {
-	runtime, err := s.open(identity.Path, identity.ID, password)
+func (s *Service[T]) openAndActivateLocked(ctx context.Context, identity Identity, password, status string) (Transition, error) {
+	runtime, err := s.open(ctx, identity.Path, identity.ID, password)
 	if err != nil {
 		return Transition{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Transition{}, errors.Join(err, s.close(runtime))
 	}
 	s.activateLocked(runtime)
 	if s.onOpened != nil {
@@ -581,7 +594,9 @@ func (s *Service[T]) databaseNameLocked(identity Identity) string {
 }
 
 func (s *Service[T]) reopenBestEffort(identity Identity, password string) {
-	runtime, err := s.open(identity.Path, identity.ID, password)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	runtime, err := s.open(ctx, identity.Path, identity.ID, password)
 	if err != nil {
 		return
 	}

@@ -18,7 +18,9 @@ func TestServiceRequestGateSerializesMutationsAgainstReaders(t *testing.T) {
 		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
 			return runtime.identity
 		}),
-		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(*serviceRuntime) error { return nil },
 	})
 	if err != nil {
@@ -62,7 +64,9 @@ func TestServiceRequestGateAllowsConcurrentReaders(t *testing.T) {
 		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
 			return runtime.identity
 		}),
-		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(*serviceRuntime) error { return nil },
 	})
 	if err != nil {
@@ -102,7 +106,9 @@ func TestServiceRequestGateMutationHonorsContextWhileReaderIsActive(t *testing.T
 		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
 			return runtime.identity
 		}),
-		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(*serviceRuntime) error { return nil },
 	})
 	if err != nil {
@@ -134,7 +140,9 @@ func TestServiceCloseAllSignalsEveryRuntimeBeforeSharedDeadline(t *testing.T) {
 	release := make(chan struct{})
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: "/data/default.db", Registry: registry,
-		Open: func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(runtime *serviceRuntime) error {
 			started <- runtime.identity.ID
 			<-release
@@ -182,7 +190,9 @@ func TestServiceLockTreatsDeferredCloseAsSuccessfulTransition(t *testing.T) {
 	registry.Activate(&serviceRuntime{identity: Identity{ID: "default", Path: "/data/default.db"}})
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: "/data/default.db", Registry: registry,
-		Open: func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(*serviceRuntime) error {
 			return errors.Join(errors.New("initial drain timeout"), deferredCloseTestError{})
 		},
@@ -217,7 +227,7 @@ func TestServiceUnlockSwitchAndLockLifecycle(t *testing.T) {
 	opened, closed := []string{}, []string{}
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: defaultPath, Registry: registry,
-		Open: func(path, id, password string) (*serviceRuntime, error) {
+		Open: func(_ context.Context, path, id, password string) (*serviceRuntime, error) {
 			database, err := db.OpenEncrypted(path, password)
 			if err != nil {
 				return nil, err
@@ -233,13 +243,13 @@ func TestServiceUnlockSwitchAndLockLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Unlock("default", "DefaultPassword123"); err != nil {
+	if _, err := service.Unlock(t.Context(), "default", "DefaultPassword123"); err != nil {
 		t.Fatal(err)
 	}
-	if transition, err := service.Switch("second", "SecondPassword123"); err != nil || transition.Status != "switched" {
+	if transition, err := service.Switch(t.Context(), "second", "SecondPassword123"); err != nil || transition.Status != "switched" {
 		t.Fatalf("switch failed: transition=%#v err=%v", transition, err)
 	}
-	if _, err := service.Switch("default", ""); err != nil {
+	if _, err := service.Switch(t.Context(), "default", ""); err != nil {
 		t.Fatalf("switch to unlocked runtime: %v", err)
 	}
 	if status, err := service.Lock("current"); err != nil || status.State != "unlocked" || status.Identity.ID != "second" {
@@ -259,17 +269,61 @@ func TestServiceFailedSwitchPreservesActiveRuntime(t *testing.T) {
 	registry.Activate(active)
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: "/data/default.db", Registry: registry,
-		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("open failed") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("open failed")
+		},
 		Close: func(*serviceRuntime) error { return nil },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Switch("missing", "Password123456"); !errors.Is(err, ErrNotInitialized) {
+	if _, err := service.Switch(t.Context(), "missing", "Password123456"); !errors.Is(err, ErrNotInitialized) {
 		t.Fatalf("err=%v", err)
 	}
 	if current, ok := service.Active(); !ok || current != active {
 		t.Fatalf("active runtime changed: %#v", current)
+	}
+}
+
+func TestServiceUnlockCancelsRuntimeOpeningWithCaller(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "aipermission.db")
+	database, err := db.OpenEncrypted(path, "DefaultPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	openStarted := make(chan struct{})
+	closed := false
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(ctx context.Context, openedPath, id, _ string) (*serviceRuntime, error) {
+			close(openStarted)
+			<-ctx.Done()
+			return &serviceRuntime{identity: Identity{ID: id, Path: openedPath}}, nil
+		},
+		Close: func(*serviceRuntime) error { closed = true; return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := service.Unlock(ctx, "default", "DefaultPassword123"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unlock error = %v, want deadline exceeded", err)
+	}
+	select {
+	case <-openStarted:
+	default:
+		t.Fatal("runtime opener did not receive the request context")
+	}
+	if service.IsUnlocked() {
+		t.Fatal("canceled runtime opening activated the workspace")
+	}
+	if !closed {
+		t.Fatal("runtime returned after cancellation was not closed")
 	}
 }
 
@@ -286,7 +340,7 @@ func TestServiceRenameFailureReopensOriginalRuntime(t *testing.T) {
 	registry.Activate(runtime)
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: path, Registry: registry,
-		Open: func(path, id, password string) (*serviceRuntime, error) {
+		Open: func(_ context.Context, path, id, password string) (*serviceRuntime, error) {
 			database, err := db.OpenEncrypted(path, password)
 			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: database}, err
 		},
@@ -318,7 +372,9 @@ func TestServiceDeleteConfirmationFailsBeforeClosingRuntime(t *testing.T) {
 	closed := false
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: "/data/default.db", Registry: registry,
-		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close: func(*serviceRuntime) error { closed = true; return nil },
 	})
 	if err != nil {
@@ -354,7 +410,9 @@ func TestServiceDeleteCloseFailureStillPromotesRemainingRuntime(t *testing.T) {
 	var activated *serviceRuntime
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: defaultPath, Registry: registry,
-		Open:        func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close:       func(*serviceRuntime) error { return errors.New("close failed") },
 		Validate:    func(string, string) error { return nil },
 		OnActivated: func(runtime *serviceRuntime) { activated = runtime },

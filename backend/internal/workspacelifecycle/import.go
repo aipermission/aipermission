@@ -102,7 +102,7 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 	previous := s.registry.Selection()
 	identity := Identity{ID: targetID, Path: targetPath}
 	s.registry.Select(identity)
-	transition, err := s.openAndActivateLocked(identity, input.Password, "imported")
+	transition, err := s.openAndActivateLocked(ctx, identity, input.Password, "imported")
 	if err == nil {
 		return transition, nil
 	}

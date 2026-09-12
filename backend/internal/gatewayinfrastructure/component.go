@@ -75,10 +75,10 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 	if component == nil || component.owner == nil || component.owner.workspace == nil {
 		return InitializationError()
 	}
-	var open func(string, string, string) (*gatewayworkspace.Runtime, error)
+	var open func(context.Context, string, string, string) (*gatewayworkspace.Runtime, error)
 	if dependencies.Open != nil {
-		open = func(path, id, password string) (*gatewayworkspace.Runtime, error) {
-			runtime, err := dependencies.Open(path, id, password)
+		open = func(ctx context.Context, path, id, password string) (*gatewayworkspace.Runtime, error) {
+			runtime, err := dependencies.Open(ctx, path, id, password)
 			if err != nil {
 				return nil, err
 			}

@@ -120,7 +120,7 @@ func (h *Handlers) Switch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	transition, err := h.dependencies.Lifecycle.Switch(request.DatabaseID, request.Password)
+	transition, err := h.dependencies.Lifecycle.Switch(r.Context(), request.DatabaseID, request.Password)
 	if err != nil {
 		if attempt != nil {
 			if errors.Is(err, workspacelifecycle.ErrAuthentication) {

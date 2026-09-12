@@ -124,7 +124,7 @@ type TransferWorkflow interface {
 
 type WorkspaceDependencies struct {
 	DataPath              string
-	Open                  func(string, string, string) (*WorkspaceHandle, error)
+	Open                  func(context.Context, string, string, string) (*WorkspaceHandle, error)
 	Close                 func(*WorkspaceHandle) error
 	OnActivated, OnOpened func(*WorkspaceHandle)
 	Move                  func(string, string) error

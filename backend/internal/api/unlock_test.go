@@ -89,18 +89,18 @@ func newLockedAPITestServer(t *testing.T) *Server {
 func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
 	cfg := fixtureConfigForLockedTest(t)
 	firstServer := NewLockedServer(cfg)
-	first, err := firstServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	first, err := firstServer.openRuntime(t.Context(), cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
 	if err != nil {
 		t.Fatalf("open first runtime: %v", err)
 	}
 	secondServer := NewLockedServer(cfg)
-	if _, err := secondServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
+	if _, err := secondServer.openRuntime(t.Context(), cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
 		t.Fatalf("second runtime error = %v, want ErrDatabaseInUse", err)
 	}
 	if err := firstServer.closeRuntime(first); err != nil {
 		t.Fatalf("close first runtime: %v", err)
 	}
-	second, err := secondServer.openRuntime(cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
+	second, err := secondServer.openRuntime(t.Context(), cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123")
 	if err != nil {
 		t.Fatalf("reopen after ownership release: %v", err)
 	}
@@ -778,11 +778,11 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read source db: %v", err)
 	}
-	server.openRuntimeOverride = func(path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+	server.openRuntimeOverride = func(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
 		if id == "imported-project" {
 			return nil, errors.New("injected runtime open failure")
 		}
-		return server.openRuntime(path, id, password)
+		return server.openRuntime(ctx, path, id, password)
 	}
 
 	response := httptest.NewRecorder()

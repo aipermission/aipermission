@@ -34,7 +34,7 @@ func (h *Handlers) Setup(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	transition, err := h.dependencies.Lifecycle.Setup(request.DatabaseID, request.DatabaseName, request.Password)
+	transition, err := h.dependencies.Lifecycle.Setup(r.Context(), request.DatabaseID, request.DatabaseName, request.Password)
 	if err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
@@ -68,7 +68,7 @@ func (h *Handlers) Unlock(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	transition, err := h.dependencies.Lifecycle.Unlock(request.DatabaseID, request.Password)
+	transition, err := h.dependencies.Lifecycle.Unlock(r.Context(), request.DatabaseID, request.Password)
 	if err != nil {
 		if errors.Is(err, workspacelifecycle.ErrCredential) || errors.Is(err, workspacelifecycle.ErrAuthentication) {
 			attempt.Failure()

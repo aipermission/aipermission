@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -38,7 +39,7 @@ type Server struct {
 	connectorAdaptersOwner   *connectorapi.Registry
 	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
 	runtimeIDGenerator       func() (string, error)
-	openRuntimeOverride      func(string, string, string) (*gatewayinfra.WorkspaceHandle, error)
+	openRuntimeOverride      func(context.Context, string, string, string) (*gatewayinfra.WorkspaceHandle, error)
 	moveDatabaseOverride     func(string, string) error
 	publishDatabaseOverride  func(string, string) error
 }

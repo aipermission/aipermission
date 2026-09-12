@@ -24,11 +24,11 @@ func (s *Server) workspaceSelection() gatewayinfra.Identity {
 	return s.workspaceOwner.WorkspaceSelection()
 }
 
-func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+func (s *Server) openRuntimeForLifecycle(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
 	if s.openRuntimeOverride != nil {
-		return s.openRuntimeOverride(path, id, password)
+		return s.openRuntimeOverride(ctx, path, id, password)
 	}
-	return s.openRuntime(path, id, password)
+	return s.openRuntime(ctx, path, id, password)
 }
 
 func (s *Server) moveDatabase(currentPath string, targetPath string) error {
@@ -45,14 +45,17 @@ func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	return s.workspaceOwner.PublishDatabase(sourcePath, targetPath)
 }
 
-func (s *Server) openRuntime(path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
-	runtime, err := s.workspaceOwner.OpenWorkspace(context.Background(), gatewayinfra.NewOpenWorkspaceInput(
+func (s *Server) openRuntime(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+	runtime, err := s.workspaceOwner.OpenWorkspace(ctx, gatewayinfra.NewOpenWorkspaceInput(
 		id, path, password, s.config.GatewaySecret, s.connectorRegistry(), s.connectorAdapterRegistry(),
 	))
 	if err != nil {
 		return nil, err
 	}
-	if err := s.initializeOpenedRuntime(context.Background(), runtime); err != nil {
+	if err := s.initializeOpenedRuntime(ctx, runtime); err != nil {
+		return nil, errors.Join(err, s.discardOpeningRuntime(runtime))
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(err, s.discardOpeningRuntime(runtime))
 	}
 	return runtime, nil

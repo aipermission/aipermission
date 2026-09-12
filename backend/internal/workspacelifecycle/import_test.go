@@ -1,6 +1,7 @@
 package workspacelifecycle
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,7 +32,9 @@ func TestImportRollsBackPublishedDatabaseWhenRuntimeOpenFails(t *testing.T) {
 	registry.Activate(previous)
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: defaultPath, Registry: registry,
-		Open:          func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("injected open failure") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("injected open failure")
+		},
 		Close:         func(*serviceRuntime) error { return nil },
 		GatewaySecret: func() string { return "gateway-secret" },
 	})
@@ -83,7 +86,9 @@ func TestImportRejectsWrongPasswordBeforePublish(t *testing.T) {
 	published := false
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: defaultPath, Registry: registry,
-		Open:    func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
 		Close:   func(*serviceRuntime) error { return nil },
 		Publish: func(string, string) error { published = true; return nil },
 	})

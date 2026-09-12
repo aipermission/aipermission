@@ -59,7 +59,7 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	if err := secondDB.Close(); err != nil {
 		t.Fatal(err)
 	}
-	second, err := fixture.server.openRuntime(secondPath, "second", "second-password")
+	second, err := fixture.server.openRuntime(t.Context(), secondPath, "second", "second-password")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -150,7 +150,7 @@ func (runtime *Runtime) WaitTeardown(ctx context.Context) error {
 
 type Dependencies struct {
 	DataPath              string
-	Open                  func(string, string, string) (*Runtime, error)
+	Open                  func(context.Context, string, string, string) (*Runtime, error)
 	Close                 func(*Runtime) error
 	OnActivated, OnOpened func(*Runtime)
 	Move                  func(string, string) error
@@ -194,10 +194,10 @@ func (component *Component) Configure(dependencies Dependencies) error {
 	if component == nil || component.lifecycle == nil {
 		return InitializationError()
 	}
-	var open func(string, string, string) (lifecycle.Runtime, error)
+	var open func(context.Context, string, string, string) (lifecycle.Runtime, error)
 	if dependencies.Open != nil {
-		open = func(path, id, password string) (lifecycle.Runtime, error) {
-			return dependencies.Open(path, id, password)
+		open = func(ctx context.Context, path, id, password string) (lifecycle.Runtime, error) {
+			return dependencies.Open(ctx, path, id, password)
 		}
 	}
 	var closeRuntime func(lifecycle.Runtime) error

@@ -25,10 +25,10 @@ type fakeLifecycle struct {
 
 func (f *fakeLifecycle) IsUnlocked() bool                           { return f.unlocked }
 func (f *fakeLifecycle) Status() (workspacelifecycle.Status, error) { return f.status, nil }
-func (f *fakeLifecycle) Setup(string, string, string) (workspacelifecycle.Transition, error) {
+func (f *fakeLifecycle) Setup(context.Context, string, string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, nil
 }
-func (f *fakeLifecycle) Unlock(string, string) (workspacelifecycle.Transition, error) {
+func (f *fakeLifecycle) Unlock(context.Context, string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, f.unlockError
 }
 func (f *fakeLifecycle) Lock(string) (workspacelifecycle.Status, error) {
@@ -45,7 +45,7 @@ func (f *fakeLifecycle) DeleteCurrent(context.Context, string, string) (workspac
 func (f *fakeLifecycle) DeleteLocked(string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, nil
 }
-func (f *fakeLifecycle) Switch(string, string) (workspacelifecycle.Transition, error) {
+func (f *fakeLifecycle) Switch(context.Context, string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, nil
 }
 func (f *fakeLifecycle) ChangePassword(context.Context, string, string) error { return nil }
