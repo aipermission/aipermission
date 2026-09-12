@@ -55,7 +55,7 @@ function sourceLineCount(file) {
 }
 
 function isProductionSource(directory, file) {
-	return !isTestSource(directory, file, frontendTestModuleMarkers);
+  return !isTestSource(directory, file, frontendTestModuleMarkers);
 }
 
 function walk(directory) {
@@ -79,7 +79,7 @@ const testBudgets = [
     maxPackageLines: frontendTestPackageBudget,
   },
   {
-    directory: "packages/mcp/src",
+    directory: "packages/mcp/test",
     extensions: new Set([".js", ".ts"]),
     maxSourceLines: mcpTestSourceBudget,
     maxPackageLines: mcpTestPackageBudget,
@@ -89,11 +89,17 @@ const testBudgets = [
 for (const budget of testBudgets) {
   const packageLines = new Map();
   for (const file of walk(path.join(root, budget.directory))) {
-    if (!budget.extensions.has(path.extname(file)) || !isTestSource(budget.directory, file, frontendTestModuleMarkers)) continue;
+    if (
+      !budget.extensions.has(path.extname(file)) ||
+      !isTestSource(budget.directory, file, frontendTestModuleMarkers)
+    )
+      continue;
     const lines = sourceLineCount(file);
     const relativePath = path.relative(root, file);
     if (lines > budget.maxSourceLines) {
-      failures.push(`${relativePath} has ${lines} test lines; budget is ${budget.maxSourceLines}`);
+      failures.push(
+        `${relativePath} has ${lines} test lines; budget is ${budget.maxSourceLines}`,
+      );
     }
     const directory = path.dirname(file);
     packageLines.set(directory, (packageLines.get(directory) || 0) + lines);
@@ -112,7 +118,7 @@ for (const budget of sourceBudgets) {
   for (const file of walk(directory)) {
     if (
       !budget.extensions.has(path.extname(file)) ||
-	  !isProductionSource(budget.directory, file)
+      !isProductionSource(budget.directory, file)
     ) {
       continue;
     }
@@ -179,5 +185,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-	`Maintenance budgets passed: production/test source, package, and ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`,
+  `Maintenance budgets passed: production/test source, package, and ${suppressionCount}/${suppressionBudget} frontend hook suppressions.`,
 );

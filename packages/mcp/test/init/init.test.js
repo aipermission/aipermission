@@ -20,7 +20,7 @@ import {
   writeTOMLMCPConfig,
   writeJSONMCPConfig,
   writeProviderConfig,
-} from "../src/init.js";
+} from "../../src/init.js";
 import {
   codexSkillPath,
   installSkill,
@@ -30,12 +30,12 @@ import {
   runInstallSkill,
   skillPathForClient,
   validateSkill,
-} from "../src/install-skill.js";
-import { normalizeLocalAPIURL } from "../src/local-url.js";
-import { parseCommandFlags } from "../src/cli-flags.js";
+} from "../../src/install-skill.js";
+import { normalizeLocalAPIURL } from "../../src/local-url.js";
+import { parseCommandFlags } from "../../src/cli-flags.js";
 
 const require = createRequire(import.meta.url);
-const packageMetadata = require("../package.json");
+const packageMetadata = require("../../package.json");
 const execFileAsync = promisify(execFile);
 
 async function git(cwd, ...args) {

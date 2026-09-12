@@ -6,11 +6,34 @@ const { isTestSource } = require("./maintenance-source-kind");
 const frontendMarkers = [".test.", ".spec."];
 
 test("classifies test modules according to their ecosystem", () => {
-  assert.equal(isTestSource("backend", "/tmp/service_test.go", frontendMarkers), true);
-  assert.equal(isTestSource("backend", "/tmp/runtime.test.fixture.go", frontendMarkers), false);
-  assert.equal(isTestSource("frontend/src", "/tmp/runtime.test.fixture.js", frontendMarkers), true);
-  assert.equal(isTestSource("packages/mcp/src", "/tmp/client.spec.ts", frontendMarkers), true);
-  assert.equal(isTestSource("packages/mcp/src", "/tmp/client.fixture.ts", frontendMarkers), false);
+  assert.equal(
+    isTestSource("backend", "/tmp/service_test.go", frontendMarkers),
+    true,
+  );
+  assert.equal(
+    isTestSource("backend", "/tmp/runtime.test.fixture.go", frontendMarkers),
+    false,
+  );
+  assert.equal(
+    isTestSource(
+      "frontend/src",
+      "/tmp/runtime.test.fixture.js",
+      frontendMarkers,
+    ),
+    true,
+  );
+  assert.equal(
+    isTestSource("packages/mcp/src", "/tmp/client.spec.ts", frontendMarkers),
+    true,
+  );
+  assert.equal(
+    isTestSource("packages/mcp/src", "/tmp/client.fixture.ts", frontendMarkers),
+    false,
+  );
+  assert.equal(
+    isTestSource("packages/mcp/test", "/tmp/client.test.js", frontendMarkers),
+    true,
+  );
 });
 
 test("rejects unknown budget ecosystems instead of silently weakening policy", () => {

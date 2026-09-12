@@ -32,7 +32,7 @@
     "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\" \"scripts/**/*.js\"",
     "lint": "eslint src test scripts",
     "prepack": "npm run build",
-    "test": "npm run build && node --test test/*.test.js",
+    "test": "npm run build && node --test",
     "start": "node dist/cli.js",
     "dev": "node src/cli.js"
   },
