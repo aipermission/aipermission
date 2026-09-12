@@ -16,6 +16,7 @@ import (
 )
 
 var ErrOperationUnavailable = errors.New("backup operation lease is unavailable")
+var ErrLifecycleUnavailable = errors.New("workspace lifecycle lease is unavailable")
 
 const defaultConcurrentOperations = 2
 
@@ -70,6 +71,45 @@ type Dependencies struct {
 }
 
 type Component struct{ dependencies Dependencies }
+
+type readOperationLease struct {
+	releaseLifecycle func()
+	releaseOperation func()
+}
+
+func (component *Component) acquireReadOperation(ctx context.Context) (*readOperationLease, error) {
+	if component == nil || component.dependencies.Lifecycle == nil {
+		return nil, ErrLifecycleUnavailable
+	}
+	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	releaseOperation, err := component.dependencies.AcquireOperation(ctx)
+	if err != nil {
+		releaseLifecycle()
+		return nil, err
+	}
+	return &readOperationLease{releaseLifecycle: releaseLifecycle, releaseOperation: releaseOperation}, nil
+}
+
+func (lease *readOperationLease) ReleaseLifecycle() {
+	if lease != nil && lease.releaseLifecycle != nil {
+		lease.releaseLifecycle()
+		lease.releaseLifecycle = nil
+	}
+}
+
+func (lease *readOperationLease) Release() {
+	if lease == nil {
+		return
+	}
+	if lease.releaseOperation != nil {
+		lease.releaseOperation()
+		lease.releaseOperation = nil
+	}
+	lease.ReleaseLifecycle()
+}
 
 func New(dependencies Dependencies) *Component {
 	if dependencies.AcquireOperation == nil {

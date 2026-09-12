@@ -22,36 +22,28 @@ type ImportDatabaseRequest struct {
 }
 
 func (component *Component) downloadDatabase(w http.ResponseWriter, r *http.Request) {
-	releaseBackup, err := component.dependencies.AcquireOperation(r.Context())
+	lease, err := component.acquireReadOperation(r.Context())
 	if err != nil {
 		httptransport.WriteError(w, http.StatusRequestTimeout, "database backup was canceled")
 		return
 	}
-	defer releaseBackup()
-	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "database backup was canceled")
-		return
-	}
+	defer lease.Release()
 	if component.dependencies.HasSession == nil || !component.dependencies.HasSession(r) {
-		releaseLifecycle()
 		httptransport.WriteError(w, http.StatusUnauthorized, "ui session required")
 		return
 	}
 	runtime, ok := component.dependencies.ActiveRuntime(w)
 	if !ok {
-		releaseLifecycle()
 		return
 	}
 	snapshot, err := backups.CreateDatabaseSnapshot(r.Context(), backups.SnapshotSource{
 		Database: runtime.Database, DatabaseID: runtime.DatabaseID, Path: runtime.DatabasePath,
 	})
 	if err != nil {
-		releaseLifecycle()
 		httptransport.WriteInternalError(w)
 		return
 	}
-	releaseLifecycle()
+	lease.ReleaseLifecycle()
 	defer os.Remove(snapshot.Path)
 	httpattachment.SetHeaders(w, snapshot.Filename, "application/octet-stream")
 	http.ServeFile(w, r, snapshot.Path)
