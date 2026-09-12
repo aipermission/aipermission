@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -30,7 +29,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -38,8 +37,8 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
 	})
@@ -60,7 +59,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
-	targetRef := connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID)
 	activeResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?target_ref="+targetRef+"&action_name=query_readonly&active=true", "", nil)
 	if activeResponse.Code != http.StatusOK || !strings.Contains(activeResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list active scoped connector approvals failed: %d %s", activeResponse.Code, activeResponse.Body.String())
@@ -116,7 +115,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -124,8 +123,8 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 'password=super-secret' as value"},
 		Reason:     "smoke",
 	})
@@ -161,7 +160,7 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -169,8 +168,8 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
 	})
@@ -210,7 +209,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -218,8 +217,8 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 	result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    token.ID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
 	})
@@ -230,7 +229,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionBlocked,
 	}); err != nil {
 		t.Fatalf("block connector permission: %v", err)
@@ -283,7 +282,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
 		ProfileID:            profile.ID,
-		ConnectorKind:        postgresconnector.Kind,
+		ConnectorKind:        testPostgresConnectorKind,
 		ActionName:           badAction,
 		Source:               commandRequestSourceMCP,
 		Input:                map[string]any{},
@@ -402,8 +401,8 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
 		ProfileID:            profile.ID,
-		ConnectorKind:        postgresconnector.Kind,
-		ActionName:           postgresconnector.ActionQueryReadonly,
+		ConnectorKind:        testPostgresConnectorKind,
+		ActionName:           testPostgresReadonlySQLAction,
 		Input:                map[string]any{"sql": "select 1"},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Status:               connectors.ResultApprovalPending,
@@ -417,8 +416,8 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
 		ProfileID:            profile.ID,
-		ConnectorKind:        postgresconnector.Kind,
-		ActionName:           postgresconnector.ActionQueryReadonly,
+		ConnectorKind:        testPostgresConnectorKind,
+		ActionName:           testPostgresReadonlySQLAction,
 		Input:                map[string]any{"sql": "select pg_sleep(10)"},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Status:               connectors.ResultRunning,
@@ -458,8 +457,8 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		TokenID:              &token.ID,
 		TargetID:             target.ID,
 		ProfileID:            profile.ID,
-		ConnectorKind:        postgresconnector.Kind,
-		ActionName:           postgresconnector.ActionGetSchemas,
+		ConnectorKind:        testPostgresConnectorKind,
+		ActionName:           testPostgresGetSchemasAction,
 		Input:                map[string]any{},
 		EncryptedPayloadJSON: "encrypted-payload",
 		Status:               connectors.ResultApprovalPending,
@@ -516,7 +515,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 				TokenID:       token.ID,
 				TargetID:      target.ID,
 				ProfileID:     profile.ID,
-				ActionName:    postgresconnector.ActionQueryReadonly,
+				ActionName:    testPostgresReadonlySQLAction,
 				ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 			}); err != nil {
 				t.Fatalf("set connector permission: %v", err)
@@ -524,8 +523,8 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			result, err := fixture.server.callConnectorAction(context.Background(), fixture.server.activeRuntime(), connectorActionCall{
 				Source:     commandRequestSourceMCP,
 				TokenID:    token.ID,
-				TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-				ActionName: postgresconnector.ActionQueryReadonly,
+				TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+				ActionName: testPostgresReadonlySQLAction,
 				Input:      map[string]any{"sql": "select 1"},
 				Reason:     "smoke",
 			})

@@ -32,7 +32,11 @@ type BackendFanout struct {
 	PackageMax                 int            `json:"packageMax"`
 	OwnerMax                   int            `json:"ownerMax"`
 	FamilyOwnerMax             int            `json:"familyOwnerMax"`
+	TestPackageMax             int            `json:"testPackageMax"`
+	TestOwnerMax               int            `json:"testOwnerMax"`
+	TestFamilyOwnerMax         int            `json:"testFamilyOwnerMax"`
 	TestFileInternalImportsMax int            `json:"testFileInternalImportsMax"`
+	TestFileInternalOwnersMax  int            `json:"testFileInternalOwnersMax"`
 	Overrides                  map[string]int `json:"overrides"`
 }
 
@@ -49,7 +53,7 @@ func Load() (Policy, error) {
 	if err := json.Unmarshal(data, &policy); err != nil {
 		return Policy{}, fmt.Errorf("parse maintenance policy: %w", err)
 	}
-	if policy.Version != 1 || policy.GoFunction.ProductionMaxLines <= 0 || policy.BackendFanout.PackageMax <= 0 || policy.BackendFanout.FamilyOwnerMax <= 0 {
+	if policy.Version != 1 || policy.GoFunction.ProductionMaxLines <= 0 || policy.BackendFanout.PackageMax <= 0 || policy.BackendFanout.FamilyOwnerMax <= 0 || policy.BackendFanout.TestPackageMax <= 0 || policy.BackendFanout.TestOwnerMax <= 0 || policy.BackendFanout.TestFamilyOwnerMax <= 0 {
 		return Policy{}, fmt.Errorf("maintenance policy is incomplete or unsupported")
 	}
 	return policy, nil

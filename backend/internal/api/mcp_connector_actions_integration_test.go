@@ -16,7 +16,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -43,7 +42,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionGetSchemas,
+		ActionName:    testPostgresGetSchemasAction,
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set allowed action permission: %v", err)
@@ -52,7 +51,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionBlocked,
 	}); err != nil {
 		t.Fatalf("set blocked action permission: %v", err)
@@ -78,23 +77,23 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected one target/profile, got %#v", items)
 	}
-	if items[0].TargetRef != connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID) {
+	if items[0].TargetRef != connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID) {
 		t.Fatalf("target ref = %q", items[0].TargetRef)
 	}
-	if len(items[0].Actions) != 1 || items[0].Actions[0].Name != postgresconnector.ActionGetSchemas {
+	if len(items[0].Actions) != 1 || items[0].Actions[0].Name != testPostgresGetSchemasAction {
 		t.Fatalf("blocked and unsupported actions should be hidden: %#v", items[0].Actions)
 	}
 	if len(items[0].Hints) == 0 {
 		t.Fatalf("expected connector hints")
 	}
 
-	actionsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID), token.TokenValue, nil)
+	actionsResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID), token.TokenValue, nil)
 	if actionsResponse.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", actionsResponse.Code, actionsResponse.Body.String())
 	}
-	if !strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionGetSchemas) ||
+	if !strings.Contains(actionsResponse.Body.String(), testPostgresGetSchemasAction) ||
 		!strings.Contains(actionsResponse.Body.String(), `"retry_policy":{"class":"read_only"`) ||
-		strings.Contains(actionsResponse.Body.String(), postgresconnector.ActionQueryReadonly) ||
+		strings.Contains(actionsResponse.Body.String(), testPostgresReadonlySQLAction) ||
 		strings.Contains(actionsResponse.Body.String(), "no_longer_supported") {
 		t.Fatalf("unexpected action discovery response: %s", actionsResponse.Body.String())
 	}
@@ -152,7 +151,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 			if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, malformed) {
 				t.Fatalf("partial Vault session handle authorized output")
 			}
-			response := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, malformed, connectors.ActionResult{
+			response := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRuntime.RunningHintPort(), token.ID, malformed, connectors.ActionResult{
 				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 			})
 			if !response.OutputWithheld || response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" {
@@ -163,7 +162,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("Vault session output was authorized without a lease")
 	}
-	withheld := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, request, connectors.ActionResult{
+	withheld := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRuntime.RunningHintPort(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
@@ -191,7 +190,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	if !gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("valid exact Vault lease did not authorize connector output")
 	}
-	authorized := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, request, connectors.ActionResult{
+	authorized := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRuntime.RunningHintPort(), token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
@@ -245,7 +244,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionGetSchemas,
+		ActionName:    testPostgresGetSchemasAction,
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set action permission: %v", err)
@@ -273,8 +272,8 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("disabled project should be hidden: %d %s", hidden.Code, hidden.Body.String())
 	}
 	action := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef:      connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName:     postgresconnector.ActionGetSchemas,
+		TargetRef:      connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName:     testPostgresGetSchemasAction,
 		Reason:         "verify disabled project scope",
 		IdempotencyKey: "disabled-project-scope",
 	})
@@ -294,14 +293,14 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
-		ActionName:    postgresconnector.ActionGetSchemas,
+		ActionName:    testPostgresGetSchemasAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set permission: %v", err)
 	}
 	request := mcpConnectorActionCallRequest{
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionGetSchemas, Reason: "inspect schema",
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresGetSchemasAction, Reason: "inspect schema",
 		IdempotencyKey: "connector-request-1",
 	}
 	first := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
@@ -419,12 +418,12 @@ func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
-		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+		ActionName: testPostgresGetSchemasAction, ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set read permission: %v", err)
 	}
 	readResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
-		TargetRef: connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID), ActionName: postgresconnector.ActionGetSchemas,
+		TargetRef: connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID), ActionName: testPostgresGetSchemasAction,
 	})
 	if readResponse.Code != http.StatusOK || !strings.Contains(readResponse.Body.String(), `"status":"approval_pending"`) {
 		t.Fatalf("legacy read without idempotency key = %d %s", readResponse.Code, readResponse.Body.String())
@@ -489,7 +488,7 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
-		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+		ActionName: testPostgresGetSchemasAction, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set permission: %v", err)
 	}
@@ -497,9 +496,9 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	testRuntimeControlState(t, fixture.server, runtime).SetMCPStarted(true)
 	request := connectortargets.ActionRequest{
 		ID: 1, TokenID: &token.ID, TargetID: target.ID, ProfileID: profile.ID,
-		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionGetSchemas,
+		ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresGetSchemasAction,
 	}
-	response := mcpconnector.ResponseFromRequest(fixture.server.connectorRunningHint, request)
+	response := mcpconnector.ResponseFromRequest(fixture.server.connectorRuntime.RunningHintPort(), request)
 	response.Output = map[string]any{"sensitive": "bounded-result"}
 	w := newBlockingResponseWriter()
 	writeDone := make(chan struct{})

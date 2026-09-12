@@ -129,7 +129,7 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 		t.Fatal(err)
 	}
 
-	_, err = fixture.server.connectorRuntime.ResolveBulkCommandTarget(t.Context(), runtime, fixture.server.connectorManagementApplication(), fixture.server.connectorKinds(), surface.ID)
+	_, err = fixture.server.connectorManagementApplication().ResolveBulkCommandTarget(t.Context(), runtime, fixture.server.connectorKinds(), surface.ID)
 	if !errors.Is(err, gatewayoperations.ErrBulkTargetNotFound) {
 		t.Fatalf("bulk console target error = %v, want bulk target not found", err)
 	}

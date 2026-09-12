@@ -432,10 +432,7 @@ func expressionContainsMutableFacade(expression ast.Expr, bindings map[string][]
 	case *ast.Ellipsis:
 		return expressionContainsMutableFacade(value.Elt, bindings, visiting, false)
 	case *ast.CompositeLit:
-		// Function fields inside a package-owned configuration value are not a
-		// replaceable function facade. Index and selector expressions that
-		// extract a function from a composite are handled by their parent node.
-		return false
+		return expressionsContainMutableFacade(value.Elts, bindings, visiting)
 	case *ast.IndexExpr:
 		if composite, ok := value.X.(*ast.CompositeLit); ok && expressionsContainMutableFacade(composite.Elts, bindings, visiting) {
 			return true
@@ -533,8 +530,8 @@ import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	if !mutableFacadeInitializerWithBindings(bindings["private"][0], bindings, map[string]bool{}) {
 		t.Fatal("unexported mutable facade escaped detection")
 	}
-	if mutableFacadeInitializerWithBindings(mustParseExpression(t, "struct{ Run func() }{Run: owner.Function}"), nil, map[string]bool{}) {
-		t.Fatal("function-valued configuration was mistaken for a facade")
+	if !mutableFacadeInitializerWithBindings(mustParseExpression(t, "struct{ Run func() }{Run: owner.Function}"), nil, map[string]bool{}) {
+		t.Fatal("function-bearing package value escaped mutable facade detection")
 	}
 	crossFileBindings := map[string][]ast.Expr{
 		"local": {

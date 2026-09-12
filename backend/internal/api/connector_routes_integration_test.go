@@ -11,7 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -157,7 +156,7 @@ func TestTargetsListDoesNotCreateRuntimeSurfacesOnRead(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
 	ctx := context.Background()
-	key, err := fixture.sshKeys.Create(ctx, sshkeys.CreateRequest{Name: "lazy-key", KeyType: sshkeys.TypeED25519})
+	key, err := fixture.sshKeys.Create(ctx, testSSHKeyCreateRequest{Name: "lazy-key", KeyType: testSSHKeyTypeED25519})
 	if err != nil {
 		t.Fatalf("create ssh key: %v", err)
 	}

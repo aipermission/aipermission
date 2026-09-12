@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/config"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -175,7 +174,7 @@ func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
 	ctx := context.Background()
-	key, err := fixture.sshKeys.Create(ctx, sshkeys.CreateRequest{Name: "runtime-key", KeyType: sshkeys.TypeED25519})
+	key, err := fixture.sshKeys.Create(ctx, testSSHKeyCreateRequest{Name: "runtime-key", KeyType: testSSHKeyTypeED25519})
 	if err != nil {
 		t.Fatalf("create ssh key: %v", err)
 	}
@@ -230,7 +229,7 @@ func TestSSHConnectorTargetWithProfileCreatesRuntimeSurface(t *testing.T) {
 func TestSSHConnectorProfileRoutesCanonicalizeKeyMetadata(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
-	key, err := fixture.sshKeys.Create(context.Background(), sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
+	key, err := fixture.sshKeys.Create(context.Background(), testSSHKeyCreateRequest{Name: "main", KeyType: testSSHKeyTypeED25519})
 	if err != nil {
 		t.Fatalf("create ssh key: %v", err)
 	}
@@ -283,7 +282,7 @@ func TestSSHConnectorProfileRoutesCanonicalizeKeyMetadata(t *testing.T) {
 func TestConnectorProfileRoutesAllowGenericSSHProfileCreate(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
-	key := decodeRouteResponse[sshkeys.SSHKey](t, performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519}).Body.Bytes())
+	key := decodeRouteResponse[testSSHKey](t, performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", testSSHKeyCreateRequest{Name: "main", KeyType: testSSHKeyTypeED25519}).Body.Bytes())
 	createTarget := performJSON(handler, http.MethodPost, "/api/connector-targets", "", createConnectorTargetRequest{
 		ConnectorKind: "ssh",
 		Name:          "core-ssh",

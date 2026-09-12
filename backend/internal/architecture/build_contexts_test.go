@@ -15,6 +15,7 @@ type backendBuildContext struct {
 	name   string
 	goos   string
 	goarch string
+	cgo    string
 	tags   []string
 }
 
@@ -24,18 +25,29 @@ type packageImportGraph struct {
 }
 
 var supportedBackendBuildContexts = []backendBuildContext{
-	{name: "linux", goos: "linux", goarch: runtime.GOARCH},
-	{name: "windows", goos: "windows", goarch: runtime.GOARCH},
-	{name: "linux-e2e", goos: "linux", goarch: runtime.GOARCH, tags: []string{"e2e"}},
+	{name: "linux", goos: "linux", goarch: runtime.GOARCH, cgo: "1"},
+	{name: "windows", goos: "windows", goarch: "amd64", cgo: "0"},
+	{name: "linux-e2e", goos: "linux", goarch: runtime.GOARCH, cgo: "1", tags: []string{"e2e"}},
 }
 
 var packageImportCache = struct {
 	sync.Mutex
 	graphs       map[string]map[string][]string
+	testGraphs   map[string]map[string][]string
 	dependencies map[string]map[string]bool
 }{
 	graphs:       map[string]map[string][]string{},
+	testGraphs:   map[string]map[string][]string{},
 	dependencies: map[string]map[string]bool{},
+}
+
+func testPackageImportGraphs(t *testing.T) []packageImportGraph {
+	t.Helper()
+	graphs := make([]packageImportGraph, 0, len(supportedBackendBuildContexts))
+	for _, buildContext := range supportedBackendBuildContexts {
+		graphs = append(graphs, packageImportGraph{context: buildContext, imports: testPackageImportsForBuildContext(t, buildContext)})
+	}
+	return graphs
 }
 
 func supportedPackageImportGraphs(t *testing.T) []packageImportGraph {
@@ -114,6 +126,40 @@ func packageImportsForBuildContext(t *testing.T, buildContext backendBuildContex
 	return result
 }
 
+func testPackageImportsForBuildContext(t *testing.T, buildContext backendBuildContext) map[string][]string {
+	t.Helper()
+	cacheKey := buildContext.cacheKey()
+	packageImportCache.Lock()
+	if cached := packageImportCache.testGraphs[cacheKey]; cached != nil {
+		packageImportCache.Unlock()
+		return cached
+	}
+	packageImportCache.Unlock()
+
+	output := runGoList(t, buildContext, "-f", `{{.ImportPath}}|{{join .Imports " "}}|{{join .TestImports " "}}|{{join .XTestImports " "}}`, "./...")
+	sets := map[string]map[string]bool{}
+	for _, line := range strings.Split(string(output), "\n") {
+		parts := strings.SplitN(strings.TrimSpace(line), "|", 4)
+		if len(parts) != 4 || parts[0] == "" {
+			continue
+		}
+		sets[parts[0]] = map[string]bool{}
+		for _, imports := range parts[1:] {
+			for _, imported := range strings.Fields(imports) {
+				if imported == parts[0] {
+					continue
+				}
+				sets[parts[0]][imported] = true
+			}
+		}
+	}
+	result := flattenImportSets(sets)
+	packageImportCache.Lock()
+	packageImportCache.testGraphs[cacheKey] = result
+	packageImportCache.Unlock()
+	return result
+}
+
 func packageDependenciesForBuildContext(t *testing.T, buildContext backendBuildContext, pkg string) map[string]bool {
 	t.Helper()
 	cacheKey := buildContext.cacheKey() + "|" + pkg
@@ -151,7 +197,7 @@ func runGoList(t *testing.T, buildContext backendBuildContext, arguments ...stri
 	command.Env = append(environmentWithoutGoBuildContext(os.Environ()),
 		"GOOS="+buildContext.goos,
 		"GOARCH="+buildContext.goarch,
-		"CGO_ENABLED=1",
+		"CGO_ENABLED="+buildContext.cgo,
 	)
 	output, err := command.Output()
 	if err == nil {
@@ -191,7 +237,7 @@ func flattenImportSets(sets map[string]map[string]bool) map[string][]string {
 }
 
 func (buildContext backendBuildContext) cacheKey() string {
-	return fmt.Sprintf("%s/%s/%s", buildContext.goos, buildContext.goarch, strings.Join(buildContext.tags, ","))
+	return fmt.Sprintf("%s/%s/cgo=%s/%s", buildContext.goos, buildContext.goarch, buildContext.cgo, strings.Join(buildContext.tags, ","))
 }
 
 func TestSupportedBuildContextsRemainExplicit(t *testing.T) {
@@ -202,6 +248,45 @@ func TestSupportedBuildContextsRemainExplicit(t *testing.T) {
 	sort.Strings(got)
 	if strings.Join(got, ",") != "linux,linux-e2e,windows" {
 		t.Fatalf("architecture guards must cover Linux, Windows, and tagged e2e code; got %v", got)
+	}
+	for _, buildContext := range supportedBackendBuildContexts {
+		if buildContext.cgo != "0" && buildContext.cgo != "1" {
+			t.Fatalf("%s architecture context must declare CGO_ENABLED explicitly", buildContext.name)
+		}
+		if buildContext.name == "windows" && (buildContext.goarch != "amd64" || buildContext.cgo != "0") {
+			t.Fatalf("Windows architecture graph must match the windows/amd64 CGO-disabled CI build; got %s/%s cgo=%s", buildContext.goos, buildContext.goarch, buildContext.cgo)
+		}
+	}
+}
+
+func TestWindowsSourceContextCompiles(t *testing.T) {
+	command := exec.Command("go", "build", "-buildvcs=false", "./...")
+	command.Dir = "../.."
+	command.Env = append(environmentWithoutGoBuildContext(os.Environ()),
+		"GOOS=windows",
+		"GOARCH=amd64",
+		"CGO_ENABLED=0",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("Windows source compile failed: %v\n%s", err, output)
+	}
+}
+
+func TestWindowsNoCGOBuildTagsParticipateInArchitectureGraph(t *testing.T) {
+	const fixture = "./internal/architecture/testdata/cgographfixture"
+	const sentinel = modulePath + "/internal/archivepath"
+	for _, buildContext := range supportedBackendBuildContexts {
+		output := strings.Fields(string(runGoList(t, buildContext, "-f", `{{join .Imports " "}}`, fixture)))
+		found := false
+		for _, imported := range output {
+			found = found || imported == sentinel
+		}
+		if buildContext.name == "windows" && !found {
+			t.Fatal("Windows !cgo architecture context did not select its build-tagged source")
+		}
+		if buildContext.name != "windows" && found {
+			t.Fatalf("Windows !cgo fixture leaked into %s architecture context", buildContext.name)
+		}
 	}
 }
 

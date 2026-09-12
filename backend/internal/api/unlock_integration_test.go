@@ -18,7 +18,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/commandrequests"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -70,6 +69,11 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	case <-completed:
 	case <-time.After(time.Second):
 		t.Fatal("deferred workspace close did not complete")
+	}
+	waitContext, cancelWait := context.WithTimeout(t.Context(), time.Second)
+	defer cancelWait()
+	if err := server.workspaceOwner.WaitWorkspaceClosed(waitContext, runtime); err != nil {
+		t.Fatalf("wait for deferred workspace teardown: %v", err)
 	}
 	if secret := server.workspaceOwner.ConfiguredGatewaySecret(runtime); secret != "" {
 		t.Fatal("workspace capability remained valid after deferred close")
@@ -997,7 +1001,7 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, testRuntimeDatabase(t, server, runtime), testSSHKeyStore(t, server, runtime), "worker-1")
+	target := createTestSSHConnectorProfile(t, testRuntimeDatabase(t, server, runtime), newFixtureSSHKeyStore(t, server, runtime), "worker-1")
 	token, err := testRuntimeTokens(t, server, runtime).Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)
@@ -1006,7 +1010,7 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.TargetID,
 		ProfileID:     target.ProfileID,
-		ActionName:    sshconnector.ActionExec,
+		ActionName:    testSSHExecAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("grant permission: %v", err)
@@ -1103,7 +1107,7 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	}
 
 	runtime := server.activeRuntime()
-	target := createTestSSHConnectorProfile(t, testRuntimeDatabase(t, server, runtime), testSSHKeyStore(t, server, runtime), "worker-1")
+	target := createTestSSHConnectorProfile(t, testRuntimeDatabase(t, server, runtime), newFixtureSSHKeyStore(t, server, runtime), "worker-1")
 	token, err := testRuntimeTokens(t, server, runtime).Create(t.Context(), tokens.CreateRequest{Name: "agent"})
 	if err != nil {
 		t.Fatalf("create token: %v", err)

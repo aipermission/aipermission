@@ -10,7 +10,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -306,7 +305,7 @@ func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.St
 	}
 	ctx := context.Background()
 	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
-		ConnectorKind: postgresconnector.Kind,
+		ConnectorKind: testPostgresConnectorKind,
 		Name:          "main-db",
 		Config: map[string]any{
 			"connection_mode": "direct",
@@ -321,7 +320,7 @@ func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.St
 	}
 	profile, err := store.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
 		TargetID:            target.ID,
-		ConnectorKind:       postgresconnector.Kind,
+		ConnectorKind:       testPostgresConnectorKind,
 		Kind:                "username_password",
 		Label:               "readonly",
 		Public:              map[string]any{"username": "app_readonly"},

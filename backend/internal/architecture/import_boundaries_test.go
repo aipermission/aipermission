@@ -189,7 +189,6 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 		modulePath + "/internal/gatewayconnectormanagement": true,
 		modulePath + "/internal/gatewayinfrastructure":      true,
 		modulePath + "/internal/gatewayoperations":          true,
-		modulePath + "/internal/gatewayoperations/transfer": true,
 		modulePath + "/internal/gatewayvault":               true,
 	}
 	used := map[string]bool{}
@@ -399,18 +398,13 @@ func TestGatewayBoundariesDoNotReintroduceForwarderFiles(t *testing.T) {
 func TestGatewayTypeAliasesAreExplicitCanonicalContracts(t *testing.T) {
 	root := filepath.Join("..", "..", "internal")
 	allowed := map[string]bool{
-		"gatewayaccess/access.go:PreparedUISession":                  true,
-		"gatewayaccess/access.go:Principal":                          true,
-		"gatewayaccess/access.go:SecurityRule":                       true,
-		"gatewayaccess/access.go:SecurityRuleInput":                  true,
-		"gatewayaccess/access.go:SecuritySettings":                   true,
-		"gatewayaccess/access.go:TokenValidationError":               true,
-		"gatewayconnectormanagement/management.go:ActionPermission":  true,
-		"gatewayconnectormanagement/management.go:ActionRequest":     true,
-		"gatewayconnectormanagement/management.go:CredentialProfile": true,
-		"gatewayconnectormanagement/management.go:RuntimeSurface":    true,
-		"gatewayconnectormanagement/management.go:Target":            true,
-		"gatewayconnectormanagement/management.go:ValidationError":   true,
+		"gatewayaccess/access.go:PreparedUISession":    true,
+		"gatewayaccess/access.go:Principal":            true,
+		"gatewayaccess/access.go:SecurityRule":         true,
+		"gatewayaccess/access.go:SecurityRuleInput":    true,
+		"gatewayaccess/access.go:SecuritySettings":     true,
+		"gatewayaccess/access.go:TokenValidationError": true,
+		"gatewayoperations/transfer/workspace.go:Jobs": true,
 	}
 	found := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -625,7 +619,7 @@ func TestGatewayInfrastructureKeepsWorkspaceHandleOpaqueWithoutServiceLocator(t 
 	}
 }
 
-func TestOnlyWorkspaceOwnerRetainsGatewayComponent(t *testing.T) {
+func TestFeatureOwnersDoNotRetainGatewayComponent(t *testing.T) {
 	root := filepath.Join("..", "gatewayinfrastructure")
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -661,10 +655,7 @@ func TestOnlyWorkspaceOwnerRetainsGatewayComponent(t *testing.T) {
 					if !componentOK || component.Name != "Component" {
 						continue
 					}
-					allowed := typeSpec.Name.Name == "WorkspaceOwner" && len(field.Names) == 1 && field.Names[0].Name == "owner"
-					if !allowed {
-						t.Errorf("%s: %s retains the gateway Component; only WorkspaceOwner.owner may own lifecycle composition", path, typeSpec.Name.Name)
-					}
+					t.Errorf("%s: %s retains the gateway Component; owners must keep only narrow ports", path, typeSpec.Name.Name)
 				}
 			}
 		}
@@ -896,7 +887,7 @@ func TestHTTPPolicyAndAdapterRegistrationStayInTransportOwner(t *testing.T) {
 func TestConcreteWorkspaceRuntimeStaysInsideGatewayOwner(t *testing.T) {
 	concreteRuntime := modulePath + "/internal/workspaceruntime"
 	allowedImporter := modulePath + "/internal/gatewayworkspace"
-	for _, graph := range supportedPackageImportGraphs(t) {
+	for _, graph := range testPackageImportGraphs(t) {
 		graph := graph
 		t.Run(graph.context.name, func(t *testing.T) {
 			for importer, imports := range graph.imports {
@@ -1024,6 +1015,33 @@ func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T
 	}
 }
 
+func TestAPITestsDoNotImportConnectorImplementations(t *testing.T) {
+	connectorPackages := builtInConnectorPackages(t)
+	root := filepath.Join("..", "api")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imported := range file.Imports {
+			packagePath := strings.Trim(imported.Path.Value, `"`)
+			if builtInConnectorOwner(packagePath, connectorPackages) != "" {
+				t.Errorf("%s imports connector implementation %s; API tests must exercise the generic connector boundary", path, packagePath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect API integration imports: %v", err)
+	}
+}
+
 func TestConnectorPackagesDoNotImportGatewayState(t *testing.T) {
 	connectorRoot := modulePath + "/internal/connectors/"
 	forbidden := []string{
@@ -1086,6 +1104,28 @@ func TestBackendOwnerFamilyFanOutBudgets(t *testing.T) {
 	}
 }
 
+func TestBackendTestPackageFanOutBudgets(t *testing.T) {
+	for _, graph := range testPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			assertBackendFanOutBudgets(t, graph.imports, architecturePolicy.TestPackageMax, architecturePolicy.TestOwnerMax, nil, "test package")
+		})
+	}
+}
+
+func TestBackendTestOwnerFamilyFanOutBudgets(t *testing.T) {
+	for _, graph := range testPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			for family, owners := range ownerFamilyFanOut(graph.imports) {
+				if len(owners) > architecturePolicy.TestFamilyOwnerMax {
+					t.Errorf("%s test family depends on %d internal owners; budget is %d", family, len(owners), architecturePolicy.TestFamilyOwnerMax)
+				}
+			}
+		})
+	}
+}
+
 func ownerFamilyFanOut(importsByPackage map[string][]string) map[string]map[string]bool {
 	result := map[string]map[string]bool{}
 	for importer, imports := range importsByPackage {
@@ -1111,20 +1151,25 @@ func ownerFamilyFanOut(importsByPackage map[string][]string) map[string]map[stri
 
 func assertBackendPackageFanOutBudgets(t *testing.T, importsByPackage map[string][]string) {
 	t.Helper()
+	assertBackendFanOutBudgets(t, importsByPackage, architecturePolicy.PackageMax, architecturePolicy.OwnerMax, architecturePolicy.Overrides, "package")
+}
+
+func assertBackendFanOutBudgets(t *testing.T, importsByPackage map[string][]string, defaultPackageBudget, ownerBudget int, overrides map[string]int, label string) {
+	t.Helper()
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") && !strings.HasPrefix(importer, modulePath+"/cmd/") {
 			continue
 		}
 		packageCount, ownerCount := internalFanOut(importer, imports)
-		packageBudget := architecturePolicy.PackageMax
-		if override, ok := architecturePolicy.Overrides[importer]; ok {
+		packageBudget := defaultPackageBudget
+		if override, ok := overrides[importer]; ok {
 			packageBudget = override
 		}
 		if packageCount > packageBudget {
-			t.Errorf("%s has %d direct internal package dependencies; budget is %d", importer, packageCount, packageBudget)
+			t.Errorf("%s has %d direct internal dependencies in the %s graph; budget is %d", importer, packageCount, label, packageBudget)
 		}
-		if ownerCount > architecturePolicy.OwnerMax {
-			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, ownerCount, architecturePolicy.OwnerMax)
+		if ownerCount > ownerBudget {
+			t.Errorf("%s depends on %d internal owners in the %s graph; budget is %d", importer, ownerCount, label, ownerBudget)
 		}
 	}
 }
@@ -1224,13 +1269,19 @@ func TestTestFilesRespectInternalImportBudget(t *testing.T) {
 			return err
 		}
 		count := 0
+		owners := map[string]bool{}
 		for _, imported := range file.Imports {
-			if strings.HasPrefix(strings.Trim(imported.Path.Value, `"`), modulePath+"/internal/") {
+			packagePath := strings.Trim(imported.Path.Value, `"`)
+			if strings.HasPrefix(packagePath, modulePath+"/internal/") {
 				count++
+				owners[internalDependencyOwner(packagePath)] = true
 			}
 		}
 		if count > architecturePolicy.TestFileInternalImportsMax {
 			t.Errorf("%s has %d direct internal imports; test-file budget is %d", path, count, architecturePolicy.TestFileInternalImportsMax)
+		}
+		if len(owners) > architecturePolicy.TestFileInternalOwnersMax {
+			t.Errorf("%s depends on %d internal owners; test-file owner budget is %d", path, len(owners), architecturePolicy.TestFileInternalOwnersMax)
 		}
 		return nil
 	})
@@ -1245,6 +1296,17 @@ func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
 		t.Run(graph.context.name, func(t *testing.T) {
 			if cycle := internalDependencyCycle(graph.imports); len(cycle) != 0 {
 				t.Fatalf("internal dependency cycle: %s", strings.Join(cycle, " -> "))
+			}
+		})
+	}
+}
+
+func TestInternalDependencyGraphIncludingTestsIsAcyclic(t *testing.T) {
+	for _, graph := range testPackageImportGraphs(t) {
+		graph := graph
+		t.Run(graph.context.name, func(t *testing.T) {
+			if cycle := internalDependencyCycle(graph.imports); len(cycle) != 0 {
+				t.Fatalf("internal dependency cycle including test imports: %s", strings.Join(cycle, " -> "))
 			}
 		})
 	}

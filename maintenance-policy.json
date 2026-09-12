@@ -105,6 +105,29 @@
     }
   ],
   "sourceOverrides": {},
+  "backendCoverageDefaultFloor": 1.0,
+  "backendCoverageNeutralPackages": [
+    "internal/archivepath",
+    "internal/connectorresources",
+    "internal/connectors/builtin/adaptercontainers",
+    "internal/connectors/builtin/adapterresources",
+    "internal/connectors/builtin/catalogdata",
+    "internal/connectors/builtin/catalogruntime",
+    "internal/connectors/connectortest",
+    "internal/connectors/ssh/apiadapter",
+    "internal/gatewayworkspace/capabilities/access",
+    "internal/gatewayworkspace/capabilities/connector",
+    "internal/gatewayworkspace/capabilities/observation",
+    "internal/gatewayworkspace/capabilities/operation",
+    "internal/gatewayworkspace/capabilities/vault",
+    "internal/gatewayworkspace/catalog",
+    "internal/maintenancepolicy",
+    "internal/retention/sqlstore",
+    "internal/workspaceruntime/foundation/identity",
+    "internal/workspaceruntime/state/observation",
+    "internal/workspaceruntime/state/security",
+    "internal/workspaceruntime/state/storage"
+  ],
   "backendCoverageFloors": {
     "internal/accesscontrol": 69.0,
     "internal/api": 57.0,
@@ -145,7 +168,7 @@
   "connectorSourceMaxLines": 850,
   "backendPackage": {
     "defaultMaxLines": 3500,
-    "overrides": {
+    "stricterRatchets": {
       "backend/internal/db": 2700,
       "backend/internal/connectors/mail": 3200,
       "backend/internal/console": 3300,
@@ -172,7 +195,11 @@
     "packageMax": 12,
     "ownerMax": 8,
     "familyOwnerMax": 25,
+    "testPackageMax": 48,
+    "testOwnerMax": 43,
+    "testFamilyOwnerMax": 43,
     "testFileInternalImportsMax": 14,
+    "testFileInternalOwnersMax": 14,
     "overrides": {}
   }
 }

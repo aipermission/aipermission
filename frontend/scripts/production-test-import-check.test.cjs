@@ -72,3 +72,15 @@ test("fails closed when a dynamic module specifier cannot be classified", () => 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("ignores dependency trees inside governed tooling roots", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aipermission-import-dependencies-"));
+  try {
+    fs.mkdirSync(path.join(root, "src", "node_modules", "dependency"), { recursive: true });
+    fs.writeFileSync(path.join(root, "src", "owner.js"), "export const owner = true;\n");
+    fs.writeFileSync(path.join(root, "src", "node_modules", "dependency", "index.js"), "import(dynamic);\n");
+    assert.deepEqual(analyzeProductionTestImports(root, policy), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -77,7 +76,7 @@ func TestTokenAuthorizationUpdatesRejectStaleAndMissingRevisions(t *testing.T) {
 			name: "connector permissions",
 			path: base + "/connector-permissions",
 			body: accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
-				TargetID: target.TargetID, ProfileID: target.ProfileID, ActionName: sshconnector.ActionExec,
+				TargetID: target.TargetID, ProfileID: target.ProfileID, ActionName: testSSHExecAction,
 				ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
 			}}},
 		},

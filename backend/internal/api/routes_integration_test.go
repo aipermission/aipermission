@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -35,21 +34,21 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 		t.Fatalf("status should not expose local database paths: %s", statusResponse.Body.String())
 	}
 
-	keyResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", sshkeys.CreateRequest{Name: "main", KeyType: sshkeys.TypeED25519})
+	keyResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials", "", testSSHKeyCreateRequest{Name: "main", KeyType: testSSHKeyTypeED25519})
 	if keyResponse.Code != http.StatusCreated {
 		t.Fatalf("create key failed: %d %s", keyResponse.Code, keyResponse.Body.String())
 	}
-	key := decodeRouteResponse[sshkeys.SSHKey](t, keyResponse.Body.Bytes())
+	key := decodeRouteResponse[testSSHKey](t, keyResponse.Body.Bytes())
 	privateKey, err := fixture.sshKeys.GetPrivateKey(context.Background(), key.ID)
 	if err != nil {
 		t.Fatalf("get private key fixture: %v", err)
 	}
 
-	importResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials/import", "", sshkeys.ImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
+	importResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials/import", "", testSSHKeyImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
 	if importResponse.Code != http.StatusCreated {
 		t.Fatalf("import key failed: %d %s", importResponse.Code, importResponse.Body.String())
 	}
-	importedKey := decodeRouteResponse[sshkeys.SSHKey](t, importResponse.Body.Bytes())
+	importedKey := decodeRouteResponse[testSSHKey](t, importResponse.Body.Bytes())
 	if importedKey.Fingerprint != key.Fingerprint || importedKey.Name != "imported" {
 		t.Fatalf("unexpected imported key: %#v", importedKey)
 	}
@@ -62,7 +61,7 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 	if keyGetResponse.Code != http.StatusOK {
 		t.Fatalf("get key failed: %d %s", keyGetResponse.Code, keyGetResponse.Body.String())
 	}
-	keyUpdateResponse := performJSON(handler, http.MethodPut, "/api/connectors/ssh/credentials/"+strconv.FormatInt(key.ID, 10), "", sshkeys.UpdateRequest{Name: "main-renamed"})
+	keyUpdateResponse := performJSON(handler, http.MethodPut, "/api/connectors/ssh/credentials/"+strconv.FormatInt(key.ID, 10), "", testSSHKeyUpdateRequest{Name: "main-renamed"})
 	if keyUpdateResponse.Code != http.StatusOK || !strings.Contains(keyUpdateResponse.Body.String(), `"name":"main-renamed"`) || !strings.Contains(keyUpdateResponse.Body.String(), "aipermission-main-renamed") {
 		t.Fatalf("update key failed: %d %s", keyUpdateResponse.Code, keyUpdateResponse.Body.String())
 	}

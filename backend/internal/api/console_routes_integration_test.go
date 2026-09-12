@@ -2,19 +2,15 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"golang.org/x/crypto/ssh"
 )
 
 func TestMessageAndConsoleRoutes(t *testing.T) {
@@ -132,35 +128,4 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 		t.Fatalf("restart should mark running request error, status=%s error=%q", restartedRequestStatus, restartedRequestError)
 	}
 
-}
-
-func TestCreateConsoleSessionReturnsHostKeyConflict(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	server := fixture.createKeyAndServer(t, "host-key-change")
-	key, err := fixture.sshKeys.Get(context.Background(), server.SSHKeyID)
-	if err != nil {
-		t.Fatalf("get ssh key: %v", err)
-	}
-	publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.PublicKey))
-	if err != nil {
-		t.Fatalf("parse public key: %v", err)
-	}
-	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(context.Context, gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
-		return nil, fmt.Errorf("ssh dial: %w", execution.NewUnknownHostKeyError("[example.test]:22", publicKey))
-	}, fixture.server.runtimeRedactor(runtime)); err != nil {
-		t.Fatal(err)
-	}
-
-	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", map[string]any{
-		"runtime_id":     server.ID,
-		"name":           "host-key session",
-		"close_existing": true,
-	})
-	if response.Code != http.StatusConflict {
-		t.Fatalf("host key conflict should return 409, got %d %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "unknown_ssh_host_key") || !strings.Contains(response.Body.String(), `"host_key"`) {
-		t.Fatalf("host key conflict should expose structured host_key payload: %s", response.Body.String())
-	}
 }

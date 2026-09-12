@@ -13,8 +13,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -41,8 +41,8 @@ func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	result, err := server.callConnectorAction(context.Background(), runtime, connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    tokenID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 1"},
 		Reason:     "smoke",
 	})
@@ -69,7 +69,7 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 		TokenID:       tokenID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}); err != nil {
 		t.Fatalf("set action permission: %v", err)
@@ -78,8 +78,8 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	result, err := server.callConnectorAction(context.Background(), runtime, connectorActionCall{
 		Source:     commandRequestSourceMCP,
 		TokenID:    tokenID,
-		TargetRef:  connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID),
-		ActionName: postgresconnector.ActionQueryReadonly,
+		TargetRef:  connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName: testPostgresReadonlySQLAction,
 		Input:      map[string]any{"sql": "select 1", "max_rows": 5},
 		Reason:     "inspect one row",
 	})
@@ -450,7 +450,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 				TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-				ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+				ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 				Status: connectors.ResultRunning, ExecutionOwner: test.owner,
 				ExecutionLeaseExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339Nano),
 			})
@@ -769,7 +769,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
-	targetView, profileView, err := store.ResolveConnectorActionTarget(context.Background(), connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID))
+	targetView, profileView, err := store.ResolveConnectorActionTarget(context.Background(), connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID))
 	if err != nil {
 		t.Fatalf("resolve target/profile: %v", err)
 	}
@@ -783,21 +783,21 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		Target:  targetView,
 		Profile: profileView,
 		ActionDefinition: connectors.ActionDefinition{
-			Name:                 postgresconnector.ActionQueryReadonly,
+			Name:                 testPostgresReadonlySQLAction,
 			SensitiveInputFields: []string{"access_token", "opaque_message", "client-secret"},
 		},
 		Action: connectors.PreparedAction{
-			ConnectorKind: postgresconnector.Kind,
+			ConnectorKind: testPostgresConnectorKind,
 			TargetRef:     targetView.Ref,
 			ProfileID:     profile.ID,
-			ActionName:    postgresconnector.ActionQueryReadonly,
+			ActionName:    testPostgresReadonlySQLAction,
 			Preview:       map[string]any{"body": "password=visible-for-approval internal_abc123", "opaque_message": "exact-sensitive-preview", "client_secret": "hyphen-normalized-preview-secret"},
 			Payload:       rawInput,
 		},
 		Requested: actions.PrepareRequest{
 			Source:     commandRequestSourceMCP,
 			TargetRef:  targetView.Ref,
-			ActionName: postgresconnector.ActionQueryReadonly,
+			ActionName: testPostgresReadonlySQLAction,
 			Input:      rawInput,
 			Reason:     "Bearer raw-reason-token password=reason-secret",
 		},
@@ -849,14 +849,14 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("history input drifted from redacted request input: history=%s request=%s", historyInputJSON, inputJSON)
 	}
 	mcpResponse := mcpconnector.ResponseFromRequest(nil, request)
-	approvalResponse := server.connectorActionApprovalItemFromRequest(request)
+	approvalResponse := server.connectorActionApprovalItemFromRequest(connectormgmt.AdoptActionRequest(request))
 	if mcpResponse.Input["access_token"] != "[REDACTED]" || approvalResponse.Input["access_token"] != "[REDACTED]" {
 		t.Fatalf("response input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
 	if mcpResponse.Input["opaque_message"] != "[REDACTED]" || approvalResponse.Input["opaque_message"] != "[REDACTED]" {
 		t.Fatalf("action-declared sensitive input was not redacted: mcp=%#v approval=%#v", mcpResponse.Input, approvalResponse.Input)
 	}
-	exactApproval, err := server.connectorActionApprovalItemForResponse(t.Context(), runtime, request)
+	exactApproval, err := server.connectorActionApprovalItemForResponse(t.Context(), runtime, connectormgmt.AdoptActionRequest(request))
 	if err != nil {
 		t.Fatalf("build exact approval response: %v", err)
 	}
@@ -869,7 +869,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if exactApproval.Preview["client_secret"] != actions.CredentialRedactionMarker {
 		t.Fatalf("approval preview exposed a normalized sensitive value: %#v", exactApproval.Preview)
 	}
-	redactedApproval := server.connectorActionApprovalItemFromRequest(request)
+	redactedApproval := server.connectorActionApprovalItemFromRequest(connectormgmt.AdoptActionRequest(request))
 	if redactedApproval.Preview["body"] == "password=visible-for-approval internal_abc123" {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
@@ -912,8 +912,8 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 		TokenID:       &tokenID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ConnectorKind: postgresconnector.Kind,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind,
+		ActionName:    testPostgresReadonlySQLAction,
 		Input:         map[string]any{"sql": "select 1"},
 		Status:        connectors.ResultRunning,
 	})
@@ -953,7 +953,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 		Status: connectors.ResultRunning,
 	})
 	if err != nil {
@@ -999,7 +999,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 			t.Fatalf("persisted output leaked %q: %s", secret, requestOutput)
 		}
 	}
-	response := mcpconnector.ResponseFromResult(nil, finished, connectors.ActionResult{Status: finished.Status, Output: finished.Output})
+	response := mcpconnector.ResponseFromResult(nil, connectormgmt.ReleaseActionRequest(finished), connectors.ActionResult{Status: finished.Status, Output: finished.Output})
 	if fmt.Sprint(response.Output) != fmt.Sprint(finished.Output) {
 		t.Fatalf("MCP output drifted from persisted projection: response=%#v finished=%#v", response.Output, finished.Output)
 	}
@@ -1091,8 +1091,8 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 		TokenID:       &tokenID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ConnectorKind: postgresconnector.Kind,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind,
+		ActionName:    testPostgresReadonlySQLAction,
 		Input:         map[string]any{"sql": "select 1"},
 		Status:        connectors.ResultRunning,
 	})
@@ -1149,7 +1149,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if historyError != finished.Error {
 		t.Fatalf("history error drifted from finished request: history=%q finished=%q", historyError, finished.Error)
 	}
-	response := mcpconnector.ResponseFromResult(nil, finished, connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error})
+	response := mcpconnector.ResponseFromResult(nil, connectormgmt.ReleaseActionRequest(finished), connectors.ActionResult{Status: connectors.ResultFailed, Error: finished.Error})
 	if strings.Contains(response.Error, "super-secret") || strings.Contains(response.Error, "abcdefghijklmnopqrstuvwxyz") {
 		t.Fatalf("mcp response leaked secret: %q", response.Error)
 	}
@@ -1190,7 +1190,7 @@ func TestFinishConnectorActionRequestIgnoresCanceledRequestContext(t *testing.T)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 		Status: connectors.ResultRunning,
 	})
 	if err != nil {
@@ -1217,7 +1217,7 @@ func TestCaptureConnectorActionSessionHandleIgnoresCanceledRequestContext(t *tes
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 		Status: connectors.ResultRunning,
 	})
 	if err != nil {
@@ -1253,7 +1253,7 @@ func TestFinishConnectorActionRequestDoesNotAuditLateCompletion(t *testing.T) {
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+		ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 		Status: connectors.ResultRunning,
 	})
 	if err != nil {
@@ -1285,7 +1285,7 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 	createRunning := func() connectortargets.ActionRequest {
 		request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
 			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
-			ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionQueryReadonly,
+			ConnectorKind: testPostgresConnectorKind, ActionName: testPostgresReadonlySQLAction,
 			Status: connectors.ResultRunning,
 		})
 		if err != nil {

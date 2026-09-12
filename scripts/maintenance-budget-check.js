@@ -17,6 +17,7 @@ function sourceLineCount(file) {
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory() && entry.name === "node_modules") return [];
     const entryPath = path.join(directory, entry.name);
     return entry.isDirectory() ? walk(entryPath) : [entryPath];
   });
@@ -110,7 +111,11 @@ function validatePolicy(candidate = policy, target = failures) {
     backendPackageFanout: candidate.backendFanout?.packageMax,
     backendOwnerFanout: candidate.backendFanout?.ownerMax,
     backendOwnerFamilyFanout: candidate.backendFanout?.familyOwnerMax,
+    backendTestPackageFanout: candidate.backendFanout?.testPackageMax,
+    backendTestOwnerFanout: candidate.backendFanout?.testOwnerMax,
+    backendTestOwnerFamilyFanout: candidate.backendFanout?.testFamilyOwnerMax,
     backendTestFileImports: candidate.backendFanout?.testFileInternalImportsMax,
+    backendTestFileOwners: candidate.backendFanout?.testFileInternalOwnersMax,
   };
   for (const [name, value] of Object.entries(positiveValues)) {
     if (!positiveInteger(value))
@@ -123,6 +128,7 @@ function validatePolicy(candidate = policy, target = failures) {
       !packagePath.startsWith("internal/") ||
       typeof floor !== "number" ||
       floor <= 0 ||
+      floor < candidate.backendCoverageDefaultFloor ||
       floor > 100
     ) {
       target.push(`invalid backend coverage floor ${packagePath}: ${floor}`);
@@ -131,9 +137,31 @@ function validatePolicy(candidate = policy, target = failures) {
   if (Object.keys(candidate.backendCoverageFloors || {}).length === 0) {
     target.push("backend coverage floors must not be empty");
   }
+  if (
+    typeof candidate.backendCoverageDefaultFloor !== "number" ||
+    candidate.backendCoverageDefaultFloor <= 0 ||
+    candidate.backendCoverageDefaultFloor > 100
+  ) {
+    target.push("backendCoverageDefaultFloor must be between 0 and 100");
+  }
+  const neutralCoverage = candidate.backendCoverageNeutralPackages || [];
+  if (new Set(neutralCoverage).size !== neutralCoverage.length) {
+    target.push("backend neutral coverage packages must be unique");
+  }
+  for (const packagePath of neutralCoverage) {
+    if (
+      !packagePath.startsWith("internal/") ||
+      candidate.backendCoverageFloors?.[packagePath]
+    ) {
+      target.push(`invalid backend neutral coverage package ${packagePath}`);
+    }
+  }
   for (const [name, values] of [
     ["source override", candidate.sourceOverrides],
-    ["backend package override", candidate.backendPackage?.overrides],
+    [
+      "backend package stricter ratchet",
+      candidate.backendPackage?.stricterRatchets,
+    ],
     ["backend fanout override", candidate.backendFanout?.overrides],
   ]) {
     for (const [key, value] of Object.entries(values || {})) {
@@ -143,10 +171,12 @@ function validatePolicy(candidate = policy, target = failures) {
   }
   for (const [name, values] of [
     ["source override", candidate.sourceOverrides],
-    ["backend package override", candidate.backendPackage?.overrides],
     ["Go function override", candidate.goFunction?.overrides],
     ["backend fanout override", candidate.backendFanout?.overrides],
   ]) {
+    if (Object.keys(values || {}).length > 0) {
+      target.push(`${name} exceptions must remain empty`);
+    }
     for (const key of Object.keys(values || {})) {
       if (isAPIExceptionPath(key)) {
         target.push(
@@ -225,7 +255,7 @@ function checkBackendPackageBudgets() {
   for (const [directory, lines] of packageLines) {
     const relativePath = path.relative(root, directory);
     const maxLines =
-      policy.backendPackage.overrides[relativePath] ||
+      policy.backendPackage.stricterRatchets[relativePath] ||
       policy.backendPackage.defaultMaxLines;
     if (lines > maxLines) {
       failures.push(
@@ -276,4 +306,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { testPackageDirectory, validatePolicy };
+module.exports = { testPackageDirectory, validatePolicy, walk };

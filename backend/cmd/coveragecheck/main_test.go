@@ -40,30 +40,33 @@ func TestReadCoverageProfileRejectsMalformedInput(t *testing.T) {
 
 func TestReadCoverageFloorsUsesCanonicalPolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "maintenance-policy.json")
-	if err := os.WriteFile(path, []byte(`{"backendCoverageFloors":{"internal/gatewayworkspace":7}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"backendCoverageDefaultFloor":1,"backendCoverageNeutralPackages":["internal/data"],"backendCoverageFloors":{"internal/gatewayworkspace":7}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	floors, err := readCoverageFloors(path)
+	policy, err := readCoveragePolicy(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if floors["internal/gatewayworkspace"] != 7 {
-		t.Fatalf("unexpected gateway workspace floor: %v", floors)
+	if policy.floors["internal/gatewayworkspace"] != 7 || policy.defaultFloor != 1 || !policy.neutralPackages["internal/data"] {
+		t.Fatalf("unexpected gateway workspace policy: %+v", policy)
 	}
 }
 
 func TestReadCoverageFloorsRejectsMissingAndInvalidEntries(t *testing.T) {
 	for _, content := range []string{
 		`{}`,
-		`{"backendCoverageFloors":{"gatewayworkspace":7}}`,
-		`{"backendCoverageFloors":{"internal/gatewayworkspace":0}}`,
-		`{"backendCoverageFloors":{"internal/gatewayworkspace":101}}`,
+		`{"backendCoverageDefaultFloor":1,"backendCoverageFloors":{"gatewayworkspace":7}}`,
+		`{"backendCoverageDefaultFloor":1,"backendCoverageFloors":{"internal/gatewayworkspace":0}}`,
+		`{"backendCoverageDefaultFloor":1,"backendCoverageFloors":{"internal/gatewayworkspace":0.001}}`,
+		`{"backendCoverageDefaultFloor":1,"backendCoverageFloors":{"internal/gatewayworkspace":101}}`,
+		`{"backendCoverageDefaultFloor":0,"backendCoverageFloors":{"internal/gatewayworkspace":7}}`,
+		`{"backendCoverageDefaultFloor":1,"backendCoverageNeutralPackages":["internal/gatewayworkspace"],"backendCoverageFloors":{"internal/gatewayworkspace":7}}`,
 	} {
 		path := filepath.Join(t.TempDir(), "maintenance-policy.json")
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := readCoverageFloors(path); err == nil {
+		if _, err := readCoveragePolicy(path); err == nil {
 			t.Fatalf("expected invalid policy to fail: %s", content)
 		}
 	}

@@ -1,4 +1,4 @@
-package connectortargets_test
+package actions_test
 
 import (
 	"context"

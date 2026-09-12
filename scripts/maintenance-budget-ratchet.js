@@ -29,6 +29,8 @@ function policySnapshot(input) {
     "go.fanout.test.ownerFamily": policy.backendFanout.testFamilyOwnerMax,
     "go.testImports.maxPerFile":
       policy.backendFanout.testFileInternalImportsMax,
+    "go.testOwners.maxPerFile": policy.backendFanout.testFileInternalOwnersMax,
+    "coverage.backend.default": -policy.backendCoverageDefaultFloor,
   };
   for (const extension of policy.frontendArchitecture.sourceExtensions) {
     snapshot[`coverage.frontend.extension.${extension}`] = 0;
@@ -59,8 +61,11 @@ function policySnapshot(input) {
   )) {
     snapshot[`coverage.backend.floor.${packagePath}`] = -floor;
   }
+  for (const packagePath of policy.backendCoverageNeutralPackages || []) {
+    snapshot[`backend.coverage.neutral.${packagePath}`] = 0;
+  }
   for (const [directory, value] of Object.entries(
-    policy.backendPackage.overrides,
+    policy.backendPackage.stricterRatchets,
   )) {
     snapshot[`backend.package.${directory}`] = value;
   }
@@ -214,6 +219,7 @@ function inheritedBudget(base, name) {
     "go.fanout.test.owner": 45,
     "go.fanout.test.ownerFamily": 45,
     "go.testImports.maxPerFile": 14,
+    "go.testOwners.maxPerFile": 14,
   };
   if (Object.hasOwn(bootstrapCeilings, name)) return bootstrapCeilings[name];
   if (name === "go.fanout.owner") return base["go.fanout.package"];

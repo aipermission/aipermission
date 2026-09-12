@@ -14,3 +14,7 @@ func configureMaintenanceConsoleProcess(_ *exec.Cmd) error {
 func Supported() bool {
 	return false
 }
+
+func terminateMaintenanceConsoleSupervisor(_ int) {}
+
+func maintenanceConsoleProcessExists(_ int) bool { return false }

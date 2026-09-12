@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
@@ -503,24 +502,6 @@ func (s *Session) markProcessDone() {
 	}
 }
 
-func signalMaintenanceConsoleProcess(pid int, signal syscall.Signal) error {
-	if pid < 1 {
-		return nil
-	}
-	return syscall.Kill(pid, signal)
-}
-
-func terminateMaintenanceConsoleSupervisor(pid int) {
-	if pid < 1 {
-		return
-	}
-	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGHUP)
-	if waitForMaintenanceConsoleSupervisorExit(pid, maintenanceConsoleProcessGracePeriod) {
-		return
-	}
-	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGKILL)
-}
-
 func waitForMaintenanceConsoleSupervisorExit(pid int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for maintenanceConsoleProcessExists(pid) {
@@ -530,11 +511,6 @@ func waitForMaintenanceConsoleSupervisorExit(pid int, timeout time.Duration) boo
 		time.Sleep(10 * time.Millisecond)
 	}
 	return true
-}
-
-func maintenanceConsoleProcessExists(pid int) bool {
-	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func waitForMaintenanceConsoleProcess(done <-chan struct{}, timeout time.Duration) {

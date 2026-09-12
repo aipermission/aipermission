@@ -18,10 +18,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -37,7 +33,7 @@ type apiTestFixture struct {
 	server  *Server
 	db      *sql.DB
 	tokens  *tokens.Store
-	sshKeys *sshkeys.Store
+	sshKeys *testSSHKeyResourceStore
 }
 
 type testSSHConnectorProfile struct {
@@ -93,23 +89,29 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		database: database, secretVault: secretVault,
 		tokens: tokenStore, registry: catalog.connectors, adapters: catalog.adapters,
 	})
-	sshKeyStore := testSSHKeyStore(t, srv, srv.activeRuntime())
+	sshKeyStore := newFixtureSSHKeyStore(t, srv, srv.activeRuntime())
 	testRuntimeControlState(t, srv, srv.activeRuntime()).SetMCPStarted(true)
 	authorizeTestUISession(srv)
 	t.Cleanup(func() {
-		srv.Close()
-		_ = database.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), defaultWorkspaceShutdownTimeout)
+		defer cancel()
+		if err := srv.CloseContext(ctx); err != nil {
+			t.Errorf("close API test server: %v", err)
+		}
+		if err := database.Close(); err != nil && !strings.Contains(err.Error(), "database is closed") {
+			t.Errorf("close API test database: %v", err)
+		}
 	})
 	return apiTestFixture{server: srv, db: database, tokens: tokenStore, sshKeys: sshKeyStore}
 }
 
-func testSSHKeyStore(t *testing.T, server *Server, runtime *gatewayinfra.WorkspaceHandle) *sshkeys.Store {
+func newFixtureSSHKeyStore(t *testing.T, server *Server, runtime *gatewayinfra.WorkspaceHandle) *testSSHKeyResourceStore {
 	t.Helper()
 	if server == nil || runtime == nil {
 		t.Fatalf("ssh key resource store is not available")
 	}
-	resources := server.connectorRuntime.CredentialResourceRuntime(runtime, sshconnector.Kind)
-	return sshkeys.NewResourceStore(resources.CredentialResources("private_key"))
+	resources := server.connectorRuntime.CredentialResourceRuntime(runtime, testSSHConnectorKind)
+	return newTestSSHKeyStore(resources.CredentialResources("private_key"))
 }
 
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {
@@ -127,7 +129,7 @@ func (f apiTestFixture) trustServerHostKey(t *testing.T, profile testSSHConnecto
 	if err != nil {
 		t.Fatalf("parse test SSH public key: %v", err)
 	}
-	if err := execution.TrustHostKey(
+	if err := trustTestSSHHostKey(
 		f.server.connectorTrustStorePath(),
 		net.JoinHostPort(profile.Host, strconv.Itoa(profile.Port)),
 		base64.StdEncoding.EncodeToString(publicKey.Marshal()),
@@ -136,9 +138,9 @@ func (f apiTestFixture) trustServerHostKey(t *testing.T, profile testSSHConnecto
 	}
 }
 
-func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *sshkeys.Store, name string) testSSHConnectorProfile {
+func createTestSSHConnectorProfile(t *testing.T, database *sql.DB, sshKeyStore *testSSHKeyResourceStore, name string) testSSHConnectorProfile {
 	t.Helper()
-	key, err := sshKeyStore.Create(context.Background(), sshkeys.CreateRequest{Name: name + "-key", KeyType: sshkeys.TypeED25519})
+	key, err := sshKeyStore.Create(context.Background(), testSSHKeyCreateRequest{Name: name + "-key", KeyType: testSSHKeyTypeED25519})
 	if err != nil {
 		t.Fatalf("create key: %v", err)
 	}
@@ -325,7 +327,7 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      profile.TargetID,
 		ProfileID:     profile.ProfileID,
-		ActionName:    sshconnector.ActionExec,
+		ActionName:    testSSHExecAction,
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -392,7 +394,7 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionGetSchemas,
+		ActionName:    testPostgresGetSchemasAction,
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set connector permission: %v", err)
@@ -401,22 +403,22 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 		TokenID:       token.ID,
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
-		ActionName:    postgresconnector.ActionQueryReadonly,
+		ActionName:    testPostgresReadonlySQLAction,
 		ExecutionRule: connectortargets.ActionPermissionBlocked,
 	}); err != nil {
 		t.Fatalf("set blocked connector permission: %v", err)
 	}
 
-	targetRef := connectors.FormatTargetRef(postgresconnector.Kind, target.ID, profile.ID)
+	targetRef := connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID)
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-actions?target_ref="+url.QueryEscape(targetRef), token.TokenValue, nil)
 	if response.Code != http.StatusOK {
 		t.Fatalf("get connector actions failed: %d %s", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	if !strings.Contains(body, postgresconnector.ActionGetSchemas) {
+	if !strings.Contains(body, testPostgresGetSchemasAction) {
 		t.Fatalf("granted action missing from response: %s", body)
 	}
-	if strings.Contains(body, postgresconnector.ActionQueryReadonly) || strings.Contains(body, postgresconnector.ActionDescribeTable) {
+	if strings.Contains(body, testPostgresReadonlySQLAction) || strings.Contains(body, testPostgresDescribeAction) {
 		t.Fatalf("ungranted action leaked through MCP action list: %s", body)
 	}
 }

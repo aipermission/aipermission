@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -186,7 +185,7 @@ func TestIdenticalTokenAuthorizationUpdatesPreserveVaultSessionState(t *testing.
 	}}}
 	permissionRequest := accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
 		TargetID: target.TargetID, ProfileID: target.ProfileID,
-		ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
+		ActionName: testSSHExecAction, ExecutionRule: string(connectortargets.ActionPermissionAlwaysRun),
 	}}}
 	for _, setup := range []struct {
 		path          string
@@ -305,7 +304,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 	}
 	if err := connectortargets.NewStore(fixture.db).SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.TargetID, ProfileID: target.ProfileID,
-		ActionName: sshconnector.ActionExec, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
+		ActionName: testSSHExecAction, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}); err != nil {
 		t.Fatalf("set initial connector permission: %v", err)
 	}
@@ -357,7 +356,7 @@ func TestTokenAuthorizationUpdateRollsBackWhenVaultLeaseRevocationFails(t *testi
 		"",
 		withCurrentAuthorizationRevision(t, fixture.server.Handler(), permissionPath, accesscontrol.UpdateConnectorPermissionsRequest{Permissions: []accesscontrol.ConnectorPermissionInput{{
 			TargetID: target.TargetID, ProfileID: target.ProfileID,
-			ActionName: sshconnector.ActionExec, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+			ActionName: testSSHExecAction, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
 		}}}),
 	)
 	if response.Code != http.StatusInternalServerError {

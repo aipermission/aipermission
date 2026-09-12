@@ -12,9 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
-	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
@@ -42,15 +39,15 @@ func testConnectorApprovalContext(prepared actions.PreparedRequest, token tokens
 
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
-	resources := connectorresources.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace").Scope(sshconnector.Kind, "private_key")
-	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewResourceStore(resources), "core-1")
+	resources := connectorresources.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace").Scope(testSSHConnectorKind, "private_key")
+	profile := createTestSSHConnectorProfile(t, database, newTestSSHKeyStore(resources), "core-1")
 	targetRef := profile.TargetRef
 	runtime := newTestDatabaseRuntime(t, database)
 
 	prepared, err := prepareConnectorAction(runtime, context.Background(), actions.PrepareRequest{
 		Source:     "mcp",
 		TargetRef:  targetRef,
-		ActionName: sshconnector.ActionExec,
+		ActionName: testSSHExecAction,
 		Input:      map[string]any{"command": "uptime"},
 		Reason:     "smoke",
 		CreatedAt:  time.Date(2026, 6, 9, 12, 30, 0, 0, time.UTC),
@@ -59,7 +56,7 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 		t.Fatalf("prepare connector action: %v", err)
 	}
 
-	if prepared.Action.ConnectorKind != sshconnector.Kind {
+	if prepared.Action.ConnectorKind != testSSHConnectorKind {
 		t.Fatalf("connector kind = %q", prepared.Action.ConnectorKind)
 	}
 	if prepared.Action.TargetRef != targetRef {
@@ -81,15 +78,15 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	server.connectorRegistryOwner = catalog.connectors
 	server.connectorAdaptersOwner = catalog.adapters
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
-	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)
+	capabilities := connectorRuntimeCapabilitiesFor(testPostgresConnectorKind, server, runtime)
 	if capabilities == nil || capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
 		t.Fatalf("postgres should receive generic network transport capability: %#v", capabilities)
 	}
-	if capabilities.RuntimeCapability(sshconnector.RuntimeServiceName) != nil {
+	if capabilities.RuntimeCapability(testSSHRuntimeCapability) != nil {
 		t.Fatalf("postgres should not receive ssh live runtime capability: %#v", capabilities)
 	}
-	capabilities = connectorRuntimeCapabilitiesFor(sshconnector.Kind, server, runtime)
-	if capabilities == nil || capabilities.RuntimeCapability(sshconnector.RuntimeServiceName) == nil {
+	capabilities = connectorRuntimeCapabilitiesFor(testSSHConnectorKind, server, runtime)
+	if capabilities == nil || capabilities.RuntimeCapability(testSSHRuntimeCapability) == nil {
 		t.Fatalf("ssh runtime capability missing: %#v", capabilities)
 	}
 	if capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
@@ -139,7 +136,7 @@ func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
 func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", nil))
+	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", nil, nil))
 
 	_, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		Mode:               "over_ssh",
@@ -156,8 +153,8 @@ func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	database := openAPITestDB(t)
 	vault := openAPITestVault(t)
-	resources := connectorresources.NewStore(database, vault, "transport-drift-workspace").Scope(sshconnector.Kind, "private_key")
-	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewResourceStore(resources), "transport")
+	resources := connectorresources.NewStore(database, vault, "transport-drift-workspace").Scope(testSSHConnectorKind, "private_key")
+	profile := createTestSSHConnectorProfile(t, database, newTestSSHKeyStore(resources), "transport")
 	store := connectortargets.NewStore(database)
 	targetView, profileView, err := store.ResolveConnectorActionTarget(t.Context(), profile.TargetRef)
 	if err != nil {
@@ -172,7 +169,7 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	if _, err := store.UpdateCredentialProfile(t.Context(), connectortargets.UpdateCredentialProfileInput{
 		TargetID:      profile.TargetID,
 		ProfileID:     profile.ProfileID,
-		ConnectorKind: sshconnector.Kind,
+		ConnectorKind: testSSHConnectorKind,
 		Kind:          "private_key",
 		Label:         "changed-after-approval",
 		Public:        profileView.Public,
@@ -181,7 +178,7 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	}
 
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", dependencies))
+	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", dependencies, nil))
 	connection, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		SourceProjectID: targetView.ProjectID, Mode: "over_ssh", Host: "127.0.0.1", Port: 5432,
 		TransportTargetRef: profile.TargetRef,
@@ -199,7 +196,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 		Target: connectors.TargetView{
 			ID:            1,
 			Ref:           "postgres:1:2",
-			ConnectorKind: postgresconnector.Kind,
+			ConnectorKind: testPostgresConnectorKind,
 			Name:          "main-db",
 			Config:        map[string]any{"host": "127.0.0.1", "database": "app"},
 		},
@@ -215,7 +212,7 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 		},
 		ConnectorVersion: "0.1",
 		ActionDefinition: connectors.ActionDefinition{
-			Name:        postgresconnector.ActionQueryReadonly,
+			Name:        testPostgresReadonlySQLAction,
 			Label:       "Query read-only",
 			Description: "Run bounded read-only SQL.",
 			Risk:        connectors.RiskRead,
@@ -224,16 +221,16 @@ func TestConnectorApprovalContextHashesConnectorAndActionDefinition(t *testing.T
 			}},
 		},
 		Action: connectors.PreparedAction{
-			ConnectorKind: postgresconnector.Kind,
+			ConnectorKind: testPostgresConnectorKind,
 			TargetRef:     "postgres:1:2",
-			ActionName:    postgresconnector.ActionQueryReadonly,
+			ActionName:    testPostgresReadonlySQLAction,
 			Risk:          connectors.RiskRead,
 			Payload:       map[string]any{"sql": "select 1"},
 		},
 		Requested: actions.PrepareRequest{
 			Source:     commandRequestSourceMCP,
 			TargetRef:  "postgres:1:2",
-			ActionName: postgresconnector.ActionQueryReadonly,
+			ActionName: testPostgresReadonlySQLAction,
 			Input:      map[string]any{"sql": "select 1"},
 		},
 	}

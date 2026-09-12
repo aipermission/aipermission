@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh"
-	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -363,7 +361,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	}
 	target := fixture.createKeyAndServer(t, "vault-session-e2e")
 	fixture.trustServerHostKey(t, target)
-	identities, err := execution.TrustedHostFingerprints(
+	identities, err := trustedTestSSHHostFingerprints(
 		fixture.server.connectorTrustStorePath(),
 		net.JoinHostPort(target.Host, strconv.Itoa(target.Port)),
 	)
@@ -411,7 +409,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Helper()
 		if _, err := permissions.ReplaceActionPermissions(ctx, token.ID, []connectortargets.SetActionPermissionInput{{
 			TargetID: target.TargetID, ProfileID: target.ProfileID,
-			ActionName: sshconnector.ActionExec, ExecutionRule: rule,
+			ActionName: testSSHExecAction, ExecutionRule: rule,
 		}}); err != nil {
 			t.Fatalf("set connector permission: %v", err)
 		}
@@ -607,7 +605,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if _, err := connectortargets.NewStore(fixture.db).ReplaceActionPermissions(ctx, token.ID, []connectortargets.SetActionPermissionInput{{
 		TargetID:      target.TargetID,
 		ProfileID:     target.ProfileID,
-		ActionName:    sshconnector.ActionExec,
+		ActionName:    testSSHExecAction,
 		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
 	}}); err != nil {
 		t.Fatalf("set Always connector permission: %v", err)
@@ -639,7 +637,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	if _, err := connectortargets.NewStore(fixture.db).ReplaceActionPermissions(ctx, token.ID, []connectortargets.SetActionPermissionInput{{
 		TargetID:      target.TargetID,
 		ProfileID:     target.ProfileID,
-		ActionName:    sshconnector.ActionExec,
+		ActionName:    testSSHExecAction,
 		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
 	}}); err != nil {
 		t.Fatalf("change connector permission to Prompt: %v", err)
