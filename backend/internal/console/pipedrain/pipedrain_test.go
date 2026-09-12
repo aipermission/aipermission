@@ -1,40 +1,48 @@
 package pipedrain
 
 import (
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func TestWaitIsBounded(t *testing.T) {
-	var group sync.WaitGroup
-	group.Add(1)
-	if Wait(Done(&group), time.Millisecond) {
+	group := New(false)
+	if group.Wait(time.Millisecond) {
 		t.Fatal("blocked pipe was reported as drained")
 	}
 	group.Done()
-}
-
-func TestDoneHandlesNilGroup(t *testing.T) {
-	if !Wait(Done(nil), time.Second) {
-		t.Fatal("nil group did not report an immediate drain")
+	if !group.Wait(time.Second) {
+		t.Fatal("completed pipe was not reported as drained")
 	}
 }
 
-func TestFinishDefersCallbackUntilBlockedGroupDrains(t *testing.T) {
-	var group sync.WaitGroup
-	group.Add(1)
-	finished := make(chan struct{})
-	Finish(&group, time.Millisecond, func() { close(finished) })
-	select {
-	case <-finished:
-		t.Fatal("callback ran before the group drained")
-	default:
+func TestNewTracksBothOutputPipes(t *testing.T) {
+	group := New(true)
+	group.Done()
+	if group.Wait(time.Millisecond) {
+		t.Fatal("stdout completion drained a group that still owns stderr")
 	}
 	group.Done()
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("callback did not run after the group drained")
+	if !group.Wait(time.Second) {
+		t.Fatal("stdout and stderr completion did not drain the group")
+	}
+}
+
+func TestFinishWipesAfterBoundedWaitWithoutWaitingForBlockedReader(t *testing.T) {
+	group := New(false)
+	var finishes atomic.Int32
+	started := time.Now()
+	group.Finish(time.Millisecond, func() { finishes.Add(1) })
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("Finish retained the caller for %v", elapsed)
+	}
+	if finishes.Load() != 1 {
+		t.Fatalf("finish callback count = %d", finishes.Load())
+	}
+	group.Done()
+	time.Sleep(time.Millisecond)
+	if finishes.Load() != 1 {
+		t.Fatalf("late drain repeated finish callback: %d", finishes.Load())
 	}
 }

@@ -460,6 +460,33 @@ func TestManagedConsoleSessionKeepsStdoutAndStderrRedactionStateIndependent(t *t
 	}
 }
 
+func TestManagedConsoleSessionDiscardsOutputAfterRedactorsAreWiped(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	redactor, err := envelope.ExactValueRedactor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &managedConsoleSession{
+		id: 1, generation: 1, status: "connected",
+		manager: &Manager{redact: func(value string) string { return value }},
+		clients: map[*websocket.Conn]*sync.Mutex{}, exactRedactor: redactor,
+	}
+	session.closeExactRedactor()
+	session.appendStreamOutput("late secret-value", redactor)
+	if session.rawTranscript != "" || session.transcript != "" {
+		t.Fatalf("late output entered a closed session: raw=%q display=%q", session.rawTranscript, session.transcript)
+	}
+	if output := redactor.Write([]byte("secret-value")); len(output) != 0 {
+		t.Fatalf("wiped redactor accepted late output: %q", output)
+	}
+}
+
 func TestManagedConsoleSessionRedactsVaultValueFromDisplayAndPersistenceText(t *testing.T) {
 	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
 		Name: "MY_PROJECT_TOKEN", Value: []byte("secret-value"),

@@ -101,16 +101,14 @@ func (s *managedConsoleSession) run() {
 		}
 	}
 
-	var pipeWG sync.WaitGroup
-	pipeWG.Add(1)
+	pipeGroup := pipedrain.New(runtime.Stderr != nil)
 	go func() {
-		defer pipeWG.Done()
+		defer pipeGroup.Done()
 		s.pipe(runtime.Stdout, s.stdoutExactRedactor)
 	}()
 	if runtime.Stderr != nil {
-		pipeWG.Add(1)
 		go func() {
-			defer pipeWG.Done()
+			defer pipeGroup.Done()
 			s.pipe(runtime.Stderr, s.stderrExactRedactor)
 		}()
 	}
@@ -124,7 +122,7 @@ func (s *managedConsoleSession) run() {
 	select {
 	case err := <-waitDone:
 		_ = s.closeRuntime()
-		pipedrain.Finish(&pipeWG, 2*time.Second, s.closeExactRedactor)
+		pipeGroup.Finish(2*time.Second, s.closeExactRedactor)
 		if err != nil && !errors.Is(err, io.EOF) {
 			s.finish("closed", err.Error())
 			return
@@ -132,7 +130,7 @@ func (s *managedConsoleSession) run() {
 		s.finish("closed", "")
 	case <-s.ctx.Done():
 		_ = s.closeRuntime()
-		pipedrain.Finish(&pipeWG, 2*time.Second, s.closeExactRedactor)
+		pipeGroup.Finish(2*time.Second, s.closeExactRedactor)
 		s.finish("closed", "")
 	}
 }
