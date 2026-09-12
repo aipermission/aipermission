@@ -197,16 +197,40 @@ func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *Work
 	adapter, _ := application.adapters.For(kind).(connectorapi.RuntimeAdapter)
 	if adapter != nil {
 		gateway, runtime := application.ports.RuntimeActionPorts(workspace, kind)
-		for name, capability := range adapter.RuntimeCapabilities(gateway, runtime) {
-			if name != "" && capability != nil {
-				capabilities[name] = capability
-			}
+		var err error
+		capabilities, err = mergeRuntimeCapabilities(capabilities, adapter.RuntimeCapabilities(gateway, runtime))
+		if err != nil {
+			log.Printf("connector runtime capabilities rejected kind=%s error=%v", kind, err)
+			return nil
 		}
 	}
 	if len(capabilities) == 0 {
 		return nil
 	}
 	return capabilities
+}
+
+func mergeRuntimeCapabilities(base runtimeCapabilities, additions map[string]connectors.RuntimeCapability) (runtimeCapabilities, error) {
+	merged := make(runtimeCapabilities, len(base)+len(additions))
+	for name, capability := range base {
+		merged[name] = capability
+	}
+	for name, capability := range additions {
+		if !connectors.ValidIdentifier(name) {
+			return nil, fmt.Errorf("invalid runtime capability name %q", name)
+		}
+		if capability == nil {
+			return nil, fmt.Errorf("runtime capability %q is nil", name)
+		}
+		if declared := capability.ConnectorRuntimeCapability(); declared != name {
+			return nil, fmt.Errorf("runtime capability %q declares name %q", name, declared)
+		}
+		if _, exists := merged[name]; exists {
+			return nil, fmt.Errorf("runtime capability %q collides with a protected capability", name)
+		}
+		merged[name] = capability
+	}
+	return merged, nil
 }
 
 func (application *ConnectorRuntimeApplication) RunningHint(request connectormgmt.ActionRequest) string {
