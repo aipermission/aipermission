@@ -105,12 +105,16 @@ func (s *managedConsoleSession) run() {
 	pipeContext, cancelPipes := context.WithCancel(s.ctx)
 	go func() {
 		defer pipeGroup.Done()
-		s.consumePipe(pipeContext, readConsolePipe(pipeContext, runtime.Stdout), s.stdoutExactRedactor)
+		pipedrain.Consume(pipeContext, pipedrain.Read(pipeContext, runtime.Stdout), func(chunk string) {
+			s.appendStreamOutput(chunk, s.stdoutExactRedactor)
+		})
 	}()
 	if runtime.Stderr != nil {
 		go func() {
 			defer pipeGroup.Done()
-			s.consumePipe(pipeContext, readConsolePipe(pipeContext, runtime.Stderr), s.stderrExactRedactor)
+			pipedrain.Consume(pipeContext, pipedrain.Read(pipeContext, runtime.Stderr), func(chunk string) {
+				s.appendStreamOutput(chunk, s.stderrExactRedactor)
+			})
 		}()
 	}
 	pipeOwnsRedactors = true
@@ -181,44 +185,6 @@ func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error 
 		}
 	}
 	return nil
-}
-
-func readConsolePipe(ctx context.Context, reader io.Reader) <-chan string {
-	chunks := make(chan string)
-	go func() {
-		defer close(chunks)
-		buffer := make([]byte, 4096)
-		for {
-			n, err := reader.Read(buffer)
-			if n > 0 {
-				chunk := string(buffer[:n])
-				clear(buffer[:n])
-				select {
-				case chunks <- chunk:
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	return chunks
-}
-
-func (s *managedConsoleSession) consumePipe(ctx context.Context, chunks <-chan string, redactor *sessionenv.Redactor) {
-	for {
-		select {
-		case chunk, ok := <-chunks:
-			if !ok {
-				return
-			}
-			s.appendStreamOutput(chunk, redactor)
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 func (s *managedConsoleSession) finishPipeDrain(group *pipedrain.Group, cancel context.CancelFunc) {

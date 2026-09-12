@@ -1,9 +1,53 @@
 package pipedrain
 
 import (
+	"context"
+	"io"
 	"sync/atomic"
 	"time"
 )
+
+// Read copies each transport read into an immutable chunk and clears the
+// reusable plaintext buffer before reading again.
+func Read(ctx context.Context, reader io.Reader) <-chan string {
+	chunks := make(chan string)
+	go func() {
+		defer close(chunks)
+		buffer := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buffer)
+			if n > 0 {
+				chunk := string(buffer[:n])
+				clear(buffer[:n])
+				select {
+				case chunks <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return chunks
+}
+
+// Consume stops owning consume as soon as the context is canceled, even when
+// a broken transport reader remains blocked.
+func Consume(ctx context.Context, chunks <-chan string, consume func(string)) {
+	for {
+		select {
+		case chunk, ok := <-chunks:
+			if !ok {
+				return
+			}
+			consume(chunk)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
 
 // Group exposes a completion signal without adding an unbounded goroutine that
 // waits on sync.WaitGroup when a transport reader fails to unblock on close.

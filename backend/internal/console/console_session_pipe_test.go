@@ -6,6 +6,8 @@ import (
 	"io"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/console/pipedrain"
 )
 
 type bufferInspectionReader struct {
@@ -25,10 +27,9 @@ func TestConsolePipeConsumerReleasesSessionOwnershipWhenReaderStalls(t *testing.
 	ctx, cancel := context.WithCancel(t.Context())
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
-	session := &managedConsoleSession{}
 	consumed := make(chan struct{})
 	go func() {
-		session.consumePipe(ctx, readConsolePipe(ctx, blockedConsoleReader{release: release}), nil)
+		pipedrain.Consume(ctx, pipedrain.Read(ctx, blockedConsoleReader{release: release}), func(string) {})
 		close(consumed)
 	}()
 	cancel()
@@ -50,7 +51,7 @@ func (reader *bufferInspectionReader) Read(buffer []byte) (int, error) {
 
 func TestConsolePipeClearsReusablePlaintextBufferBeforeNextRead(t *testing.T) {
 	reader := &bufferInspectionReader{secret: []byte("temporary-secret-value")}
-	for range readConsolePipe(t.Context(), reader) {
+	for range pipedrain.Read(t.Context(), reader) {
 	}
 	if !reader.cleared {
 		t.Fatal("pipe retained plaintext in its reusable read buffer")
