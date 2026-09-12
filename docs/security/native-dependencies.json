@@ -26,9 +26,12 @@
     "crypto_provider": "openssl-3",
     "container": {
       "builder_image": "golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36",
-      "runtime_image": "debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df",
+      "runtime_image": "debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171",
       "build_packages": ["libssl-dev"],
-      "runtime_packages": ["libssl3"],
+      "runtime_packages": ["libpcre2-8-0", "libssl3"],
+      "runtime_minimum_versions": {
+        "libpcre2-8-0": "10.42-1+deb12u1"
+      },
       "resolved_package_versions": "published-image-sbom"
     }
   }

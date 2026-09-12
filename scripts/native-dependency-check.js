@@ -33,6 +33,14 @@ const sqliteVersion = dbSource.match(
   /expectedSQLiteVersion\s*=\s*"([^"]+)"/,
 )?.[1];
 
+function dockerfileAssertsMinimumPackageVersion(name, version) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `dpkg --compare-versions[^\\n]+${escapedName}[^\\n]+ge ["']?${escapedVersion}["']?`,
+  ).test(backendDockerfile);
+}
+
 const failures = [];
 if (moduleVersion !== sqlcipher.go_module_version) {
   failures.push(
@@ -58,6 +66,20 @@ if (
   failures.push(
     "SQLCipher wrapper commit does not match the pinned pseudo-version",
   );
+}
+const runtimeMinimumVersions = sqlcipher.container.runtime_minimum_versions;
+if (
+  !runtimeMinimumVersions ||
+  Object.keys(runtimeMinimumVersions).length === 0 ||
+  !Object.entries(runtimeMinimumVersions).every(
+    ([name, version]) =>
+      sqlcipher.container.runtime_packages.includes(name) &&
+      typeof version === "string" &&
+      version.length > 0 &&
+      dockerfileAssertsMinimumPackageVersion(name, version),
+  )
+) {
+  failures.push("runtime package minimum versions are not enforced by the backend image");
 }
 if (
   !goSum.includes(

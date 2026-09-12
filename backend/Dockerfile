@@ -15,12 +15,12 @@ COPY internal ./internal
 
 RUN go build -o /out/aipermission ./cmd/aipermission
 
-FROM debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 
 WORKDIR /app
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu libssl3 \
+	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu libpcre2-8-0 libssl3 \
 	&& install -d /usr/share/postgresql-common/pgdg \
 	&& curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
 		| gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
@@ -29,6 +29,7 @@ RUN apt-get update \
 	&& apt-get update \
 	&& apt-get install -y --no-install-recommends postgresql-client-18 \
 	&& apt-get purge -y --auto-remove curl gnupg \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge "10.42-1+deb12u1" \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd --system --uid 10001 --home /app --shell /usr/sbin/nologin aipermission \
 	&& mkdir -p /app/data \
