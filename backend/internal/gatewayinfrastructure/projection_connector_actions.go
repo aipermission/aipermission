@@ -82,7 +82,7 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 			WorkspaceID: identity.WorkspaceID,
 		},
 		Identity: gatewayactions.ActionIdentity{
-			Tag: owner.Tag, RuntimeInstanceID: identity.RuntimeID,
+			Tag: owner.TagActionIdentity, RuntimeInstanceID: identity.RuntimeID,
 			MCPStarted: owner.Security.RuntimeControlState().MCPStarted,
 			Ensure: func() error {
 				if current, valid := component.owner.resolve(handle); !valid || current != owner || !handle.Identity().Ready() {

@@ -181,18 +181,17 @@ func TestAPIDoesNotDependOnProcessConfiguration(t *testing.T) {
 func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 	apiPackage := modulePath + "/internal/api"
 	allowed := map[string]bool{
-		modulePath + "/internal/connectors":                           true,
-		modulePath + "/internal/gatewayaccess":                        true,
-		modulePath + "/internal/api/httptransport":                    true,
-		modulePath + "/internal/gatewayaccess/httpowner":              true,
-		modulePath + "/internal/gatewayconnectoractions":              true,
-		modulePath + "/internal/gatewayconnectorapi":                  true,
-		modulePath + "/internal/gatewayconnectormanagement":           true,
-		modulePath + "/internal/gatewayinfrastructure":                true,
-		modulePath + "/internal/gatewayinfrastructure/connectorports": true,
-		modulePath + "/internal/gatewayoperations":                    true,
-		modulePath + "/internal/gatewayoperations/transfer":           true,
-		modulePath + "/internal/gatewayvault":                         true,
+		modulePath + "/internal/connectors":                 true,
+		modulePath + "/internal/gatewayaccess":              true,
+		modulePath + "/internal/api/httptransport":          true,
+		modulePath + "/internal/gatewayaccess/httpowner":    true,
+		modulePath + "/internal/gatewayconnectoractions":    true,
+		modulePath + "/internal/gatewayconnectorapi":        true,
+		modulePath + "/internal/gatewayconnectormanagement": true,
+		modulePath + "/internal/gatewayinfrastructure":      true,
+		modulePath + "/internal/gatewayoperations":          true,
+		modulePath + "/internal/gatewayoperations/transfer": true,
+		modulePath + "/internal/gatewayvault":               true,
 	}
 	used := map[string]bool{}
 	for _, imported := range allPackageImports(t)[apiPackage] {
@@ -550,7 +549,7 @@ func TestGatewayInfrastructureComponentOnlyComposesOwners(t *testing.T) {
 	}
 }
 
-func TestGatewayInfrastructureBindsOwnerCapabilitiesWithoutRuntimeLocator(t *testing.T) {
+func TestGatewayInfrastructureKeepsWorkspaceHandleOpaqueWithoutServiceLocator(t *testing.T) {
 	root := filepath.Join("..", "gatewayinfrastructure")
 	componentFile, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "component.go"), nil, 0)
 	if err != nil {
@@ -575,31 +574,35 @@ func TestGatewayInfrastructureBindsOwnerCapabilitiesWithoutRuntimeLocator(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantCapabilities := map[string]bool{
-		"access": false, "connectorActions": false, "connectorManagement": false,
-		"connectorPorts": false, "observation": false, "operations": false, "vault": false,
+	allowedHandleFields := map[string]bool{
+		"component": true, "active": true, "identity": true, "workspace": true,
 	}
+	foundHandle := false
 	ast.Inspect(infrastructureFile, func(node ast.Node) bool {
-		structure, ok := node.(*ast.StructType)
-		if !ok {
+		typeSpec, ok := node.(*ast.TypeSpec)
+		if !ok || typeSpec.Name.Name != "WorkspaceHandle" {
 			return true
 		}
+		structure, ok := typeSpec.Type.(*ast.StructType)
+		if !ok {
+			t.Error("WorkspaceHandle must remain a struct-backed opaque capability")
+			return false
+		}
+		foundHandle = true
 		for _, field := range structure.Fields.List {
 			for _, name := range field.Names {
-				if _, tracked := wantCapabilities[name.Name]; tracked {
-					wantCapabilities[name.Name] = true
-				}
-				if name.Name == "ownersByToken" {
-					t.Error("gateway infrastructure reintroduced a token-to-runtime registry")
+				if !allowedHandleFields[name.Name] {
+					t.Errorf("WorkspaceHandle exposes duplicated capability/service field %q", name.Name)
 				}
 			}
 		}
-		return true
+		return false
 	})
-	for capability, found := range wantCapabilities {
-		if !found {
-			t.Errorf("WorkspaceHandle is missing bound %s capabilities", capability)
-		}
+	if !foundHandle {
+		t.Fatal("WorkspaceHandle declaration was not found")
+	}
+	if _, err := os.Stat(filepath.Join("..", "gatewayworkspace", "capabilities.go")); !os.IsNotExist(err) {
+		t.Fatal("broad workspace capability projections must remain retired")
 	}
 
 	ownersFile, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "owners.go"), nil, 0)

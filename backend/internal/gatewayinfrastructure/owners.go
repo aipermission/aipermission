@@ -25,6 +25,13 @@ func (boundary ownerBase) forgetHandle(handle *WorkspaceHandle) {
 	}
 }
 
+func (boundary ownerBase) resolve(handle *WorkspaceHandle) (*gatewayworkspace.Runtime, bool) {
+	if !boundary.valid(handle) || handle.workspace == nil {
+		return nil, false
+	}
+	return handle.workspace, true
+}
+
 type AccessOwner struct{ ownerBase }
 type ConnectorActionOwner struct{ ownerBase }
 type ConnectorManagementOwner struct{ ownerBase }
@@ -44,62 +51,6 @@ func (component *Component) bindOwners() {
 	component.operationsOwner = &OperationsOwner{ownerBase: base}
 	component.vaultOwner = &VaultOwner{ownerBase: base}
 	component.workspaceOwner = &WorkspaceOwner{ownerBase: base}
-}
-
-func (component *AccessOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.AccessCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.access, true
-}
-
-func (component *ConnectorActionOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.ConnectorActionCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.connectorActions, true
-}
-
-func (component *ConnectorManagementOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.ConnectorManagementCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.connectorManagement, true
-}
-
-func (component *ConnectorPortsOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.ConnectorPortsCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.connectorPorts, true
-}
-
-func (component *ObservationOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.ObservationCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.observation, true
-}
-
-func (component *OperationsOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.OperationsCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.operations, true
-}
-
-func (component *VaultOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.VaultCapabilities, bool) {
-	if component == nil || !component.valid(handle) {
-		return nil, false
-	}
-	return &handle.vault, true
-}
-
-func (component *WorkspaceOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.Runtime, bool) {
-	if component == nil || !component.valid(handle) || handle.workspace == nil {
-		return nil, false
-	}
-	return handle.workspace, true
 }
 
 func (component *Component) AccessOwner() *AccessOwner {

@@ -38,17 +38,10 @@ type componentIdentity struct{ _ byte }
 // Mutable resources remain owned by Component and are exposed only through
 // feature-specific composition methods.
 type WorkspaceHandle struct {
-	component           *componentIdentity
-	active              atomic.Bool
-	identity            RuntimeIdentity
-	workspace           *gatewayworkspace.Runtime
-	access              gatewayworkspace.AccessCapabilities
-	connectorActions    gatewayworkspace.ConnectorActionCapabilities
-	connectorManagement gatewayworkspace.ConnectorManagementCapabilities
-	connectorPorts      gatewayworkspace.ConnectorPortsCapabilities
-	observation         gatewayworkspace.ObservationCapabilities
-	operations          gatewayworkspace.OperationsCapabilities
-	vault               gatewayworkspace.VaultCapabilities
+	component *componentIdentity
+	active    atomic.Bool
+	identity  RuntimeIdentity
+	workspace *gatewayworkspace.Runtime
 }
 
 func newWorkspaceHandle(component *componentIdentity, owner *gatewayworkspace.Runtime) *WorkspaceHandle {
@@ -63,27 +56,6 @@ func newWorkspaceHandle(component *componentIdentity, owner *gatewayworkspace.Ru
 			WorkspaceID: identity.WorkspaceID, RuntimeID: identity.RuntimeID, UIRetryID: identity.UIRetryID,
 		},
 		workspace: owner,
-		access: gatewayworkspace.AccessCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
-		},
-		connectorActions: gatewayworkspace.ConnectorActionCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security, Tag: owner.TagActionIdentity,
-		},
-		connectorManagement: gatewayworkspace.ConnectorManagementCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
-		},
-		connectorPorts: gatewayworkspace.ConnectorPortsCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
-		},
-		observation: gatewayworkspace.ObservationCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security, Observation: owner.Observation,
-		},
-		operations: gatewayworkspace.OperationsCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
-		},
-		vault: gatewayworkspace.VaultCapabilities{
-			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
-		},
 	}
 	handle.active.Store(true)
 	return handle
