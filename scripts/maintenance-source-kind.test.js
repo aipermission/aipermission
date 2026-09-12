@@ -66,6 +66,23 @@ test("every maintenance tooling root has production and test budgets", () => {
   }
 });
 
+test("frontend runtime, browser, and public roots all have source budgets", () => {
+  const byID = new Map(
+    policy.sourceBudgets.map((budget) => [budget.id, budget]),
+  );
+  for (const id of [
+    "frontend",
+    "frontend-e2e",
+    "frontend-e2e-real",
+    "frontend-public",
+  ]) {
+    assert.ok(byID.has(id), `${id} source budget`);
+  }
+  assert.equal(byID.get("frontend-e2e").classifier, "all");
+  assert.equal(byID.get("frontend-e2e-real").classifier, "all");
+  assert.ok(byID.get("frontend-public").productionMaxLines);
+});
+
 test("rejects unknown classifiers instead of silently weakening policy", () => {
   assert.throws(
     () => isTestSource("unknown", "/tmp/service.test.js", markers),

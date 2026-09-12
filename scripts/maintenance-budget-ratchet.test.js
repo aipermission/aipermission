@@ -6,6 +6,7 @@ const {
   budgetIncreases,
   legacyBudgetSnapshot,
   policySnapshot,
+  resolveBaseReference,
 } = require("./maintenance-budget-ratchet");
 
 function copyPolicy() {
@@ -125,4 +126,23 @@ const sourceBudgets = [
   assert.equal(snapshot["source.backend.maxLines"], 1400);
   assert.equal(snapshot["go.fanout.owner"], 8);
   assert.equal(snapshot["coverage.test.marker..test."], 0);
+});
+
+test("dirty policy checks compare against HEAD when no remote base exists", () => {
+  assert.equal(
+    resolveBaseReference("", () => {
+      throw new Error("origin/main is unavailable");
+    }),
+    "HEAD",
+  );
+  assert.equal(
+    resolveBaseReference("000000", () => ""),
+    "HEAD",
+  );
+  assert.equal(
+    resolveBaseReference("base-sha", () => {
+      throw new Error("must not resolve a configured base");
+    }),
+    "base-sha",
+  );
 });

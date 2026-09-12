@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { verifyTransportProfileForm } from "../_shared/network-transport-form.test-support";
+import { verifyTransportProfileForm } from "../_shared/network-transport-form.test";
 import { DockerConnectorFormTemplate } from "./form";
 
 it("keeps Docker wired to the shared transport profile contract", async () => {

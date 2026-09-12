@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { parse } = require("espree");
 
-const { isTestSource } = require("./maintenance-source-kind");
+const { isTestSource } = require("../../scripts/maintenance-source-kind");
 
 function walk(directory) {
   if (!fs.existsSync(directory)) return [];
@@ -23,6 +23,22 @@ function visit(node, callback) {
   }
 }
 
+function staticString(node) {
+  if (typeof node?.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0]?.value?.cooked ?? node.quasis[0]?.value?.raw ?? "";
+  }
+  return null;
+}
+
+function dynamicNonLocalSpecifier(node) {
+  if (node?.type !== "TemplateLiteral" || node.expressions.length === 0) {
+    return false;
+  }
+  const prefix = node.quasis[0]?.value?.cooked ?? node.quasis[0]?.value?.raw ?? "";
+  return /^(?:data:|https?:|node:)/.test(prefix);
+}
+
 function staticModuleSpecifiers(source) {
   const program = parse(source, {
     ecmaVersion: "latest",
@@ -32,27 +48,29 @@ function staticModuleSpecifiers(source) {
   const specifiers = [];
   visit(program, (node) => {
     if (
-      (node.type === "ImportDeclaration" ||
-        node.type === "ExportAllDeclaration" ||
-        node.type === "ExportNamedDeclaration") &&
-      typeof node.source?.value === "string"
+      (node.type === "ImportDeclaration" || node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration") &&
+      staticString(node.source) !== null
     ) {
-      specifiers.push(node.source.value);
+      specifiers.push(staticString(node.source));
     }
-    if (
-      node.type === "ImportExpression" &&
-      typeof node.source?.value === "string"
-    ) {
-      specifiers.push(node.source.value);
+    if (node.type === "ImportExpression") {
+      const specifier = staticString(node.source);
+      if (specifier !== null) specifiers.push(specifier);
+      else if (!dynamicNonLocalSpecifier(node.source)) {
+        throw new Error("dynamic import specifier cannot be verified");
+      }
     }
     if (
       node.type === "CallExpression" &&
       node.callee?.type === "Identifier" &&
       node.callee.name === "require" &&
-      node.arguments.length === 1 &&
-      typeof node.arguments[0]?.value === "string"
+      node.arguments.length === 1
     ) {
-      specifiers.push(node.arguments[0].value);
+      const specifier = staticString(node.arguments[0]);
+      if (specifier === null) {
+        throw new Error("dynamic require specifier cannot be verified");
+      }
+      specifiers.push(specifier);
     }
   });
   return specifiers;
@@ -63,8 +81,7 @@ function resolveLocalImport(importer, specifier, files, extensions) {
   const base = path.resolve(path.dirname(importer), specifier);
   const candidates = [base];
   for (const extension of extensions) candidates.push(base + extension);
-  for (const extension of extensions)
-    candidates.push(path.join(base, "index" + extension));
+  for (const extension of extensions) candidates.push(path.join(base, "index" + extension));
   return candidates.find((candidate) => files.has(candidate)) || null;
 }
 
@@ -92,17 +109,13 @@ function analyzeProductionTestImports(root, policy) {
     try {
       specifiers = staticModuleSpecifiers(fs.readFileSync(file, "utf8"));
     } catch (error) {
-      failures.push(
-        `${path.relative(root, file)} cannot be parsed for import ownership: ${error.message}`,
-      );
+      failures.push(`${path.relative(root, file)} cannot be parsed for import ownership: ${error.message}`);
       continue;
     }
     for (const specifier of specifiers) {
       const dependency = resolveLocalImport(file, specifier, files, extensions);
       if (dependency && entries.get(dependency)?.test) {
-        failures.push(
-          `${path.relative(root, file)} imports test support ${path.relative(root, dependency)}`,
-        );
+        failures.push(`${path.relative(root, file)} imports test support ${path.relative(root, dependency)}`);
       }
     }
   }
@@ -110,8 +123,8 @@ function analyzeProductionTestImports(root, policy) {
 }
 
 function main() {
-  const root = path.resolve(__dirname, "..");
-  const policy = require(path.join(root, "maintenance-policy.json"));
+  const root = path.resolve(__dirname, "../..");
+  const policy = require("../../maintenance-policy.json");
   const failures = analyzeProductionTestImports(root, policy);
   if (failures.length > 0) {
     console.error("Production/test import ownership check failed:");

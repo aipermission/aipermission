@@ -12,7 +12,7 @@ const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
 
 test("CI verifies both generated connector catalogs", () => {
   assert.match(workflow, /node scripts\/connector-catalog\.js --check/);
-  assert.match(workflow, /node scripts\/mcp-client-catalog\.js --check/);
+  assert.match(workflow, /node scripts\/mcp-client-catalog\.mjs --check/);
 });
 
 test("CI uses the fail-closed Windows ACL suite", () => {

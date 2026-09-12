@@ -1,7 +1,7 @@
 {
   "version": 1,
   "frontendArchitecture": {
-    "sourceExtensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
+    "sourceExtensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
     "testModuleMarkers": [".test.", ".spec."],
     "maxDependencyFanout": 20,
     "maxProductionModuleLines": 550
@@ -19,7 +19,7 @@
     {
       "id": "frontend",
       "directory": "frontend/src",
-      "extensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
+      "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
       "classifier": "markers",
       "testPackageDepth": 3,
       "productionMaxLines": 550,
@@ -27,9 +27,37 @@
       "testPackageMaxLines": 3000
     },
     {
+      "id": "frontend-e2e",
+      "directory": "frontend/e2e",
+      "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
+      "classifier": "all",
+      "testPackageDepth": 0,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 1200
+    },
+    {
+      "id": "frontend-e2e-real",
+      "directory": "frontend/e2e-real",
+      "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
+      "classifier": "all",
+      "testPackageDepth": 0,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 1000
+    },
+    {
+      "id": "frontend-public",
+      "directory": "frontend/public",
+      "extensions": [".js", ".mjs", ".cjs"],
+      "classifier": "markers",
+      "testPackageDepth": 0,
+      "productionMaxLines": 550,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 1000
+    },
+    {
       "id": "mcp-source",
       "directory": "packages/mcp/src",
-      "extensions": [".js", ".ts"],
+      "extensions": [".js", ".cjs", ".ts"],
       "classifier": "markers",
       "testPackageDepth": 1,
       "productionMaxLines": 800,
@@ -39,7 +67,7 @@
     {
       "id": "mcp-test",
       "directory": "packages/mcp/test",
-      "extensions": [".js", ".ts"],
+      "extensions": [".js", ".cjs", ".ts"],
       "classifier": "all",
       "testPackageDepth": 1,
       "testMaxLines": 800,
@@ -48,7 +76,7 @@
     {
       "id": "repository-tooling",
       "directory": "scripts",
-      "extensions": [".js", ".mjs"],
+      "extensions": [".js", ".mjs", ".cjs"],
       "classifier": "markers",
       "testPackageDepth": 0,
       "productionMaxLines": 550,
@@ -58,7 +86,7 @@
     {
       "id": "frontend-tooling",
       "directory": "frontend/scripts",
-      "extensions": [".js", ".mjs"],
+      "extensions": [".js", ".mjs", ".cjs"],
       "classifier": "markers",
       "testPackageDepth": 0,
       "productionMaxLines": 550,
@@ -68,7 +96,7 @@
     {
       "id": "mcp-tooling",
       "directory": "packages/mcp/scripts",
-      "extensions": [".js", ".mjs"],
+      "extensions": [".js", ".mjs", ".cjs"],
       "classifier": "markers",
       "testPackageDepth": 0,
       "productionMaxLines": 550,

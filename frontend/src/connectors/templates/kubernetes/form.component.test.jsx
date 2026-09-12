@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { verifyTransportProfileForm } from "../_shared/network-transport-form.test-support";
+import { verifyTransportProfileForm } from "../_shared/network-transport-form.test";
 import { KubernetesConnectorFormTemplate } from "./form";
 
 it("keeps Kubernetes wired to the shared transport profile contract", async () => {

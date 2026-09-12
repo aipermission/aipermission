@@ -92,13 +92,15 @@ test("covers supported module extensions and rejects unclassified bridge modules
     writeFileSync(join(root, "components/a.js"), 'import "./b.mjs";\n');
     writeFileSync(join(root, "components/b.mjs"), 'import "./a.js";\n');
     writeFileSync(join(root, "components/oversized.mjs"), "export const line = 1;\nexport const extra = 2;\n");
-    writeFileSync(join(root, "components/unsupported.cjs"), "module.exports = {};\n");
+    writeFileSync(join(root, "components/supported.cjs"), "module.exports = {};\n");
+    writeFileSync(join(root, "components/unsupported.cts"), "export const unsupported = true;\n");
 
     const result = analyzeSourceTree(root, { lineBudget: 1 });
     assert.ok(result.files.some((file) => file.endsWith("helpers/bridge.mjs")));
     assert.ok(result.failures.some((failure) => failure.includes("helpers/bridge.mjs is not in a recognized architecture layer")));
     assert.ok(result.failures.some((failure) => failure.includes("components/oversized.mjs has 2 lines; budget is 1")));
-    assert.ok(result.failures.some((failure) => failure.includes("components/unsupported.cjs uses unsupported executable extension .cjs")));
+    assert.ok(result.files.some((file) => file.endsWith("components/supported.cjs")));
+    assert.ok(result.failures.some((failure) => failure.includes("components/unsupported.cts uses unsupported executable extension .cts")));
     assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
   } finally {
     rmSync(root, { recursive: true, force: true });

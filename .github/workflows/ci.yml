@@ -36,12 +36,10 @@ jobs:
         run: |
           node --test scripts/maintenance-budget-check.test.js
           node --test scripts/ci-workflow.test.js
-          node scripts/maintenance-budget-check.js
-          node --test scripts/production-test-import-check.test.js
           node --test scripts/run-bounded-fuzz.test.js
-          node scripts/production-test-import-check.js
+          node scripts/maintenance-budget-check.js
       - name: Generated MCP client catalog
-        run: node scripts/mcp-client-catalog.js --check
+        run: node scripts/mcp-client-catalog.mjs --check
       - name: Generated connector catalog
         run: node scripts/connector-catalog.js --check
       - name: Maintenance budget ratchet

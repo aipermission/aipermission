@@ -162,10 +162,20 @@ function inheritedBudget(base, name) {
     "source.frontend-tooling.maxLines": 550,
     frontendToolingTestSourceBudget: 1000,
     frontendToolingTestPackageBudget: 1000,
+    frontendE2eTestSourceBudget: 1000,
+    frontendE2eTestPackageBudget: 1200,
+    frontendE2eRealTestSourceBudget: 1000,
+    frontendE2eRealTestPackageBudget: 1000,
+    "source.frontend-public.maxLines": 550,
+    frontendPublicTestSourceBudget: 1000,
+    frontendPublicTestPackageBudget: 1000,
     "source.mcp-tooling.maxLines": 550,
     mcpToolingTestSourceBudget: 800,
     mcpToolingTestPackageBudget: 1200,
     "test.package.depth.frontend": 3,
+    "test.package.depth.frontend-e2e": 0,
+    "test.package.depth.frontend-e2e-real": 0,
+    "test.package.depth.frontend-public": 0,
     "test.package.depth.mcp-source": 1,
     "test.package.depth.mcp-test": 1,
     "test.package.depth.repository-tooling": 0,
@@ -294,22 +304,18 @@ function snapshotAt(ref) {
   );
 }
 
+function resolveBaseReference(configured, gitCommand = git) {
+  if (configured && !/^0+$/.test(configured)) return configured;
+  try {
+    return gitCommand("merge-base", "HEAD", "origin/main") || "HEAD";
+  } catch {
+    return "HEAD";
+  }
+}
+
 function run() {
   const configured = String(process.env.MAINTENANCE_BUDGET_BASE || "").trim();
-  let baseRef = configured && !/^0+$/.test(configured) ? configured : "";
-  if (!baseRef) {
-    try {
-      baseRef = git("merge-base", "HEAD", "origin/main");
-    } catch {
-      baseRef = "";
-    }
-  }
-  if (!baseRef || baseRef === git("rev-parse", "HEAD")) {
-    console.log(
-      "Maintenance budget ratchet skipped: no distinct base revision is available.",
-    );
-    return;
-  }
+  const baseRef = resolveBaseReference(configured);
   const current = policySnapshot(
     fs.readFileSync(path.join(root, "maintenance-policy.json"), "utf8"),
   );
@@ -327,4 +333,9 @@ function run() {
 
 if (require.main === module) run();
 
-module.exports = { budgetIncreases, legacyBudgetSnapshot, policySnapshot };
+module.exports = {
+  budgetIncreases,
+  legacyBudgetSnapshot,
+  policySnapshot,
+  resolveBaseReference,
+};
