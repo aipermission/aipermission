@@ -47,7 +47,7 @@ backend-vuln:
 	cd backend && govulncheck ./...
 
 recovery-drill:
-	cd backend && go test ./internal/api ./internal/db ./internal/migration -run RecoveryDrill -count=1
+	sh scripts/run-recovery-drill.sh
 
 bounded-fuzz:
 	sh scripts/run-bounded-fuzz.sh

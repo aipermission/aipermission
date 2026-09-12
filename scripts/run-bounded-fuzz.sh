@@ -63,3 +63,5 @@ run_fuzz ./internal/connectors/sqlsafe FuzzValidateReadOnly
 run_fuzz ./internal/connectors/redis FuzzReadRESPValue
 run_fuzz ./internal/backups FuzzValidateServiceMetadata
 run_fuzz ./internal/connectors FuzzNormalizeSchemaValues
+run_fuzz ./internal/connectors/mail FuzzHTMLToTextNeverReturnsActiveMarkup
+run_fuzz ./internal/connectors/mail FuzzSanitizeOutboundHTML

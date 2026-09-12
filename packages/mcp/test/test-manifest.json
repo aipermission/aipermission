@@ -1,0 +1,22 @@
+{
+  "files": [
+    "test/client-registry.test.js",
+    "test/doctor.test.js",
+    "test/init/init.test.js",
+    "test/private-file.test.js",
+    "test/results.test.js",
+    "test/server.test.js",
+    "test/skill-drift.test.js",
+    "test/transport/http-transport.test.js"
+  ],
+  "minimumTests": 112,
+  "maximumSkipped": 1,
+  "windowsACLTests": [
+    "Windows ACL helpers use absolute System32 executables",
+    "Windows ACL verification accepts only one explicit full-control identity",
+    "Windows ACL verification rejects a foreign owner SID",
+    "Windows ACL verification rejects extra principals and split full-control evidence",
+    "Windows ACL verification rejects malformed structured output",
+    "atomicWritePrivateFile applies a protected Windows ACL"
+  ]
+}

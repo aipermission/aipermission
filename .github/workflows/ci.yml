@@ -35,12 +35,15 @@ jobs:
       - name: Maintenance budgets
         run: |
           node --test scripts/maintenance-budget-check.test.js
+          node --test scripts/ci-workflow.test.js
           node scripts/maintenance-budget-check.js
           node --test scripts/production-test-import-check.test.js
           node --test scripts/run-bounded-fuzz.test.js
           node scripts/production-test-import-check.js
       - name: Generated MCP client catalog
         run: node scripts/mcp-client-catalog.js --check
+      - name: Generated connector catalog
+        run: node scripts/connector-catalog.js --check
       - name: Maintenance budget ratchet
         env:
           MAINTENANCE_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -228,7 +231,7 @@ jobs:
         run: npm ci --workspaces=false
       - name: Verify Windows private-file ACL
         working-directory: packages/mcp
-        run: node --test --test-name-pattern="Windows ACL" test/private-file.test.js
+        run: npm run test:windows-acl
 
   docs:
     name: Docs Hygiene

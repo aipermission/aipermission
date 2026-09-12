@@ -27,4 +27,26 @@ test("every bounded fuzz target belongs to its configured Go package", () => {
       .some((file) => declaration.test(fs.readFileSync(file, "utf8")));
     assert.ok(found, `${target} is not declared in ${packagePath}`);
   }
+
+  const configured = new Set(
+    targets.map(([, packagePath, target]) => `${packagePath}:${target}`),
+  );
+  const declared = [];
+  for (const file of walk(path.join(root, "backend"))) {
+    if (!file.endsWith("_test.go")) continue;
+    const packagePath = `./${path
+      .relative(path.join(root, "backend"), path.dirname(file))
+      .split(path.sep)
+      .join("/")}`;
+    for (const match of fs
+      .readFileSync(file, "utf8")
+      .matchAll(/^func\s+(Fuzz\w+)\s*\(/gm)) {
+      declared.push(`${packagePath}:${match[1]}`);
+    }
+  }
+  assert.deepEqual(
+    [...configured].sort(),
+    declared.sort(),
+    "bounded fuzz runner must exercise every repository fuzz target",
+  );
 });
