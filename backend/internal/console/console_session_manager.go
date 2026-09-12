@@ -795,24 +795,3 @@ func (s *managedConsoleSession) handle() SessionHandle {
 	}
 	return SessionHandle{ID: s.id, RuntimeID: s.runtimeID, Generation: s.generation}
 }
-
-func (m *Manager) SeedActiveCommandForTest(id int64, runtimeID int64, command string, output string) {
-	sessionCtx, sessionCancel := context.WithCancel(context.Background())
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.sessions[id] = &managedConsoleSession{
-		id:            id,
-		runtimeID:     runtimeID,
-		generation:    id,
-		ctx:           sessionCtx,
-		cancel:        sessionCancel,
-		status:        "connected",
-		rawTranscript: output,
-		activeExec: &consoleSessionActiveExec{
-			Command:     command,
-			Marker:      "__AIPERMISSION_EXIT_ACTIVE__",
-			StartOffset: 0,
-			Started:     time.Now().Add(-time.Second),
-		},
-	}
-}
