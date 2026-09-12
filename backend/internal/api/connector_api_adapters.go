@@ -90,12 +90,24 @@ func connectorAdapterRoutes(server *Server) []httptransport.AdapterRoute {
 		registered = append(registered, httptransport.AdapterRoute{
 			Method: route.Method,
 			Path:   route.Path,
+			Policy: connectorAdapterRoutePolicy(route.Policy),
 			Handler: func(w http.ResponseWriter, r *http.Request) {
 				handler(server.connectorPortsApplication().RouteGateway(), w, r)
 			},
 		})
 	}
 	return registered
+}
+
+func connectorAdapterRoutePolicy(policy connectorapi.RoutePolicy) httptransport.AdapterRoutePolicy {
+	switch policy {
+	case connectorapi.RoutePolicyUIRead:
+		return httptransport.AdapterRoutePolicyUIRead
+	case connectorapi.RoutePolicyUIMutation:
+		return httptransport.AdapterRoutePolicyUIMutation
+	default:
+		return ""
+	}
 }
 
 func (s *Server) connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {

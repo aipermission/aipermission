@@ -31,13 +31,13 @@ func TestRouteDefinitionsValidateSortAndRejectDuplicates(t *testing.T) {
 	const secondKind = "route_catalog_second_test"
 	registry := NewRegistry()
 	if err := registry.Register(firstKind, testRouteAdapter{
-		{Method: "post", Path: "/api/z-last", Handler: testRouteHandler},
-		{Method: "GET", Path: "/api/a-first", Handler: testRouteHandler},
+		{Method: "post", Path: "/api/z-last", Policy: RoutePolicyUIMutation, Handler: testRouteHandler},
+		{Method: "GET", Path: "/api/a-first", Policy: RoutePolicyUIRead, Handler: testRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(secondKind, testRouteAdapter{
-		{Method: "POST", Path: "/api/z-last", Handler: testRouteHandler},
+		{Method: "POST", Path: "/api/z-last", Policy: RoutePolicyUIMutation, Handler: testRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,9 +60,12 @@ func TestRouteDefinitionsRejectInvalidDefinitions(t *testing.T) {
 		route RouteDefinition
 		want  string
 	}{
-		{name: "method", route: RouteDefinition{Path: "/api/test", Handler: testRouteHandler}, want: "method is required"},
-		{name: "path", route: RouteDefinition{Method: "GET", Path: "api/test", Handler: testRouteHandler}, want: "must start with /"},
-		{name: "handler", route: RouteDefinition{Method: "GET", Path: "/api/test"}, want: "has no handler"},
+		{name: "method", route: RouteDefinition{Path: "/api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "method is required"},
+		{name: "path", route: RouteDefinition{Method: "GET", Path: "api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "must start with /"},
+		{name: "handler", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIRead}, want: "has no handler"},
+		{name: "policy", route: RouteDefinition{Method: "GET", Path: "/api/test", Handler: testRouteHandler}, want: "route policy is required"},
+		{name: "read method", route: RouteDefinition{Method: "POST", Path: "/api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "ui_read policy requires GET or HEAD"},
+		{name: "mutation method", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIMutation, Handler: testRouteHandler}, want: "ui_mutation policy requires a state-changing method"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

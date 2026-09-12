@@ -14,8 +14,16 @@ type Handler func(http.ResponseWriter, *http.Request)
 type AdapterRoute struct {
 	Method  string
 	Path    string
+	Policy  AdapterRoutePolicy
 	Handler Handler
 }
+
+type AdapterRoutePolicy string
+
+const (
+	AdapterRoutePolicyUIRead     AdapterRoutePolicy = "ui_read"
+	AdapterRoutePolicyUIMutation AdapterRoutePolicy = "ui_mutation"
+)
 
 func Health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -417,8 +425,27 @@ func registerAdapterRoutes(mux *http.ServeMux, routes []AdapterRoute) {
 		if method == "" || !strings.HasPrefix(path, "/api/") || route.Handler == nil {
 			panic(fmt.Sprintf("invalid connector adapter route %q %q", method, path))
 		}
+		if err := validateAdapterRoutePolicy(method, route.Policy); err != nil {
+			panic(fmt.Sprintf("invalid connector adapter route %q %q: %v", method, path, err))
+		}
 		mux.HandleFunc(method+" "+path, route.Handler)
 	}
+}
+
+func validateAdapterRoutePolicy(method string, policy AdapterRoutePolicy) error {
+	switch policy {
+	case AdapterRoutePolicyUIRead:
+		if method != http.MethodGet && method != http.MethodHead {
+			return fmt.Errorf("ui_read policy requires GET or HEAD")
+		}
+	case AdapterRoutePolicyUIMutation:
+		if !IsStateChangingMethod(method) {
+			return fmt.Errorf("ui_mutation policy requires a state-changing method")
+		}
+	default:
+		return fmt.Errorf("route policy is required")
+	}
+	return nil
 }
 
 func registerTransfers(mux *http.ServeMux, t FileTransfers) {

@@ -133,11 +133,20 @@ type CredentialResourceRuntime interface {
 	ConnectorDataRuntime
 }
 
+// RoutePolicy declares the local UI authorization class a route expects.
+type RoutePolicy string
+
+const (
+	RoutePolicyUIRead     RoutePolicy = "ui_read"
+	RoutePolicyUIMutation RoutePolicy = "ui_mutation"
+)
+
 // RouteDefinition is the canonical runtime and documentation contract for a
 // connector-owned HTTP route.
 type RouteDefinition struct {
 	Method  string
 	Path    string
+	Policy  RoutePolicy
 	Handler func(RouteGateway, http.ResponseWriter, *http.Request)
 }
 
@@ -351,6 +360,9 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 			if route.Handler == nil {
 				return nil, fmt.Errorf("connector adapter %q route %s %s has no handler", kind, route.Method, route.Path)
 			}
+			if err := validateRoutePolicy(route); err != nil {
+				return nil, fmt.Errorf("connector adapter %q route %s %s: %w", kind, route.Method, route.Path, err)
+			}
 			key := route.Pattern()
 			if owner, exists := seen[key]; exists {
 				return nil, fmt.Errorf("connector adapters %q and %q both register %s", owner, kind, key)
@@ -366,6 +378,24 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 		return routes[i].Path < routes[j].Path
 	})
 	return routes, nil
+}
+
+func validateRoutePolicy(route RouteDefinition) error {
+	switch route.Policy {
+	case RoutePolicyUIRead:
+		if route.Method != http.MethodGet && route.Method != http.MethodHead {
+			return fmt.Errorf("ui_read policy requires GET or HEAD")
+		}
+	case RoutePolicyUIMutation:
+		switch route.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		default:
+			return fmt.Errorf("ui_mutation policy requires a state-changing method")
+		}
+	default:
+		return fmt.Errorf("route policy is required")
+	}
+	return nil
 }
 
 // RuntimeAdapter lets a connector provide gateway-owned async/runtime services.

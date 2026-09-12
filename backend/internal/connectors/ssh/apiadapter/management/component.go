@@ -16,9 +16,9 @@ type Management struct{}
 
 func (m Management) Routes() []connectorapi.RouteDefinition {
 	return []connectorapi.RouteDefinition{
-		{Method: http.MethodPost, Path: "/api/ssh-host-keys/approve", Handler: m.approveHostKey},
-		{Method: http.MethodGet, Path: "/api/ssh-config/discover", Handler: m.discoverConfig},
-		{Method: http.MethodPost, Path: "/api/ssh-config/parse", Handler: m.parseConfig},
+		{Method: http.MethodPost, Path: "/api/ssh-host-keys/approve", Policy: connectorapi.RoutePolicyUIMutation, Handler: m.approveHostKey},
+		{Method: http.MethodGet, Path: "/api/ssh-config/discover", Policy: connectorapi.RoutePolicyUIRead, Handler: m.discoverConfig},
+		{Method: http.MethodPost, Path: "/api/ssh-config/parse", Policy: connectorapi.RoutePolicyUIMutation, Handler: m.parseConfig},
 	}
 }
 
