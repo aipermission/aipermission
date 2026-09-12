@@ -66,7 +66,7 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector action permission: %v", err)
 	}
-	if err := setSecurityPolicySettings(ctx, runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
+	if err := setSecurityPolicySettings(t, ctx, runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
 		t.Fatalf("disable operator-configured redaction: %v", err)
 	}
 

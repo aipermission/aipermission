@@ -35,33 +35,23 @@ func (reader vaultMetadataReader) CanRead(ctx context.Context, tokenID, projectI
 	return err == nil && capability.ExecutionRule == accesscontrol.RuleAlwaysRun, err
 }
 
-type ScopeProviders struct {
-	Security            gatewayaccess.SecurityHTTPScopeProvider
-	TokenAccess         gatewayaccess.AccessScopeProvider
-	MCPRuntime          gatewayaccess.MCPRuntimeScopeProvider
-	MCPConnectorReads   gatewayaccess.MCPScopeProvider
-	MCPConnectorActions gatewayaccess.MCPActionScopeProvider
-}
+type Factory struct{}
 
-type Handlers struct {
-	Security            *securitypolicy.HTTPHandlers
-	TokenAccess         *accesscontrol.HTTPHandlers
-	MCPRuntime          *runtimecontrol.MCPHTTPHandlers
-	MCPConnectorReads   *mcpconnector.HTTPHandlers
-	MCPConnectorActions *mcpconnector.ActionHTTPHandlers
-}
-
-func New(component *gatewayaccess.Component, providers ScopeProviders) Handlers {
-	if component == nil {
-		return Handlers{}
-	}
-	return Handlers{
+func (Factory) Build(providers gatewayaccess.ScopeProviders) gatewayaccess.HTTPHandlers {
+	return gatewayaccess.HTTPHandlers{
 		Security:            securitypolicy.NewHTTPHandlers(adaptSecurityScopeProvider(providers.Security)),
 		TokenAccess:         accesscontrol.NewHTTPHandlers(adaptAccessScopeProvider(providers.TokenAccess)),
 		MCPRuntime:          runtimecontrol.NewMCPHTTPHandlers(adaptMCPRuntimeScopeProvider(providers.MCPRuntime)),
 		MCPConnectorReads:   mcpconnector.NewHTTPHandlers(adaptMCPReadScopeProvider(providers.MCPConnectorReads)),
 		MCPConnectorActions: mcpconnector.NewActionHTTPHandlers(adaptMCPActionScopeProvider(providers.MCPConnectorActions)),
 	}
+}
+
+func New(component *gatewayaccess.Component, providers gatewayaccess.ScopeProviders) gatewayaccess.HTTPHandlers {
+	if component == nil {
+		return gatewayaccess.HTTPHandlers{}
+	}
+	return (Factory{}).Build(providers)
 }
 
 func adaptSecurityScopeProvider(provider gatewayaccess.SecurityHTTPScopeProvider) securitypolicy.HTTPScopeProvider {

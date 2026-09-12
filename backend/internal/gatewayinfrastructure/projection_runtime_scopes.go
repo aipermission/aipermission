@@ -2,6 +2,7 @@ package gatewayinfrastructure
 
 import (
 	"context"
+	"database/sql"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -24,7 +25,7 @@ type MCPReadPorts struct {
 	Metadata        gatewayaccess.MCPMetadataResolver
 }
 
-func (component *AccessOwner) MCPReadScope(handle *WorkspaceHandle, ports MCPReadPorts) (gatewayaccess.MCPScope, bool) {
+func (component *AccessOwner) mcpReadScope(handle *WorkspaceHandle, ports MCPReadPorts) (gatewayaccess.MCPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || !ports.Metadata.Ready() {
 		return gatewayaccess.MCPScope{}, false
@@ -46,7 +47,7 @@ type MCPActionPorts struct {
 	RunningHint gatewayaccess.MCPRunningHint
 }
 
-func (component *AccessOwner) MCPActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
+func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.MCPActionScope{}, false
@@ -71,7 +72,7 @@ type MCPRuntimePorts struct {
 	Observe      func(context.Context, string, map[string]any)
 }
 
-func (component *AccessOwner) MCPRuntimeScope(handle *WorkspaceHandle, ports MCPRuntimePorts) (gatewayaccess.MCPRuntimeScope, bool) {
+func (component *AccessOwner) mcpRuntimeScope(handle *WorkspaceHandle, ports MCPRuntimePorts) (gatewayaccess.MCPRuntimeScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.MCPRuntimeScope{}, false
@@ -97,7 +98,7 @@ func (component *AccessOwner) RecoverConsoleRuntime(
 	return owner.Connectors.ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, cancelRunning)
 }
 
-func (component *AccessOwner) SecurityScope(handle *WorkspaceHandle) (gatewayaccess.SecurityHTTPScope, bool) {
+func (component *AccessOwner) securityScope(handle *WorkspaceHandle) (gatewayaccess.SecurityHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return gatewayaccess.SecurityHTTPScope{}, false
@@ -114,6 +115,67 @@ func (component *AccessOwner) ReadSecuritySettings(ctx context.Context, handle *
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
 	return owner.Security.PolicyService().ReadSettings(ctx)
+}
+
+func (component *AccessOwner) UpdateSecuritySettings(
+	ctx context.Context,
+	handle *WorkspaceHandle,
+	settings gatewayaccess.SecuritySettings,
+) (gatewayaccess.SecuritySettings, error) {
+	owner, ok := component.resolve(handle)
+	if !ok || owner.Security.PolicyService() == nil {
+		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
+	}
+	mutate := component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)
+	if mutate == nil {
+		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
+	}
+	return owner.Security.PolicyService().UpdateSettings(
+		ctx,
+		settings,
+		func(ctx context.Context, action string, payload func() any, change func(*sql.Tx) error) error {
+			return mutate(ctx, action, payload, change)
+		},
+	)
+}
+
+func (component *AccessOwner) CreateSecurityRule(
+	ctx context.Context,
+	handle *WorkspaceHandle,
+	input gatewayaccess.SecurityRuleInput,
+) (gatewayaccess.SecurityRule, error) {
+	owner, ok := component.resolve(handle)
+	if !ok || owner.Security.PolicyService() == nil {
+		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
+	}
+	mutate := component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)
+	if mutate == nil {
+		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
+	}
+	return owner.Security.PolicyService().CreateRule(
+		ctx,
+		input,
+		func(ctx context.Context, action string, payload func() any, change func(*sql.Tx) error) error {
+			return mutate(ctx, action, payload, change)
+		},
+	)
+}
+
+func (component *AccessOwner) MCPStarted(handle *WorkspaceHandle) (bool, bool) {
+	owner, ok := component.resolve(handle)
+	if !ok || owner.Security.RuntimeControlState() == nil {
+		return false, false
+	}
+	return owner.Security.RuntimeControlState().MCPStarted(), true
+}
+
+func (component *AccessOwner) SetMCPStarted(handle *WorkspaceHandle, enabled bool) bool {
+	owner, ok := component.resolve(handle)
+	if !ok || owner.Security.RuntimeControlState() == nil {
+		return false
+	}
+	owner.Security.RuntimeControlState().SetMCPStarted(enabled)
+	return true
 }
 
 func (component *AccessOwner) RedactForPersistence(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {

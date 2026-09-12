@@ -15,7 +15,7 @@ import (
 func TestCustomRedactionRulesApplyOnlyInBasicMode(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	runtime := fixture.server.activeRuntime()
-	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
+	if _, err := createSecurityPolicyRule(t, t.Context(), runtime, securitypolicy.RuleInput{
 		Name:    "internal token",
 		Pattern: `internal_[a-z0-9]+`,
 		Enabled: true,
@@ -28,7 +28,7 @@ func TestCustomRedactionRulesApplyOnlyInBasicMode(t *testing.T) {
 		t.Fatalf("custom rule should redact in basic mode: %s", redacted)
 	}
 
-	if err := setSecurityPolicySettings(t.Context(), runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
+	if err := setSecurityPolicySettings(t, t.Context(), runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
 		t.Fatalf("disable redaction: %v", err)
 	}
 	unredacted := fixture.server.redactForPersistence(t.Context(), runtime, "value=internal_abc123")

@@ -8,6 +8,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	gatewayaccesshttp "github.com/aipermission/aipermission/backend/internal/gatewayaccess/httpowner"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -24,10 +25,10 @@ func (s *Server) routes() {
 	commandHTTP := s.commands.HTTPHandlers(gatewayoperations.CommandScopeProviders{
 		Bulk: s.bulkCommandHTTPScope, Requests: s.commandRequestHTTPScope,
 	})
-	accessHTTP := gatewayaccesshttp.New(s.access, gatewayaccesshttp.ScopeProviders{
-		Security: s.securityPolicyHTTPScope, TokenAccess: s.accessControlScope,
-		MCPRuntime: s.mcpRuntimeHTTPScope, MCPConnectorReads: mcp.mcpConnectorReadScope,
-		MCPConnectorActions: mcp.mcpConnectorActionScope,
+	accessHTTP := s.accessOwner.HTTPHandlers(s.access, gatewayaccesshttp.Factory{}, gatewayinfra.AccessHTTPDependencies{
+		Active: s.activeRuntimeOrLocked, TokenAccess: s.accessControlPorts,
+		MCPRuntime: s.mcpRuntimePorts, MCPRead: mcp.mcpConnectorReadPorts,
+		MCPAction: mcp.mcpConnectorActionPorts,
 	})
 	vaultHTTP := s.vaultApplication().HTTPHandlers(gatewayvault.HTTPDependencies{
 		Projects: s.projectsHTTPScope, ProjectVault: s.projectVaultHTTPScope,

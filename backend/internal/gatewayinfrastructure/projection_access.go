@@ -30,7 +30,7 @@ func (component *AccessOwner) CanReadVaultMetadata(
 	return reader.CanRead(ctx, tokenID, projectID, now)
 }
 
-func (component *AccessOwner) AccessControlWorkspace(handle *WorkspaceHandle, ports AccessControlPorts) (gatewayaccess.AccessScope, bool) {
+func (component *AccessOwner) accessControlWorkspace(handle *WorkspaceHandle, ports AccessControlPorts) (gatewayaccess.AccessScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.AccessScope{}, false

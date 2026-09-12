@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -255,44 +254,16 @@ func newConnectorActionTestRuntime(
 	return runtime
 }
 
-func securityPolicyTestMutationRunner(database *sql.DB) auditedmutation.Runner {
-	return func(ctx context.Context, _ string, _ func() any, mutate func(*sql.Tx) error) error {
-		tx, err := database.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-		if err := mutate(tx); err != nil {
-			return err
-		}
-		return tx.Commit()
-	}
+func createSecurityPolicyRule(t testing.TB, ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
+	t.Helper()
+	server := testServerForRuntime(t, runtime)
+	return server.accessOwner.CreateSecurityRule(ctx, runtime, input)
 }
 
-func createSecurityPolicyRule(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, input securitypolicy.RuleInput) (securitypolicy.Rule, error) {
-	owner, ok := runtimeTestOwners.Load(runtime)
-	if !ok {
-		return securitypolicy.Rule{}, fmt.Errorf("test runtime owner is unavailable")
-	}
-	resources := owner.(runtimeTestOwner)
-	scope, ok := resources.accessOwner.SecurityScope(runtime)
-	if !ok {
-		return securitypolicy.Rule{}, fmt.Errorf("test security policy is unavailable")
-	}
-	return scope.Service.CreateRule(ctx, input, securityPolicyTestMutationRunner(resources.database))
-}
-
-func setSecurityPolicySettings(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, settings securitypolicy.Settings) error {
-	owner, ok := runtimeTestOwners.Load(runtime)
-	if !ok {
-		return fmt.Errorf("test runtime owner is unavailable")
-	}
-	resources := owner.(runtimeTestOwner)
-	scope, ok := resources.accessOwner.SecurityScope(runtime)
-	if !ok {
-		return fmt.Errorf("test security policy is unavailable")
-	}
-	_, err := scope.Service.UpdateSettings(ctx, settings, securityPolicyTestMutationRunner(resources.database))
+func setSecurityPolicySettings(t testing.TB, ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, settings securitypolicy.Settings) error {
+	t.Helper()
+	server := testServerForRuntime(t, runtime)
+	_, err := server.accessOwner.UpdateSecuritySettings(ctx, runtime, settings)
 	return err
 }
 

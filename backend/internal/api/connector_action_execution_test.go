@@ -761,7 +761,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := testServerForRuntime(t, runtime)
 	server.connectorManagement = server.newConnectorManagementApplication()
-	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
+	if _, err := createSecurityPolicyRule(t, t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "approval preview token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
 		t.Fatalf("insert custom redaction rule: %v", err)
@@ -943,7 +943,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := testServerForRuntime(t, runtime)
-	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
+	if _, err := createSecurityPolicyRule(t, t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "typed output token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
 		t.Fatalf("insert custom redaction rule: %v", err)

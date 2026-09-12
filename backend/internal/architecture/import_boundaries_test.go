@@ -403,6 +403,8 @@ func TestGatewayTypeAliasesAreExplicitCanonicalContracts(t *testing.T) {
 	allowed := map[string]bool{
 		"gatewayaccess/access.go:PreparedUISession":                  true,
 		"gatewayaccess/access.go:Principal":                          true,
+		"gatewayaccess/access.go:SecurityRule":                       true,
+		"gatewayaccess/access.go:SecurityRuleInput":                  true,
 		"gatewayaccess/access.go:SecuritySettings":                   true,
 		"gatewayaccess/access.go:TokenValidationError":               true,
 		"gatewayconnectormanagement/management.go:ActionPermission":  true,

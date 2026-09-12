@@ -30,6 +30,8 @@ const (
 
 type Principal = executionprincipal.Principal
 type SecuritySettings = securitypolicy.Settings
+type SecurityRule = securitypolicy.Rule
+type SecurityRuleInput = securitypolicy.RuleInput
 type TokenValidationError = tokens.ValidationError
 type PreparedUISession = uisession.Prepared
 
@@ -135,3 +137,60 @@ type MCPRuntimeScopeProvider func(http.ResponseWriter) (MCPRuntimeScope, bool)
 type MCPScopeProvider func(http.ResponseWriter, *http.Request) (MCPScope, bool)
 type MCPActionScopeProvider func(http.ResponseWriter, *http.Request) (MCPActionScope, bool)
 type SecurityHTTPScopeProvider func(http.ResponseWriter) (SecurityHTTPScope, bool)
+
+type ScopeProviders struct {
+	Security            SecurityHTTPScopeProvider
+	TokenAccess         AccessScopeProvider
+	MCPRuntime          MCPRuntimeScopeProvider
+	MCPConnectorReads   MCPScopeProvider
+	MCPConnectorActions MCPActionScopeProvider
+}
+
+type SecurityHTTP interface {
+	GetSettings(http.ResponseWriter, *http.Request)
+	UpdateSettings(http.ResponseWriter, *http.Request)
+	ListRules(http.ResponseWriter, *http.Request)
+	CreateRule(http.ResponseWriter, *http.Request)
+	UpdateRule(http.ResponseWriter, *http.Request)
+	DeleteRule(http.ResponseWriter, *http.Request)
+}
+
+type TokenAccessHTTP interface {
+	ListTokens(http.ResponseWriter, *http.Request)
+	CreateToken(http.ResponseWriter, *http.Request)
+	RevokeToken(http.ResponseWriter, *http.Request)
+	ListConnectorPermissions(http.ResponseWriter, *http.Request)
+	UpdateConnectorPermissions(http.ResponseWriter, *http.Request)
+	ListProjectScopes(http.ResponseWriter, *http.Request)
+	UpdateProjectScopes(http.ResponseWriter, *http.Request)
+	ListProjectCapabilities(http.ResponseWriter, *http.Request)
+	UpdateProjectCapabilities(http.ResponseWriter, *http.Request)
+}
+
+type MCPRuntimeHTTP interface {
+	Get(http.ResponseWriter, *http.Request)
+	Update(http.ResponseWriter, *http.Request)
+}
+
+type MCPConnectorReadHTTP interface {
+	ListTargets(http.ResponseWriter, *http.Request)
+	GetHelp(http.ResponseWriter, *http.Request)
+	GetActions(http.ResponseWriter, *http.Request)
+}
+
+type MCPConnectorActionHTTP interface {
+	Call(http.ResponseWriter, *http.Request)
+	GetRequest(http.ResponseWriter, *http.Request)
+}
+
+type HTTPHandlers struct {
+	Security            SecurityHTTP
+	TokenAccess         TokenAccessHTTP
+	MCPRuntime          MCPRuntimeHTTP
+	MCPConnectorReads   MCPConnectorReadHTTP
+	MCPConnectorActions MCPConnectorActionHTTP
+}
+
+type HTTPHandlerFactory interface {
+	Build(ScopeProviders) HTTPHandlers
+}

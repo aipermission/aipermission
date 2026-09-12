@@ -9,12 +9,12 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
-func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPScope, bool) {
+func (s mcpHandlers) mcpConnectorReadPorts(w http.ResponseWriter, r *http.Request) (*gatewayinfra.WorkspaceHandle, gatewayinfra.MCPReadPorts, bool) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
-		return gatewayaccess.MCPScope{}, false
+		return nil, gatewayinfra.MCPReadPorts{}, false
 	}
-	scope, valid := s.accessOwner.MCPReadScope(auth.runtime, gatewayinfra.MCPReadPorts{
+	ports := gatewayinfra.MCPReadPorts{
 		TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
 			permissions, err := s.connectorCatalog(auth.runtime).ProjectScopedSupportedConnectorPermissions(ctx, auth.TokenID)
@@ -40,17 +40,17 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 		Metadata: gatewayaccess.NewMCPMetadataResolver(func(kind string) gatewayaccess.MCPMetadataAdapter {
 			return s.connectorLiveConsoleTargetAdapterFor(kind)
 		}),
-	})
-	return scope, valid
+	}
+	return auth.runtime, ports, true
 }
 
-func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPActionScope, bool) {
+func (s mcpHandlers) mcpConnectorActionPorts(w http.ResponseWriter, r *http.Request) (*gatewayinfra.WorkspaceHandle, gatewayinfra.MCPActionPorts, bool) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
-		return gatewayaccess.MCPActionScope{}, false
+		return nil, gatewayinfra.MCPActionPorts{}, false
 	}
 	call := s.connectorActionApplication().MCPCall(s.connectorActionWorkspace(auth.runtime))
-	scope, valid := s.accessOwner.MCPActionScope(auth.runtime, gatewayinfra.MCPActionPorts{
+	ports := gatewayinfra.MCPActionPorts{
 		TokenID: auth.TokenID, RunningHint: s.connectorRunningHint,
 		Delivery: s.connectorActionApplication().Delivery,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
@@ -70,6 +70,6 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, auth.runtime, value)
 		},
-	})
-	return scope, valid
+	}
+	return auth.runtime, ports, true
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"sync"
 	"testing"
@@ -13,8 +12,6 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
-	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
-	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -127,44 +124,47 @@ func testRuntimeConsoleSessions(t testing.TB, server *Server, runtime *gatewayin
 	return manager
 }
 
-func testRuntimeControlState(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *runtimecontrol.State {
-	t.Helper()
-	projection, ok := server.accessOwner.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
-		StartEnabled: func(context.Context) (bool, error) { return false, nil },
-	})
-	if !ok || projection.State == nil {
-		t.Fatal("test runtime control state is unavailable")
-	}
-	state, ok := projection.State.(*runtimecontrol.State)
-	if !ok {
-		t.Fatal("test runtime control state has an unexpected implementation")
-	}
-	return state
+type testRuntimeControl struct {
+	t       testing.TB
+	server  *Server
+	runtime *gatewayinfra.WorkspaceHandle
 }
 
-func testRuntimeSecurityPolicy(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *securitypolicy.Service {
-	t.Helper()
-	projection, ok := server.accessOwner.SecurityScope(runtime)
-	if !ok || projection.Service == nil {
-		t.Fatal("test runtime security policy is unavailable")
+func (control testRuntimeControl) MCPStarted() bool {
+	control.t.Helper()
+	enabled, ok := control.server.accessOwner.MCPStarted(control.runtime)
+	if !ok {
+		control.t.Fatal("test runtime control state is unavailable")
 	}
-	return projection.Service
+	return enabled
+}
+
+func (control testRuntimeControl) SetMCPStarted(enabled bool) {
+	control.t.Helper()
+	if !control.server.accessOwner.SetMCPStarted(control.runtime, enabled) {
+		control.t.Fatal("test runtime control state is unavailable")
+	}
+}
+
+func testRuntimeControlState(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) testRuntimeControl {
+	t.Helper()
+	if _, ok := server.accessOwner.MCPStarted(runtime); !ok {
+		t.Fatal("test runtime control state is unavailable")
+	}
+	return testRuntimeControl{t: t, server: server, runtime: runtime}
 }
 
 func testMCPOutputAuthorization(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle, tokenID int64) *gatewayaccess.MCPOutputAuthorization {
 	t.Helper()
-	scope, ok := server.accessOwner.MCPActionScope(runtime, gatewayinfra.MCPActionPorts{
-		TokenID: tokenID, RunningHint: server.connectorRunningHint,
-		Delivery:  server.connectorActionApplication().Delivery,
-		Principal: func(id int64) (gatewayaccess.Principal, error) { return server.tokenExecutionPrincipal(runtime, id) },
-		Call: func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error) {
-			return gatewayaccess.MCPActionCallResult{}, nil
-		},
-		Observe: func(context.Context, string, any) {},
-		Redact:  func(_ context.Context, value string) string { return value },
-	})
-	if !ok || scope.Output == nil {
+	resources := requireRuntimeTestOwner(t, runtime)
+	projection := server.vaultRuntime(runtime)
+	if projection.Session.AcquireDelivery == nil || projection.Session.MCPStarted == nil {
 		t.Fatal("test MCP output authorization is unavailable")
 	}
-	return scope.Output
+	return &gatewayaccess.MCPOutputAuthorization{
+		Database: resources.database, Tokens: resources.tokens, Leases: testRuntimeLeases(t, server, runtime),
+		Delivery:   server.connectorActionApplication().Delivery(projection.Session.AcquireDelivery),
+		MCPStarted: projection.Session.MCPStarted,
+		Principal:  func(id int64) (gatewayaccess.Principal, error) { return server.tokenExecutionPrincipal(runtime, id) },
+	}
 }

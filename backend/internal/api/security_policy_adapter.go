@@ -3,22 +3,12 @@ package api
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 var errSecurityPolicyUnavailable = errors.New("security policy runtime is unavailable")
-
-func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.SecurityHTTPScope, bool) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return gatewayaccess.SecurityHTTPScope{}, false
-	}
-	scope, valid := s.accessOwner.SecurityScope(runtime)
-	return scope, valid
-}
 
 func (s *Server) readSecuritySettings(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
 	if s == nil || runtime == nil {
