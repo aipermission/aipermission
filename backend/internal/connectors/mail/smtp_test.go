@@ -8,13 +8,13 @@ import (
 	stdmail "net/mail"
 	"strings"
 	"testing"
-
-	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
+	mailcontent "github.com/aipermission/aipermission/backend/internal/connectors/mail/content"
 	"github.com/emersion/go-smtp"
+	"golang.org/x/net/html"
 )
 
 type fakeSMTPClient struct {
@@ -324,13 +324,36 @@ func FuzzSanitizeOutboundHTML(f *testing.F) {
 		if len(source) > mailcontent.MaxHTMLBodyBytes {
 			t.Skip()
 		}
-		result := strings.ToLower(sanitizeOutboundHTML(source))
-		for _, forbidden := range []string{"<script", "<img", "onerror=", "javascript:"} {
-			if strings.Contains(result, forbidden) {
-				t.Fatalf("unsafe output %q", result)
+		assertSafeOutboundHTML(t, sanitizeOutboundHTML(source))
+	})
+}
+
+func assertSafeOutboundHTML(t *testing.T, source string) {
+	t.Helper()
+	document, err := html.Parse(strings.NewReader(source))
+	if err != nil {
+		t.Fatalf("parse sanitized output: %v", err)
+	}
+	var visit func(*html.Node)
+	visit = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			name := strings.ToLower(node.Data)
+			if name == "script" || name == "img" {
+				t.Fatalf("unsafe element %q in sanitized output %q", name, source)
+			}
+			for _, attribute := range node.Attr {
+				key := strings.ToLower(attribute.Key)
+				value := strings.ToLower(strings.TrimSpace(attribute.Val))
+				if strings.HasPrefix(key, "on") || strings.HasPrefix(value, "javascript:") {
+					t.Fatalf("unsafe attribute %q=%q in sanitized output %q", key, attribute.Val, source)
+				}
 			}
 		}
-	})
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(document)
 }
 
 func TestSanitizeOutboundHTMLPreservesContentEditableBlockBoundaries(t *testing.T) {

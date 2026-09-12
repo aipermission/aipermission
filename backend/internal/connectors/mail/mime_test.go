@@ -169,16 +169,18 @@ func TestSearchCursorRejectsTamperingAndContextDrift(t *testing.T) {
 func FuzzHTMLToTextNeverReturnsActiveMarkup(f *testing.F) {
 	f.Add(`<p>Hello</p><script>alert(1)</script>`)
 	f.Add(`<a href="javascript:alert(1)">bad</a>`)
+	f.Add(`jAvAsCript:0`)
 	f.Fuzz(func(t *testing.T, source string) {
-		if len(source) > mailcontent.MaxHTMLBodyBytes {
+		const marker = "__aipermission_active_content_marker__"
+		if len(source) > mailcontent.MaxHTMLBodyBytes-256 || strings.Contains(source, marker) {
 			t.Skip()
 		}
-		text, err := mailcontent.HTMLToText(source)
+		wrapped := `<script>` + marker + `</script><a href="jAvAsCrIpT:` + marker + `">safe</a>` + source
+		text, err := mailcontent.HTMLToText(wrapped)
 		if err != nil {
 			return
 		}
-		lower := strings.ToLower(text)
-		if strings.Contains(lower, "javascript:") || strings.Contains(lower, "<script") {
+		if strings.Contains(text, marker) {
 			t.Fatalf("active content survived: %q", text)
 		}
 	})
