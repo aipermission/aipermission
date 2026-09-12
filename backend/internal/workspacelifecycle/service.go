@@ -45,7 +45,7 @@ type Dependencies[T Runtime] struct {
 	Validate            func(path, password string) error
 	Move                func(currentPath, targetPath string) error
 	Delete              func(path string) error
-	ValidateNewPassword func(context.Context, *sql.DB, string, string) error
+	ValidateNewPassword func(context.Context, T, string, string) error
 	Publish             func(sourcePath, targetPath string) error
 	GatewaySecret       func() string
 }
@@ -62,7 +62,7 @@ type Service[T Runtime] struct {
 	validate            func(path, password string) error
 	move                func(currentPath, targetPath string) error
 	delete              func(path string) error
-	validateNewPassword func(context.Context, *sql.DB, string, string) error
+	validateNewPassword func(context.Context, T, string, string) error
 	publish             func(sourcePath, targetPath string) error
 	gatewaySecret       func() string
 }
@@ -562,7 +562,7 @@ func (s *Service[T]) ChangePassword(ctx context.Context, currentPassword, newPas
 	}
 	identity := runtime.WorkspaceIdentity()
 	if s.validateNewPassword != nil {
-		if err := s.validateNewPassword(ctx, runtime.WorkspaceDatabase(), s.databaseNameLocked(identity), newPassword); err != nil {
+		if err := s.validateNewPassword(ctx, runtime, s.databaseNameLocked(identity), newPassword); err != nil {
 			return err
 		}
 	}

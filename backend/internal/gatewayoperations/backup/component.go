@@ -120,6 +120,19 @@ func New(dependencies Dependencies) *Component {
 	return &Component{dependencies: dependencies}
 }
 
+// ValidateNewPassword applies backup-specific password requirements only when
+// the workspace has an active remote backup provider.
+func ValidateNewPassword(ctx context.Context, database *sql.DB, databaseName, password string) error {
+	active, err := backups.NewStore(database).HasActiveProvider(ctx)
+	if err != nil || !active {
+		return err
+	}
+	if err := backups.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+		return workspacelifecycle.PasswordPolicyError(err)
+	}
+	return nil
+}
+
 type Handlers struct {
 	Download        http.HandlerFunc
 	Import          http.HandlerFunc

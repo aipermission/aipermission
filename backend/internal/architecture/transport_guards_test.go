@@ -30,6 +30,21 @@ func TestAPIProductionPackagesDoNotImportDatabaseSQL(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLifecycleDoesNotOwnBackupPolicy(t *testing.T) {
+	for importer, imports := range allPackageImports(t) {
+		if importer != modulePath+"/internal/workspacelifecycle" &&
+			!strings.HasPrefix(importer, modulePath+"/internal/gatewayworkspace/lifecycle") {
+			continue
+		}
+		for _, imported := range imports {
+			if imported == modulePath+"/internal/backups" ||
+				strings.HasPrefix(imported, modulePath+"/internal/gatewayoperations/backup") {
+				t.Errorf("%s imports %s; backup password policy belongs behind the injected lifecycle port", importer, imported)
+			}
+		}
+	}
+}
+
 func TestAPISubpackagesCannotSmuggleDomainDependencies(t *testing.T) {
 	apiRoot := modulePath + "/internal/api"
 	for importer, imports := range allPackageImports(t) {

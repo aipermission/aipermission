@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sync"
 
+	gatewaybackup "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
 	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
@@ -115,6 +116,14 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 		DataPath: dependencies.DataPath,
 		Open:     open, Close: closeRuntime, OnActivated: onActivated, OnOpened: onOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete,
+		ValidateNewPassword: func(ctx context.Context, runtime *gatewayworkspace.Runtime, databaseName, password string) error {
+			handle := component.handleFor(runtime)
+			owner, ok := component.resolve(handle)
+			if !ok {
+				return InitializationError()
+			}
+			return gatewaybackup.ValidateNewPassword(ctx, owner.Storage.DatabaseHandle(), databaseName, password)
+		},
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
 }

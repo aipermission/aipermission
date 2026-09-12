@@ -155,6 +155,7 @@ type Dependencies struct {
 	OnActivated, OnOpened func(*Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
+	ValidateNewPassword   func(context.Context, *Runtime, string, string) error
 	Publish               func(string, string) error
 	GatewaySecret         func() string
 }
@@ -211,6 +212,7 @@ func (component *Component) Configure(dependencies Dependencies) error {
 		}
 	}
 	var onActivated, onOpened func(lifecycle.Runtime)
+	var validateNewPassword func(context.Context, lifecycle.Runtime, string, string) error
 	if dependencies.OnActivated != nil {
 		onActivated = func(runtime lifecycle.Runtime) {
 			if owned, ok := runtime.(*Runtime); ok {
@@ -225,10 +227,19 @@ func (component *Component) Configure(dependencies Dependencies) error {
 			}
 		}
 	}
+	if dependencies.ValidateNewPassword != nil {
+		validateNewPassword = func(ctx context.Context, runtime lifecycle.Runtime, databaseName, password string) error {
+			owned, ok := runtime.(*Runtime)
+			if !ok {
+				return InitializationError()
+			}
+			return dependencies.ValidateNewPassword(ctx, owned, databaseName, password)
+		}
+	}
 	return component.lifecycle.Configure(lifecycle.Dependencies{
 		DataPath: dependencies.DataPath, Open: open, Close: closeRuntime,
 		OnActivated: onActivated, OnOpened: onOpened,
-		Move: dependencies.Move, Delete: dependencies.Delete,
+		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: validateNewPassword,
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
 }
