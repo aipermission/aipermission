@@ -30,10 +30,11 @@ type ConnectorRuntimePorts struct {
 }
 
 type ConnectorRuntimeDependencies struct {
-	TrustStorePath func() string
-	ActiveRuntime  func(http.ResponseWriter) bool
-	PeerTrust      *connectorports.PeerTrustCoordinator
-	Ports          ConnectorRuntimePorts
+	TrustStorePath      func() string
+	ActiveRuntime       func(http.ResponseWriter) bool
+	WorkspaceSnapshot   func() []*WorkspaceHandle
+	InvalidatePeerTrust func(context.Context, *WorkspaceHandle, string) error
+	Ports               ConnectorRuntimePorts
 }
 
 // ConnectorRuntimeApplication owns adapter selection and runtime capability
@@ -47,21 +48,42 @@ type ConnectorRuntimeApplication struct {
 	trust    func() string
 }
 
-func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, adapters *connectorapi.Registry, dependencies ConnectorRuntimeDependencies) (*ConnectorRuntimeApplication, error) {
-	if owner == nil {
-		return nil, errors.New("connector ports owner is required")
+func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *OperationsOwner, adapters *connectorapi.Registry, dependencies ConnectorRuntimeDependencies) (*ConnectorRuntimeApplication, error) {
+	if owner == nil || operations == nil {
+		return nil, errors.New("connector runtime owners are required")
 	}
 	if adapters == nil {
 		return nil, errors.New("connector adapter registry is required")
 	}
+	if dependencies.TrustStorePath == nil || dependencies.ActiveRuntime == nil ||
+		dependencies.WorkspaceSnapshot == nil || dependencies.InvalidatePeerTrust == nil ||
+		dependencies.Ports.Principal == nil || dependencies.Ports.Restart == nil ||
+		dependencies.Ports.Finish == nil || dependencies.Ports.Download == nil ||
+		dependencies.Ports.Delete == nil || dependencies.Ports.Finalize == nil || dependencies.Ports.Audit == nil {
+		return nil, errors.New("connector runtime ports are incomplete")
+	}
 	application := &ConnectorRuntimeApplication{
 		owner: owner, adapters: adapters, bindings: dependencies.Ports, trust: dependencies.TrustStorePath,
 	}
+	peerTrust := connectorports.NewPeerTrustCoordinator(func() []connectorports.PeerTrustWorkspace {
+		handles := dependencies.WorkspaceSnapshot()
+		workspaces := make([]connectorports.PeerTrustWorkspace, 0, len(handles))
+		for _, handle := range handles {
+			boundHandle := handle
+			workspace, ok := operations.PeerTrustWorkspace(handle, func(ctx context.Context, reason string) error {
+				return dependencies.InvalidatePeerTrust(ctx, boundHandle, reason)
+			})
+			if ok {
+				workspaces = append(workspaces, workspace)
+			}
+		}
+		return workspaces
+	})
 	application.ports = connectorports.NewPorts(connectorports.PortsDependencies{
 		Peer: connectorports.PeerDependencies{TrustStorePath: dependencies.TrustStorePath},
 		Routes: connectorports.RouteDependencies{
 			ActiveRuntime: dependencies.ActiveRuntime,
-			PeerTrust:     dependencies.PeerTrust,
+			PeerTrust:     peerTrust,
 		},
 		LiveConsole: connectorports.LiveConsoleDependencies{
 			TransportAdapter: application.liveConsoleTransportAdapter,

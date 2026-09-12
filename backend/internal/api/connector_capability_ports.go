@@ -10,12 +10,12 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
 func (s *Server) newConnectorRuntimeApplication() *gatewayinfra.ConnectorRuntimeApplication {
 	application, err := gatewayinfra.NewConnectorRuntimeApplication(
 		s.connectorPortsOwner,
+		s.operationsOwner,
 		s.connectorAdapterRegistry(),
 		gatewayinfra.ConnectorRuntimeDependencies{
 			TrustStorePath: s.connectorTrustStorePath,
@@ -23,7 +23,14 @@ func (s *Server) newConnectorRuntimeApplication() *gatewayinfra.ConnectorRuntime
 				_, ok := s.activeRuntimeOrLocked(w)
 				return ok
 			},
-			PeerTrust: s.connectorPeerTrustApplication(),
+			WorkspaceSnapshot: s.unlockedRuntimeSnapshot,
+			InvalidatePeerTrust: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, reason string) error {
+				lifecycle, lifecycleErr := s.vaultSessionLifecycle(runtime)
+				if lifecycleErr != nil {
+					return lifecycleErr
+				}
+				return lifecycle.InvalidateAll(ctx, reason)
+			},
 			Ports: gatewayinfra.ConnectorRuntimePorts{
 				Principal: func(runtime *gatewayinfra.WorkspaceHandle) (gatewayaccess.Principal, error) {
 					return s.localExecutionPrincipal(runtime)
@@ -59,26 +66,4 @@ func (s *Server) newConnectorRuntimeApplication() *gatewayinfra.ConnectorRuntime
 		panic(fmt.Sprintf("initialize connector runtime application: %v", err))
 	}
 	return application
-}
-
-func (s *Server) connectorPeerTrustApplication() *connectorports.PeerTrustCoordinator {
-	return connectorports.NewPeerTrustCoordinator(func() []connectorports.PeerTrustWorkspace {
-		runtimes := s.unlockedRuntimeSnapshot()
-		workspaces := make([]connectorports.PeerTrustWorkspace, 0, len(runtimes))
-		for _, runtime := range runtimes {
-			boundRuntime := runtime
-			workspace, ok := s.operationsOwner.PeerTrustWorkspace(runtime,
-				func(ctx context.Context, reason string) error {
-					lifecycle, err := s.vaultSessionLifecycle(boundRuntime)
-					if err != nil {
-						return err
-					}
-					return lifecycle.InvalidateAll(ctx, reason)
-				})
-			if ok {
-				workspaces = append(workspaces, workspace)
-			}
-		}
-		return workspaces
-	})
 }
