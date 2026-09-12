@@ -16,13 +16,17 @@ type testActiveSessions struct {
 	result     console.ExecResult
 	err        error
 	interrupts int
+	wait       func(context.Context) (console.ExecResult, error)
 }
 
 func (s *testActiveSessions) WaitActive(
-	context.Context,
-	executionprincipal.Principal,
-	console.SessionHandle,
+	ctx context.Context,
+	_ executionprincipal.Principal,
+	_ console.SessionHandle,
 ) (console.ExecResult, error) {
+	if s.wait != nil {
+		return s.wait(ctx)
+	}
 	return s.result, s.err
 }
 
@@ -135,6 +139,56 @@ func TestRuntimeStopWorkersCancelsDrainsAndClosesAdmission(t *testing.T) {
 	}
 	if owner.RunWorker(func(context.Context) {}) {
 		t.Fatal("worker was admitted after shutdown")
+	}
+}
+
+func TestRuntimeShutdownLeavesActiveCommandForCanonicalRecovery(t *testing.T) {
+	database, runtimeID := commandRequestFixture(t)
+	started := make(chan struct{})
+	sessions := &testActiveSessions{wait: func(ctx context.Context) (console.ExecResult, error) {
+		close(started)
+		<-ctx.Done()
+		return console.ExecResult{}, ctx.Err()
+	}}
+	owner := newTestRuntime(t, database, sessions, &testCommandProjection{})
+	id, err := owner.Insert(t.Context(), Insert{RuntimeID: runtimeID, Command: "sleep 60", Status: "running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := executionprincipal.LocalOperator("workspace", "runtime-instance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owner.RunWorker(func(ctx context.Context) {
+		owner.FinishActive(ctx, id, principal, console.SessionHandle{ID: 44, RuntimeID: runtimeID, Generation: 1})
+	}) {
+		t.Fatal("background command worker was not admitted")
+	}
+	<-started
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := owner.StopWorkers(shutdownCtx); err != nil {
+		t.Fatalf("StopWorkers() error = %v", err)
+	}
+	item, err := NewStore(database).Get(t.Context(), id, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Status != "running" || item.Error != "" {
+		t.Fatalf("shutdown worker persisted a terminal result before recovery: %#v", item)
+	}
+	if sessions.interrupts != 0 {
+		t.Fatalf("shutdown worker interrupted an already-closing session %d times", sessions.interrupts)
+	}
+	if err := owner.CancelRunning(t.Context(), "workspace locked while command was running"); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := NewStore(database).Get(t.Context(), id, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Status != "error" || recovered.Error != "workspace locked while command was running" {
+		t.Fatalf("canonical recovery result = %#v", recovered)
 	}
 }
 

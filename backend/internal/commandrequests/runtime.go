@@ -195,7 +195,13 @@ func (r *Runtime) FinishActive(parent context.Context, requestID int64, principa
 	defer cancel()
 	result, err := r.sessions.WaitActive(ctx, principal, handle)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		// Workspace shutdown owns cancellation recovery after every command
+		// worker has drained. Do not turn its cancellation into a timeout or
+		// prevent the coordinator from recording the canonical shutdown result.
+		if parent.Err() != nil {
+			return
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
 			cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cleanupCancel()
 			_ = r.sessions.InterruptActive(cleanup, principal, handle)
