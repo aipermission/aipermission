@@ -261,9 +261,13 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
   const keys = [];
   let releaseFirst;
   let releaseSecond;
+  let signalFirstStarted;
   let signalSecondStarted;
   const firstGate = new Promise((resolve) => {
     releaseFirst = resolve;
+  });
+  const firstStarted = new Promise((resolve) => {
+    signalFirstStarted = resolve;
   });
   const secondStarted = new Promise((resolve) => {
     signalSecondStarted = resolve;
@@ -276,6 +280,7 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
     keys.push(JSON.parse(options.body).idempotency_key);
     calls += 1;
     if (calls === 1) {
+      signalFirstStarted();
       await firstGate;
       return response({ error: "invalid request" }, 400);
     }
@@ -292,6 +297,7 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
       () => null,
       (error) => error,
     );
+    await firstStarted;
     const second = apiPost("/api/connector-actions/local-run", body);
     await secondStarted;
     releaseFirst();
