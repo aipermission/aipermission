@@ -1,5 +1,8 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
+const { parseDocument } = require("yaml");
 
 const {
   evaluateRequiredChecks,
@@ -10,6 +13,37 @@ const {
   requiredWorkflowByCheck,
   verifiedRequiredCheckRuns,
 } = require("./verify-release-source");
+
+const root = path.resolve(__dirname, "..");
+
+function workflowSteps(relativePath, jobID) {
+  const source = fs.readFileSync(path.join(root, relativePath), "utf8");
+  const document = parseDocument(source, {
+    maxAliasCount: 0,
+    strict: true,
+    uniqueKeys: true,
+  });
+  assert.deepEqual(document.errors, []);
+  const workflow = document.toJS({ maxAliasCount: 0 });
+  return workflow.jobs[jobID].steps;
+}
+
+test("publish workflows install locked verifier dependencies before verification", () => {
+  for (const [workflow, job] of [
+    [".github/workflows/publish-images.yml", "verify-source"],
+    [".github/workflows/publish-mcp.yml", "publish"],
+  ]) {
+    const steps = workflowSteps(workflow, job);
+    const install = steps.findIndex(
+      (step) => step.run === "npm ci --prefix scripts --workspaces=false",
+    );
+    const verify = steps.findIndex((step) =>
+      step.run?.includes("node scripts/verify-release-source.js"),
+    );
+    assert.ok(install >= 0, `${workflow} must install verifier dependencies`);
+    assert.ok(verify > install, `${workflow} must install dependencies before verification`);
+  }
+});
 
 test("release source requires the Windows private-config security check", () => {
   assert.ok(requiredChecks.includes("MCP Windows Private Config"));

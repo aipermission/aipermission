@@ -37,6 +37,8 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
           cache-dependency-path: packages/mcp/package-lock.json
+      - name: Install release verification dependencies
+        run: npm ci --prefix scripts --workspaces=false
       - name: Verify tagged source and required checks
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
