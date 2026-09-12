@@ -51,6 +51,12 @@ func (Running) FinishRunning(parent context.Context, server connectorapi.ActionF
 		return finishRunningActionRequest(server, runtime, requestID, connectors.ResultError, nil, "", err.Error(), prepared.OutputHint)
 	}
 	result, err := sessions.WaitActive(ctx, principal, handle)
+	// Workspace shutdown owns the terminal transition for every in-flight
+	// connector action. Leave this request running until the shutdown
+	// coordinator has drained workers and marks it outcome_unknown.
+	if err != nil && parent.Err() != nil {
+		return nil
+	}
 	status := connectors.ResultStatus("")
 	var output any
 	var displayText string
