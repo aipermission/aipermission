@@ -2,18 +2,12 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectScope, bool) {
-	runtime, ok := s.activeRuntimeOrLocked(w)
-	if !ok {
-		return gatewayvault.ProjectScope{}, false
-	}
-	scope, valid := s.vaultOwner.ProjectScope(runtime, gatewayinfra.ProjectPorts{
+func (s *Server) projectPorts(runtime *gatewayinfra.WorkspaceHandle) gatewayinfra.ProjectPorts {
+	return gatewayinfra.ProjectPorts{
 		Invalidate: func(ctx context.Context, projectID int64) error {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err != nil {
@@ -21,6 +15,5 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectS
 			}
 			return lifecycle.InvalidateProject(ctx, projectID, "project was archived; send a fresh Vault request")
 		},
-	})
-	return scope, valid
+	}
 }

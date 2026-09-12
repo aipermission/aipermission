@@ -7,25 +7,21 @@ import (
 
 	gatewayaccesshttp "github.com/aipermission/aipermission/backend/internal/gatewayaccess/httpowner"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (gatewayvault.VaultMCPHTTPScope, bool) {
+func (s mcpHandlers) mcpVaultPorts(w http.ResponseWriter, r *http.Request) (*gatewayinfra.WorkspaceHandle, gatewayinfra.VaultMCPHTTPPorts, bool) {
 	auth, ok := s.authenticateMCP(w, r)
 	if !ok {
-		return gatewayvault.VaultMCPHTTPScope{}, false
+		return nil, gatewayinfra.VaultMCPHTTPPorts{}, false
 	}
-	scope, valid := s.vaultOwner.VaultMCPScope(auth.runtime, gatewayinfra.VaultMCPPorts{
+	ports := gatewayinfra.VaultMCPHTTPPorts{
 		TokenID: auth.TokenID,
-		Runtime: func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
-			return s.vaultRequestRuntime(ctx, auth.runtime)
-		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {
 			return s.accessOwner.CanReadVaultMetadata(
 				ctx, auth.runtime, gatewayaccesshttp.VaultMetadataReaderFactory{},
 				auth.TokenID, projectID, time.Now(),
 			)
 		},
-	})
-	return scope, valid
+	}
+	return auth.runtime, ports, true
 }

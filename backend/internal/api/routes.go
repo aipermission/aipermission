@@ -10,7 +10,6 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
 type mcpHandlers struct{ *Server }
@@ -30,9 +29,9 @@ func (s *Server) routes() {
 		MCPRuntime: s.mcpRuntimePorts, MCPRead: mcp.mcpConnectorReadPorts,
 		MCPAction: mcp.mcpConnectorActionPorts,
 	})
-	vaultHTTP := s.vaultApplication().HTTPHandlers(gatewayvault.HTTPDependencies{
-		Projects: s.projectsHTTPScope, ProjectVault: s.projectVaultHTTPScope,
-		VaultApprovals: s.vaultRequestHTTPScope, MCPVault: mcp.mcpVaultScope,
+	vaultHTTP := s.vaultOwner.HTTPHandlers(s.vaultApplication(), gatewayinfra.VaultHTTPDependencies{
+		Active: s.activeRuntimeOrLocked, RuntimePorts: s.vaultRuntimePorts,
+		ProjectPorts: s.projectPorts, MCP: mcp.mcpVaultPorts,
 	})
 
 	httptransport.Register(s.mux, httptransport.Dependencies{

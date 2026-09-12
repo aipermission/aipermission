@@ -245,7 +245,7 @@ type ProjectPorts struct {
 	Invalidate func(context.Context, int64) error
 }
 
-func (component *VaultOwner) ProjectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
+func (component *VaultOwner) projectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.ProjectScope{}, false

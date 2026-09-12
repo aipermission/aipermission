@@ -109,7 +109,7 @@ type VaultMCPPorts struct {
 	MetadataRead func(context.Context, int64) (bool, error)
 }
 
-func (component *VaultOwner) VaultMCPScope(handle *WorkspaceHandle, ports VaultMCPPorts) (gatewayvault.VaultMCPHTTPScope, bool) {
+func (component *VaultOwner) vaultMCPScope(handle *WorkspaceHandle, ports VaultMCPPorts) (gatewayvault.VaultMCPHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.VaultMCPHTTPScope{}, false
@@ -122,7 +122,7 @@ func (component *VaultOwner) VaultMCPScope(handle *WorkspaceHandle, ports VaultM
 	}, true
 }
 
-func (component *VaultOwner) VaultApprovalScope(handle *WorkspaceHandle, runtime func(context.Context) (gatewayvault.VaultRequestApplication, error)) (gatewayvault.VaultApprovalHTTPScope, bool) {
+func (component *VaultOwner) vaultApprovalScope(handle *WorkspaceHandle, runtime func(context.Context) (gatewayvault.VaultRequestApplication, error)) (gatewayvault.VaultApprovalHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.VaultApprovalHTTPScope{}, false
