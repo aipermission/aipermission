@@ -57,6 +57,51 @@ test("workflow verification rejects dynamic check identities", (t) => {
   assert.throws(() => verifyWorkflows(gatePolicy), /dynamic check name/);
 });
 
+test("workflow verification rejects inherited shell bypasses", (t) => {
+  const write = useFixture(t);
+  write(`name: Fixture
+defaults:
+  run:
+    shell: true {0}
+jobs:
+  gate:
+    name: Gate
+    steps:
+      - run: node verify.js
+`);
+  assert.throws(() => verifyWorkflows(gatePolicy), /missing required command/);
+
+  write(`name: Fixture
+jobs:
+  gate:
+    name: Gate
+    defaults:
+      run:
+        shell: true {0}
+    steps:
+      - run: node verify.js
+`);
+  assert.throws(() => verifyWorkflows(gatePolicy), /missing required command/);
+});
+
+test("workflow verification rejects conditional required jobs", (t) => {
+  const write = useFixture(t);
+  for (const setting of ["if: ${{ true }}", "continue-on-error: true"]) {
+    write(`name: Fixture
+jobs:
+  gate:
+    name: Gate
+    ${setting}
+    steps:
+      - run: node verify.js
+`);
+    assert.throws(
+      () => verifyWorkflows(gatePolicy),
+      /must be unconditional and fail closed/,
+    );
+  }
+});
+
 test("external workflow actions require immutable pins", () => {
   const verify = (reference) => verifyActionPinsInSource(`steps:\n  - uses: ${reference}\n`, "fixture.yml");
   assert.doesNotThrow(() => verify("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"));

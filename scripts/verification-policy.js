@@ -90,6 +90,7 @@ function workflowJobContracts(source, sourcePath = "workflow") {
   const workflow = parseWorkflow(source, sourcePath);
   if (!plainObject(workflow.jobs))
     throw new Error(`${sourcePath} must define jobs`);
+  const workflowShell = inheritedRunShell(workflow, sourcePath, "workflow");
   const jobs = new Map();
   for (const [jobID, job] of Object.entries(workflow.jobs)) {
     if (!plainObject(job))
@@ -97,6 +98,7 @@ function workflowJobContracts(source, sourcePath = "workflow") {
     if (job.steps != null && !Array.isArray(job.steps)) {
       throw new Error(`${sourcePath} job ${jobID} steps must be a sequence`);
     }
+    const jobShell = inheritedRunShell(job, sourcePath, `job ${jobID}`);
     const steps = (job.steps || []).map((step, index) => {
       if (!plainObject(step)) {
         throw new Error(
@@ -106,7 +108,7 @@ function workflowJobContracts(source, sourcePath = "workflow") {
       return {
         run: typeof step.run === "string" ? step.run : "",
         uses: typeof step.uses === "string" ? step.uses : "",
-        shell: typeof step.shell === "string" ? step.shell : "",
+        shell: effectiveRunShell(step.shell, jobShell, workflowShell),
         hasCondition: Object.hasOwn(step, "if"),
         hasContinueOnError: Object.hasOwn(step, "continue-on-error"),
       };
@@ -115,9 +117,33 @@ function workflowJobContracts(source, sourcePath = "workflow") {
       name: typeof job.name === "string" ? job.name : "",
       source: job,
       steps,
+      hasCondition: Object.hasOwn(job, "if"),
+      hasContinueOnError: Object.hasOwn(job, "continue-on-error"),
     });
   }
   return jobs;
+}
+
+function inheritedRunShell(mapping, sourcePath, owner) {
+  if (!Object.hasOwn(mapping, "defaults")) return "";
+  if (!plainObject(mapping.defaults)) {
+    throw new Error(`${sourcePath} ${owner} defaults must be a mapping`);
+  }
+  if (!Object.hasOwn(mapping.defaults, "run")) return "";
+  if (!plainObject(mapping.defaults.run)) {
+    throw new Error(`${sourcePath} ${owner} defaults.run must be a mapping`);
+  }
+  const shell = mapping.defaults.run.shell;
+  if (shell == null) return "";
+  if (typeof shell !== "string") {
+    throw new Error(`${sourcePath} ${owner} defaults.run.shell must be a string`);
+  }
+  return shell;
+}
+
+function effectiveRunShell(stepShell, jobShell, workflowShell) {
+  if (stepShell != null && typeof stepShell !== "string") return "invalid";
+  return stepShell || jobShell || workflowShell || "";
 }
 
 function workflowJobs(source) {
@@ -249,6 +275,11 @@ function verifyWorkflows(policy = loadPolicy()) {
     if (contract.name !== gate.job_name) {
       throw new Error(
         `${gate.workflow} job ${gate.job} has check name ${contract.name || "missing"}, expected ${gate.job_name}`,
+      );
+    }
+    if (contract.hasCondition || contract.hasContinueOnError) {
+      throw new Error(
+        `${gate.workflow} required job ${gate.job} must be unconditional and fail closed`,
       );
     }
     for (const command of gate.commands) {
