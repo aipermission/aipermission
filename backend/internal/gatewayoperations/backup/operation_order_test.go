@@ -2,7 +2,9 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -13,10 +15,45 @@ import (
 )
 
 type lifecycleStub struct {
-	acquire func(context.Context) (func(), error)
+	acquire         func(context.Context) (func(), error)
+	acquireMutation func(context.Context) (func(), error)
+}
+
+type operationOrderRuntime struct{ identity workspacelifecycle.Identity }
+
+func (runtime *operationOrderRuntime) WorkspaceIdentity() workspacelifecycle.Identity {
+	return runtime.identity
+}
+
+func (*operationOrderRuntime) WorkspaceDatabase() *sql.DB { return nil }
+
+func newOperationOrderLifecycle(t *testing.T) *workspacelifecycle.Service[*operationOrderRuntime] {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "workspace.aipdb")
+	service, err := workspacelifecycle.NewService(workspacelifecycle.Dependencies[*operationOrderRuntime]{
+		DataPath: path,
+		Registry: workspacelifecycle.NewRegistry(path, "default", func(runtime *operationOrderRuntime) workspacelifecycle.Identity {
+			return runtime.identity
+		}),
+		Open: func(context.Context, string, string, string) (*operationOrderRuntime, error) {
+			return nil, errors.New("unused")
+		},
+		Close: func(*operationOrderRuntime) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }
 
 func (l lifecycleStub) AcquireReadContext(ctx context.Context) (func(), error) {
+	return l.acquire(ctx)
+}
+
+func (l lifecycleStub) AcquireMutationContext(ctx context.Context) (func(), error) {
+	if l.acquireMutation != nil {
+		return l.acquireMutation(ctx)
+	}
 	return l.acquire(ctx)
 }
 
@@ -97,7 +134,7 @@ func TestContendedBackupSlotDoesNotBlockExclusiveLifecycleTransition(t *testing.
 	}
 	defer second.Release()
 
-	thirdResult := make(chan *readOperationLease, 1)
+	thirdResult := make(chan *lifecycleOperationLease, 1)
 	thirdError := make(chan error, 1)
 	go func() {
 		lease, acquireErr := component.acquireReadOperation(t.Context())
@@ -138,5 +175,52 @@ func TestContendedBackupSlotDoesNotBlockExclusiveLifecycleTransition(t *testing.
 		t.Fatalf("third operation failed: %v", err)
 	case <-time.After(time.Second):
 		t.Fatal("third operation did not acquire the released slot")
+	}
+}
+
+func TestRealLifecycleAndLimiterCannotInvertOperationLockOrder(t *testing.T) {
+	lifecycle := newOperationOrderLifecycle(t)
+	limiter := &OperationLimiter{}
+	component := New(Dependencies{Lifecycle: lifecycle, AcquireOperation: limiter.Acquire})
+
+	first, err := component.acquireReadOperation(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Release()
+	second, err := component.acquireReadOperation(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Release()
+
+	mutationAcquired := make(chan *lifecycleOperationLease, 1)
+	go func() {
+		lease, acquireErr := component.acquireMutationOperation(t.Context())
+		if acquireErr == nil {
+			mutationAcquired <- lease
+		}
+	}()
+	select {
+	case lease := <-mutationAcquired:
+		lease.Release()
+		t.Fatal("mutation operation bypassed the saturated operation limiter")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	first.ReleaseLifecycle()
+	second.ReleaseLifecycle()
+	probeRelease, err := lifecycle.AcquireMutationContext(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeRelease()
+
+	first.Release()
+	select {
+	case lease := <-mutationAcquired:
+		lease.Release()
+	case <-time.After(time.Second):
+		t.Fatal("mutation operation did not acquire after an operation slot was released")
 	}
 }

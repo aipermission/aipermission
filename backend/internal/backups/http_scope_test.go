@@ -9,7 +9,7 @@ import (
 )
 
 func TestProviderCatalogDoesNotRequireAnUnlockedWorkspace(t *testing.T) {
-	handlers := NewHTTPHandlers(nil)
+	handlers := NewHTTPHandlers(nil, nil)
 	response := httptest.NewRecorder()
 	handlers.ProviderCatalog(response, httptest.NewRequest(http.MethodGet, "/api/backup/providers/catalog", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), ServiceProviderType) {
@@ -20,7 +20,7 @@ func TestProviderCatalogDoesNotRequireAnUnlockedWorkspace(t *testing.T) {
 func TestProviderHandlersFailClosedWhenRequiredScopePortsAreMissing(t *testing.T) {
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
 		return HTTPScope{}, true
-	})
+	}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/backup/providers", nil)
 	response := httptest.NewRecorder()
 	handlers.ListProviders(response, request)
@@ -32,7 +32,7 @@ func TestProviderHandlersFailClosedWhenRequiredScopePortsAreMissing(t *testing.T
 func TestEnableProviderFailsClosedWithoutPasswordAuthorizationPort(t *testing.T) {
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
 		return HTTPScope{}, true
-	})
+	}, nil)
 	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/enable", strings.NewReader(`{"current_password":"secret"}`))
 	request.SetPathValue("id", "1")
 	request.Header.Set("Content-Type", "application/json")

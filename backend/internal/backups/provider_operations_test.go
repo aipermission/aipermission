@@ -20,6 +20,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const (
@@ -68,7 +69,7 @@ func TestQueuedUploadReloadsRotatedProviderCredential(t *testing.T) {
 	acquireStarted := make(chan struct{})
 	allowAcquire := make(chan struct{})
 	scope := providerTestScope(database, databasePath)
-	scope.AcquireOperation = func(ctx context.Context) (func(), error) {
+	acquireOperation := func(ctx context.Context) (func(), error) {
 		close(acquireStarted)
 		select {
 		case <-allowAcquire:
@@ -80,7 +81,7 @@ func TestQueuedUploadReloadsRotatedProviderCredential(t *testing.T) {
 	scope.CreateSnapshot = func(context.Context) (DatabaseSnapshot, error) {
 		return DatabaseSnapshot{Path: snapshotPath}, nil
 	}
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true })
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, acquireOperation))
 	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", nil)
 	request.SetPathValue("id", strconv.FormatInt(provider.ID, 10))
 	response := httptest.NewRecorder()
@@ -131,7 +132,7 @@ func TestQueuedDownloadRejectsProviderDisabledWhileWaiting(t *testing.T) {
 	acquireStarted := make(chan struct{})
 	allowAcquire := make(chan struct{})
 	scope := providerTestScope(database, databasePath)
-	scope.AcquireOperation = func(ctx context.Context) (func(), error) {
+	acquireOperation := func(ctx context.Context) (func(), error) {
 		close(acquireStarted)
 		select {
 		case <-allowAcquire:
@@ -140,7 +141,7 @@ func TestQueuedDownloadRejectsProviderDisabledWhileWaiting(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	}
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true })
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, acquireOperation))
 	request := httptest.NewRequest(http.MethodGet, "/api/backup/providers/1/records/1/download", nil)
 	request.SetPathValue("id", strconv.FormatInt(provider.ID, 10))
 	request.SetPathValue("record_id", strconv.FormatInt(record.ID, 10))
@@ -260,11 +261,24 @@ func providerTestScope(database *sql.DB, databasePath string) HTTPScope {
 	return HTTPScope{
 		Database: database, DatabaseID: "db-test", DatabaseName: "Test Database",
 		DatabasePath: databasePath, WorkspaceUUID: "workspace-test", InstallationDataPath: filepath.Dir(databasePath),
-		Secrets:          testProviderSecretCodec{},
-		Mutate:           transactionRunner(database, nil),
-		AuditRequired:    func(context.Context, string, any) error { return nil },
-		Observe:          func(context.Context, string, any) {},
-		AcquireOperation: func(context.Context) (func(), error) { return func() {}, nil },
+		Secrets:       testProviderSecretCodec{},
+		Mutate:        transactionRunner(database, nil),
+		AuditRequired: func(context.Context, string, any) error { return nil },
+		Observe:       func(context.Context, string, any) {},
+	}
+}
+
+func providerTestOperationScope(scope HTTPScope, acquire func(context.Context) (func(), error)) OperationHTTPScopeProvider {
+	if acquire == nil {
+		acquire = func(context.Context) (func(), error) { return func() {}, nil }
+	}
+	return func(w http.ResponseWriter, r *http.Request) (HTTPScope, func(), bool) {
+		release, err := acquire(r.Context())
+		if err != nil {
+			httptransport.WriteError(w, http.StatusRequestTimeout, "backup operation was canceled")
+			return HTTPScope{}, nil, false
+		}
+		return scope, release, true
 	}
 }
 

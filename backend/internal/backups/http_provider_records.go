@@ -73,21 +73,12 @@ func (h *HTTPHandlers) BackupFreshness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := h.resolve(w, requireOperation)
+	const requirements = requireDatabase | requireDatabaseID | requireInstallationPath | requireSecrets | requireMutation | requireRequiredAudit | requireSnapshot
+	runtime, releaseBackup, ok := h.resolveOperation(w, r, requirements)
 	if !ok {
 		return
 	}
-	releaseBackup, err := runtime.AcquireOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "database backup was canceled")
-		return
-	}
 	defer releaseBackup()
-	const requirements = requireDatabase | requireDatabaseID | requireInstallationPath | requireSecrets | requireMutation | requireRequiredAudit | requireSnapshot
-	if !scopeSupports(runtime, requirements) {
-		httptransport.WriteInternalError(w)
-		return
-	}
 	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
 	if !ok {
 		return
@@ -241,21 +232,12 @@ func (h *HTTPHandlers) DeleteProviderBackupRecords(w http.ResponseWriter, r *htt
 }
 
 func (h *HTTPHandlers) DownloadProviderRecord(w http.ResponseWriter, r *http.Request) {
-	runtime, ok := h.resolve(w, requireOperation)
+	const requirements = requireDatabase | requireDatabasePath | requireSecrets | requireObservation
+	runtime, releaseBackup, ok := h.resolveOperation(w, r, requirements)
 	if !ok {
 		return
 	}
-	releaseBackup, err := runtime.AcquireOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "backup download was canceled")
-		return
-	}
 	defer releaseBackup()
-	const requirements = requireDatabase | requireDatabasePath | requireSecrets | requireObservation
-	if !scopeSupports(runtime, requirements) {
-		httptransport.WriteInternalError(w)
-		return
-	}
 	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
 	if !ok {
 		return

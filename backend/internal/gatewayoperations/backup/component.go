@@ -40,6 +40,7 @@ func (limiter *OperationLimiter) Acquire(ctx context.Context) (func(), error) {
 
 type Lifecycle interface {
 	AcquireReadContext(context.Context) (func(), error)
+	AcquireMutationContext(context.Context) (func(), error)
 	Import(context.Context, workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error)
 }
 
@@ -72,12 +73,12 @@ type Dependencies struct {
 
 type Component struct{ dependencies Dependencies }
 
-type readOperationLease struct {
+type lifecycleOperationLease struct {
 	releaseLifecycle func()
 	releaseOperation func()
 }
 
-func (component *Component) acquireReadOperation(ctx context.Context) (*readOperationLease, error) {
+func (component *Component) acquireLifecycleOperation(ctx context.Context, acquireLifecycle func(context.Context) (func(), error)) (*lifecycleOperationLease, error) {
 	if component == nil || component.dependencies.Lifecycle == nil {
 		return nil, ErrLifecycleUnavailable
 	}
@@ -85,22 +86,36 @@ func (component *Component) acquireReadOperation(ctx context.Context) (*readOper
 	if err != nil {
 		return nil, err
 	}
-	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(ctx)
+	releaseLifecycle, err := acquireLifecycle(ctx)
 	if err != nil {
 		releaseOperation()
 		return nil, err
 	}
-	return &readOperationLease{releaseLifecycle: releaseLifecycle, releaseOperation: releaseOperation}, nil
+	return &lifecycleOperationLease{releaseLifecycle: releaseLifecycle, releaseOperation: releaseOperation}, nil
 }
 
-func (lease *readOperationLease) ReleaseLifecycle() {
+func (component *Component) acquireReadOperation(ctx context.Context) (*lifecycleOperationLease, error) {
+	if component == nil || component.dependencies.Lifecycle == nil {
+		return nil, ErrLifecycleUnavailable
+	}
+	return component.acquireLifecycleOperation(ctx, component.dependencies.Lifecycle.AcquireReadContext)
+}
+
+func (component *Component) acquireMutationOperation(ctx context.Context) (*lifecycleOperationLease, error) {
+	if component == nil || component.dependencies.Lifecycle == nil {
+		return nil, ErrLifecycleUnavailable
+	}
+	return component.acquireLifecycleOperation(ctx, component.dependencies.Lifecycle.AcquireMutationContext)
+}
+
+func (lease *lifecycleOperationLease) ReleaseLifecycle() {
 	if lease != nil && lease.releaseLifecycle != nil {
 		lease.releaseLifecycle()
 		lease.releaseLifecycle = nil
 	}
 }
 
-func (lease *readOperationLease) Release() {
+func (lease *lifecycleOperationLease) Release() {
 	if lease == nil {
 		return
 	}
@@ -147,7 +162,7 @@ func (component *Component) HTTPHandlers() Handlers {
 		Download: component.downloadDatabase, Import: component.importDatabase,
 		RestoreRemote:   component.restoreTransientRemoteBackup,
 		RestoreProvider: component.restoreProviderRecord,
-		Providers:       backups.NewHTTPHandlers(component.providerScope),
+		Providers:       backups.NewHTTPHandlers(component.providerScope, component.providerOperationScope),
 		Transient:       backups.NewTransientHTTPHandlers(),
 	}
 }

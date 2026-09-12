@@ -203,7 +203,13 @@ func IsUnboundedRequestRoute(path string) bool {
 	return strings.HasPrefix(path, "/api/connector-targets/") && (strings.HasSuffix(path, "/backup") || strings.HasSuffix(path, "/restore"))
 }
 
-func ManagesLifecycleLock(path string) bool { return path == "/api/backup/download" }
+func ManagesLifecycleLock(path string) bool {
+	if path == "/api/backup/download" {
+		return true
+	}
+	return strings.HasPrefix(path, "/api/backup/providers/") &&
+		(strings.HasSuffix(path, "/upload") || strings.HasSuffix(path, "/download") || strings.HasSuffix(path, "/restore"))
+}
 
 func WithRequestDeadline(next http.Handler, timeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

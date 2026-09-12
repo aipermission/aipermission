@@ -36,7 +36,7 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 		Database: runtime.Database, DatabaseID: runtime.DatabaseID,
 		DatabaseName: component.dependencies.CurrentDatabaseName(), DatabasePath: runtime.DatabasePath,
 		WorkspaceUUID: runtime.WorkspaceID, InstallationDataPath: component.dependencies.DataPath,
-		Secrets: providerSecretCodec{runtime: runtime}, AcquireOperation: component.dependencies.AcquireOperation,
+		Secrets: providerSecretCodec{runtime: runtime},
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return runtime.Mutate(ctx, action, payload, mutate)
 		},
@@ -66,16 +66,26 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 	}, true
 }
 
+func (component *Component) providerOperationScope(w http.ResponseWriter, r *http.Request) (backups.HTTPScope, func(), bool) {
+	lease, err := component.acquireReadOperation(r.Context())
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "backup operation was canceled")
+		return backups.HTTPScope{}, nil, false
+	}
+	scope, ok := component.providerScope(w)
+	if !ok {
+		lease.Release()
+		return backups.HTTPScope{}, nil, false
+	}
+	return scope, lease.Release, true
+}
+
 type restoreProviderRequest struct {
 	DatabaseName     string `json:"database_name"`
 	DatabasePassword string `json:"database_password"`
 }
 
 func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http.Request) {
-	scope, ok := component.providerScope(w)
-	if !ok {
-		return
-	}
 	providerID, ok := parsePositivePathID(w, r, "id", "id")
 	if !ok {
 		return
@@ -89,12 +99,16 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 		return
 	}
 	defer clearStrings(&request.DatabasePassword)
-	release, err := scope.AcquireOperation(r.Context())
+	lease, err := component.acquireMutationOperation(r.Context())
 	if err != nil {
 		httptransport.WriteError(w, http.StatusRequestTimeout, "backup restore was canceled")
 		return
 	}
-	defer release()
+	defer lease.Release()
+	scope, ok := component.providerScope(w)
+	if !ok {
+		return
+	}
 	prepared, err := backups.PrepareProviderRestore(r.Context(), scope, providerID, recordID)
 	if err != nil {
 		backups.WriteProviderHTTPError(w, err)

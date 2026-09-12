@@ -130,6 +130,29 @@ func TestProviderRecordRestoreIsLifecycleMutation(t *testing.T) {
 	}
 }
 
+func TestBackupOperationRoutesManageLifecycleAfterOperationAdmission(t *testing.T) {
+	for _, path := range []string{
+		"/api/backup/download",
+		"/api/backup/providers/3/upload",
+		"/api/backup/providers/3/records/9/download",
+		"/api/backup/providers/3/records/9/restore",
+	} {
+		if !ManagesLifecycleLock(path) {
+			t.Errorf("backup operation route %s must own operation-before-lifecycle ordering", path)
+		}
+	}
+	for _, path := range []string{
+		"/api/backup/providers",
+		"/api/backup/providers/3",
+		"/api/backup/providers/3/records",
+		"/api/backup/providers/3/prune",
+	} {
+		if ManagesLifecycleLock(path) {
+			t.Errorf("ordinary provider route %s unexpectedly manages its lifecycle lock", path)
+		}
+	}
+}
+
 func TestRemoteBrowseKeepsItsLongerBoundedDeadline(t *testing.T) {
 	if got := RequestTimeoutForPath("/api/file-transfers/expand", OrdinaryRequestTimeout); got != RemoteBrowseRequestTimeout {
 		t.Fatalf("remote expand timeout = %s, want %s", got, RemoteBrowseRequestTimeout)

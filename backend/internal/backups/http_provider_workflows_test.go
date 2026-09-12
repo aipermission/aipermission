@@ -104,7 +104,7 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 	scope.AuthorizePassword = func(_ http.ResponseWriter, _ *http.Request, password string) bool {
 		return password == "M7!river-Quartz_92fox"
 	}
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true })
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, nil))
 
 	createdResponse := performBackupJSON(t, handlers.CreateProvider, http.MethodPost, "/", nil, backupProviderRequest{
 		ProviderType: ServiceProviderType, Name: "Remote backup",
@@ -188,7 +188,7 @@ func TestProviderHTTPHandlersOwnRecordsAndRetention(t *testing.T) {
 	scope.Observe = func(_ context.Context, action string, _ any) {
 		observedActions = append(observedActions, action)
 	}
-	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true })
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, nil))
 	pathValues := map[string]string{"id": strconv.FormatInt(provider.ID, 10)}
 
 	recordsResponse := performBackupJSON(t, handlers.ListProviderRecords, http.MethodGet, "/", pathValues, nil)

@@ -42,17 +42,20 @@ type HTTPScope struct {
 	Mutate               auditedmutation.Runner
 	AuditRequired        RequiredAudit
 	Observe              ObservationAudit
-	AcquireOperation     OperationLease
 	CreateSnapshot       Snapshotter
 	AuthorizePassword    DatabasePasswordAuthorizer
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)
+type OperationHTTPScopeProvider func(http.ResponseWriter, *http.Request) (HTTPScope, func(), bool)
 
-type HTTPHandlers struct{ scope HTTPScopeProvider }
+type HTTPHandlers struct {
+	scope          HTTPScopeProvider
+	operationScope OperationHTTPScopeProvider
+}
 
-func NewHTTPHandlers(scope HTTPScopeProvider) *HTTPHandlers {
-	return &HTTPHandlers{scope: scope}
+func NewHTTPHandlers(scope HTTPScopeProvider, operationScope OperationHTTPScopeProvider) *HTTPHandlers {
+	return &HTTPHandlers{scope: scope, operationScope: operationScope}
 }
 
 type scopeRequirements uint16
@@ -67,7 +70,6 @@ const (
 	requireMutation
 	requireRequiredAudit
 	requireObservation
-	requireOperation
 	requireSnapshot
 	requirePasswordAuthorization
 )
@@ -98,7 +100,25 @@ func scopeSupports(scope HTTPScope, requirements scopeRequirements) bool {
 	valid = valid && (requirements&requireMutation == 0 || scope.Mutate != nil)
 	valid = valid && (requirements&requireRequiredAudit == 0 || scope.AuditRequired != nil)
 	valid = valid && (requirements&requireObservation == 0 || scope.Observe != nil)
-	valid = valid && (requirements&requireOperation == 0 || scope.AcquireOperation != nil)
 	valid = valid && (requirements&requireSnapshot == 0 || scope.CreateSnapshot != nil)
 	return valid && (requirements&requirePasswordAuthorization == 0 || scope.AuthorizePassword != nil)
+}
+
+func (h *HTTPHandlers) resolveOperation(w http.ResponseWriter, r *http.Request, requirements scopeRequirements) (HTTPScope, func(), bool) {
+	if h == nil || h.operationScope == nil {
+		httptransport.WriteInternalError(w)
+		return HTTPScope{}, nil, false
+	}
+	scope, release, ok := h.operationScope(w, r)
+	if !ok {
+		return HTTPScope{}, nil, false
+	}
+	if release == nil || !scopeSupports(scope, requirements) {
+		if release != nil {
+			release()
+		}
+		httptransport.WriteInternalError(w)
+		return HTTPScope{}, nil, false
+	}
+	return scope, release, true
 }
