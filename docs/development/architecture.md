@@ -119,11 +119,11 @@ place.
 
 ## Backend Boundaries
 
-- `internal/api`: HTTP routes, MCP authentication and delivery fencing, UI
-  session/CSRF, audit adapters, and workspace lifecycle composition. It imports
-  only explicitly approved gateway packages and never their runtime internals.
-  Domain services own action, Vault-request, transfer-job, and runtime-state
-  rules; handlers adapt those services to the unlocked database runtime.
+- `internal/api`: the HTTP/MCP transport and process-composition boundary. Its
+  `httptransport` child owns route declarations, request deadlines, local-only
+  policy, session/CSRF enforcement, and response security policy. API adapters
+  translate transport DTOs into narrow gateway-owner ports; they do not own
+  action, Vault-request, transfer-job, or runtime-state rules.
 - `internal/connectors`: connector contracts and built-in connector
   implementations. Connector packages describe target schemas, credential
   schemas, help/actions, validation, and execution. They do not own
@@ -176,9 +176,10 @@ place.
   message, and maintenance application boundary. It owns workspace-scoped
   command worker admission, cancellation, and terminal persistence. Its
   `transfer` boundary owns file-transfer
-  authorization snapshots, connector adapter dispatch, routes, and workspace
-  initialization. The transfer boundary's `runtime` child owns workers and
-  lifecycle state; `internal/api` may import the boundary, never that child.
+  authorization snapshots, connector adapter dispatch, and workspace
+  initialization. HTTP route ownership remains in `internal/api/httptransport`.
+  The transfer boundary's `runtime` child owns workers and lifecycle state;
+  `internal/api` may import the boundary, never that child.
 - `internal/transferjobs`: file/batch cancellation and pause gates isolated per
   unlocked runtime, plus terminal persistence recovery through narrow storage
   ports. Runtime shutdown closes the registry and immediately cancels late
