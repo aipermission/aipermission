@@ -19,30 +19,13 @@ func (r *Runtime) Execute(ctx context.Context, request vaultrequests.Request) (a
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	approval, err := vaultrequests.DecodeApprovalContext(request.ApprovalContext)
-	if err != nil {
-		return nil, err
-	}
-	if approval.Schema != vaultrequests.ApprovalContextSchema || approval.TokenID != request.TokenID ||
-		approval.ProjectID != request.ProjectID || approval.ActionName != request.ActionName ||
-		approval.WorkspaceID != r.workspaceID || approval.RuntimeInstanceID != r.runtimeInstanceID {
-		return nil, staleContext("Vault approval context is stale")
-	}
-	inputHash, err := hashCanonical(request.Input)
-	if err != nil || inputHash != approval.InputHash {
-		return nil, staleContext("Vault action input changed; send a fresh request")
-	}
-	hash, err := hashCanonical(approval)
-	if err != nil || hash != request.ApprovalContextHash {
-		return nil, staleContext("Vault approval context hash is stale")
-	}
-	capability, err := r.validateAuthorization(ctx, request, approval)
+	approval, capability, err := r.authorizeRequest(ctx, request)
 	if err != nil {
 		return nil, err
 	}
 	switch request.ActionName {
 	case vaultrequests.ActionGenerateItem:
-		return r.executeGenerate(ctx, request)
+		return nil, errors.New("Vault item generation requires transactional request finalization")
 	case vaultrequests.ActionRestartSession:
 		return r.executeSessionApply(ctx, request, approval, capability)
 	default:
@@ -50,50 +33,120 @@ func (r *Runtime) Execute(ctx context.Context, request vaultrequests.Request) (a
 	}
 }
 
-func (r *Runtime) executeGenerate(ctx context.Context, request vaultrequests.Request) (any, error) {
+func (r *Runtime) authorizeRequest(ctx context.Context, request vaultrequests.Request) (vaultrequests.ApprovalContext, accesscontrol.Capability, error) {
+	approval, err := vaultrequests.DecodeApprovalContext(request.ApprovalContext)
+	if err != nil {
+		return vaultrequests.ApprovalContext{}, accesscontrol.Capability{}, err
+	}
+	if approval.Schema != vaultrequests.ApprovalContextSchema || approval.TokenID != request.TokenID ||
+		approval.ProjectID != request.ProjectID || approval.ActionName != request.ActionName ||
+		approval.WorkspaceID != r.workspaceID || approval.RuntimeInstanceID != r.runtimeInstanceID {
+		return vaultrequests.ApprovalContext{}, accesscontrol.Capability{}, staleContext("Vault approval context is stale")
+	}
+	inputHash, err := hashCanonical(request.Input)
+	if err != nil || inputHash != approval.InputHash {
+		return vaultrequests.ApprovalContext{}, accesscontrol.Capability{}, staleContext("Vault action input changed; send a fresh request")
+	}
+	hash, err := hashCanonical(approval)
+	if err != nil || hash != request.ApprovalContextHash {
+		return vaultrequests.ApprovalContext{}, accesscontrol.Capability{}, staleContext("Vault approval context hash is stale")
+	}
+	capability, err := r.validateAuthorization(ctx, request, approval)
+	if err != nil {
+		return vaultrequests.ApprovalContext{}, accesscontrol.Capability{}, err
+	}
+	return approval, capability, nil
+}
+
+type TransactionalObservation struct {
+	Action  string
+	Payload any
+}
+
+type TransactionalExecution struct {
+	Run     func(context.Context, *sql.Tx) (any, []TransactionalObservation, error)
+	Release func()
+}
+
+// PrepareTransactional validates and leases database-contained effects before
+// the caller opens SQLCipher's single-connection transaction. External session
+// effects deliberately stay on the compensating workflow.
+func (r *Runtime) PrepareTransactional(ctx context.Context, request vaultrequests.Request) (TransactionalExecution, bool, error) {
+	if request.ActionName != vaultrequests.ActionGenerateItem {
+		return TransactionalExecution{}, false, nil
+	}
+	if err := r.validate(); err != nil {
+		return TransactionalExecution{}, true, err
+	}
+	if _, _, err := r.authorizeRequest(ctx, request); err != nil {
+		return TransactionalExecution{}, true, err
+	}
+	createInput, release, err := r.prepareGenerate(ctx, request)
+	if err != nil {
+		return TransactionalExecution{}, true, err
+	}
+	return TransactionalExecution{
+		Release: release,
+		Run: func(runCtx context.Context, tx *sql.Tx) (any, []TransactionalObservation, error) {
+			output, payload, err := r.executeGenerateInTransaction(runCtx, tx, request, createInput)
+			if err != nil {
+				return nil, nil, err
+			}
+			return output, []TransactionalObservation{{Action: "vault.item.created", Payload: payload}}, nil
+		},
+	}, true, nil
+}
+
+func (r *Runtime) executeGenerateInTransaction(ctx context.Context, tx *sql.Tx, request vaultrequests.Request, createInput projectvault.CreateInput) (any, map[string]any, error) {
+	if tx == nil {
+		return nil, nil, ErrRuntimeUnavailable
+	}
+	item, err := r.itemMutations.Create(ctx, tx, createInput)
+	if err != nil {
+		return nil, nil, err
+	}
+	output := generatedItemOutput(item)
+	payload := map[string]any{
+		"vault_item_id": item.ID, "owner_project_id": item.OwnerProjectID,
+		"secret_type": item.SecretType, "source": item.Source,
+	}
+	return output, payload, nil
+}
+
+func (r *Runtime) prepareGenerate(ctx context.Context, request vaultrequests.Request) (projectvault.CreateInput, func(), error) {
 	if !r.allowGenerate(request.TokenID) {
-		return nil, errors.New("Vault generation rate limit exceeded; wait before generating another item")
+		return projectvault.CreateInput{}, nil, errors.New("Vault generation rate limit exceeded; wait before generating another item")
 	}
 	input, err := vaultrequests.DecodeGenerateInput(request.Input)
 	if err != nil {
-		return nil, err
+		return projectvault.CreateInput{}, nil, err
 	}
 	if input.Name == "" || input.GeneratorKind == "" {
-		return nil, errors.New("name and generator_kind are required")
+		return projectvault.CreateInput{}, nil, errors.New("name and generator_kind are required")
 	}
 	release, err := r.delivery.AcquireExclusive(ctx)
 	if err != nil {
-		return nil, err
+		return projectvault.CreateInput{}, nil, err
 	}
-	defer release()
 	approval, err := vaultrequests.DecodeApprovalContext(request.ApprovalContext)
 	if err != nil {
-		return nil, err
+		release()
+		return projectvault.CreateInput{}, nil, err
 	}
 	if _, err := r.validateAuthorization(ctx, request, approval); err != nil {
-		return nil, err
+		release()
+		return projectvault.CreateInput{}, nil, err
 	}
-	createInput := projectvault.CreateInput{
+	return projectvault.CreateInput{
 		Name: input.Name, OwnerProjectID: request.ProjectID, SharedProjectIDs: input.SharedProjectIDs,
 		SecretType: input.SecretType, Provider: input.Provider, Environment: input.Environment,
 		Description: input.Description, ExpiresAt: input.ExpiresAt,
 		ExpiryWarningDays: input.ExpiryWarningDays, Source: "generated",
 		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.ProjectUsageNotes(),
-	}
-	var item projectvault.Item
-	err = r.mutations.WithMutation(ctx, request.TokenID, "vault.item.created", func() any {
-		return map[string]any{
-			"vault_item_id": item.ID, "owner_project_id": item.OwnerProjectID,
-			"secret_type": item.SecretType, "source": item.Source,
-		}
-	}, func(tx *sql.Tx) error {
-		var createErr error
-		item, createErr = r.itemMutations.Create(ctx, tx, createInput)
-		return createErr
-	})
-	if err != nil {
-		return nil, err
-	}
+	}, release, nil
+}
+
+func generatedItemOutput(item projectvault.Item) map[string]any {
 	return map[string]any{
 		"item": map[string]any{
 			"vault_ref": "vault:" + strconv.FormatInt(item.ID, 10),
@@ -103,7 +156,7 @@ func (r *Runtime) executeGenerate(ctx context.Context, request vaultrequests.Req
 			"metadata_revision": item.MetadataRevision,
 		},
 		"secret_returned": false,
-	}, nil
+	}
 }
 
 func (r *Runtime) executeSessionApply(

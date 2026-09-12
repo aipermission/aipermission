@@ -57,12 +57,14 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 		},
 		Action: gatewayvault.ActionRuntimePorts{
 			Connector: ports.Connector,
-			Mutate: func(ctx context.Context, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-				return observation.withObservationMutation(ctx, handle, "mcp", &tokenID, 0, action, payload, mutate)
-			},
 		},
 		Requests: gatewayvault.RequestRuntimePorts{
 			Store: observation.vaultRequestStoreFactory(handle),
+			Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayvault.RequestObservationAppender) error) error {
+				return observation.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendObservation observationAppender) error {
+					return mutate(tx, gatewayvault.RequestObservationAppender(appendObservation))
+				})
+			},
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return observation.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
 			},

@@ -140,6 +140,9 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 			harness.executeCalls++
 			return map[string]any{"request_id": request.ID}, nil
 		},
+		ExecuteAtomic: func(context.Context, Request, string, string, string) (WorkflowResult, bool, error) {
+			return WorkflowResult{}, false, nil
+		},
 		Compensate: func(context.Context, Request, any) error {
 			harness.compensations++
 			return nil

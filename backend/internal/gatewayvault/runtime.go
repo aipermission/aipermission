@@ -52,16 +52,18 @@ type ProjectRuntimePorts struct {
 
 type ActionRuntimePorts struct {
 	Connector ConnectorPort
-	Mutate    func(context.Context, int64, string, func() any, func(*sql.Tx) error) error
 }
 
 type RequestRuntimePorts struct {
 	Store              RequestStoreFactory
 	Mutate             func(context.Context, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
+	Transaction        func(context.Context, func(*sql.Tx, RequestObservationAppender) error) error
 	Observe            func(context.Context, string, *int64, int64, string, any)
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
 }
+
+type RequestObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error
 
 type RequestStoreFactory func(context.Context) vaultrequests.RequestStore
 

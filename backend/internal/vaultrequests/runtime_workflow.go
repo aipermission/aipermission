@@ -11,6 +11,13 @@ func (r *Runtime) workflowPorts(actor, userNote, startedAction, finishedActionPr
 			return r.claim(ctx, id, actor, startedAction, userNote)
 		},
 		Execute: r.execute,
+		ExecuteAtomic: func(ctx context.Context, request Request) (WorkflowResult, bool, error) {
+			if r.executeAtomic == nil {
+				return WorkflowResult{}, false, nil
+			}
+			return r.executeAtomic(ctx, request, actor, userNote, finishedActionPrefix)
+		},
+		FinalizationTimeout: r.executionTimeout,
 		Complete: func(ctx context.Context, id int64, status string, output any, errorText string) (Request, error) {
 			return r.complete(ctx, id, status, output, errorText, userNote, actor, finishedActionPrefix+"."+status)
 		},

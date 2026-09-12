@@ -86,6 +86,7 @@ type VaultActionApplication interface {
 	AuthorizeOutput(context.Context, vaultrequests.Request) bool
 	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
 	Execute(context.Context, vaultrequests.Request) (any, error)
+	PrepareTransactional(context.Context, vaultrequests.Request) (vaultactions.TransactionalExecution, bool, error)
 	Compensate(context.Context, vaultrequests.Request, any) error
 	IsStale(error) bool
 }
@@ -216,18 +217,6 @@ func (port actionDeliveryPort) AcquireExclusive(ctx context.Context) (func(), er
 	return port.runtime.Session.AcquireExclusive(ctx)
 }
 
-type actionMutationPort struct {
-	component *Component
-	runtime   Runtime
-}
-
-func (port actionMutationPort) WithMutation(ctx context.Context, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-	if port.component == nil || port.runtime.Action.Mutate == nil {
-		return vaultactions.ErrRuntimeUnavailable
-	}
-	return port.runtime.Action.Mutate(ctx, tokenID, action, payload, mutate)
-}
-
 func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.ReadToken == nil || runtime.Session.Sessions == nil ||
 		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Session.MCPStarted == nil ||
@@ -244,7 +233,7 @@ func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplicati
 		ItemMutations: actionItemPort{store: items}, Sessions: runtime.Session.Sessions,
 		Leases: runtime.Session.Leases, PersistedLeases: vaultsessions.NewPersistence(runtime.Storage.Database),
 		Connector: actionConnectorPort{delegate: runtime.Action.Connector}, Delivery: actionDeliveryPort{runtime: runtime},
-		Mutations: actionMutationPort{component: component, runtime: runtime}, WorkspaceID: runtime.Storage.WorkspaceID,
+		WorkspaceID:       runtime.Storage.WorkspaceID,
 		RuntimeInstanceID: runtime.Session.RuntimeInstanceID, MCPStarted: runtime.Session.MCPStarted,
 		AllowGenerate: func(tokenID int64) bool {
 			return component.dependencies.AllowGenerate(fmt.Sprintf("vault-generate:%s:%d", runtime.Storage.DatabaseID, tokenID))

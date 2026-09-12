@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func workflowPorts(state *workflowState) WorkflowPorts {
@@ -60,6 +61,40 @@ func TestRunClaimedWorkflowDoesNotClaimAlwaysRequestAgain(t *testing.T) {
 	}
 	if state.claimed != 0 || state.executed != 1 {
 		t.Fatalf("state=%#v", state)
+	}
+}
+
+func TestRunClaimedWorkflowUsesAtomicExecutorWhenHandled(t *testing.T) {
+	state := &workflowState{}
+	ports := workflowPorts(state)
+	ports.ExecuteAtomic = func(context.Context, Request) (WorkflowResult, bool, error) {
+		return WorkflowResult{Request: Request{ID: 7, Status: StatusCompleted}}, true, nil
+	}
+	result, err := RunClaimedWorkflow(t.Context(), Request{ID: 7, Status: StatusRunning}, ports)
+	if err != nil || result.Request.Status != StatusCompleted || state.executed != 0 || len(state.completions) != 0 {
+		t.Fatalf("result=%#v state=%#v err=%v", result, state, err)
+	}
+}
+
+func TestRunClaimedWorkflowFinalizesAfterExecutionDeadline(t *testing.T) {
+	state := &workflowState{}
+	ports := workflowPorts(state)
+	ports.FinalizationTimeout = time.Second
+	ports.Execute = func(ctx context.Context, _ Request) (any, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	ports.Complete = func(ctx context.Context, _ int64, status string, _ any, _ string) (Request, error) {
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("finalization inherited execution deadline: %v", err)
+		}
+		return Request{ID: 7, Status: status}, nil
+	}
+	executionCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	result, err := RunClaimedWorkflow(executionCtx, Request{ID: 7, Status: StatusRunning}, ports)
+	if err != nil || result.Request.Status != StatusFailed || !errors.Is(result.ExecutionError, context.DeadlineExceeded) {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 

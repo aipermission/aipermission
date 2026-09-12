@@ -50,6 +50,7 @@ type ActionPreparer func(context.Context, int64, string, string, map[string]any)
 type OutputAuthorizer func(context.Context, Request) bool
 type RequestLimiter func(int64) bool
 type EffectExecutor func(context.Context, Request) (any, error)
+type AtomicEffectExecutor func(context.Context, Request, string, string, string) (WorkflowResult, bool, error)
 type EffectCompensator func(context.Context, Request, any) error
 type ProjectionRepairer func(context.Context, int64) error
 type ErrorRedactor func(context.Context, error) string
@@ -84,6 +85,7 @@ type RuntimeDependencies struct {
 	AuthorizeOutput  OutputAuthorizer
 	AllowRequest     RequestLimiter
 	Execute          EffectExecutor
+	ExecuteAtomic    AtomicEffectExecutor
 	Compensate       EffectCompensator
 	RepairProjection ProjectionRepairer
 	RedactError      ErrorRedactor
@@ -99,6 +101,7 @@ type Runtime struct {
 	authorizeOutput  OutputAuthorizer
 	allowRequest     RequestLimiter
 	execute          EffectExecutor
+	executeAtomic    AtomicEffectExecutor
 	compensate       EffectCompensator
 	repairProjection ProjectionRepairer
 	redactError      ErrorRedactor
@@ -110,7 +113,7 @@ type Runtime struct {
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if dependencies.Store == nil || dependencies.Mutations == nil || dependencies.Prepare == nil ||
 		dependencies.AuthorizeOutput == nil || dependencies.AllowRequest == nil || dependencies.Execute == nil ||
-		dependencies.Compensate == nil || dependencies.RepairProjection == nil || dependencies.RedactError == nil ||
+		dependencies.ExecuteAtomic == nil || dependencies.Compensate == nil || dependencies.RepairProjection == nil || dependencies.RedactError == nil ||
 		dependencies.IsStale == nil || dependencies.MCPStarted == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -121,7 +124,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	return &Runtime{
 		store: dependencies.Store, mutations: dependencies.Mutations,
 		prepare: dependencies.Prepare, authorizeOutput: dependencies.AuthorizeOutput,
-		allowRequest: dependencies.AllowRequest, execute: dependencies.Execute,
+		allowRequest: dependencies.AllowRequest, execute: dependencies.Execute, executeAtomic: dependencies.ExecuteAtomic,
 		compensate: dependencies.Compensate, repairProjection: dependencies.RepairProjection,
 		redactError: dependencies.RedactError, isStale: dependencies.IsStale,
 		mcpStarted: dependencies.MCPStarted, executionTimeout: timeout,
@@ -131,7 +134,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 func (r *Runtime) validate() error {
 	if r == nil || r.store == nil || r.mutations == nil || r.prepare == nil || r.authorizeOutput == nil ||
 		r.allowRequest == nil || r.execute == nil || r.compensate == nil || r.repairProjection == nil ||
-		r.redactError == nil || r.isStale == nil || r.mcpStarted == nil || r.executionTimeout <= 0 {
+		r.executeAtomic == nil || r.redactError == nil || r.isStale == nil || r.mcpStarted == nil || r.executionTimeout <= 0 {
 		return ErrRuntimeUnavailable
 	}
 	return nil

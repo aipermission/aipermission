@@ -39,20 +39,6 @@ type testDeliveryGate struct{}
 func (testDeliveryGate) AcquireDelivery(context.Context) (func(), error)  { return func() {}, nil }
 func (testDeliveryGate) AcquireExclusive(context.Context) (func(), error) { return func() {}, nil }
 
-type testMutationPort struct{ database *sql.DB }
-
-func (p testMutationPort) WithMutation(ctx context.Context, _ int64, _ string, _ func() any, mutate func(*sql.Tx) error) error {
-	tx, err := p.database.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := mutate(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 type testProjectPort struct{ store *projectstore.Store }
 
 func (p testProjectPort) ResolveRef(ctx context.Context, ref string) (Project, bool, error) {
@@ -166,7 +152,7 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 		SessionItems:  testItemPort{store: itemStore},
 		ItemMutations: testItemPort{store: itemStore},
 		Sessions:      testSessions{}, Leases: testLeases{}, PersistedLeases: testLeasePersistence{},
-		Connector: testConnectorPort{}, Delivery: testDeliveryGate{}, Mutations: testMutationPort{database: database},
+		Connector: testConnectorPort{}, Delivery: testDeliveryGate{},
 		WorkspaceID: "workspace", RuntimeInstanceID: "runtime", MCPStarted: func() bool { return true },
 		AllowGenerate: func(int64) bool { return true },
 	})
@@ -258,8 +244,21 @@ func TestExecuteGenerateRejectsTamperingAndCompensatesCreatedItem(t *testing.T) 
 		t.Fatalf("tampered input error = %v", err)
 	}
 
-	output, err := fixture.runtime.Execute(t.Context(), request)
+	execution, handled, err := fixture.runtime.PrepareTransactional(t.Context(), request)
+	if err != nil || !handled || execution.Run == nil || execution.Release == nil {
+		t.Fatalf("prepare transactional generate handled=%v execution=%#v err=%v", handled, execution, err)
+	}
+	defer execution.Release()
+	tx, err := fixture.database.BeginTx(t.Context(), nil)
 	if err != nil {
+		t.Fatal(err)
+	}
+	output, observations, err := execution.Run(t.Context(), tx)
+	if err != nil || len(observations) != 1 || observations[0].Action != "vault.item.created" {
+		_ = tx.Rollback()
+		t.Fatalf("transactional generate observations=%#v err=%v", observations, err)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	payload, ok := output.(map[string]any)

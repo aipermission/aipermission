@@ -43,10 +43,6 @@ type DeliveryGate interface {
 	AcquireExclusive(context.Context) (func(), error)
 }
 
-type MutationPort interface {
-	WithMutation(context.Context, int64, string, func() any, func(*sql.Tx) error) error
-}
-
 type Project struct {
 	ID   int64
 	Name string
@@ -109,7 +105,6 @@ type Dependencies struct {
 	PersistedLeases   LeasePersistence
 	Connector         ConnectorPort
 	Delivery          DeliveryGate
-	Mutations         MutationPort
 	WorkspaceID       string
 	RuntimeInstanceID string
 	MCPStarted        func() bool
@@ -127,7 +122,6 @@ type Runtime struct {
 	persistedLeases   LeasePersistence
 	connector         ConnectorPort
 	delivery          DeliveryGate
-	mutations         MutationPort
 	workspaceID       string
 	runtimeInstanceID string
 	mcpStarted        func() bool
@@ -138,7 +132,7 @@ func NewRuntime(dependencies Dependencies) (*Runtime, error) {
 	if dependencies.Database == nil || dependencies.Tokens == nil || dependencies.Projects == nil ||
 		dependencies.SessionItems == nil || dependencies.ItemMutations == nil ||
 		dependencies.Sessions == nil || dependencies.Leases == nil || dependencies.PersistedLeases == nil ||
-		dependencies.Connector == nil || dependencies.Delivery == nil || dependencies.Mutations == nil ||
+		dependencies.Connector == nil || dependencies.Delivery == nil ||
 		dependencies.WorkspaceID == "" || dependencies.RuntimeInstanceID == "" ||
 		dependencies.MCPStarted == nil || dependencies.AllowGenerate == nil {
 		return nil, ErrRuntimeUnavailable
@@ -149,7 +143,7 @@ func NewRuntime(dependencies Dependencies) (*Runtime, error) {
 		itemMutations: dependencies.ItemMutations,
 		sessions:      dependencies.Sessions, leases: dependencies.Leases,
 		persistedLeases: dependencies.PersistedLeases, connector: dependencies.Connector,
-		delivery: dependencies.Delivery, mutations: dependencies.Mutations,
+		delivery:    dependencies.Delivery,
 		workspaceID: dependencies.WorkspaceID, runtimeInstanceID: dependencies.RuntimeInstanceID,
 		mcpStarted: dependencies.MCPStarted, allowGenerate: dependencies.AllowGenerate,
 	}, nil
@@ -159,7 +153,7 @@ func (r *Runtime) validate() error {
 	if r == nil || r.database == nil || r.tokens == nil || r.projects == nil ||
 		r.sessionItems == nil || r.itemMutations == nil || r.sessions == nil ||
 		r.leases == nil || r.persistedLeases == nil || r.connector == nil || r.delivery == nil ||
-		r.mutations == nil || r.workspaceID == "" || r.runtimeInstanceID == "" ||
+		r.workspaceID == "" || r.runtimeInstanceID == "" ||
 		r.mcpStarted == nil || r.allowGenerate == nil {
 		return ErrRuntimeUnavailable
 	}
