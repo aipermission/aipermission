@@ -139,10 +139,21 @@ func (runtime *CommandRuntime) CancelRunning(ctx context.Context, errorText stri
 }
 
 func (runtime *CommandRuntime) StopWorkers(ctx context.Context) error {
+	runtime.BeginWorkerShutdown()
+	return runtime.WaitWorkers(ctx)
+}
+
+func (runtime *CommandRuntime) BeginWorkerShutdown() {
+	if runtime != nil && runtime.owner != nil {
+		runtime.owner.BeginWorkerShutdown()
+	}
+}
+
+func (runtime *CommandRuntime) WaitWorkers(ctx context.Context) error {
 	if runtime == nil || runtime.owner == nil {
 		return ErrCommandRuntimeUnavailable
 	}
-	return runtime.owner.StopWorkers(ctx)
+	return runtime.owner.WaitWorkers(ctx)
 }
 
 func (runtime *CommandRuntime) CancelRunningForSession(ctx context.Context, sessionID int64, errorText string) error {

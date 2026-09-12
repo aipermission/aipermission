@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
@@ -56,6 +57,38 @@ type Runtime struct {
 	finalization   transferjobs.FinalizationLifetime
 	observe        ObservationAudit
 	connectorPorts ConnectorPortsResolver
+	shutdownOnce   sync.Once
+}
+
+// BeginShutdown rejects new transfer work and cancels every accepted runner.
+func (runtime *Runtime) BeginShutdown() {
+	if runtime == nil {
+		return
+	}
+	runtime.shutdownOnce.Do(func() {
+		runtime.jobs.BeginShutdown()
+	})
+}
+
+// WaitShutdown reports whether all accepted transfer runners have returned.
+func (runtime *Runtime) WaitShutdown(ctx context.Context) bool {
+	if runtime == nil {
+		return true
+	}
+	return runtime.jobs.Wait(ctx)
+}
+
+// RecoverShutdown persists terminal states after transfer workers can no
+// longer mutate workspace storage.
+func (runtime *Runtime) RecoverShutdown(ctx context.Context, runningMessage string, batchMessage string) error {
+	if runtime == nil {
+		return nil
+	}
+	if err := runtime.store.FailActive(ctx, runningMessage, batchMessage); err != nil {
+		return err
+	}
+	runtime.finalization.Stop()
+	return nil
 }
 
 type RuntimeDependencies struct {
@@ -146,8 +179,9 @@ func (runtime *Runtime) ShutdownContext(ctx context.Context, runningMessage stri
 	if runtime == nil {
 		return true, nil
 	}
-	drained := runtime.jobs.Shutdown(ctx)
-	err := runtime.store.FailActive(ctx, runningMessage, batchMessage)
-	runtime.finalization.Stop()
-	return drained, err
+	runtime.BeginShutdown()
+	if !runtime.WaitShutdown(ctx) {
+		return false, nil
+	}
+	return true, runtime.RecoverShutdown(ctx, runningMessage, batchMessage)
 }

@@ -242,3 +242,29 @@ func TestShutdownDeadlineKeepsRunnerVisibleToWait(t *testing.T) {
 		t.Fatal("runner did not remain waitable after deadline")
 	}
 }
+
+func TestRepeatedTimedWaitsReuseOneDrainSignal(t *testing.T) {
+	var registry Registry
+	release := make(chan struct{})
+	_, cancel := context.WithCancel(t.Context())
+	if !registry.Files.Launch(1, cancel, func() { <-release }) {
+		t.Fatal("runner was not accepted")
+	}
+	registry.BeginShutdown()
+	firstDrain := registry.Files.drain
+	for range 20 {
+		ctx, stop := context.WithTimeout(t.Context(), time.Millisecond)
+		if registry.Wait(ctx) {
+			stop()
+			t.Fatal("blocked runner unexpectedly drained")
+		}
+		stop()
+		if registry.Files.drain != firstDrain {
+			t.Fatal("timed wait allocated a new drain signal")
+		}
+	}
+	close(release)
+	if !registry.Wait(t.Context()) {
+		t.Fatal("runner did not drain")
+	}
+}

@@ -30,7 +30,7 @@ type Group struct {
 	jobs    map[int64]job
 	closed  bool
 	running int
-	waiters []chan struct{}
+	drain   chan struct{}
 }
 
 type LaunchResult uint8
@@ -71,6 +71,9 @@ func (g *Group) TryLaunch(id int64, cancel context.CancelFunc, run func()) Launc
 	}
 	entry.cancel = cancel
 	entry.running = true
+	if g.running == 0 {
+		g.drain = make(chan struct{})
+	}
 	g.running++
 	g.set(id, entry)
 	g.mu.Unlock()
@@ -134,10 +137,10 @@ func (g *Group) finish(id int64) {
 		g.set(id, entry)
 	}
 	if g.running == 0 {
-		for _, waiter := range g.waiters {
-			close(waiter)
+		if g.drain != nil {
+			close(g.drain)
+			g.drain = nil
 		}
-		g.waiters = nil
 	}
 	g.mu.Unlock()
 }
@@ -193,24 +196,29 @@ func (g *Group) wait(ctx context.Context) bool {
 		g.mu.Unlock()
 		return true
 	}
-	waiter := make(chan struct{})
-	g.waiters = append(g.waiters, waiter)
+	drain := g.drain
 	g.mu.Unlock()
 	select {
-	case <-waiter:
+	case <-drain:
 		return true
 	case <-ctx.Done():
 		return false
 	}
 }
 
-// Shutdown cancels both job namespaces before waiting, preventing a batch
-// runner from creating more file work while the file namespace is draining.
-func (r *Registry) Shutdown(ctx context.Context) bool {
+// BeginShutdown closes admission and cancels every registered job without
+// waiting for runners to return.
+func (r *Registry) BeginShutdown() {
 	cancels := append(r.Files.beginClose(), r.Batches.beginClose()...)
 	for _, cancel := range cancels {
 		cancel()
 	}
+}
+
+// Shutdown cancels both job namespaces before waiting, preventing a batch
+// runner from creating more file work while the file namespace is draining.
+func (r *Registry) Shutdown(ctx context.Context) bool {
+	r.BeginShutdown()
 	filesDone := r.Files.wait(ctx)
 	batchesDone := r.Batches.wait(ctx)
 	return filesDone && batchesDone

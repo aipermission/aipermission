@@ -40,6 +40,8 @@ type Runtime struct {
 	workerCtx         context.Context
 	workerCancel      context.CancelFunc
 	workerWG          sync.WaitGroup
+	workerDone        chan struct{}
+	workerWait        sync.Once
 	workersClosed     bool
 }
 
@@ -56,7 +58,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	return &Runtime{
 		store: dependencies.Store, codec: dependencies.Codec, projection: dependencies.Projection,
 		redact: dependencies.Redact, sessions: dependencies.Sessions, backgroundTimeout: timeout,
-		workerCtx: workerCtx, workerCancel: workerCancel,
+		workerCtx: workerCtx, workerCancel: workerCancel, workerDone: make(chan struct{}),
 	}, nil
 }
 
@@ -81,11 +83,11 @@ func (r *Runtime) RunWorker(run func(context.Context)) bool {
 	return true
 }
 
-// StopWorkers prevents new workers, cancels active work, and waits for all
-// command persistence to finish before the workspace database can close.
-func (r *Runtime) StopWorkers(ctx context.Context) error {
+// BeginWorkerShutdown prevents new workers and cancels active work without
+// waiting for command persistence to finish.
+func (r *Runtime) BeginWorkerShutdown() {
 	if r == nil {
-		return nil
+		return
 	}
 	r.workerMu.Lock()
 	r.workersClosed = true
@@ -95,17 +97,33 @@ func (r *Runtime) StopWorkers(ctx context.Context) error {
 	if cancel != nil {
 		cancel()
 	}
-	done := make(chan struct{})
-	go func() {
-		r.workerWG.Wait()
-		close(done)
-	}()
+}
+
+// WaitWorkers waits until command workers can no longer access workspace
+// storage. Repeated waits observe the same drain signal.
+func (r *Runtime) WaitWorkers(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.workerWait.Do(func() {
+		go func() {
+			r.workerWG.Wait()
+			close(r.workerDone)
+		}()
+	})
 	select {
-	case <-done:
+	case <-r.workerDone:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// StopWorkers closes admission, cancels active workers, and waits for all
+// command persistence to finish before the workspace database can close.
+func (r *Runtime) StopWorkers(ctx context.Context) error {
+	r.BeginWorkerShutdown()
+	return r.WaitWorkers(ctx)
 }
 
 func (r *Runtime) Prepare(ctx context.Context, request Insert) (PreparedInsert, error) {

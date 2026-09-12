@@ -13,28 +13,32 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
 
-const transferWait = 10 * time.Second
 const shutdownWait = 15 * time.Second
 const deferredShutdownWait = 2 * time.Minute
+const deferredRetryWait = 250 * time.Millisecond
+const deferredRetryMax = 30 * time.Second
 
 // ActionWorkflow is the action lifecycle needed during workspace teardown.
 type ActionWorkflow interface {
-	Shutdown(context.Context) error
+	BeginShutdown()
+	WaitShutdown(context.Context) error
 	MarkRunningOutcomeUnknown(context.Context, string) error
 }
 
 type ActionWorkflowResolver func() (ActionWorkflow, error)
 
 type CommandWorkflow interface {
-	StopWorkers(context.Context) error
+	BeginWorkerShutdown()
+	WaitWorkers(context.Context) error
 	CancelRunning(context.Context, string) error
 }
 
 type CommandWorkflowResolver func() (CommandWorkflow, error)
 
 type TransferWorkflow interface {
-	Shutdown(time.Duration, string, string) (bool, bool, error)
+	BeginShutdown() (bool, error)
 	Wait(context.Context) bool
+	Recover(context.Context, string, string) error
 	Abort()
 }
 
@@ -54,96 +58,256 @@ func closeWithTimeout(runtime *workspaceruntime.Runtime, resolveActions ActionWo
 	if retention := runtime.Observation.RetentionService(); retention != nil {
 		retention.Stop()
 	}
-	shutdownContext, shutdownCancel := context.WithTimeout(context.Background(), wait)
-	defer shutdownCancel()
-	actionWorkflow, actionsDrained, actionErr := stopConnectorActions(shutdownContext, runtime, resolveActions)
-	if actionsDrained {
-		clearActionIdentity(runtime)
+	coordinator := &teardownCoordinator{
+		runtime: runtime, resolveActions: resolveActions,
+		resolveCommands: resolveCommands, resolveTransfers: resolveTransfers,
 	}
-	commandWorkflow, commandsDrained, commandErr := stopCommandRequests(shutdownContext, runtime.ID, resolveCommands)
-	if leases := runtime.Security.VaultLeaseStore(); leases != nil {
+	shutdownContext, shutdownCancel := context.WithTimeout(context.Background(), wait)
+	ready, drainErr := coordinator.drain(shutdownContext)
+	shutdownCancel()
+	if ready {
+		if closed, closeErr := closeStorage(runtime); closed {
+			drainErr = errors.Join(drainErr, closeErr)
+			return drainErr
+		} else {
+			drainErr = errors.Join(drainErr, closeErr)
+		}
+	}
+	runtime.StartTeardown(coordinator.run)
+	return errors.Join(drainErr, fmt.Errorf("workspace shutdown exceeded its bounded wait; runtime storage close deferred until every owner drains"))
+}
+
+type teardownCoordinator struct {
+	runtime             *workspaceruntime.Runtime
+	resolveActions      ActionWorkflowResolver
+	resolveCommands     CommandWorkflowResolver
+	resolveTransfers    TransferWorkflowResolver
+	actions             ActionWorkflow
+	commands            CommandWorkflow
+	transfer            TransferWorkflow
+	actionsResolved     bool
+	actionsBegun        bool
+	commandsResolved    bool
+	commandsBegun       bool
+	transferResolved    bool
+	actionsDrained      bool
+	actionsRecovered    bool
+	commandsDrained     bool
+	commandsRecovered   bool
+	transferInitialized bool
+	transferDrained     bool
+	transferRecovered   bool
+	sessionsDrained     bool
+	actionWait          <-chan error
+	commandWait         <-chan error
+	transferWait        <-chan bool
+}
+
+func (coordinator *teardownCoordinator) run() {
+	retryWait := deferredRetryWait
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), deferredShutdownWait)
+		ready, err := coordinator.drain(ctx)
+		cancel()
+		if ready {
+			if closed, closeErr := closeStorage(coordinator.runtime); closed {
+				if closeErr != nil {
+					log.Printf("deferred runtime storage closed with cleanup errors workspace=%s error=%v", coordinator.runtime.ID, closeErr)
+				}
+				return
+			} else {
+				err = errors.Join(err, closeErr)
+			}
+		}
+		log.Printf("deferred workspace shutdown remains pending workspace=%s error=%v", coordinator.runtime.ID, err)
+		time.Sleep(retryWait)
+		if retryWait < deferredRetryMax/2 {
+			retryWait *= 2
+		} else {
+			retryWait = deferredRetryMax
+		}
+	}
+}
+
+func (coordinator *teardownCoordinator) drain(ctx context.Context) (bool, error) {
+	beginErr := coordinator.begin()
+	actionErr := coordinator.drainActions(ctx)
+	commandErr := coordinator.drainCommands(ctx)
+	var sessionErr error
+	if !coordinator.sessionsDrained {
+		if sessions := coordinator.runtime.Connectors.ConsoleSessionManager(); sessions != nil {
+			sessionErr = sessions.CloseAll(ctx)
+		}
+		coordinator.sessionsDrained = sessionErr == nil
+	}
+	transferErr := coordinator.drainTransfers(ctx)
+	ready := coordinator.actionsRecovered && coordinator.commandsRecovered && coordinator.sessionsDrained && coordinator.transferRecovered
+	return ready, errors.Join(beginErr, actionErr, commandErr, sessionErr, transferErr)
+}
+
+func (coordinator *teardownCoordinator) begin() error {
+	var beginErrors []error
+	if !coordinator.actionsResolved {
+		coordinator.actionsResolved = coordinator.resolveActions == nil
+		if coordinator.resolveActions != nil {
+			workflow, err := coordinator.resolveActions()
+			if err != nil {
+				beginErrors = append(beginErrors, fmt.Errorf("initialize connector action shutdown: %w", err))
+			} else {
+				coordinator.actions, coordinator.actionsResolved = workflow, true
+			}
+		}
+	}
+	if coordinator.actionsResolved {
+		if coordinator.actions == nil {
+			coordinator.actionsDrained, coordinator.actionsRecovered = true, true
+			clearActionIdentity(coordinator.runtime)
+		} else {
+			if !coordinator.actionsBegun {
+				coordinator.actions.BeginShutdown()
+				coordinator.actionsBegun = true
+			}
+			if coordinator.actionWait == nil {
+				wait := make(chan error, 1)
+				coordinator.actionWait = wait
+				go func() { wait <- coordinator.actions.WaitShutdown(context.Background()) }()
+			}
+		}
+	}
+	if !coordinator.commandsResolved {
+		coordinator.commandsResolved = coordinator.resolveCommands == nil
+		if coordinator.resolveCommands != nil {
+			workflow, err := coordinator.resolveCommands()
+			if err != nil {
+				beginErrors = append(beginErrors, fmt.Errorf("initialize command request shutdown: %w", err))
+			} else {
+				coordinator.commands, coordinator.commandsResolved = workflow, true
+			}
+		}
+	}
+	if coordinator.commandsResolved {
+		if coordinator.commands == nil {
+			coordinator.commandsDrained, coordinator.commandsRecovered = true, true
+		} else {
+			if !coordinator.commandsBegun {
+				coordinator.commands.BeginWorkerShutdown()
+				coordinator.commandsBegun = true
+			}
+			if coordinator.commandWait == nil {
+				wait := make(chan error, 1)
+				coordinator.commandWait = wait
+				go func() { wait <- coordinator.commands.WaitWorkers(context.Background()) }()
+			}
+		}
+	}
+	if leases := coordinator.runtime.Security.VaultLeaseStore(); leases != nil {
 		leases.Clear()
 	}
-	if sessions := runtime.Connectors.ConsoleSessionManager(); sessions != nil {
-		sessions.CloseAll()
+	if sessions := coordinator.runtime.Connectors.ConsoleSessionManager(); sessions != nil {
+		sessions.BeginCloseAll()
+	} else {
+		coordinator.sessionsDrained = true
 	}
-	transfer, initialized, drained, transferErr := shutdownTransfers(resolveTransfers)
-	if transferErr != nil {
-		log.Printf("workspace transfer shutdown failed workspace=%s error=%v", runtime.ID, transferErr)
+	if !coordinator.transferResolved {
+		coordinator.transferResolved = true
+		if coordinator.resolveTransfers != nil {
+			coordinator.transfer = coordinator.resolveTransfers()
+		}
+		if coordinator.transfer == nil {
+			coordinator.transferDrained, coordinator.transferRecovered = true, true
+		} else {
+			initialized, err := coordinator.transfer.BeginShutdown()
+			if err != nil {
+				beginErrors = append(beginErrors, fmt.Errorf("begin transfer shutdown: %w", err))
+			} else {
+				coordinator.transferInitialized = initialized
+				if !initialized {
+					coordinator.transferDrained, coordinator.transferRecovered = true, true
+				} else {
+					wait := make(chan bool, 1)
+					coordinator.transferWait = wait
+					go func() { wait <- coordinator.transfer.Wait(context.Background()) }()
+				}
+			}
+		}
 	}
-	if !actionsDrained || !commandsDrained || initialized && !drained {
-		go func() {
-			deferredContext, cancel := context.WithTimeout(context.Background(), deferredShutdownWait)
-			defer cancel()
-			if !actionsDrained && actionWorkflow != nil {
-				if err := actionWorkflow.Shutdown(deferredContext); err != nil {
-					log.Printf("deferred connector action drain failed workspace=%s error=%v", runtime.ID, err)
-					return
-				}
-				if err := actionWorkflow.MarkRunningOutcomeUnknown(deferredContext, runtimeoutcome.ConnectorActionUnknown); err != nil {
-					log.Printf("deferred connector action persistence failed workspace=%s error=%v", runtime.ID, err)
-					return
-				}
-				clearActionIdentity(runtime)
-			}
-			if !commandsDrained && commandWorkflow != nil {
-				if err := commandWorkflow.StopWorkers(deferredContext); err != nil {
-					log.Printf("deferred command worker drain failed workspace=%s error=%v", runtime.ID, err)
-					return
-				}
-				if err := commandWorkflow.CancelRunning(deferredContext, runtimeoutcome.CommandCanceled); err != nil {
-					log.Printf("deferred command persistence failed workspace=%s error=%v", runtime.ID, err)
-					return
-				}
-			}
-			if initialized && !drained {
-				if !transfer.Wait(deferredContext) {
-					log.Printf("deferred transfer drain timed out workspace=%s", runtime.ID)
-					return
-				}
-			}
-			if err := closeStorage(runtime); err != nil {
-				log.Printf("deferred runtime storage close failed workspace=%s error=%v", runtime.ID, err)
-			}
-		}()
-		return errors.Join(actionErr, commandErr, transferErr, fmt.Errorf("workspace shutdown exceeded its bounded wait; runtime storage close deferred until workers exit"))
-	}
-	return errors.Join(actionErr, commandErr, transferErr, closeStorage(runtime))
+	return errors.Join(beginErrors...)
 }
 
-func shutdownTransfers(resolve TransferWorkflowResolver) (TransferWorkflow, bool, bool, error) {
-	if resolve == nil {
-		return nil, false, true, nil
+func (coordinator *teardownCoordinator) drainActions(ctx context.Context) error {
+	if !coordinator.actionsResolved || coordinator.actions == nil {
+		return nil
 	}
-	workflow := resolve()
-	if workflow == nil {
-		return nil, false, true, nil
+	if !coordinator.actionsDrained {
+		select {
+		case err := <-coordinator.actionWait:
+			if err != nil {
+				coordinator.actionWait = nil
+				return fmt.Errorf("stop connector action workers: %w", err)
+			}
+			coordinator.actionsDrained = true
+		case <-ctx.Done():
+			return fmt.Errorf("stop connector action workers: %w", ctx.Err())
+		}
 	}
-	initialized, drained, err := workflow.Shutdown(transferWait, "interrupted by workspace shutdown", "queue stopped by workspace shutdown")
-	return workflow, initialized, drained, err
+	if !coordinator.actionsRecovered {
+		if err := coordinator.actions.MarkRunningOutcomeUnknown(ctx, runtimeoutcome.ConnectorActionUnknown); err != nil {
+			return fmt.Errorf("persist connector action shutdown: %w", err)
+		}
+		coordinator.actionsRecovered = true
+		clearActionIdentity(coordinator.runtime)
+	}
+	return nil
 }
 
-func stopCommandRequests(ctx context.Context, workspaceID string, resolve CommandWorkflowResolver) (CommandWorkflow, bool, error) {
-	if resolve == nil {
-		return nil, true, nil
+func (coordinator *teardownCoordinator) drainCommands(ctx context.Context) error {
+	if !coordinator.commandsResolved || coordinator.commands == nil {
+		return nil
 	}
-	requests, err := resolve()
-	if err != nil {
-		log.Printf("initialize command request shutdown workspace=%s error=%v", workspaceID, err)
-		return nil, true, err
+	if !coordinator.commandsDrained {
+		select {
+		case err := <-coordinator.commandWait:
+			if err != nil {
+				coordinator.commandWait = nil
+				return fmt.Errorf("stop command workers: %w", err)
+			}
+			coordinator.commandsDrained = true
+		case <-ctx.Done():
+			return fmt.Errorf("stop command workers: %w", ctx.Err())
+		}
 	}
-	if requests == nil {
-		return nil, true, nil
+	if !coordinator.commandsRecovered {
+		if err := coordinator.commands.CancelRunning(ctx, runtimeoutcome.CommandCanceled); err != nil {
+			return fmt.Errorf("persist command request shutdown: %w", err)
+		}
+		coordinator.commandsRecovered = true
 	}
-	if err := requests.StopWorkers(ctx); err != nil {
-		log.Printf("stop command workers failed workspace=%s error=%v", workspaceID, err)
-		return requests, false, err
+	return nil
+}
+
+func (coordinator *teardownCoordinator) drainTransfers(ctx context.Context) error {
+	if !coordinator.transferResolved || coordinator.transfer == nil || coordinator.transferRecovered {
+		return nil
 	}
-	if err := requests.CancelRunning(ctx, runtimeoutcome.CommandCanceled); err != nil {
-		log.Printf("mark running command requests failed workspace=%s error=%v", workspaceID, err)
-		return requests, true, err
+	if !coordinator.transferInitialized {
+		coordinator.transferDrained, coordinator.transferRecovered = true, true
+		return nil
 	}
-	return requests, true, nil
+	if !coordinator.transferDrained {
+		select {
+		case coordinator.transferDrained = <-coordinator.transferWait:
+			if !coordinator.transferDrained {
+				return errors.New("transfer workers stopped without draining")
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if err := coordinator.transfer.Recover(ctx, "interrupted by workspace shutdown", "queue stopped by workspace shutdown"); err != nil {
+		return fmt.Errorf("recover transfer shutdown: %w", err)
+	}
+	coordinator.transferRecovered = true
+	return nil
 }
 
 // Discard releases a partially opened runtime without running normal shutdown
@@ -157,30 +321,8 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 			transfer.Abort()
 		}
 	}
-	return closeStorage(runtime)
-}
-
-func stopConnectorActions(ctx context.Context, runtime *workspaceruntime.Runtime, resolve ActionWorkflowResolver) (ActionWorkflow, bool, error) {
-	if resolve == nil {
-		return nil, true, nil
-	}
-	workflow, err := resolve()
-	if err != nil {
-		log.Printf("initialize connector action shutdown workspace=%s error=%v", runtime.ID, err)
-		return nil, true, err
-	}
-	if workflow == nil {
-		return nil, true, nil
-	}
-	if err := workflow.Shutdown(ctx); err != nil {
-		log.Printf("stop connector action workers workspace=%s error=%v", runtime.ID, err)
-		return workflow, false, err
-	}
-	if err := workflow.MarkRunningOutcomeUnknown(ctx, runtimeoutcome.ConnectorActionUnknown); err != nil {
-		log.Printf("mark running connector actions outcome unknown failed workspace=%s error=%v", runtime.ID, err)
-		return workflow, true, err
-	}
-	return workflow, true, nil
+	_, err := closeStorage(runtime)
+	return err
 }
 
 func clearActionIdentity(runtime *workspaceruntime.Runtime) {
@@ -191,7 +333,7 @@ func clearActionIdentity(runtime *workspaceruntime.Runtime) {
 	runtime.ActionIdentityKey = nil
 }
 
-func closeStorage(runtime *workspaceruntime.Runtime) error {
+func closeStorage(runtime *workspaceruntime.Runtime) (bool, error) {
 	if dispatcher := runtime.Observation.AuditDispatcherService(); dispatcher != nil {
 		dispatcher.Stop()
 	}
@@ -201,13 +343,19 @@ func closeStorage(runtime *workspaceruntime.Runtime) error {
 	if database := storage.DatabaseHandle(); database != nil {
 		if err := database.Close(); err != nil {
 			closeErrors = append(closeErrors, fmt.Errorf("close encrypted database runtime %q: %w", runtime.ID, err))
+			return false, errors.Join(closeErrors...)
 		}
 	}
 	if ownership := storage.DatabaseOwnership(); ownership != nil {
-		if err := ownership.Close(); err != nil {
+		released, err := ownership.Release()
+		if err != nil {
 			closeErrors = append(closeErrors, fmt.Errorf("release encrypted database runtime %q ownership: %w", runtime.ID, err))
 		}
-		storage.ClearDatabaseOwnership()
+		if released {
+			storage.ClearDatabaseOwnership()
+		} else {
+			return false, errors.Join(closeErrors...)
+		}
 	}
-	return errors.Join(closeErrors...)
+	return true, errors.Join(closeErrors...)
 }

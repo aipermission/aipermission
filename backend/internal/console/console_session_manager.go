@@ -500,10 +500,13 @@ func (m *Manager) Close(ctx context.Context, principal executionprincipal.Princi
 		if session == nil {
 			return nil
 		}
-		return m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
-			session.close()
+		if err := m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
+			session.cancel()
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
+		return session.waitDone(ctx)
 	}
 	if err := principal.Validate(); err != nil || !principal.IsLocalOperator() {
 		return ErrUnauthorized
@@ -582,7 +585,12 @@ func (m *Manager) activeSessionsForRuntime(runtimeID int64) []*managedConsoleSes
 
 func (m *Manager) closeRuntimeSessions(ctx context.Context, runtimeID int64, sessions []*managedConsoleSession) error {
 	for _, session := range sessions {
-		session.close()
+		session.cancel()
+	}
+	for _, session := range sessions {
+		if err := session.waitDone(ctx); err != nil {
+			return err
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE runtime_id = ? AND status IN ('connecting', 'connected')`, now, now, runtimeID)
@@ -606,20 +614,26 @@ func (m *Manager) closeSessionLocked(ctx context.Context, principal executionpri
 	if session == nil {
 		return ErrNotFound
 	}
-	return m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
+	if err := m.authorizeOperation(ctx, principal, session, OperationClose, func() error {
 		session.mu.Lock()
 		session.status = "closed"
 		session.mu.Unlock()
-		session.close()
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, err := m.db.ExecContext(ctx, `
-			UPDATE console_sessions
-			SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ?
-			WHERE id = ? AND generation = ? AND status IN ('connecting', 'connected')`,
-			now, now, session.id, session.generation,
-		)
+		session.cancel()
+		return nil
+	}); err != nil {
 		return err
-	})
+	}
+	if err := session.waitDone(ctx); err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := m.db.ExecContext(ctx, `
+		UPDATE console_sessions
+		SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ?
+		WHERE id = ? AND generation = ? AND status IN ('connecting', 'connected')`,
+		now, now, session.id, session.generation,
+	)
+	return err
 }
 
 func (m *Manager) runtimeLifecycle(runtimeID int64) *sync.Mutex {
@@ -636,7 +650,9 @@ func (m *Manager) runtimeLifecycle(runtimeID int64) *sync.Mutex {
 	return lock
 }
 
-func (m *Manager) CloseAll() {
+// BeginCloseAll rejects new sessions and cancels every active session without
+// waiting for transports to close.
+func (m *Manager) BeginCloseAll() {
 	if m == nil {
 		return
 	}
@@ -648,11 +664,30 @@ func (m *Manager) CloseAll() {
 	}
 	m.mu.Unlock()
 	for _, session := range sessions {
-		session.close()
+		session.cancel()
 	}
+}
+
+func (m *Manager) CloseAll(ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.BeginCloseAll()
+	m.mu.Lock()
+	sessions := make([]*managedConsoleSession, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		sessions = append(sessions, session)
+	}
+	m.mu.Unlock()
 	for _, session := range sessions {
-		<-session.done
+		if err := session.waitDone(ctx); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (m *Manager) authorizeOperation(

@@ -148,6 +148,15 @@ func TestStopFinalizersReportsBoundedWaitWithoutLosingDrain(t *testing.T) {
 	if err := runtime.StopFinalizers(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("StopFinalizers() error = %v, want deadline exceeded", err)
 	}
+	firstDrain := runtime.finalizerDone
+	secondCtx, secondCancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer secondCancel()
+	if err := runtime.StopFinalizers(secondCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second bounded StopFinalizers() error = %v, want deadline exceeded", err)
+	}
+	if runtime.finalizerDone != firstDrain {
+		t.Fatal("StopFinalizers replaced the reusable drain signal")
+	}
 	close(release)
 	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
 	defer drainCancel()

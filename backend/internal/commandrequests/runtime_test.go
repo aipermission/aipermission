@@ -150,6 +150,15 @@ func TestRuntimeStopWorkersReportsBoundedWaitAndCanObserveLaterDrain(t *testing.
 	if err := owner.StopWorkers(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("StopWorkers() error = %v, want deadline exceeded", err)
 	}
+	firstDrain := owner.workerDone
+	secondCtx, secondCancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer secondCancel()
+	if err := owner.StopWorkers(secondCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second bounded StopWorkers() error = %v, want deadline exceeded", err)
+	}
+	if owner.workerDone != firstDrain {
+		t.Fatal("StopWorkers replaced the reusable drain signal")
+	}
 	close(release)
 	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
 	defer drainCancel()

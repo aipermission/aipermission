@@ -39,6 +39,8 @@ type ApprovalWorkflow interface {
 }
 
 type ShutdownWorkflow interface {
+	BeginShutdown()
+	WaitShutdown(context.Context) error
 	Shutdown(context.Context) error
 	MarkRunningOutcomeUnknown(context.Context, string) error
 }
@@ -56,8 +58,23 @@ func (workflow *workflowHandle) DeclinePending(ctx context.Context, id int64, no
 }
 
 func (workflow *workflowHandle) Shutdown(ctx context.Context) error {
+	workflow.BeginShutdown()
+	return workflow.WaitShutdown(ctx)
+}
+
+func (workflow *workflowHandle) BeginShutdown() {
+	if workflow == nil || workflow.runtime == nil {
+		return
+	}
 	workflow.runtime.StopRecovery()
-	return workflow.runtime.StopFinalizers(ctx)
+	workflow.runtime.BeginFinalizerShutdown()
+}
+
+func (workflow *workflowHandle) WaitShutdown(ctx context.Context) error {
+	if workflow == nil || workflow.runtime == nil {
+		return nil
+	}
+	return workflow.runtime.WaitFinalizers(ctx)
 }
 
 func (workflow *workflowHandle) MarkRunningOutcomeUnknown(ctx context.Context, reason string) error {

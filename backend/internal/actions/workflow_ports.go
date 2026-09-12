@@ -103,6 +103,8 @@ type Runtime struct {
 	finalizerCtx    context.Context
 	finalizerCancel context.CancelFunc
 	finalizerWG     sync.WaitGroup
+	finalizerDone   chan struct{}
+	finalizerWait   sync.Once
 	finalizerClosed bool
 }
 
@@ -131,6 +133,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 		capabilities: dependencies.Capabilities, runningActions: dependencies.RunningActions, now: now, logf: logf,
 		boundaries:   make(map[int64]actionresult.CredentialBoundary),
 		finalizerCtx: finalizerCtx, finalizerCancel: finalizerCancel,
+		finalizerDone: make(chan struct{}),
 	}, nil
 }
 
@@ -153,11 +156,11 @@ func (r *Runtime) launchFinalizer(run func(context.Context)) bool {
 	return true
 }
 
-// StopFinalizers prevents new background completions, cancels active ones,
-// and waits until they can no longer access workspace-owned storage.
-func (r *Runtime) StopFinalizers(ctx context.Context) error {
+// BeginFinalizerShutdown prevents new background completions and cancels
+// active ones without waiting for their persistence work to return.
+func (r *Runtime) BeginFinalizerShutdown() {
 	if r == nil {
-		return nil
+		return
 	}
 	r.finalizerMu.Lock()
 	r.finalizerClosed = true
@@ -167,17 +170,33 @@ func (r *Runtime) StopFinalizers(ctx context.Context) error {
 	if cancel != nil {
 		cancel()
 	}
-	done := make(chan struct{})
-	go func() {
-		r.finalizerWG.Wait()
-		close(done)
-	}()
+}
+
+// WaitFinalizers waits until finalizers can no longer access workspace-owned
+// storage. Repeated waits observe the same drain signal.
+func (r *Runtime) WaitFinalizers(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.finalizerWait.Do(func() {
+		go func() {
+			r.finalizerWG.Wait()
+			close(r.finalizerDone)
+		}()
+	})
 	select {
-	case <-done:
+	case <-r.finalizerDone:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// StopFinalizers closes admission, cancels active finalizers, and waits for
+// the runtime to drain.
+func (r *Runtime) StopFinalizers(ctx context.Context) error {
+	r.BeginFinalizerShutdown()
+	return r.WaitFinalizers(ctx)
 }
 
 func (r *Runtime) validate() error {

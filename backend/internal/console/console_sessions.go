@@ -246,6 +246,8 @@ type managedConsoleSession struct {
 	start     chan struct{}
 	done      chan struct{}
 	startOnce sync.Once
+	closeOnce sync.Once
+	closeErr  error
 
 	mu            sync.Mutex
 	execMu        sync.Mutex

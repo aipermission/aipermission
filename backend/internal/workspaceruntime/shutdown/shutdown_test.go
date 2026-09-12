@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,8 +16,16 @@ import (
 
 type actionWorkflowSpy struct {
 	stopped  bool
+	begin    func()
 	message  string
 	shutdown func(context.Context) error
+}
+
+func (workflow *actionWorkflowSpy) BeginShutdown() {
+	workflow.stopped = true
+	if workflow.begin != nil {
+		workflow.begin()
+	}
 }
 
 func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
@@ -35,7 +45,7 @@ func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
 		<-release
 		return true
 	}}
-	if err := Close(runtime, nil, nil, func() TransferWorkflow { return transfer }); err == nil {
+	if err := closeWithTimeout(runtime, nil, nil, func() TransferWorkflow { return transfer }, 10*time.Millisecond); err == nil {
 		t.Fatal("pending component shutdown did not report deferred storage close")
 	}
 	select {
@@ -101,11 +111,16 @@ func TestDiscardAbortsRegisteredComponents(t *testing.T) {
 
 type transferWorkflowSpy struct {
 	aborted bool
+	begin   func()
 	wait    func(context.Context) bool
+	recover func(context.Context) error
 }
 
-func (*transferWorkflowSpy) Shutdown(time.Duration, string, string) (bool, bool, error) {
-	return true, false, nil
+func (workflow *transferWorkflowSpy) BeginShutdown() (bool, error) {
+	if workflow.begin != nil {
+		workflow.begin()
+	}
+	return true, nil
 }
 func (workflow *transferWorkflowSpy) Wait(ctx context.Context) bool {
 	if workflow.wait != nil {
@@ -113,14 +128,27 @@ func (workflow *transferWorkflowSpy) Wait(ctx context.Context) bool {
 	}
 	return true
 }
+func (workflow *transferWorkflowSpy) Recover(ctx context.Context, _, _ string) error {
+	if workflow.recover != nil {
+		return workflow.recover(ctx)
+	}
+	return nil
+}
 func (workflow *transferWorkflowSpy) Abort() { workflow.aborted = true }
 
 type commandWorkflowSpy struct {
 	message string
+	begin   func()
 	stop    func(context.Context) error
 }
 
-func (workflow *commandWorkflowSpy) StopWorkers(ctx context.Context) error {
+func (workflow *commandWorkflowSpy) BeginWorkerShutdown() {
+	if workflow.begin != nil {
+		workflow.begin()
+	}
+}
+
+func (workflow *commandWorkflowSpy) WaitWorkers(ctx context.Context) error {
 	if workflow.stop != nil {
 		return workflow.stop(ctx)
 	}
@@ -132,8 +160,7 @@ func (workflow *commandWorkflowSpy) CancelRunning(_ context.Context, message str
 	return nil
 }
 
-func (workflow *actionWorkflowSpy) Shutdown(ctx context.Context) error {
-	workflow.stopped = true
+func (workflow *actionWorkflowSpy) WaitShutdown(ctx context.Context) error {
 	if workflow.shutdown != nil {
 		return workflow.shutdown(ctx)
 	}
@@ -194,23 +221,11 @@ func TestCloseDefersStorageWhileActionAndCommandWorkersDrain(t *testing.T) {
 	}
 	actionRelease := make(chan struct{})
 	commandRelease := make(chan struct{})
-	actionCalls := 0
-	commandCalls := 0
-	actions := &actionWorkflowSpy{shutdown: func(ctx context.Context) error {
-		actionCalls++
-		if actionCalls == 1 {
-			<-ctx.Done()
-			return ctx.Err()
-		}
+	actions := &actionWorkflowSpy{shutdown: func(context.Context) error {
 		<-actionRelease
 		return nil
 	}}
-	commands := &commandWorkflowSpy{stop: func(ctx context.Context) error {
-		commandCalls++
-		if commandCalls == 1 {
-			<-ctx.Done()
-			return ctx.Err()
-		}
+	commands := &commandWorkflowSpy{stop: func(context.Context) error {
 		<-commandRelease
 		return nil
 	}}
@@ -243,4 +258,196 @@ func TestCloseDefersStorageWhileActionAndCommandWorkersDrain(t *testing.T) {
 	if runtime.ActionIdentityKey != nil {
 		t.Fatal("action identity key remained after finalizers drained")
 	}
+}
+
+func TestCloseRetriesActionResolverBeforeClosingStorage(t *testing.T) {
+	storageClosed := make(chan struct{})
+	database := sql.OpenDB(closeSignalConnector{closed: storageClosed})
+	if err := database.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &workspaceruntime.Runtime{
+		ID: "workspace-action-resolver", ActionIdentityKey: make([]byte, 32),
+		Storage: workspacestorage.New(database, nil, nil, "workspace-action-resolver", nil),
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	workflow := &actionWorkflowSpy{shutdown: func(context.Context) error {
+		close(entered)
+		<-release
+		return nil
+	}}
+	var calls atomic.Int32
+	err := closeWithTimeout(runtime, func() (ActionWorkflow, error) {
+		if calls.Add(1) == 1 {
+			return nil, errors.New("transient action resolver failure")
+		}
+		return workflow, nil
+	}, nil, nil, 10*time.Millisecond)
+	if err == nil {
+		t.Fatal("resolver failure did not defer storage close")
+	}
+	if runtime.ActionIdentityKey == nil {
+		t.Fatal("action identity was cleared before the action owner resolved")
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("deferred teardown did not retry the action resolver")
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed before action workers drained")
+	default:
+	}
+	close(release)
+	select {
+	case <-storageClosed:
+	case <-time.After(time.Second):
+		t.Fatal("storage did not close after the retried action owner drained")
+	}
+}
+
+func TestCloseRetriesCommandResolverBeforeClosingStorage(t *testing.T) {
+	storageClosed := make(chan struct{})
+	database := sql.OpenDB(closeSignalConnector{closed: storageClosed})
+	if err := database.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &workspaceruntime.Runtime{
+		ID: "workspace-command-resolver", ActionIdentityKey: make([]byte, 32),
+		Storage: workspacestorage.New(database, nil, nil, "workspace-command-resolver", nil),
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	workflow := &commandWorkflowSpy{stop: func(context.Context) error {
+		close(entered)
+		<-release
+		return nil
+	}}
+	var calls atomic.Int32
+	err := closeWithTimeout(runtime, nil, func() (CommandWorkflow, error) {
+		if calls.Add(1) == 1 {
+			return nil, errors.New("transient command resolver failure")
+		}
+		return workflow, nil
+	}, nil, 10*time.Millisecond)
+	if err == nil {
+		t.Fatal("resolver failure did not defer storage close")
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("deferred teardown did not retry the command resolver")
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed before command workers drained")
+	default:
+	}
+	close(release)
+	select {
+	case <-storageClosed:
+	case <-time.After(time.Second):
+		t.Fatal("storage did not close after the retried command owner drained")
+	}
+}
+
+func TestCloseRetriesTransferRecoveryBeforeClosingStorage(t *testing.T) {
+	storageClosed := make(chan struct{})
+	database := sql.OpenDB(closeSignalConnector{closed: storageClosed})
+	if err := database.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &workspaceruntime.Runtime{
+		ID:      "workspace-transfer-recovery",
+		Storage: workspacestorage.New(database, nil, nil, "workspace-transfer-recovery", nil),
+	}
+	var recoverCalls atomic.Int32
+	transfer := &transferWorkflowSpy{recover: func(context.Context) error {
+		if recoverCalls.Add(1) == 1 {
+			return errors.New("transient transfer persistence failure")
+		}
+		return nil
+	}}
+	if err := closeWithTimeout(runtime, nil, nil, func() TransferWorkflow { return transfer }, 10*time.Millisecond); err == nil {
+		t.Fatal("transfer persistence failure did not defer storage close")
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed before transfer persistence recovered")
+	default:
+	}
+	select {
+	case <-storageClosed:
+	case <-time.After(time.Second):
+		t.Fatal("storage did not close after transfer persistence retry")
+	}
+	if recoverCalls.Load() < 2 {
+		t.Fatalf("transfer recovery calls = %d", recoverCalls.Load())
+	}
+}
+
+type ownershipRetrySpy struct{ calls atomic.Int32 }
+
+func (ownership *ownershipRetrySpy) Release() (bool, error) {
+	if ownership.calls.Add(1) == 1 {
+		return false, errors.New("transient unlock failure")
+	}
+	return true, nil
+}
+
+func TestCloseRetriesUnconfirmedOwnershipRelease(t *testing.T) {
+	ownership := &ownershipRetrySpy{}
+	runtime := &workspaceruntime.Runtime{
+		ID:      "workspace-ownership-retry",
+		Storage: workspacestorage.New(nil, nil, nil, "workspace-ownership-retry", ownership),
+	}
+	if err := closeWithTimeout(runtime, nil, nil, nil, 10*time.Millisecond); err == nil {
+		t.Fatal("ownership release failure did not defer shutdown")
+	}
+	if runtime.Storage.DatabaseOwnership() == nil {
+		t.Fatal("unconfirmed ownership release was discarded")
+	}
+	deadline := time.Now().Add(time.Second)
+	for runtime.Storage.DatabaseOwnership() != nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if runtime.Storage.DatabaseOwnership() != nil || ownership.calls.Load() < 2 {
+		t.Fatalf("ownership was not retried: retained=%v calls=%d", runtime.Storage.DatabaseOwnership() != nil, ownership.calls.Load())
+	}
+}
+
+func TestCloseSignalsEveryOwnerBeforeWaiting(t *testing.T) {
+	actionWaiting := make(chan struct{})
+	actionRelease := make(chan struct{})
+	commandBegan := make(chan struct{})
+	transferBegan := make(chan struct{})
+	var actionWaits atomic.Int32
+	actions := &actionWorkflowSpy{shutdown: func(ctx context.Context) error {
+		if actionWaits.Add(1) == 1 {
+			close(actionWaiting)
+			<-actionRelease
+		}
+		return nil
+	}}
+	commands := &commandWorkflowSpy{begin: func() { close(commandBegan) }}
+	transfer := &transferWorkflowSpy{begin: func() { close(transferBegan) }}
+	runtime := &workspaceruntime.Runtime{ID: "workspace-signal-order"}
+	if err := closeWithTimeout(runtime,
+		func() (ActionWorkflow, error) { return actions, nil },
+		func() (CommandWorkflow, error) { return commands, nil },
+		func() TransferWorkflow { return transfer }, 10*time.Millisecond); err == nil {
+		t.Fatal("blocked action drain unexpectedly completed")
+	}
+	for name, signal := range map[string]<-chan struct{}{
+		"action wait": actionWaiting, "command begin": commandBegan, "transfer begin": transferBegan,
+	} {
+		select {
+		case <-signal:
+		default:
+			t.Fatalf("%s was not signaled before bounded waiting", name)
+		}
+	}
+	close(actionRelease)
 }

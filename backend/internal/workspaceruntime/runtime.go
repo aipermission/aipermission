@@ -2,6 +2,7 @@ package workspaceruntime
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
@@ -30,6 +31,16 @@ type Runtime struct {
 	Connectors        connectorstate.State
 	Security          security.State
 	Observation       observation.State
+	teardownOnce      sync.Once
+}
+
+// StartTeardown admits exactly one persistent teardown coordinator for this
+// runtime. The coordinator owns the runtime until encrypted storage closes.
+func (runtime *Runtime) StartTeardown(run func()) {
+	if runtime == nil || run == nil {
+		return
+	}
+	runtime.teardownOnce.Do(func() { go run() })
 }
 
 func New(state foundation.State) *Runtime {

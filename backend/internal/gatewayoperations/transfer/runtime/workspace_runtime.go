@@ -68,10 +68,22 @@ func (manager *Manager) ShutdownWorkspace(workspace Workspace, timeout time.Dura
 		return false, true, nil
 	}
 	drained, shutdownErr := handle.runtime.Shutdown(timeout, runningMessage, batchMessage)
-	if drained {
+	if drained && shutdownErr == nil {
 		manager.runtimes.Delete(id)
 	}
 	return true, drained, shutdownErr
+}
+
+func (manager *Manager) BeginWorkspaceShutdown(workspace Workspace) (bool, error) {
+	handle, ok, err := manager.loadWorkspaceHandle(workspace)
+	if err != nil {
+		return false, err
+	}
+	if !ok || handle == nil || handle.runtime == nil {
+		return false, nil
+	}
+	handle.runtime.BeginShutdown()
+	return true, nil
 }
 
 func (manager *Manager) StopWorkspace(workspace Workspace) {
@@ -100,11 +112,23 @@ func (manager *Manager) WaitWorkspace(ctx context.Context, workspace Workspace) 
 	if !ok || handle == nil || handle.lifecycle == nil {
 		return true
 	}
-	drained := handle.lifecycle.Wait(ctx)
-	if drained {
-		manager.runtimes.Delete(id)
+	return handle.lifecycle.Wait(ctx)
+}
+
+func (manager *Manager) RecoverWorkspace(ctx context.Context, workspace Workspace, runningMessage, batchMessage string) error {
+	id, err := workspaceID(workspace)
+	if err != nil {
+		return err
 	}
-	return drained
+	handle, ok := manager.runtimes.Load(id)
+	if !ok || handle == nil || handle.runtime == nil {
+		return nil
+	}
+	if err := handle.runtime.RecoverShutdown(ctx, runningMessage, batchMessage); err != nil {
+		return err
+	}
+	manager.runtimes.Delete(id)
+	return nil
 }
 
 type Jobs interface {

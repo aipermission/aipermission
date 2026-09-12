@@ -97,6 +97,40 @@ func TestWorkspaceShutdownCancelsRegisteredJobs(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRecoveryFailureRetainsRuntimeForRetry(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "transfer.aipdb"), "TransferPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := newTestWorkspace()
+	manager := &Manager{}
+	if err := manager.InitializeWorkspace(
+		workspace,
+		database,
+		func(context.Context, string, *int64, int64, string, any) {},
+		func(context.Context, int64) (ConnectorPorts, error) { return ConnectorPorts{}, nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	initialized, err := manager.BeginWorkspaceShutdown(workspace)
+	if err != nil || !initialized {
+		t.Fatalf("begin shutdown = initialized=%t err=%v", initialized, err)
+	}
+	if !manager.WaitWorkspace(t.Context(), workspace) {
+		t.Fatal("empty transfer runtime did not drain")
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RecoverWorkspace(t.Context(), workspace, "interrupted", "queue stopped"); err == nil {
+		t.Fatal("closed storage did not fail transfer recovery")
+	}
+	if !manager.WorkspaceReady(workspace) {
+		t.Fatal("failed transfer recovery removed the runtime needed for retry")
+	}
+	manager.RemoveWorkspace(workspace)
+}
+
 func TestUninitializedWorkspaceTransferLifecycleIsInert(t *testing.T) {
 	workspace := newTestWorkspace()
 	manager := &Manager{}

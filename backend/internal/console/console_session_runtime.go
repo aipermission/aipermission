@@ -49,7 +49,7 @@ func (s *managedConsoleSession) run() {
 	s.mu.Lock()
 	s.runtime = runtime
 	s.mu.Unlock()
-	defer runtime.close()
+	defer s.closeRuntime()
 
 	stdin := runtime.Stdin
 	if stdin == nil {
@@ -120,7 +120,7 @@ func (s *managedConsoleSession) run() {
 		}
 		s.finish("closed", "")
 	case <-s.ctx.Done():
-		_ = runtime.close()
+		_ = s.closeRuntime()
 		waitConsolePipes(pipeDone, pipeCount)
 		s.closeExactRedactor()
 		s.finish("closed", "")
@@ -270,12 +270,20 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 
 func (s *managedConsoleSession) close() {
 	s.cancel()
+}
+
+func (s *managedConsoleSession) closeRuntime() error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	runtime := s.runtime
 	s.mu.Unlock()
-	if runtime != nil {
-		_ = runtime.close()
+	if runtime == nil {
+		return nil
 	}
+	s.closeOnce.Do(func() { s.closeErr = runtime.close() })
+	return s.closeErr
 }
 
 func (session *RuntimeSession) close() error {

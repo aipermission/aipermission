@@ -3,7 +3,6 @@ package storage
 import (
 	"database/sql"
 
-	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -12,10 +11,10 @@ type State struct {
 	database  *sql.DB
 	vault     *vault.Vault
 	tokens    *tokens.Store
-	ownership *db.DatabaseOwnership
+	ownership Ownership
 }
 
-func New(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, workspaceUUID string, ownership *db.DatabaseOwnership) State {
+func New(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, workspaceUUID string, ownership Ownership) State {
 	if tokenStore == nil {
 		tokenStore = tokens.NewEncryptedStore(database, secretVault, workspaceUUID)
 	}
@@ -43,7 +42,7 @@ func (s *State) TokenStore() *tokens.Store {
 	return s.tokens
 }
 
-func (s *State) DatabaseOwnership() *db.DatabaseOwnership {
+func (s *State) DatabaseOwnership() Ownership {
 	if s == nil {
 		return nil
 	}

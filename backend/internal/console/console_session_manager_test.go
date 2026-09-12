@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -56,7 +57,9 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 		t.Fatalf("create active session: %v", err)
 	}
 
-	manager.CloseAll()
+	if err := manager.CloseAll(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if count := manager.activeSessionCount(); count != 0 {
 		t.Fatalf("sessions retained after CloseAll: %d", count)
 	}
@@ -64,6 +67,127 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 		RuntimeID: runtimeID, Name: "late", Principal: testExecutionPrincipal(),
 	}); !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("late create error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestConsoleSessionManagerCloseAllIsBoundedAndClosesTransportOnce(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-bounded-close", "127.0.0.1", 22)
+	release := make(chan struct{})
+	closeStarted := make(chan struct{})
+	var closeOnce sync.Once
+	var closeCalls atomic.Int32
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin:  &recordingWriteCloser{},
+			Stdout: strings.NewReader(""),
+			Wait:   func() error { <-release; return nil },
+			Close: func() error {
+				closeCalls.Add(1)
+				closeOnce.Do(func() { close(closeStarted) })
+				<-release
+				return nil
+			},
+		}, nil
+	}, nil)
+	if _, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+	}); err != nil {
+		t.Fatalf("create active session: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if err := manager.CloseAll(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseAll() error = %v, want deadline exceeded", err)
+	}
+	select {
+	case <-closeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("transport close did not start after cancellation")
+	}
+	secondCtx, secondCancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer secondCancel()
+	if err := manager.CloseAll(secondCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second CloseAll() error = %v, want deadline exceeded", err)
+	}
+	var callers sync.WaitGroup
+	for range 8 {
+		callers.Go(func() {
+			concurrentCtx, stop := context.WithTimeout(t.Context(), 10*time.Millisecond)
+			defer stop()
+			if err := manager.CloseAll(concurrentCtx); !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("concurrent CloseAll() error = %v", err)
+			}
+		})
+	}
+	callers.Wait()
+	close(release)
+	drainCtx, drainCancel := context.WithTimeout(t.Context(), time.Second)
+	defer drainCancel()
+	if err := manager.CloseAll(drainCtx); err != nil {
+		t.Fatalf("CloseAll() did not observe eventual drain: %v", err)
+	}
+	if closeCalls.Load() != 1 {
+		t.Fatalf("transport Close() calls = %d, want 1", closeCalls.Load())
+	}
+}
+
+func TestConsoleSessionClosePathsRespectContextWhileTransportCloses(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		run  func(context.Context, *Manager, Record) error
+	}{
+		{name: "session", run: func(ctx context.Context, manager *Manager, record Record) error {
+			return manager.Close(ctx, testExecutionPrincipal(), record.ID)
+		}},
+		{name: "runtime", run: func(ctx context.Context, manager *Manager, record Record) error {
+			return manager.CloseRuntime(ctx, testExecutionPrincipal(), record.RuntimeID)
+		}},
+		{name: "recovery", run: func(ctx context.Context, manager *Manager, record Record) error {
+			_, err := manager.RecoverRuntime(ctx, testExecutionPrincipal(), record.RuntimeID, nil)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = database.Close() })
+			runtimeID := insertConsoleTestSSHProfile(t, database, "worker-bounded-"+test.name, "127.0.0.1", 22)
+			release := make(chan struct{})
+			var closeCalls atomic.Int32
+			manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+				return &RuntimeSession{
+					Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+					Wait:  func() error { <-release; return nil },
+					Close: func() error { closeCalls.Add(1); <-release; return nil },
+				}, nil
+			}, nil)
+			record, err := manager.Create(t.Context(), CreateRequest{
+				RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, stop := context.WithTimeout(t.Context(), 10*time.Millisecond)
+			defer stop()
+			if err := test.run(ctx, manager, record); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("close error = %v, want deadline exceeded", err)
+			}
+			close(release)
+			if err := manager.CloseAll(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if closeCalls.Load() != 1 {
+				t.Fatalf("transport Close() calls = %d", closeCalls.Load())
+			}
+		})
 	}
 }
 

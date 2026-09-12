@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 var ErrDatabaseInUse = errors.New("database is in use by another AIPermission process")
 
 type DatabaseOwnership struct {
+	mu   sync.Mutex
 	file *os.File
 }
 
@@ -36,12 +38,26 @@ func AcquireDatabaseOwnership(databasePath string) (*DatabaseOwnership, error) {
 }
 
 func (ownership *DatabaseOwnership) Close() error {
-	if ownership == nil || ownership.file == nil {
-		return nil
+	_, err := ownership.Release()
+	return err
+}
+
+// Release reports whether the OS lock was conclusively released. A failed
+// unlock retains the handle so a later shutdown attempt can retry it.
+func (ownership *DatabaseOwnership) Release() (bool, error) {
+	if ownership == nil {
+		return true, nil
+	}
+	ownership.mu.Lock()
+	defer ownership.mu.Unlock()
+	if ownership.file == nil {
+		return true, nil
 	}
 	file := ownership.file
-	ownership.file = nil
-	unlockErr := unlockDatabaseOwnershipFile(file)
+	if err := unlockDatabaseOwnershipFile(file); err != nil {
+		return false, err
+	}
 	closeErr := file.Close()
-	return errors.Join(unlockErr, closeErr)
+	ownership.file = nil
+	return true, closeErr
 }

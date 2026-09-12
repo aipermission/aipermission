@@ -153,8 +153,10 @@ func (component *Component) WorkspaceJobs(workspace Workspace) (transferapp.Jobs
 }
 
 type WorkspaceLifecycle interface {
+	BeginShutdown() (bool, error)
 	Shutdown(time.Duration, string, string) (bool, bool, error)
 	Wait(context.Context) bool
+	Recover(context.Context, string, string) error
 	Abort()
 }
 
@@ -174,8 +176,16 @@ func (lifecycle workspaceLifecycle) Shutdown(timeout time.Duration, runningMessa
 	return lifecycle.manager.ShutdownWorkspace(lifecycle.workspace, timeout, runningMessage, batchMessage)
 }
 
+func (lifecycle workspaceLifecycle) BeginShutdown() (bool, error) {
+	return lifecycle.manager.BeginWorkspaceShutdown(lifecycle.workspace)
+}
+
 func (lifecycle workspaceLifecycle) Wait(ctx context.Context) bool {
 	return lifecycle.manager.WaitWorkspace(ctx, lifecycle.workspace)
+}
+
+func (lifecycle workspaceLifecycle) Recover(ctx context.Context, runningMessage, batchMessage string) error {
+	return lifecycle.manager.RecoverWorkspace(ctx, lifecycle.workspace, runningMessage, batchMessage)
 }
 
 func (lifecycle workspaceLifecycle) Abort() {
