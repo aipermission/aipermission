@@ -2,6 +2,7 @@ package gatewayinfrastructure
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -29,6 +30,11 @@ func (component *OperationsOwner) CommandBulkRuntime(handle *WorkspaceHandle, ru
 		return nil, false
 	}
 	runtime.Sessions = owner.Connectors.ConsoleSessionManager()
+	runtime.WithTransaction = func(ctx context.Context, mutate func(*sql.Tx, gatewayoperations.CommandBulkAuditAppender) error) error {
+		return component.owner.ObservationOwner().WithObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit ObservationAppender) error {
+			return mutate(tx, gatewayoperations.CommandBulkAuditAppender(appendAudit))
+		})
+	}
 	return &runtime, true
 }
 

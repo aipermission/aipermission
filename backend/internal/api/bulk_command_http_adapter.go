@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strings"
 
@@ -11,6 +9,7 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
@@ -38,11 +37,6 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayoperations
 				return gatewayoperations.CommandBulkTarget{}, gatewayoperations.ErrBulkTargetNotFound
 			}
 			return target, err
-		},
-		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayoperations.CommandBulkAuditAppender) error) error {
-			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-				return mutate(tx, gatewayoperations.CommandBulkAuditAppender(appendAudit))
-			})
 		},
 		PresentError: func(ctx context.Context, runtimeID int64, err error) string {
 			adapter := s.consoleErrorPresenter(ctx, runtime, runtimeID)
