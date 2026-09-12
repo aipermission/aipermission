@@ -62,29 +62,32 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 	}
 
 	missingConfirmation := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
-		TargetIDs: []int64{serverOne.ID, serverTwo.ID},
-		Command:   "hostname",
-		Reason:    "bulk smoke",
+		TargetIDs:      []int64{serverOne.ID, serverTwo.ID},
+		Command:        "hostname",
+		Reason:         "bulk smoke",
+		IdempotencyKey: "bulk-missing-confirmation",
 	})
 	if missingConfirmation.Code != http.StatusBadRequest || !strings.Contains(missingConfirmation.Body.String(), "RUN ON 2 TARGETS") {
 		t.Fatalf("bulk command should require exact confirmation, got %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
 	}
 
 	duplicateServer := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
-		TargetIDs:    []int64{serverOne.ID, serverOne.ID},
-		Command:      "hostname",
-		Reason:       "bulk smoke",
-		Confirmation: "RUN ON 2 TARGETS",
+		TargetIDs:      []int64{serverOne.ID, serverOne.ID},
+		Command:        "hostname",
+		Reason:         "bulk smoke",
+		Confirmation:   "RUN ON 2 TARGETS",
+		IdempotencyKey: "bulk-duplicate-target",
 	})
 	if duplicateServer.Code != http.StatusBadRequest || !strings.Contains(duplicateServer.Body.String(), "duplicates") {
 		t.Fatalf("bulk command should reject duplicate targets, got %d %s", duplicateServer.Code, duplicateServer.Body.String())
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
-		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
-		Command:      "hostname",
-		Reason:       "bulk smoke",
-		Confirmation: "RUN ON 2 TARGETS",
+		TargetIDs:      []int64{serverOne.ID, serverTwo.ID},
+		Command:        "hostname",
+		Reason:         "bulk smoke",
+		Confirmation:   "RUN ON 2 TARGETS",
+		IdempotencyKey: "bulk-history-smoke",
 	})
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("bulk command failed: %d %s", response.Code, response.Body.String())
@@ -94,6 +97,17 @@ func TestBulkConsoleCommandCreatesManualHistoryRows(t *testing.T) {
 		t.Fatalf("unexpected bulk command response: %#v", result)
 	}
 	waitForBulkCommandHistory(t, fixture.db, result.Items)
+	replay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
+		TargetIDs: []int64{serverOne.ID, serverTwo.ID}, Command: "hostname", Reason: "bulk smoke",
+		Confirmation: "RUN ON 2 TARGETS", IdempotencyKey: "bulk-history-smoke",
+	})
+	if replay.Code != http.StatusAccepted {
+		t.Fatalf("bulk replay failed: %d %s", replay.Code, replay.Body.String())
+	}
+	replayed := decodeRouteResponse[commandrequests.BulkHTTPResponse](t, replay.Body.Bytes())
+	if len(replayed.Items) != len(result.Items) || replayed.Items[0].RequestID != result.Items[0].RequestID || replayed.Items[1].RequestID != result.Items[1].RequestID {
+		t.Fatalf("bulk replay changed request identity: first=%#v replay=%#v", result, replayed)
+	}
 
 	var rows int
 	if err := fixture.db.QueryRow(`
@@ -164,10 +178,11 @@ func TestBulkConsoleCommandRollsBackEveryRequestWhenOneProjectionFails(t *testin
 	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/bulk-exec", "", commandrequests.BulkHTTPRequest{
-		TargetIDs:    []int64{serverOne.ID, serverTwo.ID},
-		Command:      "echo atomic bulk",
-		Reason:       "atomic bulk rollback",
-		Confirmation: "RUN ON 2 TARGETS",
+		TargetIDs:      []int64{serverOne.ID, serverTwo.ID},
+		Command:        "echo atomic bulk",
+		Reason:         "atomic bulk rollback",
+		Confirmation:   "RUN ON 2 TARGETS",
+		IdempotencyKey: "bulk-atomic-rollback",
 	})
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("expected atomic bulk failure, got %d %s", response.Code, response.Body.String())

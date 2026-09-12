@@ -70,6 +70,7 @@ func migrations() []migration {
 		connectorActionIdempotencyTombstoneMigration,
 		historyKeysetPaginationMigration,
 		fileTransferStartIdempotencyMigration,
+		bulkCommandIdempotencyMigration,
 	)
 }
 

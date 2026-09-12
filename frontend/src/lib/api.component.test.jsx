@@ -82,6 +82,45 @@ it("retains the browser retry identity when an acknowledgement is malformed", as
   expect(keys[0]).toBe(keys[1]);
 });
 
+it("rotates the browser retry identity after an acknowledged bulk command", async () => {
+  const keys = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      return jsonResponse({
+        parallelism: 2,
+        items: [{ request_id: keys.length, target_id: 4, target_name: "host", status: "running" }],
+      });
+    }),
+  );
+  const body = { target_ids: [4], command: "hostname", reason: "coverage", confirmation: "RUN ON 1 TARGETS" };
+
+  await apiPost("/api/console/bulk-exec", body);
+  await apiPost("/api/console/bulk-exec", body);
+
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).not.toBe(keys[1]);
+});
+
+it("retains a bulk retry identity when the gateway acknowledgement is malformed", async () => {
+  const keys = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      return jsonResponse({ parallelism: 2, items: [] });
+    }),
+  );
+  const body = { target_ids: [4], command: "hostname", reason: "coverage", confirmation: "RUN ON 1 TARGETS" };
+
+  await expect(apiPost("/api/console/bulk-exec", body)).rejects.toThrow(/Invalid bulk command response/);
+  await expect(apiPost("/api/console/bulk-exec", body)).rejects.toThrow(/Invalid bulk command response/);
+
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+});
+
 it("retires a reconciled fresh identity after a definitive client rejection", async () => {
   const keys = [];
   let calls = 0;

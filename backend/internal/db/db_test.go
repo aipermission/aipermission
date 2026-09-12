@@ -139,6 +139,9 @@ func assertBaselineSchemaObjects(t *testing.T, database *sql.DB) {
 	if !tableExists(t, database, "file_transfer_start_idempotency") {
 		t.Fatalf("file_transfer_start_idempotency table was not created")
 	}
+	if !tableExists(t, database, "bulk_command_idempotency") {
+		t.Fatalf("bulk_command_idempotency table was not created")
+	}
 	if !tableExists(t, database, "backup_providers") {
 		t.Fatalf("backup_providers table was not created")
 	}

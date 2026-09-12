@@ -210,6 +210,39 @@ test("local connector action retries retain idempotency after uncertain transpor
   }
 });
 
+test("bulk command retries retain idempotency across an uncertain response and reload", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreBrowser = installFakeBrowserRetryStorage("workspace-bulk-response-loss");
+  const keys = [];
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    keys.push(JSON.parse(options.body).idempotency_key);
+    calls += 1;
+    if (calls === 1) throw new TypeError("response lost");
+    return response({
+      parallelism: 3,
+      items: [{ request_id: 91, target_id: 4, target_name: "host", status: "running" }],
+    });
+  };
+  const body = {
+    target_ids: [4],
+    command: "hostname",
+    reason: "bulk smoke",
+    confirmation: "RUN ON 1 TARGETS",
+  };
+  try {
+    await assert.rejects(() => apiPost("/api/console/bulk-exec", body), /response lost/);
+    await apiPost("/api/console/bulk-exec", body);
+    await apiPost("/api/console/bulk-exec", body);
+    assert.equal(keys[0], keys[1]);
+    assert.notEqual(keys[1], keys[2]);
+  } finally {
+    await resetLocalActionRetryLedger();
+    globalThis.fetch = originalFetch;
+    restoreBrowser();
+  }
+});
+
 test("local connector action retries retain idempotency after server failures", async () => {
   const originalFetch = globalThis.fetch;
   const keys = [];

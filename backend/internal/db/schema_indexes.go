@@ -22,6 +22,7 @@ var indexStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_source_created ON command_requests(source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_runtime_source_created ON command_requests(runtime_id, source, created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_command_requests_token_source_status_created ON command_requests(token_id, source, status, created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_bulk_command_idempotency_expires ON bulk_command_idempotency(expires_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_sessions_runtime ON console_sessions(runtime_id);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_sessions_status ON console_sessions(status);`,
 	`CREATE INDEX IF NOT EXISTS idx_console_session_chunks_session_seq ON console_session_chunks(session_id, seq);`,

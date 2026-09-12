@@ -110,6 +110,13 @@ var coreTableStatements = []string{
 			FOREIGN KEY(token_id) REFERENCES api_tokens(id) ON DELETE SET NULL,
 			FOREIGN KEY(runtime_id) REFERENCES connector_runtime_surfaces(id) ON DELETE RESTRICT
 		);`,
+	`CREATE TABLE IF NOT EXISTS bulk_command_idempotency (
+		idempotency_key TEXT PRIMARY KEY,
+		identity_hash TEXT NOT NULL,
+		response_json TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	);`,
 	`CREATE TABLE IF NOT EXISTS console_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		runtime_id INTEGER NOT NULL,

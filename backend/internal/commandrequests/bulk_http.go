@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	BulkMaxTargets         = 25
-	BulkParallelism        = 3
-	bulkDefaultReason      = "bulk console command"
-	bulkMaxCommandBytes    = 64 << 10
-	bulkMaxReasonBytes     = 2 << 10
-	bulkInitialExecTimeout = 45 * time.Second
+	BulkMaxTargets          = 25
+	BulkParallelism         = 3
+	bulkDefaultReason       = "bulk console command"
+	bulkMaxCommandBytes     = 64 << 10
+	bulkMaxReasonBytes      = 2 << 10
+	bulkMaxIdempotencyBytes = 128
+	bulkInitialExecTimeout  = 45 * time.Second
 )
 
 var ErrBulkTargetNotFound = errors.New("bulk command target not found")
@@ -38,6 +39,8 @@ type BulkRequestOwner interface {
 	Finish(context.Context, Completion) error
 	FinishActive(context.Context, int64, executionprincipal.Principal, console.SessionHandle)
 	RunWorker(func(context.Context)) bool
+	LookupBulk(context.Context, string, string) (BulkHTTPResponse, error)
+	InsertBulk(context.Context, Executor, string, string, BulkHTTPResponse) error
 }
 
 type BulkConsoleSessions interface {
@@ -64,10 +67,11 @@ type BulkHTTPHandlers struct {
 }
 
 type BulkHTTPRequest struct {
-	TargetIDs    []int64 `json:"target_ids"`
-	Command      string  `json:"command"`
-	Reason       string  `json:"reason"`
-	Confirmation string  `json:"confirmation"`
+	TargetIDs      []int64 `json:"target_ids"`
+	Command        string  `json:"command"`
+	Reason         string  `json:"reason"`
+	Confirmation   string  `json:"confirmation"`
+	IdempotencyKey string  `json:"idempotency_key"`
 }
 
 type BulkHTTPResponse struct {
@@ -97,6 +101,7 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	}
 	request.Command = strings.TrimSpace(request.Command)
 	request.Reason = strings.TrimSpace(request.Reason)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.Reason == "" {
 		request.Reason = bulkDefaultReason
 	}
@@ -108,6 +113,10 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := validateBulkText("idempotency_key", request.IdempotencyKey, bulkMaxIdempotencyBytes); err != nil {
+		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	targetIDs, err := normalizeBulkTargetIDs(request.TargetIDs)
 	if err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
@@ -116,6 +125,24 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	expectedConfirmation := BulkConfirmation(len(targetIDs))
 	if request.Confirmation != expectedConfirmation {
 		httptransport.WriteError(w, http.StatusBadRequest, "confirmation must be "+expectedConfirmation)
+		return
+	}
+	identityHash, err := BulkIdentityHash(targetIDs, request.Command, request.Reason)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	if replay, replayErr := runtime.Requests.LookupBulk(r.Context(), request.IdempotencyKey, identityHash); replayErr == nil {
+		httptransport.WriteJSON(w, http.StatusAccepted, replay)
+		return
+	} else if errors.Is(replayErr, ErrBulkIdempotencyConflict) {
+		httptransport.WriteError(w, http.StatusConflict, replayErr.Error())
+		return
+	} else if errors.Is(replayErr, ErrBulkIdempotencyExpired) {
+		httptransport.WriteError(w, http.StatusGone, replayErr.Error())
+		return
+	} else if !errors.Is(replayErr, ErrBulkIdempotencyNotFound) {
+		httptransport.WriteInternalError(w)
 		return
 	}
 
@@ -151,6 +178,7 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := make([]BulkHTTPResponseItem, 0, len(targets))
+	response := BulkHTTPResponse{Parallelism: BulkParallelism}
 	err = runtime.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit BulkAuditAppender) error {
 		if appendAudit == nil {
 			return errors.New("bulk command audit appender is unavailable")
@@ -164,16 +192,27 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 				RequestID: requestID, TargetID: target.RuntimeID, TargetName: target.Name, Status: "running",
 			})
 		}
+		response.Items = items
+		if err := runtime.Requests.InsertBulk(r.Context(), tx, request.IdempotencyKey, identityHash, response); err != nil {
+			return err
+		}
 		return appendAudit(tx, "user", nil, 0, "console.bulk_exec.started", map[string]any{
 			"target_count": len(items), "request_ids": bulkRequestIDs(items), "command": request.Command,
 		})
 	})
 	if err != nil {
+		if replay, replayErr := runtime.Requests.LookupBulk(r.Context(), request.IdempotencyKey, identityHash); replayErr == nil {
+			httptransport.WriteJSON(w, http.StatusAccepted, replay)
+			return
+		} else if errors.Is(replayErr, ErrBulkIdempotencyConflict) {
+			httptransport.WriteError(w, http.StatusConflict, replayErr.Error())
+			return
+		}
 		httptransport.WriteInternalError(w)
 		return
 	}
 	runtime.run(request.Command, items)
-	httptransport.WriteJSON(w, http.StatusAccepted, BulkHTTPResponse{Parallelism: BulkParallelism, Items: items})
+	httptransport.WriteJSON(w, http.StatusAccepted, response)
 }
 
 func (h *BulkHTTPHandlers) resolve(w http.ResponseWriter) (*BulkHTTPRuntime, bool) {

@@ -3,6 +3,7 @@ package commandrequests
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +24,12 @@ type fakeBulkRequestOwner struct {
 	setSession     chan [2]int64
 	finishedActive chan console.SessionHandle
 	workerContext  context.Context
+	bulkRecords    map[string]fakeBulkRecord
+}
+
+type fakeBulkRecord struct {
+	hash     string
+	response BulkHTTPResponse
 }
 
 func (owner *fakeBulkRequestOwner) Prepare(_ context.Context, insert Insert) (PreparedInsert, error) {
@@ -60,6 +67,29 @@ func (owner *fakeBulkRequestOwner) RunWorker(run func(context.Context)) bool {
 	}
 	go run(ctx)
 	return true
+}
+
+func (owner *fakeBulkRequestOwner) LookupBulk(_ context.Context, key, identityHash string) (BulkHTTPResponse, error) {
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	record, ok := owner.bulkRecords[key]
+	if !ok {
+		return BulkHTTPResponse{}, ErrBulkIdempotencyNotFound
+	}
+	if record.hash != identityHash {
+		return BulkHTTPResponse{}, ErrBulkIdempotencyConflict
+	}
+	return record.response, nil
+}
+
+func (owner *fakeBulkRequestOwner) InsertBulk(_ context.Context, _ Executor, key, identityHash string, response BulkHTTPResponse) error {
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if _, ok := owner.bulkRecords[key]; ok {
+		return ErrBulkIdempotencyConflict
+	}
+	owner.bulkRecords[key] = fakeBulkRecord{hash: identityHash, response: response}
+	return nil
 }
 
 type blockingBulkSessions struct {
@@ -117,6 +147,7 @@ func newBulkTestRuntime(t *testing.T) (*BulkHTTPRuntime, *fakeBulkRequestOwner, 
 	owner := &fakeBulkRequestOwner{
 		finish: make(chan Completion, BulkMaxTargets), setSession: make(chan [2]int64, BulkMaxTargets),
 		finishedActive: make(chan console.SessionHandle, BulkMaxTargets),
+		bulkRecords:    make(map[string]fakeBulkRecord),
 	}
 	sessions := &fakeBulkSessions{calls: make(chan int64, BulkMaxTargets)}
 	runtime := &BulkHTTPRuntime{
@@ -139,7 +170,18 @@ func newBulkTestRuntime(t *testing.T) (*BulkHTTPRuntime, *fakeBulkRequestOwner, 
 }
 
 func bulkRequest(body string) *http.Request {
-	request := httptest.NewRequest(http.MethodPost, "/api/console/bulk-exec", strings.NewReader(body))
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		panic(err)
+	}
+	if _, ok := payload["idempotency_key"]; !ok {
+		payload["idempotency_key"] = "test-bulk-request"
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/console/bulk-exec", strings.NewReader(string(encoded)))
 	request.Header.Set("Content-Type", "application/json")
 	return request
 }
@@ -183,6 +225,68 @@ func TestBulkRunCreatesAtomicRequestsAndCompletesEachTarget(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("bulk execution did not complete")
 		}
+	}
+}
+
+func TestBulkRunReplaysResponseWithoutDispatchingAgain(t *testing.T) {
+	runtime, owner, sessions := newBulkTestRuntime(t)
+	sessions.result = console.ExecResult{SessionID: 8, Output: "ok", ExitCode: 0}
+	handler := NewBulkHTTPHandlers(func(http.ResponseWriter) (*BulkHTTPRuntime, bool) { return runtime, true })
+	body := `{"target_ids":[4],"command":"hostname","confirmation":"RUN ON 1 TARGETS","idempotency_key":"response-loss"}`
+	first := httptest.NewRecorder()
+	handler.Run(first, bulkRequest(body))
+	if first.Code != http.StatusAccepted {
+		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
+	}
+	select {
+	case <-sessions.calls:
+	case <-time.After(time.Second):
+		t.Fatal("first bulk command was not dispatched")
+	}
+
+	replay := httptest.NewRecorder()
+	handler.Run(replay, bulkRequest(body))
+	if replay.Code != http.StatusAccepted || replay.Body.String() != first.Body.String() {
+		t.Fatalf("replay status=%d body=%s first=%s", replay.Code, replay.Body.String(), first.Body.String())
+	}
+	select {
+	case runtimeID := <-sessions.calls:
+		t.Fatalf("replay dispatched duplicate command to runtime %d", runtimeID)
+	case <-time.After(50 * time.Millisecond):
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if owner.nextID != 1 {
+		t.Fatalf("replay created %d command requests", owner.nextID)
+	}
+}
+
+func TestBulkRunRejectsIdempotencyPayloadDrift(t *testing.T) {
+	runtime, _, _ := newBulkTestRuntime(t)
+	handler := NewBulkHTTPHandlers(func(http.ResponseWriter) (*BulkHTTPRuntime, bool) { return runtime, true })
+	first := httptest.NewRecorder()
+	handler.Run(first, bulkRequest(`{"target_ids":[4],"command":"hostname","confirmation":"RUN ON 1 TARGETS","idempotency_key":"drift"}`))
+	if first.Code != http.StatusAccepted {
+		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
+	}
+	drift := httptest.NewRecorder()
+	handler.Run(drift, bulkRequest(`{"target_ids":[4],"command":"whoami","confirmation":"RUN ON 1 TARGETS","idempotency_key":"drift"}`))
+	if drift.Code != http.StatusConflict {
+		t.Fatalf("drift status=%d body=%s", drift.Code, drift.Body.String())
+	}
+}
+
+func TestBulkRunRequiresIdempotencyKey(t *testing.T) {
+	runtime, _, _ := newBulkTestRuntime(t)
+	handler := NewBulkHTTPHandlers(func(http.ResponseWriter) (*BulkHTTPRuntime, bool) { return runtime, true })
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/console/bulk-exec", strings.NewReader(
+		`{"target_ids":[4],"command":"hostname","confirmation":"RUN ON 1 TARGETS"}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	handler.Run(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "idempotency_key is required") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

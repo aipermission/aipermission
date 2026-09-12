@@ -45,16 +45,16 @@ export async function apiPost(path, body, options = {}) {
       }
       throw error;
     }
-    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status !== "outcome_unknown") {
+    if (prepared.retry && response.ok && prepared.acknowledged(data) && data.status !== "outcome_unknown") {
       await completeLocalActionRetry(prepared.retry);
       finalized = true;
     }
-    if (prepared.retry && response.ok && isAcknowledgedLocalActionResponse(data) && data.status === "outcome_unknown") {
+    if (prepared.retry && response.ok && prepared.acknowledged(data) && data.status === "outcome_unknown") {
       await markLocalActionRetryOutcome(prepared.retry, data);
       finalized = true;
     }
-    if (prepared.retry && response.ok && !isAcknowledgedLocalActionResponse(data)) {
-      throw new Error("Invalid connector action response from gateway.");
+    if (prepared.retry && response.ok && !prepared.acknowledged(data)) {
+      throw new Error(prepared.invalidResponseMessage);
     }
     return data;
   } catch (error) {
@@ -95,9 +95,33 @@ function isAcknowledgedLocalActionResponse(data) {
 }
 
 async function preparePostBody(path, body) {
-  if (path !== "/api/connector-actions/local-run" || body?.idempotency_key) return { body, retry: null };
-  const retry = await prepareLocalActionRetry(body || {});
-  return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry };
+  if (body?.idempotency_key) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
+  const policy = idempotentPostPolicy(path);
+  if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
+  const retry = await prepareLocalActionRetry({ path, body: body || {} });
+  return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
+}
+
+function idempotentPostPolicy(path) {
+  if (path === "/api/connector-actions/local-run") {
+    return { acknowledged: isAcknowledgedLocalActionResponse, invalidResponseMessage: "Invalid connector action response from gateway." };
+  }
+  if (path === "/api/console/bulk-exec") {
+    return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };
+  }
+  return null;
+}
+
+function isAcknowledgedBulkCommandResponse(data) {
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    Number.isSafeInteger(data.parallelism) &&
+    data.parallelism > 0 &&
+    Array.isArray(data.items) &&
+    data.items.length > 0 &&
+    data.items.every((item) => Number.isSafeInteger(item?.request_id) && item.request_id > 0)
+  );
 }
 
 export async function apiPostForm(path, formData, options = {}) {
