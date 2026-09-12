@@ -11,7 +11,7 @@ type ConnectorApprovalPorts struct {
 	Redact   func(context.Context, string) string
 }
 
-func (component *Component) ConnectorApprovalWorkspace(handle *WorkspaceHandle, ports ConnectorApprovalPorts) (connectormgmt.ConnectorApprovalScope, bool) {
+func (component *ConnectorActionOwner) ConnectorApprovalWorkspace(handle *WorkspaceHandle, ports ConnectorApprovalPorts) (connectormgmt.ConnectorApprovalScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectormgmt.ConnectorApprovalScope{}, false

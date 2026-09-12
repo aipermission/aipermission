@@ -14,15 +14,15 @@ var errAuditedMutationUnchanged = errors.New("audited mutation unchanged")
 // local domain mutation. Mutations must use withAuditedMutation, a
 // transaction-aware store hook, or an approved lifecycle trigger instead.
 func (s *Server) writeObservationAudit(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, actorType string, tokenID *int64, runtimeID int64, action string, payload any) {
-	s.infrastructure.WriteObservation(ctx, runtime, actorType, tokenID, runtimeID, action, payload)
+	s.observationOwner.WriteObservation(ctx, runtime, actorType, tokenID, runtimeID, action, payload)
 }
 
 func (s *Server) writeAuditRequired(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, actorType string, tokenID *int64, runtimeID int64, action string, payload any) error {
-	return s.infrastructure.WriteObservationRequired(ctx, runtime, actorType, tokenID, runtimeID, action, payload)
+	return s.observationOwner.WriteObservationRequired(ctx, runtime, actorType, tokenID, runtimeID, action, payload)
 }
 
 func (s *Server) prepareAuditRedactor(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) func(string) string {
-	return s.infrastructure.PrepareObservationRedactor(ctx, runtime)
+	return s.observationOwner.PrepareObservationRedactor(ctx, runtime)
 }
 
 type auditAppender func(*sql.Tx, string, *int64, int64, string, any) error
@@ -32,7 +32,7 @@ func (s *Server) withAuditedTransaction(
 	runtime *gatewayinfra.WorkspaceHandle,
 	mutate func(*sql.Tx, auditAppender) error,
 ) error {
-	return s.infrastructure.WithObservationTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation gatewayinfra.ObservationAppender) error {
+	return s.observationOwner.WithObservationTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation gatewayinfra.ObservationAppender) error {
 		return mutate(tx, auditAppender(appendObservation))
 	})
 }
@@ -47,11 +47,11 @@ func (s *Server) withAuditedMutation(
 	payload func() any,
 	mutate func(*sql.Tx) error,
 ) error {
-	return s.infrastructure.WithObservationMutation(ctx, runtime, actorType, tokenID, runtimeID, action, payload, mutate)
+	return s.observationOwner.WithObservationMutation(ctx, runtime, actorType, tokenID, runtimeID, action, payload, mutate)
 }
 
 func (s *Server) projectAuditEvents(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) {
-	s.infrastructure.ProjectObservations(ctx, runtime)
+	s.observationOwner.ProjectObservations(ctx, runtime)
 }
 
 func int64Ptr(value int64) *int64 {

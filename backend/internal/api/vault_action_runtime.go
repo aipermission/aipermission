@@ -13,7 +13,7 @@ func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (gatewayvault.Vaul
 	if !ok {
 		return gatewayvault.VaultApprovalHTTPScope{}, false
 	}
-	scope, valid := s.infrastructure.VaultApprovalScope(runtime, func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
+	scope, valid := s.vaultOwner.VaultApprovalScope(runtime, func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
 		return s.vaultRequestRuntime(ctx, runtime)
 	})
 	return scope, valid

@@ -13,7 +13,7 @@ type VaultRuntimePorts struct {
 	Requests gatewayvault.RequestRuntimePorts
 }
 
-func (component *Component) VaultRuntime(handle *WorkspaceHandle, ports VaultRuntimePorts) (gatewayvault.Runtime, bool) {
+func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRuntimePorts) (gatewayvault.Runtime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.Runtime{}, false
@@ -39,7 +39,7 @@ type VaultSessionPorts struct {
 	Requests  func(context.Context) (gatewayvault.RequestInvalidator, error)
 }
 
-func (component *Component) VaultSessionRuntime(handle *WorkspaceHandle, ports VaultSessionPorts) (gatewayvault.SessionLifecycleRuntime, bool) {
+func (component *VaultOwner) VaultSessionRuntime(handle *WorkspaceHandle, ports VaultSessionPorts) (gatewayvault.SessionLifecycleRuntime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Connectors.ConsoleSessionManager() == nil {
 		return gatewayvault.SessionLifecycleRuntime{}, false
@@ -69,7 +69,7 @@ type VaultMCPPorts struct {
 	MetadataRead func(context.Context, int64) (bool, error)
 }
 
-func (component *Component) VaultMCPScope(handle *WorkspaceHandle, ports VaultMCPPorts) (gatewayvault.VaultMCPHTTPScope, bool) {
+func (component *VaultOwner) VaultMCPScope(handle *WorkspaceHandle, ports VaultMCPPorts) (gatewayvault.VaultMCPHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.VaultMCPHTTPScope{}, false
@@ -82,7 +82,7 @@ func (component *Component) VaultMCPScope(handle *WorkspaceHandle, ports VaultMC
 	}, true
 }
 
-func (component *Component) VaultApprovalScope(handle *WorkspaceHandle, runtime func(context.Context) (gatewayvault.VaultRequestApplication, error)) (gatewayvault.VaultApprovalHTTPScope, bool) {
+func (component *VaultOwner) VaultApprovalScope(handle *WorkspaceHandle, runtime func(context.Context) (gatewayvault.VaultRequestApplication, error)) (gatewayvault.VaultApprovalHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.VaultApprovalHTTPScope{}, false

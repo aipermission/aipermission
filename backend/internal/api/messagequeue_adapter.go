@@ -17,7 +17,7 @@ func (s *Server) messageQueueScope(w http.ResponseWriter) (gatewayoperations.Mes
 }
 
 func (s *Server) messageQueueStore(runtime *gatewayinfra.WorkspaceHandle) *gatewayoperations.MessageStore {
-	store, _ := s.infrastructure.MessageStore(runtime, func(ctx context.Context, value string) string {
+	store, _ := s.operationsOwner.MessageStore(runtime, func(ctx context.Context, value string) string {
 		return s.redactForPersistence(ctx, runtime, value)
 	})
 	return store

@@ -15,7 +15,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 	if !ok {
 		return nil, false
 	}
-	return s.infrastructure.LiveConsoleHTTPRuntime(runtime, connectorapi.LiveConsoleHTTPRuntime{
+	return s.operationsOwner.LiveConsoleHTTPRuntime(runtime, connectorapi.LiveConsoleHTTPRuntime{
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},

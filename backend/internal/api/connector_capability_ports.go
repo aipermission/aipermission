@@ -42,7 +42,7 @@ func (s *Server) connectorPeerTrustApplication() *connectorports.PeerTrustCoordi
 		workspaces := make([]connectorports.PeerTrustWorkspace, 0, len(runtimes))
 		for _, runtime := range runtimes {
 			boundRuntime := runtime
-			workspace, ok := s.infrastructure.PeerTrustWorkspace(runtime,
+			workspace, ok := s.operationsOwner.PeerTrustWorkspace(runtime,
 				func(ctx context.Context, reason string) error {
 					lifecycle, err := s.vaultSessionLifecycle(boundRuntime)
 					if err != nil {
@@ -62,7 +62,7 @@ func (s *Server) connectorWorkspace(runtime *gatewayinfra.WorkspaceHandle) conne
 	if runtime == nil {
 		return connectorports.Workspace{}
 	}
-	workspace, _ := s.infrastructure.ConnectorPortsWorkspace(runtime, connectorports.Workspace{
+	workspace, _ := s.connectorPortsOwner.ConnectorPortsWorkspace(runtime, connectorports.Workspace{
 		Principal: func() (gatewayaccess.Principal, error) { return s.localExecutionPrincipal(runtime) },
 	})
 	return workspace
@@ -104,7 +104,7 @@ func (s *Server) connectorPortsWorkspace(runtime *gatewayinfra.WorkspaceHandle) 
 		},
 	}}
 	ports.Principal = func() (gatewayaccess.Principal, error) { return s.localExecutionPrincipal(runtime) }
-	workspace, _ := s.infrastructure.ConnectorPortsWorkspace(runtime, ports)
+	workspace, _ := s.connectorPortsOwner.ConnectorPortsWorkspace(runtime, ports)
 	return workspace
 }
 

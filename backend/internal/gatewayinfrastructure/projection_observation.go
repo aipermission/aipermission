@@ -13,14 +13,15 @@ import (
 
 type ObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error
 
-func (component *Component) observationWorkspace(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
+func (component *ObservationOwner) observationWorkspace(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return observationapp.Runtime{}, false
 	}
+	identity := handle.Identity()
 	return observationapp.Runtime{
 		Database:   owner.Storage.DatabaseHandle(),
-		DatabaseID: owner.Identity.DatabaseID,
+		DatabaseID: identity.DatabaseID,
 		Registry:   owner.Connectors.ConnectorRegistry(),
 		MCPStarted: owner.Security.RuntimeControlState().MCPStarted(),
 		PrepareRedactor: func(ctx context.Context) func(string) string {
@@ -37,15 +38,15 @@ func (component *Component) observationWorkspace(handle *WorkspaceHandle) (obser
 	}, true
 }
 
-func (component *Component) ConfigureObservationDispatcher(handle *WorkspaceHandle) {
+func (component *ObservationOwner) ConfigureObservationDispatcher(handle *WorkspaceHandle) {
 	if runtime, ok := component.observationWorkspace(handle); ok {
-		component.observation.ConfigureDispatcher(runtime)
+		component.owner.observation.ConfigureDispatcher(runtime)
 	}
 }
 
-func (component *Component) InitializeObservationRetention(handle *WorkspaceHandle, startActions func()) {
+func (component *ObservationOwner) InitializeObservationRetention(handle *WorkspaceHandle, startActions func()) {
 	if runtime, ok := component.observationWorkspace(handle); ok {
-		component.observation.InitializeRetention(runtime, startActions)
+		component.owner.observation.InitializeRetention(runtime, startActions)
 	}
 }
 
@@ -62,9 +63,9 @@ type ObservationHealth struct {
 	LastDeliverySuccess string `json:"last_delivery_success_at,omitempty"`
 }
 
-func (component *Component) ObservationHealthSnapshot(ctx context.Context, handle *WorkspaceHandle) ObservationHealth {
+func (component *ObservationOwner) ObservationHealthSnapshot(ctx context.Context, handle *WorkspaceHandle) ObservationHealth {
 	runtime, _ := component.observationWorkspace(handle)
-	snapshot := component.observation.HealthSnapshot(ctx, runtime)
+	snapshot := component.owner.observation.HealthSnapshot(ctx, runtime)
 	return ObservationHealth{
 		Status: snapshot.Status, FailureCount: snapshot.FailureCount, LastFailureAt: snapshot.LastFailureAt,
 		PendingCount: snapshot.PendingCount, DeadLetterCount: snapshot.DeadLetterCount,
@@ -74,40 +75,40 @@ func (component *Component) ObservationHealthSnapshot(ctx context.Context, handl
 	}
 }
 
-func (component *Component) RecordObservationFailure(at time.Time) {
-	component.observation.RecordFailure(at)
+func (component *ObservationOwner) RecordObservationFailure(at time.Time) {
+	component.owner.observation.RecordFailure(at)
 }
 
-func (component *Component) WriteObservation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
+func (component *ObservationOwner) WriteObservation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 	runtime, _ := component.observationWorkspace(handle)
-	component.observation.WriteObservation(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+	component.owner.observation.WriteObservation(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 }
 
-func (component *Component) WriteObservationRequired(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) error {
+func (component *ObservationOwner) WriteObservationRequired(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) error {
 	runtime, _ := component.observationWorkspace(handle)
-	return component.observation.WriteRequired(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+	return component.owner.observation.WriteRequired(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 }
 
-func (component *Component) PrepareObservationRedactor(ctx context.Context, handle *WorkspaceHandle) func(string) string {
+func (component *ObservationOwner) PrepareObservationRedactor(ctx context.Context, handle *WorkspaceHandle) func(string) string {
 	runtime, _ := component.observationWorkspace(handle)
-	return component.observation.PrepareRedactor(ctx, runtime)
+	return component.owner.observation.PrepareRedactor(ctx, runtime)
 }
 
-func (component *Component) WithObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
+func (component *ObservationOwner) WithObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
 	runtime, _ := component.observationWorkspace(handle)
-	return component.observation.WithTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation observationapp.Appender) error {
+	return component.owner.observation.WithTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation observationapp.Appender) error {
 		return mutate(tx, ObservationAppender(appendObservation))
 	})
 }
 
-func (component *Component) WithObservationMutation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
+func (component *ObservationOwner) WithObservationMutation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 	runtime, _ := component.observationWorkspace(handle)
-	return component.observation.WithMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
+	return component.owner.observation.WithMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 }
 
-func (component *Component) ProjectObservations(ctx context.Context, handle *WorkspaceHandle) {
+func (component *ObservationOwner) ProjectObservations(ctx context.Context, handle *WorkspaceHandle) {
 	if runtime, ok := component.observationWorkspace(handle); ok {
-		component.observation.Project(ctx, runtime)
+		component.owner.observation.Project(ctx, runtime)
 	}
 }
 
@@ -117,8 +118,30 @@ type ObservationHTTPHandlers struct {
 	Audit     Audit
 }
 
-func (component *Component) ObservationHTTPHandlers(active func(http.ResponseWriter) (*WorkspaceHandle, bool)) ObservationHTTPHandlers {
-	handlers := component.observation.HTTPHandlers(func(w http.ResponseWriter) (observationapp.Runtime, bool) {
+type Retention interface {
+	Get(http.ResponseWriter, *http.Request)
+	Update(http.ResponseWriter, *http.Request)
+	Purge(http.ResponseWriter, *http.Request)
+}
+
+type History interface {
+	ListTargetFacets(http.ResponseWriter, *http.Request)
+	ListEntries(http.ResponseWriter, *http.Request)
+	GetEntry(http.ResponseWriter, *http.Request)
+	AttachEntryLabel(http.ResponseWriter, *http.Request)
+	DetachEntryLabel(http.ResponseWriter, *http.Request)
+	ListLabels(http.ResponseWriter, *http.Request)
+	CreateLabel(http.ResponseWriter, *http.Request)
+	DeleteLabel(http.ResponseWriter, *http.Request)
+}
+
+type Audit interface {
+	List(http.ResponseWriter, *http.Request)
+	Get(http.ResponseWriter, *http.Request)
+}
+
+func (component *ObservationOwner) ObservationHTTPHandlers(active func(http.ResponseWriter) (*WorkspaceHandle, bool)) ObservationHTTPHandlers {
+	handlers := component.owner.observation.HTTPHandlers(func(w http.ResponseWriter) (observationapp.Runtime, bool) {
 		handle, ok := active(w)
 		if !ok {
 			return observationapp.Runtime{}, false
@@ -128,25 +151,25 @@ func (component *Component) ObservationHTTPHandlers(active func(http.ResponseWri
 	return ObservationHTTPHandlers{Retention: handlers.Retention, History: handlers.History, Audit: handlers.Audit}
 }
 
-func (component *Component) ObservationDiagnostics(ctx context.Context, handle *WorkspaceHandle) (json.RawMessage, error) {
+func (component *ObservationOwner) ObservationDiagnostics(ctx context.Context, handle *WorkspaceHandle) (json.RawMessage, error) {
 	runtime, _ := component.observationWorkspace(handle)
-	report, err := component.observation.Diagnostics(ctx, runtime)
+	report, err := component.owner.observation.Diagnostics(ctx, runtime)
 	if err != nil {
 		return nil, err
 	}
 	return json.Marshal(report)
 }
 
-func (component *Component) PrepareDiagnosticsDownload(w http.ResponseWriter) string {
-	return component.observation.PrepareDiagnosticsDownload(w)
+func (component *ObservationOwner) PrepareDiagnosticsDownload(w http.ResponseWriter) string {
+	return component.owner.observation.PrepareDiagnosticsDownload(w)
 }
 
-func (component *Component) VaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {
+func (component *ObservationOwner) VaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {
 	runtime, _ := component.observationWorkspace(handle)
-	return gatewayvault.RequestStoreFactory(component.observation.VaultRequestStoreFactory(runtime))
+	return gatewayvault.RequestStoreFactory(component.owner.observation.VaultRequestStoreFactory(runtime))
 }
 
-func (component *Component) SyncVaultActionRequest(ctx context.Context, handle *WorkspaceHandle, id int64) error {
+func (component *ObservationOwner) SyncVaultActionRequest(ctx context.Context, handle *WorkspaceHandle, id int64) error {
 	runtime, _ := component.observationWorkspace(handle)
-	return component.observation.SyncVaultActionRequest(ctx, runtime, id)
+	return component.owner.observation.SyncVaultActionRequest(ctx, runtime, id)
 }

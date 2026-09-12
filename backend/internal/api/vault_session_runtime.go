@@ -20,7 +20,7 @@ func (s *Server) vaultSessionLifecycle(runtime *gatewayinfra.WorkspaceHandle) (*
 	if s == nil || runtime == nil {
 		return nil, gatewayvault.InvalidatorUnavailableError()
 	}
-	composed, ok := s.infrastructure.VaultSessionRuntime(runtime, gatewayinfra.VaultSessionPorts{
+	composed, ok := s.vaultOwner.VaultSessionRuntime(runtime, gatewayinfra.VaultSessionPorts{
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},

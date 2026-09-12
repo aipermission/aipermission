@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Server) initializeCommandRequestRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
-	return s.infrastructure.InitializeCommandRuntime(runtime, &s.commands, func(ctx context.Context, value string) string {
+	return s.operationsOwner.InitializeCommandRuntime(runtime, &s.commands, func(ctx context.Context, value string) string {
 		return s.redactForPersistence(ctx, runtime, value)
 	}, mcpBackgroundCommandTimeout)
 }

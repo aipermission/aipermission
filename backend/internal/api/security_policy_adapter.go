@@ -17,7 +17,7 @@ func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.S
 	if !ok {
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
-	scope, valid := s.infrastructure.SecurityScope(runtime, gatewayinfra.SecurityPorts{
+	scope, valid := s.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
@@ -29,7 +29,7 @@ func (s *Server) readSecuritySettings(ctx context.Context, runtime *gatewayinfra
 	if s == nil || runtime == nil {
 		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
 	}
-	settings, err := s.infrastructure.ReadSecuritySettings(ctx, runtime)
+	settings, err := s.accessOwner.ReadSecuritySettings(ctx, runtime)
 	if err != nil {
 		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
 	}
@@ -40,7 +40,7 @@ func (s *Server) redactForPersistence(ctx context.Context, runtime *gatewayinfra
 	if runtime == nil {
 		return s.access.RedactFallback(value)
 	}
-	if redacted, ok := s.infrastructure.RedactForPersistence(ctx, runtime, value); ok {
+	if redacted, ok := s.accessOwner.RedactForPersistence(ctx, runtime, value); ok {
 		return redacted
 	}
 	return s.access.RedactFallback(value)
@@ -50,7 +50,7 @@ func (s *Server) runtimeRedactor(runtime *gatewayinfra.WorkspaceHandle) func(str
 	if runtime == nil {
 		return s.access.RedactFallback
 	}
-	if redact, ok := s.infrastructure.RuntimeRedactor(runtime); ok {
+	if redact, ok := s.accessOwner.RuntimeRedactor(runtime); ok {
 		return redact
 	}
 	return s.access.RedactFallback
@@ -60,7 +60,7 @@ func (s *Server) redactCustom(ctx context.Context, runtime *gatewayinfra.Workspa
 	if runtime == nil {
 		return value
 	}
-	if redacted, ok := s.infrastructure.RedactCustom(ctx, runtime, value); ok {
+	if redacted, ok := s.accessOwner.RedactCustom(ctx, runtime, value); ok {
 		return redacted
 	}
 	return value

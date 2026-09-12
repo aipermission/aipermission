@@ -13,7 +13,7 @@ type AccessControlPorts struct {
 	FinishTokenInvalidation func(context.Context, int64, []int64)
 }
 
-func (component *Component) CanReadVaultMetadata(
+func (component *AccessOwner) CanReadVaultMetadata(
 	ctx context.Context,
 	handle *WorkspaceHandle,
 	factory gatewayaccess.VaultMetadataReaderFactory,
@@ -32,7 +32,7 @@ func (component *Component) CanReadVaultMetadata(
 	return reader.CanRead(ctx, tokenID, projectID, now)
 }
 
-func (component *Component) AccessControlWorkspace(handle *WorkspaceHandle, ports AccessControlPorts) (gatewayaccess.AccessScope, bool) {
+func (component *AccessOwner) AccessControlWorkspace(handle *WorkspaceHandle, ports AccessControlPorts) (gatewayaccess.AccessScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.AccessScope{}, false

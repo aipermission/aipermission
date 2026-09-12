@@ -13,7 +13,7 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgm
 	if !ok {
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
-	return s.infrastructure.ConnectorApprovalWorkspace(runtime, gatewayinfra.ConnectorApprovalPorts{
+	return s.connectorActionOwner.ConnectorApprovalWorkspace(runtime, gatewayinfra.ConnectorApprovalPorts{
 		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
 			return s.connectorActionApprovalWorkflow(runtime)
 		},

@@ -24,7 +24,7 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayoperations
 		writeInternalError(w)
 		return nil, false
 	}
-	return s.infrastructure.CommandBulkRuntime(runtime, gatewayoperations.CommandBulkHTTPRuntime{
+	return s.operationsOwner.CommandBulkRuntime(runtime, gatewayoperations.CommandBulkHTTPRuntime{
 		Requests: requests,
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)

@@ -30,7 +30,7 @@ func (s *Server) connectorActionWorkspace(runtime *gatewayinfra.WorkspaceHandle)
 	if runtime == nil {
 		return gatewayactions.Workspace{}
 	}
-	workspace, ok := s.infrastructure.ConnectorActionWorkspace(runtime, gatewayactions.WorkflowPorts{
+	workspace, ok := s.connectorActionOwner.ConnectorActionWorkspace(runtime, gatewayactions.WorkflowPorts{
 		RedactBasic: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},

@@ -220,6 +220,7 @@ func newConnectorActionTestRuntime(
 ) *gatewayinfra.WorkspaceHandle {
 	t.Helper()
 	infrastructure := gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil)
+	workspaceOwner := infrastructure.WorkspaceOwner()
 	adapters := connectorapi.NewRegistry()
 	adopted := testAdoptInput(database, secretVault, tokenStore)
 	adopted.ID = workspaceUUID
@@ -227,12 +228,16 @@ func newConnectorActionTestRuntime(
 	adopted.Registry = registry
 	adopted.AdapterRegistry = adapters
 	adopted.RuntimeInstanceID = func() (string, error) { return "test-runtime", nil }
-	runtime, err := infrastructure.AdoptWorkspace(t.Context(), adopted)
+	runtime, err := workspaceOwner.AdoptWorkspace(t.Context(), adopted)
 	if err != nil {
 		t.Fatalf("adopt test runtime: %v", err)
 	}
 	registerRuntimeTestOwner(runtime, runtimeTestOwner{
-		infrastructure: infrastructure, database: database, secretVault: secretVault,
+		workspaceOwner: workspaceOwner, accessOwner: infrastructure.AccessOwner(),
+		connectorActionOwner: infrastructure.ConnectorActionOwner(), connectorManagementOwner: infrastructure.ConnectorManagementOwner(),
+		connectorPortsOwner: infrastructure.ConnectorPortsOwner(), observationOwner: infrastructure.ObservationOwner(),
+		operationsOwner: infrastructure.OperationsOwner(), vaultOwner: infrastructure.VaultOwner(),
+		database: database, secretVault: secretVault,
 		tokens: tokenStore, registry: registry, adapters: adapters,
 	})
 	if runtime.Identity().WorkspaceID != workspaceUUID {
@@ -270,7 +275,7 @@ func createSecurityPolicyRule(ctx context.Context, runtime *gatewayinfra.Workspa
 		return securitypolicy.Rule{}, fmt.Errorf("test runtime owner is unavailable")
 	}
 	resources := owner.(runtimeTestOwner)
-	scope, ok := resources.infrastructure.SecurityScope(runtime, gatewayinfra.SecurityPorts{})
+	scope, ok := resources.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{})
 	if !ok {
 		return securitypolicy.Rule{}, fmt.Errorf("test security policy is unavailable")
 	}
@@ -283,7 +288,7 @@ func setSecurityPolicySettings(ctx context.Context, runtime *gatewayinfra.Worksp
 		return fmt.Errorf("test runtime owner is unavailable")
 	}
 	resources := owner.(runtimeTestOwner)
-	scope, ok := resources.infrastructure.SecurityScope(runtime, gatewayinfra.SecurityPorts{})
+	scope, ok := resources.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{})
 	if !ok {
 		return fmt.Errorf("test security policy is unavailable")
 	}

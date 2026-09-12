@@ -19,23 +19,30 @@ func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
 
 	first := component.handleFor(firstOwner)
 	second := component.handleFor(secondOwner)
-	if first == nil || second == nil || first == second || first.token == second.token {
+	if first == nil || second == nil || first == second {
 		t.Fatal("independent workspace owners did not receive distinct capabilities")
 	}
-	if owner, ok := component.resolve(first); !ok || owner != firstOwner {
+	if first.component == nil || first.component != second.component {
+		t.Fatal("workspace capabilities did not retain their shared component identity")
+	}
+	workspace := component.WorkspaceOwner()
+	if owner, ok := workspace.resolve(first); !ok || owner != firstOwner {
 		t.Fatal("first workspace capability stopped resolving after adding the second")
 	}
-	if owner, ok := component.resolve(second); !ok || owner != secondOwner {
+	if owner, ok := workspace.resolve(second); !ok || owner != secondOwner {
 		t.Fatal("second workspace capability did not resolve to its owner")
 	}
 
 	foreign := NewComponent(t.TempDir(), nil)
-	if _, ok := foreign.resolve(first); ok {
+	if _, ok := foreign.WorkspaceOwner().resolve(first); ok {
 		t.Fatal("workspace capability resolved in a foreign component")
 	}
 	component.forgetHandle(first)
-	if _, ok := component.resolve(first); ok {
+	if _, ok := workspace.resolve(first); ok {
 		t.Fatal("forgotten workspace capability remained valid")
+	}
+	if _, ok := component.AccessOwner().resolve(first); ok {
+		t.Fatal("forgotten workspace capability remained valid through a feature owner")
 	}
 }
 
@@ -62,7 +69,7 @@ func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.
 	handle := component.handleFor(owner)
 	factory := &metadataReaderFactory{allowed: true}
 
-	allowed, err := component.CanReadVaultMetadata(t.Context(), handle, factory, 7, 11, time.Unix(123, 0))
+	allowed, err := component.AccessOwner().CanReadVaultMetadata(t.Context(), handle, factory, 7, 11, time.Unix(123, 0))
 	if err != nil || !allowed {
 		t.Fatalf("allowed=%t err=%v", allowed, err)
 	}
@@ -71,7 +78,7 @@ func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.
 	}
 
 	foreign := NewComponent(t.TempDir(), nil)
-	if allowed, err := foreign.CanReadVaultMetadata(t.Context(), handle, factory, 7, 11, time.Now()); allowed || !errors.Is(err, gatewayaccess.ErrVaultMetadataAccessUnavailable) {
+	if allowed, err := foreign.AccessOwner().CanReadVaultMetadata(t.Context(), handle, factory, 7, 11, time.Now()); allowed || !errors.Is(err, gatewayaccess.ErrVaultMetadataAccessUnavailable) {
 		t.Fatalf("foreign handle allowed=%t err=%v", allowed, err)
 	}
 }

@@ -30,7 +30,7 @@ func (s *Server) initializeFileTransferRuntime(runtime *gatewayinfra.WorkspaceHa
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	return s.infrastructure.InitializeTransferWorkspace(runtime, s.transfers,
+	return s.operationsOwner.InitializeTransferWorkspace(runtime, s.transfers,
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},

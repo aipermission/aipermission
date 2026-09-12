@@ -11,7 +11,7 @@ import (
 func (s *Server) authenticateMCP(w http.ResponseWriter, r *http.Request) (mcpAuthContext, bool) {
 	var candidates []*gatewayinfra.WorkspaceHandle
 	authentication, err := s.access.AuthenticateMCP(r, func() []gatewayaccess.MCPTokenSource {
-		sources, eligible := mcpAuthenticationSources(s.unlockedRuntimeSnapshot(), s.infrastructure.MCPTokenSource)
+		sources, eligible := mcpAuthenticationSources(s.unlockedRuntimeSnapshot(), s.accessOwner.MCPTokenSource)
 		candidates = eligible
 		return sources
 	})

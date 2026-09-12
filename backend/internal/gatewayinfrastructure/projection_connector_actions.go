@@ -8,7 +8,7 @@ import (
 
 var ErrWorkspaceHandleUnavailable = errors.New("workspace handle is unavailable")
 
-func (component *Component) ConnectorActionWorkspace(handle *WorkspaceHandle, workflow gatewayactions.WorkflowPorts) (gatewayactions.Workspace, bool) {
+func (component *ConnectorActionOwner) ConnectorActionWorkspace(handle *WorkspaceHandle, workflow gatewayactions.WorkflowPorts) (gatewayactions.Workspace, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayactions.Workspace{}, false
@@ -22,7 +22,7 @@ func (component *Component) ConnectorActionWorkspace(handle *WorkspaceHandle, wo
 			WorkspaceID: identity.WorkspaceID,
 		},
 		Identity: gatewayactions.ActionIdentity{
-			Tag: owner.TagActionIdentity, RuntimeInstanceID: identity.RuntimeID,
+			Tag: owner.Tag, RuntimeInstanceID: identity.RuntimeID,
 			MCPStarted: owner.Security.RuntimeControlState().MCPStarted,
 			Ensure: func() error {
 				if current, valid := component.resolve(handle); !valid || current != owner || !handle.Identity().Ready() {

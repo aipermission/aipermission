@@ -15,13 +15,13 @@ func (s mcpHandlers) mcpVaultScope(w http.ResponseWriter, r *http.Request) (gate
 	if !ok {
 		return gatewayvault.VaultMCPHTTPScope{}, false
 	}
-	scope, valid := s.infrastructure.VaultMCPScope(auth.runtime, gatewayinfra.VaultMCPPorts{
+	scope, valid := s.vaultOwner.VaultMCPScope(auth.runtime, gatewayinfra.VaultMCPPorts{
 		TokenID: auth.TokenID,
 		Runtime: func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
 			return s.vaultRequestRuntime(ctx, auth.runtime)
 		},
 		MetadataRead: func(ctx context.Context, projectID int64) (bool, error) {
-			return s.infrastructure.CanReadVaultMetadata(
+			return s.accessOwner.CanReadVaultMetadata(
 				ctx, auth.runtime, gatewayaccesshttp.VaultMetadataReaderFactory{},
 				auth.TokenID, projectID, time.Now(),
 			)

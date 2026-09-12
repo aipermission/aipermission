@@ -41,8 +41,8 @@ func TestServerCloseCancelsRuntimeWorkAndClearsWorkspaces(t *testing.T) {
 	if lateCtx.Err() == nil {
 		t.Fatal("closed runtime accepted a late transfer")
 	}
-	if fixture.server.infrastructure.WorkspaceCount() != 0 || fixture.server.activeRuntime() != nil {
-		t.Fatalf("server close retained unlocked runtime state: workspaces=%d", fixture.server.infrastructure.WorkspaceCount())
+	if fixture.server.workspaceOwner.WorkspaceCount() != 0 || fixture.server.activeRuntime() != nil {
+		t.Fatalf("server close retained unlocked runtime state: workspaces=%d", fixture.server.workspaceOwner.WorkspaceCount())
 	}
 }
 
@@ -63,12 +63,12 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.server.infrastructure.ActivateWorkspace(second)
-	fixture.server.infrastructure.ActivateWorkspace(first)
-	if current, ok := fixture.server.infrastructure.LookupWorkspace(first.Identity().DatabaseID); !ok || current != first {
+	fixture.server.workspaceOwner.ActivateWorkspace(second)
+	fixture.server.workspaceOwner.ActivateWorkspace(first)
+	if current, ok := fixture.server.workspaceOwner.LookupWorkspace(first.Identity().DatabaseID); !ok || current != first {
 		t.Fatalf("first workspace handle changed after opening second: found=%t same=%t first=%p current=%p id=%q", ok, current == first, first, current, first.Identity().DatabaseID)
 	}
-	if _, ok := fixture.server.infrastructure.RuntimeRedactor(first); !ok {
+	if _, ok := fixture.server.accessOwner.RuntimeRedactor(first); !ok {
 		t.Fatal("first workspace handle stopped resolving after lookup")
 	}
 

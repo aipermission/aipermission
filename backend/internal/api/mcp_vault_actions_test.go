@@ -421,7 +421,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
-	if err := fixture.server.infrastructure.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
+	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
 		return &gatewayoperations.RuntimeSession{
 			Stdin:        discardWriteCloser{},

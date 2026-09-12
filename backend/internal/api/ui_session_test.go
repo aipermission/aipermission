@@ -17,12 +17,11 @@ import (
 func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *Server {
 	t.Helper()
 	configuration := snapshotRuntimeConfiguration(config.Config{FrontendPort: port})
+	infrastructure := gatewayinfra.NewComponent(configuration.DataPath, describeDatabaseRuntime)
 	server := &Server{
 		config: configuration, access: gatewayaccess.NewComponent(port),
-		infrastructure: gatewayinfra.NewComponent(
-			configuration.DataPath, describeDatabaseRuntime,
-		),
 	}
+	server.bindInfrastructure(infrastructure)
 	if retryIdentity != "" {
 		database := openAPITestDB(t)
 		secretVault, err := vault.New("test-password")
@@ -36,11 +35,11 @@ func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *
 		adopted.Registry = testConnectorRegistry(t)
 		adopted.AdapterRegistry = connectorapi.NewRegistry()
 		adopted.RuntimeInstanceID = func() (string, error) { return "ui-session-runtime-" + port, nil }
-		runtime, err := server.infrastructure.AdoptWorkspace(t.Context(), adopted)
+		runtime, err := server.workspaceOwner.AdoptWorkspace(t.Context(), adopted)
 		if err != nil {
 			t.Fatal(err)
 		}
-		server.infrastructure.ActivateWorkspace(runtime)
+		server.workspaceOwner.ActivateWorkspace(runtime)
 	}
 	return server
 }

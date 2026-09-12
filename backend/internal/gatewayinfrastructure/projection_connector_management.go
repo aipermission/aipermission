@@ -2,7 +2,7 @@ package gatewayinfrastructure
 
 import connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 
-func (component *Component) ConnectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
+func (component *ConnectorManagementOwner) ConnectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
 	owner, ok := component.resolve(handle)
 	if !ok || application == nil {
 		return connectormgmt.Catalog{}
@@ -10,7 +10,7 @@ func (component *Component) ConnectorCatalog(handle *WorkspaceHandle, applicatio
 	return application.Catalog(owner.Storage.DatabaseHandle(), owner.Connectors.ConnectorRegistry())
 }
 
-func (component *Component) ConnectorCredentialStorage(handle *WorkspaceHandle) (connectormgmt.CredentialStorage, bool) {
+func (component *ConnectorManagementOwner) ConnectorCredentialStorage(handle *WorkspaceHandle) (connectormgmt.CredentialStorage, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectormgmt.CredentialStorage{}, false
@@ -20,7 +20,7 @@ func (component *Component) ConnectorCredentialStorage(handle *WorkspaceHandle) 
 	}, true
 }
 
-func (component *Component) ConnectorManagementWorkspace(handle *WorkspaceHandle, ports connectormgmt.Workspace) (connectormgmt.Workspace, bool) {
+func (component *ConnectorManagementOwner) ConnectorManagementWorkspace(handle *WorkspaceHandle, ports connectormgmt.Workspace) (connectormgmt.Workspace, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectormgmt.Workspace{}, false

@@ -15,7 +15,7 @@ func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvaul
 	if runtime == nil {
 		return gatewayvault.Runtime{}
 	}
-	composed, ok := s.infrastructure.VaultRuntime(runtime, gatewayinfra.VaultRuntimePorts{
+	composed, ok := s.vaultOwner.VaultRuntime(runtime, gatewayinfra.VaultRuntimePorts{
 		Project: gatewayvault.ProjectRuntimePorts{
 			InvalidateSessions: func(ctx context.Context, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
 				lifecycle, err := s.vaultSessionLifecycle(runtime)
@@ -45,7 +45,7 @@ func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvaul
 			},
 		},
 		Requests: gatewayvault.RequestRuntimePorts{
-			Store: s.infrastructure.VaultRequestStoreFactory(runtime),
+			Store: s.observationOwner.VaultRequestStoreFactory(runtime),
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 			},
@@ -53,7 +53,7 @@ func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvaul
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
 			RepairProjection: func(ctx context.Context, id int64) error {
-				if err := s.infrastructure.SyncVaultActionRequest(ctx, runtime, id); err != nil {
+				if err := s.observationOwner.SyncVaultActionRequest(ctx, runtime, id); err != nil {
 					log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 				}
 				return nil

@@ -86,7 +86,11 @@ func newAPITestFixture(t *testing.T) apiTestFixture {
 		t.Fatalf("new server: %v", err)
 	}
 	registerRuntimeTestOwner(srv.activeRuntime(), runtimeTestOwner{
-		infrastructure: srv.infrastructure, database: database, secretVault: secretVault,
+		workspaceOwner: srv.workspaceOwner, accessOwner: srv.accessOwner,
+		connectorActionOwner: srv.connectorActionOwner, connectorManagementOwner: srv.connectorManagementOwner,
+		connectorPortsOwner: srv.connectorPortsOwner, observationOwner: srv.observationOwner,
+		operationsOwner: srv.operationsOwner, vaultOwner: srv.vaultOwner,
+		database: database, secretVault: secretVault,
 		tokens: tokenStore, registry: catalog.connectors, adapters: catalog.adapters,
 	})
 	sshKeyStore := testSSHKeyStore(t, srv, srv.activeRuntime())

@@ -63,12 +63,12 @@ func (s *Server) newConnectorManagementApplication() *connectormgmt.Component {
 }
 
 func (s *Server) connectorCatalog(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.Catalog {
-	return s.infrastructure.ConnectorCatalog(runtime, s.connectorManagementApplication())
+	return s.connectorManagementOwner.ConnectorCatalog(runtime, s.connectorManagementApplication())
 }
 
 func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.Workspace {
 	preparation := s.connectorCredentialPreparationPorts(runtime)
-	workspace, _ := s.infrastructure.ConnectorManagementWorkspace(runtime, connectormgmt.Workspace{
+	workspace, _ := s.connectorManagementOwner.ConnectorManagementWorkspace(runtime, connectormgmt.Workspace{
 		Storage: connectormgmt.StoragePorts{
 			Transaction: connectormgmt.Transaction(func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {

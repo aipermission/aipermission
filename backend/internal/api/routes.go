@@ -1,13 +1,13 @@
 package api
 
-//go:generate go run ../../cmd/openapi -routes ../gatewayinfrastructure/routes.go -output ../../../docs/api/openapi.json
+//go:generate go run ../../cmd/openapi -routes httptransport/routes.go -output ../../../docs/api/openapi.json
 
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	gatewayaccesshttp "github.com/aipermission/aipermission/backend/internal/gatewayaccess/httpowner"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -16,7 +16,7 @@ type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
-	observation := s.infrastructure.ObservationHTTPHandlers(s.activeRuntimeOrLocked)
+	observation := s.observationOwner.ObservationHTTPHandlers(s.activeRuntimeOrLocked)
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
 	connectorHTTP := connectorManagement.HTTPHandlers()
@@ -34,8 +34,8 @@ func (s *Server) routes() {
 		VaultApprovals: s.vaultRequestHTTPScope, MCPVault: mcp.mcpVaultScope,
 	})
 
-	gatewayinfra.Register(s.mux, gatewayinfra.Dependencies{
-		Health: gatewayinfra.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
+	httptransport.Register(s.mux, httptransport.Dependencies{
+		Health: httptransport.Health, Status: s.status, Diagnostics: (diagnosticsHandlers{s}).download,
 		Security:    accessHTTP.Security,
 		Retention:   observation.Retention,
 		Maintenance: gatewayoperations.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope),
@@ -45,9 +45,9 @@ func (s *Server) routes() {
 		TokenAccess:     accessHTTP.TokenAccess,
 		TargetOperation: connectorHTTP.TargetOperation.Run,
 
-		Backup: gatewayinfra.Backup{
-			Download: gatewayinfra.Handler(backup.Download), Import: gatewayinfra.Handler(backup.Import),
-			RestoreRemote: gatewayinfra.Handler(backup.RestoreRemote), RestoreProvider: gatewayinfra.Handler(backup.RestoreProvider),
+		Backup: httptransport.Backup{
+			Download: httptransport.Handler(backup.Download), Import: httptransport.Handler(backup.Import),
+			RestoreRemote: httptransport.Handler(backup.RestoreRemote), RestoreProvider: httptransport.Handler(backup.RestoreProvider),
 		},
 		TransientBackup: backup.Transient, BackupProviders: backup.Providers,
 
@@ -87,7 +87,7 @@ func (s *Server) routes() {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "aipermission", "status": "running",
-		"audit":  s.infrastructure.ObservationHealthSnapshot(r.Context(), s.activeRuntime()),
+		"audit":  s.observationOwner.ObservationHealthSnapshot(r.Context(), s.activeRuntime()),
 		"config": s.config.PublicStatusMinimal(),
 		"features": []string{
 			"local-docker-runtime", "react-dashboard", "sqlcipher-sqlite-storage", "database-unlock-screen",

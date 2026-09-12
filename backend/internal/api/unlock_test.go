@@ -47,7 +47,7 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	secondResolve := make(chan struct{})
 	completed := make(chan struct{})
 	var calls atomic.Int32
-	err := server.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
+	err := server.workspaceOwner.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		if calls.Add(1) == 1 {
 			return nil, errors.New("transient owner lookup failure")
 		}
@@ -57,7 +57,7 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	if err == nil {
 		t.Fatal("transient resolver failure did not defer workspace close")
 	}
-	if secret := server.infrastructure.ConfiguredGatewaySecret(runtime); secret == "" {
+	if secret := server.workspaceOwner.ConfiguredGatewaySecret(runtime); secret == "" {
 		t.Fatal("workspace capability was revoked before deferred owners resolved")
 	}
 	close(secondResolve)
@@ -66,7 +66,7 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	case <-time.After(time.Second):
 		t.Fatal("deferred workspace close did not complete")
 	}
-	if secret := server.infrastructure.ConfiguredGatewaySecret(runtime); secret != "" {
+	if secret := server.workspaceOwner.ConfiguredGatewaySecret(runtime); secret != "" {
 		t.Fatal("workspace capability remained valid after deferred close")
 	}
 }

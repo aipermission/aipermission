@@ -5,5 +5,5 @@ import (
 )
 
 func (s *Server) configureAuditDispatcher(runtime *gatewayinfra.WorkspaceHandle) {
-	s.infrastructure.ConfigureObservationDispatcher(runtime)
+	s.observationOwner.ConfigureObservationDispatcher(runtime)
 }

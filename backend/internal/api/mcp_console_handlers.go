@@ -19,7 +19,7 @@ func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *gatew
 		return consoleRestartResult{}, gatewayoperations.ErrCommandRuntimeUnavailable
 	}
 	var canceledRequests int64
-	closedSessionIDs, err := s.infrastructure.RecoverConsoleRuntime(ctx, runtime, principal, runtimeID, func() error {
+	closedSessionIDs, err := s.accessOwner.RecoverConsoleRuntime(ctx, runtime, principal, runtimeID, func() error {
 		var err error
 		canceledRequests, err = requests.CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
 		return err

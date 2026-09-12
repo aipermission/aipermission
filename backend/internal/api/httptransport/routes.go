@@ -1,4 +1,5 @@
-package gatewayinfrastructure
+// Package httptransport owns the local HTTP route contract.
+package httptransport
 
 import (
 	"encoding/json"

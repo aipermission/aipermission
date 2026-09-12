@@ -1,12 +1,16 @@
-// Package gatewayinfrastructure exposes process, routing, and workspace composition contracts to the API boundary.
+// Package gatewayinfrastructure composes process and workspace owner
+// capabilities for the API boundary.
 package gatewayinfrastructure
 
 import (
 	"context"
 	"database/sql"
 	"net/http"
+	"sync/atomic"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
@@ -26,31 +30,64 @@ func (identity RuntimeIdentity) Ready() bool {
 	return identity.WorkspaceID != "" && identity.RuntimeID != ""
 }
 
-// workspaceToken must have non-zero size. Go permits pointers to distinct
-// zero-size values to compare equal, which would collapse independent
-// workspace capabilities into one map key.
-type workspaceToken struct{ _ byte }
+// componentIdentity makes handles component-scoped without retaining a
+// token-to-runtime service locator. It must have non-zero size because pointers
+// to distinct zero-size values may compare equal.
+type componentIdentity struct{ _ byte }
 
 // WorkspaceHandle is an opaque capability for one open encrypted workspace.
 // Mutable resources remain owned by Component and are exposed only through
 // feature-specific composition methods.
 type WorkspaceHandle struct {
-	token    *workspaceToken
-	identity RuntimeIdentity
+	component           *componentIdentity
+	active              atomic.Bool
+	identity            RuntimeIdentity
+	workspace           *gatewayworkspace.Runtime
+	access              gatewayworkspace.AccessCapabilities
+	connectorActions    gatewayworkspace.ConnectorActionCapabilities
+	connectorManagement gatewayworkspace.ConnectorManagementCapabilities
+	connectorPorts      gatewayworkspace.ConnectorPortsCapabilities
+	observation         gatewayworkspace.ObservationCapabilities
+	operations          gatewayworkspace.OperationsCapabilities
+	vault               gatewayworkspace.VaultCapabilities
 }
 
-func newWorkspaceHandle(owner *gatewayworkspace.Runtime) *WorkspaceHandle {
+func newWorkspaceHandle(component *componentIdentity, owner *gatewayworkspace.Runtime) *WorkspaceHandle {
 	if owner == nil {
 		return nil
 	}
 	identity := owner.Identity
-	return &WorkspaceHandle{
-		token: &workspaceToken{},
+	handle := &WorkspaceHandle{
+		component: component,
 		identity: RuntimeIdentity{
 			DatabaseID: identity.DatabaseID, DatabasePath: identity.DatabasePath,
 			WorkspaceID: identity.WorkspaceID, RuntimeID: identity.RuntimeID, UIRetryID: identity.UIRetryID,
 		},
+		workspace: owner,
+		access: gatewayworkspace.AccessCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
+		},
+		connectorActions: gatewayworkspace.ConnectorActionCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security, Tag: owner.TagActionIdentity,
+		},
+		connectorManagement: gatewayworkspace.ConnectorManagementCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
+		},
+		connectorPorts: gatewayworkspace.ConnectorPortsCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
+		},
+		observation: gatewayworkspace.ObservationCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security, Observation: owner.Observation,
+		},
+		operations: gatewayworkspace.OperationsCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
+		},
+		vault: gatewayworkspace.VaultCapabilities{
+			Storage: owner.Storage, Connectors: owner.Connectors, Security: owner.Security,
+		},
 	}
+	handle.active.Store(true)
+	return handle
 }
 
 func (handle *WorkspaceHandle) Identity() RuntimeIdentity {
@@ -128,4 +165,13 @@ type Identity struct {
 	ID            string
 	Path          string
 	RetryIdentity string
+}
+
+type OpenWorkspaceInput struct{ input gatewayworkspace.OpenInput }
+
+func NewOpenWorkspaceInput(id, path, password, gatewaySecret string, registry *connectors.Registry, adapters *connectorapi.Registry) OpenWorkspaceInput {
+	return OpenWorkspaceInput{input: gatewayworkspace.OpenInput{
+		ID: id, Path: path, Password: password, ConfiguredGatewaySecret: gatewaySecret,
+		Registry: registry, AdapterRegistry: adapters,
+	}}
 }

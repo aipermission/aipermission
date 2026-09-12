@@ -14,7 +14,7 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 	if !ok {
 		return gatewayaccess.MCPRuntimeScope{}, false
 	}
-	scope, valid := s.infrastructure.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
+	scope, valid := s.accessOwner.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
 		StartEnabled: func(ctx context.Context) (bool, error) {
 			settings, err := s.readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err

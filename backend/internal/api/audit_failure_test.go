@@ -21,7 +21,8 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 	log.SetOutput(&output)
 	t.Cleanup(func() { log.SetOutput(previous) })
 
-	server := &Server{infrastructure: gatewayinfra.NewComponent(t.TempDir(), nil)}
+	server := &Server{}
+	server.bindInfrastructure(gatewayinfra.NewComponent(t.TempDir(), nil))
 	server.writeObservationAudit(context.Background(), nil, "user", nil, 17, "test.audit", map[string]any{
 		"unsupported": func() {},
 	})
@@ -49,7 +50,7 @@ func TestBestEffortAuditWriteReportsFailure(t *testing.T) {
 func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	server := fixture.server
-	server.infrastructure.RecordObservationFailure(time.Now().Add(-time.Minute))
+	server.observationOwner.RecordObservationFailure(time.Now().Add(-time.Minute))
 	if _, err := fixture.db.Exec(`
 		UPDATE audit_dispatch_state
 		SET failure_count = 1, last_error = '',
@@ -62,7 +63,7 @@ func TestAuditHealthRecoversAfterLaterDurableDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	health := server.infrastructure.ObservationHealthSnapshot(context.Background(), server.activeRuntime())
+	health := server.observationOwner.ObservationHealthSnapshot(context.Background(), server.activeRuntime())
 	if health.Status != "ok" || health.FailureCount != 1 || health.LastDeliverySuccess == "" {
 		t.Fatalf("unexpected recovered audit health: %+v", health)
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestRESTDocsMentionRegisteredRoutes(t *testing.T) {
-	routesSource, err := os.ReadFile("../gatewayinfrastructure/routes.go")
+	routesSource, err := os.ReadFile("httptransport/routes.go")
 	if err != nil {
 		t.Fatalf("read routes: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestTypedRESTListResponsesConformToPublishedSchemas(t *testing.T) {
 }
 
 func TestGeneratedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
-	routesSource, err := os.ReadFile("../gatewayinfrastructure/routes.go")
+	routesSource, err := os.ReadFile("httptransport/routes.go")
 	if err != nil {
 		t.Fatalf("read routes: %v", err)
 	}

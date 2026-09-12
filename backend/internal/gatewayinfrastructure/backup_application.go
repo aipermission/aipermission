@@ -26,6 +26,32 @@ type BackupApplicationDependencies struct {
 
 type BackupApplication struct{ owner *gatewaybackup.Component }
 
+type Handler func(http.ResponseWriter, *http.Request)
+
+type TransientBackup interface {
+	List(http.ResponseWriter, *http.Request)
+}
+
+type BackupProviders interface {
+	ProviderCatalog(http.ResponseWriter, *http.Request)
+	ListProviders(http.ResponseWriter, *http.Request)
+	BackupFreshness(http.ResponseWriter, *http.Request)
+	CreateProvider(http.ResponseWriter, *http.Request)
+	UpdateProvider(http.ResponseWriter, *http.Request)
+	DeleteProvider(http.ResponseWriter, *http.Request)
+	EnableProvider(http.ResponseWriter, *http.Request)
+	TestProvider(http.ResponseWriter, *http.Request)
+	ListProviderRecords(http.ResponseWriter, *http.Request)
+	UploadProviderBackup(http.ResponseWriter, *http.Request)
+	PruneProviderBackups(http.ResponseWriter, *http.Request)
+	BackupProviderStorage(http.ResponseWriter, *http.Request)
+	BackupProviderRetention(http.ResponseWriter, *http.Request)
+	PreviewBackupProviderRetention(http.ResponseWriter, *http.Request)
+	UpdateBackupProviderRetention(http.ResponseWriter, *http.Request)
+	DeleteProviderBackupRecords(http.ResponseWriter, *http.Request)
+	DownloadProviderRecord(http.ResponseWriter, *http.Request)
+}
+
 type BackupHTTPHandlers struct {
 	Download        Handler
 	Import          Handler
@@ -35,9 +61,9 @@ type BackupHTTPHandlers struct {
 	Transient       TransientBackup
 }
 
-func (component *Component) NewBackupApplication(dependencies BackupApplicationDependencies) *BackupApplication {
+func (component *OperationsOwner) NewBackupApplication(dependencies BackupApplicationDependencies) *BackupApplication {
 	owner := gatewaybackup.New(gatewaybackup.Dependencies{
-		DataPath: dependencies.DataPath, Lifecycle: component.WorkspaceLifecycle(),
+		DataPath: dependencies.DataPath, Lifecycle: component.owner.WorkspaceOwner().WorkspaceLifecycle(),
 		ActiveRuntime: func(w http.ResponseWriter) (gatewaybackup.Runtime, bool) {
 			handle, ports, ok := dependencies.ActiveRuntime(w)
 			if !ok {
@@ -55,7 +81,7 @@ func (component *Component) NewBackupApplication(dependencies BackupApplicationD
 		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 			return dependencies.IssuePrepared(w, prepared)
 		},
-		AcquireOperation: component.AcquireBackupOperation,
+		AcquireOperation: component.owner.WorkspaceOwner().AcquireBackupOperation,
 	})
 	return &BackupApplication{owner: owner}
 }

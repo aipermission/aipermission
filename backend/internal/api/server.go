@@ -12,7 +12,6 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewaybootstrap "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/bootstrap"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
@@ -20,77 +19,37 @@ import (
 )
 
 type Server struct {
-	config                  serverConfig
-	access                  *gatewayaccess.Component
-	connectorActions        *gatewayactions.Component
-	connectorPorts          *connectorports.PortsComponent
-	connectorManagement     *connectormgmt.Component
-	vault                   *gatewayvault.Component
-	infrastructure          *gatewayinfra.Component
-	mux                     *http.ServeMux
-	commands                gatewayoperations.CommandComponent
-	transfers               *gatewaytransfer.Component
-	connectorRegistryOwner  *connectors.Registry
-	connectorAdaptersOwner  *connectorapi.Registry
-	maintenanceConsole      gatewayoperations.MaintenanceConsoleRuntime
-	runtimeIDGenerator      func() (string, error)
-	openRuntimeOverride     func(string, string, string) (*gatewayinfra.WorkspaceHandle, error)
-	moveDatabaseOverride    func(string, string) error
-	publishDatabaseOverride func(string, string) error
-}
-
-func NewServer(configuration RuntimeConfiguration, adopted gatewaybootstrap.Adopt, options ...ServerOption) (*Server, error) {
-	cfg := snapshotRuntimeConfiguration(configuration)
-	resolved := resolveServerOptions(options)
-	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
-	registry := resolved.registry
-	server := &Server{
-		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
-		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: registry,
-		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
-		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
-	}
-	server.connectorActions = server.newConnectorActionApplication()
-	server.connectorPorts = server.newConnectorPortsApplication()
-	server.connectorManagement = server.newConnectorManagementApplication()
-	server.vault = server.newVaultApplication()
-	if err := server.initializeWorkspaceLifecycle(); err != nil {
-		return nil, err
-	}
-	adopted.ID = infrastructure.WorkspaceSelection().ID
-	adopted.Path = cfg.DataPath
-	adopted.ConfiguredGatewaySecret = cfg.GatewaySecret
-	adopted.Registry = registry
-	adopted.AdapterRegistry = resolved.adapterRegistry
-	adopted.RuntimeInstanceID = resolved.runtimeInstanceIDGenerator
-	runtime, err := infrastructure.AdoptWorkspace(context.Background(), adopted)
-	if err != nil {
-		return nil, err
-	}
-	if err := server.initializeOpenedRuntime(context.Background(), runtime); err != nil {
-		server.discardOpeningRuntime(runtime)
-		return nil, err
-	}
-	server.infrastructure.ActivateWorkspace(runtime)
-	server.initializeRetention(runtime)
-	server.routes()
-	return server, nil
+	config                   serverConfig
+	access                   *gatewayaccess.Component
+	connectorActions         *gatewayactions.Component
+	connectorPorts           *connectorports.PortsComponent
+	connectorManagement      *connectormgmt.Component
+	vault                    *gatewayvault.Component
+	workspaceOwner           *gatewayinfra.WorkspaceOwner
+	accessOwner              *gatewayinfra.AccessOwner
+	connectorActionOwner     *gatewayinfra.ConnectorActionOwner
+	connectorManagementOwner *gatewayinfra.ConnectorManagementOwner
+	connectorPortsOwner      *gatewayinfra.ConnectorPortsOwner
+	observationOwner         *gatewayinfra.ObservationOwner
+	operationsOwner          *gatewayinfra.OperationsOwner
+	vaultOwner               *gatewayinfra.VaultOwner
+	mux                      *http.ServeMux
+	commands                 gatewayoperations.CommandComponent
+	transfers                *gatewaytransfer.Component
+	connectorRegistryOwner   *connectors.Registry
+	connectorAdaptersOwner   *connectorapi.Registry
+	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
+	runtimeIDGenerator       func() (string, error)
+	openRuntimeOverride      func(string, string, string) (*gatewayinfra.WorkspaceHandle, error)
+	moveDatabaseOverride     func(string, string) error
+	publishDatabaseOverride  func(string, string) error
 }
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
 	resolved := resolveServerOptions(options)
 	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
-	server := &Server{
-		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
-		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
-		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
-		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
-	}
-	server.connectorActions = server.newConnectorActionApplication()
-	server.connectorPorts = server.newConnectorPortsApplication()
-	server.connectorManagement = server.newConnectorManagementApplication()
-	server.vault = server.newVaultApplication()
+	server := newServerComposition(cfg, resolved, infrastructure)
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		panic(fmt.Sprintf("initialize workspace lifecycle: %v", err))
 	}
@@ -98,28 +57,54 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 	return server
 }
 
+func newServerComposition(cfg serverConfig, resolved serverOptions, infrastructure *gatewayinfra.Component) *Server {
+	server := &Server{
+		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort),
+		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
+		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
+		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
+	}
+	server.bindInfrastructure(infrastructure)
+	server.connectorActions = server.newConnectorActionApplication()
+	server.connectorPorts = server.newConnectorPortsApplication()
+	server.connectorManagement = server.newConnectorManagementApplication()
+	server.vault = server.newVaultApplication()
+	return server
+}
+
+func (s *Server) bindInfrastructure(infrastructure *gatewayinfra.Component) {
+	s.workspaceOwner = infrastructure.WorkspaceOwner()
+	s.accessOwner = infrastructure.AccessOwner()
+	s.connectorActionOwner = infrastructure.ConnectorActionOwner()
+	s.connectorManagementOwner = infrastructure.ConnectorManagementOwner()
+	s.connectorPortsOwner = infrastructure.ConnectorPortsOwner()
+	s.observationOwner = infrastructure.ObservationOwner()
+	s.operationsOwner = infrastructure.OperationsOwner()
+	s.vaultOwner = infrastructure.VaultOwner()
+}
+
 func (s *Server) initializeWorkspaceLifecycle() error {
-	err := s.infrastructure.ConfigureWorkspaceLifecycle(gatewayinfra.WorkspaceDependencies{
+	err := s.workspaceOwner.ConfigureWorkspaceLifecycle(gatewayinfra.WorkspaceDependencies{
 		DataPath:      s.config.DataPath,
 		Open:          s.openRuntimeForLifecycle,
 		Close:         s.closeRuntime,
 		Move:          s.moveDatabase,
-		Delete:        s.infrastructure.DeleteDatabase,
+		Delete:        s.workspaceOwner.DeleteDatabase,
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *gatewayinfra.WorkspaceHandle) {
-			if secret := s.infrastructure.ConfiguredGatewaySecret(runtime); secret != "" {
+			if secret := s.workspaceOwner.ConfiguredGatewaySecret(runtime); secret != "" {
 				s.config.GatewaySecret = secret
 			}
 		},
 		OnOpened: s.initializeRetention,
 		ValidateNewPassword: func(ctx context.Context, database *sql.DB, databaseName, password string) error {
-			hasActiveRemoteBackup, err := s.infrastructure.HasActiveRemoteBackup(ctx, database)
+			hasActiveRemoteBackup, err := s.workspaceOwner.HasActiveRemoteBackup(ctx, database)
 			if err != nil || !hasActiveRemoteBackup {
 				return err
 			}
-			if err := s.infrastructure.ValidateRemoteBackupPassword(password, databaseName); err != nil {
-				return s.infrastructure.PasswordPolicyError(err)
+			if err := s.workspaceOwner.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+				return s.workspaceOwner.PasswordPolicyError(err)
 			}
 			return nil
 		},

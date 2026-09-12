@@ -7,7 +7,7 @@ import (
 )
 
 func (s *Server) workspaceLifecycleHTTPHandlers() gatewayinfra.WorkspaceHTTPHandlers {
-	return s.infrastructure.WorkspaceHTTP(gatewayinfra.WorkspaceHTTPDependencies{
+	return s.workspaceOwner.WorkspaceHTTP(gatewayinfra.WorkspaceHTTPDependencies{
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayinfra.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
@@ -19,7 +19,7 @@ func (s *Server) workspaceLifecycleHTTPHandlers() gatewayinfra.WorkspaceHTTPHand
 }
 
 func (s *Server) currentDatabaseNameLocked() string {
-	name, err := s.infrastructure.WorkspaceDatabaseName()
+	name, err := s.workspaceOwner.WorkspaceDatabaseName()
 	if err == nil && name != "" {
 		return name
 	}

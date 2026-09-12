@@ -14,7 +14,7 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectS
 	if !ok {
 		return gatewayvault.ProjectScope{}, false
 	}
-	scope, valid := s.infrastructure.ProjectScope(runtime, gatewayinfra.ProjectPorts{
+	scope, valid := s.vaultOwner.ProjectScope(runtime, gatewayinfra.ProjectPorts{
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},

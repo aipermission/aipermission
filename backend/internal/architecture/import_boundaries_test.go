@@ -181,12 +181,12 @@ func TestAPIDependsOnlyOnApprovedGatewayPackages(t *testing.T) {
 	allowed := map[string]bool{
 		modulePath + "/internal/connectors":                           true,
 		modulePath + "/internal/gatewayaccess":                        true,
+		modulePath + "/internal/api/httptransport":                    true,
 		modulePath + "/internal/gatewayaccess/httpowner":              true,
 		modulePath + "/internal/gatewayconnectoractions":              true,
 		modulePath + "/internal/gatewayconnectorapi":                  true,
 		modulePath + "/internal/gatewayconnectormanagement":           true,
 		modulePath + "/internal/gatewayinfrastructure":                true,
-		modulePath + "/internal/gatewayinfrastructure/bootstrap":      true,
 		modulePath + "/internal/gatewayinfrastructure/connectorports": true,
 		modulePath + "/internal/gatewayoperations":                    true,
 		modulePath + "/internal/gatewayoperations/transfer":           true,
@@ -496,6 +496,211 @@ func TestWorkspaceHandleRemainsOpaque(t *testing.T) {
 	}
 }
 
+func TestGatewayInfrastructureComponentOnlyComposesOwners(t *testing.T) {
+	root := filepath.Join("..", "gatewayinfrastructure")
+	want := map[string]bool{
+		"AccessOwner": false, "ConnectorActionOwner": false,
+		"ConnectorManagementOwner": false, "ConnectorPortsOwner": false,
+		"ObservationOwner": false, "OperationsOwner": false,
+		"VaultOwner": false, "WorkspaceOwner": false,
+	}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			method, ok := declaration.(*ast.FuncDecl)
+			if !ok || method.Recv == nil || !method.Name.IsExported() {
+				continue
+			}
+			pointer, ok := method.Recv.List[0].Type.(*ast.StarExpr)
+			if !ok {
+				continue
+			}
+			receiver, ok := pointer.X.(*ast.Ident)
+			if !ok || receiver.Name != "Component" {
+				continue
+			}
+			if _, allowed := want[method.Name.Name]; !allowed {
+				t.Errorf("gateway infrastructure Component exposes %s; behavior belongs to a narrow owner capability", method.Name.Name)
+				continue
+			}
+			want[method.Name.Name] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway infrastructure component surface: %v", err)
+	}
+	for method, found := range want {
+		if !found {
+			t.Errorf("gateway infrastructure Component is missing owner factory %s", method)
+		}
+	}
+}
+
+func TestGatewayInfrastructureBindsOwnerCapabilitiesWithoutRuntimeLocator(t *testing.T) {
+	root := filepath.Join("..", "gatewayinfrastructure")
+	componentFile, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "component.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range componentFile.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Recv == nil || function.Name.Name != "resolve" {
+			continue
+		}
+		pointer, ok := function.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		receiver, receiverOK := pointer.X.(*ast.Ident)
+		if receiverOK && receiver.Name == "Component" {
+			t.Fatal("gateway infrastructure Component reintroduced a runtime service locator")
+		}
+	}
+
+	infrastructureFile, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "infrastructure.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCapabilities := map[string]bool{
+		"access": false, "connectorActions": false, "connectorManagement": false,
+		"connectorPorts": false, "observation": false, "operations": false, "vault": false,
+	}
+	ast.Inspect(infrastructureFile, func(node ast.Node) bool {
+		structure, ok := node.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		for _, field := range structure.Fields.List {
+			for _, name := range field.Names {
+				if _, tracked := wantCapabilities[name.Name]; tracked {
+					wantCapabilities[name.Name] = true
+				}
+				if name.Name == "ownersByToken" {
+					t.Error("gateway infrastructure reintroduced a token-to-runtime registry")
+				}
+			}
+		}
+		return true
+	})
+	for capability, found := range wantCapabilities {
+		if !found {
+			t.Errorf("WorkspaceHandle is missing bound %s capabilities", capability)
+		}
+	}
+
+	ownersFile, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "owners.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, declaration := range ownersFile.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec := specification.(*ast.TypeSpec)
+			if typeSpec.Name.Name != "WorkspaceOwner" {
+				continue
+			}
+			if _, ok := typeSpec.Type.(*ast.StructType); !ok || typeSpec.Assign.IsValid() {
+				t.Fatal("WorkspaceOwner must remain an opaque wrapper, not a Component-convertible type")
+			}
+		}
+	}
+}
+
+func TestAPIResolvesGatewayOwnersOnlyAtCompositionRoot(t *testing.T) {
+	want := map[string]bool{
+		"AccessOwner": false, "ConnectorActionOwner": false,
+		"ConnectorManagementOwner": false, "ConnectorPortsOwner": false,
+		"ObservationOwner": false, "OperationsOwner": false,
+		"VaultOwner": false, "WorkspaceOwner": false,
+	}
+	root := filepath.Join("..", "api")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if _, tracked := want[selector.Sel.Name]; !tracked {
+				return true
+			}
+			if filepath.Base(path) != "server.go" {
+				t.Errorf("%s resolves %s dynamically; bind gateway owners once in the API composition root", path, selector.Sel.Name)
+				return true
+			}
+			if want[selector.Sel.Name] {
+				t.Errorf("API composition root resolves %s more than once", selector.Sel.Name)
+			}
+			want[selector.Sel.Name] = true
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect API owner composition: %v", err)
+	}
+	for owner, found := range want {
+		if !found {
+			t.Errorf("API composition root does not bind %s", owner)
+		}
+	}
+}
+
+func TestProductionAPIDoesNotExposeWorkspaceAdoption(t *testing.T) {
+	root := filepath.Join("..", "api")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if ok && function.Recv == nil && function.Name.Name == "NewServer" {
+				t.Errorf("%s exposes test-only workspace adoption in production; use NewLockedServer", path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect API server constructors: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join("..", "gatewayinfrastructure", "bootstrap")); !os.IsNotExist(err) {
+		t.Error("gateway infrastructure bootstrap dependency bag must remain retired")
+	}
+}
+
 func TestGatewayInfrastructureDoesNotReturnDatabaseHandles(t *testing.T) {
 	root := filepath.Join("..", "gatewayinfrastructure")
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -533,7 +738,7 @@ func TestGatewayInfrastructureDoesNotReturnDatabaseHandles(t *testing.T) {
 }
 
 func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
-	const routeSource = "internal/gatewayinfrastructure/routes.go"
+	const routeSource = "internal/api/httptransport/routes.go"
 	command, err := os.ReadFile(filepath.Join("..", "..", "cmd", "openapi", "main.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -541,8 +746,8 @@ func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
 	if !strings.Contains(string(command), `flag.String("routes", "`+routeSource+`"`) {
 		t.Fatalf("OpenAPI command must default to %s", routeSource)
 	}
-	if strings.Contains(string(command), "internal/api/routes.go") {
-		t.Fatal("OpenAPI command references the retired API route source")
+	if strings.Contains(string(command), "internal/gatewayinfrastructure/routes.go") {
+		t.Fatal("OpenAPI command references the retired infrastructure route source")
 	}
 
 	contents, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
@@ -718,6 +923,9 @@ func TestInternalPackageFanOutBudgets(t *testing.T) {
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, modulePath+"/internal/") {
 				packageCount++
+				if strings.HasPrefix(imported, importer+"/") {
+					continue
+				}
 				owners[internalDependencyOwner(imported)] = true
 			}
 		}

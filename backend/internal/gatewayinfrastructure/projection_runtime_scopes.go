@@ -10,7 +10,7 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (component *Component) MCPTokenSource(handle *WorkspaceHandle) (gatewayaccess.MCPTokenSource, bool) {
+func (component *AccessOwner) MCPTokenSource(handle *WorkspaceHandle) (gatewayaccess.MCPTokenSource, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Storage.TokenStore() == nil {
 		return nil, false
@@ -25,7 +25,7 @@ type MCPReadPorts struct {
 	Metadata        gatewayaccess.MCPMetadataResolver
 }
 
-func (component *Component) MCPReadScope(handle *WorkspaceHandle, ports MCPReadPorts) (gatewayaccess.MCPScope, bool) {
+func (component *AccessOwner) MCPReadScope(handle *WorkspaceHandle, ports MCPReadPorts) (gatewayaccess.MCPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || !ports.Metadata.Ready() {
 		return gatewayaccess.MCPScope{}, false
@@ -47,7 +47,7 @@ type MCPActionPorts struct {
 	RunningHint gatewayaccess.MCPRunningHint
 }
 
-func (component *Component) MCPActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
+func (component *AccessOwner) MCPActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.MCPActionScope{}, false
@@ -72,7 +72,7 @@ type MCPRuntimePorts struct {
 	Observe      func(context.Context, string, map[string]any)
 }
 
-func (component *Component) MCPRuntimeScope(handle *WorkspaceHandle, ports MCPRuntimePorts) (gatewayaccess.MCPRuntimeScope, bool) {
+func (component *AccessOwner) MCPRuntimeScope(handle *WorkspaceHandle, ports MCPRuntimePorts) (gatewayaccess.MCPRuntimeScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayaccess.MCPRuntimeScope{}, false
@@ -84,7 +84,7 @@ func (component *Component) MCPRuntimeScope(handle *WorkspaceHandle, ports MCPRu
 	}, true
 }
 
-func (component *Component) RecoverConsoleRuntime(
+func (component *AccessOwner) RecoverConsoleRuntime(
 	ctx context.Context,
 	handle *WorkspaceHandle,
 	principal gatewayaccess.Principal,
@@ -102,7 +102,7 @@ type SecurityPorts struct {
 	Mutate func(context.Context, string, func() any, func(*sql.Tx) error) error
 }
 
-func (component *Component) SecurityScope(handle *WorkspaceHandle, ports SecurityPorts) (gatewayaccess.SecurityHTTPScope, bool) {
+func (component *AccessOwner) SecurityScope(handle *WorkspaceHandle, ports SecurityPorts) (gatewayaccess.SecurityHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return gatewayaccess.SecurityHTTPScope{}, false
@@ -110,7 +110,7 @@ func (component *Component) SecurityScope(handle *WorkspaceHandle, ports Securit
 	return gatewayaccess.SecurityHTTPScope{Service: owner.Security.PolicyService(), Mutate: ports.Mutate}, true
 }
 
-func (component *Component) ReadSecuritySettings(ctx context.Context, handle *WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
+func (component *AccessOwner) ReadSecuritySettings(ctx context.Context, handle *WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
@@ -118,7 +118,7 @@ func (component *Component) ReadSecuritySettings(ctx context.Context, handle *Wo
 	return owner.Security.PolicyService().ReadSettings(ctx)
 }
 
-func (component *Component) RedactForPersistence(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
+func (component *AccessOwner) RedactForPersistence(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return "", false
@@ -126,7 +126,7 @@ func (component *Component) RedactForPersistence(ctx context.Context, handle *Wo
 	return owner.Security.PolicyService().Redact(ctx, value), true
 }
 
-func (component *Component) RedactCustom(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
+func (component *AccessOwner) RedactCustom(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return "", false
@@ -134,7 +134,7 @@ func (component *Component) RedactCustom(ctx context.Context, handle *WorkspaceH
 	return owner.Security.PolicyService().RedactCustom(ctx, value), true
 }
 
-func (component *Component) RuntimeRedactor(handle *WorkspaceHandle) (func(string) string, bool) {
+func (component *AccessOwner) RuntimeRedactor(handle *WorkspaceHandle) (func(string) string, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return nil, false
@@ -142,7 +142,7 @@ func (component *Component) RuntimeRedactor(handle *WorkspaceHandle) (func(strin
 	return owner.Security.PolicyService().Redactor(), true
 }
 
-func (component *Component) ConfigureWorkspaceRuntime(
+func (component *AccessOwner) ConfigureWorkspaceRuntime(
 	ctx context.Context,
 	handle *WorkspaceHandle,
 	opener gatewayoperations.RuntimeOpener,
@@ -160,7 +160,7 @@ func (component *Component) ConfigureWorkspaceRuntime(
 	return nil
 }
 
-func (component *Component) ConfigureConsoleRuntime(
+func (component *AccessOwner) ConfigureConsoleRuntime(
 	handle *WorkspaceHandle,
 	opener gatewayoperations.RuntimeOpener,
 	redact func(string) string,
@@ -173,7 +173,7 @@ func (component *Component) ConfigureConsoleRuntime(
 	return nil
 }
 
-func (component *Component) MessageStore(handle *WorkspaceHandle, redact func(context.Context, string) string) (*gatewayoperations.MessageStore, bool) {
+func (component *OperationsOwner) MessageStore(handle *WorkspaceHandle, redact func(context.Context, string) string) (*gatewayoperations.MessageStore, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return nil, false
@@ -186,7 +186,7 @@ type ProjectPorts struct {
 	Invalidate func(context.Context, int64) error
 }
 
-func (component *Component) ProjectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
+func (component *VaultOwner) ProjectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewayvault.ProjectScope{}, false

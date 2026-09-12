@@ -14,7 +14,7 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return gatewayaccess.MCPScope{}, false
 	}
-	scope, valid := s.infrastructure.MCPReadScope(auth.runtime, gatewayinfra.MCPReadPorts{
+	scope, valid := s.accessOwner.MCPReadScope(auth.runtime, gatewayinfra.MCPReadPorts{
 		TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
 			permissions, err := s.connectorCatalog(auth.runtime).ProjectScopedSupportedConnectorPermissions(ctx, auth.TokenID)
@@ -50,7 +50,7 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	call := s.connectorActionApplication().MCPCall(s.connectorActionWorkspace(auth.runtime))
-	scope, valid := s.infrastructure.MCPActionScope(auth.runtime, gatewayinfra.MCPActionPorts{
+	scope, valid := s.accessOwner.MCPActionScope(auth.runtime, gatewayinfra.MCPActionPorts{
 		TokenID: auth.TokenID, RunningHint: s.connectorRunningHint,
 		Delivery: s.connectorActionApplication().Delivery,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {

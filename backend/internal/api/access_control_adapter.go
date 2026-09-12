@@ -15,7 +15,7 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.Access
 	if !ok {
 		return gatewayaccess.AccessScope{}, false
 	}
-	return s.infrastructure.AccessControlWorkspace(runtime, gatewayinfra.AccessControlPorts{
+	return s.accessOwner.AccessControlWorkspace(runtime, gatewayinfra.AccessControlPorts{
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},

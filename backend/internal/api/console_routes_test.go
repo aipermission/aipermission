@@ -146,7 +146,7 @@ func TestCreateConsoleSessionReturnsHostKeyConflict(t *testing.T) {
 		t.Fatalf("parse public key: %v", err)
 	}
 	runtime := fixture.server.activeRuntime()
-	if err := fixture.server.infrastructure.ConfigureConsoleRuntime(runtime, func(context.Context, gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
+	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(context.Context, gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		return nil, fmt.Errorf("ssh dial: %w", execution.NewUnknownHostKeyError("[example.test]:22", publicKey))
 	}, fixture.server.runtimeRedactor(runtime)); err != nil {
 		t.Fatal(err)

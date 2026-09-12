@@ -2,7 +2,7 @@ package gatewayinfrastructure
 
 import connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 
-func (component *Component) ConnectorPortsWorkspace(handle *WorkspaceHandle, ports connectorports.Workspace) (connectorports.Workspace, bool) {
+func (component *ConnectorPortsOwner) ConnectorPortsWorkspace(handle *WorkspaceHandle, ports connectorports.Workspace) (connectorports.Workspace, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectorports.Workspace{}, false

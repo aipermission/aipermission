@@ -11,8 +11,8 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewaybootstrap "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/bootstrap"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
+	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -21,18 +21,25 @@ import (
 )
 
 type runtimeTestOwner struct {
-	infrastructure *gatewayinfra.Component
-	database       *sql.DB
-	secretVault    *vault.Vault
-	tokens         *tokens.Store
-	registry       *connectors.Registry
-	adapters       *connectorapi.Registry
+	workspaceOwner           *gatewayinfra.WorkspaceOwner
+	accessOwner              *gatewayinfra.AccessOwner
+	connectorActionOwner     *gatewayinfra.ConnectorActionOwner
+	connectorManagementOwner *gatewayinfra.ConnectorManagementOwner
+	connectorPortsOwner      *gatewayinfra.ConnectorPortsOwner
+	observationOwner         *gatewayinfra.ObservationOwner
+	operationsOwner          *gatewayinfra.OperationsOwner
+	vaultOwner               *gatewayinfra.VaultOwner
+	database                 *sql.DB
+	secretVault              *vault.Vault
+	tokens                   *tokens.Store
+	registry                 *connectors.Registry
+	adapters                 *connectorapi.Registry
 }
 
 var runtimeTestOwners sync.Map
 
-func testAdoptInput(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store) gatewaybootstrap.Adopt {
-	return gatewaybootstrap.Adopt{Database: database, Vault: secretVault, TokenStore: tokenStore}
+func testAdoptInput(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store) gatewayworkspace.AdoptInput {
+	return gatewayworkspace.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokenStore}
 }
 
 func registerRuntimeTestOwner(runtime *gatewayinfra.WorkspaceHandle, owner runtimeTestOwner) {
@@ -54,7 +61,11 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 	t.Helper()
 	owner := requireRuntimeTestOwner(t, runtime)
 	server := &Server{
-		infrastructure: owner.infrastructure, access: gatewayaccess.NewComponent("3001"),
+		workspaceOwner: owner.workspaceOwner, accessOwner: owner.accessOwner,
+		connectorActionOwner: owner.connectorActionOwner, connectorManagementOwner: owner.connectorManagementOwner,
+		connectorPortsOwner: owner.connectorPortsOwner, observationOwner: owner.observationOwner,
+		operationsOwner: owner.operationsOwner, vaultOwner: owner.vaultOwner,
+		access:                 gatewayaccess.NewComponent("3001"),
 		connectorRegistryOwner: owner.registry, connectorAdaptersOwner: owner.adapters,
 		transfers: gatewaytransfer.NewComponent(),
 	}
@@ -67,7 +78,7 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 
 func testRuntimeDatabase(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *sql.DB {
 	t.Helper()
-	if server == nil || server.infrastructure == nil {
+	if server == nil || server.workspaceOwner == nil {
 		t.Fatal("test runtime infrastructure is unavailable")
 	}
 	projection := server.vaultRuntime(runtime)
@@ -118,7 +129,7 @@ func testRuntimeConsoleSessions(t testing.TB, server *Server, runtime *gatewayin
 
 func testRuntimeControlState(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *runtimecontrol.State {
 	t.Helper()
-	projection, ok := server.infrastructure.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
+	projection, ok := server.accessOwner.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
 		StartEnabled: func(context.Context) (bool, error) { return false, nil },
 	})
 	if !ok || projection.State == nil {
@@ -133,7 +144,7 @@ func testRuntimeControlState(t testing.TB, server *Server, runtime *gatewayinfra
 
 func testRuntimeSecurityPolicy(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *securitypolicy.Service {
 	t.Helper()
-	projection, ok := server.infrastructure.SecurityScope(runtime, gatewayinfra.SecurityPorts{
+	projection, ok := server.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{
 		Mutate: func(context.Context, string, func() any, func(*sql.Tx) error) error { return nil },
 	})
 	if !ok || projection.Service == nil {
@@ -144,7 +155,7 @@ func testRuntimeSecurityPolicy(t testing.TB, server *Server, runtime *gatewayinf
 
 func testMCPOutputAuthorization(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle, tokenID int64) *gatewayaccess.MCPOutputAuthorization {
 	t.Helper()
-	scope, ok := server.infrastructure.MCPActionScope(runtime, gatewayinfra.MCPActionPorts{
+	scope, ok := server.accessOwner.MCPActionScope(runtime, gatewayinfra.MCPActionPorts{
 		TokenID: tokenID, RunningHint: server.connectorRunningHint,
 		Delivery:  server.connectorActionApplication().Delivery,
 		Principal: func(id int64) (gatewayaccess.Principal, error) { return server.tokenExecutionPrincipal(runtime, id) },

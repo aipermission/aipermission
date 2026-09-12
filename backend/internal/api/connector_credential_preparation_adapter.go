@@ -20,9 +20,9 @@ func (s *Server) connectorCredentialPreparationPorts(runtime *gatewayinfra.Works
 }
 
 func (s *Server) connectorCredentialStorage(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialStorage {
-	if s == nil || s.infrastructure == nil {
+	if s == nil || s.workspaceOwner == nil {
 		return connectormgmt.CredentialStorage{}
 	}
-	storage, _ := s.infrastructure.ConnectorCredentialStorage(runtime)
+	storage, _ := s.connectorManagementOwner.ConnectorCredentialStorage(runtime)
 	return storage
 }

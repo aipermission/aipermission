@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) backupApplication() *gatewayinfra.BackupApplication {
-	return s.infrastructure.NewBackupApplication(gatewayinfra.BackupApplicationDependencies{
+	return s.operationsOwner.NewBackupApplication(gatewayinfra.BackupApplicationDependencies{
 		DataPath: s.config.DataPath,
 		ActiveRuntime: func(w http.ResponseWriter) (*gatewayinfra.WorkspaceHandle, gatewayinfra.BackupRuntimePorts, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)

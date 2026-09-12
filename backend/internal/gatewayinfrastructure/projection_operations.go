@@ -11,7 +11,7 @@ import (
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
-func (component *Component) InitializeCommandRuntime(handle *WorkspaceHandle, commands *gatewayoperations.CommandComponent, redact func(context.Context, string) string, timeout time.Duration) error {
+func (component *OperationsOwner) InitializeCommandRuntime(handle *WorkspaceHandle, commands *gatewayoperations.CommandComponent, redact func(context.Context, string) string, timeout time.Duration) error {
 	owner, ok := component.resolve(handle)
 	if !ok || commands == nil {
 		return ErrWorkspaceHandleUnavailable
@@ -23,7 +23,7 @@ func (component *Component) InitializeCommandRuntime(handle *WorkspaceHandle, co
 	})
 }
 
-func (component *Component) CommandBulkRuntime(handle *WorkspaceHandle, runtime gatewayoperations.CommandBulkHTTPRuntime) (*gatewayoperations.CommandBulkHTTPRuntime, bool) {
+func (component *OperationsOwner) CommandBulkRuntime(handle *WorkspaceHandle, runtime gatewayoperations.CommandBulkHTTPRuntime) (*gatewayoperations.CommandBulkHTTPRuntime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return nil, false
@@ -32,7 +32,7 @@ func (component *Component) CommandBulkRuntime(handle *WorkspaceHandle, runtime 
 	return &runtime, true
 }
 
-func (component *Component) LiveConsoleHTTPRuntime(handle *WorkspaceHandle, runtime connectorapi.LiveConsoleHTTPRuntime) (*connectorapi.LiveConsoleHTTPRuntime, bool) {
+func (component *OperationsOwner) LiveConsoleHTTPRuntime(handle *WorkspaceHandle, runtime connectorapi.LiveConsoleHTTPRuntime) (*connectorapi.LiveConsoleHTTPRuntime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return nil, false
@@ -41,7 +41,7 @@ func (component *Component) LiveConsoleHTTPRuntime(handle *WorkspaceHandle, runt
 	return &runtime, true
 }
 
-func (component *Component) backupWorkspace(handle *WorkspaceHandle, runtime gatewaybackup.Runtime) (gatewaybackup.Runtime, bool) {
+func (component *OperationsOwner) backupWorkspace(handle *WorkspaceHandle, runtime gatewaybackup.Runtime) (gatewaybackup.Runtime, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return gatewaybackup.Runtime{}, false
@@ -55,7 +55,7 @@ func (component *Component) backupWorkspace(handle *WorkspaceHandle, runtime gat
 	return runtime, true
 }
 
-func (component *Component) InitializeTransferWorkspace(
+func (component *OperationsOwner) InitializeTransferWorkspace(
 	handle *WorkspaceHandle,
 	transfers *gatewaytransfer.Component,
 	observe func(context.Context, string, *int64, int64, string, any),
@@ -71,7 +71,7 @@ func (component *Component) InitializeTransferWorkspace(
 	)
 }
 
-func (component *Component) PeerTrustWorkspace(handle *WorkspaceHandle, invalidate func(context.Context, string) error) (connectorports.PeerTrustWorkspace, bool) {
+func (component *OperationsOwner) PeerTrustWorkspace(handle *WorkspaceHandle, invalidate func(context.Context, string) error) (connectorports.PeerTrustWorkspace, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectorports.PeerTrustWorkspace{}, false

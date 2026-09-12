@@ -19,7 +19,7 @@ must not construct or import the concrete process implementation.
 
 Current contributor map:
 
-- `routes.go`: gateway handler-group composition; `internal/gatewayinfrastructure/routes.go` owns the route table and accepts the health/status handlers
+- `routes.go`: gateway handler-group composition; `internal/api/httptransport/routes.go` owns the local HTTP route contract
 - `http_boundary.go`, `http_security.go`, `ui_session.go`: local browser trust boundary
 - `unlock*.go`, `databases.go`: encrypted database and workspace lifecycle
 - `mcp*.go`: MCP auth, connector tool endpoints, and response shaping
