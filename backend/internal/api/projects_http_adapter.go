@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -15,9 +14,6 @@ func (s *Server) projectsHTTPScope(w http.ResponseWriter) (gatewayvault.ProjectS
 		return gatewayvault.ProjectScope{}, false
 	}
 	scope, valid := s.vaultOwner.ProjectScope(runtime, gatewayinfra.ProjectPorts{
-		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
-		},
 		Invalidate: func(ctx context.Context, projectID int64) error {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err != nil {

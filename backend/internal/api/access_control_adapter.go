@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 
@@ -16,9 +15,6 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.Access
 		return gatewayaccess.AccessScope{}, false
 	}
 	return s.accessOwner.AccessControlWorkspace(runtime, gatewayinfra.AccessControlPorts{
-		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
-		},
 		FinishTokenInvalidation: func(ctx context.Context, tokenID int64, sessionIDs []int64) {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err == nil {

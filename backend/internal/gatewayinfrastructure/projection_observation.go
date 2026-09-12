@@ -106,6 +106,17 @@ func (component *ObservationOwner) WithObservationMutation(ctx context.Context, 
 	return component.owner.observation.WithMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 }
 
+type observationMutationRunner func(context.Context, string, func() any, func(*sql.Tx) error) error
+
+func (component *ObservationOwner) mutationRunner(handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64) observationMutationRunner {
+	if _, ok := component.observationWorkspace(handle); !ok {
+		return nil
+	}
+	return func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		return component.WithObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
+	}
+}
+
 func (component *ObservationOwner) ProjectObservations(ctx context.Context, handle *WorkspaceHandle) {
 	if runtime, ok := component.observationWorkspace(handle); ok {
 		component.owner.observation.Project(ctx, runtime)

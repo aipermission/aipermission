@@ -2,14 +2,12 @@ package gatewayinfrastructure
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 )
 
 type AccessControlPorts struct {
-	Mutate                  func(context.Context, string, func() any, func(*sql.Tx) error) error
 	FinishTokenInvalidation func(context.Context, int64, []int64)
 }
 
@@ -44,7 +42,8 @@ func (component *AccessOwner) AccessControlWorkspace(handle *WorkspaceHandle, po
 			settings, err := owner.Security.PolicyService().ReadSettings(ctx)
 			return settings.ReusableTokens, err
 		},
-		Mutate: ports.Mutate, AcquireExclusive: owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
+		Mutate:                  gatewayaccess.MutationRunner(component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)),
+		AcquireExclusive:        owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		FinishTokenInvalidation: ports.FinishTokenInvalidation,
 	}, true
 }

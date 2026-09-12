@@ -10,7 +10,6 @@ import (
 )
 
 type BackupRuntimePorts struct {
-	Mutate        func(context.Context, string, func() any, func(*sql.Tx) error) error
 	AuditRequired func(context.Context, string, any) error
 	Observe       func(context.Context, string, any)
 }
@@ -70,7 +69,8 @@ func (component *OperationsOwner) NewBackupApplication(dependencies BackupApplic
 				return gatewaybackup.Runtime{}, false
 			}
 			return component.backupWorkspace(handle, gatewaybackup.Runtime{
-				Mutate: ports.Mutate, AuditRequired: ports.AuditRequired, Observe: ports.Observe,
+				Mutate:        component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0),
+				AuditRequired: ports.AuditRequired, Observe: ports.Observe,
 			})
 		},
 		CurrentDatabaseName: dependencies.CurrentDatabaseName,

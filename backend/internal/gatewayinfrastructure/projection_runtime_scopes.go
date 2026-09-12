@@ -2,7 +2,6 @@ package gatewayinfrastructure
 
 import (
 	"context"
-	"database/sql"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -98,16 +97,15 @@ func (component *AccessOwner) RecoverConsoleRuntime(
 	return owner.Connectors.ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, cancelRunning)
 }
 
-type SecurityPorts struct {
-	Mutate func(context.Context, string, func() any, func(*sql.Tx) error) error
-}
-
-func (component *AccessOwner) SecurityScope(handle *WorkspaceHandle, ports SecurityPorts) (gatewayaccess.SecurityHTTPScope, bool) {
+func (component *AccessOwner) SecurityScope(handle *WorkspaceHandle) (gatewayaccess.SecurityHTTPScope, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok || owner.Security.PolicyService() == nil {
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
-	return gatewayaccess.SecurityHTTPScope{Service: owner.Security.PolicyService(), Mutate: ports.Mutate}, true
+	return gatewayaccess.SecurityHTTPScope{
+		Service: owner.Security.PolicyService(),
+		Mutate:  gatewayaccess.MutationRunner(component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)),
+	}, true
 }
 
 func (component *AccessOwner) ReadSecuritySettings(ctx context.Context, handle *WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
@@ -182,7 +180,6 @@ func (component *OperationsOwner) MessageStore(handle *WorkspaceHandle, redact f
 }
 
 type ProjectPorts struct {
-	Mutate     gatewayvault.ProjectMutation
 	Invalidate func(context.Context, int64) error
 }
 
@@ -192,7 +189,8 @@ func (component *VaultOwner) ProjectScope(handle *WorkspaceHandle, ports Project
 		return gatewayvault.ProjectScope{}, false
 	}
 	return gatewayvault.ProjectScope{
-		Database: owner.Storage.DatabaseHandle(), Mutate: ports.Mutate,
+		Database:         owner.Storage.DatabaseHandle(),
+		Mutate:           gatewayvault.ProjectMutation(component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)),
 		AcquireExclusive: owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		Invalidate:       ports.Invalidate,
 	}, true

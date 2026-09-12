@@ -144,9 +144,7 @@ func testRuntimeControlState(t testing.TB, server *Server, runtime *gatewayinfra
 
 func testRuntimeSecurityPolicy(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *securitypolicy.Service {
 	t.Helper()
-	projection, ok := server.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{
-		Mutate: func(context.Context, string, func() any, func(*sql.Tx) error) error { return nil },
-	})
+	projection, ok := server.accessOwner.SecurityScope(runtime)
 	if !ok || projection.Service == nil {
 		t.Fatal("test runtime security policy is unavailable")
 	}

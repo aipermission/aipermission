@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
@@ -10,15 +9,7 @@ import (
 
 func (s *Server) connectorLifecycleApplication(runtime *gatewayinfra.WorkspaceHandle) *connectormgmt.LifecycleService {
 	return connectormgmt.NewLifecycleService(connectormgmt.LifecycleServiceDependencies{
-		Mutate: func(
-			ctx context.Context,
-			actor string,
-			action string,
-			payload func() any,
-			mutate func(*sql.Tx) error,
-		) error {
-			return s.withAuditedMutation(ctx, runtime, actor, nil, 0, action, payload, mutate)
-		},
+		Mutate: s.connectorManagementOwner.LifecycleMutationRunner(runtime),
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},

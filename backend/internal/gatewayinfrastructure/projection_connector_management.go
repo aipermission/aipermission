@@ -1,6 +1,20 @@
 package gatewayinfrastructure
 
-import connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+import (
+	"context"
+	"database/sql"
+
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+)
+
+func (component *ConnectorManagementOwner) LifecycleMutationRunner(handle *WorkspaceHandle) connectormgmt.AuditedMutation {
+	if _, ok := component.resolve(handle); !ok {
+		return nil
+	}
+	return func(ctx context.Context, actor, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		return component.owner.ObservationOwner().WithObservationMutation(ctx, handle, actor, nil, 0, action, payload, mutate)
+	}
+}
 
 func (component *ConnectorManagementOwner) ConnectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
 	owner, ok := component.resolve(handle)

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 
@@ -17,11 +16,7 @@ func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.S
 	if !ok {
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
-	scope, valid := s.accessOwner.SecurityScope(runtime, gatewayinfra.SecurityPorts{
-		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
-		},
-	})
+	scope, valid := s.accessOwner.SecurityScope(runtime)
 	return scope, valid
 }
 

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -18,9 +17,6 @@ func (s *Server) backupApplication() *gatewayinfra.BackupApplication {
 				return nil, gatewayinfra.BackupRuntimePorts{}, false
 			}
 			return runtime, gatewayinfra.BackupRuntimePorts{
-				Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-					return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
-				},
 				AuditRequired: func(ctx context.Context, action string, payload any) error {
 					return s.writeAuditRequired(ctx, runtime, "user", nil, 0, action, payload)
 				},
