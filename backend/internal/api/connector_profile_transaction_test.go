@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
@@ -48,7 +49,7 @@ func TestPreparedCredentialUpdateFailsAtomically(t *testing.T) {
 			if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox`).Scan(&auditBefore); err != nil {
 				t.Fatal(err)
 			}
-			err = fixture.server.withAuditedTransaction(t.Context(), runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+			err = fixture.server.observationOwner.WithObservationTransaction(t.Context(), runtime, func(tx *sql.Tx, appendAudit gatewayinfra.ObservationAppender) error {
 				changed, err := connectortargets.NewTxStore(tx).UpdateTarget(t.Context(), connectortargets.UpdateTargetInput{
 					ID: target.ID, ProjectID: target.ProjectID, Name: "must-rollback", Config: target.Config, ExpectedUpdatedAt: target.UpdatedAt,
 				})
