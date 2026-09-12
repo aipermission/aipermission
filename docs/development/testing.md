@@ -41,6 +41,9 @@ This runs:
   direct SQL and raw workspace-scope consumption in production API code, trace
   the OpenAPI generator to one canonical route source, and keep backend,
   frontend, and documented connector catalogs aligned
+- architecture guards that reject production API type re-exports, mutable
+  function/value facades, and every API-specific source, package, function, or
+  dependency fan-out budget override
 - backend unit tests with an aggregate summary and reviewed floors for auth,
   permission, approval, Vault, session injection, target lifecycle, and audit
   outbox packages

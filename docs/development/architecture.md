@@ -228,7 +228,12 @@ cross-connector session environment delivery. They may share orchestration
 helpers, but must not share a persistence model that erases those different
 authorization and compensation boundaries.
 
-Large API files should be split by behavior before they become cross-domain modules. Runtime-heavy domains should move out of `internal/api` when possible; `internal/console` is the first example of that boundary. Prefer small handler/service files such as `mcp_auth.go`, `command_requests.go`, `command_request_queries.go`, and connector adapter files. Route handlers should usually hang off small handler groups (`mcpHandlers`, `tokenHandlers`, `consoleHandlers`) instead of adding every endpoint directly to `*Server`.
+Large API files should be split by behavior before they become cross-domain
+modules. Runtime-heavy domains should move out of `internal/api`; the console
+and transfer runtimes are examples of that boundary. Prefer small transport
+adapters such as `mcp_auth.go`, `command_request_composition.go`, and the
+workflow-specific connector adapter files. Bind complete owner handler sets at
+the composition root instead of adding domain behavior directly to `*Server`.
 
 Credential edits share the transaction-owned `updatePreparedCredentialProfile`
 operation. It encrypts replacement material, checks the expected secret revision,
@@ -248,9 +253,11 @@ source-extension inventory from the frontend architecture policy. The gate caps
 production modules at 550 lines, rejects unclassified source layers, enforces
 layer direction, and rejects connector-kind literals used for branching or
 lookup maps outside concrete connector templates.
-Composition-root exceptions must be
-explicit and should move downward when responsibilities leave the API package;
-do not raise a ceiling merely to land a feature.
+`internal/api` has no source, package, function, or dependency fan-out budget
+exceptions. Keep it below the shared ceilings by moving behavior into its owning
+application boundary; do not add an API override or raise a repository ceiling
+merely to land a feature. Other composition-root exceptions, if ever required,
+must be explicit, narrower than the inherited limit, and justified in review.
 
 The changed-coverage gate owns browser component behavior. Retry-storage
 internals are instead exercised through the Node IndexedDB integration suite in
