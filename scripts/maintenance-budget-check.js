@@ -136,9 +136,9 @@ for (const budget of sourceBudgets) {
   }
 }
 
-const backendInternal = path.join(root, "backend/internal");
+const backendSource = path.join(root, "backend");
 const packageLines = new Map();
-for (const file of walk(backendInternal)) {
+for (const file of walk(backendSource)) {
   if (path.extname(file) !== ".go" || !isProductionSource("backend", file)) {
     continue;
   }

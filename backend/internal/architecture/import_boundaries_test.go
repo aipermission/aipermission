@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -739,27 +740,75 @@ func TestGatewayInfrastructureDoesNotReturnDatabaseHandles(t *testing.T) {
 
 func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
 	const routeSource = "internal/api/httptransport/routes.go"
-	command, err := os.ReadFile(filepath.Join("..", "..", "cmd", "openapi", "main.go"))
+	command, err := parser.ParseFile(
+		token.NewFileSet(),
+		filepath.Join("..", "..", "cmd", "openapi", "main.go"),
+		nil,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(command), `flag.String("routes", "`+routeSource+`"`) {
+	if got, ok := stringFlagDefault(command, "routes"); !ok || got != routeSource {
 		t.Fatalf("OpenAPI command must default to %s", routeSource)
 	}
-	if strings.Contains(string(command), "internal/gatewayinfrastructure/routes.go") {
-		t.Fatal("OpenAPI command references the retired infrastructure route source")
+	for _, target := range []string{"rest-contract", "rest-contract-check"} {
+		command := exec.Command("make", "-n", target)
+		command.Dir = filepath.Join("..", "..", "..")
+		output, err := command.Output()
+		if err != nil {
+			t.Fatalf("dry-run %s: %v", target, err)
+		}
+		if countCommandArgument(output, "-routes", routeSource) != 1 {
+			t.Errorf("make %s must pass exactly one -routes %s argument", target, routeSource)
+		}
 	}
+}
 
-	contents, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
-	if err != nil {
-		t.Fatal(err)
+func stringFlagDefault(file *ast.File, name string) (string, bool) {
+	var result string
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) < 2 {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "String" {
+			return true
+		}
+		owner, ok := selector.X.(*ast.Ident)
+		if !ok || owner.Name != "flag" {
+			return true
+		}
+		flagName, nameOK := stringLiteral(call.Args[0])
+		value, valueOK := stringLiteral(call.Args[1])
+		if nameOK && valueOK && flagName == name {
+			result, found = value, true
+		}
+		return true
+	})
+	return result, found
+}
+
+func stringLiteral(expression ast.Expr) (string, bool) {
+	literal, ok := expression.(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return "", false
 	}
-	if count := strings.Count(string(contents), routeSource); count != 2 {
-		t.Fatalf("Makefile must use %s for both OpenAPI commands; found %d references", routeSource, count)
+	value, err := strconv.Unquote(literal.Value)
+	return value, err == nil
+}
+
+func countCommandArgument(output []byte, option, value string) int {
+	fields := strings.Fields(string(output))
+	count := 0
+	for index := 0; index+1 < len(fields); index++ {
+		if fields[index] == option && fields[index+1] == value {
+			count++
+		}
 	}
-	if strings.Contains(string(contents), "internal/gatewayroutes/") {
-		t.Fatal("Makefile references the retired gatewayroutes package")
-	}
+	return count
 }
 
 func TestHTTPPolicyAndAdapterRegistrationStayInTransportOwner(t *testing.T) {
@@ -935,14 +984,14 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 	return ""
 }
 
-func TestInternalPackageFanOutBudgets(t *testing.T) {
+func TestBackendPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
 	// Composition packages may import multiple explicitly approved packages from
 	// one owner; the stricter owner budget below prevents boundary sprawl.
 	const packageBudget = 12
 	const ownerBudget = 8
 	for importer, imports := range importsByPackage {
-		if !strings.HasPrefix(importer, modulePath+"/internal/") {
+		if !strings.HasPrefix(importer, modulePath+"/internal/") && !strings.HasPrefix(importer, modulePath+"/cmd/") {
 			continue
 		}
 		packageCount := 0
@@ -975,7 +1024,7 @@ func internalDependencyOwner(pkg string) string {
 }
 
 func TestTestFilesRespectInternalImportBudget(t *testing.T) {
-	root := filepath.Join("..", "..", "internal")
+	root := filepath.Join("..", "..")
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr

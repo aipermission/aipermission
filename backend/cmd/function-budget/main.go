@@ -28,7 +28,7 @@ type finding struct {
 }
 
 func main() {
-	findings, err := inspectTree("internal")
+	findings, err := inspectTree(".")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "function budget check failed: %v\n", err)
 		os.Exit(1)
