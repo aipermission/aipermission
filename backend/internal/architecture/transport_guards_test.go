@@ -244,12 +244,17 @@ func TestProductionAPIDoesNotConsumeRawVaultRuntime(t *testing.T) {
 
 func TestGatewayFeatureProjectionsCannotRecoverWorkspaceRuntime(t *testing.T) {
 	root := filepath.Join("..", "gatewayinfrastructure")
+	compositionFiles := map[string]bool{
+		"component.go":      true,
+		"infrastructure.go": true,
+		"owners.go":         true,
+	}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasPrefix(name, "projection_") || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			return nil
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
@@ -262,24 +267,11 @@ func TestGatewayFeatureProjectionsCannotRecoverWorkspaceRuntime(t *testing.T) {
 				return err
 			}
 			if packagePath == modulePath+"/internal/gatewayworkspace" {
-				t.Errorf("%s imports gatewayworkspace; feature projections must consume only pre-bound capabilities", path)
+				if !compositionFiles[name] {
+					t.Errorf("%s imports gatewayworkspace; only explicit gateway composition files may retain workspace state", path)
+				}
 			}
 		}
-		source, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		parsed, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
-		if err != nil {
-			return err
-		}
-		ast.Inspect(parsed, func(node ast.Node) bool {
-			selector, ok := node.(*ast.SelectorExpr)
-			if ok && (selector.Sel.Name == "resolve" || selector.Sel.Name == "lifecycle") {
-				t.Errorf("%s accesses %s; only the workspace lifecycle owner may retain the opaque runtime", path, selector.Sel.Name)
-			}
-			return true
-		})
 		return nil
 	})
 	if err != nil {

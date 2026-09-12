@@ -76,14 +76,14 @@ func TestTargetDeleteHandlerOwnsGenericLifecycleUnderExclusiveLease(t *testing.T
 					},
 				},
 				Lifecycle: LifecyclePorts{
-					DeleteTarget: func(_ context.Context, got connectortargets.Target, _ map[string]any) error {
+					DeleteTarget: func(_ context.Context, got Target, _ map[string]any) error {
 						if got.ID != target.ID {
 							t.Fatalf("target = %#v", got)
 						}
 						steps = append(steps, "delete")
 						return nil
 					},
-					FinalizeTarget: func(_ context.Context, got connectortargets.Target, reason string) (int64, error) {
+					FinalizeTarget: func(_ context.Context, got Target, reason string) (int64, error) {
 						if got.ID != target.ID || reason != deletedTargetStaleReason {
 							t.Fatalf("finalize = %#v %q", got, reason)
 						}

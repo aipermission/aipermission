@@ -625,6 +625,56 @@ func TestGatewayInfrastructureKeepsWorkspaceHandleOpaqueWithoutServiceLocator(t 
 	}
 }
 
+func TestOnlyWorkspaceOwnerRetainsGatewayComponent(t *testing.T) {
+	root := filepath.Join("..", "gatewayinfrastructure")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				typeSpec, ok := specification.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				structure, ok := typeSpec.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				for _, field := range structure.Fields.List {
+					pointer, ok := field.Type.(*ast.StarExpr)
+					if !ok {
+						continue
+					}
+					component, componentOK := pointer.X.(*ast.Ident)
+					if !componentOK || component.Name != "Component" {
+						continue
+					}
+					allowed := typeSpec.Name.Name == "WorkspaceOwner" && len(field.Names) == 1 && field.Names[0].Name == "owner"
+					if !allowed {
+						t.Errorf("%s: %s retains the gateway Component; only WorkspaceOwner.owner may own lifecycle composition", path, typeSpec.Name.Name)
+					}
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway owner component references: %v", err)
+	}
+}
+
 func TestAPIResolvesGatewayOwnersOnlyAtCompositionRoot(t *testing.T) {
 	want := map[string]bool{
 		"AccessOwner": false, "ConnectorActionOwner": false,

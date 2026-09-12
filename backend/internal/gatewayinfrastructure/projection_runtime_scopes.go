@@ -131,7 +131,7 @@ func (component *AccessOwner) securityScope(handle *WorkspaceHandle) (gatewayacc
 	}
 	return gatewayaccess.SecurityHTTPScope{
 		Service: capability.Policy,
-		Mutate:  gatewayaccess.MutationRunner(component.owner.observationMutationRunner(handle, "user", nil, 0)),
+		Mutate:  gatewayaccess.MutationRunner(component.observation.observationMutationRunner(handle, "user", nil, 0)),
 	}, true
 }
 
@@ -162,7 +162,7 @@ func (component *AccessOwner) UpdateSecuritySettings(
 	if !ok {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
-	mutate := component.owner.observationMutationRunner(handle, "user", nil, 0)
+	mutate := component.observation.observationMutationRunner(handle, "user", nil, 0)
 	if mutate == nil {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
@@ -189,7 +189,7 @@ func (component *AccessOwner) CreateSecurityRule(
 	if !ok {
 		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
 	}
-	mutate := component.owner.observationMutationRunner(handle, "user", nil, 0)
+	mutate := component.observation.observationMutationRunner(handle, "user", nil, 0)
 	if mutate == nil {
 		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
 	}
@@ -338,7 +338,7 @@ func (component *VaultOwner) projectScope(handle *WorkspaceHandle, ports Project
 	}
 	return gatewayvault.ProjectScope{
 		Database:         capability.Database,
-		Mutate:           gatewayvault.ProjectMutation(component.owner.observationMutationRunner(handle, "user", nil, 0)),
+		Mutate:           gatewayvault.ProjectMutation(component.observation.observationMutationRunner(handle, "user", nil, 0)),
 		AcquireExclusive: capability.Delivery.AcquireExclusive,
 		Invalidate:       ports.Invalidate,
 	}, true

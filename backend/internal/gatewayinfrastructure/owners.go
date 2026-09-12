@@ -1,32 +1,23 @@
 package gatewayinfrastructure
 
 import (
+	"context"
 	"sync"
 
+	gatewaybackup "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
+	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
+	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
-type ownerBase struct{ owner *Component }
+type ownerBase struct{ owner *componentIdentity }
 
 func (boundary ownerBase) valid(handle *WorkspaceHandle) bool {
-	return boundary.owner != nil && boundary.owner.owns(handle)
+	return boundary.owner != nil && handle != nil && handle.component == boundary.owner && handle.active.Load()
 }
 
 func (boundary ownerBase) belongs(handle *WorkspaceHandle) bool {
-	return boundary.owner != nil && handle != nil && handle.component == boundary.owner.identity
-}
-
-func (boundary ownerBase) handleFor(runtime *gatewayworkspace.Runtime) *WorkspaceHandle {
-	if boundary.owner == nil {
-		return nil
-	}
-	return boundary.owner.handleFor(runtime)
-}
-
-func (boundary ownerBase) forgetHandle(handle *WorkspaceHandle) {
-	if boundary.owner != nil {
-		boundary.owner.forgetHandle(handle)
-	}
+	return boundary.owner != nil && handle != nil && handle.component == boundary.owner
 }
 
 type capabilityRegistry[T any] struct{ values sync.Map }
@@ -59,14 +50,17 @@ func (registry *capabilityRegistry[T]) forget(handle *WorkspaceHandle) {
 type AccessOwner struct {
 	ownerBase
 	capabilities capabilityRegistry[gatewayworkspace.Access]
+	observation  *ObservationOwner
 }
 type ConnectorActionOwner struct {
 	ownerBase
 	capabilities capabilityRegistry[gatewayworkspace.ConnectorActions]
+	observation  *ObservationOwner
 }
 type ConnectorManagementOwner struct {
 	ownerBase
 	capabilities capabilityRegistry[gatewayworkspace.ConnectorManagement]
+	observation  *ObservationOwner
 }
 type ConnectorPortsOwner struct {
 	ownerBase
@@ -75,16 +69,43 @@ type ConnectorPortsOwner struct {
 type ObservationOwner struct {
 	ownerBase
 	capabilities capabilityRegistry[gatewayworkspace.Observation]
+	application  *observationapp.Component
 }
 type OperationsOwner struct {
 	ownerBase
-	capabilities capabilityRegistry[gatewayworkspace.Operations]
+	capabilities           capabilityRegistry[gatewayworkspace.Operations]
+	observation            *ObservationOwner
+	backupLifecycle        gatewaybackup.Lifecycle
+	acquireBackupOperation func(context.Context) (func(), error)
+	transfers              *gatewaytransfer.Component
+	transferHTTP           *gatewaytransfer.FileTransferHTTPHandlers
 }
 type VaultOwner struct {
 	ownerBase
 	capabilities capabilityRegistry[gatewayworkspace.Vault]
+	observation  *ObservationOwner
 }
-type WorkspaceOwner struct{ ownerBase }
+type WorkspaceOwner struct {
+	ownerBase
+	workspace           *gatewayworkspace.Component
+	handleForRuntime    func(*gatewayworkspace.Runtime) *WorkspaceHandle
+	forgetRuntimeHandle func(*WorkspaceHandle)
+	ownedHandles        func() []*WorkspaceHandle
+	validatePassword    func(context.Context, *gatewayworkspace.Runtime, string, string) error
+}
+
+func (component *WorkspaceOwner) handleFor(runtime *gatewayworkspace.Runtime) *WorkspaceHandle {
+	if component == nil || component.handleForRuntime == nil {
+		return nil
+	}
+	return component.handleForRuntime(runtime)
+}
+
+func (component *WorkspaceOwner) forgetHandle(handle *WorkspaceHandle) {
+	if component != nil && component.forgetRuntimeHandle != nil {
+		component.forgetRuntimeHandle(handle)
+	}
+}
 
 func (component *AccessOwner) projection(handle *WorkspaceHandle) (gatewayworkspace.Access, bool) {
 	return component.capabilities.get(component.ownerBase, handle)
@@ -116,15 +137,37 @@ func (component *WorkspaceOwner) lifecycleRuntime(handle *WorkspaceHandle) (*gat
 }
 
 func (component *Component) bindOwners() {
-	base := ownerBase{owner: component}
-	component.accessOwner = &AccessOwner{ownerBase: base}
-	component.actionOwner = &ConnectorActionOwner{ownerBase: base}
-	component.managementOwner = &ConnectorManagementOwner{ownerBase: base}
+	base := ownerBase{owner: component.identity}
+	observation := &ObservationOwner{ownerBase: base, application: component.observation}
+	component.observationOwner = observation
+	component.accessOwner = &AccessOwner{ownerBase: base, observation: observation}
+	component.actionOwner = &ConnectorActionOwner{ownerBase: base, observation: observation}
+	component.managementOwner = &ConnectorManagementOwner{ownerBase: base, observation: observation}
 	component.portsOwner = &ConnectorPortsOwner{ownerBase: base}
-	component.observationOwner = &ObservationOwner{ownerBase: base}
-	component.operationsOwner = &OperationsOwner{ownerBase: base}
-	component.vaultOwner = &VaultOwner{ownerBase: base}
-	component.workspaceOwner = &WorkspaceOwner{ownerBase: base}
+	component.operationsOwner = &OperationsOwner{
+		ownerBase: base, observation: observation, acquireBackupOperation: component.acquireBackupOperation,
+		transfers: gatewaytransfer.NewComponent(),
+	}
+	component.vaultOwner = &VaultOwner{ownerBase: base, observation: observation}
+}
+
+func (component *Component) bindWorkspaceOwner() {
+	base := ownerBase{owner: component.identity}
+	operations := component.operationsOwner
+	handleFor := component.handleFor
+	component.workspaceOwner = &WorkspaceOwner{
+		ownerBase: base, workspace: component.workspace,
+		handleForRuntime: handleFor, forgetRuntimeHandle: component.forgetHandle,
+		ownedHandles: component.ownedHandlesSnapshot,
+		validatePassword: func(ctx context.Context, runtime *gatewayworkspace.Runtime, databaseName, password string) error {
+			handle := handleFor(runtime)
+			database, ok := operations.passwordValidationDatabase(handle)
+			if !ok {
+				return InitializationError()
+			}
+			return gatewaybackup.ValidateNewPassword(ctx, database, databaseName, password)
+		},
+	}
 }
 
 func (component *Component) bindHandleCapabilities(handle *WorkspaceHandle, projection gatewayworkspace.Projection) {

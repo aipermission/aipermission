@@ -16,17 +16,24 @@ import (
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
-// ConnectorRuntimePorts are transport-neutral callbacks into gateway-owned
-// workflows. ConnectorRuntimeApplication binds them to one workspace before a
-// connector adapter receives any capability.
-type ConnectorRuntimePorts struct {
+type ConnectorRuntimeExecutionPorts struct {
 	Principal func(*WorkspaceHandle) (gatewayaccess.Principal, error)
 	Restart   func(context.Context, *WorkspaceHandle, gatewayaccess.Principal, int64, string) (connectorapi.ConsoleRestartResult, error)
-	Finish    func(context.Context, *WorkspaceHandle, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectormgmt.ActionRequest, error)
-	Download  func(context.Context, *WorkspaceHandle, connectorapi.TransferAuthorization, int64, []string, string, string) (connectorapi.TransferBatch, error)
-	Delete    func(context.Context, *WorkspaceHandle, connectormgmt.Target, map[string]any) error
-	Finalize  func(context.Context, *WorkspaceHandle, connectormgmt.Target, string, map[string]any) (int64, error)
-	Audit     func(context.Context, *WorkspaceHandle, string, *int64, int64, string, any)
+}
+
+type ConnectorRuntimeTransferPorts struct {
+	Download func(context.Context, *WorkspaceHandle, connectorapi.TransferAuthorization, int64, []string, string, string) (connectorapi.TransferBatch, error)
+}
+
+type ConnectorRuntimeObservationPorts struct {
+	Audit func(context.Context, *WorkspaceHandle, string, *int64, int64, string, any)
+}
+
+type ConnectorActionFinishPort func(context.Context, *WorkspaceHandle, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectormgmt.ActionRequest, error)
+
+type ConnectorTargetWorkflowPorts struct {
+	Delete   func(context.Context, connectormgmt.Target, map[string]any) error
+	Finalize func(context.Context, connectormgmt.Target, string, map[string]any) (int64, error)
 }
 
 type ConnectorRuntimeDependencies struct {
@@ -34,18 +41,22 @@ type ConnectorRuntimeDependencies struct {
 	ActiveRuntime       func(http.ResponseWriter) bool
 	WorkspaceSnapshot   func() []*WorkspaceHandle
 	InvalidatePeerTrust func(context.Context, *WorkspaceHandle, string) error
-	Ports               ConnectorRuntimePorts
+	Execution           ConnectorRuntimeExecutionPorts
+	Transfers           ConnectorRuntimeTransferPorts
+	Observation         ConnectorRuntimeObservationPorts
 }
 
 // ConnectorRuntimeApplication owns adapter selection and runtime capability
 // composition. HTTP/MCP transports call this application without inspecting a
 // connector implementation or constructing a connector workspace.
 type ConnectorRuntimeApplication struct {
-	owner    *ConnectorPortsOwner
-	adapters *connectorapi.Registry
-	ports    *connectorports.PortsComponent
-	bindings ConnectorRuntimePorts
-	trust    func() string
+	owner       *ConnectorPortsOwner
+	adapters    *connectorapi.Registry
+	ports       *connectorports.PortsComponent
+	execution   ConnectorRuntimeExecutionPorts
+	transfers   ConnectorRuntimeTransferPorts
+	observation ConnectorRuntimeObservationPorts
+	trust       func() string
 }
 
 func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *OperationsOwner, adapters *connectorapi.Registry, dependencies ConnectorRuntimeDependencies) (*ConnectorRuntimeApplication, error) {
@@ -57,13 +68,14 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 	}
 	if dependencies.TrustStorePath == nil || dependencies.ActiveRuntime == nil ||
 		dependencies.WorkspaceSnapshot == nil || dependencies.InvalidatePeerTrust == nil ||
-		dependencies.Ports.Principal == nil || dependencies.Ports.Restart == nil ||
-		dependencies.Ports.Finish == nil || dependencies.Ports.Download == nil ||
-		dependencies.Ports.Delete == nil || dependencies.Ports.Finalize == nil || dependencies.Ports.Audit == nil {
+		dependencies.Execution.Principal == nil || dependencies.Execution.Restart == nil ||
+		dependencies.Transfers.Download == nil || dependencies.Observation.Audit == nil {
 		return nil, errors.New("connector runtime ports are incomplete")
 	}
 	application := &ConnectorRuntimeApplication{
-		owner: owner, adapters: adapters, bindings: dependencies.Ports, trust: dependencies.TrustStorePath,
+		owner: owner, adapters: adapters, execution: dependencies.Execution,
+		transfers: dependencies.Transfers, observation: dependencies.Observation,
+		trust: dependencies.TrustStorePath,
 	}
 	peerTrust := connectorports.NewPeerTrustCoordinator(func() []connectorports.PeerTrustWorkspace {
 		handles := dependencies.WorkspaceSnapshot()
@@ -93,58 +105,58 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 	return application, nil
 }
 
-func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandle, full bool) (connectorports.Workspace, bool) {
+func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandle, full bool, finish ConnectorActionFinishPort, targets ConnectorTargetWorkflowPorts) (connectorports.Workspace, bool) {
 	if application == nil || handle == nil {
 		return connectorports.Workspace{}, false
 	}
 	bindings := connectorports.Workspace{}
-	if application.bindings.Principal != nil {
+	if application.execution.Principal != nil {
 		bindings.Principal = func() (gatewayaccess.Principal, error) {
-			return application.bindings.Principal(handle)
+			return application.execution.Principal(handle)
 		}
 	}
 	if full {
 		bindings.Actions = connectorports.WorkspaceActionPorts{
 			Restart: func(ctx context.Context, principal gatewayaccess.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-				if application.bindings.Restart == nil {
+				if application.execution.Restart == nil {
 					return connectorapi.ConsoleRestartResult{}, errors.New("connector restart port is unavailable")
 				}
-				return application.bindings.Restart(ctx, handle, principal, runtimeID, runningError)
+				return application.execution.Restart(ctx, handle, principal, runtimeID, runningError)
 			},
-			Finish: func(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
-				if application.bindings.Finish == nil {
+			Finish: connectormgmt.DomainActionFinish(func(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
+				if finish == nil {
 					return connectormgmt.ActionRequest{}, errors.New("connector finish port is unavailable")
 				}
-				return application.bindings.Finish(ctx, handle, requestID, status, output, displayText, errorText, hints...)
-			},
+				return finish(ctx, handle, requestID, status, output, displayText, errorText, hints...)
+			}),
 		}
 		bindings.Transfers = connectorports.WorkspaceTransferPorts{
 			RunDownloadBatch: func(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
-				if application.bindings.Download == nil {
+				if application.transfers.Download == nil {
 					return connectorapi.TransferBatch{}, errors.New("connector download port is unavailable")
 				}
-				return application.bindings.Download(ctx, handle, authorization, runtimeID, paths, archiveName, source)
+				return application.transfers.Download(ctx, handle, authorization, runtimeID, paths, archiveName, source)
 			},
 			RuntimeCapabilities: func(kind string) connectors.RuntimeCapabilityResolver {
 				return application.RuntimeCapabilities(handle, kind)
 			},
 		}
 		bindings.Targets = connectorports.WorkspaceTargetPorts{
-			Delete: func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
-				if application.bindings.Delete == nil {
+			Delete: connectormgmt.DomainTargetDelete(func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
+				if targets.Delete == nil {
 					return errors.New("connector delete port is unavailable")
 				}
-				return application.bindings.Delete(ctx, handle, target, payload)
-			},
-			Finalize: func(ctx context.Context, target connectormgmt.Target, reason string, payload map[string]any) (int64, error) {
-				if application.bindings.Finalize == nil {
+				return targets.Delete(ctx, target, payload)
+			}),
+			Finalize: connectormgmt.DomainTargetFinalize(func(ctx context.Context, target connectormgmt.Target, reason string, payload map[string]any) (int64, error) {
+				if targets.Finalize == nil {
 					return 0, errors.New("connector finalize port is unavailable")
 				}
-				return application.bindings.Finalize(ctx, handle, target, reason, payload)
-			},
+				return targets.Finalize(ctx, target, reason, payload)
+			}),
 			Audit: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-				if application.bindings.Audit != nil {
-					application.bindings.Audit(ctx, handle, actor, tokenID, runtimeID, action, payload)
+				if application.observation.Audit != nil {
+					application.observation.Audit(ctx, handle, actor, tokenID, runtimeID, action, payload)
 				}
 			},
 		}
@@ -159,16 +171,16 @@ func (capabilities runtimeCapabilities) RuntimeCapability(name string) connector
 }
 
 func (application *ConnectorRuntimeApplication) RuntimeCapabilities(handle *WorkspaceHandle, kind string) connectors.RuntimeCapabilityResolver {
-	return application.runtimeCapabilities(handle, kind, nil, false)
+	return application.runtimeCapabilities(handle, kind, nil, false, nil)
 }
 
-func (application *ConnectorRuntimeApplication) ActionCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
-	return application.runtimeCapabilities(handle, kind, dependencies, true)
+func (application *ConnectorRuntimeApplication) ActionCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
+	return application.runtimeCapabilities(handle, kind, dependencies, true, finish)
 }
 
-func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, approved bool) connectors.RuntimeCapabilityResolver {
+func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, approved bool, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
 	capabilities := runtimeCapabilities{}
-	workspace, ok := application.workspace(handle, true)
+	workspace, ok := application.workspace(handle, true, finish, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return nil
 	}
@@ -205,19 +217,23 @@ func (application *ConnectorRuntimeApplication) RunningHint(request connectormgm
 	return strings.TrimSpace(adapter.RunningHint(connectorActionRequest(request)))
 }
 
+func (application *ConnectorRuntimeApplication) RunningHintPort() gatewayaccess.MCPRunningHint {
+	return connectormgmt.DomainRunningHint(application.RunningHint)
+}
+
 func (application *ConnectorRuntimeApplication) SupportsRunning(prepared gatewayactions.PreparedRequest) bool {
 	adapterPrepared := prepared.Adapter()
 	adapter, _ := application.adapters.For(adapterPrepared.TargetConnectorKind).(connectorapi.RuntimeAdapter)
 	return adapter != nil && adapter.SupportsRunning(adapterPrepared)
 }
 
-func (application *ConnectorRuntimeApplication) FinishRunning(ctx context.Context, handle *WorkspaceHandle, requestID int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+func (application *ConnectorRuntimeApplication) FinishRunning(ctx context.Context, handle *WorkspaceHandle, requestID int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles, finish ConnectorActionFinishPort) {
 	adapterPrepared := prepared.Adapter()
 	adapter, _ := application.adapters.For(adapterPrepared.TargetConnectorKind).(connectorapi.RuntimeAdapter)
 	if adapter == nil || !adapter.SupportsRunning(adapterPrepared) {
 		return
 	}
-	workspace, ok := application.workspace(handle, true)
+	workspace, ok := application.workspace(handle, true, finish, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return
 	}
@@ -228,22 +244,22 @@ func (application *ConnectorRuntimeApplication) FinishRunning(ctx context.Contex
 }
 
 func (application *ConnectorRuntimeApplication) DataRuntime(handle *WorkspaceHandle, kind string) connectorapi.ConnectorDataRuntime {
-	workspace, _ := application.workspace(handle, false)
+	workspace, _ := application.workspace(handle, false, nil, ConnectorTargetWorkflowPorts{})
 	return connectorports.DataRuntime(workspace, kind)
 }
 
 func (application *ConnectorRuntimeApplication) LiveRuntime(handle *WorkspaceHandle, kind string) connectorapi.LiveConsoleRuntime {
-	workspace, _ := application.workspace(handle, false)
+	workspace, _ := application.workspace(handle, false, nil, ConnectorTargetWorkflowPorts{})
 	return connectorports.LiveRuntime(workspace, kind)
 }
 
 func (application *ConnectorRuntimeApplication) CredentialResourceRuntime(handle *WorkspaceHandle, kind string) connectorapi.CredentialResourceRuntime {
-	workspace, _ := application.workspace(handle, false)
+	workspace, _ := application.workspace(handle, false, nil, ConnectorTargetWorkflowPorts{})
 	return connectorports.PortCredentialResourceRuntime(workspace, kind)
 }
 
 func (application *ConnectorRuntimeApplication) TargetLifecycleRuntime(handle *WorkspaceHandle, kind string) connectorapi.TargetLifecycleRuntime {
-	workspace, _ := application.workspace(handle, false)
+	workspace, _ := application.workspace(handle, false, nil, ConnectorTargetWorkflowPorts{})
 	return application.ports.TargetLifecycleRuntime(workspace, kind)
 }
 
@@ -256,37 +272,27 @@ func (application *ConnectorRuntimeApplication) RouteGateway() connectorapi.Rout
 }
 
 func (application *ConnectorRuntimeApplication) LiveConsoleGateway(handle *WorkspaceHandle) connectorapi.LiveConsoleGateway {
-	workspace, _ := application.workspace(handle, true)
+	workspace, _ := application.workspace(handle, true, nil, ConnectorTargetWorkflowPorts{})
 	return application.ports.LiveConsoleGateway(workspace)
 }
 
 func (application *ConnectorRuntimeApplication) RuntimeActionPorts(handle *WorkspaceHandle, kind string) (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
-	workspace, _ := application.workspace(handle, true)
+	workspace, _ := application.workspace(handle, true, nil, ConnectorTargetWorkflowPorts{})
 	return application.ports.RuntimeActionPorts(workspace, kind)
 }
 
-func (application *ConnectorRuntimeApplication) FileTransferGateway(handle *WorkspaceHandle, kind string) connectorapi.FileTransferGateway {
-	workspace, _ := application.workspace(handle, true)
-	return application.ports.FileTransferGateway(workspace, kind)
-}
-
-func (application *ConnectorRuntimeApplication) TransferRuntimeWithSecretAccessor(handle *WorkspaceHandle, kind string, accessor func(map[string]any) connectors.SecretAccessor) connectorapi.TransferRuntime {
-	workspace, _ := application.workspace(handle, false)
-	return connectorports.TransferRuntimeWithSecretAccessor(workspace, kind, accessor)
-}
-
-func (application *ConnectorRuntimeApplication) TargetDeletionGateway(handle *WorkspaceHandle) func(string, int64) connectorapi.TargetDeletionGateway {
-	workspace, _ := application.workspace(handle, true)
+func (application *ConnectorRuntimeApplication) TargetDeletionGateway(handle *WorkspaceHandle, targets ConnectorTargetWorkflowPorts) func(string, int64) connectorapi.TargetDeletionGateway {
+	workspace, _ := application.workspace(handle, true, nil, targets)
 	return application.ports.TargetDeletionGatewayProvider(workspace)
 }
 
 func (application *ConnectorRuntimeApplication) TargetOperationGateway(handle *WorkspaceHandle) func(string, int64) connectorapi.TargetOperationGateway {
-	workspace, _ := application.workspace(handle, true)
+	workspace, _ := application.workspace(handle, true, nil, ConnectorTargetWorkflowPorts{})
 	return application.ports.TargetOperationGatewayProvider(workspace)
 }
 
 func (application *ConnectorRuntimeApplication) NetworkProbe(ctx context.Context, handle *WorkspaceHandle, request connectors.NetworkDialRequest) error {
-	workspace, ok := application.workspace(handle, false)
+	workspace, ok := application.workspace(handle, false, nil, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return errors.New("connector runtime is unavailable")
 	}

@@ -47,6 +47,8 @@ type AccessScope struct {
 	FinishTokenInvalidation func(context.Context, int64, []int64)
 }
 
+type ActionPermissionRule string
+
 type MCPPermission struct {
 	ProjectID     int64
 	ProjectName   string
@@ -58,7 +60,7 @@ type MCPPermission struct {
 	ConnectorKind string
 	ProfileKind   string
 	ActionName    string
-	ExecutionRule connectortargets.ActionPermissionRule
+	ExecutionRule ActionPermissionRule
 	ExpiresAt     string
 }
 

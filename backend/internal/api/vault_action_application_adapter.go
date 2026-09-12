@@ -3,10 +3,9 @@ package api
 import (
 	"context"
 	"errors"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"time"
 
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -19,16 +18,18 @@ func (port vaultActionConnectorPort) SessionEnvironmentVersion(ctx context.Conte
 	return sessionEnvironmentCapabilityVersion(ctx, port.server, port.runtime, runtimeID)
 }
 
-func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, tokenID, targetID, profileID int64, kind string) (connectormgmt.ActionPermission, string, error) {
+func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, tokenID, targetID, profileID int64, kind string) (gatewayvault.ConnectorPermission, string, error) {
 	action, ok := port.server.connectorRuntime.LiveConsoleActionName(kind)
 	if !ok {
-		return connectormgmt.ActionPermission{}, "", errors.New("this connector does not expose a live console action")
+		return gatewayvault.ConnectorPermission{}, "", errors.New("this connector does not expose a live console action")
 	}
 	permission, err := port.server.connectorCatalog(port.runtime).ActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
-	return permission, action, err
+	return gatewayvault.ConnectorPermission{
+		ExecutionRule: string(permission.ExecutionRule), ExpiresAt: permission.ExpiresAt, UpdatedAt: permission.UpdatedAt,
+	}, action, err
 }
 
-func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context, surface connectormgmt.RuntimeSurface) (gatewayvault.PeerIdentityExpectation, error) {
+func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context, surface gatewayvault.ConnectorRuntimeSurface) (gatewayvault.PeerIdentityExpectation, error) {
 	capability, err := sessionEnvironmentCapabilityFor(ctx, port.server, port.runtime, surface.ID)
 	if err != nil {
 		return gatewayvault.PeerIdentityExpectation{}, err

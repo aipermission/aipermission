@@ -38,8 +38,8 @@ type CredentialPorts struct {
 	Preparation        CredentialPreparationPorts
 	Runtime            CredentialRuntimePorts
 	SessionEnvironment func(context.Context, int64) bool
-	BeforeCreate       func(context.Context, connectortargets.Target) error
-	BeforeDelete       func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) error
+	BeforeCreate       func(context.Context, Target) error
+	BeforeDelete       func(context.Context, Target, CredentialProfile) error
 	SpecialTest        func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
 	RedactDetails      func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 	ResourceRuntime    func(string) connectorapi.CredentialResourceRuntime
@@ -47,8 +47,8 @@ type CredentialPorts struct {
 
 type LifecyclePorts struct {
 	AfterChange    func(context.Context, TargetLifecycleChange) error
-	DeleteTarget   func(context.Context, connectortargets.Target, map[string]any) error
-	FinalizeTarget func(context.Context, connectortargets.Target, string) (int64, error)
+	DeleteTarget   func(context.Context, Target, map[string]any) error
+	FinalizeTarget func(context.Context, Target, string) (int64, error)
 }
 
 type TargetAdapterPorts struct {
@@ -137,7 +137,11 @@ func (component *Component) approvalScope(w http.ResponseWriter) (connectorappro
 	var workflow func() (connectorapproval.Workflow, error)
 	if scope.Workflow != nil {
 		workflow = func() (connectorapproval.Workflow, error) {
-			return scope.Workflow()
+			value, err := scope.Workflow()
+			if err != nil {
+				return nil, err
+			}
+			return domainApprovalWorkflow{workflow: value}, nil
 		}
 	}
 	return connectorapproval.Scope{
@@ -211,7 +215,7 @@ func (component *Component) profileMutation(workspace Workspace) connectormanage
 		Preparation: workspace.Credentials.Preparation.domain(), AcquireExclusive: workspace.Storage.AcquireExclusive,
 		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		BeforeCreate: func(ctx context.Context, target connectortargets.Target) error {
-			return workspace.Credentials.BeforeCreate(ctx, target)
+			return workspace.Credentials.BeforeCreate(ctx, targetFromDomain(target))
 		},
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)

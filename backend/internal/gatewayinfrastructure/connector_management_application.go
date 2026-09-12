@@ -207,7 +207,14 @@ func (application *ConnectorManagementApplication) workspace(handle *WorkspaceHa
 			LifecycleRuntime: func(kind string) connectorapi.TargetLifecycleRuntime {
 				return application.runtime.TargetLifecycleRuntime(handle, kind)
 			},
-			DeletionGateway:  application.runtime.TargetDeletionGateway(handle),
+			DeletionGateway: application.runtime.TargetDeletionGateway(handle, ConnectorTargetWorkflowPorts{
+				Delete: func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
+					return application.DeleteTarget(ctx, handle, target, payload)
+				},
+				Finalize: func(ctx context.Context, target connectormgmt.Target, reason string, _ map[string]any) (int64, error) {
+					return application.FinalizeDeletedTarget(ctx, handle, target, reason)
+				},
+			}),
 			OperationGateway: application.runtime.TargetOperationGateway(handle),
 		},
 		Network: connectormgmt.NetworkPorts{

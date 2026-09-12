@@ -24,28 +24,37 @@ func (catalog Catalog) store() *connectortargets.Store {
 	return connectortargets.NewStore(catalog.database)
 }
 
-func (catalog Catalog) Target(ctx context.Context, id int64) (connectortargets.Target, error) {
-	return catalog.store().GetTarget(ctx, id)
+func (catalog Catalog) Target(ctx context.Context, id int64) (Target, error) {
+	target, err := catalog.store().GetTarget(ctx, id)
+	return targetFromDomain(target), err
 }
 
 func (catalog Catalog) ResolveActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error) {
 	return catalog.store().ResolveConnectorActionTarget(ctx, targetRef)
 }
 
-func (catalog Catalog) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
-	return catalog.store().TargetProfileByRuntimeID(ctx, runtimeID)
+func (catalog Catalog) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, RuntimeSurface, error) {
+	target, profile, surface, err := catalog.store().TargetProfileByRuntimeID(ctx, runtimeID)
+	return target, profile, runtimeSurfaceFromDomain(surface), err
 }
 
-func (catalog Catalog) RuntimeSurface(ctx context.Context, runtimeID int64) (connectortargets.RuntimeSurface, error) {
-	return catalog.store().GetRuntimeSurface(ctx, runtimeID)
+func (catalog Catalog) RuntimeSurface(ctx context.Context, runtimeID int64) (RuntimeSurface, error) {
+	surface, err := catalog.store().GetRuntimeSurface(ctx, runtimeID)
+	return runtimeSurfaceFromDomain(surface), err
 }
 
-func (catalog Catalog) ActionPermission(ctx context.Context, tokenID, targetID, profileID int64, action string, now time.Time) (connectortargets.ActionPermission, error) {
-	return catalog.store().GetActionPermission(ctx, tokenID, targetID, profileID, action, now)
+func (catalog Catalog) ActionPermission(ctx context.Context, tokenID, targetID, profileID int64, action string, now time.Time) (ActionPermission, error) {
+	permission, err := catalog.store().GetActionPermission(ctx, tokenID, targetID, profileID, action, now)
+	return actionPermissionFromDomain(permission), err
 }
 
-func (catalog Catalog) ProjectScopedSupportedConnectorPermissions(ctx context.Context, tokenID int64) ([]connectortargets.ActionPermission, error) {
-	return accesscontrol.ProjectScopedSupportedConnectorPermissions(ctx, catalog.database, catalog.registry, tokenID)
+func (catalog Catalog) ProjectScopedSupportedConnectorPermissions(ctx context.Context, tokenID int64) ([]ActionPermission, error) {
+	permissions, err := accesscontrol.ProjectScopedSupportedConnectorPermissions(ctx, catalog.database, catalog.registry, tokenID)
+	result := make([]ActionPermission, 0, len(permissions))
+	for _, permission := range permissions {
+		result = append(result, actionPermissionFromDomain(permission))
+	}
+	return result, err
 }
 
 func (catalog Catalog) ValidateTargetTransport(ctx context.Context, projectID int64, config map[string]any) error {
@@ -72,9 +81,9 @@ func (catalog Catalog) ReconcileRuntimeSurfaces(ctx context.Context) error {
 	return nil
 }
 
-func (catalog Catalog) EnsureRuntimeSurfacesInTx(ctx context.Context, tx *sql.Tx, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (catalog Catalog) EnsureRuntimeSurfacesInTx(ctx context.Context, tx *sql.Tx, target Target, profile CredentialProfile) error {
 	if tx == nil {
 		return nil
 	}
-	return catalog.component.ensureRuntimeSurfaces(ctx, connectortargets.NewTxStore(tx), target, profile)
+	return catalog.component.ensureRuntimeSurfaces(ctx, connectortargets.NewTxStore(tx), target.domain(), profile.domain())
 }

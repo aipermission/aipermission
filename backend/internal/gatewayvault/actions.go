@@ -191,14 +191,15 @@ func (port actionConnectorPort) LiveConsolePermission(ctx context.Context, token
 	if action == "" {
 		return connectortargets.ActionPermission{}, "", errors.New("this connector has an invalid live console action")
 	}
-	if permission.ExecutionRule != connectortargets.ActionPermissionAlwaysRun && permission.ExecutionRule != connectortargets.ActionPermissionApprovalRequired {
+	rule := connectortargets.ActionPermissionRule(permission.ExecutionRule)
+	if rule != connectortargets.ActionPermissionAlwaysRun && rule != connectortargets.ActionPermissionApprovalRequired {
 		return connectortargets.ActionPermission{}, "", errors.New("Vault session apply requires an active Prompt or Always connector action permission")
 	}
-	return permission, action, nil
+	return connectortargets.ActionPermission{ExecutionRule: rule, ExpiresAt: permission.ExpiresAt, UpdatedAt: permission.UpdatedAt}, action, nil
 }
 
 func (port actionConnectorPort) ExpectedPeerIdentities(ctx context.Context, surface connectortargets.RuntimeSurface) (vaultactions.PeerIdentityExpectation, error) {
-	expectation, err := port.delegate.ExpectedPeerIdentities(ctx, surface)
+	expectation, err := port.delegate.ExpectedPeerIdentities(ctx, ConnectorRuntimeSurface{ID: surface.ID, ConnectorKind: surface.ConnectorKind})
 	return vaultactions.PeerIdentityExpectation{Items: expectation.Items, Required: expectation.Required}, err
 }
 

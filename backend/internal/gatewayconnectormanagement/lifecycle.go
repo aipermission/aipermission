@@ -37,7 +37,7 @@ func NewLifecycleService(dependencies LifecycleServiceDependencies) *LifecycleSe
 
 func (service *LifecycleService) DeleteTarget(
 	ctx context.Context,
-	target connectortargets.Target,
+	target Target,
 	payload map[string]any,
 ) error {
 	if err := service.validate(); err != nil {
@@ -58,7 +58,7 @@ func (service *LifecycleService) DeleteTarget(
 
 func (service *LifecycleService) FinalizeDeletedTarget(
 	ctx context.Context,
-	target connectortargets.Target,
+	target Target,
 	staleReason string,
 ) (int64, error) {
 	if staleReason == "" {

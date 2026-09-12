@@ -28,7 +28,7 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 		return gatewayvault.Runtime{}, false
 	}
 	identity := handle.Identity()
-	observation := component.owner
+	observation := component.observation
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
 			Database: capability.Database, SecretVault: capability.Vault,

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 func TestLifecycleDeleteTargetOwnsAuditPayloadWithoutMutatingCaller(t *testing.T) {
@@ -23,7 +21,7 @@ func TestLifecycleDeleteTargetOwnsAuditPayloadWithoutMutatingCaller(t *testing.T
 		Redact:          func(_ context.Context, value string) string { return value },
 		InvalidateVault: func(context.Context, int64, int64, string) error { return nil },
 	})
-	target := connectortargets.Target{ID: 9, ConnectorKind: "fixture", Name: "primary"}
+	target := Target{ID: 9, ConnectorKind: "fixture", Name: "primary"}
 
 	if err := service.DeleteTarget(t.Context(), target, original); err != nil {
 		t.Fatal(err)
@@ -91,7 +89,7 @@ func TestLifecycleStopsWhenVaultInvalidationFails(t *testing.T) {
 
 func TestLifecycleRejectsIncompleteDependencies(t *testing.T) {
 	err := NewLifecycleService(LifecycleServiceDependencies{}).DeleteTarget(
-		t.Context(), connectortargets.Target{ID: 1}, nil,
+		t.Context(), Target{ID: 1}, nil,
 	)
 	if !errors.Is(err, ErrLifecycleUnavailable) {
 		t.Fatalf("error = %v, want %v", err, ErrLifecycleUnavailable)

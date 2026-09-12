@@ -22,7 +22,7 @@ func (component *Component) ProfileDeletionScope(w http.ResponseWriter) (connect
 			}, target, profile)
 		},
 		BeforeDelete: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-			return workspace.Credentials.BeforeDelete(ctx, target, profile)
+			return workspace.Credentials.BeforeDelete(ctx, targetFromDomain(target), credentialProfileFromDomain(profile))
 		},
 		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {

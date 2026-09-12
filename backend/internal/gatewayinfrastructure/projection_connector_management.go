@@ -12,7 +12,7 @@ func (component *ConnectorManagementOwner) lifecycleMutationRunner(handle *Works
 		return nil
 	}
 	return func(ctx context.Context, actor, action string, payload func() any, mutate func(*sql.Tx) error) error {
-		return component.owner.withObservationMutation(ctx, handle, actor, nil, 0, action, payload, mutate)
+		return component.observation.withObservationMutation(ctx, handle, actor, nil, 0, action, payload, mutate)
 	}
 }
 
@@ -58,7 +58,7 @@ func (component *ConnectorManagementOwner) connectorManagementWorkspace(handle *
 	ports.Storage.Registry = capability.Registry
 	ports.Storage.AcquireExclusive = capability.Delivery.AcquireExclusive
 	ports.Storage.Transaction = func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
-		return component.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
+		return component.observation.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 			return mutate(tx, connectormgmt.AuditAppender(appendAudit))
 		})
 	}

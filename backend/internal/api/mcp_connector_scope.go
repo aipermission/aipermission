@@ -28,7 +28,7 @@ func (s mcpHandlers) mcpConnectorReadPorts(w http.ResponseWriter, r *http.Reques
 					TargetID: permission.TargetID, TargetName: permission.TargetName,
 					ProfileID: permission.ProfileID, ProfileLabel: permission.ProfileLabel,
 					ConnectorKind: permission.ConnectorKind, ProfileKind: permission.ProfileKind,
-					ActionName: permission.ActionName, ExecutionRule: permission.ExecutionRule, ExpiresAt: permission.ExpiresAt,
+					ActionName: permission.ActionName, ExecutionRule: gatewayaccess.ActionPermissionRule(permission.ExecutionRule), ExpiresAt: permission.ExpiresAt,
 				})
 			}
 			return result, nil
@@ -51,7 +51,7 @@ func (s mcpHandlers) mcpConnectorActionPorts(w http.ResponseWriter, r *http.Requ
 	}
 	call := s.connectorActions.MCPCall(auth.runtime)
 	ports := gatewayinfra.MCPActionPorts{
-		TokenID: auth.TokenID, RunningHint: s.connectorRunningHint,
+		TokenID: auth.TokenID, RunningHint: s.connectorRuntime.RunningHintPort(),
 		Delivery: s.connectorActions.Delivery,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(auth.runtime, tokenID)

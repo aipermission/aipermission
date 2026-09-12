@@ -16,7 +16,8 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *gateway
 	if err != nil {
 		return connectormgmt.ActionRequest{}, err
 	}
-	return workflow.RunPending(ctx, id, userNote)
+	request, err := workflow.RunPending(ctx, id, userNote)
+	return request, err
 }
 
 func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, item connectormgmt.ActionRequest) (connectormgmt.ConnectorApprovalItem, error) {

@@ -15,9 +15,9 @@ import (
 var ErrWorkspaceHandleUnavailable = errors.New("workspace handle is unavailable")
 
 type ConnectorActionPorts struct {
-	Capabilities    func(*WorkspaceHandle, string, []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver
+	Capabilities    func(*WorkspaceHandle, string, []connectors.ResolvedDependency, ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver
 	SupportsRunning func(gatewayactions.PreparedRequest) bool
-	FinishRunning   func(context.Context, *WorkspaceHandle, int64, gatewayactions.PreparedRequest, gatewayaccess.Principal, connectors.ActionHandles)
+	FinishRunning   func(context.Context, *WorkspaceHandle, int64, gatewayactions.PreparedRequest, gatewayaccess.Principal, connectors.ActionHandles, ConnectorActionFinishPort)
 }
 
 type ConnectorActionApplication struct {
@@ -27,7 +27,7 @@ type ConnectorActionApplication struct {
 }
 
 func (component *ConnectorActionOwner) NewConnectorActionApplication(maxJSONBytes int, ports ConnectorActionPorts) (*ConnectorActionApplication, error) {
-	if component == nil || component.owner == nil || ports.Capabilities == nil || ports.SupportsRunning == nil || ports.FinishRunning == nil {
+	if component == nil || component.owner == nil || component.observation == nil || ports.Capabilities == nil || ports.SupportsRunning == nil || ports.FinishRunning == nil {
 		return nil, InitializationError()
 	}
 	application := &ConnectorActionApplication{owner: component, ports: ports}
@@ -63,21 +63,21 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 			return capability.Policy.RedactCustom(ctx, value)
 		},
 		Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-			return component.owner.owner.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
+			return component.owner.observation.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
 		},
 		Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
-			return component.owner.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
+			return component.owner.observation.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 				return mutate(tx, gatewayactions.AuditAppender(appendAudit))
 			})
 		},
 		Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-			component.owner.owner.writeObservation(ctx, handle, actor, tokenID, runtimeID, action, payload)
+			component.owner.observation.writeObservation(ctx, handle, actor, tokenID, runtimeID, action, payload)
 		},
 		Capabilities: func(kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
-			return component.ports.Capabilities(handle, kind, dependencies)
+			return component.ports.Capabilities(handle, kind, dependencies, component.finishPort())
 		},
 		FinishRunning: func(ctx context.Context, id int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
-			component.ports.FinishRunning(ctx, handle, id, prepared, principal, handles)
+			component.ports.FinishRunning(ctx, handle, id, prepared, principal, handles, component.finishPort())
 		},
 	}
 	return gatewayactions.Workspace{
@@ -98,6 +98,12 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 		},
 		Workflow: workflow,
 	}, true
+}
+
+func (component *ConnectorActionApplication) finishPort() ConnectorActionFinishPort {
+	return func(ctx context.Context, handle *WorkspaceHandle, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
+		return component.Finish(ctx, handle, requestID, status, output, displayText, errorText, hints...)
+	}
 }
 
 func (component *ConnectorActionApplication) Call(ctx context.Context, handle *WorkspaceHandle, call gatewayactions.Call) (gatewayactions.CallResult, error) {
@@ -127,7 +133,8 @@ func (component *ConnectorActionApplication) Shutdown(handle *WorkspaceHandle) (
 
 func (component *ConnectorActionApplication) Finish(ctx context.Context, handle *WorkspaceHandle, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
 	workspace, _ := component.workspace(handle)
-	return component.application.Finish(ctx, workspace, requestID, status, output, displayText, errorText, hints...)
+	request, err := component.application.Finish(ctx, workspace, requestID, status, output, displayText, errorText, hints...)
+	return connectormgmt.AdoptActionRequest(request), err
 }
 
 func (component *ConnectorActionApplication) StartRecovery(handle *WorkspaceHandle) {
@@ -222,6 +229,7 @@ func (component *ConnectorActionApplication) LocalHTTP(dependencies ConnectorLoc
 		},
 		DecodeJSON: dependencies.DecodeJSON, WriteError: dependencies.WriteError,
 		WriteErrorCode: dependencies.WriteErrorCode, WriteJSON: dependencies.WriteJSON,
-		HandleTargetError: dependencies.HandleTargetError, Response: dependencies.Response,
+		HandleTargetError: dependencies.HandleTargetError,
+		Response:          connectormgmt.DomainActionResponse(dependencies.Response),
 	})
 }

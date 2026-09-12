@@ -22,11 +22,6 @@ func IsTargetProfileNotFound(err error) bool {
 	return errors.Is(err, connectortargets.ErrTargetProfileNotFound)
 }
 
-const (
-	ActionPermissionAlwaysRun        = connectortargets.ActionPermissionAlwaysRun
-	ActionPermissionApprovalRequired = connectortargets.ActionPermissionApprovalRequired
-)
-
 type AuditAppender connectormanagement.AuditAppender
 type ConnectionTestResponse connectormanagement.ConnectionTestResponse
 type CreateTargetRequest connectormanagement.CreateTargetRequest
@@ -47,19 +42,13 @@ type UpdateTargetWithProfileRequest struct {
 	Target  UpdateTargetRequest    `json:"target"`
 	Profile CredentialProfileInput `json:"profile"`
 }
-type ActionPermission = connectortargets.ActionPermission
-type ActionRequest = connectortargets.ActionRequest
-type CredentialProfile = connectortargets.CredentialProfile
-type RuntimeSurface = connectortargets.RuntimeSurface
-type Target = connectortargets.Target
-type ValidationError = connectortargets.ValidationError
 type ConnectorApprovalItem connectorapproval.Item
 type ConnectorApprovalNoteRequest connectorapproval.NoteRequest
 
 type ConnectorApprovalWorkflow interface {
-	ApprovalPreview(context.Context, connectortargets.ActionRequest) (map[string]any, error)
-	RunPending(context.Context, int64, string) (connectortargets.ActionRequest, error)
-	DeclinePending(context.Context, int64, string) (connectortargets.ActionRequest, error)
+	ApprovalPreview(context.Context, ActionRequest) (map[string]any, error)
+	RunPending(context.Context, int64, string) (ActionRequest, error)
+	DeclinePending(context.Context, int64, string) (ActionRequest, error)
 }
 
 type ConnectorApprovalScope struct {

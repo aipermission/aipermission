@@ -110,7 +110,7 @@ func adaptMCPReadScopeProvider(provider gatewayaccess.MCPScopeProvider) mcpconne
 						ProjectID: item.ProjectID, ProjectName: item.ProjectName, ProjectSlug: item.ProjectSlug,
 						TargetID: item.TargetID, TargetName: item.TargetName, ProfileID: item.ProfileID,
 						ProfileLabel: item.ProfileLabel, ConnectorKind: item.ConnectorKind, ProfileKind: item.ProfileKind,
-						ActionName: item.ActionName, ExecutionRule: item.ExecutionRule, ExpiresAt: item.ExpiresAt,
+						ActionName: item.ActionName, ExecutionRule: connectortargets.ActionPermissionRule(item.ExecutionRule), ExpiresAt: item.ExpiresAt,
 					})
 				}
 				return result, nil

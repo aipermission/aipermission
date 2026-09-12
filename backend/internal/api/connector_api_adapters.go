@@ -6,13 +6,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
-
-func (s *Server) connectorRunningHint(request connectormgmt.ActionRequest) string {
-	return s.connectorRuntime.RunningHint(request)
-}
 
 func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *gatewayinfra.WorkspaceHandle) connectors.RuntimeCapabilityResolver {
 	if server == nil || server.connectorRuntime == nil {
