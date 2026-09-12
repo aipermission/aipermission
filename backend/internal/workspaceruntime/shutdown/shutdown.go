@@ -78,10 +78,10 @@ func closeWithTimeoutAndComplete(runtime *workspaceruntime.Runtime, resolveActio
 		resolveCommands: resolveCommands, resolveTransfers: resolveTransfers,
 	}
 	shutdownContext, shutdownCancel := context.WithTimeout(context.Background(), wait)
+	defer shutdownCancel()
 	ready, drainErr := coordinator.drain(shutdownContext)
-	shutdownCancel()
 	if ready {
-		if closed, closeErr := closeStorage(runtime); closed {
+		if closed, closeErr := closeStorage(shutdownContext, runtime); closed {
 			drainErr = errors.Join(drainErr, closeErr)
 			if onComplete != nil {
 				onComplete()
@@ -133,9 +133,9 @@ func (coordinator *teardownCoordinator) run() {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), deferredShutdownWait)
 		ready, err := coordinator.drain(ctx)
-		cancel()
 		if ready {
-			if closed, closeErr := closeStorage(coordinator.runtime); closed {
+			if closed, closeErr := closeStorage(ctx, coordinator.runtime); closed {
+				cancel()
 				if closeErr != nil {
 					log.Printf("deferred runtime storage closed with cleanup errors workspace=%s error=%v", coordinator.runtime.ID, closeErr)
 				}
@@ -144,6 +144,7 @@ func (coordinator *teardownCoordinator) run() {
 				err = errors.Join(err, closeErr)
 			}
 		}
+		cancel()
 		log.Printf("deferred workspace shutdown remains pending workspace=%s error=%v", coordinator.runtime.ID, err)
 		time.Sleep(retryWait)
 		if retryWait < deferredRetryMax/2 {
@@ -347,7 +348,9 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 			transfer.Abort()
 		}
 	}
-	closed, err := closeStorage(runtime)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownWait)
+	closed, err := closeStorage(ctx, runtime)
+	cancel()
 	if closed {
 		if onComplete != nil {
 			onComplete()
@@ -367,7 +370,10 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 func retryDiscardStorage(runtime *workspaceruntime.Runtime) {
 	retryWait := deferredRetryWait
 	for {
-		if closed, err := closeStorage(runtime); closed {
+		ctx, cancel := context.WithTimeout(context.Background(), deferredShutdownWait)
+		closed, err := closeStorage(ctx, runtime)
+		cancel()
+		if closed {
 			if err != nil {
 				log.Printf("discarded runtime storage closed with cleanup errors workspace=%s error=%v", runtime.ID, err)
 			}
@@ -388,9 +394,11 @@ func clearActionIdentity(runtime *workspaceruntime.Runtime) {
 	runtime.ClearActionIdentity()
 }
 
-func closeStorage(runtime *workspaceruntime.Runtime) (bool, error) {
+func closeStorage(ctx context.Context, runtime *workspaceruntime.Runtime) (bool, error) {
 	if dispatcher := runtime.Observation.AuditDispatcherService(); dispatcher != nil {
-		dispatcher.Stop()
+		if err := dispatcher.Stop(ctx); err != nil {
+			return false, fmt.Errorf("stop audit dispatcher for runtime %q: %w", runtime.ID, err)
+		}
 	}
 	clearActionIdentity(runtime)
 	storage := &runtime.Storage

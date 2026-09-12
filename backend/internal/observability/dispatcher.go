@@ -19,6 +19,8 @@ const (
 	maxRetryDelay       = 5 * time.Minute
 )
 
+var errDispatcherStopped = errors.New("audit dispatcher is stopped")
+
 type queuedEvent struct {
 	ID              int64
 	EventID         string
@@ -43,21 +45,27 @@ type Dispatcher struct {
 	batchSize    int
 	pollInterval time.Duration
 	wake         chan struct{}
-	stop         chan struct{}
+	runCtx       context.Context
+	runCancel    context.CancelFunc
 	done         chan struct{}
 	startOnce    sync.Once
 	stopOnce     sync.Once
-	dispatchMu   sync.Mutex
+	dispatchGate chan struct{}
 }
 
 func NewDispatcher(database *sql.DB) *Dispatcher {
+	runCtx, runCancel := context.WithCancel(context.Background())
+	dispatchGate := make(chan struct{}, 1)
+	dispatchGate <- struct{}{}
 	return &Dispatcher{
 		database:     database,
 		batchSize:    defaultBatchSize,
 		pollInterval: defaultPollInterval,
 		wake:         make(chan struct{}, 1),
-		stop:         make(chan struct{}),
+		runCtx:       runCtx,
+		runCancel:    runCancel,
 		done:         make(chan struct{}),
+		dispatchGate: dispatchGate,
 	}
 }
 
@@ -71,14 +79,27 @@ func (dispatcher *Dispatcher) Start() {
 	})
 }
 
-func (dispatcher *Dispatcher) Stop() {
-	if dispatcher == nil {
-		return
+func (dispatcher *Dispatcher) Stop(ctx context.Context) error {
+	if dispatcher == nil || dispatcher.database == nil {
+		return nil
 	}
-	dispatcher.stopOnce.Do(func() { close(dispatcher.stop) })
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dispatcher.stopOnce.Do(dispatcher.runCancel)
+	// Starting after cancellation also closes done when shutdown races startup.
+	dispatcher.Start()
 	select {
 	case <-dispatcher.done:
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case <-dispatcher.dispatchGate:
+		dispatcher.dispatchGate <- struct{}{}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -98,13 +119,13 @@ func (dispatcher *Dispatcher) run() {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-dispatcher.stop:
+		case <-dispatcher.runCtx.Done():
 			return
 		case <-dispatcher.wake:
 		case <-ticker.C:
 		}
 		for {
-			count, err := dispatcher.DispatchOnce(context.Background())
+			count, err := dispatcher.DispatchOnce(dispatcher.runCtx)
 			if err != nil || count < dispatcher.batchSize {
 				break
 			}
@@ -116,8 +137,17 @@ func (dispatcher *Dispatcher) DispatchOnce(ctx context.Context) (int, error) {
 	if dispatcher == nil || dispatcher.database == nil {
 		return 0, errors.New("audit dispatcher database is unavailable")
 	}
-	dispatcher.dispatchMu.Lock()
-	defer dispatcher.dispatchMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-dispatcher.runCtx.Done():
+		return 0, errDispatcherStopped
+	case <-dispatcher.dispatchGate:
+	}
+	defer func() { dispatcher.dispatchGate <- struct{}{} }()
+	if dispatcher.runCtx.Err() != nil {
+		return 0, errDispatcherStopped
+	}
 
 	events, err := loadPendingEvents(ctx, dispatcher.database, dispatcher.batchSize)
 	if err != nil {
