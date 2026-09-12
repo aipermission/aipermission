@@ -120,6 +120,44 @@ test("allows removing an explicit exception because the default becomes stricter
   );
 });
 
+test("rejects removing an exception when its inherited budget would be looser", () => {
+  const packageBase = {
+    backendPackageBudget: 3500,
+    "backend.package.backend/internal/small": 2700,
+  };
+  assert.deepEqual(
+    budgetIncreases(packageBase, { backendPackageBudget: 3500 }),
+    [
+      "backend.package.backend/internal/small was removed from the current maintenance budget",
+    ],
+  );
+
+  const functionBase = {
+    "go.function.default.lines": 180,
+    "go.function.default.complexity": 35,
+    "go.function.override.internal/small.go:small.lines": 120,
+    "go.function.override.internal/small.go:small.complexity": 20,
+  };
+  assert.deepEqual(
+    budgetIncreases(functionBase, {
+      "go.function.default.lines": 180,
+      "go.function.default.complexity": 35,
+    }),
+    [
+      "go.function.override.internal/small.go:small.lines was removed from the current maintenance budget",
+      "go.function.override.internal/small.go:small.complexity was removed from the current maintenance budget",
+    ],
+  );
+
+  const fanoutBase = {
+    "go.fanout.package": 12,
+    "go.fanout.override./internal/small": 7,
+  };
+  assert.deepEqual(budgetIncreases(fanoutBase, { "go.fanout.package": 12 }), [
+    "go.fanout.override./internal/small was removed from the current maintenance budget",
+  ]);
+});
+
 test("rejects raised ceilings while allowing tighter inherited package budgets", () => {
   const base = budgetSnapshot(checkSource, architectureSource);
   assert.deepEqual(

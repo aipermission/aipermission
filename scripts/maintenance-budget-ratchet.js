@@ -178,7 +178,9 @@ function budgetMap(checkSource, name) {
 function budgetIncreases(base, current) {
   const removed = Object.keys(base)
     .filter(
-      (name) => !Object.hasOwn(current, name) && !isRemovableException(name),
+      (name) =>
+        !Object.hasOwn(current, name) &&
+        !removedExceptionRemainsProtected(base, current, name),
     )
     .map((name) => `${name} was removed from the current maintenance budget`);
   const increases = Object.entries(current).flatMap(([name, value]) => {
@@ -209,6 +211,12 @@ function isRemovableException(name) {
   ].some((prefix) => name.startsWith(prefix));
 }
 
+function removedExceptionRemainsProtected(base, current, name) {
+  if (!isRemovableException(name)) return false;
+  const inherited = inheritedBudget(current, name);
+  return inherited !== undefined && inherited <= base[name];
+}
+
 function inheritedBudget(base, name) {
   const bootstrapCeilings = {
     backendTestSourceBudget: 1800,
@@ -224,6 +232,13 @@ function inheritedBudget(base, name) {
   if (Object.hasOwn(bootstrapCeilings, name)) return bootstrapCeilings[name];
   if (name === "go.fanout.owner") return base["go.fanout.package"];
   if (name.startsWith("backend.package.")) return base.backendPackageBudget;
+  if (name.startsWith("go.function.override.")) {
+    if (name.endsWith(".lines")) return base["go.function.default.lines"];
+    if (name.endsWith(".complexity"))
+      return base["go.function.default.complexity"];
+    return undefined;
+  }
+  if (name.startsWith("go.fanout.override.")) return base["go.fanout.package"];
   if (!name.startsWith("source.override.")) return undefined;
   const file = name.slice("source.override.".length);
   if (file.startsWith("frontend/src/"))
