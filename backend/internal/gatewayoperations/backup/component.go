@@ -81,13 +81,13 @@ func (component *Component) acquireReadOperation(ctx context.Context) (*readOper
 	if component == nil || component.dependencies.Lifecycle == nil {
 		return nil, ErrLifecycleUnavailable
 	}
-	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(ctx)
+	releaseOperation, err := component.dependencies.AcquireOperation(ctx)
 	if err != nil {
 		return nil, err
 	}
-	releaseOperation, err := component.dependencies.AcquireOperation(ctx)
+	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(ctx)
 	if err != nil {
-		releaseLifecycle()
+		releaseOperation()
 		return nil, err
 	}
 	return &readOperationLease{releaseLifecycle: releaseLifecycle, releaseOperation: releaseOperation}, nil
@@ -104,11 +104,11 @@ func (lease *readOperationLease) Release() {
 	if lease == nil {
 		return
 	}
+	lease.ReleaseLifecycle()
 	if lease.releaseOperation != nil {
 		lease.releaseOperation()
 		lease.releaseOperation = nil
 	}
-	lease.ReleaseLifecycle()
 }
 
 func New(dependencies Dependencies) *Component {
