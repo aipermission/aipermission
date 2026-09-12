@@ -42,5 +42,10 @@ func (component *ConnectorManagementOwner) ConnectorManagementWorkspace(handle *
 	ports.Storage.Database = owner.Storage.DatabaseHandle()
 	ports.Storage.Registry = owner.Connectors.ConnectorRegistry()
 	ports.Storage.AcquireExclusive = owner.Security.VaultDeliveryCoordinator().AcquireExclusive
+	ports.Storage.Transaction = func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
+		return component.owner.ObservationOwner().WithObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit ObservationAppender) error {
+			return mutate(tx, connectormgmt.AuditAppender(appendAudit))
+		})
+	}
 	return ports, true
 }

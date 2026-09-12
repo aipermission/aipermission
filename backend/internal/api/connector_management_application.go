@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -70,11 +69,6 @@ func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHan
 	preparation := s.connectorCredentialPreparationPorts(runtime)
 	workspace, _ := s.connectorManagementOwner.ConnectorManagementWorkspace(runtime, connectormgmt.Workspace{
 		Storage: connectormgmt.StoragePorts{
-			Transaction: connectormgmt.Transaction(func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
-				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-					return mutate(tx, connectormgmt.AuditAppender(appendAudit))
-				})
-			}),
 			EncryptSecret: func(ctx context.Context, id int64, raw json.RawMessage) (string, error) {
 				secret := map[string]any{}
 				if err := json.Unmarshal(raw, &secret); err != nil {
