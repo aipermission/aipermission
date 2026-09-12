@@ -225,6 +225,112 @@ func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testin
 	}
 }
 
+func TestConsoleSessionFinalizationRetriesPersistenceAndOwnershipHook(t *testing.T) {
+	persistErr := errors.New("injected transcript persistence failure")
+	hookErr := errors.New("injected session ownership failure")
+	manager := NewManager(nil, nil, nil)
+	manager.db = &sql.DB{}
+	var transcriptAttempts, statusAttempts, hookAttempts int
+	manager.persistChunks = func(context.Context, *sql.DB, int64, string, string, string) error {
+		transcriptAttempts++
+		if transcriptAttempts == 1 {
+			return persistErr
+		}
+		return nil
+	}
+	manager.persistStatus = func(context.Context, *sql.DB, int64, string, string, string) error {
+		statusAttempts++
+		return nil
+	}
+	manager.SetSessionClosedHook(func(context.Context, SessionHandle) error {
+		hookAttempts++
+		if hookAttempts == 1 {
+			return hookErr
+		}
+		return nil
+	})
+	session := &managedConsoleSession{
+		id: 41, runtimeID: 7, generation: 3, manager: manager,
+		status: "closed", finalStatus: "closed",
+	}
+	manager.sessions[session.id] = session
+
+	if err := session.finalize(t.Context()); !errors.Is(err, persistErr) {
+		t.Fatalf("first finalization error = %v, want transcript failure", err)
+	}
+	if manager.active(session.id) != session {
+		t.Fatal("session was unregistered after failed terminal persistence")
+	}
+	if err := session.finalize(t.Context()); !errors.Is(err, hookErr) {
+		t.Fatalf("second finalization error = %v, want ownership hook failure", err)
+	}
+	if manager.active(session.id) != session {
+		t.Fatal("session was unregistered after failed ownership hook")
+	}
+	if err := session.finalize(t.Context()); err != nil {
+		t.Fatalf("retry finalization: %v", err)
+	}
+	if manager.active(session.id) != nil {
+		t.Fatal("successfully finalized session remained registered")
+	}
+	if transcriptAttempts != 2 || statusAttempts != 1 || hookAttempts != 2 {
+		t.Fatalf("attempts transcript=%d status=%d hook=%d", transcriptAttempts, statusAttempts, hookAttempts)
+	}
+}
+
+func TestConsoleSessionManagerCloseAllWaitsForSessionClosedHook(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-hook-drain", "127.0.0.1", 22)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+			Wait: func() error { <-ctx.Done(); return ctx.Err() }, Close: func() error { return nil },
+		}, nil
+	}, nil)
+	hookStarted := make(chan struct{})
+	hookRelease := make(chan struct{})
+	var startOnce sync.Once
+	manager.SetSessionClosedHook(func(ctx context.Context, _ SessionHandle) error {
+		startOnce.Do(func() { close(hookStarted) })
+		select {
+		case <-hookRelease:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	record, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancel()
+	if err := manager.CloseAll(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseAll() error = %v, want hook deadline", err)
+	}
+	select {
+	case <-hookStarted:
+	default:
+		t.Fatal("session-closed hook did not enter before CloseAll returned")
+	}
+	if manager.active(record.ID) == nil {
+		t.Fatal("session disappeared while its ownership hook was blocked")
+	}
+	close(hookRelease)
+	if err := manager.CloseAll(t.Context()); err != nil {
+		t.Fatalf("CloseAll() after hook release: %v", err)
+	}
+	if manager.active(record.ID) != nil {
+		t.Fatal("session remained registered after hook completed")
+	}
+}
+
 func TestConsoleSessionClosePathsRespectContextWhileTransportCloses(t *testing.T) {
 	for _, test := range []struct {
 		name string

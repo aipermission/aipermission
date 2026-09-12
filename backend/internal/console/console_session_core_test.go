@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
@@ -42,7 +43,7 @@ func TestManagedConsoleSessionReportsClosedBeforeCommandMarker(t *testing.T) {
 
 func TestConsoleTranscriptLimitKeepsTail(t *testing.T) {
 	value := strings.Repeat("a", maxConsoleTranscriptLength+20)
-	limited := limitConsoleTranscript(value)
+	limited := terminaltext.TailStringByBytes(value, maxConsoleTranscriptLength)
 	if len(limited) != maxConsoleTranscriptLength {
 		t.Fatalf("unexpected limited length: %d", len(limited))
 	}

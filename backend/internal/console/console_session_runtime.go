@@ -2,15 +2,16 @@ package console
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"strings"
 	"sync"
 	"time"
 
+	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
@@ -23,7 +24,11 @@ func (s *managedConsoleSession) run() {
 		if s.environment != nil {
 			s.environment.Destroy()
 		}
-		s.manager.remove(s.id)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := s.finalize(ctx); err != nil {
+			logConsolePersistError("finalize", s.id, err)
+		}
+		cancel()
 		if s.done != nil {
 			close(s.done)
 		}
@@ -39,7 +44,7 @@ func (s *managedConsoleSession) run() {
 		Generation:     s.generation,
 		Rows:           s.rows,
 		Cols:           s.cols,
-		Params:         cloneParams(s.params),
+		Params:         maps.Clone(s.params),
 		HasEnvironment: s.environment != nil || s.prepareEnvironment != nil,
 	})
 	if err != nil {
@@ -335,7 +340,6 @@ func (s *managedConsoleSession) drainOwnedWork() {
 	}
 	s.mu.Unlock()
 	s.workWG.Wait()
-	s.flushTranscript()
 }
 
 func (s *managedConsoleSession) closeRuntime() error {
@@ -366,19 +370,16 @@ func (s *managedConsoleSession) fail(message string) {
 }
 
 func (s *managedConsoleSession) finish(status string, message string) {
-	now := time.Now().UTC().Format(time.RFC3339)
 	persistedMessage := s.manager.redactText(message)
 	s.closeManualOutputCapture(manualSessionClosed)
 	s.mu.Lock()
 	s.status = status
+	s.finalStatus = status
+	s.finalMessage = persistedMessage
 	if persistedMessage != "" {
 		s.errText = persistedMessage
 	}
 	s.mu.Unlock()
-	s.flushTranscript()
-	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET status = ?, error = ?, closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE id = ?`, status, persistedMessage, now, now, s.id); err != nil {
-		logConsolePersistError("finish", s.id, err)
-	}
 	s.broadcast(ptyServerMessage{Type: "exit", Status: status, Data: persistedMessage, SessionID: s.id})
 }
 
@@ -412,7 +413,7 @@ func (s *managedConsoleSession) waitDone(ctx context.Context) error {
 	}
 	select {
 	case <-s.done:
-		return nil
+		return s.finalize(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -465,7 +466,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	automationActive := s.activeExec != nil
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
 	keepShellPrompt := postAutomationFilter
-	s.rawTranscript = limitConsoleTranscript(s.rawTranscript + data)
+	s.rawTranscript = terminaltext.TailStringByBytes(s.rawTranscript+data, maxConsoleTranscriptLength)
 	if automationActive {
 		active := s.activeExec
 		startOffset := active.StartOffset
@@ -481,7 +482,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 		displayData = terminaltext.CleanDisplayOutput(data, keepShellPrompt)
 	}
 	if displayData != "" {
-		s.transcript = limitConsoleTranscript(s.transcript + displayData)
+		s.transcript = terminaltext.TailStringByBytes(s.transcript+displayData, maxConsoleTranscriptLength)
 		s.pendingOutput += displayData
 	}
 	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
@@ -513,7 +514,7 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 	if strings.HasPrefix(data, "[AI command]") && s.transcript != "" && !strings.HasSuffix(s.transcript, "\n") && !strings.HasSuffix(s.transcript, "\r") {
 		data = "\r\n" + data
 	}
-	s.transcript = limitConsoleTranscript(s.transcript + data)
+	s.transcript = terminaltext.TailStringByBytes(s.transcript+data, maxConsoleTranscriptLength)
 	s.pendingOutput += data
 	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
 	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
@@ -563,8 +564,14 @@ func (s *managedConsoleSession) closeExactRedactor() {
 }
 
 func (s *managedConsoleSession) flushTranscript() {
+	if err := s.flushTranscriptContext(context.Background()); err != nil {
+		logConsolePersistError("flush_transcript", s.id, err)
+	}
+}
+
+func (s *managedConsoleSession) flushTranscriptContext(ctx context.Context) error {
 	if s.manager == nil || s.manager.db == nil {
-		return
+		return errors.New("console persistence is unavailable")
 	}
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
@@ -580,65 +587,67 @@ func (s *managedConsoleSession) flushTranscript() {
 	s.mu.Unlock()
 	snapshot = s.manager.redactText(snapshot)
 	pending = s.manager.redactText(pending)
-	if err := persistConsoleTranscript(context.Background(), s.manager.db, s.id, snapshot, pending, now); err != nil {
+	persist := s.manager.persistChunks
+	if persist == nil {
+		persist = consolepersistence.PersistTranscript
+	}
+	if err := persist(ctx, s.manager.db, s.id, snapshot, pending, now); err != nil {
 		if pending != "" {
 			s.mu.Lock()
 			s.pendingOutput = pending + s.pendingOutput
 			s.mu.Unlock()
 		}
-		logConsolePersistError("flush_transcript", s.id, err)
-	}
-}
-
-func persistConsoleTranscript(ctx context.Context, database *sql.DB, sessionID int64, snapshot string, pending string, now string) error {
-	tx, err := database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transcript persistence: %w", err)
-	}
-	defer tx.Rollback()
-
-	if pending != "" {
-		nextSeq, err := nextConsoleChunkSeqTx(tx, sessionID)
-		if err != nil {
-			return err
-		}
-		for len(pending) > 0 {
-			chunk := pending
-			if len(chunk) > maxConsoleChunkLength {
-				chunk = pending[:maxConsoleChunkLength]
-			}
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO console_session_chunks (session_id, seq, data, created_at) VALUES (?, ?, ?, ?)`,
-				sessionID,
-				nextSeq,
-				chunk,
-				now,
-			); err != nil {
-				return fmt.Errorf("insert console transcript chunk: %w", err)
-			}
-			pending = pending[len(chunk):]
-			nextSeq++
-		}
-	}
-
-	if _, err := tx.ExecContext(ctx, `UPDATE console_sessions SET transcript = ?, updated_at = ? WHERE id = ?`, snapshot, now, sessionID); err != nil {
-		return fmt.Errorf("update console transcript snapshot: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transcript persistence: %w", err)
+		return err
 	}
 	return nil
 }
 
-func nextConsoleChunkSeqTx(tx *sql.Tx, sessionID int64) (int64, error) {
-	var nextSeq sql.NullInt64
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) + 1 FROM console_session_chunks WHERE session_id = ?`, sessionID).Scan(&nextSeq); err != nil {
-		return 0, fmt.Errorf("read next console transcript chunk seq: %w", err)
+func (s *managedConsoleSession) finalize(ctx context.Context) error {
+	if s == nil || s.manager == nil {
+		return nil
 	}
-	if !nextSeq.Valid || nextSeq.Int64 < 1 {
-		return 1, nil
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return nextSeq.Int64, nil
+	s.finalizeMu.Lock()
+	defer s.finalizeMu.Unlock()
+	if s.finalized {
+		return nil
+	}
+	if !s.persisted {
+		if err := s.flushTranscriptContext(ctx); err != nil {
+			return fmt.Errorf("persist final console transcript: %w", err)
+		}
+		s.mu.Lock()
+		status, message := s.finalStatus, s.finalMessage
+		if status == "" {
+			status, message = s.status, s.errText
+		}
+		s.mu.Unlock()
+		now := time.Now().UTC().Format(time.RFC3339)
+		persist := s.manager.persistStatus
+		if persist == nil {
+			persist = consolepersistence.PersistTerminalStatus
+		}
+		if err := persist(ctx, s.manager.db, s.id, status, message, now); err != nil {
+			return fmt.Errorf("persist final console status: %w", err)
+		}
+		s.persisted = true
+	}
+	if !s.hookDone {
+		s.manager.mu.Lock()
+		hook := s.manager.sessionClosed
+		s.manager.mu.Unlock()
+		if hook != nil {
+			if err := hook(ctx, s.handle()); err != nil {
+				return fmt.Errorf("finalize console session ownership: %w", err)
+			}
+		}
+		s.hookDone = true
+	}
+	s.manager.removeFinalized(s)
+	s.finalized = true
+	return nil
 }
 
 func logConsolePersistError(operation string, sessionID int64, err error) {

@@ -80,12 +80,12 @@ func (s *State) ConfigureVaultSessionAuthorizer(leases *vaultsessions.Store, gua
 	})
 }
 
-func (s *State) ConfigureSessionClosedHook(closed func(sessionID, runtimeID, generation int64)) {
+func (s *State) ConfigureSessionClosedHook(closed func(context.Context, int64, int64, int64) error) {
 	if s == nil || s.consoleSessions == nil || closed == nil {
 		return
 	}
-	s.consoleSessions.SetSessionClosedHook(func(session console.SessionHandle) {
-		closed(session.ID, session.RuntimeID, session.Generation)
+	s.consoleSessions.SetSessionClosedHook(func(ctx context.Context, session console.SessionHandle) error {
+		return closed(ctx, session.ID, session.RuntimeID, session.Generation)
 	})
 }
 

@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/gorilla/websocket"
@@ -20,11 +22,13 @@ func NewManager(db *sql.DB, openRuntime RuntimeOpener, redact func(string) strin
 		redact = func(value string) string { return value }
 	}
 	return &Manager{
-		db:          db,
-		openRuntime: openRuntime,
-		redact:      redact,
-		sessions:    map[int64]*managedConsoleSession{},
-		lifecycle:   map[int64]*sync.Mutex{},
+		db:            db,
+		openRuntime:   openRuntime,
+		redact:        redact,
+		persistChunks: consolepersistence.PersistTranscript,
+		persistStatus: consolepersistence.PersistTerminalStatus,
+		sessions:      map[int64]*managedConsoleSession{},
+		lifecycle:     map[int64]*sync.Mutex{},
 	}
 }
 
@@ -34,7 +38,7 @@ func (m *Manager) SetAuthorizer(authorize SessionAuthorizer) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) SetSessionClosedHook(hook func(SessionHandle)) {
+func (m *Manager) SetSessionClosedHook(hook func(context.Context, SessionHandle) error) {
 	m.mu.Lock()
 	m.sessionClosed = hook
 	m.mu.Unlock()
@@ -224,7 +228,7 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 		name:                   request.Name,
 		cols:                   request.Cols,
 		rows:                   request.Rows,
-		params:                 cloneParams(request.Params),
+		params:                 maps.Clone(request.Params),
 		principal:              request.Principal,
 		environment:            request.Environment,
 		prepareEnvironment:     request.PrepareEnvironment,
@@ -438,11 +442,11 @@ func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.
 	if session == nil {
 		return SessionHandle{}, fmt.Errorf("console session did not start")
 	}
-	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
-		return SessionHandle{}, err
-	}
 	if err := session.waitReady(ctx); err != nil {
 		return session.handle(), err
+	}
+	if err := m.authorizeOperation(ctx, principal, session, OperationObserve, nil); err != nil {
+		return SessionHandle{}, err
 	}
 	return session.handle(), nil
 }
@@ -774,15 +778,15 @@ func (m *Manager) activeForRuntime(runtimeID int64) *managedConsoleSession {
 	return selected
 }
 
-func (m *Manager) remove(id int64) {
-	m.mu.Lock()
-	session := m.sessions[id]
-	delete(m.sessions, id)
-	hook := m.sessionClosed
-	m.mu.Unlock()
-	if session != nil && hook != nil {
-		hook(session.handle())
+func (m *Manager) removeFinalized(session *managedConsoleSession) {
+	if session == nil {
+		return
 	}
+	m.mu.Lock()
+	if m.sessions[session.id] == session {
+		delete(m.sessions, session.id)
+	}
+	m.mu.Unlock()
 }
 
 func (s *managedConsoleSession) handle() SessionHandle {

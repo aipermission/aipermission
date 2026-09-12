@@ -9,7 +9,7 @@ import (
 
 type SessionAuthorizationGuard func(context.Context, func() error, func() error) error
 type SessionAuthorizerInstaller func(SessionAuthorizationGuard)
-type SessionClosedHookInstaller func(func(VaultSessionReference))
+type SessionClosedHookInstaller func(func(context.Context, VaultSessionReference) error)
 
 type SessionLifecycleRuntime struct {
 	Database             *sql.DB
@@ -64,8 +64,8 @@ func (lifecycle *SessionLifecycle) Configure() error {
 		}
 		return run()
 	})
-	lifecycle.runtime.InstallSessionClosed(func(reference VaultSessionReference) {
-		_ = lifecycle.invalidator.SessionClosedReference(context.Background(), vaultsessions.Reference{
+	lifecycle.runtime.InstallSessionClosed(func(ctx context.Context, reference VaultSessionReference) error {
+		return lifecycle.invalidator.SessionClosedReference(ctx, vaultsessions.Reference{
 			SessionID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
 		})
 	})

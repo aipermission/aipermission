@@ -53,9 +53,9 @@ func (component *VaultOwner) VaultSessionRuntime(handle *WorkspaceHandle, ports 
 		InstallAuthorizer: func(guard gatewayvault.SessionAuthorizationGuard) {
 			owner.Connectors.ConfigureVaultSessionAuthorizer(leases, guard)
 		},
-		InstallSessionClosed: func(hook func(gatewayvault.VaultSessionReference)) {
-			owner.Connectors.ConfigureSessionClosedHook(func(sessionID, runtimeID, generation int64) {
-				hook(gatewayvault.VaultSessionReference{
+		InstallSessionClosed: func(hook func(context.Context, gatewayvault.VaultSessionReference) error) {
+			owner.Connectors.ConfigureSessionClosedHook(func(ctx context.Context, sessionID, runtimeID, generation int64) error {
+				return hook(ctx, gatewayvault.VaultSessionReference{
 					SessionID: sessionID, RuntimeID: runtimeID, Generation: generation,
 				})
 			})

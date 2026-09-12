@@ -44,7 +44,7 @@ func TestSessionLifecycleConfiguresDeliveryGuardedAuthorization(t *testing.T) {
 	leases := &sessionLifecycleLeases{steps: &steps}
 	sessions := &sessionLifecycleSessions{}
 	var guard SessionAuthorizationGuard
-	var closed func(VaultSessionReference)
+	var closed func(context.Context, VaultSessionReference) error
 	lifecycle, err := New(Dependencies{}).SessionLifecycle(SessionLifecycleRuntime{
 		Database: &sql.DB{}, Leases: leases, Sessions: sessions,
 		Principal: func() (executionprincipal.Principal, error) { return executionprincipal.Principal{}, nil },
@@ -54,7 +54,7 @@ func TestSessionLifecycleConfiguresDeliveryGuardedAuthorization(t *testing.T) {
 			return func() { steps = append(steps, "release") }, nil
 		},
 		InstallAuthorizer:    func(value SessionAuthorizationGuard) { guard = value },
-		InstallSessionClosed: func(value func(VaultSessionReference)) { closed = value },
+		InstallSessionClosed: func(value func(context.Context, VaultSessionReference) error) { closed = value },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +81,11 @@ func TestSessionLifecycleConfiguresDeliveryGuardedAuthorization(t *testing.T) {
 	if !reflect.DeepEqual(steps, []string{"acquire", "authorize", "run", "release"}) {
 		t.Fatalf("authorization order = %#v", steps)
 	}
+	closedCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := closed(closedCtx, VaultSessionReference{SessionID: 7, RuntimeID: 8, Generation: 9}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("session-closed persistence error = %v, want canceled context", err)
+	}
 }
 
 func TestSessionLifecycleAuthorizationFailureDoesNotRunOperation(t *testing.T) {
@@ -98,7 +103,7 @@ func TestSessionLifecycleAuthorizationFailureDoesNotRunOperation(t *testing.T) {
 			return func() { steps = append(steps, "release") }, nil
 		},
 		InstallAuthorizer:    func(value SessionAuthorizationGuard) { guard = value },
-		InstallSessionClosed: func(func(VaultSessionReference)) {},
+		InstallSessionClosed: func(func(context.Context, VaultSessionReference) error) {},
 	})
 	if err != nil {
 		t.Fatal(err)

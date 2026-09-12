@@ -18,6 +18,6 @@ type Port interface {
 	ConsoleSessionManager() *console.Manager
 	ConfigureConsoleSessions(console.RuntimeOpener, func(string) string)
 	ConfigureVaultSessionAuthorizer(*vaultsessions.Store, func(context.Context, func() error, func() error) error)
-	ConfigureSessionClosedHook(func(sessionID, runtimeID, generation int64))
+	ConfigureSessionClosedHook(func(context.Context, int64, int64, int64) error)
 	ConnectorScope(string, connectorruntime.SecretAccessorFactory) *connectorruntime.Scope
 }

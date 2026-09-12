@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
@@ -16,7 +17,7 @@ import (
 const (
 	maxConsoleTranscriptLength   = 200000
 	maxConsoleSnapshotLength     = 50000
-	maxConsoleChunkLength        = 32768
+	maxConsoleChunkLength        = consolepersistence.MaxChunkLength
 	maxConsolePendingFlushSize   = maxConsoleChunkLength * 4
 	maxActiveConsoleSessions     = 32
 	maxConsoleClientsPerSession  = 8
@@ -165,7 +166,9 @@ type Manager struct {
 	openRuntime   RuntimeOpener
 	redact        func(string) string
 	authorize     SessionAuthorizer
-	sessionClosed func(SessionHandle)
+	sessionClosed func(context.Context, SessionHandle) error
+	persistChunks func(context.Context, *sql.DB, int64, string, string, string) error
+	persistStatus func(context.Context, *sql.DB, int64, string, string, string) error
 
 	mu       sync.Mutex
 	sessions map[int64]*managedConsoleSession
@@ -210,17 +213,6 @@ func (m *Manager) redactText(value string) string {
 	return m.redact(value)
 }
 
-func cloneParams(params map[string]any) map[string]any {
-	if len(params) == 0 {
-		return nil
-	}
-	clone := make(map[string]any, len(params))
-	for key, value := range params {
-		clone[key] = value
-	}
-	return clone
-}
-
 type managedConsoleSession struct {
 	id                     int64
 	runtimeID              int64
@@ -251,6 +243,10 @@ type managedConsoleSession struct {
 	workWG     sync.WaitGroup
 	workClosed bool
 	persistMu  sync.Mutex
+	finalizeMu sync.Mutex
+	finalized  bool
+	persisted  bool
+	hookDone   bool
 
 	mu            sync.Mutex
 	execMu        sync.Mutex
@@ -270,4 +266,6 @@ type managedConsoleSession struct {
 	filterUntil   time.Time
 	persistTimer  *time.Timer
 	startErr      error
+	finalStatus   string
+	finalMessage  string
 }

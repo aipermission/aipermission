@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
 
 func scanConsoleSession(scanner interface {
@@ -38,11 +36,4 @@ func scanConsoleSession(scanner interface {
 		item.ClosedAt = &closedAt.String
 	}
 	return item, nil
-}
-
-func limitConsoleTranscript(value string) string {
-	if len(value) <= maxConsoleTranscriptLength {
-		return value
-	}
-	return terminaltext.TailStringByBytes(value, maxConsoleTranscriptLength)
 }
