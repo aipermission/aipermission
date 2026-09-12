@@ -24,27 +24,6 @@ func (s *Server) workspaceSelection() gatewayinfra.Identity {
 	return s.workspaceOwner.WorkspaceSelection()
 }
 
-func (s *Server) openRuntimeForLifecycle(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
-	if s.openRuntimeOverride != nil {
-		return s.openRuntimeOverride(ctx, path, id, password)
-	}
-	return s.openRuntime(ctx, path, id, password)
-}
-
-func (s *Server) moveDatabase(currentPath string, targetPath string) error {
-	if s.moveDatabaseOverride != nil {
-		return s.moveDatabaseOverride(currentPath, targetPath)
-	}
-	return s.workspaceOwner.MoveDatabase(currentPath, targetPath)
-}
-
-func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
-	if s.publishDatabaseOverride != nil {
-		return s.publishDatabaseOverride(sourcePath, targetPath)
-	}
-	return s.workspaceOwner.PublishDatabase(sourcePath, targetPath)
-}
-
 func (s *Server) openRuntime(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
 	runtime, err := s.workspaceOwner.OpenWorkspace(ctx, gatewayinfra.NewOpenWorkspaceInput(
 		id, path, password, s.config.GatewaySecret, s.connectorRegistry(), s.connectorAdapterRegistry(),

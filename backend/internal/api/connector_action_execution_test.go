@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
@@ -1011,7 +1012,7 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	_, err := testServerForRuntime(t, runtime).redactConnectorActionResult(t.Context(), runtime, connectors.ActionResult{
 		Output: []typedConnectorResultItem{{Message: strings.Repeat("x", actions.MaxStringBytes+1)}},
 	})
-	if !errors.Is(err, actions.ErrInvalidOutput) {
+	if !errors.Is(err, actionresult.ErrInvalidOutput) {
 		t.Fatalf("oversized typed output error = %v", err)
 	}
 	if status := connectorActionExecutionFailureStatus(err); status != connectors.ResultOutcomeUnknown {

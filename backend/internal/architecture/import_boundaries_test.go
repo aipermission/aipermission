@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/maintenancepolicy"
 )
 
@@ -1096,13 +1095,10 @@ func TestInternalDependencyGraphIsAcyclic(t *testing.T) {
 
 func builtInConnectorPackages(t *testing.T) []string {
 	t.Helper()
-	registry, err := builtin.NewRegistry()
-	if err != nil {
-		t.Fatalf("build connector catalog: %v", err)
-	}
-	packages := make([]string, 0, len(registry.List()))
-	for _, info := range registry.List() {
-		packages = append(packages, modulePath+"/internal/connectors/"+info.Kind)
+	kinds := filesystemConnectorKinds(t)
+	packages := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		packages = append(packages, modulePath+"/internal/connectors/"+kind)
 	}
 	sort.Strings(packages)
 	return packages

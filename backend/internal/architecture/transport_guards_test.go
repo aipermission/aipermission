@@ -79,6 +79,7 @@ func TestAPIProductionTypesAreBoundaryOwned(t *testing.T) {
 
 func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 	inspectProductionGoFiles(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File) {
+		bindings := packageVariableInitializers(file)
 		for _, declaration := range file.Decls {
 			general, ok := declaration.(*ast.GenDecl)
 			if !ok || general.Tok != token.VAR {
@@ -87,17 +88,36 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 			for _, specification := range general.Specs {
 				value := specification.(*ast.ValueSpec)
 				for index, identifier := range value.Names {
-					if !identifier.IsExported() || strings.HasPrefix(identifier.Name, "Err") {
+					if !identifier.IsExported() {
 						continue
 					}
 					initializer := valueInitializer(value, index)
-					if mutableFacadeInitializer(initializer) {
+					if mutableFacadeInitializerWithBindings(initializer, bindings, map[string]bool{}) {
 						t.Errorf("%s exposes mutable facade %s; declare an owned function or immutable contract", path, identifier.Name)
 					}
 				}
 			}
 		}
 	})
+}
+
+func packageVariableInitializers(file *ast.File) map[string]ast.Expr {
+	bindings := map[string]ast.Expr{}
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.VAR {
+			continue
+		}
+		for _, specification := range general.Specs {
+			value := specification.(*ast.ValueSpec)
+			for index, identifier := range value.Names {
+				if initializer := valueInitializer(value, index); initializer != nil {
+					bindings[identifier.Name] = initializer
+				}
+			}
+		}
+	}
+	return bindings
 }
 
 func TestProductionAPIDoesNotConsumeRawWorkspaceScopes(t *testing.T) {
@@ -180,10 +200,33 @@ func TestOpenAPIRouteSourceHasOneFlagAndOneRead(t *testing.T) {
 
 func TestBuiltInConnectorCatalogMatchesFrontendAndDocs(t *testing.T) {
 	backendKinds := builtInConnectorKinds(t)
+	sourceKinds := filesystemConnectorKinds(t)
 	frontendKinds := frontendConnectorKinds(t)
 	documentKinds := documentedConnectorKinds(t)
+	assertSameStrings(t, "backend registry", backendKinds, "connector source directories", sourceKinds)
 	assertSameStrings(t, "backend registry", backendKinds, "frontend templates", frontendKinds)
 	assertSameStrings(t, "backend registry", backendKinds, "generated connector docs", documentKinds)
+}
+
+func filesystemConnectorKinds(t *testing.T) []string {
+	t.Helper()
+	root := filepath.Join("..", "connectors")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	support := map[string]bool{
+		"builtin": true, "conformance": true, "connectortest": true,
+		"sqlresult": true, "sqlsafe": true,
+	}
+	kinds := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() && !support[entry.Name()] {
+			kinds = append(kinds, entry.Name())
+		}
+	}
+	sort.Strings(kinds)
+	return kinds
 }
 
 func importedPackageAliases(file *ast.File, tracked map[string]map[string]bool) (map[string]string, []string) {
@@ -222,6 +265,26 @@ func mutableFacadeInitializer(expression ast.Expr) bool {
 	}
 }
 
+func mutableFacadeInitializerWithBindings(expression ast.Expr, bindings map[string]ast.Expr, visiting map[string]bool) bool {
+	identifier, ok := expression.(*ast.Ident)
+	if !ok {
+		return mutableFacadeInitializer(expression)
+	}
+	if visiting[identifier.Name] {
+		return false
+	}
+	initializer, ok := bindings[identifier.Name]
+	if !ok {
+		return false
+	}
+	visiting[identifier.Name] = true
+	defer delete(visiting, identifier.Name)
+	if mutableFacadeInitializer(initializer) {
+		return true
+	}
+	return mutableFacadeInitializerWithBindings(initializer, bindings, visiting)
+}
+
 func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
 	tracked := map[string]map[string]bool{modulePath + "/internal/gatewayaccess": {"AccessScope": true}}
 	file, err := parser.ParseFile(token.NewFileSet(), "fixture.go", `package fixture
@@ -243,6 +306,22 @@ import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 			t.Errorf("mutable facade %q escaped detection", source)
 		}
 	}
+	bindings := map[string]ast.Expr{
+		"local":    mustParseExpression(t, "owner.Function"),
+		"exported": mustParseExpression(t, "local"),
+	}
+	if !mutableFacadeInitializerWithBindings(bindings["exported"], bindings, map[string]bool{}) {
+		t.Fatal("identifier-chain mutable facade escaped detection")
+	}
+}
+
+func mustParseExpression(t *testing.T, source string) ast.Expr {
+	t.Helper()
+	expression, err := parser.ParseExpr(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return expression
 }
 
 func flagStringBindings(file *ast.File, flagName string) []string {

@@ -71,9 +71,14 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 	}
 }
 
-func newLockedAPITestServer(t *testing.T) *Server {
+func newLockedAPITestServer(t *testing.T, extraOptions ...ServerOption) *Server {
 	t.Helper()
 	catalog := newTestConnectorCatalog(t)
+	options := []ServerOption{
+		WithConnectorRegistry(catalog.connectors),
+		WithConnectorAdapterRegistry(catalog.adapters),
+	}
+	options = append(options, extraOptions...)
 	return NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
@@ -81,8 +86,7 @@ func newLockedAPITestServer(t *testing.T) *Server {
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
 	},
-		WithConnectorRegistry(catalog.connectors),
-		WithConnectorAdapterRegistry(catalog.adapters),
+		options...,
 	)
 }
 
@@ -380,7 +384,9 @@ func TestUnlockStatusSurfacesDatabaseCatalogRecoveryFailure(t *testing.T) {
 }
 
 func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
-	server := newLockedAPITestServer(t)
+	server := newLockedAPITestServer(t, withDatabaseMove(func(string, string) error {
+		return errors.New("injected move failure")
+	}))
 	handler := server.Handler()
 	defer server.Close()
 
@@ -393,8 +399,6 @@ func TestRenameMoveFailureReopensActiveDatabase(t *testing.T) {
 		t.Fatalf("setup failed: %d %s", setup.Code, setup.Body.String())
 	}
 	oldPath := server.currentDataPath()
-	server.moveDatabaseOverride = func(string, string) error { return errors.New("injected move failure") }
-
 	response := performJSON(handler, http.MethodPost, "/api/databases/rename", "", renameDatabaseRequest{
 		DatabaseName:    "Renamed Project",
 		CurrentPassword: "ProjectPassword123",
@@ -785,7 +789,13 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 }
 
 func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
-	server := newLockedAPITestServer(t)
+	var server *Server
+	server = newLockedAPITestServer(t, withWorkspaceOpen(func(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+		if id == "imported-project" {
+			return nil, errors.New("injected runtime open failure")
+		}
+		return server.openRuntime(ctx, path, id, password)
+	}))
 	handler := server.Handler()
 	defer server.Close()
 
@@ -814,13 +824,6 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read source db: %v", err)
 	}
-	server.openRuntimeOverride = func(ctx context.Context, path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
-		if id == "imported-project" {
-			return nil, errors.New("injected runtime open failure")
-		}
-		return server.openRuntime(ctx, path, id, password)
-	}
-
 	response := performDatabaseImport(t, handler, "Imported Project", "ImportPassword123", sourceBytes, true)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("injected import open failure should return 500, got %d %s", response.Code, response.Body.String())
@@ -841,7 +844,12 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 }
 
 func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
-	server := newLockedAPITestServer(t)
+	server := newLockedAPITestServer(t, withDatabasePublish(func(source string, target string) error {
+		if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
+			return err
+		}
+		return dbpkg.ErrPublishTargetExists
+	}))
 	defer server.Close()
 
 	sourcePath := filepath.Join(t.TempDir(), "source.aipdb")
@@ -859,13 +867,6 @@ func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.publishDatabaseOverride = func(source string, target string) error {
-		if err := os.WriteFile(target, []byte("foreign-database"), 0o600); err != nil {
-			return err
-		}
-		return dbpkg.ErrPublishTargetExists
-	}
-
 	response := performDatabaseImport(t, server.Handler(), "Partial Import", "ImportPassword123", sourceBytes, false)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())

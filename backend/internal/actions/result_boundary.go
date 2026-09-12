@@ -17,8 +17,6 @@ const (
 	MaxStringBytes            = actionresult.MaxStringBytes
 )
 
-var ErrInvalidOutput = actionresult.ErrInvalidOutput
-
 func NewCredentialBoundary(secrets map[string]any) CredentialBoundary {
 	return actionresult.NewCredentialBoundary(secrets)
 }

@@ -36,9 +36,9 @@ type Server struct {
 	connectorAdaptersOwner   *connectorapi.Registry
 	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
 	runtimeIDGenerator       func() (string, error)
-	openRuntimeOverride      func(context.Context, string, string, string) (*gatewayinfra.WorkspaceHandle, error)
-	moveDatabaseOverride     func(string, string) error
-	publishDatabaseOverride  func(string, string) error
+	workspaceOpen            func(context.Context, string, string, string) (*gatewayinfra.WorkspaceHandle, error)
+	databaseMove             func(string, string) error
+	databasePublish          func(string, string) error
 }
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
@@ -61,6 +61,18 @@ func newServerComposition(cfg serverConfig, resolved serverOptions, infrastructu
 		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
 	}
 	server.bindInfrastructure(infrastructure)
+	server.workspaceOpen = server.openRuntime
+	server.databaseMove = server.workspaceOwner.MoveDatabase
+	server.databasePublish = server.workspaceOwner.PublishDatabase
+	if resolved.openWorkspace != nil {
+		server.workspaceOpen = resolved.openWorkspace
+	}
+	if resolved.moveDatabase != nil {
+		server.databaseMove = resolved.moveDatabase
+	}
+	if resolved.publishDatabase != nil {
+		server.databasePublish = resolved.publishDatabase
+	}
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
@@ -84,11 +96,11 @@ func (s *Server) bindInfrastructure(infrastructure *gatewayinfra.Component) {
 func (s *Server) initializeWorkspaceLifecycle() error {
 	err := s.workspaceOwner.ConfigureWorkspaceLifecycle(gatewayinfra.WorkspaceDependencies{
 		DataPath:      s.config.DataPath,
-		Open:          s.openRuntimeForLifecycle,
+		Open:          s.workspaceOpen,
 		Close:         s.closeRuntime,
-		Move:          s.moveDatabase,
+		Move:          s.databaseMove,
 		Delete:        s.workspaceOwner.DeleteDatabase,
-		Publish:       s.publishDatabase,
+		Publish:       s.databasePublish,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
 		OnActivated: func(runtime *gatewayinfra.WorkspaceHandle) {
 			if secret := s.workspaceOwner.ConfiguredGatewaySecret(runtime); secret != "" {
