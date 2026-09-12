@@ -17,6 +17,18 @@ test("classifies test modules according to the enforced policy", () => {
     true,
   );
   assert.equal(
+    isTestSource("markers", "/tmp/cache.test.fixtures/production.js", markers),
+    false,
+  );
+  assert.equal(
+    isTestSource(
+      "markers",
+      "C:\\tmp\\cache.spec.fixtures\\production.js",
+      markers,
+    ),
+    false,
+  );
+  assert.equal(
     isTestSource("markers", "/tmp/client.fixture.ts", markers),
     false,
   );

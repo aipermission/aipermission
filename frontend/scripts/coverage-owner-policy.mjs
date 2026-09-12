@@ -1,6 +1,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
 import { coveragePolicy } from "./coverage-policy.mjs";
+import sourceKind from "../../scripts/maintenance-source-kind.js";
+
+const { isTestSource } = sourceKind;
 
 const excludedNames = new Set(coveragePolicy.excludedNames);
 const excludedDirectories = new Set(coveragePolicy.excludedDirectories);
@@ -8,11 +11,12 @@ const separatelyCoveredDirectories = new Set(coveragePolicy.separatelyCoveredDir
 const excludedPatterns = coveragePolicy.excludedPatterns.map((pattern) => new RegExp(pattern));
 const architecturePolicy = JSON.parse(readFileSync(new URL("../../maintenance-policy.json", import.meta.url), "utf8")).frontendArchitecture;
 const sourceExtensions = new Set(architecturePolicy.sourceExtensions);
+const testModuleMarkers = architecturePolicy.testModuleMarkers;
 
 export function isBehaviorOwner(file) {
   const normalized = file.split(sep).join("/");
   if (!normalized.startsWith("src/") || !sourceExtensions.has(extname(normalized))) return false;
-  if (normalized.includes(".test.") || excludedNames.has(basename(normalized))) return false;
+  if (isTestSource("markers", normalized, testModuleMarkers) || excludedNames.has(basename(normalized))) return false;
   if (excludedPatterns.some((pattern) => pattern.test(normalized))) return false;
   if ([...excludedDirectories].some((directory) => normalized === directory || normalized.startsWith(`${directory}/`))) return false;
   if ([...separatelyCoveredDirectories].some((directory) => normalized.startsWith(`${directory}/`))) return false;

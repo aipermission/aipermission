@@ -14,6 +14,7 @@ test("treats production modules as owners by default", () => {
     "src/components/ui/button.jsx",
     "src/lib/local-action-retry.js",
     "src/lib/runtime-owner.mjs",
+    "src/cache.test.fixtures/production.js",
   ];
   const exclusions = [
     "src/lib/release.generated.json",

@@ -2,6 +2,9 @@ import { globSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 
 import { parse } from "espree";
+import sourceKind from "../../scripts/maintenance-source-kind.js";
+
+const { isTestSource } = sourceKind;
 
 const maintenancePolicy = JSON.parse(readFileSync(new URL("../../maintenance-policy.json", import.meta.url), "utf8"));
 const architecturePolicy = maintenancePolicy.frontendArchitecture;
@@ -383,7 +386,7 @@ function executableFiles(directory) {
 }
 
 function isTestModule(filename) {
-  return testModuleMarkers.some((marker) => filename.includes(marker));
+  return isTestSource("markers", filename, testModuleMarkers);
 }
 
 function isTestSupport(sourceRoot, file) {

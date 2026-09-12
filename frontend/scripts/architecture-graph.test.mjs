@@ -175,6 +175,21 @@ test("classifies compound test filenames as test support", () => {
   }
 });
 
+test("does not classify production modules by test-like directory names", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-test-directory-"));
+  try {
+    mkdirSync(join(root, "cache.test.fixtures"), { recursive: true });
+    mkdirSync(join(root, "connectors", "templates"), { recursive: true });
+    writeFileSync(join(root, "cache.test.fixtures", "production.js"), "export const one = 1;\nexport const two = 2;\n");
+
+    const result = analyzeSourceTree(root, { lineBudget: 1 });
+    assert.ok(result.files.some((file) => file.endsWith("cache.test.fixtures/production.js")));
+    assert.ok(result.failures.some((failure) => failure.includes("cache.test.fixtures/production.js has 2 lines")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("expands glob edges and rejects template imports into registry and page layers", () => {
   const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-glob-"));
   try {

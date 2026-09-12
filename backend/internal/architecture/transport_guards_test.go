@@ -91,8 +91,7 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 						continue
 					}
 					initializer := valueInitializer(value, index)
-					switch initializer.(type) {
-					case *ast.SelectorExpr, *ast.FuncLit:
+					if mutableFacadeInitializer(initializer) {
 						t.Errorf("%s exposes mutable facade %s; declare an owned function or immutable contract", path, identifier.Name)
 					}
 				}
@@ -132,7 +131,10 @@ func TestProductionAPIDoesNotConsumeRawWorkspaceScopes(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		aliases := importedPackageAliases(file, forbidden)
+		aliases, dotImports := importedPackageAliases(file, forbidden)
+		for _, packagePath := range dotImports {
+			t.Errorf("%s dot-imports %s; raw owner scopes must remain qualified and enforceable", path, packagePath)
+		}
 		ast.Inspect(file, func(node ast.Node) bool {
 			selector, ok := node.(*ast.SelectorExpr)
 			if !ok {
@@ -184,8 +186,9 @@ func TestBuiltInConnectorCatalogMatchesFrontendAndDocs(t *testing.T) {
 	assertSameStrings(t, "backend registry", backendKinds, "generated connector docs", documentKinds)
 }
 
-func importedPackageAliases(file *ast.File, tracked map[string]map[string]bool) map[string]string {
+func importedPackageAliases(file *ast.File, tracked map[string]map[string]bool) (map[string]string, []string) {
 	aliases := map[string]string{}
+	dotImports := []string{}
 	for _, spec := range file.Imports {
 		packagePath, err := strconv.Unquote(spec.Path.Value)
 		if err != nil || tracked[packagePath] == nil {
@@ -195,11 +198,51 @@ func importedPackageAliases(file *ast.File, tracked map[string]map[string]bool) 
 		if spec.Name != nil {
 			alias = spec.Name.Name
 		}
-		if alias != "_" && alias != "." {
+		if alias == "." {
+			dotImports = append(dotImports, packagePath)
+			continue
+		}
+		if alias != "_" {
 			aliases[alias] = packagePath
 		}
 	}
-	return aliases
+	return aliases, dotImports
+}
+
+func mutableFacadeInitializer(expression ast.Expr) bool {
+	switch value := expression.(type) {
+	case *ast.ParenExpr:
+		return mutableFacadeInitializer(value.X)
+	case *ast.SelectorExpr, *ast.FuncLit:
+		return true
+	case *ast.CallExpr:
+		return len(value.Args) == 1 && mutableFacadeInitializer(value.Args[0])
+	default:
+		return false
+	}
+}
+
+func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
+	tracked := map[string]map[string]bool{modulePath + "/internal/gatewayaccess": {"AccessScope": true}}
+	file, err := parser.ParseFile(token.NewFileSet(), "fixture.go", `package fixture
+import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+`, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dotImports := importedPackageAliases(file, tracked)
+	if len(dotImports) != 1 || dotImports[0] != modulePath+"/internal/gatewayaccess" {
+		t.Fatalf("tracked dot import escaped detection: %v", dotImports)
+	}
+	for _, source := range []string{"owner.Function", "(owner.Function)", "FunctionType(owner.Function)", "func() {}"} {
+		expression, err := parser.ParseExpr(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !mutableFacadeInitializer(expression) {
+			t.Errorf("mutable facade %q escaped detection", source)
+		}
+	}
 }
 
 func flagStringBindings(file *ast.File, flagName string) []string {
