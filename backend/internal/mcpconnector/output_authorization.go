@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -68,6 +69,11 @@ func (authorization *OutputAuthorization) Deliver(w http.ResponseWriter, r *http
 	}
 	release, err := authorization.Delivery.Acquire(r.Context())
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			httptransport.WriteError(w, http.StatusRequestTimeout, "connector action output authorization timed out")
+			return
+		}
+		httptransport.WriteError(w, http.StatusServiceUnavailable, "connector action output authorization is unavailable")
 		return
 	}
 	defer release()
