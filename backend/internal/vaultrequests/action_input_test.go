@@ -57,3 +57,27 @@ func TestDecodeApprovalContextIsStrict(t *testing.T) {
 		t.Fatalf("unknown approval field error = %v", err)
 	}
 }
+
+func TestDecodeActionInputsAreStrict(t *testing.T) {
+	generated, err := DecodeGenerateInput(map[string]any{
+		"name": "DEPLOY_TOKEN", "generator_kind": "hex_secret",
+		"usage_notes": []any{map[string]any{"location": "service.env"}},
+	})
+	if err != nil || generated.Name != "DEPLOY_TOKEN" || len(generated.UsageNotes) != 1 {
+		t.Fatalf("generated = %#v error=%v", generated, err)
+	}
+	if _, err := DecodeGenerateInput(map[string]any{"unexpected": true}); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown generate field error = %v", err)
+	}
+
+	session, err := DecodeSessionApplyInput(map[string]any{
+		"target_ref": "ssh:1:2",
+		"items":      []any{map[string]any{"item_id": 3, "source_project_id": 4, "replace_existing": true}},
+	})
+	if err != nil || session.TargetRef != "ssh:1:2" || len(session.Items) != 1 || !session.Items[0].ReplaceExisting {
+		t.Fatalf("session = %#v error=%v", session, err)
+	}
+	if _, err := DecodeSessionApplyInput(map[string]any{"unexpected": true}); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown session field error = %v", err)
+	}
+}
