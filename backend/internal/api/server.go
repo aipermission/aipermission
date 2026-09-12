@@ -8,7 +8,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
@@ -20,7 +19,7 @@ type Server struct {
 	access                   *gatewayaccess.Component
 	connectorActions         *gatewayinfra.ConnectorActionApplication
 	connectorRuntime         *gatewayinfra.ConnectorRuntimeApplication
-	connectorManagement      *connectormgmt.Component
+	connectorManagement      *gatewayinfra.ConnectorManagementApplication
 	vault                    *gatewayvault.Component
 	workspaceOwner           *gatewayinfra.WorkspaceOwner
 	accessOwner              *gatewayinfra.AccessOwner

@@ -41,7 +41,7 @@ func (s *Server) routes() {
 		Maintenance: gatewayoperations.NewMaintenanceHTTPHandlers(s.maintenanceConsoleHTTPScope),
 		Workspaces:  s.workspaceLifecycleHTTPHandlers(),
 
-		Credentials:     connectorManagement.CredentialResources(s.connectorCredentialResourceDependencies()),
+		Credentials:     connectorManagement.CredentialResources(),
 		TokenAccess:     accessHTTP.TokenAccess,
 		TargetOperation: connectorHTTP.TargetOperation.Run,
 

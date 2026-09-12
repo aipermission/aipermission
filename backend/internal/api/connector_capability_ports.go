@@ -44,10 +44,10 @@ func (s *Server) newConnectorRuntimeApplication() *gatewayinfra.ConnectorRuntime
 					return connectorapi.TransferBatch{ID: batch.ID, Status: batch.Status, ItemCount: len(batch.Items)}, downloadErr
 				},
 				Delete: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, target connectormgmt.Target, payload map[string]any) error {
-					return s.connectorLifecycleApplication(runtime).DeleteTarget(ctx, target, payload)
+					return s.connectorManagement.DeleteTarget(ctx, runtime, target, payload)
 				},
 				Finalize: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, target connectormgmt.Target, reason string, _ map[string]any) (int64, error) {
-					return s.connectorLifecycleApplication(runtime).FinalizeDeletedTarget(ctx, target, reason)
+					return s.connectorManagement.FinalizeDeletedTarget(ctx, runtime, target, reason)
 				},
 				Audit: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 					s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)

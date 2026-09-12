@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
@@ -73,6 +74,10 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 		t.Fatal(err)
 	}
 	return server
+}
+
+func (s *Server) connectorCredentialPreparationPorts(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialPreparationPorts {
+	return s.connectorManagement.CredentialPreparation(runtime)
 }
 
 func testRuntimeDatabase(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *sql.DB {

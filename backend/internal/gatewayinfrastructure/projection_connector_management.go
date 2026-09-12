@@ -7,7 +7,7 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (component *ConnectorManagementOwner) LifecycleMutationRunner(handle *WorkspaceHandle) connectormgmt.AuditedMutation {
+func (component *ConnectorManagementOwner) lifecycleMutationRunner(handle *WorkspaceHandle) connectormgmt.AuditedMutation {
 	if _, ok := component.resolve(handle); !ok {
 		return nil
 	}
@@ -16,7 +16,7 @@ func (component *ConnectorManagementOwner) LifecycleMutationRunner(handle *Works
 	}
 }
 
-func (component *ConnectorManagementOwner) ConnectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
+func (component *ConnectorManagementOwner) connectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
 	owner, ok := component.resolve(handle)
 	if !ok || application == nil {
 		return connectormgmt.Catalog{}
@@ -24,17 +24,17 @@ func (component *ConnectorManagementOwner) ConnectorCatalog(handle *WorkspaceHan
 	return application.Catalog(owner.Storage.DatabaseHandle(), owner.Connectors.ConnectorRegistry())
 }
 
-func (component *ConnectorManagementOwner) ConnectorCredentialStorage(handle *WorkspaceHandle) (connectormgmt.CredentialStorage, bool) {
+func (component *ConnectorManagementOwner) connectorCredentialStorage(handle *WorkspaceHandle) connectormgmt.CredentialStorage {
 	owner, ok := component.resolve(handle)
 	if !ok {
-		return connectormgmt.CredentialStorage{}, false
+		return connectormgmt.CredentialStorage{}
 	}
 	return connectormgmt.CredentialStorage{
 		Vault: owner.Storage.SecretVault(), WorkspaceID: handle.Identity().WorkspaceID,
-	}, true
+	}
 }
 
-func (component *ConnectorManagementOwner) ConnectorManagementWorkspace(handle *WorkspaceHandle, ports connectormgmt.Workspace) (connectormgmt.Workspace, bool) {
+func (component *ConnectorManagementOwner) connectorManagementWorkspace(handle *WorkspaceHandle, ports connectormgmt.Workspace) (connectormgmt.Workspace, bool) {
 	owner, ok := component.resolve(handle)
 	if !ok {
 		return connectormgmt.Workspace{}, false
