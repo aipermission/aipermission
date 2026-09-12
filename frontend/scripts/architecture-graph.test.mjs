@@ -159,17 +159,19 @@ test("rejects production modules above the line budget", () => {
   }
 });
 
-test("classifies compound test filenames as test support", () => {
+test("classifies only terminal test filename markers as test support", () => {
   const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-test-support-"));
   try {
     mkdirSync(join(root, "lib"), { recursive: true });
     mkdirSync(join(root, "connectors", "templates"), { recursive: true });
-    writeFileSync(join(root, "lib", "fixture.test.fixture.js"), 'import "./production.js";\n');
-    writeFileSync(join(root, "lib", "production.js"), 'import "./fixture.test.fixture.js";\n');
+    writeFileSync(join(root, "lib", "fixture.test.js"), 'import "./production.js";\n');
+    writeFileSync(join(root, "lib", "runtime.test.facade.js"), "export const value = 1;\n");
+    writeFileSync(join(root, "lib", "production.js"), 'import "./fixture.test.js";\n');
 
     const result = analyzeSourceTree(root);
     assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
-    assert.ok(!result.files.some((file) => file.endsWith("fixture.test.fixture.js")));
+    assert.ok(!result.files.some((file) => file.endsWith("fixture.test.js")));
+    assert.ok(result.files.some((file) => file.endsWith("runtime.test.facade.js")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

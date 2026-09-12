@@ -9,7 +9,7 @@ import {
   connectorTemplateRegistrySource,
   connectorTemplatesDir,
   sourceDir,
-} from "./app-smoke-fixtures.test.fixture.js";
+} from "./app-smoke-fixtures.test.js";
 
 test("frontend templates exactly match the built-in backend connector catalog", () => {
   assert.deepEqual(connectorTemplateKinds, backendConnectorKinds);

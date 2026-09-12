@@ -46,6 +46,11 @@ run_fuzz() {
   package=$1
   target=$2
   printf '==> fuzz %s %s (%s)\n' "$package" "$target" "$budget"
+	listed=$(cd backend && go test "$package" -run '^$' -list "^${target}$")
+	if ! printf '%s\n' "$listed" | grep -qx "$target"; then
+		printf 'fuzz target %s was not found in %s\n' "$target" "$package" >&2
+		exit 1
+	fi
   # A fixed execution budget and one worker avoid wall-clock shutdown races on
   # busy CI runners while still exercising generated input deterministically.
   (cd backend && go test "$package" -run '^$' -fuzz "^${target}$" -fuzztime "$budget" -parallel 1)
@@ -53,7 +58,7 @@ run_fuzz() {
 
 run_fuzz ./internal/actions FuzzApprovalContextHash
 run_fuzz ./internal/securitypolicy FuzzBasicRedaction
-run_fuzz ./internal/api FuzzTransferPathNormalization
+run_fuzz ./internal/filetransfer FuzzTransferPathNormalization
 run_fuzz ./internal/connectors/sqlsafe FuzzValidateReadOnly
 run_fuzz ./internal/connectors/redis FuzzReadRESPValue
 run_fuzz ./internal/backups FuzzValidateServiceMetadata

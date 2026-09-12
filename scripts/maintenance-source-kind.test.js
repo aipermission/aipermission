@@ -14,7 +14,7 @@ test("classifies test modules according to the enforced policy", () => {
   );
   assert.equal(
     isTestSource("markers", "/tmp/runtime.test.fixture.js", markers),
-    true,
+    false,
   );
   assert.equal(
     isTestSource("markers", "/tmp/cache.test.fixtures/production.js", markers),
@@ -30,6 +30,12 @@ test("classifies test modules according to the enforced policy", () => {
   );
   assert.equal(
     isTestSource("markers", "/tmp/client.fixture.ts", markers),
+    false,
+  );
+  assert.equal(isTestSource("markers", "/tmp/runtime.test.js", markers), true);
+  assert.equal(isTestSource("markers", "/tmp/runtime.spec.mjs", markers), true);
+  assert.equal(
+    isTestSource("markers", "/tmp/runtime.test.facade.js", markers),
     false,
   );
   assert.equal(isTestSource("all", "/tmp/helpers.js", markers), true);

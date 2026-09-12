@@ -255,13 +255,13 @@ notes, changelog, and build metadata must agree. A rerun is evaluated by its
 newest check run, so an old failed attempt cannot mask a newer result or block a
 successful rerun.
 
-The scheduled real-service connector conformance and native dependency
-freshness workflows are advisory release signals. Their latest status and age
-are reported during source verification, but they are not unconditional gates:
-real services can be unavailable, and native freshness can require a documented
-maintainer review rather than an automatic dependency change. Review stale or
-failed signals before tagging; the exact source CI and CodeQL checks remain the
-mandatory automated boundary.
+Real-service connector conformance is a mandatory release check for the exact
+source commit. The ClickHouse, Postgres, Valkey, RabbitMQ, and S3 job must be
+successful before tagging; a temporary service outage therefore pauses the
+release rather than weakening the connector contract. Native dependency
+freshness remains an advisory signal because it can require a documented
+maintainer review instead of an automatic dependency change. Source
+verification reports stale or failed advisory signals for that review.
 
 Container CI treats fixed HIGH and CRITICAL Trivy findings as blocking. Published
 GHCR images include explicit BuildKit SBOM and maximum-mode provenance
