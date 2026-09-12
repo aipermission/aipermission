@@ -1,6 +1,7 @@
 package workspacelifecycle
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
@@ -24,11 +25,19 @@ func TestServiceRequestGateSerializesMutationsAgainstReaders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	releaseRead := service.AcquireRead()
+	releaseRead, err := service.AcquireReadContext(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	acquiredMutation := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
-		releaseMutation := service.AcquireMutation()
+		releaseMutation, err := service.AcquireMutationContext(t.Context())
+		if err != nil {
+			t.Errorf("acquire mutation: %v", err)
+			close(done)
+			return
+		}
 		close(acquiredMutation)
 		releaseMutation()
 		close(done)
@@ -60,13 +69,21 @@ func TestServiceRequestGateAllowsConcurrentReaders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	releaseFirst := service.AcquireRead()
+	releaseFirst, err := service.AcquireReadContext(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	var acquired sync.WaitGroup
 	acquired.Add(1)
 	done := make(chan struct{})
 	go func() {
-		releaseSecond := service.AcquireRead()
-		acquired.Done()
+		defer acquired.Done()
+		releaseSecond, err := service.AcquireReadContext(t.Context())
+		if err != nil {
+			t.Errorf("acquire second reader: %v", err)
+			close(done)
+			return
+		}
 		releaseSecond()
 		close(done)
 	}()
@@ -76,6 +93,76 @@ func TestServiceRequestGateAllowsConcurrentReaders(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("concurrent reader did not complete")
+	}
+}
+
+func TestServiceRequestGateMutationHonorsContextWhileReaderIsActive(t *testing.T) {
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db",
+		Registry: NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity {
+			return runtime.identity
+		}),
+		Open:  func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(*serviceRuntime) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	releaseRead, err := service.AcquireReadContext(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseRead()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if release, err := service.AcquireMutationContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("AcquireMutationContext() error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestServiceCloseAllSignalsEveryRuntimeBeforeSharedDeadline(t *testing.T) {
+	registry := NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	first := &serviceRuntime{identity: Identity{ID: "default", Path: "/data/default.db"}}
+	second := &serviceRuntime{identity: Identity{ID: "second", Path: "/data/second.db"}}
+	registry.Activate(first)
+	registry.Activate(second)
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db", Registry: registry,
+		Open: func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(runtime *serviceRuntime) error {
+			started <- runtime.identity.ID
+			<-release
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
+	defer cancel()
+	if err := service.CloseAll(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		close(release)
+		t.Fatalf("CloseAll() error = %v, want deadline exceeded", err)
+	}
+	seen := map[string]bool{}
+	for range 2 {
+		select {
+		case id := <-started:
+			seen[id] = true
+		default:
+			close(release)
+			t.Fatalf("not every runtime received a concurrent close signal: %v", seen)
+		}
+	}
+	close(release)
+	if !seen["default"] || !seen["second"] {
+		t.Fatalf("closed runtimes = %v", seen)
 	}
 }
 
@@ -219,7 +306,7 @@ func TestServiceRenameFailureReopensOriginalRuntime(t *testing.T) {
 	if err := reopened.database.PingContext(t.Context()); err != nil {
 		t.Fatalf("reopened database is unusable: %v", err)
 	}
-	if err := service.CloseAll(); err != nil {
+	if err := service.CloseAll(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -46,6 +46,33 @@ func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
 	}
 }
 
+func TestOwnedWorkspaceSnapshotRetainsHandlesOutsideLifecycleRegistry(t *testing.T) {
+	component := NewComponent(t.TempDir(), nil)
+	firstOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}}
+	secondOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "second"}}
+	first := component.handleFor(firstOwner)
+	second := component.handleFor(secondOwner)
+
+	snapshot := component.WorkspaceOwner().OwnedWorkspaceSnapshot()
+	if len(snapshot) != 2 || !containsWorkspaceHandle(snapshot, first) || !containsWorkspaceHandle(snapshot, second) {
+		t.Fatalf("owned snapshot = %#v, want both process-owned handles", snapshot)
+	}
+	component.forgetHandle(first)
+	snapshot = component.WorkspaceOwner().OwnedWorkspaceSnapshot()
+	if len(snapshot) != 1 || snapshot[0] != second {
+		t.Fatalf("owned snapshot after teardown = %#v, want second handle only", snapshot)
+	}
+}
+
+func containsWorkspaceHandle(handles []*WorkspaceHandle, candidate *WorkspaceHandle) bool {
+	for _, handle := range handles {
+		if handle == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 type metadataReaderFactory struct {
 	database *sql.DB
 	allowed  bool

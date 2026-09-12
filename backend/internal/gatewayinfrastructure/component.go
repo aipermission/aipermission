@@ -164,6 +164,23 @@ func (component *WorkspaceOwner) WorkspaceSnapshot() []*WorkspaceHandle {
 	return runtimes
 }
 
+// OwnedWorkspaceSnapshot includes runtimes removed from the public lifecycle
+// registry while their deferred teardown is still owned by this process.
+func (component *WorkspaceOwner) OwnedWorkspaceSnapshot() []*WorkspaceHandle {
+	if component == nil || component.owner == nil {
+		return nil
+	}
+	component.owner.runtimeMu.Lock()
+	defer component.owner.runtimeMu.Unlock()
+	result := make([]*WorkspaceHandle, 0, len(component.owner.handlesByOwner))
+	for _, handle := range component.owner.handlesByOwner {
+		if handle != nil && handle.active.Load() {
+			result = append(result, handle)
+		}
+	}
+	return result
+}
+
 func (component *WorkspaceOwner) WorkspaceCount() int {
 	if component == nil || component.owner == nil || component.owner.workspace == nil {
 		return 0

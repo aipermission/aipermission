@@ -28,7 +28,11 @@ func (component *Component) downloadDatabase(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer releaseBackup()
-	releaseLifecycle := component.dependencies.Lifecycle.AcquireRead()
+	releaseLifecycle, err := component.dependencies.Lifecycle.AcquireReadContext(r.Context())
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "database backup was canceled")
+		return
+	}
 	if component.dependencies.HasSession == nil || !component.dependencies.HasSession(r) {
 		releaseLifecycle()
 		httptransport.WriteError(w, http.StatusUnauthorized, "ui session required")

@@ -139,18 +139,18 @@ func (component *Component) DatabaseName() (string, error) {
 	return status.DatabaseName, err
 }
 
-func (component *Component) AcquireRead() func() {
+func (component *Component) AcquireReadContext(ctx context.Context) (func(), error) {
 	if component == nil || component.service == nil {
-		return func() {}
+		return func() {}, nil
 	}
-	return component.service.AcquireRead()
+	return component.service.AcquireReadContext(ctx)
 }
 
-func (component *Component) AcquireMutation() func() {
+func (component *Component) AcquireMutationContext(ctx context.Context) (func(), error) {
 	if component == nil || component.service == nil {
-		return func() {}
+		return func() {}, nil
 	}
-	return component.service.AcquireMutation()
+	return component.service.AcquireMutationContext(ctx)
 }
 
 func (component *Component) Import(ctx context.Context, input workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error) {
@@ -160,11 +160,11 @@ func (component *Component) Import(ctx context.Context, input workspacelifecycle
 	return component.service.Import(ctx, input)
 }
 
-func (component *Component) CloseAll() error {
+func (component *Component) CloseAll(ctx context.Context) error {
 	if component == nil || component.service == nil {
 		return nil
 	}
-	return component.service.CloseAll()
+	return component.service.CloseAll(ctx)
 }
 
 func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {

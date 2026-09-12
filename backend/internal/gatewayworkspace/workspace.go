@@ -160,10 +160,10 @@ type Dependencies struct {
 }
 
 type LifecyclePort interface {
-	AcquireRead() func()
-	AcquireMutation() func()
+	AcquireReadContext(context.Context) (func(), error)
+	AcquireMutationContext(context.Context) (func(), error)
 	Import(context.Context, workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error)
-	CloseAll() error
+	CloseAll(context.Context) error
 }
 
 // Component is the single owner of workspace registry and lifecycle state.
@@ -290,17 +290,17 @@ func (component *Component) DatabaseName() (string, error) {
 	}
 	return component.lifecycle.DatabaseName()
 }
-func (component *Component) AcquireRead() func() {
+func (component *Component) AcquireReadContext(ctx context.Context) (func(), error) {
 	if component == nil || component.lifecycle == nil {
-		return func() {}
+		return func() {}, nil
 	}
-	return component.lifecycle.AcquireRead()
+	return component.lifecycle.AcquireReadContext(ctx)
 }
-func (component *Component) AcquireMutation() func() {
+func (component *Component) AcquireMutationContext(ctx context.Context) (func(), error) {
 	if component == nil || component.lifecycle == nil {
-		return func() {}
+		return func() {}, nil
 	}
-	return component.lifecycle.AcquireMutation()
+	return component.lifecycle.AcquireMutationContext(ctx)
 }
 func (component *Component) Import(ctx context.Context, input workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error) {
 	if component == nil || component.lifecycle == nil {
@@ -308,11 +308,11 @@ func (component *Component) Import(ctx context.Context, input workspacelifecycle
 	}
 	return component.lifecycle.Import(ctx, input)
 }
-func (component *Component) CloseAll() error {
+func (component *Component) CloseAll(ctx context.Context) error {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
-	return component.lifecycle.CloseAll()
+	return component.lifecycle.CloseAll(ctx)
 }
 func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
 	if component == nil || component.lifecycle == nil {

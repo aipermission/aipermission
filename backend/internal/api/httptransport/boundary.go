@@ -15,8 +15,8 @@ const (
 )
 
 type Lifecycle interface {
-	AcquireMutation() func()
-	AcquireRead() func()
+	AcquireMutationContext(context.Context) (func(), error)
+	AcquireReadContext(context.Context) (func(), error)
 }
 
 type HTTPBoundary struct {
@@ -92,10 +92,15 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	streaming, managesLifecycle := IsStreamingRoute(r.URL.Path), ManagesLifecycleLock(r.URL.Path)
 	if !streaming && !managesLifecycle {
 		var release func()
+		var err error
 		if IsLifecycleMutation(r.URL.Path) {
-			release = boundary.Lifecycle.AcquireMutation()
+			release, err = boundary.Lifecycle.AcquireMutationContext(r.Context())
 		} else {
-			release = boundary.Lifecycle.AcquireRead()
+			release, err = boundary.Lifecycle.AcquireReadContext(r.Context())
+		}
+		if err != nil {
+			boundary.writeError(w, http.StatusRequestTimeout, "request expired while waiting for workspace access")
+			return
 		}
 		defer release()
 	}

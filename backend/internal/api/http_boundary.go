@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 const defaultWorkspaceShutdownTimeout = 20 * time.Second
@@ -38,15 +39,30 @@ func (s *Server) CloseContext(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release := s.workspaceOwner.WorkspaceLifecycle().AcquireMutation()
+	release, err := s.workspaceOwner.WorkspaceLifecycle().AcquireMutationContext(ctx)
+	if err != nil {
+		return err
+	}
 	defer release()
 	s.closeMaintenanceConsoleForLifecycle("server_shutdown")
-	runtimes := s.workspaceOwner.WorkspaceSnapshot()
-	closeErr := s.workspaceOwner.WorkspaceLifecycle().CloseAll()
-	var waitErrors []error
+	runtimes := s.workspaceOwner.OwnedWorkspaceSnapshot()
+	closeErr := s.workspaceOwner.WorkspaceLifecycle().CloseAll(ctx)
+	waits := make(chan error, len(runtimes))
 	for _, runtime := range runtimes {
-		if err := s.workspaceOwner.WaitWorkspaceClosed(ctx, runtime); err != nil {
-			waitErrors = append(waitErrors, err)
+		go func(runtime *gatewayinfra.WorkspaceHandle) {
+			waits <- s.workspaceOwner.WaitWorkspaceClosed(ctx, runtime)
+		}(runtime)
+	}
+	var waitErrors []error
+	for range runtimes {
+		select {
+		case waitErr := <-waits:
+			if waitErr != nil {
+				waitErrors = append(waitErrors, waitErr)
+			}
+		case <-ctx.Done():
+			waitErrors = append(waitErrors, ctx.Err())
+			return errors.Join(closeErr, errors.Join(waitErrors...))
 		}
 	}
 	waitErr := errors.Join(waitErrors...)

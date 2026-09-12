@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,31 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 )
+
+type canceledLifecycle struct{}
+
+func (canceledLifecycle) AcquireMutationContext(ctx context.Context) (func(), error) {
+	return nil, ctx.Err()
+}
+
+func (canceledLifecycle) AcquireReadContext(ctx context.Context) (func(), error) {
+	return nil, ctx.Err()
+}
+
+func TestBoundaryRejectsRequestWhoseWorkspaceLeaseExpired(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil).WithContext(ctx)
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("expired request reached routes") }),
+		Lifecycle: canceledLifecycle{}, IsLocalRemoteAddr: func(string) bool { return true },
+		IsLocalhostHeader: func(string) bool { return true }, IsUnlocked: func() bool { return false },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusRequestTimeout {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestTimeout)
+	}
+}
 
 type deadlineRecorder struct {
 	*httptest.ResponseRecorder

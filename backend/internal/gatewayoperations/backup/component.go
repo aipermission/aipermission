@@ -38,7 +38,7 @@ func (limiter *OperationLimiter) Acquire(ctx context.Context) (func(), error) {
 }
 
 type Lifecycle interface {
-	AcquireRead() func()
+	AcquireReadContext(context.Context) (func(), error)
 	Import(context.Context, workspacelifecycle.ImportInput) (workspacelifecycle.Transition, error)
 }
 

@@ -50,7 +50,7 @@ type Dependencies[T Runtime] struct {
 }
 
 type Service[T Runtime] struct {
-	gate                sync.RWMutex
+	gate                *requestGate
 	mu                  sync.RWMutex
 	dataPath            string
 	registry            *Registry[T]
@@ -66,14 +66,12 @@ type Service[T Runtime] struct {
 	gatewaySecret       func() string
 }
 
-func (s *Service[T]) AcquireRead() func() {
-	s.gate.RLock()
-	return s.gate.RUnlock
+func (s *Service[T]) AcquireReadContext(ctx context.Context) (func(), error) {
+	return s.gate.acquireRead(ctx)
 }
 
-func (s *Service[T]) AcquireMutation() func() {
-	s.gate.Lock()
-	return s.gate.Unlock
+func (s *Service[T]) AcquireMutationContext(ctx context.Context) (func(), error) {
+	return s.gate.acquireMutation(ctx)
 }
 
 type Status struct {
@@ -176,6 +174,7 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 		publish = db.PublishFileNoReplace
 	}
 	return &Service[T]{
+		gate:     newRequestGate(),
 		dataPath: dependencies.DataPath, registry: dependencies.Registry,
 		open: dependencies.Open, close: dependencies.Close,
 		onActivated: dependencies.OnActivated, onOpened: dependencies.OnOpened,
@@ -368,13 +367,34 @@ func (s *Service[T]) WillLockAll(scope string) bool {
 	return strings.TrimSpace(scope) == "all" || s.registry.Len() <= 1
 }
 
-func (s *Service[T]) CloseAll() error {
+func (s *Service[T]) CloseAll(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	var closeErrors []error
-	for _, runtime := range s.registry.Clear(databasecatalog.DefaultDatabaseID(s.dataPath)) {
-		if err := s.close(runtime); err != nil && !closeWasDeferred(err) {
-			closeErrors = append(closeErrors, err)
+	runtimes := s.registry.Clear(databasecatalog.DefaultDatabaseID(s.dataPath))
+	s.mu.Unlock()
+
+	results := make(chan error, len(runtimes))
+	for _, runtime := range runtimes {
+		go func(runtime T) {
+			err := s.close(runtime)
+			if closeWasDeferred(err) {
+				err = nil
+			}
+			results <- err
+		}(runtime)
+	}
+	closeErrors := make([]error, 0, len(runtimes)+1)
+	for range runtimes {
+		select {
+		case err := <-results:
+			if err != nil {
+				closeErrors = append(closeErrors, err)
+			}
+		case <-ctx.Done():
+			closeErrors = append(closeErrors, ctx.Err())
+			return errors.Join(closeErrors...)
 		}
 	}
 	return errors.Join(closeErrors...)
