@@ -53,7 +53,7 @@ func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("deferred component wait did not start")
 	}
-	if runtime.ActionIdentityKey != nil {
+	if runtime.HasActionIdentity() {
 		t.Fatal("action identity key remained available while transfers drained")
 	}
 	select {
@@ -67,7 +67,7 @@ func TestCloseDefersStorageCleanupUntilRegisteredComponentsDrain(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("storage cleanup did not run after the component drained")
 	}
-	if runtime.ActionIdentityKey != nil {
+	if runtime.HasActionIdentity() {
 		t.Fatal("action identity key was retained after storage cleanup")
 	}
 }
@@ -110,15 +110,19 @@ func TestDiscardAbortsRegisteredComponents(t *testing.T) {
 }
 
 type transferWorkflowSpy struct {
-	aborted bool
-	begin   func()
-	wait    func(context.Context) bool
-	recover func(context.Context) error
+	aborted     bool
+	begin       func()
+	beginResult func() (bool, error)
+	wait        func(context.Context) bool
+	recover     func(context.Context) error
 }
 
 func (workflow *transferWorkflowSpy) BeginShutdown() (bool, error) {
 	if workflow.begin != nil {
 		workflow.begin()
+	}
+	if workflow.beginResult != nil {
+		return workflow.beginResult()
 	}
 	return true, nil
 }
@@ -182,7 +186,7 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 		return workflow, nil
 	}, func() (CommandWorkflow, error) {
 		return commands, nil
-	}, nil); err != nil {
+	}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if resolveCalls != 1 || !workflow.stopped {
@@ -194,7 +198,7 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 	if commands.message != runtimeoutcome.CommandCanceled {
 		t.Fatalf("command outcome message=%q", commands.message)
 	}
-	if runtime.ActionIdentityKey != nil {
+	if runtime.HasActionIdentity() {
 		t.Fatal("action identity key was retained")
 	}
 }
@@ -204,7 +208,7 @@ func TestDiscardDoesNotRunActionRecovery(t *testing.T) {
 	if err := Discard(runtime, nil); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.ActionIdentityKey != nil {
+	if runtime.HasActionIdentity() {
 		t.Fatal("discard retained action identity key")
 	}
 }
@@ -235,7 +239,7 @@ func TestCloseDefersStorageWhileActionAndCommandWorkersDrain(t *testing.T) {
 	if err == nil {
 		t.Fatal("worker drain timeout did not defer storage close")
 	}
-	if runtime.ActionIdentityKey == nil {
+	if !runtime.HasActionIdentity() {
 		t.Fatal("action identity key cleared while an action finalizer could still use it")
 	}
 	select {
@@ -255,7 +259,7 @@ func TestCloseDefersStorageWhileActionAndCommandWorkersDrain(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("database did not close after every workspace worker drained")
 	}
-	if runtime.ActionIdentityKey != nil {
+	if runtime.HasActionIdentity() {
 		t.Fatal("action identity key remained after finalizers drained")
 	}
 }
@@ -287,7 +291,7 @@ func TestCloseRetriesActionResolverBeforeClosingStorage(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolver failure did not defer storage close")
 	}
-	if runtime.ActionIdentityKey == nil {
+	if !runtime.HasActionIdentity() {
 		t.Fatal("action identity was cleared before the action owner resolved")
 	}
 	select {
@@ -385,6 +389,58 @@ func TestCloseRetriesTransferRecoveryBeforeClosingStorage(t *testing.T) {
 	}
 	if recoverCalls.Load() < 2 {
 		t.Fatalf("transfer recovery calls = %d", recoverCalls.Load())
+	}
+}
+
+func TestCloseRetriesTransferBeginBeforeClosingStorage(t *testing.T) {
+	storageClosed := make(chan struct{})
+	database := sql.OpenDB(closeSignalConnector{closed: storageClosed})
+	if err := database.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &workspaceruntime.Runtime{
+		ID:      "workspace-transfer-begin",
+		Storage: workspacestorage.New(database, nil, nil, "workspace-transfer-begin", nil),
+	}
+	workerRelease := make(chan struct{})
+	var beginCalls atomic.Int32
+	transfer := &transferWorkflowSpy{
+		beginResult: func() (bool, error) {
+			if beginCalls.Add(1) == 1 {
+				return false, errors.New("transient transfer shutdown failure")
+			}
+			return true, nil
+		},
+		wait: func(context.Context) bool {
+			<-workerRelease
+			return true
+		},
+	}
+	if err := closeWithTimeout(runtime, nil, nil, func() TransferWorkflow { return transfer }, 10*time.Millisecond); err == nil {
+		t.Fatal("transfer begin failure did not defer storage close")
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed after failed transfer shutdown initiation")
+	default:
+	}
+	deadline := time.Now().Add(time.Second)
+	for beginCalls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if beginCalls.Load() < 2 {
+		t.Fatal("deferred teardown did not retry transfer shutdown initiation")
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed while transfer workers remained active")
+	default:
+	}
+	close(workerRelease)
+	select {
+	case <-storageClosed:
+	case <-time.After(time.Second):
+		t.Fatal("storage did not close after transfer shutdown retry drained workers")
 	}
 }
 

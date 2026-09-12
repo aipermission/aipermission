@@ -209,7 +209,7 @@ func (component *Component) DiscardWorkspace(handle *WorkspaceHandle, resolveTra
 	return err
 }
 
-func (component *Component) CloseWorkspace(handle *WorkspaceHandle, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
+func (component *Component) CloseWorkspace(handle *WorkspaceHandle, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow, onComplete func()) error {
 	owner, ok := component.resolve(handle)
 	if !ok || component.workspace == nil {
 		return InitializationError()
@@ -226,8 +226,12 @@ func (component *Component) CloseWorkspace(handle *WorkspaceHandle, resolveActio
 	if resolveTransfers != nil {
 		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
 	}
-	err := component.workspace.Close(owner, actions, commands, transfers)
-	component.forgetHandle(handle)
+	err := component.workspace.Close(owner, actions, commands, transfers, func() {
+		component.forgetHandle(handle)
+		if onComplete != nil {
+			onComplete()
+		}
+	})
 	return err
 }
 

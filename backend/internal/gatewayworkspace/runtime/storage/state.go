@@ -2,16 +2,18 @@ package storage
 
 import (
 	"database/sql"
+	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 type State struct {
-	database  *sql.DB
-	vault     *vault.Vault
-	tokens    *tokens.Store
-	ownership Ownership
+	database    *sql.DB
+	vault       *vault.Vault
+	tokens      *tokens.Store
+	ownershipMu sync.RWMutex
+	ownership   Ownership
 }
 
 func New(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, workspaceUUID string, ownership Ownership) State {
@@ -46,12 +48,16 @@ func (s *State) DatabaseOwnership() Ownership {
 	if s == nil {
 		return nil
 	}
+	s.ownershipMu.RLock()
+	defer s.ownershipMu.RUnlock()
 	return s.ownership
 }
 
 func (s *State) ClearDatabaseOwnership() {
 	if s != nil {
+		s.ownershipMu.Lock()
 		s.ownership = nil
+		s.ownershipMu.Unlock()
 	}
 }
 

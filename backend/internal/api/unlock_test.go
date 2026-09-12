@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,47 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
+
+type deferredCloseActionWorkflow struct{}
+
+func (*deferredCloseActionWorkflow) BeginShutdown()                     {}
+func (*deferredCloseActionWorkflow) WaitShutdown(context.Context) error { return nil }
+func (*deferredCloseActionWorkflow) MarkRunningOutcomeUnknown(context.Context, string) error {
+	return nil
+}
+
+func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T) {
+	server := uiSessionTestServer(t, "3212", "closing", "retry-closing")
+	runtime := server.activeRuntime()
+	if runtime == nil {
+		t.Fatal("test workspace did not become active")
+	}
+	secondResolve := make(chan struct{})
+	completed := make(chan struct{})
+	var calls atomic.Int32
+	err := server.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
+		if calls.Add(1) == 1 {
+			return nil, errors.New("transient owner lookup failure")
+		}
+		<-secondResolve
+		return &deferredCloseActionWorkflow{}, nil
+	}, nil, nil, func() { close(completed) })
+	if err == nil {
+		t.Fatal("transient resolver failure did not defer workspace close")
+	}
+	if secret := server.infrastructure.ConfiguredGatewaySecret(runtime); secret == "" {
+		t.Fatal("workspace capability was revoked before deferred owners resolved")
+	}
+	close(secondResolve)
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("deferred workspace close did not complete")
+	}
+	if secret := server.infrastructure.ConfiguredGatewaySecret(runtime); secret != "" {
+		t.Fatal("workspace capability remained valid after deferred close")
+	}
+}
 
 func newLockedAPITestServer(t *testing.T) *Server {
 	t.Helper()

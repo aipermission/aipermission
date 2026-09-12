@@ -356,7 +356,7 @@ func (component *Component) Discard(runtime *Runtime, resolveTransfers func() Tr
 	err := runtimeshutdown.Discard(runtime.owner, resolver)
 	return err
 }
-func (component *Component) Close(runtime *Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
+func (component *Component) Close(runtime *Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow, onComplete func()) error {
 	if runtime == nil {
 		return nil
 	}
@@ -372,7 +372,7 @@ func (component *Component) Close(runtime *Runtime, resolveActions func() (Actio
 	if resolveTransfers != nil {
 		transfers = func() runtimeshutdown.TransferWorkflow { return resolveTransfers() }
 	}
-	err := runtimeshutdown.Close(runtime.owner, actions, commands, transfers)
+	err := runtimeshutdown.Close(runtime.owner, actions, commands, transfers, onComplete)
 	return err
 }
 func (component *Component) Move(currentPath, targetPath string) error {

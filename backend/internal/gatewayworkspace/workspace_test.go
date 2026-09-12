@@ -30,10 +30,10 @@ func TestCloseClearsCompositionAndOwnerActionIdentity(t *testing.T) {
 	owner := &workspaceruntime.Runtime{ID: "database-one", ActionIdentityKey: []byte("action-identity")}
 	runtime := &Runtime{owner: owner}
 
-	if err := (&Component{}).Close(runtime, nil, nil, nil); err != nil {
+	if err := (&Component{}).Close(runtime, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if owner.ActionIdentityKey != nil {
+	if owner.HasActionIdentity() {
 		t.Fatal("workspace close retained action identity material")
 	}
 }

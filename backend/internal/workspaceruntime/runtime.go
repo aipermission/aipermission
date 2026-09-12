@@ -16,7 +16,28 @@ func TagActionIdentity(runtime *Runtime, canonical []byte) (string, error) {
 	if runtime == nil {
 		return "", errors.New("workspace action identity is unavailable")
 	}
+	runtime.actionIdentityMu.RLock()
+	defer runtime.actionIdentityMu.RUnlock()
 	return actions.IdentityTag(runtime.ActionIdentityKey, canonical)
+}
+
+func (runtime *Runtime) ClearActionIdentity() {
+	if runtime == nil {
+		return
+	}
+	runtime.actionIdentityMu.Lock()
+	actions.ClearIdentityKey(runtime.ActionIdentityKey)
+	runtime.ActionIdentityKey = nil
+	runtime.actionIdentityMu.Unlock()
+}
+
+func (runtime *Runtime) HasActionIdentity() bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.actionIdentityMu.RLock()
+	defer runtime.actionIdentityMu.RUnlock()
+	return runtime.ActionIdentityKey != nil
 }
 
 type Runtime struct {
@@ -31,16 +52,33 @@ type Runtime struct {
 	Connectors        connectorstate.State
 	Security          security.State
 	Observation       observation.State
+	actionIdentityMu  sync.RWMutex
+	teardownMu        sync.Mutex
 	teardownOnce      sync.Once
+	teardownDone      chan struct{}
 }
 
 // StartTeardown admits exactly one persistent teardown coordinator for this
 // runtime. The coordinator owns the runtime until encrypted storage closes.
-func (runtime *Runtime) StartTeardown(run func()) {
+func (runtime *Runtime) StartTeardown(run func()) <-chan struct{} {
 	if runtime == nil || run == nil {
-		return
+		closed := make(chan struct{})
+		close(closed)
+		return closed
 	}
-	runtime.teardownOnce.Do(func() { go run() })
+	runtime.teardownMu.Lock()
+	if runtime.teardownDone == nil {
+		runtime.teardownDone = make(chan struct{})
+	}
+	done := runtime.teardownDone
+	runtime.teardownMu.Unlock()
+	runtime.teardownOnce.Do(func() {
+		go func() {
+			defer close(done)
+			run()
+		}()
+	})
+	return done
 }
 
 func New(state foundation.State) *Runtime {

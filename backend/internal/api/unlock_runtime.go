@@ -110,7 +110,6 @@ func (s *Server) activeRuntime() *gatewayinfra.WorkspaceHandle {
 }
 
 func (s *Server) closeRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
-	defer s.releaseRuntimeApplications(runtime)
 	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionShutdownWorkflow(runtime)
 	}, func() (gatewayinfra.CommandWorkflow, error) {
@@ -121,7 +120,7 @@ func (s *Server) closeRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
 		return workflow, err
 	}, func() gatewayinfra.TransferWorkflow {
 		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
-	})
+	}, func() { s.releaseRuntimeApplications(runtime) })
 }
 
 func (s *Server) releaseRuntimeApplications(runtime *gatewayinfra.WorkspaceHandle) {

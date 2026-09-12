@@ -8,7 +8,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
 )
@@ -47,12 +46,19 @@ type TransferWorkflowResolver func() TransferWorkflow
 // Close stops runtime workers and sessions before releasing encrypted storage.
 // If transfer workers outlive the bounded wait, storage closes asynchronously
 // after they exit so no worker can touch a closed database.
-func Close(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver, resolveTransfers TransferWorkflowResolver) error {
-	return closeWithTimeout(runtime, resolveActions, resolveCommands, resolveTransfers, shutdownWait)
+func Close(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver, resolveTransfers TransferWorkflowResolver, onComplete func()) error {
+	return closeWithTimeoutAndComplete(runtime, resolveActions, resolveCommands, resolveTransfers, shutdownWait, onComplete)
 }
 
 func closeWithTimeout(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver, resolveTransfers TransferWorkflowResolver, wait time.Duration) error {
+	return closeWithTimeoutAndComplete(runtime, resolveActions, resolveCommands, resolveTransfers, wait, nil)
+}
+
+func closeWithTimeoutAndComplete(runtime *workspaceruntime.Runtime, resolveActions ActionWorkflowResolver, resolveCommands CommandWorkflowResolver, resolveTransfers TransferWorkflowResolver, wait time.Duration, onComplete func()) error {
 	if runtime == nil {
+		if onComplete != nil {
+			onComplete()
+		}
 		return nil
 	}
 	if retention := runtime.Observation.RetentionService(); retention != nil {
@@ -68,12 +74,21 @@ func closeWithTimeout(runtime *workspaceruntime.Runtime, resolveActions ActionWo
 	if ready {
 		if closed, closeErr := closeStorage(runtime); closed {
 			drainErr = errors.Join(drainErr, closeErr)
+			if onComplete != nil {
+				onComplete()
+			}
 			return drainErr
 		} else {
 			drainErr = errors.Join(drainErr, closeErr)
 		}
 	}
-	runtime.StartTeardown(coordinator.run)
+	done := runtime.StartTeardown(coordinator.run)
+	if onComplete != nil {
+		go func() {
+			<-done
+			onComplete()
+		}()
+	}
 	return errors.Join(drainErr, fmt.Errorf("workspace shutdown exceeded its bounded wait; runtime storage close deferred until every owner drains"))
 }
 
@@ -90,6 +105,7 @@ type teardownCoordinator struct {
 	commandsResolved    bool
 	commandsBegun       bool
 	transferResolved    bool
+	transferBegun       bool
 	actionsDrained      bool
 	actionsRecovered    bool
 	commandsDrained     bool
@@ -209,25 +225,27 @@ func (coordinator *teardownCoordinator) begin() error {
 		coordinator.sessionsDrained = true
 	}
 	if !coordinator.transferResolved {
-		coordinator.transferResolved = true
 		if coordinator.resolveTransfers != nil {
 			coordinator.transfer = coordinator.resolveTransfers()
 		}
+		coordinator.transferResolved = true
 		if coordinator.transfer == nil {
 			coordinator.transferDrained, coordinator.transferRecovered = true, true
+		}
+	}
+	if coordinator.transfer != nil && !coordinator.transferBegun {
+		initialized, err := coordinator.transfer.BeginShutdown()
+		if err != nil {
+			beginErrors = append(beginErrors, fmt.Errorf("begin transfer shutdown: %w", err))
 		} else {
-			initialized, err := coordinator.transfer.BeginShutdown()
-			if err != nil {
-				beginErrors = append(beginErrors, fmt.Errorf("begin transfer shutdown: %w", err))
+			coordinator.transferBegun = true
+			coordinator.transferInitialized = initialized
+			if !initialized {
+				coordinator.transferDrained, coordinator.transferRecovered = true, true
 			} else {
-				coordinator.transferInitialized = initialized
-				if !initialized {
-					coordinator.transferDrained, coordinator.transferRecovered = true, true
-				} else {
-					wait := make(chan bool, 1)
-					coordinator.transferWait = wait
-					go func() { wait <- coordinator.transfer.Wait(context.Background()) }()
-				}
+				wait := make(chan bool, 1)
+				coordinator.transferWait = wait
+				go func() { wait <- coordinator.transfer.Wait(context.Background()) }()
 			}
 		}
 	}
@@ -286,11 +304,7 @@ func (coordinator *teardownCoordinator) drainCommands(ctx context.Context) error
 }
 
 func (coordinator *teardownCoordinator) drainTransfers(ctx context.Context) error {
-	if !coordinator.transferResolved || coordinator.transfer == nil || coordinator.transferRecovered {
-		return nil
-	}
-	if !coordinator.transferInitialized {
-		coordinator.transferDrained, coordinator.transferRecovered = true, true
+	if !coordinator.transferResolved || coordinator.transfer == nil || coordinator.transferRecovered || !coordinator.transferBegun {
 		return nil
 	}
 	if !coordinator.transferDrained {
@@ -326,11 +340,7 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 }
 
 func clearActionIdentity(runtime *workspaceruntime.Runtime) {
-	if runtime == nil {
-		return
-	}
-	actions.ClearIdentityKey(runtime.ActionIdentityKey)
-	runtime.ActionIdentityKey = nil
+	runtime.ClearActionIdentity()
 }
 
 func closeStorage(runtime *workspaceruntime.Runtime) (bool, error) {
