@@ -23,6 +23,21 @@ if [ "$amount" -lt 1 ]; then
 fi
 case "$budget" in
   *ms)
+    if [ "$amount" -lt 100 ]; then
+      printf 'AIPERMISSION_FUZZ_TIME must be at least 100ms: %s\n' "$budget" >&2
+      exit 2
+    fi
+    ;;
+  *s) ;;
+  *x)
+    if [ "$amount" -lt 100 ]; then
+      printf 'AIPERMISSION_FUZZ_TIME must be at least 100x: %s\n' "$budget" >&2
+      exit 2
+    fi
+    ;;
+esac
+case "$budget" in
+  *ms)
     if [ "$amount" -gt 30000 ]; then
       printf 'AIPERMISSION_FUZZ_TIME must not exceed 30000ms: %s\n' "$budget" >&2
       exit 2
@@ -51,14 +66,21 @@ run_fuzz() {
 		printf 'fuzz target %s was not found in %s\n' "$target" "$package" >&2
 		exit 1
 	fi
-  # A fixed execution budget and one worker avoid wall-clock shutdown races on
-  # busy CI runners while still exercising generated input deterministically.
-  (cd backend && go test "$package" -run '^$' -fuzz "^${target}$" -fuzztime "$budget" -parallel 1)
+  : >"$events"
+  if ! (cd backend && go test -json "$package" -run '^$' -fuzz "^${target}$" -fuzztime "$budget" -parallel 1 >"$events"); then
+    cat "$events"
+    return 1
+  fi
+  cat "$events"
+  if ! node "$root/scripts/verify-fuzz-events.js" "$events" "$target" "$budget"; then
+    return 1
+  fi
 }
 
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 inventory=$(mktemp "${TMPDIR:-/tmp}/aipermission-fuzz-targets.XXXXXX")
-trap 'rm -f "$inventory"' EXIT HUP INT TERM
+events=$(mktemp "${TMPDIR:-/tmp}/aipermission-fuzz-events.XXXXXX")
+trap 'rm -f "$inventory" "$events"' EXIT HUP INT TERM
 if ! node "$root/scripts/verification-policy.js" --list fuzz_targets >"$inventory"; then
   printf 'failed to produce the bounded fuzz target inventory\n' >&2
   exit 1
