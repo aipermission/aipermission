@@ -1119,31 +1119,45 @@ func TestFanOutBudgetsAreEvaluatedPerBuildContext(t *testing.T) {
 }
 
 func TestOwnerFamilyBudgetCannotBeEvadedBySplittingPackages(t *testing.T) {
-	family := modulePath + "/internal/gatewayfixture"
-	imports := map[string][]string{}
-	for packageIndex := 0; packageIndex < 4; packageIndex++ {
-		importer := family + "/part" + strconv.Itoa(packageIndex)
-		for ownerIndex := 0; ownerIndex < 7; ownerIndex++ {
-			imports[importer] = append(imports[importer], modulePath+"/internal/fixture"+strconv.Itoa(packageIndex*7+ownerIndex))
+	for _, family := range []string{
+		modulePath + "/internal/gatewayfixture",
+		modulePath + "/internal/plainfixture",
+		modulePath + "/internal/connectors/fixture",
+		modulePath + "/cmd/fixture",
+	} {
+		imports := map[string][]string{}
+		for packageIndex := 0; packageIndex < 4; packageIndex++ {
+			importer := family + "/part" + strconv.Itoa(packageIndex)
+			for ownerIndex := 0; ownerIndex < 7; ownerIndex++ {
+				imports[importer] = append(imports[importer], modulePath+"/internal/fixture"+strconv.Itoa(packageIndex*7+ownerIndex))
+			}
+			packageCount, ownerCount := internalFanOut(importer, imports[importer])
+			if packageCount > architecturePolicy.PackageMax || ownerCount > architecturePolicy.OwnerMax {
+				t.Fatalf("fixture package must satisfy direct budgets: packages=%d owners=%d", packageCount, ownerCount)
+			}
 		}
-		packageCount, ownerCount := internalFanOut(importer, imports[importer])
-		if packageCount > architecturePolicy.PackageMax || ownerCount > architecturePolicy.OwnerMax {
-			t.Fatalf("fixture package must satisfy direct budgets: packages=%d owners=%d", packageCount, ownerCount)
+		owners := ownerFamilyFanOut(imports)[family]
+		if len(owners) <= architecturePolicy.FamilyOwnerMax {
+			t.Fatalf("%s split fixture must exceed aggregate family budget: owners=%d budget=%d", family, len(owners), architecturePolicy.FamilyOwnerMax)
 		}
-	}
-	owners := ownerFamilyFanOut(imports)[family]
-	if len(owners) <= architecturePolicy.FamilyOwnerMax {
-		t.Fatalf("split fixture must exceed aggregate family budget: owners=%d budget=%d", len(owners), architecturePolicy.FamilyOwnerMax)
 	}
 }
 
 func internalDependencyOwner(pkg string) string {
-	relative := strings.TrimPrefix(pkg, modulePath+"/internal/")
-	first, _, _ := strings.Cut(relative, "/")
-	if strings.HasPrefix(first, "gateway") {
-		return modulePath + "/internal/" + first
+	if relative, ok := strings.CutPrefix(pkg, modulePath+"/cmd/"); ok {
+		first, _, _ := strings.Cut(relative, "/")
+		return modulePath + "/cmd/" + first
 	}
-	return pkg
+	relative, ok := strings.CutPrefix(pkg, modulePath+"/internal/")
+	if !ok {
+		return pkg
+	}
+	first, remainder, nested := strings.Cut(relative, "/")
+	if first == "connectors" && nested {
+		connectorKind, _, _ := strings.Cut(remainder, "/")
+		return modulePath + "/internal/connectors/" + connectorKind
+	}
+	return modulePath + "/internal/" + first
 }
 
 func TestTestFilesRespectInternalImportBudget(t *testing.T) {
