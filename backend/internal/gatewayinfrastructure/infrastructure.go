@@ -4,7 +4,6 @@ package gatewayinfrastructure
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -130,7 +129,6 @@ type WorkspaceDependencies struct {
 	OnActivated, OnOpened func(*WorkspaceHandle)
 	Move                  func(string, string) error
 	Delete                func(string) error
-	ValidateNewPassword   func(context.Context, *sql.DB, string, string) error
 	Publish               func(string, string) error
 	GatewaySecret         func() string
 }

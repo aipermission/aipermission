@@ -2,7 +2,6 @@ package gatewayinfrastructure
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"sync"
 
@@ -107,8 +106,7 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 		DataPath: dependencies.DataPath,
 		Open:     open, Close: closeRuntime, OnActivated: onActivated, OnOpened: onOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete,
-		ValidateNewPassword: dependencies.ValidateNewPassword,
-		Publish:             dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
+		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
 }
 
@@ -313,27 +311,6 @@ func (component *WorkspaceOwner) WorkspaceHTTP(dependencies WorkspaceHTTPDepende
 		}
 	}
 	return component.owner.workspace.HTTP(converted)
-}
-
-func (component *WorkspaceOwner) HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
-	if component == nil || component.owner == nil || component.owner.workspace == nil {
-		return false, InitializationError()
-	}
-	return component.owner.workspace.HasActiveRemoteBackup(ctx, database)
-}
-
-func (component *WorkspaceOwner) ValidateRemoteBackupPassword(password, databaseName string) error {
-	if component == nil || component.owner == nil || component.owner.workspace == nil {
-		return InitializationError()
-	}
-	return component.owner.workspace.ValidateRemoteBackupPassword(password, databaseName)
-}
-
-func (component *WorkspaceOwner) PasswordPolicyError(err error) error {
-	if component == nil || component.owner == nil || component.owner.workspace == nil {
-		return InitializationError()
-	}
-	return component.owner.workspace.PasswordPolicyError(err)
 }
 
 func (component *WorkspaceOwner) AcquireBackupOperation(ctx context.Context) (func(), error) {

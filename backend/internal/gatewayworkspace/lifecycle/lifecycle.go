@@ -50,7 +50,6 @@ type Dependencies struct {
 	OnActivated, OnOpened func(Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
-	ValidateNewPassword   func(context.Context, *sql.DB, string, string) error
 	Publish               func(string, string) error
 	GatewaySecret         func() string
 }
@@ -178,7 +177,7 @@ func newService(dependencies Dependencies, registry *workspacelifecycle.Registry
 	return workspacelifecycle.NewService(workspacelifecycle.Dependencies[Runtime]{
 		DataPath: dependencies.DataPath, Registry: registry, Open: dependencies.Open,
 		Close: dependencies.Close, OnActivated: dependencies.OnActivated, OnOpened: dependencies.OnOpened,
-		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: dependencies.ValidateNewPassword,
+		Move: dependencies.Move, Delete: dependencies.Delete, ValidateNewPassword: validateNewPassword,
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
 }
@@ -197,10 +196,13 @@ func newHTTP(service *workspacelifecycle.Service[Runtime], dependencies HTTPDepe
 	}
 	return workspacehttp.New(converted)
 }
-func PasswordPolicyError(err error) error { return workspacelifecycle.PasswordPolicyError(err) }
-func ValidateRemoteBackupPassword(password, databaseName string) error {
-	return backups.ValidateRemoteBackupPassword(password, databaseName)
-}
-func HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
-	return backups.NewStore(database).HasActiveProvider(ctx)
+func validateNewPassword(ctx context.Context, database *sql.DB, databaseName, password string) error {
+	active, err := backups.NewStore(database).HasActiveProvider(ctx)
+	if err != nil || !active {
+		return err
+	}
+	if err := backups.ValidateRemoteBackupPassword(password, databaseName); err != nil {
+		return workspacelifecycle.PasswordPolicyError(err)
+	}
+	return nil
 }

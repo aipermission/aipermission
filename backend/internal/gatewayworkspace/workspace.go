@@ -154,7 +154,6 @@ type Dependencies struct {
 	OnActivated, OnOpened func(*Runtime)
 	Move                  func(string, string) error
 	Delete                func(string) error
-	ValidateNewPassword   func(context.Context, *sql.DB, string, string) error
 	Publish               func(string, string) error
 	GatewaySecret         func() string
 }
@@ -229,8 +228,7 @@ func (component *Component) Configure(dependencies Dependencies) error {
 		DataPath: dependencies.DataPath, Open: open, Close: closeRuntime,
 		OnActivated: onActivated, OnOpened: onOpened,
 		Move: dependencies.Move, Delete: dependencies.Delete,
-		ValidateNewPassword: dependencies.ValidateNewPassword,
-		Publish:             dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
+		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
 }
 
@@ -390,18 +388,6 @@ func (component *Component) Publish(sourcePath, targetPath string) error {
 	return catalog.Publish(sourcePath, targetPath)
 }
 func (component *Component) LooksPlaintext(path string) bool { return catalog.LooksPlaintext(path) }
-func (component *Component) HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
-	return lifecycle.HasActiveRemoteBackup(ctx, database)
-}
-
-func (component *Component) ValidateRemoteBackupPassword(password, databaseName string) error {
-	return lifecycle.ValidateRemoteBackupPassword(password, databaseName)
-}
-
-func (component *Component) PasswordPolicyError(err error) error {
-	return lifecycle.PasswordPolicyError(err)
-}
-
-func InitializationError() error { return lifecycle.InitializationError() }
+func InitializationError() error                             { return lifecycle.InitializationError() }
 
 var _ LifecyclePort = (*Component)(nil)

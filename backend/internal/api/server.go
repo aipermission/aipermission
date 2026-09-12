@@ -1,8 +1,6 @@
 package api
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -98,16 +96,6 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 			}
 		},
 		OnOpened: s.initializeRetention,
-		ValidateNewPassword: func(ctx context.Context, database *sql.DB, databaseName, password string) error {
-			hasActiveRemoteBackup, err := s.workspaceOwner.HasActiveRemoteBackup(ctx, database)
-			if err != nil || !hasActiveRemoteBackup {
-				return err
-			}
-			if err := s.workspaceOwner.ValidateRemoteBackupPassword(password, databaseName); err != nil {
-				return s.workspaceOwner.PasswordPolicyError(err)
-			}
-			return nil
-		},
 	})
 	if err != nil {
 		return fmt.Errorf("initialize workspace lifecycle: %w", err)
