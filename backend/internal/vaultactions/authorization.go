@@ -6,7 +6,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -44,7 +43,7 @@ func (r *Runtime) validateCapabilityAuthorization(
 	approval vaultrequests.ApprovalContext,
 ) (accesscontrol.Capability, error) {
 	token, err := r.tokens.Get(ctx, request.TokenID)
-	if err != nil || !tokens.Active(token.RevokedAt, token.ExpiresAt, time.Now().UTC()) ||
+	if err != nil || !token.Active ||
 		token.ExpiresAt != approval.TokenExpiresAt || token.UpdatedAt != approval.TokenUpdatedAt {
 		return accesscontrol.Capability{}, staleContext("Vault approval token changed; send a fresh request")
 	}

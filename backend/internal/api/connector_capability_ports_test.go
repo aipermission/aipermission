@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
@@ -73,7 +73,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 		t.Fatal(err)
 	}
 	port, _ := fixture.server.connectorRuntime.RuntimeActionPorts(runtime, "beta")
-	_, err = port.ConnectorRestartConsoleSession(context.Background(), executionprincipal.Principal{}, surface.ID, "test")
+	_, err = port.ConnectorRestartConsoleSession(context.Background(), connectorapi.Principal{}, surface.ID, "test")
 	if !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		t.Fatalf("cross-connector restart error = %v", err)
 	}
@@ -81,7 +81,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 
 func TestConnectorTargetDeletionGatewayRejectsUnboundTarget(t *testing.T) {
 	port := connectorports.NewPorts(connectorports.PortsDependencies{}).TargetDeletionGateway(connectorports.Workspace{}, "alpha", 41)
-	err := port.ConnectorDeleteTargetRecord(context.Background(), connectortargets.Target{ID: 42, ConnectorKind: "alpha"}, nil)
+	err := port.ConnectorDeleteTargetRecord(context.Background(), connectorapi.Target{ID: 42, ConnectorKind: "alpha"}, nil)
 	if !errors.Is(err, connectortargets.ErrTargetNotFound) {
 		t.Fatalf("unbound target deletion error = %v", err)
 	}

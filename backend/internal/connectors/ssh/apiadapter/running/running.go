@@ -10,8 +10,6 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/runtimeactions"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -26,14 +24,14 @@ func (Running) SupportsRunning(prepared connectors.RuntimeActionContext) bool {
 	return prepared.TargetConnectorKind == sshconnector.Kind && prepared.ActionName == sshconnector.ActionExec
 }
 
-func (Running) RunningHint(request connectortargets.ActionRequest) string {
+func (Running) RunningHint(request connectorapi.ActionRequest) string {
 	if request.ConnectorKind == sshconnector.Kind && request.ActionName == sshconnector.ActionExec {
 		return "Wait 3 seconds, then call get_connector_action_request again. For SSH exec actions, inspect live output with the read_console connector action before sending another long-running command to the same target. If the action appears stuck, use the restart_console_session connector action for that target."
 	}
 	return ""
 }
 
-func (Running) FinishRunning(parent context.Context, server connectorapi.ActionFinishGateway, runtime connectorapi.ActionRuntime, requestID int64, prepared connectors.RuntimeActionContext, principal executionprincipal.Principal, handles connectors.ActionHandles) error {
+func (Running) FinishRunning(parent context.Context, server connectorapi.ActionFinishGateway, runtime connectorapi.ActionRuntime, requestID int64, prepared connectors.RuntimeActionContext, principal connectorapi.Principal, handles connectors.ActionHandles) error {
 	if server == nil {
 		return errors.New("finish running connector action: gateway server is unavailable")
 	}
@@ -87,7 +85,7 @@ func (Running) FinishRunning(parent context.Context, server connectorapi.ActionF
 }
 
 type actionRequestFinisher interface {
-	ConnectorFinishActionRequest(context.Context, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectortargets.ActionRequest, error)
+	ConnectorFinishActionRequest(context.Context, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectorapi.ActionRequest, error)
 }
 
 func finishRunningActionRequest(server actionRequestFinisher, _ connectorapi.ActionRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hint connectors.OutputHint) error {

@@ -10,9 +10,7 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -31,8 +29,8 @@ type RuntimeActions struct{}
 type sessionEnvironmentCapability struct{}
 
 type consoleCommandSessions interface {
-	EnsureReady(context.Context, executionprincipal.Principal, int64) (console.SessionHandle, error)
-	Exec(context.Context, executionprincipal.Principal, int64, string) (console.ExecResult, error)
+	EnsureReady(context.Context, connectorapi.Principal, int64) (connectorapi.ConsoleSessionHandle, error)
+	Exec(context.Context, connectorapi.Principal, int64, string) (connectorapi.ConsoleExecResult, error)
 }
 
 func (sessionEnvironmentCapability) ConnectorRuntimeCapability() string {
@@ -69,11 +67,11 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 
 	switch action.ActionName {
 	case sshconnector.ActionExec:
-		return e.executeCommand(runtimeContext.Principal, runtimeID, action)
+		return e.executeCommand(connectorPrincipal(runtimeContext.Principal), runtimeID, action)
 	case sshconnector.ActionReadConsole:
-		return e.readConsole(ctx, runtimeContext.Principal, runtimeID, action)
+		return e.readConsole(ctx, connectorPrincipal(runtimeContext.Principal), runtimeID, action)
 	case sshconnector.ActionRestartConsoleSession:
-		return e.restartConsole(ctx, runtimeContext.Principal, runtimeID)
+		return e.restartConsole(ctx, connectorPrincipal(runtimeContext.Principal), runtimeID)
 	case sshconnector.ActionBrowseRemoteFiles:
 		return e.browseRemoteFiles(ctx, runtimeID, action)
 	case sshconnector.ActionStartFileDownload:
@@ -86,13 +84,13 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 func runtimeCapabilityForAction(actionName string) string {
 	switch actionName {
 	case sshconnector.ActionBrowseRemoteFiles, sshconnector.ActionStartFileDownload:
-		return connectortargets.RuntimeCapabilityFileTransfer
+		return connectorapi.RuntimeCapabilityFileTransfer
 	default:
-		return connectortargets.RuntimeCapabilityLiveConsole
+		return connectorapi.RuntimeCapabilityLiveConsole
 	}
 }
 
-func (e runtimeExecutor) executeCommand(principal executionprincipal.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) executeCommand(principal connectorapi.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	command := stringPayload(action.Payload, "command")
 	if command == "" {
 		return connectors.ActionResult{}, fmt.Errorf("command is required")
@@ -132,12 +130,12 @@ func (e runtimeExecutor) executeCommand(principal executionprincipal.Principal, 
 	return response, nil
 }
 
-func executeConsoleCommand(sessions consoleCommandSessions, principal executionprincipal.Principal, runtimeID int64, command string, connectTimeout time.Duration, commandTimeout time.Duration) (console.ExecResult, error) {
+func executeConsoleCommand(sessions consoleCommandSessions, principal connectorapi.Principal, runtimeID int64, command string, connectTimeout time.Duration, commandTimeout time.Duration) (connectorapi.ConsoleExecResult, error) {
 	connectCtx, cancelConnect := context.WithTimeout(context.Background(), connectTimeout)
 	_, err := sessions.EnsureReady(connectCtx, principal, runtimeID)
 	cancelConnect()
 	if err != nil {
-		return console.ExecResult{}, fmt.Errorf("start SSH console session: %w", err)
+		return connectorapi.ConsoleExecResult{}, fmt.Errorf("start SSH console session: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
@@ -155,12 +153,12 @@ func executeConsoleCommand(sessions consoleCommandSessions, principal executionp
 				err,
 			)
 		}
-		return console.ExecResult{}, err
+		return connectorapi.ConsoleExecResult{}, err
 	}
 	return result, nil
 }
 
-func (e runtimeExecutor) readConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) readConsole(ctx context.Context, principal connectorapi.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	tail := intPayload(action.Payload, "tail_bytes", 20000)
 	if tail < 1 {
 		tail = 20000
@@ -201,14 +199,14 @@ func (e runtimeExecutor) readConsole(ctx context.Context, principal executionpri
 	}, nil
 }
 
-func exactSessionActionHandles(session console.Record) connectors.ActionHandles {
+func exactSessionActionHandles(session connectorapi.ConsoleRecord) connectors.ActionHandles {
 	return connectors.ActionHandles{
 		SessionID:         session.ID,
 		SessionGeneration: session.Generation,
 	}
 }
 
-func (e runtimeExecutor) restartConsole(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (connectors.ActionResult, error) {
+func (e runtimeExecutor) restartConsole(ctx context.Context, principal connectorapi.Principal, runtimeID int64) (connectors.ActionResult, error) {
 	result, err := e.server.ConnectorRestartConsoleSession(ctx, principal, runtimeID, "console session restarted before connector action completed")
 	if err != nil {
 		return connectors.ActionResult{}, err

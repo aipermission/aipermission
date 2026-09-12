@@ -5,11 +5,41 @@ import (
 	"errors"
 	"io"
 	"net"
-
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"strings"
 )
 
 var ErrSessionEnvironmentUnsupported = errors.New("connector runtime does not support session environments")
+var ErrInvalidPrincipal = errors.New("connector execution principal is required")
+
+type PrincipalKind string
+
+const (
+	PrincipalLocalOperator PrincipalKind = "local_operator"
+	PrincipalMCPToken      PrincipalKind = "mcp_token"
+)
+
+type Principal struct {
+	Kind              PrincipalKind
+	TokenID           int64
+	WorkspaceID       string
+	RuntimeInstanceID string
+}
+
+func (principal Principal) Validate() error {
+	if principal.Kind != PrincipalLocalOperator && principal.Kind != PrincipalMCPToken {
+		return ErrInvalidPrincipal
+	}
+	if strings.TrimSpace(principal.WorkspaceID) == "" || strings.TrimSpace(principal.RuntimeInstanceID) == "" {
+		return ErrInvalidPrincipal
+	}
+	if principal.Kind == PrincipalMCPToken && principal.TokenID < 1 {
+		return ErrInvalidPrincipal
+	}
+	if principal.Kind == PrincipalLocalOperator && principal.TokenID != 0 {
+		return ErrInvalidPrincipal
+	}
+	return nil
+}
 
 // Connector is the required contract for connector-shaped targets.
 //
@@ -254,7 +284,7 @@ type RuntimeContext struct {
 
 	Secrets   SecretAccessor
 	Events    EventSink
-	Principal executionprincipal.Principal
+	Principal Principal
 	// Capabilities is reserved for gateway-owned runtime adapters that need
 	// live transports, file transfer, or other long-lived resources. Normal
 	// structured connectors should use Target, Profile, Secrets, and their own

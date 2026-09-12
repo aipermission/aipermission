@@ -34,6 +34,11 @@ type Protocol struct {
 	generation int64
 }
 
+type Environment interface {
+	Len() int
+	ForEach(func(name string, value []byte, replaceExisting bool, itemID int64, valueVersion int64, sourceProjectID int64) error) error
+}
+
 func New(generation int64) (*Protocol, error) {
 	if generation < 1 {
 		return nil, errors.New("session generation must be positive")
@@ -58,7 +63,7 @@ func (p *Protocol) Command() string {
 // Bootstrap applies the complete envelope to one POSIX interactive shell.
 // The caller starts Command first. Metadata is acknowledged before any value
 // frame is sent.
-func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Reader, envelope *sessionenv.Envelope) (Result, error) {
+func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Reader, envelope Environment) (Result, error) {
 	if p == nil || stdin == nil || stdout == nil || envelope == nil || envelope.Len() == 0 {
 		return Result{}, errors.New("secret environment bootstrap requires a protocol, stdin, stdout, and a non-empty envelope")
 	}
@@ -95,40 +100,44 @@ func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Rea
 	return Result{Prelude: prelude, Reader: reader, Nonce: p.nonce}, nil
 }
 
-func metadataFrames(envelope *sessionenv.Envelope) (string, int, error) {
+func metadataFrames(envelope Environment) (string, int, error) {
 	var builder strings.Builder
 	total := 0
-	err := envelope.WithEntries(func(entries []sessionenv.EntryView) error {
-		for index, item := range entries {
-			if err := sessionenv.ValidateName(item.Name); err != nil {
-				return err
-			}
-			encodedLength := base64.StdEncoding.EncodedLen(len(item.Value))
-			total += len(item.Value)
-			replace := 0
-			if item.ReplaceExisting {
-				replace = 1
-			}
-			fmt.Fprintf(&builder, "META %d %s %d %d\n", index+1, item.Name, replace, encodedLength)
+	index := 0
+	err := envelope.ForEach(func(name string, value []byte, replaceExisting bool, _ int64, _ int64, _ int64) error {
+		index++
+		if err := sessionenv.ValidateName(name); err != nil {
+			return err
 		}
+		encodedLength := base64.StdEncoding.EncodedLen(len(value))
+		total += len(value)
+		replace := 0
+		if replaceExisting {
+			replace = 1
+		}
+		fmt.Fprintf(&builder, "META %d %s %d %d\n", index, name, replace, encodedLength)
 		return nil
 	})
 	return builder.String(), total, err
 }
 
-func writeValueFrames(stdin io.Writer, envelope *sessionenv.Envelope, nonce string) error {
-	return envelope.WithEntries(func(entries []sessionenv.EntryView) error {
-		for index, item := range entries {
-			encoded := base64.StdEncoding.EncodeToString(item.Value)
-			if _, err := fmt.Fprintf(stdin, "VALUE %d %s\n", index+1, encoded); err != nil {
-				return fmt.Errorf("write environment value frame: %w", err)
-			}
-		}
-		if _, err := fmt.Fprintf(stdin, "END %s\n", nonce); err != nil {
-			return fmt.Errorf("write environment end frame: %w", err)
+func writeValueFrames(stdin io.Writer, envelope Environment, nonce string) error {
+	index := 0
+	err := envelope.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
+		index++
+		encoded := base64.StdEncoding.EncodeToString(value)
+		if _, err := fmt.Fprintf(stdin, "VALUE %d %s\n", index, encoded); err != nil {
+			return fmt.Errorf("write environment value frame: %w", err)
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdin, "END %s\n", nonce); err != nil {
+		return fmt.Errorf("write environment end frame: %w", err)
+	}
+	return nil
 }
 
 func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string, ignoredSuffixes ...string) ([]byte, error) {

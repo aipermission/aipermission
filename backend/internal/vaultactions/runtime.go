@@ -10,7 +10,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -89,8 +88,14 @@ type LeasePersistence interface {
 	Revoke(context.Context, int64, int64) error
 }
 
+type TokenState struct {
+	Active    bool
+	ExpiresAt string
+	UpdatedAt string
+}
+
 type TokenReader interface {
-	Get(context.Context, int64) (tokens.Token, error)
+	Get(context.Context, int64) (TokenState, error)
 }
 
 type Dependencies struct {

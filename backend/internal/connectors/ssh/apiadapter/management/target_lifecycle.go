@@ -12,15 +12,14 @@ import (
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func (Management) BeforeCreateCredentialProfile(context.Context, connectorapi.TargetLifecycleRuntime, connectortargets.Target) error {
+func (Management) BeforeCreateCredentialProfile(context.Context, connectorapi.TargetLifecycleRuntime, connectorapi.Target) error {
 	return nil
 }
 
-func (Management) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.ConsoleRestartGateway, runtime connectorapi.TargetLifecycleRuntime, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+func (Management) BeforeDeleteCredentialProfile(ctx context.Context, handler connectorapi.ConsoleRestartGateway, runtime connectorapi.TargetLifecycleRuntime, _ connectorapi.Target, profile connectorapi.CredentialProfile) error {
 	gateway, err := consoleRestartGatewayFrom(handler)
 	if err != nil {
 		return err
@@ -44,7 +43,7 @@ func (Management) BeforeDeleteCredentialProfile(ctx context.Context, handler con
 	return nil
 }
 
-func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectortargets.Target) {
+func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectorapi.Target) {
 	if w == nil || r == nil {
 		return
 	}
@@ -273,7 +272,7 @@ func (Management) TestDraft(handler connectorapi.PeerIdentityGateway, w http.Res
 	})
 }
 
-func (Management) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectortargets.Target, operation string) {
+func (Management) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectorapi.Target, operation string) {
 	if w == nil || r == nil {
 		return
 	}

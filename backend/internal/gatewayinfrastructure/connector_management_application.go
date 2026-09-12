@@ -164,7 +164,7 @@ func (application *ConnectorManagementApplication) workspace(handle *WorkspaceHa
 				if adapter == nil {
 					return nil
 				}
-				return adapter.BeforeCreateCredentialProfile(ctx, application.runtime.TargetLifecycleRuntime(handle, target.ConnectorKind), target)
+				return adapter.BeforeCreateCredentialProfile(ctx, application.runtime.TargetLifecycleRuntime(handle, target.ConnectorKind), connectorTarget(target))
 			},
 			BeforeDelete: func(ctx context.Context, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
 				adapter := application.runtime.CredentialProfileLifecycleAdapter(target.ConnectorKind)
@@ -172,7 +172,7 @@ func (application *ConnectorManagementApplication) workspace(handle *WorkspaceHa
 					return nil
 				}
 				gateway, _ := application.runtime.RuntimeActionPorts(handle, target.ConnectorKind)
-				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, application.runtime.TargetLifecycleRuntime(handle, target.ConnectorKind), target, profile)
+				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, application.runtime.TargetLifecycleRuntime(handle, target.ConnectorKind), connectorTarget(target), connectorCredentialProfile(profile))
 			},
 			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
 				adapter := application.runtime.CredentialProfileTester(target.ConnectorKind)

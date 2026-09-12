@@ -24,9 +24,15 @@ type Runtime struct {
 type StorageRuntime struct {
 	Database    *sql.DB
 	SecretVault *vault.Vault
-	Tokens      vaultactions.TokenReader
+	ReadToken   func(context.Context, int64) (TokenState, error)
 	WorkspaceID string
 	DatabaseID  string
+}
+
+type TokenState struct {
+	Active    bool
+	ExpiresAt string
+	UpdatedAt string
 }
 
 type SessionRuntime struct {

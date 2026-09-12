@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type LiveConsoleOptions struct {
@@ -9,5 +9,5 @@ type LiveConsoleOptions struct {
 	StartupInputAfterConnect string
 	Generation               int64
 	HasEnvironment           bool
-	Environment              *sessionenv.Envelope
+	Environment              connectorapi.SessionEnvironment
 }

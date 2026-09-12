@@ -43,7 +43,7 @@ func (component *OperationsOwner) LiveConsoleHTTPRuntime(handle *WorkspaceHandle
 	if !ok {
 		return nil, false
 	}
-	runtime.Sessions = owner.Connectors.ConsoleSessionManager()
+	runtime.Sessions = connectorports.NewLiveConsoleSessions(owner.Connectors.ConsoleSessionManager())
 	return &runtime, true
 }
 

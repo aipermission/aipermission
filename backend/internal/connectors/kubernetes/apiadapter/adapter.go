@@ -85,7 +85,7 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	return server.ConnectorOpenLiveConsole(ctx, transportRef, request.Rows, request.Cols, map[string]any{"force_shell_command": command})
 }
 
-func kubernetesTargetProfileByRuntimeID(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
+func kubernetesTargetProfileByRuntimeID(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectorapi.RuntimeSurface, error) {
 	return runtime.TargetProfileByRuntimeID(ctx, runtimeID)
 }
 

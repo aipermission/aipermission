@@ -9,12 +9,11 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/console"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 )
 
 func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	wantError := errors.New("wait")
-	wantEnvironment := func(context.Context, *sessionenv.Envelope) error { return nil }
+	wantEnvironment := func(context.Context, gatewayoperations.SessionEnvironment) error { return nil }
 	var received gatewayoperations.RuntimeOpenRequest
 	adapted := gatewayoperations.AdaptRuntimeOpener(func(_ context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		received = request

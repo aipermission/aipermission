@@ -52,6 +52,10 @@ func Active(revokedAt string, expiresAt string, now time.Time) bool {
 	return revokedAt == "" && expirypolicy.Active(expiresAt, now)
 }
 
+func (token Token) ActiveAt(now time.Time) bool {
+	return Active(token.RevokedAt, token.ExpiresAt, now)
+}
+
 type Store struct {
 	db          storeDB
 	begin       func(context.Context, *sql.TxOptions) (*sql.Tx, error)

@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -22,7 +21,7 @@ func (adapter *targetOperationAdapter) RunTargetOperation(
 	w http.ResponseWriter,
 	_ *http.Request,
 	_ connectorapi.ConnectorDataRuntime,
-	_ connectortargets.Target,
+	_ connectorapi.Target,
 	operation string,
 ) {
 	adapter.called = true

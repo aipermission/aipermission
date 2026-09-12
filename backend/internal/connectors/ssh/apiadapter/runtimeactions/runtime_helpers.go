@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func ExecOutput(result console.ExecResult) map[string]any {
+func ExecOutput(result connectorapi.ConsoleExecResult) map[string]any {
 	return map[string]any{
 		"command":     result.Command,
 		"stdout":      console.PlainOutput(result.Output),
@@ -19,8 +21,15 @@ func ExecOutput(result console.ExecResult) map[string]any {
 	}
 }
 
-func ExactSessionHandle(id, generation int64) console.SessionHandle {
-	return console.SessionHandle{ID: id, Generation: generation}
+func ExactSessionHandle(id, generation int64) connectorapi.ConsoleSessionHandle {
+	return connectorapi.ConsoleSessionHandle{ID: id, Generation: generation}
+}
+
+func connectorPrincipal(principal connectors.Principal) connectorapi.Principal {
+	return connectorapi.Principal{
+		Kind: connectorapi.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
+		WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
+	}
 }
 
 func stringPayload(payload map[string]any, name string) string {

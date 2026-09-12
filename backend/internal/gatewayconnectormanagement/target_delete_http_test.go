@@ -11,28 +11,26 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type targetDeleteAdapter struct{ called bool }
 
-func (adapter *targetDeleteAdapter) DeleteTarget(_ connectorapi.TargetDeletionGateway, w http.ResponseWriter, _ *http.Request, _ connectorapi.TargetLifecycleRuntime, _ connectortargets.Target) {
+func (adapter *targetDeleteAdapter) DeleteTarget(_ connectorapi.TargetDeletionGateway, w http.ResponseWriter, _ *http.Request, _ connectorapi.TargetLifecycleRuntime, _ connectorapi.Target) {
 	adapter.called = true
 	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"adapter": true})
 }
 
 type targetDeleteGateway struct{ targetDraftPeer }
 
-func (targetDeleteGateway) ConnectorRestartConsoleSession(context.Context, executionprincipal.Principal, int64, string) (connectorapi.ConsoleRestartResult, error) {
+func (targetDeleteGateway) ConnectorRestartConsoleSession(context.Context, connectorapi.Principal, int64, string) (connectorapi.ConsoleRestartResult, error) {
 	return connectorapi.ConsoleRestartResult{}, nil
 }
-func (targetDeleteGateway) ConnectorDeleteTargetRecord(context.Context, connectortargets.Target, map[string]any) error {
+func (targetDeleteGateway) ConnectorDeleteTargetRecord(context.Context, connectorapi.Target, map[string]any) error {
 	return nil
 }
-func (targetDeleteGateway) ConnectorFinalizeDeletedTarget(context.Context, connectortargets.Target, string, map[string]any) (int64, error) {
+func (targetDeleteGateway) ConnectorFinalizeDeletedTarget(context.Context, connectorapi.Target, string, map[string]any) (int64, error) {
 	return 0, nil
 }
 
@@ -41,25 +39,25 @@ type targetDeleteRuntime struct{ targetDraftRuntime }
 func (targetDeleteRuntime) ConnectorConsoleSessions() connectorapi.ConsoleSessionRuntime {
 	return targetDeleteConsoleRuntime{}
 }
-func (targetDeleteRuntime) ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error) {
-	return executionprincipal.Principal{}, nil
+func (targetDeleteRuntime) ConnectorLocalExecutionPrincipal() (connectorapi.Principal, error) {
+	return connectorapi.Principal{}, nil
 }
 
 type targetDeleteConsoleRuntime struct{}
 
-func (targetDeleteConsoleRuntime) EnsureReady(context.Context, executionprincipal.Principal, int64) (console.SessionHandle, error) {
-	return console.SessionHandle{}, nil
+func (targetDeleteConsoleRuntime) EnsureReady(context.Context, connectorapi.Principal, int64) (connectorapi.ConsoleSessionHandle, error) {
+	return connectorapi.ConsoleSessionHandle{}, nil
 }
-func (targetDeleteConsoleRuntime) Exec(context.Context, executionprincipal.Principal, int64, string) (console.ExecResult, error) {
-	return console.ExecResult{}, nil
+func (targetDeleteConsoleRuntime) Exec(context.Context, connectorapi.Principal, int64, string) (connectorapi.ConsoleExecResult, error) {
+	return connectorapi.ConsoleExecResult{}, nil
 }
-func (targetDeleteConsoleRuntime) ActiveSnapshot(context.Context, executionprincipal.Principal, int64) (console.Record, error) {
-	return console.Record{}, nil
+func (targetDeleteConsoleRuntime) ActiveSnapshot(context.Context, connectorapi.Principal, int64) (connectorapi.ConsoleRecord, error) {
+	return connectorapi.ConsoleRecord{}, nil
 }
-func (targetDeleteConsoleRuntime) WaitActive(context.Context, executionprincipal.Principal, console.SessionHandle) (console.ExecResult, error) {
-	return console.ExecResult{}, nil
+func (targetDeleteConsoleRuntime) WaitActive(context.Context, connectorapi.Principal, connectorapi.ConsoleSessionHandle) (connectorapi.ConsoleExecResult, error) {
+	return connectorapi.ConsoleExecResult{}, nil
 }
-func (targetDeleteConsoleRuntime) InterruptActive(context.Context, executionprincipal.Principal, console.SessionHandle) error {
+func (targetDeleteConsoleRuntime) InterruptActive(context.Context, connectorapi.Principal, connectorapi.ConsoleSessionHandle) error {
 	return nil
 }
 

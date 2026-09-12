@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
 
 type executionConnector struct {
@@ -30,10 +29,7 @@ func executionService(t *testing.T, connector connectors.Connector) *Service {
 
 func executionRequest(t *testing.T, kind string) ExecutionRequest {
 	t.Helper()
-	principal, err := executionprincipal.LocalOperator("workspace-test", "runtime-test")
-	if err != nil {
-		t.Fatalf("create principal: %v", err)
-	}
+	principal := connectors.Principal{Kind: connectors.PrincipalLocalOperator, WorkspaceID: "workspace-test", RuntimeInstanceID: "runtime-test"}
 	return ExecutionRequest{
 		Prepared: PreparedRequest{
 			Target: connectors.TargetView{ConnectorKind: kind},
@@ -62,7 +58,7 @@ func TestServiceExecuteDispatchesValidResult(t *testing.T) {
 func TestServiceExecuteRejectsInvalidPrincipalBeforeDispatch(t *testing.T) {
 	connector := &executionConnector{prepareConnector: prepareConnector{kind: "memory"}}
 	request := executionRequest(t, "memory")
-	request.Runtime.Principal = executionprincipal.Principal{}
+	request.Runtime.Principal = connectors.Principal{}
 	if _, err := executionService(t, connector).Execute(t.Context(), request); err == nil {
 		t.Fatal("expected invalid principal error")
 	}

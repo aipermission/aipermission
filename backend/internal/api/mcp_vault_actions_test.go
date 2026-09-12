@@ -20,7 +20,6 @@ import (
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -427,11 +426,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 			Stdin:        discardWriteCloser{},
 			Stdout:       strings.NewReader(""),
 			PeerIdentity: identities[0],
-			ApplyEnvironment: func(_ context.Context, envelope *sessionenv.Envelope) error {
-				return envelope.WithEntries(func(entries []sessionenv.EntryView) error {
-					for _, entry := range entries {
-						appliedValues = append(appliedValues, string(entry.Value))
-					}
+			ApplyEnvironment: func(_ context.Context, environment gatewayoperations.SessionEnvironment) error {
+				return environment.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
+					appliedValues = append(appliedValues, string(value))
 					return nil
 				})
 			},

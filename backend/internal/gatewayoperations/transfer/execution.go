@@ -80,7 +80,7 @@ type boundTransferRuntime struct {
 	delegate  connectorapi.TransferRuntime
 	target    connectors.TargetView
 	profile   connectors.CredentialProfileView
-	surface   connectortargets.RuntimeSurface
+	surface   connectorapi.RuntimeSurface
 	resources *credentialResourceBindings
 }
 
@@ -98,32 +98,32 @@ func (r boundTransferRuntime) ResolveConnectorActionTarget(ctx context.Context, 
 	return target, profile, nil
 }
 
-func (r boundTransferRuntime) EnsureRuntimeSurface(_ context.Context, input connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error) {
+func (r boundTransferRuntime) EnsureRuntimeSurface(_ context.Context, input connectorapi.EnsureRuntimeSurfaceInput) (connectorapi.RuntimeSurface, error) {
 	if input.ConnectorKind != "" && input.ConnectorKind != r.surface.ConnectorKind ||
 		input.TargetID != r.surface.TargetID || input.ProfileID != r.surface.ProfileID ||
 		strings.TrimSpace(input.CapabilityKind) != r.surface.CapabilityKind {
-		return connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
+		return connectorapi.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	return r.surface, nil
 }
 
-func (r boundTransferRuntime) ListRuntimeSurfacesForProfile(_ context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectortargets.RuntimeSurface, error) {
+func (r boundTransferRuntime) ListRuntimeSurfacesForProfile(_ context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectorapi.RuntimeSurface, error) {
 	if targetID != r.surface.TargetID || profileID != r.surface.ProfileID || strings.TrimSpace(capabilityKind) != r.surface.CapabilityKind {
 		return nil, connectortargets.ErrRuntimeSurfaceNotFound
 	}
-	return []connectortargets.RuntimeSurface{r.surface}, nil
+	return []connectorapi.RuntimeSurface{r.surface}, nil
 }
 
-func (r boundTransferRuntime) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
+func (r boundTransferRuntime) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectorapi.RuntimeSurface, error) {
 	if runtimeID != r.surface.ID {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectorapi.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	target, profile, surface, err := r.delegate.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectortargets.RuntimeSurface{}, err
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectorapi.RuntimeSurface{}, err
 	}
 	if !r.matches(target, profile, surface) {
-		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectortargets.RuntimeSurface{}, errTransferExecutionStale
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, connectorapi.RuntimeSurface{}, errTransferExecutionStale
 	}
 	return target, profile, surface, nil
 }
@@ -159,21 +159,21 @@ func (r boundTransferRuntime) CredentialResources(resourceKind string) connector
 	}
 }
 
-func (r boundTransferRuntime) ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectortargets.RuntimeSurface, error) {
+func (r boundTransferRuntime) ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectorapi.RuntimeSurface, error) {
 	if runtimeID != r.surface.ID || strings.TrimSpace(capabilityKind) != r.surface.CapabilityKind {
-		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
+		return connectors.RuntimeContext{}, connectorapi.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	contextValue, surface, err := r.delegate.ResolveRuntimeContext(ctx, runtimeID, capabilityKind)
 	if err != nil {
-		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, err
+		return connectors.RuntimeContext{}, connectorapi.RuntimeSurface{}, err
 	}
 	if !r.matches(contextValue.Target, contextValue.Profile, surface) {
-		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, errTransferExecutionStale
+		return connectors.RuntimeContext{}, connectorapi.RuntimeSurface{}, errTransferExecutionStale
 	}
 	return contextValue, surface, nil
 }
 
-func (r boundTransferRuntime) matches(target connectors.TargetView, profile connectors.CredentialProfileView, surface connectortargets.RuntimeSurface) bool {
+func (r boundTransferRuntime) matches(target connectors.TargetView, profile connectors.CredentialProfileView, surface connectorapi.RuntimeSurface) bool {
 	return target.ID == r.target.ID && target.Ref == r.target.Ref && target.ConnectorKind == r.target.ConnectorKind && target.UpdatedAt == r.target.UpdatedAt &&
 		sameTransferProfile(profile, r.profile) &&
 		surface.ID == r.surface.ID && surface.TargetID == r.surface.TargetID && surface.ProfileID == r.surface.ProfileID &&

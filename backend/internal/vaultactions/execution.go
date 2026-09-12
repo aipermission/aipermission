@@ -136,7 +136,7 @@ func (r *Runtime) executeSessionApply(
 	if err != nil {
 		return nil, err
 	}
-	finalize := func(finalizeCtx context.Context, handle console.SessionHandle) error {
+	finalize := func(finalizeCtx context.Context, handle EnvironmentSessionHandle) error {
 		if err := r.sessionItems.RecordSessionItems(finalizeCtx, handle.ID, approval.Items); err != nil {
 			return err
 		}
@@ -163,11 +163,11 @@ func (r *Runtime) executeSessionApply(
 			return err
 		}
 		if err := r.persistedLeases.Grant(finalizeCtx, request.ProjectID, lease); err != nil {
-			r.leases.RevokeSession(handle)
+			r.leases.RevokeSession(consoleSessionHandle(handle))
 			return err
 		}
 		if err := r.sessionItems.MarkSessionItemsUsed(finalizeCtx, approval.Items); err != nil {
-			r.leases.RevokeSession(handle)
+			r.leases.RevokeSession(consoleSessionHandle(handle))
 			_ = r.persistedLeases.Revoke(finalizeCtx, handle.ID, handle.Generation)
 			return err
 		}
@@ -183,7 +183,7 @@ func (r *Runtime) executeSessionApply(
 	createRequest := console.CreateRequest{
 		RuntimeID: approval.RuntimeID, Name: fmt.Sprintf("Vault session for %s", request.ProjectName),
 		CloseExisting: false, Cols: cols, Rows: rows, WaitForStart: true, Principal: principal,
-		PrepareEnvironment:     r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize),
+		PrepareEnvironment:     consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize)),
 		EnvironmentContentHash: approval.EnvironmentContentHash,
 		ApprovalContextHash:    request.ApprovalContextHash,
 	}
@@ -205,6 +205,34 @@ func (r *Runtime) executeSessionApply(
 		"runtime_id": record.RuntimeID, "status": record.Status,
 		"environment_names": itemNames(approval.Items), "expires_at": expiresAt.Format(time.RFC3339),
 	}, nil
+}
+
+func consoleEnvironmentPreparer(preparer EnvironmentPreparer) console.EnvironmentPreparer {
+	if preparer == nil {
+		return nil
+	}
+	return func(ctx context.Context, peerIdentity string) (console.EnvironmentPreparation, error) {
+		prepared, err := preparer(ctx, peerIdentity)
+		if err != nil {
+			return console.EnvironmentPreparation{}, err
+		}
+		var finalize func(context.Context, console.SessionHandle) error
+		if prepared.Finalize != nil {
+			finalize = func(finalizeCtx context.Context, handle console.SessionHandle) error {
+				return prepared.Finalize(finalizeCtx, EnvironmentSessionHandle{
+					ID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation,
+				})
+			}
+		}
+		return console.EnvironmentPreparation{
+			Environment: prepared.Environment, Release: prepared.Release,
+			PostValidate: prepared.PostValidate, Finalize: finalize,
+		}, nil
+	}
+}
+
+func consoleSessionHandle(handle EnvironmentSessionHandle) console.SessionHandle {
+	return console.SessionHandle{ID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation}
 }
 
 func (r *Runtime) sessionLeaseExpiry(

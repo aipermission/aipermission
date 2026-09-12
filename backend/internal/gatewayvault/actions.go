@@ -39,8 +39,49 @@ func ClassifySessionEnvironmentError(err error) (SessionEnvironmentErrorKind, st
 
 type actionProjectPort struct{ database *sql.DB }
 
+type actionTokenPort struct {
+	read func(context.Context, int64) (TokenState, error)
+}
+
+func (port actionTokenPort) Get(ctx context.Context, id int64) (vaultactions.TokenState, error) {
+	token, err := port.read(ctx, id)
+	return vaultactions.TokenState{
+		Active: token.Active, ExpiresAt: token.ExpiresAt, UpdatedAt: token.UpdatedAt,
+	}, err
+}
+
+type SessionEnvironment interface {
+	Len() int
+	ForEach(func(name string, value []byte, replaceExisting bool, itemID int64, valueVersion int64, sourceProjectID int64) error) error
+}
+
+type EnvironmentSessionHandle struct {
+	ID         int64
+	RuntimeID  int64
+	Generation int64
+}
+
+type EnvironmentPreparation struct {
+	Environment  SessionEnvironment
+	Release      func()
+	PostValidate func(context.Context) error
+	Finalize     func(context.Context, EnvironmentSessionHandle) error
+}
+
+type EnvironmentPreparer func(context.Context, string) (EnvironmentPreparation, error)
+
+type EnvironmentItem struct {
+	ItemID int64
+}
+
+type EnvironmentPlan struct {
+	Items                  []EnvironmentItem
+	EnvironmentContentHash string
+	Prepare                EnvironmentPreparer
+}
+
 type VaultActionApplication interface {
-	BuildEnvironmentPlan(context.Context, int64, []SessionSelection) (vaultactions.EnvironmentPlan, error)
+	BuildEnvironmentPlan(context.Context, int64, []SessionSelection) (EnvironmentPlan, error)
 	Prepare(context.Context, int64, string, string, map[string]any) (vaultrequests.PreparedAction, error)
 	AuthorizeOutput(context.Context, vaultrequests.Request) bool
 	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
@@ -51,7 +92,7 @@ type VaultActionApplication interface {
 
 type vaultActionApplication struct{ *vaultactions.Runtime }
 
-func (application vaultActionApplication) BuildEnvironmentPlan(ctx context.Context, runtimeID int64, selections []SessionSelection) (vaultactions.EnvironmentPlan, error) {
+func (application vaultActionApplication) BuildEnvironmentPlan(ctx context.Context, runtimeID int64, selections []SessionSelection) (EnvironmentPlan, error) {
 	items := make([]projectvault.SessionSelection, len(selections))
 	for index, selection := range selections {
 		items[index] = projectvault.SessionSelection{
@@ -60,7 +101,38 @@ func (application vaultActionApplication) BuildEnvironmentPlan(ctx context.Conte
 			BindingRevision: selection.BindingRevision,
 		}
 	}
-	return application.Runtime.BuildEnvironmentPlan(ctx, runtimeID, items)
+	plan, err := application.Runtime.BuildEnvironmentPlan(ctx, runtimeID, items)
+	if err != nil {
+		return EnvironmentPlan{}, err
+	}
+	result := EnvironmentPlan{
+		Items:                  make([]EnvironmentItem, 0, len(plan.Items)),
+		EnvironmentContentHash: plan.EnvironmentContentHash,
+	}
+	for _, item := range plan.Items {
+		result.Items = append(result.Items, EnvironmentItem{ItemID: item.ItemID})
+	}
+	if plan.Prepare != nil {
+		result.Prepare = func(prepareCtx context.Context, peerIdentity string) (EnvironmentPreparation, error) {
+			prepared, err := plan.Prepare(prepareCtx, peerIdentity)
+			if err != nil {
+				return EnvironmentPreparation{}, err
+			}
+			var finalize func(context.Context, EnvironmentSessionHandle) error
+			if prepared.Finalize != nil {
+				finalize = func(finalizeCtx context.Context, handle EnvironmentSessionHandle) error {
+					return prepared.Finalize(finalizeCtx, vaultactions.EnvironmentSessionHandle{
+						ID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation,
+					})
+				}
+			}
+			return EnvironmentPreparation{
+				Environment: prepared.Environment, Release: prepared.Release,
+				PostValidate: prepared.PostValidate, Finalize: finalize,
+			}, nil
+		}
+	}
+	return result, nil
 }
 
 func (port actionProjectPort) ResolveRef(ctx context.Context, ref string) (vaultactions.Project, bool, error) {
@@ -156,7 +228,7 @@ func (port actionMutationPort) WithMutation(ctx context.Context, tokenID int64, 
 }
 
 func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplication, error) {
-	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.Tokens == nil || runtime.Session.Sessions == nil ||
+	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.ReadToken == nil || runtime.Session.Sessions == nil ||
 		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Session.MCPStarted == nil ||
 		runtime.Storage.DatabaseID == "" || component.dependencies.AllowGenerate == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
@@ -166,7 +238,7 @@ func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplicati
 		return nil, fmt.Errorf("initialize Vault action item store: %w", err)
 	}
 	owner, err := vaultactions.NewRuntime(vaultactions.Dependencies{
-		Database: runtime.Storage.Database, Tokens: runtime.Storage.Tokens,
+		Database: runtime.Storage.Database, Tokens: actionTokenPort{read: runtime.Storage.ReadToken},
 		Projects: actionProjectPort{database: runtime.Storage.Database}, SessionItems: actionItemPort{store: items},
 		ItemMutations: actionItemPort{store: items}, Sessions: runtime.Session.Sessions,
 		Leases: runtime.Session.Leases, PersistedLeases: vaultsessions.NewPersistence(runtime.Storage.Database),

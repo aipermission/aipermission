@@ -7,8 +7,8 @@ import (
 	"sort"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -26,8 +26,23 @@ type environmentSnapshot struct {
 type EnvironmentPlan struct {
 	Items                  []projectvault.SessionItem
 	EnvironmentContentHash string
-	Prepare                console.EnvironmentPreparer
+	Prepare                EnvironmentPreparer
 }
+
+type EnvironmentSessionHandle struct {
+	ID         int64
+	RuntimeID  int64
+	Generation int64
+}
+
+type EnvironmentPreparation struct {
+	Environment  *sessionenv.Envelope
+	Release      func()
+	PostValidate func(context.Context) error
+	Finalize     func(context.Context, EnvironmentSessionHandle) error
+}
+
+type EnvironmentPreparer func(context.Context, string) (EnvironmentPreparation, error)
 
 func (r *Runtime) BuildEnvironmentPlan(
 	ctx context.Context,
@@ -41,7 +56,7 @@ func (r *Runtime) BuildEnvironmentPlan(
 	if err != nil {
 		return EnvironmentPlan{}, err
 	}
-	finalize := func(finalizeCtx context.Context, handle console.SessionHandle) error {
+	finalize := func(finalizeCtx context.Context, handle EnvironmentSessionHandle) error {
 		if err := r.sessionItems.RecordSessionItems(finalizeCtx, handle.ID, snapshot.Items); err != nil {
 			return err
 		}
@@ -100,16 +115,16 @@ func (r *Runtime) environmentPreparer(
 	snapshot environmentSnapshot,
 	selections []projectvault.SessionSelection,
 	authorize func(context.Context) error,
-	finalize func(context.Context, console.SessionHandle) error,
-) console.EnvironmentPreparer {
-	return func(ctx context.Context, actualPeerIdentity string) (console.EnvironmentPreparation, error) {
+	finalize func(context.Context, EnvironmentSessionHandle) error,
+) EnvironmentPreparer {
+	return func(ctx context.Context, actualPeerIdentity string) (EnvironmentPreparation, error) {
 		release, err := r.delivery.AcquireDelivery(ctx)
 		if err != nil {
-			return console.EnvironmentPreparation{}, err
+			return EnvironmentPreparation{}, err
 		}
-		fail := func(err error) (console.EnvironmentPreparation, error) {
+		fail := func(err error) (EnvironmentPreparation, error) {
 			release()
-			return console.EnvironmentPreparation{}, err
+			return EnvironmentPreparation{}, err
 		}
 		if authorize != nil {
 			if err := authorize(ctx); err != nil {
@@ -127,7 +142,7 @@ func (r *Runtime) environmentPreparer(
 			resolved.Destroy()
 			return fail(staleContext("Vault items changed before secret delivery"))
 		}
-		return console.EnvironmentPreparation{
+		return EnvironmentPreparation{
 			Environment: resolved.Environment, Release: release,
 			PostValidate: func(validateCtx context.Context) error {
 				if authorize != nil {

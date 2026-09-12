@@ -330,7 +330,10 @@ func (r *Runtime) ExecutePrepared(ctx context.Context, principal executionprinci
 	result, err := r.service.Execute(ctx, ExecutionRequest{Prepared: prepared, Runtime: connectors.RuntimeContext{
 		Target: prepared.Target, Profile: prepared.Profile,
 		Secrets: secretAccessor{values: snapshot.Secrets, boundary: snapshot.CredentialBoundary},
-		Events:  noopEventSink{}, Principal: principal,
+		Events:  noopEventSink{}, Principal: connectors.Principal{
+			Kind: connectors.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
+			WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
+		},
 		Capabilities: r.capabilities(prepared.Target.ConnectorKind, prepared.Dependencies),
 	}})
 	if err != nil {

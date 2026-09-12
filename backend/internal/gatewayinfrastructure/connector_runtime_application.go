@@ -202,7 +202,7 @@ func (application *ConnectorRuntimeApplication) RunningHint(request connectormgm
 	if adapter == nil {
 		return ""
 	}
-	return strings.TrimSpace(adapter.RunningHint(request))
+	return strings.TrimSpace(adapter.RunningHint(connectorActionRequest(request)))
 }
 
 func (application *ConnectorRuntimeApplication) SupportsRunning(prepared gatewayactions.PreparedRequest) bool {
@@ -222,7 +222,7 @@ func (application *ConnectorRuntimeApplication) FinishRunning(ctx context.Contex
 		return
 	}
 	gateway, runtime := application.ports.ActionFinishPorts(workspace, adapterPrepared.TargetConnectorKind)
-	if err := adapter.FinishRunning(ctx, gateway, runtime, requestID, adapterPrepared, principal, handles); err != nil {
+	if err := adapter.FinishRunning(ctx, gateway, runtime, requestID, adapterPrepared, connectorPrincipal(principal), handles); err != nil {
 		log.Printf("finish running connector action failed connector=%q request=%d error=%v", adapterPrepared.TargetConnectorKind, requestID, err)
 	}
 }

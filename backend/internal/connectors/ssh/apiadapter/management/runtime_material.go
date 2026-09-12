@@ -37,7 +37,7 @@ func targetConfigFromConnectorConfig(config map[string]any) (map[string]any, err
 }
 
 func RuntimeIDForTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, targetRef string) (int64, error) {
-	return RuntimeIDForTargetRefCapability(ctx, runtime, targetRef, connectortargets.RuntimeCapabilityLiveConsole)
+	return RuntimeIDForTargetRefCapability(ctx, runtime, targetRef, connectorapi.RuntimeCapabilityLiveConsole)
 }
 
 func RuntimeIDForTargetRefCapability(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetRef string, capabilityKind string) (int64, error) {
@@ -49,7 +49,7 @@ func RuntimeIDForTargetRefCapability(ctx context.Context, runtime connectorapi.C
 	if err != nil {
 		return 0, err
 	}
-	surface, err := runtime.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+	surface, err := runtime.EnsureRuntimeSurface(ctx, connectorapi.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  sshconnector.Kind,
 		TargetID:       targetID,
 		ProfileID:      profileID,
@@ -66,11 +66,11 @@ func RuntimeIDForTargetRefCapability(ctx context.Context, runtime connectorapi.C
 }
 
 func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetID int64, profileID int64, label string) (int64, error) {
-	surface, err := runtime.EnsureRuntimeSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{
+	surface, err := runtime.EnsureRuntimeSurface(ctx, connectorapi.EnsureRuntimeSurfaceInput{
 		ConnectorKind:  sshconnector.Kind,
 		TargetID:       targetID,
 		ProfileID:      profileID,
-		CapabilityKind: connectortargets.RuntimeCapabilityLiveConsole,
+		CapabilityKind: connectorapi.RuntimeCapabilityLiveConsole,
 		Label:          label,
 	})
 	if err != nil {
@@ -80,7 +80,7 @@ func ensureLiveConsoleRuntimeIDForProfile(ctx context.Context, runtime connector
 }
 
 func existingLiveConsoleRuntimeIDsForProfile(ctx context.Context, runtime connectorapi.ConnectorDataRuntime, targetID int64, profileID int64) ([]int64, error) {
-	surfaces, err := runtime.ListRuntimeSurfacesForProfile(ctx, targetID, profileID, connectortargets.RuntimeCapabilityLiveConsole)
+	surfaces, err := runtime.ListRuntimeSurfacesForProfile(ctx, targetID, profileID, connectorapi.RuntimeCapabilityLiveConsole)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func TargetMaterialForRuntime(ctx context.Context, runtime connectorapi.LiveCons
 		return TargetMaterial{}, sshkeys.PrivateKey{}, err
 	}
 	if surface.ConnectorKind != sshconnector.Kind ||
-		(surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole && surface.CapabilityKind != connectortargets.RuntimeCapabilityFileTransfer) {
+		(surface.CapabilityKind != connectorapi.RuntimeCapabilityLiveConsole && surface.CapabilityKind != connectorapi.RuntimeCapabilityFileTransfer) {
 		return TargetMaterial{}, sshkeys.PrivateKey{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
 	host := strings.TrimSpace(stringConfigValue(target.Config, "host"))

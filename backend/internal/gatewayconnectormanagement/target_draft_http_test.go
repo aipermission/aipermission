@@ -11,7 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -59,14 +58,14 @@ type targetDraftRuntime struct{}
 func (targetDraftRuntime) ResolveConnectorActionTarget(context.Context, string) (connectors.TargetView, connectors.CredentialProfileView, error) {
 	return connectors.TargetView{}, connectors.CredentialProfileView{}, nil
 }
-func (targetDraftRuntime) EnsureRuntimeSurface(context.Context, connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error) {
-	return connectortargets.RuntimeSurface{}, nil
+func (targetDraftRuntime) EnsureRuntimeSurface(context.Context, connectorapi.EnsureRuntimeSurfaceInput) (connectorapi.RuntimeSurface, error) {
+	return connectorapi.RuntimeSurface{}, nil
 }
-func (targetDraftRuntime) ListRuntimeSurfacesForProfile(context.Context, int64, int64, string) ([]connectortargets.RuntimeSurface, error) {
+func (targetDraftRuntime) ListRuntimeSurfacesForProfile(context.Context, int64, int64, string) ([]connectorapi.RuntimeSurface, error) {
 	return nil, nil
 }
-func (targetDraftRuntime) TargetProfileByRuntimeID(context.Context, int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
-	return connectors.TargetView{}, connectors.CredentialProfileView{}, connectortargets.RuntimeSurface{}, nil
+func (targetDraftRuntime) TargetProfileByRuntimeID(context.Context, int64) (connectors.TargetView, connectors.CredentialProfileView, connectorapi.RuntimeSurface, error) {
+	return connectors.TargetView{}, connectors.CredentialProfileView{}, connectorapi.RuntimeSurface{}, nil
 }
 func (targetDraftRuntime) ListCredentialProfiles(context.Context, int64) ([]connectors.CredentialProfileView, error) {
 	return nil, nil

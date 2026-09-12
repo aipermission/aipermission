@@ -159,6 +159,22 @@ func (e *Envelope) WithEntries(fn func([]EntryView) error) error {
 	return fn(views)
 }
 
+// ForEach exposes envelope entries through a callback without transferring
+// ownership of secret value buffers. Callers must not retain value.
+func (e *Envelope) ForEach(fn func(name string, value []byte, replaceExisting bool, itemID int64, valueVersion int64, sourceProjectID int64) error) error {
+	if fn == nil {
+		return nil
+	}
+	return e.WithEntries(func(entries []EntryView) error {
+		for _, item := range entries {
+			if err := fn(item.Name, item.Value, item.ReplaceExisting, item.ItemID, item.ValueVersion, item.SourceProjectID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (e *Envelope) ExactValueRedactor() (*Redactor, error) {
 	patterns := [][]byte{}
 	err := e.WithEntries(func(entries []EntryView) error {

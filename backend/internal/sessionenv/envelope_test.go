@@ -3,6 +3,7 @@ package sessionenv
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -36,6 +37,31 @@ func TestEnvelopeHasNoJSONSecretRepresentationAndDestroysValues(t *testing.T) {
 	envelope.Destroy()
 	if err := envelope.WithEntries(func([]EntryView) error { return nil }); err != ErrDestroyed {
 		t.Fatalf("destroyed envelope error = %v", err)
+	}
+}
+
+func TestEnvelopeForEachPreservesMetadataWithoutTransferringOwnership(t *testing.T) {
+	envelope, err := NewEnvelope([]EntryInput{{
+		Name: "SAFE_TOKEN", Value: []byte("top-secret-value"), ReplaceExisting: true,
+		ItemID: 7, ValueVersion: 9, SourceProjectID: 11,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed string
+	err = envelope.ForEach(func(name string, value []byte, replace bool, itemID, version, projectID int64) error {
+		observed = name + ":" + string(value)
+		if !replace || itemID != 7 || version != 9 || projectID != 11 {
+			t.Fatalf("metadata = replace:%t item:%d version:%d project:%d", replace, itemID, version, projectID)
+		}
+		return nil
+	})
+	if err != nil || observed != "SAFE_TOKEN:top-secret-value" {
+		t.Fatalf("ForEach observed %q: %v", observed, err)
+	}
+	envelope.Destroy()
+	if err := envelope.ForEach(func(string, []byte, bool, int64, int64, int64) error { return nil }); !errors.Is(err, ErrDestroyed) {
+		t.Fatalf("destroyed ForEach error = %v", err)
 	}
 }
 

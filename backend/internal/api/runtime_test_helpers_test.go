@@ -103,12 +103,12 @@ func testRuntimeVault(t testing.TB, server *Server, runtime *gatewayinfra.Worksp
 
 func testRuntimeTokens(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *tokens.Store {
 	t.Helper()
-	projection := server.vaultRuntime(runtime)
-	store, ok := projection.Storage.Tokens.(*tokens.Store)
-	if !ok || store == nil {
-		t.Fatal("test runtime token store is unavailable")
-	}
-	return store
+	identity := runtime.Identity()
+	return tokens.NewEncryptedStore(
+		testRuntimeDatabase(t, server, runtime),
+		testRuntimeVault(t, server, runtime),
+		identity.WorkspaceID,
+	)
 }
 
 func testRuntimeLeases(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *vaultsessions.Store {

@@ -47,5 +47,5 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 		httptransport.WriteInternalError(w)
 		return
 	}
-	adapter.RunTargetOperation(gateway, w, r, runtime, target, strings.TrimSpace(r.PathValue("operation")))
+	adapter.RunTargetOperation(gateway, w, r, runtime, connectorTarget(target), strings.TrimSpace(r.PathValue("operation")))
 }

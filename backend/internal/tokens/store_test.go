@@ -23,7 +23,7 @@ func TestActiveFailsClosedForRevokedExpiredAndMalformedTokens(t *testing.T) {
 		{ExpiresAt: now.Format(time.RFC3339)},
 		{ExpiresAt: "invalid"},
 	} {
-		if Active(token.RevokedAt, token.ExpiresAt, now) {
+		if Active(token.RevokedAt, token.ExpiresAt, now) || token.ActiveAt(now) {
 			t.Fatalf("inactive token accepted: %#v", token)
 		}
 	}

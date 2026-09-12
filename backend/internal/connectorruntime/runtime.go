@@ -12,7 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -249,16 +248,19 @@ func (r dataRuntime) ResolveConnectorActionTarget(ctx context.Context, targetRef
 	return r.scope.resolveTarget(ctx, targetRef)
 }
 
-func (r dataRuntime) EnsureRuntimeSurface(ctx context.Context, input connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error) {
-	return r.scope.ensureSurface(ctx, input)
+func (r dataRuntime) EnsureRuntimeSurface(ctx context.Context, input connectorapi.EnsureRuntimeSurfaceInput) (connectorapi.RuntimeSurface, error) {
+	surface, err := r.scope.ensureSurface(ctx, coreRuntimeSurfaceInput(input))
+	return gatewayRuntimeSurface(surface), err
 }
 
-func (r dataRuntime) ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectortargets.RuntimeSurface, error) {
-	return r.scope.listSurfaces(ctx, targetID, profileID, capabilityKind)
+func (r dataRuntime) ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectorapi.RuntimeSurface, error) {
+	surfaces, err := r.scope.listSurfaces(ctx, targetID, profileID, capabilityKind)
+	return gatewayRuntimeSurfaces(surfaces), err
 }
 
-func (r dataRuntime) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error) {
-	return r.scope.targetProfileByRuntimeID(ctx, runtimeID)
+func (r dataRuntime) TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectorapi.RuntimeSurface, error) {
+	target, profile, surface, err := r.scope.targetProfileByRuntimeID(ctx, runtimeID)
+	return target, profile, gatewayRuntimeSurface(surface), err
 }
 
 func (r dataRuntime) ListCredentialProfiles(ctx context.Context, targetID int64) ([]connectors.CredentialProfileView, error) {
@@ -279,50 +281,75 @@ type actionRuntime struct{ liveRuntime }
 
 type transferRuntime struct{ dataRuntime }
 
-func (r transferRuntime) ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectortargets.RuntimeSurface, error) {
-	return r.scope.resolveRuntimeContext(ctx, runtimeID, capabilityKind)
+func (r transferRuntime) ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectorapi.RuntimeSurface, error) {
+	runtime, surface, err := r.scope.resolveRuntimeContext(ctx, runtimeID, capabilityKind)
+	return runtime, gatewayRuntimeSurface(surface), err
 }
 
 type sessionRuntime struct{ scope *Scope }
 
-func (r sessionRuntime) EnsureReady(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.SessionHandle, error) {
+func (r sessionRuntime) EnsureReady(ctx context.Context, principal connectorapi.Principal, runtimeID int64) (connectorapi.ConsoleSessionHandle, error) {
 	manager, err := r.scope.managerFor(ctx, runtimeID)
 	if err != nil {
-		return console.SessionHandle{}, err
+		return connectorapi.ConsoleSessionHandle{}, err
 	}
-	return manager.EnsureReady(ctx, principal, runtimeID)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleSessionHandle{}, err
+	}
+	handle, err := manager.EnsureReady(ctx, core, runtimeID)
+	return gatewaySessionHandle(handle), err
 }
 
-func (r sessionRuntime) Exec(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, command string) (console.ExecResult, error) {
+func (r sessionRuntime) Exec(ctx context.Context, principal connectorapi.Principal, runtimeID int64, command string) (connectorapi.ConsoleExecResult, error) {
 	manager, err := r.scope.managerFor(ctx, runtimeID)
 	if err != nil {
-		return console.ExecResult{}, err
+		return connectorapi.ConsoleExecResult{}, err
 	}
-	return manager.Exec(ctx, principal, runtimeID, command)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleExecResult{}, err
+	}
+	result, err := manager.Exec(ctx, core, runtimeID, command)
+	return gatewayExecResult(result), err
 }
 
-func (r sessionRuntime) ActiveSnapshot(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.Record, error) {
+func (r sessionRuntime) ActiveSnapshot(ctx context.Context, principal connectorapi.Principal, runtimeID int64) (connectorapi.ConsoleRecord, error) {
 	manager, err := r.scope.managerFor(ctx, runtimeID)
 	if err != nil {
-		return console.Record{}, err
+		return connectorapi.ConsoleRecord{}, err
 	}
-	return manager.ActiveSnapshot(ctx, principal, runtimeID)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleRecord{}, err
+	}
+	record, err := manager.ActiveSnapshot(ctx, core, runtimeID)
+	return gatewayConsoleRecord(record), err
 }
 
-func (r sessionRuntime) WaitActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) (console.ExecResult, error) {
+func (r sessionRuntime) WaitActive(ctx context.Context, principal connectorapi.Principal, handle connectorapi.ConsoleSessionHandle) (connectorapi.ConsoleExecResult, error) {
 	manager, err := r.scope.managerFor(ctx, handle.RuntimeID)
 	if err != nil {
-		return console.ExecResult{}, err
+		return connectorapi.ConsoleExecResult{}, err
 	}
-	return manager.WaitActive(ctx, principal, handle)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleExecResult{}, err
+	}
+	result, err := manager.WaitActive(ctx, core, coreSessionHandle(handle))
+	return gatewayExecResult(result), err
 }
 
-func (r sessionRuntime) InterruptActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) error {
+func (r sessionRuntime) InterruptActive(ctx context.Context, principal connectorapi.Principal, handle connectorapi.ConsoleSessionHandle) error {
 	manager, err := r.scope.managerFor(ctx, handle.RuntimeID)
 	if err != nil {
 		return err
 	}
-	return manager.InterruptActive(ctx, principal, handle)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return err
+	}
+	return manager.InterruptActive(ctx, core, coreSessionHandle(handle))
 }
 
 type noopEventSink struct{}

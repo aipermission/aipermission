@@ -15,10 +15,6 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 )
 
 var (
@@ -75,20 +71,20 @@ type CredentialResourceStore interface {
 // implementation is scoped to the adapter's connector kind by core.
 type ConnectorDataRuntime interface {
 	ResolveConnectorActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error)
-	EnsureRuntimeSurface(ctx context.Context, input connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error)
-	ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]connectortargets.RuntimeSurface, error)
-	TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectortargets.RuntimeSurface, error)
+	EnsureRuntimeSurface(ctx context.Context, input EnsureRuntimeSurfaceInput) (RuntimeSurface, error)
+	ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]RuntimeSurface, error)
+	TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, RuntimeSurface, error)
 	ListCredentialProfiles(ctx context.Context, targetID int64) ([]connectors.CredentialProfileView, error)
 	CredentialResources(resourceKind string) CredentialResourceStore
 }
 
 // LiveSessionRuntime exposes the generic persistent console manager.
 type ConsoleSessionRuntime interface {
-	EnsureReady(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.SessionHandle, error)
-	Exec(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, command string) (console.ExecResult, error)
-	ActiveSnapshot(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (console.Record, error)
-	WaitActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) (console.ExecResult, error)
-	InterruptActive(ctx context.Context, principal executionprincipal.Principal, handle console.SessionHandle) error
+	EnsureReady(ctx context.Context, principal Principal, runtimeID int64) (ConsoleSessionHandle, error)
+	Exec(ctx context.Context, principal Principal, runtimeID int64, command string) (ConsoleExecResult, error)
+	ActiveSnapshot(ctx context.Context, principal Principal, runtimeID int64) (ConsoleRecord, error)
+	WaitActive(ctx context.Context, principal Principal, handle ConsoleSessionHandle) (ConsoleExecResult, error)
+	InterruptActive(ctx context.Context, principal Principal, handle ConsoleSessionHandle) error
 }
 
 type LiveSessionRuntime interface {
@@ -98,7 +94,7 @@ type LiveSessionRuntime interface {
 
 // PrincipalRuntime resolves the local human execution principal.
 type PrincipalRuntime interface {
-	ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error)
+	ConnectorLocalExecutionPrincipal() (Principal, error)
 }
 
 // LiveConsoleRuntime contains the persisted target data and connector-owned
@@ -117,7 +113,7 @@ type ActionRuntime interface {
 // transfer adapters.
 type TransferRuntime interface {
 	ConnectorDataRuntime
-	ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, connectortargets.RuntimeSurface, error)
+	ResolveRuntimeContext(ctx context.Context, runtimeID int64, capabilityKind string) (connectors.RuntimeContext, RuntimeSurface, error)
 }
 
 // TargetLifecycleRuntime contains only resources needed while testing or
@@ -197,7 +193,7 @@ type LiveConsoleSession struct {
 	Wait                     func() error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
-	ApplyEnvironment         func(context.Context, *sessionenv.Envelope) error
+	ApplyEnvironment         func(context.Context, SessionEnvironment) error
 	PeerIdentity             string
 	StartupInputAfterConnect string
 }
@@ -205,12 +201,12 @@ type LiveConsoleSession struct {
 // ConsoleRestartGateway owns cancellation and invalidation for one persistent
 // connector console session.
 type ConsoleRestartGateway interface {
-	ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
+	ConnectorRestartConsoleSession(ctx context.Context, principal Principal, runtimeID int64, runningRequestError string) (ConsoleRestartResult, error)
 }
 
 // ActionFinishGateway owns completion of an asynchronous connector action.
 type ActionFinishGateway interface {
-	ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error)
+	ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (ActionRequest, error)
 }
 
 // TransferBatchGateway owns creation and execution of connector download jobs.
@@ -263,8 +259,8 @@ type FileTransferGateway interface {
 type TargetDeletionGateway interface {
 	PeerIdentityGateway
 	ConsoleRestartGateway
-	ConnectorDeleteTargetRecord(ctx context.Context, target connectortargets.Target, payload map[string]any) error
-	ConnectorFinalizeDeletedTarget(ctx context.Context, target connectortargets.Target, staleReason string, payload map[string]any) (int64, error)
+	ConnectorDeleteTargetRecord(ctx context.Context, target Target, payload map[string]any) error
+	ConnectorFinalizeDeletedTarget(ctx context.Context, target Target, staleReason string, payload map[string]any) (int64, error)
 }
 
 // TargetOperationGateway exposes observation audit and peer identity to
@@ -402,8 +398,8 @@ func validateRoutePolicy(route RouteDefinition) error {
 type RuntimeAdapter interface {
 	RuntimeCapabilities(server RuntimeActionGateway, runtime ActionRuntime) map[string]connectors.RuntimeCapability
 	SupportsRunning(prepared connectors.RuntimeActionContext) bool
-	FinishRunning(context.Context, ActionFinishGateway, ActionRuntime, int64, connectors.RuntimeActionContext, executionprincipal.Principal, connectors.ActionHandles) error
-	RunningHint(request connectortargets.ActionRequest) string
+	FinishRunning(context.Context, ActionFinishGateway, ActionRuntime, int64, connectors.RuntimeActionContext, Principal, connectors.ActionHandles) error
+	RunningHint(request ActionRequest) string
 }
 
 // RouteRegistrar lets a connector own compatibility/setup routes without
@@ -425,14 +421,14 @@ type DraftTester interface {
 
 // TargetDeleter lets a connector customize deletion behavior.
 type TargetDeleter interface {
-	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target connectortargets.Target)
+	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target Target)
 }
 
 // CredentialProfileLifecycleAdapter lets a connector react to profile lifecycle
 // changes without putting connector-specific branches in the core handlers.
 type CredentialProfileLifecycleAdapter interface {
-	BeforeCreateCredentialProfile(ctx context.Context, runtime TargetLifecycleRuntime, target connectortargets.Target) error
-	BeforeDeleteCredentialProfile(ctx context.Context, handler ConsoleRestartGateway, runtime TargetLifecycleRuntime, target connectortargets.Target, profile connectortargets.CredentialProfile) error
+	BeforeCreateCredentialProfile(ctx context.Context, runtime TargetLifecycleRuntime, target Target) error
+	BeforeDeleteCredentialProfile(ctx context.Context, handler ConsoleRestartGateway, runtime TargetLifecycleRuntime, target Target, profile CredentialProfile) error
 }
 
 // CredentialProfileTester lets a connector test an existing profile.
@@ -442,7 +438,7 @@ type CredentialProfileTester interface {
 
 // TargetOperationRunner runs connector-specific target operations.
 type TargetOperationRunner interface {
-	RunTargetOperation(handler TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target connectortargets.Target, operation string)
+	RunTargetOperation(handler TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target Target, operation string)
 }
 
 // CredentialCanonicalizer normalizes public credential profile metadata.

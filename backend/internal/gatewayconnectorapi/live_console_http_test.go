@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/gorilla/websocket"
 )
 
@@ -52,9 +50,9 @@ func TestEnvironmentErrorsUseConnectorNeutralPresentation(t *testing.T) {
 }
 
 type fakeSessions struct {
-	items         []console.Record
-	created       console.Record
-	createRequest console.CreateRequest
+	items         []ConsoleRecord
+	created       ConsoleRecord
+	createRequest LiveConsoleCreateRequest
 	createErr     error
 	inputErr      error
 	closeErr      error
@@ -73,27 +71,27 @@ func (liveConsoleTestErrorPresenter) ConnectorErrorMessage(prefix string, err er
 	return prefix + ": " + err.Error()
 }
 
-func (sessions *fakeSessions) List(context.Context, int64) ([]console.Record, error) {
+func (sessions *fakeSessions) List(context.Context, int64) ([]ConsoleRecord, error) {
 	return sessions.items, nil
 }
 
-func (sessions *fakeSessions) Create(_ context.Context, request console.CreateRequest) (console.Record, error) {
+func (sessions *fakeSessions) Create(_ context.Context, request LiveConsoleCreateRequest) (ConsoleRecord, error) {
 	sessions.createRequest = request
 	return sessions.created, sessions.createErr
 }
 
-func (sessions *fakeSessions) Get(context.Context, int64) (console.Record, error) {
+func (sessions *fakeSessions) Get(context.Context, int64) (ConsoleRecord, error) {
 	if len(sessions.items) == 0 {
-		return console.Record{}, console.ErrNotFound
+		return ConsoleRecord{}, ErrLiveConsoleNotFound
 	}
 	return sessions.items[0], nil
 }
 
-func (sessions *fakeSessions) Input(context.Context, executionprincipal.Principal, int64, string) error {
+func (sessions *fakeSessions) Input(context.Context, Principal, int64, string) error {
 	return sessions.inputErr
 }
 
-func (sessions *fakeSessions) Close(context.Context, executionprincipal.Principal, int64) error {
+func (sessions *fakeSessions) Close(context.Context, Principal, int64) error {
 	return sessions.closeErr
 }
 
@@ -101,17 +99,14 @@ func (sessions *fakeSessions) RuntimeID(context.Context, int64) (int64, error) {
 	return sessions.runtimeID, nil
 }
 
-func (sessions *fakeSessions) Attach(http.ResponseWriter, *http.Request, executionprincipal.Principal, int64, func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)) error {
+func (sessions *fakeSessions) Attach(http.ResponseWriter, *http.Request, Principal, int64, func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)) error {
 	return sessions.attachErr
 }
 
 func testRuntime(t *testing.T, sessions *fakeSessions) *LiveConsoleHTTPRuntime {
 	t.Helper()
-	principal, err := executionprincipal.LocalOperator("workspace", "runtime")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &LiveConsoleHTTPRuntime{Sessions: sessions, Principal: func() (executionprincipal.Principal, error) { return principal, nil }}
+	principal := Principal{Kind: PrincipalLocalOperator, WorkspaceID: "workspace", RuntimeInstanceID: "runtime"}
+	return &LiveConsoleHTTPRuntime{Sessions: sessions, Principal: func() (Principal, error) { return principal, nil }}
 }
 
 func request(method, target, body string) *http.Request {
@@ -123,7 +118,7 @@ func request(method, target, body string) *http.Request {
 }
 
 func TestCreateBuildsEnvironmentAndObservesSession(t *testing.T) {
-	sessions := &fakeSessions{created: console.Record{ID: 7, RuntimeID: 9, Name: "shell"}}
+	sessions := &fakeSessions{created: ConsoleRecord{ID: 7, RuntimeID: 9, Name: "shell"}}
 	runtime := testRuntime(t, sessions)
 	runtime.PlanEnvironment = func(_ context.Context, runtimeID int64, selections []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error) {
 		if runtimeID != 9 || len(selections) != 1 || selections[0] != (LiveConsoleVaultSelection{
@@ -131,8 +126,8 @@ func TestCreateBuildsEnvironmentAndObservesSession(t *testing.T) {
 		}) {
 			t.Fatalf("environment request = runtime %d selections %#v", runtimeID, selections)
 		}
-		return LiveConsoleEnvironmentPlan{ItemIDs: []int64{12}, ContentHash: "content", Prepare: func(context.Context, string) (console.EnvironmentPreparation, error) {
-			return console.EnvironmentPreparation{}, nil
+		return LiveConsoleEnvironmentPlan{ItemIDs: []int64{12}, ContentHash: "content", Prepare: func(context.Context, string) (LiveConsoleEnvironmentPreparation, error) {
+			return LiveConsoleEnvironmentPreparation{}, nil
 		}}, nil
 	}
 	var observedAction string
@@ -177,9 +172,9 @@ func TestCreateRejectsMalformedJSONBeforeResolvingPrincipal(t *testing.T) {
 	sessions := &fakeSessions{}
 	runtime := testRuntime(t, sessions)
 	principalCalls := 0
-	runtime.Principal = func() (executionprincipal.Principal, error) {
+	runtime.Principal = func() (Principal, error) {
 		principalCalls++
-		return executionprincipal.Principal{}, errors.New("unavailable")
+		return Principal{}, errors.New("unavailable")
 	}
 	handlers := NewLiveConsoleHTTPHandlers(func(http.ResponseWriter) (*LiveConsoleHTTPRuntime, bool) { return runtime, true })
 	response := httptest.NewRecorder()
@@ -229,7 +224,7 @@ func TestPathValidationFollowsWorkspaceScope(t *testing.T) {
 }
 
 func TestAttachMapsInactiveSessionToConflict(t *testing.T) {
-	sessions := &fakeSessions{attachErr: console.InactiveError{Status: "closed"}}
+	sessions := &fakeSessions{attachErr: LiveConsoleInactiveError{Status: "closed"}}
 	runtime := testRuntime(t, sessions)
 	runtime.UpgradeWebSocket = func(http.ResponseWriter, *http.Request) (*websocket.Conn, error) { return nil, nil }
 	handlers := NewLiveConsoleHTTPHandlers(func(http.ResponseWriter) (*LiveConsoleHTTPRuntime, bool) { return runtime, true })

@@ -93,11 +93,18 @@ type TargetLifecycleRuntimePort struct {
 	Principal func() (executionprincipal.Principal, error)
 }
 
-func (runtime TargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() (executionprincipal.Principal, error) {
+func (runtime TargetLifecycleRuntimePort) ConnectorLocalExecutionPrincipal() (connectorapi.Principal, error) {
 	if runtime.Principal == nil {
-		return executionprincipal.Principal{}, fmt.Errorf("connector local execution principal is unavailable")
+		return connectorapi.Principal{}, fmt.Errorf("connector local execution principal is unavailable")
 	}
-	return runtime.Principal()
+	principal, err := runtime.Principal()
+	if err != nil {
+		return connectorapi.Principal{}, err
+	}
+	return connectorapi.Principal{
+		Kind: connectorapi.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
+		WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
+	}, nil
 }
 
 func TargetLifecycleRuntime(runtime Runtime, kind string, principal func() (executionprincipal.Principal, error)) connectorapi.TargetLifecycleRuntime {

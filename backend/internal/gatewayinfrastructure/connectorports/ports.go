@@ -175,14 +175,18 @@ func (component *PortsComponent) RuntimeActionPorts(workspace Workspace, kind st
 	return RuntimeActionGateway{PeerGateway: component.PeerGateway(), workspace: workspace, kind: kind}, PortActionRuntime(workspace, kind)
 }
 
-func (gateway RuntimeActionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
+func (gateway RuntimeActionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal connectorapi.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
 	if gateway.workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
 	}
 	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
-	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleRestartResult{}, err
+	}
+	return gateway.workspace.Actions.Restart(ctx, core, runtimeID, runningError)
 }
 
 func (gateway RuntimeActionGateway) ConnectorCreateAndRunDownloadBatch(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
@@ -205,18 +209,19 @@ func (component *PortsComponent) ActionFinishPorts(workspace Workspace, kind str
 	return ActionFinishGateway{component: component, workspace: workspace, kind: kind}, PortActionRuntime(workspace, kind)
 }
 
-func (gateway ActionFinishGateway) ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
+func (gateway ActionFinishGateway) ConnectorFinishActionRequest(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectorapi.ActionRequest, error) {
 	if gateway.workspace.runtime.Database == nil || gateway.workspace.Actions.Finish == nil {
-		return connectortargets.ActionRequest{}, ErrRuntimeUnavailable
+		return connectorapi.ActionRequest{}, ErrRuntimeUnavailable
 	}
 	request, err := connectortargets.NewStore(gateway.workspace.runtime.Database).GetActionRequest(ctx, requestID)
 	if err != nil {
-		return connectortargets.ActionRequest{}, err
+		return connectorapi.ActionRequest{}, err
 	}
 	if request.ConnectorKind != gateway.kind {
-		return connectortargets.ActionRequest{}, connectortargets.ErrActionRequestNotFound
+		return connectorapi.ActionRequest{}, connectortargets.ErrActionRequestNotFound
 	}
-	return gateway.workspace.Actions.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
+	finished, err := gateway.workspace.Actions.Finish(ctx, requestID, status, output, displayText, errorText, hints...)
+	return gatewayActionRequest(finished), err
 }
 
 type FileTransferGateway struct {
@@ -256,34 +261,38 @@ func (component *PortsComponent) TargetDeletionGatewayProvider(workspace Workspa
 	}
 }
 
-func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
+func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal connectorapi.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
 	if gateway.workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
 	}
 	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
-	return gateway.workspace.Actions.Restart(ctx, principal, runtimeID, runningError)
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return connectorapi.ConsoleRestartResult{}, err
+	}
+	return gateway.workspace.Actions.Restart(ctx, core, runtimeID, runningError)
 }
 
-func (gateway TargetDeletionGateway) ConnectorDeleteTargetRecord(ctx context.Context, target connectortargets.Target, payload map[string]any) error {
+func (gateway TargetDeletionGateway) ConnectorDeleteTargetRecord(ctx context.Context, target connectorapi.Target, payload map[string]any) error {
 	if target.ID != gateway.targetID || target.ConnectorKind != gateway.kind {
 		return connectortargets.ErrTargetNotFound
 	}
 	if gateway.workspace.Targets.Delete == nil {
 		return ErrRuntimeUnavailable
 	}
-	return gateway.workspace.Targets.Delete(ctx, target, payload)
+	return gateway.workspace.Targets.Delete(ctx, coreTarget(target), payload)
 }
 
-func (gateway TargetDeletionGateway) ConnectorFinalizeDeletedTarget(ctx context.Context, target connectortargets.Target, reason string, payload map[string]any) (int64, error) {
+func (gateway TargetDeletionGateway) ConnectorFinalizeDeletedTarget(ctx context.Context, target connectorapi.Target, reason string, payload map[string]any) (int64, error) {
 	if target.ID != gateway.targetID || target.ConnectorKind != gateway.kind {
 		return 0, connectortargets.ErrTargetNotFound
 	}
 	if gateway.workspace.Targets.Finalize == nil {
 		return 0, ErrRuntimeUnavailable
 	}
-	return gateway.workspace.Targets.Finalize(ctx, target, reason, payload)
+	return gateway.workspace.Targets.Finalize(ctx, coreTarget(target), reason, payload)
 }
 
 type TargetOperationGateway struct {

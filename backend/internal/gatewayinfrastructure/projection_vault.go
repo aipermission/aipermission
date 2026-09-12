@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"time"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -27,7 +28,13 @@ func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRu
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
 			Database: owner.Storage.DatabaseHandle(), SecretVault: owner.Storage.SecretVault(),
-			Tokens: owner.Storage.TokenStore(), WorkspaceID: identity.WorkspaceID, DatabaseID: identity.DatabaseID,
+			ReadToken: func(ctx context.Context, id int64) (gatewayvault.TokenState, error) {
+				token, err := owner.Storage.TokenStore().Get(ctx, id)
+				return gatewayvault.TokenState{
+					Active: token.ActiveAt(time.Now().UTC()), ExpiresAt: token.ExpiresAt, UpdatedAt: token.UpdatedAt,
+				}, err
+			},
+			WorkspaceID: identity.WorkspaceID, DatabaseID: identity.DatabaseID,
 		},
 		Session: gatewayvault.SessionRuntime{
 			Sessions: owner.Connectors.ConsoleSessionManager(), Leases: owner.Security.VaultLeaseStore(),

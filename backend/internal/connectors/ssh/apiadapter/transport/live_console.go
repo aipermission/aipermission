@@ -16,7 +16,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -135,7 +134,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 	}
 	runtimeStdout := io.Reader(stdout)
 	var runtimeSession *connectorapi.LiveConsoleSession
-	var applyEnvironment func(context.Context, *sessionenv.Envelope) error
+	var applyEnvironment func(context.Context, connectorapi.SessionEnvironment) error
 	if hasEnvironment {
 		bootstrap, err := newSessionEnvironmentBootstrap(options.Generation)
 		if err != nil {
@@ -153,7 +152,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 			_ = sshClient.Close()
 			return nil, err
 		}
-		applyEnvironment = func(applyCtx context.Context, environment *sessionenv.Envelope) error {
+		applyEnvironment = func(applyCtx context.Context, environment connectorapi.SessionEnvironment) error {
 			result, err := bootstrap.Apply(applyCtx, stdin, stdout, environment)
 			if err != nil {
 				return err
@@ -209,7 +208,7 @@ func (b sessionEnvironmentBootstrap) Apply(
 	ctx context.Context,
 	stdin io.Writer,
 	stdout io.Reader,
-	environment *sessionenv.Envelope,
+	environment connectorapi.SessionEnvironment,
 ) (sessionenvprotocol.Result, error) {
 	if b.protocol == nil {
 		return sessionenvprotocol.Result{}, errors.New("session environment bootstrap is unavailable")

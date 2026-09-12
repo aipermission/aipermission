@@ -10,26 +10,65 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/console"
-	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/gorilla/websocket"
 )
 
+var (
+	ErrLiveConsoleNotFound      = errors.New("console session not found")
+	ErrLiveConsoleSessionLimit  = errors.New("active console session limit reached")
+	ErrLiveConsoleClientLimit   = errors.New("console session client limit reached")
+	ErrLiveConsoleInputTooLarge = errors.New("console input is too large")
+)
+
+type LiveConsoleInactiveError struct {
+	Status string
+	Detail string
+}
+
+func (e LiveConsoleInactiveError) Error() string {
+	if e.Detail == "" {
+		return "console session is " + e.Status
+	}
+	return "console session is " + e.Status + ": " + e.Detail
+}
+
+type LiveConsoleCreateRequest struct {
+	RuntimeID              int64
+	Name                   string
+	CloseExisting          bool
+	Cols                   int
+	Rows                   int
+	WaitForStart           bool
+	Params                 map[string]any
+	Principal              Principal
+	PrepareEnvironment     LiveConsoleEnvironmentPreparer
+	EnvironmentContentHash string
+}
+
+type LiveConsoleEnvironmentPreparation struct {
+	Environment  SessionEnvironment
+	Release      func()
+	PostValidate func(context.Context) error
+	Finalize     func(context.Context, ConsoleSessionHandle) error
+}
+
+type LiveConsoleEnvironmentPreparer func(context.Context, string) (LiveConsoleEnvironmentPreparation, error)
+
 type LiveConsoleSessions interface {
-	List(context.Context, int64) ([]console.Record, error)
-	Create(context.Context, console.CreateRequest) (console.Record, error)
-	Get(context.Context, int64) (console.Record, error)
-	Input(context.Context, executionprincipal.Principal, int64, string) error
-	Close(context.Context, executionprincipal.Principal, int64) error
+	List(context.Context, int64) ([]ConsoleRecord, error)
+	Create(context.Context, LiveConsoleCreateRequest) (ConsoleRecord, error)
+	Get(context.Context, int64) (ConsoleRecord, error)
+	Input(context.Context, Principal, int64, string) error
+	Close(context.Context, Principal, int64) error
 	RuntimeID(context.Context, int64) (int64, error)
-	Attach(http.ResponseWriter, *http.Request, executionprincipal.Principal, int64, func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)) error
+	Attach(http.ResponseWriter, *http.Request, Principal, int64, func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)) error
 }
 
 type LiveConsoleEnvironmentPlan struct {
 	ItemIDs     []int64
 	ContentHash string
-	Prepare     console.EnvironmentPreparer
+	Prepare     LiveConsoleEnvironmentPreparer
 }
 
 type LiveConsoleRestartResult struct {
@@ -47,7 +86,7 @@ type LiveConsoleVaultSelection struct {
 
 type LiveConsoleHTTPRuntime struct {
 	Sessions                LiveConsoleSessions
-	Principal               func() (executionprincipal.Principal, error)
+	Principal               func() (Principal, error)
 	PlanEnvironment         func(context.Context, int64, []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error)
 	PresentEnvironmentError func(error) (int, string, bool)
 	ErrorAdapter            func(context.Context, int64) ErrorPresenter
@@ -107,7 +146,7 @@ func (h *LiveConsoleHTTPHandlers) Create(w http.ResponseWriter, r *http.Request)
 	if !httptransport.DecodeJSON(w, r, &input, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	request := console.CreateRequest{
+	request := LiveConsoleCreateRequest{
 		RuntimeID: input.RuntimeID, Name: input.Name, CloseExisting: input.CloseExisting,
 		Cols: input.Cols, Rows: input.Rows, Params: input.Params,
 		WaitForStart: true,
@@ -134,7 +173,7 @@ func (h *LiveConsoleHTTPHandlers) Create(w http.ResponseWriter, r *http.Request)
 		request.EnvironmentContentHash = environment.ContentHash
 	}
 	item, err := runtime.Sessions.Create(r.Context(), request)
-	if errors.Is(err, console.ErrSessionLimit) {
+	if errors.Is(err, ErrLiveConsoleSessionLimit) {
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -185,7 +224,9 @@ func (h *LiveConsoleHTTPHandlers) Input(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	var request console.InputRequest
+	var request struct {
+		Data string `json:"data"`
+	}
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
@@ -194,7 +235,7 @@ func (h *LiveConsoleHTTPHandlers) Input(w http.ResponseWriter, r *http.Request) 
 		httptransport.WriteInternalError(w)
 		return
 	}
-	if err := runtime.Sessions.Input(r.Context(), principal, id, request.Data); errors.Is(err, console.ErrInputTooLarge) {
+	if err := runtime.Sessions.Input(r.Context(), principal, id, request.Data); errors.Is(err, ErrLiveConsoleInputTooLarge) {
 		httptransport.WriteError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	} else if err != nil {
@@ -289,12 +330,12 @@ func (h *LiveConsoleHTTPHandlers) Attach(w http.ResponseWriter, r *http.Request)
 	}
 	err = runtime.Sessions.Attach(w, r, principal, id, runtime.UpgradeWebSocket)
 	switch {
-	case errors.Is(err, console.ErrNotFound):
+	case errors.Is(err, ErrLiveConsoleNotFound):
 		httptransport.WriteError(w, http.StatusNotFound, "console session not found")
-	case errors.Is(err, console.ErrClientLimit):
+	case errors.Is(err, ErrLiveConsoleClientLimit):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	case err != nil:
-		var inactive console.InactiveError
+		var inactive LiveConsoleInactiveError
 		if errors.As(err, &inactive) {
 			httptransport.WriteError(w, http.StatusConflict, inactive.Error())
 			return
@@ -319,16 +360,16 @@ func (h *LiveConsoleHTTPHandlers) resolve(w http.ResponseWriter) (*LiveConsoleHT
 	return runtime, true
 }
 
-func (runtime *LiveConsoleHTTPRuntime) principal() (executionprincipal.Principal, error) {
+func (runtime *LiveConsoleHTTPRuntime) principal() (Principal, error) {
 	if runtime == nil || runtime.Principal == nil {
-		return executionprincipal.Principal{}, executionprincipal.ErrInvalid
+		return Principal{}, ErrInvalidPrincipal
 	}
 	principal, err := runtime.Principal()
 	if err != nil {
-		return executionprincipal.Principal{}, err
+		return Principal{}, err
 	}
 	if err := principal.Validate(); err != nil {
-		return executionprincipal.Principal{}, err
+		return Principal{}, err
 	}
 	return principal, nil
 }

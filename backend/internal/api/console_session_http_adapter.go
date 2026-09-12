@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -16,8 +15,15 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		return nil, false
 	}
 	return s.operationsOwner.LiveConsoleHTTPRuntime(runtime, connectorapi.LiveConsoleHTTPRuntime{
-		Principal: func() (gatewayaccess.Principal, error) {
-			return s.localExecutionPrincipal(runtime)
+		Principal: func() (connectorapi.Principal, error) {
+			principal, err := s.localExecutionPrincipal(runtime)
+			if err != nil {
+				return connectorapi.Principal{}, err
+			}
+			return connectorapi.Principal{
+				Kind: connectorapi.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
+				WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
+			}, nil
 		},
 		PlanEnvironment: func(ctx context.Context, runtimeID int64, selections []connectorapi.LiveConsoleVaultSelection) (connectorapi.LiveConsoleEnvironmentPlan, error) {
 			application, err := s.vaultActionApplication(runtime)
@@ -40,9 +46,26 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 			for _, item := range plan.Items {
 				ids = append(ids, item.ItemID)
 			}
-			return connectorapi.LiveConsoleEnvironmentPlan{
-				ItemIDs: ids, ContentHash: plan.EnvironmentContentHash, Prepare: plan.Prepare,
-			}, nil
+			var prepare connectorapi.LiveConsoleEnvironmentPreparer
+			if plan.Prepare != nil {
+				prepare = func(prepareCtx context.Context, peerIdentity string) (connectorapi.LiveConsoleEnvironmentPreparation, error) {
+					prepared, err := plan.Prepare(prepareCtx, peerIdentity)
+					if err != nil {
+						return connectorapi.LiveConsoleEnvironmentPreparation{}, err
+					}
+					var finalize func(context.Context, connectorapi.ConsoleSessionHandle) error
+					if prepared.Finalize != nil {
+						finalize = func(finalizeCtx context.Context, handle connectorapi.ConsoleSessionHandle) error {
+							return prepared.Finalize(finalizeCtx, gatewayvault.EnvironmentSessionHandle{ID: handle.ID, RuntimeID: handle.RuntimeID, Generation: handle.Generation})
+						}
+					}
+					return connectorapi.LiveConsoleEnvironmentPreparation{
+						Environment: prepared.Environment, Release: prepared.Release,
+						PostValidate: prepared.PostValidate, Finalize: finalize,
+					}, nil
+				}
+			}
+			return connectorapi.LiveConsoleEnvironmentPlan{ItemIDs: ids, ContentHash: plan.EnvironmentContentHash, Prepare: prepare}, nil
 		},
 		PresentEnvironmentError: presentVaultSessionEnvironmentError,
 		ErrorAdapter: func(ctx context.Context, runtimeID int64) connectorapi.ErrorPresenter {

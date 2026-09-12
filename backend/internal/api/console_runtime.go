@@ -30,10 +30,17 @@ func (s *Server) runtimeConsoleOpener(runtime *gatewayinfra.WorkspaceHandle) gat
 		if err != nil {
 			return nil, err
 		}
+		var applyEnvironment func(context.Context, gatewayoperations.SessionEnvironment) error
+		if session.ApplyEnvironment != nil {
+			applyEnvironment = func(applyCtx context.Context, environment gatewayoperations.SessionEnvironment) error {
+				return session.ApplyEnvironment(applyCtx, environment)
+			}
+		}
 		return &gatewayoperations.RuntimeSession{
 			Stdin: session.Stdin, Stdout: session.Stdout, Stderr: session.Stderr,
 			Wait: session.Wait, Resize: session.Resize, Close: session.Close,
-			ApplyEnvironment: session.ApplyEnvironment, PeerIdentity: session.PeerIdentity,
+			ApplyEnvironment:         applyEnvironment,
+			PeerIdentity:             session.PeerIdentity,
 			StartupInputAfterConnect: session.StartupInputAfterConnect,
 		}, nil
 	}

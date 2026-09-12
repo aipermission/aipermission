@@ -44,6 +44,11 @@ type RuntimeOpenRequest struct {
 
 type RuntimeOpener func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error)
 
+type SessionEnvironment interface {
+	Len() int
+	ForEach(func(name string, value []byte, replaceExisting bool, itemID int64, valueVersion int64, sourceProjectID int64) error) error
+}
+
 type RuntimeSession struct {
 	Stdin                    io.WriteCloser
 	Stdout                   io.Reader
@@ -51,7 +56,7 @@ type RuntimeSession struct {
 	Wait                     func() error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
-	ApplyEnvironment         func(context.Context, *sessionenv.Envelope) error
+	ApplyEnvironment         func(context.Context, SessionEnvironment) error
 	PeerIdentity             string
 	StartupInputAfterConnect string
 }
@@ -68,10 +73,16 @@ func AdaptRuntimeOpener(opener RuntimeOpener) console.RuntimeOpener {
 		if err != nil || session == nil {
 			return nil, err
 		}
+		var applyEnvironment func(context.Context, *sessionenv.Envelope) error
+		if session.ApplyEnvironment != nil {
+			applyEnvironment = func(applyCtx context.Context, environment *sessionenv.Envelope) error {
+				return session.ApplyEnvironment(applyCtx, environment)
+			}
+		}
 		return &console.RuntimeSession{
 			Stdin: session.Stdin, Stdout: session.Stdout, Stderr: session.Stderr,
 			Wait: session.Wait, Resize: session.Resize, Close: session.Close,
-			ApplyEnvironment: session.ApplyEnvironment, PeerIdentity: session.PeerIdentity,
+			ApplyEnvironment: applyEnvironment, PeerIdentity: session.PeerIdentity,
 			StartupInputAfterConnect: session.StartupInputAfterConnect,
 		}, nil
 	}

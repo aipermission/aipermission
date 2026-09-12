@@ -59,7 +59,7 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 			httptransport.WriteInternalError(w)
 			return
 		}
-		adapter.DeleteTarget(gateway, w, r, runtime, target)
+		adapter.DeleteTarget(gateway, w, r, runtime, connectorTarget(target))
 		return
 	}
 	if workspace.Lifecycle.DeleteTarget == nil || workspace.Lifecycle.FinalizeTarget == nil {

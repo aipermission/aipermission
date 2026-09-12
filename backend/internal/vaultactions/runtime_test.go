@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -113,6 +114,15 @@ type testLeasePersistence struct{}
 func (testLeasePersistence) Grant(context.Context, int64, vaultsessions.Lease) error { return nil }
 func (testLeasePersistence) Revoke(context.Context, int64, int64) error              { return nil }
 
+type testTokenReader struct{ store *tokens.Store }
+
+func (reader testTokenReader) Get(ctx context.Context, id int64) (TokenState, error) {
+	token, err := reader.store.Get(ctx, id)
+	return TokenState{
+		Active: token.ActiveAt(time.Now().UTC()), ExpiresAt: token.ExpiresAt, UpdatedAt: token.UpdatedAt,
+	}, err
+}
+
 type runtimeFixture struct {
 	runtime   *Runtime
 	database  *sql.DB
@@ -151,7 +161,7 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 	}
 	itemStore := mustProjectVaultStore(t, database, secretVault)
 	runtime, err := NewRuntime(Dependencies{
-		Database: database, Tokens: tokenStore,
+		Database: database, Tokens: testTokenReader{store: tokenStore},
 		Projects:      testProjectPort{store: projectstore.NewStore(database)},
 		SessionItems:  testItemPort{store: itemStore},
 		ItemMutations: testItemPort{store: itemStore},
