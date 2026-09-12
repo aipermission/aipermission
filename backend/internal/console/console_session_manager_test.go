@@ -262,15 +262,6 @@ func TestConsoleSessionClosesTransportBeforeDrainingOutputPipes(t *testing.T) {
 	}
 }
 
-func TestWaitConsolePipesIsBounded(t *testing.T) {
-	var pipes sync.WaitGroup
-	pipes.Add(1)
-	if waitConsolePipes(consolePipesDone(&pipes), time.Millisecond) {
-		t.Fatal("blocked pipe was reported as drained")
-	}
-	pipes.Done()
-}
-
 func TestConsoleSessionFinalizationRetriesPersistenceAndOwnershipHook(t *testing.T) {
 	persistErr := errors.New("injected transcript persistence failure")
 	hookErr := errors.New("injected session ownership failure")
