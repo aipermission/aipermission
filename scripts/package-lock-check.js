@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const packages = ["frontend", "packages/mcp"];
+const packages = ["frontend", "packages/mcp", "scripts"];
 
 function readJSON(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));

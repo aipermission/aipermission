@@ -1,0 +1,9 @@
+{
+  "name": "@aipermission/repository-verification",
+  "private": true,
+  "version": "0.2.47",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}

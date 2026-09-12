@@ -19,6 +19,8 @@ test("reads the exact machine policy consumed by enforcement", () => {
   assert.equal(snapshot["go.function.default.lines"], 180);
   assert.equal(snapshot["go.fanout.package"], 12);
   assert.equal(snapshot["go.fanout.ownerFamily"], 25);
+  assert.equal(snapshot["go.fanout.test.package"], 48);
+  assert.equal(snapshot["go.fanout.test.ownerFamily"], 43);
   assert.equal(snapshot.repositoryToolingTestPackageBudget, 1500);
   assert.equal(snapshot["test.package.depth.frontend"], 3);
 });
@@ -98,6 +100,27 @@ test("ratchets backend coverage floor membership and values", () => {
   const added = copyPolicy();
   added.backendCoverageFloors["internal/new-owner"] = 10;
   assert.deepEqual(budgetIncreases(base, policySnapshot(added)), []);
+  const migrated = {
+    "coverage.backend.default": -1,
+    "coverage.backend.floor.internal/new-owner": -10,
+  };
+  assert.deepEqual(budgetIncreases({}, migrated), []);
+
+  const belowDefault = copyPolicy();
+  belowDefault.backendCoverageFloors["internal/new-owner"] = 0.001;
+  assert.deepEqual(budgetIncreases(base, policySnapshot(belowDefault)), [
+    "coverage.backend.floor.internal/new-owner is a new unreviewed budget (-0.001)",
+  ]);
+  migrated["coverage.backend.floor.internal/new-owner"] = -0.001;
+  assert.deepEqual(budgetIncreases({}, migrated), [
+    "coverage.backend.floor.internal/new-owner is a new unreviewed budget (-0.001)",
+  ]);
+
+  const neutral = copyPolicy();
+  neutral.backendCoverageNeutralPackages.push("internal/new-owner");
+  assert.deepEqual(budgetIncreases(base, policySnapshot(neutral)), [
+    "backend.coverage.neutral.internal/new-owner is a new unreviewed budget (0)",
+  ]);
 });
 
 test("allows new covered roots only within bootstrap ceilings", () => {
@@ -160,21 +183,30 @@ const sourceBudgets = [
   assert.equal(snapshot["coverage.test.marker..test."], 0);
 });
 
-test("dirty policy checks compare against HEAD when no remote base exists", () => {
-  assert.equal(
-    resolveBaseReference("", () => {
-      throw new Error("origin/main is unavailable");
-    }),
-    "HEAD",
+test("maintenance budget base fails closed instead of comparing HEAD to itself", () => {
+  const fakeGit = (...args) => {
+    if (args[0] === "merge-base" && args[1] === "HEAD") return "base-ref";
+    if (args[0] === "rev-parse" && args[1] === "base-ref^{commit}")
+      return "base-sha";
+    if (args[0] === "rev-parse" && args[1] === "configured^{commit}")
+      return "base-sha";
+    if (args[0] === "rev-parse" && args[1] === "HEAD^{commit}")
+      return "head-sha";
+    if (args[0] === "merge-base" && args[1] === "--is-ancestor") return "";
+    throw new Error(`unexpected git command: ${args.join(" ")}`);
+  };
+  assert.throws(
+    () =>
+      resolveBaseReference("HEAD", (...args) => {
+        if (args[0] === "rev-parse") return "same-sha";
+        return "";
+      }),
+    /must not resolve to HEAD/,
   );
-  assert.equal(
-    resolveBaseReference("000000", () => ""),
-    "HEAD",
+  assert.throws(
+    () => resolveBaseReference("000000", () => ""),
+    /must identify a non-zero base commit/,
   );
-  assert.equal(
-    resolveBaseReference("base-sha", () => {
-      throw new Error("must not resolve a configured base");
-    }),
-    "base-sha",
-  );
+  assert.equal(resolveBaseReference("", fakeGit), "base-sha");
+  assert.equal(resolveBaseReference("configured", fakeGit), "base-sha");
 });

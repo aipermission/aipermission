@@ -3,37 +3,17 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { loadPolicy, verifyWorkflows } = require("./verification-policy");
 
 const root = path.resolve(__dirname, "..");
-const requiredChecks = [
-  "Security Hygiene",
-  "Backend",
-  "Frontend",
-  "MCP Package",
-  "MCP Windows Private Config",
-  "Docs Hygiene",
-  "NPM Placeholder Package",
-  "Container Scan",
-  "Analyze (go)",
-  "Analyze (javascript-typescript)",
-  "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
-];
-const requiredWorkflowByCheck = new Map([
-  ["Security Hygiene", ".github/workflows/ci.yml"],
-  ["Backend", ".github/workflows/ci.yml"],
-  ["Frontend", ".github/workflows/ci.yml"],
-  ["MCP Package", ".github/workflows/ci.yml"],
-  ["MCP Windows Private Config", ".github/workflows/ci.yml"],
-  ["Docs Hygiene", ".github/workflows/ci.yml"],
-  ["NPM Placeholder Package", ".github/workflows/ci.yml"],
-  ["Container Scan", ".github/workflows/ci.yml"],
-  ["Analyze (go)", ".github/workflows/codeql.yml"],
-  ["Analyze (javascript-typescript)", ".github/workflows/codeql.yml"],
-  [
-    "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
-    ".github/workflows/connector-conformance.yml",
-  ],
-]);
+const requiredGates = loadPolicy().required_checks;
+const requiredChecks = requiredGates.map((gate) => gate.name);
+const requiredWorkflowByCheck = new Map(
+  requiredGates.map((gate) => [gate.name, gate.workflow]),
+);
+const requiredJobNameByCheck = new Map(
+  requiredGates.map((gate) => [gate.name, gate.name]),
+);
 const advisoryWorkflows = [
   ["native-dependency-freshness.yml", "Native dependency freshness"],
 ];
@@ -94,24 +74,35 @@ function actionRunID(detailsURL) {
   return match?.[1] || "";
 }
 
-function verifiedRequiredCheckRuns(checkRuns, workflowRuns, sha) {
+function actionJobID(detailsURL) {
+  const match = /\/actions\/runs\/\d+\/job\/(\d+)(?:\/|$)/.exec(detailsURL || "");
+  return match?.[1] || "";
+}
+
+function verifiedRequiredCheckRuns(checkRuns, workflowRuns, jobs, sha) {
   const runs = new Map(
     (workflowRuns || []).map((run) => [String(run.id), run]),
   );
+  const jobsByID = new Map((jobs || []).map((job) => [String(job.id), job]));
   return (checkRuns || []).filter((check) => {
     const expectedWorkflow = requiredWorkflowByCheck.get(check.name);
     if (!expectedWorkflow || check.app?.slug !== "github-actions") return false;
     const run = runs.get(actionRunID(check.details_url));
+    const job = jobsByID.get(actionJobID(check.details_url));
     return (
       run?.path === expectedWorkflow &&
       run.event === "push" &&
       run.head_branch === "main" &&
-      run.head_sha === sha
+      run.head_sha === sha &&
+      String(job?.run_id) === String(run.id) &&
+      job?.name === requiredJobNameByCheck.get(check.name) &&
+      String(job?.check_run_url || "").endsWith(`/check-runs/${check.id}`)
     );
   });
 }
 
 function verifyLocalReleaseSource({ sha, tag }) {
+  verifyWorkflows();
   const version = releaseVersionFromTag(tag);
   const manifest = JSON.parse(
     fs.readFileSync(path.join(root, "release-manifest.json"), "utf8"),
@@ -200,9 +191,24 @@ async function waitForRequiredChecks({
       githubJSON(checksEndpoint, token),
       githubJSON(runsEndpoint, token),
     ]);
+    const candidateRuns = (runsPayload.workflow_runs || []).filter(
+      (run) => run.event === "push" && run.head_branch === "main" && run.head_sha === sha,
+    );
+    const jobs = (
+      await Promise.all(
+        candidateRuns.map(async (run) => {
+          const payload = await githubJSON(
+            `${apiURL}/repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`,
+            token,
+          );
+          return (payload.jobs || []).map((job) => ({ ...job, run_id: run.id }));
+        }),
+      )
+    ).flat();
     const verified = verifiedRequiredCheckRuns(
       checksPayload.check_runs,
       runsPayload.workflow_runs,
+      jobs,
       sha,
     );
     const result = evaluateRequiredChecks(verified);
@@ -283,6 +289,7 @@ module.exports = {
   newestCheckByName,
   releaseVersionFromTag,
   requiredChecks,
+  requiredJobNameByCheck,
   requiredWorkflowByCheck,
   verifiedRequiredCheckRuns,
 };

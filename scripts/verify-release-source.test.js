@@ -6,6 +6,7 @@ const {
   newestCheckByName,
   releaseVersionFromTag,
   requiredChecks,
+  requiredJobNameByCheck,
   requiredWorkflowByCheck,
   verifiedRequiredCheckRuns,
 } = require("./verify-release-source");
@@ -22,6 +23,7 @@ test("release source requires real-service connector conformance on the same com
 
 test("every release check is bound to one reviewed workflow", () => {
   assert.deepEqual([...requiredWorkflowByCheck.keys()], requiredChecks);
+  assert.deepEqual([...requiredJobNameByCheck.keys()], requiredChecks);
 });
 
 test("releaseVersionFromTag accepts release and prerelease tags", () => {
@@ -124,7 +126,15 @@ test("release checks require exact push workflow provenance", () => {
     run(13, { head_sha: "other-sha" }),
     run(14, { path: ".github/workflows/untrusted.yml" }),
   ];
-  assert.deepEqual(verifiedRequiredCheckRuns(checks, runs, "release-sha"), [
-    checks[0],
-  ]);
+  const jobs = checks.map((candidate, index) => ({
+    id: index + 1,
+    run_id: 10 + index,
+    name: "Backend",
+    check_run_url: `https://api.github.com/repos/org/repo/check-runs/${candidate.id}`,
+  }));
+  assert.deepEqual(verifiedRequiredCheckRuns(checks, runs, jobs, "release-sha"), [checks[0]]);
+  assert.deepEqual(
+    verifiedRequiredCheckRuns(checks, runs, [{ ...jobs[0], name: "Decoy" }], "release-sha"),
+    [],
+  );
 });

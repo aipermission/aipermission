@@ -1,0 +1,232 @@
+{
+  "required_check_migrations": [
+    {
+      "name": "Analyze (go)",
+      "from": {
+        "workflow": ".github/workflows/codeql.yml",
+        "job": "analyze",
+        "job_name": "Analyze (${{ matrix.language }})"
+      },
+      "to": {
+        "workflow": ".github/workflows/codeql.yml",
+        "job": "analyze-go",
+        "job_name": "Analyze (go)"
+      },
+      "reason": "Replace a dynamic matrix check identity with a unique static protected check."
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "from": {
+        "workflow": ".github/workflows/codeql.yml",
+        "job": "analyze",
+        "job_name": "Analyze (${{ matrix.language }})"
+      },
+      "to": {
+        "workflow": ".github/workflows/codeql.yml",
+        "job": "analyze-javascript",
+        "job_name": "Analyze (javascript-typescript)"
+      },
+      "reason": "Replace a dynamic matrix check identity with a unique static protected check."
+    }
+  ],
+  "required_checks": [
+    {
+      "name": "Security Hygiene",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "security-hygiene",
+      "job_name": "Security Hygiene",
+      "commands": [
+        "node scripts/secret-scan.js",
+        "npm ci --prefix scripts --workspaces=false",
+        "sh scripts/gitleaks-history-scan.sh",
+        "node scripts/line-ending-check.js",
+        "node scripts/markdown-link-check.test.js",
+        "node scripts/markdown-link-check.js",
+        "node scripts/go-toolchain-check.js",
+        "node scripts/verification-policy.js --verify-workflows",
+        "node scripts/verification-policy.js --verify-ratchet",
+        "node --test scripts/maintenance-budget-check.test.js",
+        "node --test scripts/ci-workflow.test.js",
+        "node --test scripts/run-bounded-fuzz.test.js",
+        "node --test scripts/trusted-git-base.test.js",
+        "node scripts/maintenance-budget-check.js",
+        "node scripts/mcp-client-catalog.mjs --check",
+        "node scripts/connector-catalog.js --check",
+        "node --test scripts/maintenance-source-kind.test.js scripts/maintenance-budget-ratchet.test.js",
+        "node scripts/maintenance-budget-ratchet.js",
+        "node scripts/package-lock-check.js",
+        "node --test scripts/compose-topology.test.js",
+        "node --test scripts/publish-images-workflow.test.js",
+        "node --test scripts/release-version.test.js",
+        "node --test scripts/verify-release-source.test.js",
+        "node scripts/release-version.js --check",
+        "node scripts/native-dependency-check.js"
+      ]
+    },
+    {
+      "name": "Backend",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "backend",
+      "job_name": "Backend",
+      "commands": [
+        "go test -coverprofile=coverage.out ./...",
+        "go run ./cmd/coveragecheck -profile coverage.out",
+        "go run ./cmd/function-budget",
+        "make recovery-drill",
+        "make bounded-fuzz",
+        "go test -race ./...",
+        "go vet ./...",
+        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
+        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...",
+        "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0",
+        "\"$(go env GOPATH)/bin/govulncheck\" ./..."
+      ]
+    },
+    {
+      "name": "Frontend",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "frontend",
+      "job_name": "Frontend",
+      "commands": [
+        "npm ci --workspaces=false",
+        "npx playwright install chromium",
+        "npm run lint",
+        "npm run format:check",
+        "npm run test:architecture",
+        "npm run test:duplication",
+        "npm test",
+        "npm run test:async-race",
+        "npm run test:coverage",
+        "npm run test:coverage:changed",
+        "npm run test:e2e:smoke",
+        "npm run test:e2e:accessibility",
+        "npm run test:e2e:high-risk",
+        "npm run test:e2e:real",
+        "npm run build",
+        "npm audit --omit=dev --audit-level=moderate",
+        "npm audit --audit-level=high"
+      ]
+    },
+    {
+      "name": "MCP Package",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "mcp",
+      "job_name": "MCP Package",
+      "commands": [
+        "npm ci --workspaces=false",
+        "npm run lint",
+        "npm run format:check",
+        "npm test",
+        "npm run build",
+        "npm audit --omit=dev --audit-level=moderate",
+        "npm audit --audit-level=high",
+        "npm pack --dry-run"
+      ]
+    },
+    {
+      "name": "MCP Windows Private Config",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "mcp-windows-private-config",
+      "job_name": "MCP Windows Private Config",
+      "commands": ["npm ci --workspaces=false", "npm run test:windows-acl"]
+    },
+    {
+      "name": "Docs Hygiene",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "docs",
+      "job_name": "Docs Hygiene",
+      "commands": ["test -z \"$(git ls-files docs/.obsidian)\""]
+    },
+    {
+      "name": "NPM Placeholder Package",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "npm-placeholder",
+      "job_name": "NPM Placeholder Package",
+      "commands": ["npm pack --dry-run"]
+    },
+    {
+      "name": "Container Scan",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "container-scan",
+      "job_name": "Container Scan",
+      "commands": [
+        "docker compose build backend frontend",
+        "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed aipermission-backend:latest",
+        "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed aipermission-frontend:latest"
+      ]
+    },
+    {
+      "name": "Analyze (go)",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze-go",
+      "job_name": "Analyze (go)",
+      "commands": ["go build ./...", "uses:github/codeql-action/analyze"]
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze-javascript",
+      "job_name": "Analyze (javascript-typescript)",
+      "commands": ["uses:github/codeql-action/analyze"]
+    },
+    {
+      "name": "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
+      "workflow": ".github/workflows/connector-conformance.yml",
+      "job": "real-services",
+      "job_name": "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
+      "commands": ["make connector-conformance"]
+    }
+  ],
+  "recovery_tests": [
+    {
+      "package": "./internal/api",
+      "name": "TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret"
+    },
+    {
+      "package": "./internal/api",
+      "name": "TestRecoveryDrillSelfHostedBackupDownloadAndRestart"
+    },
+    {
+      "package": "./internal/db",
+      "name": "TestRecoveryDrillSQLCipher442ApplicationFixtureMigratesViaProductionPath"
+    },
+    {
+      "package": "./internal/legacymigration",
+      "name": "TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration"
+    },
+    {
+      "package": "./internal/legacymigration",
+      "name": "TestRecoveryDrillLegacyMigrationCanRetryAfterSecretFailure"
+    }
+  ],
+  "connector_conformance_tests": [
+    "TestClickHouseRealService",
+    "TestPostgresRealService",
+    "TestRabbitMQRealService",
+    "TestValkeyRealService",
+    "TestS3RealService"
+  ],
+  "fuzz_targets": [
+    { "package": "./internal/actions", "name": "FuzzApprovalContextHash" },
+    { "package": "./internal/securitypolicy", "name": "FuzzBasicRedaction" },
+    {
+      "package": "./internal/filetransfer",
+      "name": "FuzzTransferPathNormalization"
+    },
+    {
+      "package": "./internal/connectors/sqlsafe",
+      "name": "FuzzValidateReadOnly"
+    },
+    { "package": "./internal/connectors/redis", "name": "FuzzReadRESPValue" },
+    { "package": "./internal/backups", "name": "FuzzValidateServiceMetadata" },
+    { "package": "./internal/connectors", "name": "FuzzNormalizeSchemaValues" },
+    {
+      "package": "./internal/connectors/mail",
+      "name": "FuzzHTMLToTextNeverReturnsActiveMarkup"
+    },
+    {
+      "package": "./internal/connectors/mail",
+      "name": "FuzzSanitizeOutboundHTML"
+    }
+  ]
+}

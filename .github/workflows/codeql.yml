@@ -9,33 +9,23 @@ on:
     - cron: "21 4 * * 1"
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  analyze-go:
+    name: Analyze (go)
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       packages: read
       actions: read
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: go
-            build-mode: manual
-          - language: javascript-typescript
-            build-mode: none
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-        if: matrix.language == 'go'
         with:
           go-version: "1.26.6"
           cache-dependency-path: backend/go.sum
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        if: matrix.language == 'javascript-typescript'
         with:
           node-version: 24
           cache: npm
@@ -44,18 +34,36 @@ jobs:
             packages/mcp/package-lock.json
 
       - uses: ./.github/actions/setup-backend-native
-        if: matrix.language == 'go'
 
       - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          languages: go
+          build-mode: manual
 
       - name: Build Go
-        if: matrix.language == 'go'
         working-directory: backend
         run: go build ./...
 
       - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
         with:
-          category: "/language:${{ matrix.language }}"
+          category: /language:go
+
+  analyze-javascript:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
+        with:
+          category: /language:javascript-typescript

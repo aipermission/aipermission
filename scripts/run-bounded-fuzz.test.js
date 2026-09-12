@@ -2,51 +2,44 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 
-function walk(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walk(entryPath) : [entryPath];
-  });
-}
-
-test("every bounded fuzz target belongs to its configured Go package", () => {
+test("bounded fuzz runner validates the complete Go-syntax inventory", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "run-bounded-fuzz.sh"),
     "utf8",
   );
-  const targets = [...source.matchAll(/^run_fuzz (\.\/\S+) (Fuzz\w+)$/gm)];
+  assert.match(source, /verification-policy\.js" --list fuzz_targets/);
+  assert.match(source, /go run \.\/cmd\/verification-runner fuzz-inventory/);
+  const policy = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "verification-policy.json"), "utf8"),
+  );
+  const targets = policy.fuzz_targets.map(({ package: packagePath, name }) => `${packagePath}:${name}`);
   assert.ok(targets.length > 0, "bounded fuzz runner declares no targets");
-  for (const [, packagePath, target] of targets) {
-    const directory = path.join(root, "backend", packagePath.slice(2));
-    const declaration = new RegExp(`func\\s+${target}\\s*\\(`);
-    const found = walk(directory)
-      .filter((file) => file.endsWith("_test.go"))
-      .some((file) => declaration.test(fs.readFileSync(file, "utf8")));
-    assert.ok(found, `${target} is not declared in ${packagePath}`);
-  }
+  assert.equal(new Set(targets).size, targets.length);
+  assert.ok(policy.fuzz_targets.every(({ package: packagePath, name }) => packagePath.startsWith("./") && /^Fuzz\w+$/.test(name)));
+});
 
-  const configured = new Set(
-    targets.map(([, packagePath, target]) => `${packagePath}:${target}`),
-  );
-  const declared = [];
-  for (const file of walk(path.join(root, "backend"))) {
-    if (!file.endsWith("_test.go")) continue;
-    const packagePath = `./${path
-      .relative(path.join(root, "backend"), path.dirname(file))
-      .split(path.sep)
-      .join("/")}`;
-    for (const match of fs
-      .readFileSync(file, "utf8")
-      .matchAll(/^func\s+(Fuzz\w+)\s*\(/gm)) {
-      declared.push(`${packagePath}:${match[1]}`);
-    }
+test("bounded fuzz runner fails when inventory production fails", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aipermission-fuzz-"));
+  const fakeNode = path.join(directory, "node");
+  try {
+    fs.writeFileSync(fakeNode, "#!/bin/sh\nexit 17\n", { mode: 0o700 });
+    const result = spawnSync(
+      "sh",
+      [path.join(__dirname, "run-bounded-fuzz.sh")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /failed to produce the bounded fuzz target inventory/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
   }
-  assert.deepEqual(
-    [...configured].sort(),
-    declared.sort(),
-    "bounded fuzz runner must exercise every repository fuzz target",
-  );
 });

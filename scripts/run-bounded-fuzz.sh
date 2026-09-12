@@ -56,12 +56,18 @@ run_fuzz() {
   (cd backend && go test "$package" -run '^$' -fuzz "^${target}$" -fuzztime "$budget" -parallel 1)
 }
 
-run_fuzz ./internal/actions FuzzApprovalContextHash
-run_fuzz ./internal/securitypolicy FuzzBasicRedaction
-run_fuzz ./internal/filetransfer FuzzTransferPathNormalization
-run_fuzz ./internal/connectors/sqlsafe FuzzValidateReadOnly
-run_fuzz ./internal/connectors/redis FuzzReadRESPValue
-run_fuzz ./internal/backups FuzzValidateServiceMetadata
-run_fuzz ./internal/connectors FuzzNormalizeSchemaValues
-run_fuzz ./internal/connectors/mail FuzzHTMLToTextNeverReturnsActiveMarkup
-run_fuzz ./internal/connectors/mail FuzzSanitizeOutboundHTML
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+inventory=$(mktemp "${TMPDIR:-/tmp}/aipermission-fuzz-targets.XXXXXX")
+trap 'rm -f "$inventory"' EXIT HUP INT TERM
+if ! node "$root/scripts/verification-policy.js" --list fuzz_targets >"$inventory"; then
+  printf 'failed to produce the bounded fuzz target inventory\n' >&2
+  exit 1
+fi
+if [ ! -s "$inventory" ]; then
+  printf 'bounded fuzz target inventory is empty\n' >&2
+  exit 1
+fi
+(cd backend && go run ./cmd/verification-runner fuzz-inventory)
+while IFS="$(printf '\t')" read -r package target; do
+  run_fuzz "$package" "$target"
+done <"$inventory"

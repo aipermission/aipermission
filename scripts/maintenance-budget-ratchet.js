@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { resolveTrustedBase } = require("./trusted-git-base");
 
 const root = path.resolve(__dirname, "..");
 
@@ -23,6 +24,9 @@ function policySnapshot(input) {
     "go.fanout.package": policy.backendFanout.packageMax,
     "go.fanout.owner": policy.backendFanout.ownerMax,
     "go.fanout.ownerFamily": policy.backendFanout.familyOwnerMax,
+    "go.fanout.test.package": policy.backendFanout.testPackageMax,
+    "go.fanout.test.owner": policy.backendFanout.testOwnerMax,
+    "go.fanout.test.ownerFamily": policy.backendFanout.testFamilyOwnerMax,
     "go.testImports.maxPerFile":
       policy.backendFanout.testFileInternalImportsMax,
   };
@@ -120,10 +124,21 @@ function budgetIncreases(base, current) {
     .map((name) => `${name} was removed from the current maintenance budget`);
   const increases = Object.entries(current).flatMap(([name, value]) => {
     if (!Object.hasOwn(base, name)) {
+      if (name === "coverage.backend.default" && value < 0) return [];
       if (
-        name.startsWith("coverage.") &&
-        (value === 0 || name.startsWith("coverage.backend.floor."))
+        name.startsWith("backend.coverage.neutral.") &&
+        !Object.hasOwn(base, "coverage.backend.default")
       ) {
+        return [];
+      }
+      if (name.startsWith("coverage.backend.floor.")) {
+        const inheritedDefault =
+          base["coverage.backend.default"] ??
+          current["coverage.backend.default"];
+        if (inheritedDefault !== undefined && value <= inheritedDefault)
+          return [];
+      }
+      if (name.startsWith("coverage.") && value === 0) {
         return [];
       }
       const inherited = inheritedBudget(base, name);
@@ -195,6 +210,9 @@ function inheritedBudget(base, name) {
     "go.function.test.lines": 220,
     "go.function.test.complexity": 60,
     "go.fanout.ownerFamily": 25,
+    "go.fanout.test.package": 51,
+    "go.fanout.test.owner": 45,
+    "go.fanout.test.ownerFamily": 45,
     "go.testImports.maxPerFile": 14,
   };
   if (Object.hasOwn(bootstrapCeilings, name)) return bootstrapCeilings[name];
@@ -317,12 +335,12 @@ function snapshotAt(ref) {
 }
 
 function resolveBaseReference(configured, gitCommand = git) {
-  if (configured && !/^0+$/.test(configured)) return configured;
-  try {
-    return gitCommand("merge-base", "HEAD", "origin/main") || "HEAD";
-  } catch {
-    return "HEAD";
-  }
+  return resolveTrustedBase({
+    configured,
+    variable: "MAINTENANCE_BUDGET_BASE",
+    root,
+    gitCommand,
+  });
 }
 
 function run() {

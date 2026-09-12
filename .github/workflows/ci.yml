@@ -20,43 +20,56 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - name: Install repository verification dependencies
+        run: npm ci --prefix scripts --workspaces=false
       - name: Secret scan
         run: node scripts/secret-scan.js
       - name: Repository history secret scan
         run: sh scripts/gitleaks-history-scan.sh
       - name: Line ending check
         run: node scripts/line-ending-check.js
+      - name: Markdown link tests
+        run: node scripts/markdown-link-check.test.js
       - name: Markdown links
-        run: |
-          node scripts/markdown-link-check.test.js
-          node scripts/markdown-link-check.js
+        run: node scripts/markdown-link-check.js
       - name: Go toolchain consistency
         run: node scripts/go-toolchain-check.js
+      - name: Verification workflow contracts
+        run: node scripts/verification-policy.js --verify-workflows
+      - name: Verification policy ratchet
+        run: node scripts/verification-policy.js --verify-ratchet
+      - name: Maintenance budget tests
+        run: node --test scripts/maintenance-budget-check.test.js
+      - name: CI workflow tests
+        run: node --test scripts/ci-workflow.test.js
+      - name: Bounded fuzz runner tests
+        run: node --test scripts/run-bounded-fuzz.test.js
+      - name: Trusted Git base tests
+        run: node --test scripts/trusted-git-base.test.js
       - name: Maintenance budgets
-        run: |
-          node --test scripts/maintenance-budget-check.test.js
-          node --test scripts/ci-workflow.test.js
-          node --test scripts/run-bounded-fuzz.test.js
-          node scripts/maintenance-budget-check.js
+        run: node scripts/maintenance-budget-check.js
       - name: Generated MCP client catalog
         run: node scripts/mcp-client-catalog.mjs --check
       - name: Generated connector catalog
         run: node scripts/connector-catalog.js --check
+      - name: Maintenance budget ratchet tests
+        run: node --test scripts/maintenance-source-kind.test.js scripts/maintenance-budget-ratchet.test.js
       - name: Maintenance budget ratchet
-        env:
-          MAINTENANCE_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          node --test scripts/maintenance-source-kind.test.js scripts/maintenance-budget-ratchet.test.js
-          node scripts/maintenance-budget-ratchet.js
+        run: node scripts/maintenance-budget-ratchet.js
       - name: Package lock ownership
         run: node scripts/package-lock-check.js
+      - name: Compose topology tests
+        run: node --test scripts/compose-topology.test.js
+      - name: Image publishing workflow tests
+        run: node --test scripts/publish-images-workflow.test.js
+      - name: Release version tests
+        run: node --test scripts/release-version.test.js
+      - name: Release provenance tests
+        run: node --test scripts/verify-release-source.test.js
       - name: Release version consistency
-        run: |
-          node --test scripts/compose-topology.test.js
-          node --test scripts/publish-images-workflow.test.js
-          node --test scripts/release-version.test.js
-          node --test scripts/verify-release-source.test.js
-          node scripts/release-version.js --check
+        run: node scripts/release-version.js --check
       - name: Native dependency inventory
         run: node scripts/native-dependency-check.js
 
@@ -70,12 +83,15 @@ jobs:
           go-version: "1.26.6"
           cache-dependency-path: backend/go.sum
       - uses: ./.github/actions/setup-backend-native
-      - name: Test
+      - name: Test with coverage
         working-directory: backend
-        run: |
-          go test -coverprofile=coverage.out ./...
-          go tool cover -func=coverage.out | tail -1
-          go run ./cmd/coveragecheck -profile coverage.out
+        run: go test -coverprofile=coverage.out ./...
+      - name: Coverage summary
+        working-directory: backend
+        run: go tool cover -func=coverage.out | tail -1
+      - name: Coverage floors
+        working-directory: backend
+        run: go run ./cmd/coveragecheck -profile coverage.out
       - name: Function budgets
         working-directory: backend
         run: go run ./cmd/function-budget
@@ -89,11 +105,18 @@ jobs:
       - name: Vet
         working-directory: backend
         run: go vet ./...
+      - name: Windows source build
+        working-directory: backend
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+      - name: Windows test graph compile
+        working-directory: backend
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...
+      - name: Install govulncheck
+        working-directory: backend
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
       - name: Govulncheck
         working-directory: backend
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
-          "$(go env GOPATH)/bin/govulncheck" ./...
+        run: "\"$(go env GOPATH)/bin/govulncheck\" ./..."
 
   frontend:
     name: Frontend
@@ -174,11 +197,12 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
-      - name: Audit
+      - name: Production dependency audit
         working-directory: frontend
-        run: |
-          npm audit --omit=dev --audit-level=moderate
-          npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Full dependency audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
   mcp:
     name: MCP Package
@@ -205,11 +229,12 @@ jobs:
       - name: Build
         working-directory: packages/mcp
         run: npm run build
-      - name: Audit
+      - name: Production dependency audit
         working-directory: packages/mcp
-        run: |
-          npm audit --omit=dev --audit-level=moderate
-          npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Full dependency audit
+        working-directory: packages/mcp
+        run: npm audit --audit-level=high
       - name: Pack dry run
         working-directory: packages/mcp
         run: npm pack --dry-run

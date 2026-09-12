@@ -70,7 +70,7 @@ connector-conformance:
 			AIPERMISSION_RABBITMQ_PORT="$$rabbitmq_port" \
 			AIPERMISSION_S3_PORT="$$s3_port" \
 			AIPERMISSION_CLICKHOUSE_PORT="$$clickhouse_port" \
-			go test ./internal/connectors/conformance -count=1 -v)
+			go run ./cmd/verification-runner conformance)
 
 frontend-lint:
 	cd frontend && npm run lint
