@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +31,10 @@ type coveragePolicy struct {
 type coverageCount struct {
 	statements int64
 	covered    int64
+	files      map[string]bool
 }
+
+var coveragePositionPattern = regexp.MustCompile(`^(.+\.go):(\d+)\.(\d+),(\d+)\.(\d+)$`)
 
 func main() {
 	profilePath := flag.String("profile", "coverage.out", "Go coverage profile to check")
@@ -43,38 +50,68 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	failed := false
+	packages, err := listProductionPackages()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if failures := checkCoverage(policy, counts, packages, os.Stdout); len(failures) > 0 {
+		for _, failure := range failures {
+			fmt.Fprintln(os.Stderr, failure)
+		}
+		fmt.Fprintln(os.Stderr, "critical backend coverage floor failed")
+		os.Exit(1)
+	}
+}
+
+func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packages map[string]map[string]bool, output io.Writer) []string {
+	failures := []string{}
 	for packagePath := range policy.floors {
-		if count, ok := counts[packagePath]; !ok || count.statements == 0 {
-			fmt.Fprintf(os.Stderr, "%s: no coverage statements found\n", packagePath)
-			failed = true
+		if _, ok := packages[packagePath]; !ok {
+			failures = append(failures, fmt.Sprintf("%s: configured coverage package is not in the production build", packagePath))
 		}
 	}
 	for packagePath := range policy.neutralPackages {
-		if count, ok := counts[packagePath]; !ok || count.statements == 0 {
-			fmt.Fprintf(os.Stderr, "%s: neutral package has no coverage statements\n", packagePath)
-			failed = true
+		if _, ok := packages[packagePath]; !ok {
+			failures = append(failures, fmt.Sprintf("%s: configured neutral package is not in the production build", packagePath))
 		}
 	}
-	for _, packagePath := range sortedCoveragePaths(counts) {
-		if !strings.HasPrefix(packagePath, "internal/") || policy.neutralPackages[packagePath] {
+	for packagePath, count := range counts {
+		if !strings.HasPrefix(packagePath, "internal/") {
+			continue
+		}
+		productionFiles, exists := packages[packagePath]
+		if !exists {
+			failures = append(failures, fmt.Sprintf("%s: coverage profile contains a package outside the production build", packagePath))
+			continue
+		}
+		for file := range count.files {
+			if !productionFiles[file] {
+				failures = append(failures, fmt.Sprintf("%s/%s: coverage profile contains a file outside the production build", packagePath, file))
+			}
+		}
+	}
+	for _, packagePath := range sortedPackagePaths(packages) {
+		if policy.neutralPackages[packagePath] {
+			continue
+		}
+		count, measured := counts[packagePath]
+		if !measured || count.statements <= 0 {
+			failures = append(failures, fmt.Sprintf("%s: no coverage statements found", packagePath))
 			continue
 		}
 		floor := policy.defaultFloor
 		if explicit, ok := policy.floors[packagePath]; ok {
 			floor = explicit
 		}
-		count := counts[packagePath]
 		percent := float64(count.covered) * 100 / float64(count.statements)
-		fmt.Printf("%-32s %5.1f%% (floor %.1f%%)\n", packagePath, percent, floor)
+		fmt.Fprintf(output, "%-32s %5.1f%% (floor %.1f%%)\n", packagePath, percent, floor)
 		if percent < floor {
-			failed = true
+			failures = append(failures, fmt.Sprintf("%s: %.1f%% coverage is below %.1f%% floor", packagePath, percent, floor))
 		}
 	}
-	if failed {
-		fmt.Fprintln(os.Stderr, "critical backend coverage floor failed")
-		os.Exit(1)
-	}
+	sort.Strings(failures)
+	return failures
 }
 
 func readCoveragePolicy(path string) (coveragePolicy, error) {
@@ -119,15 +156,19 @@ func readCoverageProfile(path string) (map[string]coverageCount, error) {
 	counts := map[string]coverageCount{}
 	scanner := bufio.NewScanner(file)
 	first := true
+	mode := ""
+	lines := 0
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if first {
 			first = false
-			if !strings.HasPrefix(line, "mode:") {
+			mode = strings.TrimPrefix(line, "mode: ")
+			if mode == line || (mode != "set" && mode != "count" && mode != "atomic") {
 				return nil, fmt.Errorf("invalid coverage profile header")
 			}
 			continue
 		}
+		lines++
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			return nil, fmt.Errorf("invalid coverage profile line %q", line)
@@ -140,8 +181,21 @@ func readCoverageProfile(path string) (map[string]coverageCount, error) {
 		if err != nil || count < 0 {
 			return nil, fmt.Errorf("invalid execution count in %q", line)
 		}
-		packagePath := coveragePackage(fields[0])
+		if mode == "set" && count > 1 {
+			return nil, fmt.Errorf("invalid set execution count in %q", line)
+		}
+		packagePath, sourceFile, err := coveragePackage(fields[0])
+		if err != nil {
+			return nil, err
+		}
 		current := counts[packagePath]
+		if current.files == nil {
+			current.files = map[string]bool{}
+		}
+		current.files[sourceFile] = true
+		if current.statements > math.MaxInt64-statements || (count > 0 && current.covered > math.MaxInt64-statements) {
+			return nil, fmt.Errorf("coverage statement count overflow in %q", line)
+		}
 		current.statements += statements
 		if count > 0 {
 			current.covered += statements
@@ -151,23 +205,95 @@ func readCoverageProfile(path string) (map[string]coverageCount, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read coverage profile: %w", err)
 	}
+	if first || lines == 0 {
+		return nil, fmt.Errorf("coverage profile contains no statements")
+	}
 	return counts, nil
 }
 
-func coveragePackage(position string) string {
-	file := strings.SplitN(position, ":", 2)[0]
+func coveragePackage(position string) (string, string, error) {
+	match := coveragePositionPattern.FindStringSubmatch(position)
+	if match == nil {
+		return "", "", fmt.Errorf("invalid coverage position %q", position)
+	}
+	coordinates := make([]uint64, 0, 4)
+	for _, value := range match[2:] {
+		parsed, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || parsed == 0 {
+			return "", "", fmt.Errorf("invalid coverage position %q", position)
+		}
+		coordinates = append(coordinates, parsed)
+	}
+	if coordinates[0] > coordinates[2] || (coordinates[0] == coordinates[2] && coordinates[1] > coordinates[3]) {
+		return "", "", fmt.Errorf("invalid coverage position %q", position)
+	}
+	file := filepath.ToSlash(match[1])
 	marker := "/backend/"
 	if index := strings.Index(file, marker); index >= 0 {
 		file = file[index+len(marker):]
-	} else if index := strings.Index(file, "/aipermission/"); index >= 0 {
-		file = file[index+len("/aipermission/"):]
+	} else if strings.HasPrefix(file, "backend/") {
+		file = strings.TrimPrefix(file, "backend/")
+	} else {
+		return "", "", fmt.Errorf("coverage position is outside the backend module: %q", position)
 	}
-	return filepath.ToSlash(filepath.Dir(file))
+	packagePath := filepath.ToSlash(filepath.Dir(file))
+	if !strings.HasPrefix(packagePath, "internal/") && !strings.HasPrefix(packagePath, "cmd/") {
+		return "", "", fmt.Errorf("coverage position has an unsupported package: %q", position)
+	}
+	return packagePath, filepath.Base(file), nil
 }
 
-func sortedCoveragePaths(counts map[string]coverageCount) []string {
-	paths := make([]string, 0, len(counts))
-	for path := range counts {
+func listProductionPackages() (map[string]map[string]bool, error) {
+	command := exec.Command("go", "list", "-json", "./internal/...")
+	output, err := command.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list production packages: %w", err)
+	}
+	return readProductionPackages(strings.NewReader(string(output)))
+}
+
+func readProductionPackages(input io.Reader) (map[string]map[string]bool, error) {
+	decoder := json.NewDecoder(input)
+	packages := map[string]map[string]bool{}
+	for {
+		var item struct {
+			ImportPath string
+			GoFiles    []string
+			CgoFiles   []string
+		}
+		if err := decoder.Decode(&item); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("decode production package inventory: %w", err)
+		}
+		marker := "/backend/internal/"
+		index := strings.Index(item.ImportPath, marker)
+		if index < 0 {
+			return nil, fmt.Errorf("invalid production package inventory entry %q", item.ImportPath)
+		}
+		if len(item.GoFiles)+len(item.CgoFiles) == 0 {
+			continue
+		}
+		packagePath := "internal/" + item.ImportPath[index+len(marker):]
+		if _, exists := packages[packagePath]; exists {
+			return nil, fmt.Errorf("duplicate production package inventory entry %q", item.ImportPath)
+		}
+		files := map[string]bool{}
+		for _, file := range append(item.GoFiles, item.CgoFiles...) {
+			files[file] = true
+		}
+		packages[packagePath] = files
+	}
+	if len(packages) == 0 {
+		return nil, fmt.Errorf("production package inventory is empty")
+	}
+	return packages, nil
+}
+
+func sortedPackagePaths(packages map[string]map[string]bool) []string {
+	paths := make([]string, 0, len(packages))
+	for path := range packages {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
