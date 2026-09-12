@@ -113,6 +113,11 @@ func (h *Handlers) Lock(w http.ResponseWriter, r *http.Request) {
 		h.dependencies.CloseMaintenance("database_lock_" + request.Scope)
 	}
 	status, err := h.dependencies.Lifecycle.Lock(request.Scope)
+	if status.State != "unlocked" || request.Scope == "all" {
+		if h.dependencies.ClearSessions != nil {
+			h.dependencies.ClearSessions(w)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, workspacelifecycle.ErrInvalidScope) {
 			httptransport.WriteError(w, http.StatusBadRequest, err.Error())
@@ -125,8 +130,6 @@ func (h *Handlers) Lock(w http.ResponseWriter, r *http.Request) {
 		if !h.issueSession(w) {
 			return
 		}
-	} else if h.dependencies.ClearSessions != nil {
-		h.dependencies.ClearSessions(w)
 	}
 	httptransport.WriteJSON(w, http.StatusOK, publicStatus(status))
 }

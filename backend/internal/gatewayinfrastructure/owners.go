@@ -8,6 +8,10 @@ func (boundary ownerBase) valid(handle *WorkspaceHandle) bool {
 	return boundary.owner != nil && boundary.owner.owns(handle)
 }
 
+func (boundary ownerBase) belongs(handle *WorkspaceHandle) bool {
+	return boundary.owner != nil && handle != nil && handle.component == boundary.owner.identity
+}
+
 func (boundary ownerBase) handleFor(runtime *gatewayworkspace.Runtime) *WorkspaceHandle {
 	if boundary.owner == nil {
 		return nil

@@ -85,6 +85,30 @@ type serviceRuntime struct {
 	secret   string
 }
 
+type deferredCloseTestError struct{}
+
+func (deferredCloseTestError) Error() string           { return "close deferred" }
+func (deferredCloseTestError) WorkspaceCloseDeferred() {}
+
+func TestServiceLockTreatsDeferredCloseAsSuccessfulTransition(t *testing.T) {
+	registry := NewRegistry("/data/default.db", "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	registry.Activate(&serviceRuntime{identity: Identity{ID: "default", Path: "/data/default.db"}})
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: "/data/default.db", Registry: registry,
+		Open: func(string, string, string) (*serviceRuntime, error) { return nil, errors.New("unused") },
+		Close: func(*serviceRuntime) error {
+			return errors.Join(errors.New("initial drain timeout"), deferredCloseTestError{})
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := service.Lock("all")
+	if err != nil || status.State == "unlocked" || service.IsUnlocked() {
+		t.Fatalf("status=%#v unlocked=%t err=%v", status, service.IsUnlocked(), err)
+	}
+}
+
 func (r *serviceRuntime) WorkspaceIdentity() Identity    { return r.identity }
 func (r *serviceRuntime) WorkspaceDatabase() *sql.DB     { return r.database }
 func (r *serviceRuntime) WorkspaceGatewaySecret() string { return r.secret }

@@ -1,6 +1,8 @@
 package workspaceruntime
 
 import (
+	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,5 +35,20 @@ func TestStartTeardownSharesOneCompletionSignal(t *testing.T) {
 	}
 	if runs.Load() != 1 {
 		t.Fatalf("teardown coordinator runs = %d, want 1", runs.Load())
+	}
+}
+
+func TestWaitTeardownObservesDeferredOwnerCompletion(t *testing.T) {
+	runtime := &Runtime{}
+	release := make(chan struct{})
+	runtime.StartTeardown(func() { <-release })
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if err := runtime.WaitTeardown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitTeardown() error = %v, want deadline", err)
+	}
+	close(release)
+	if err := runtime.WaitTeardown(t.Context()); err != nil {
+		t.Fatalf("WaitTeardown() after completion: %v", err)
 	}
 }

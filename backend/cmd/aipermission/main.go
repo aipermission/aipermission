@@ -54,7 +54,6 @@ func runGatewayServer(ctx context.Context) error {
 		api.WithConnectorAdapterRegistry(catalog.Adapters),
 		api.WithMaintenanceConsole(maintenanceconsole.NewRuntime()),
 	)
-	defer server.Close()
 
 	log.Printf("aipermission backend listening on %s", cfg.Address())
 	httpServer := &http.Server{
@@ -67,7 +66,10 @@ func runGatewayServer(ctx context.Context) error {
 		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
-	return listenAndServe(ctx, httpServer, shutdownTimeout)
+	serveErr := listenAndServe(ctx, httpServer, shutdownTimeout)
+	closeCtx, cancelClose := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancelClose()
+	return errors.Join(serveErr, server.CloseContext(closeCtx))
 }
 
 func runMigrationServer(ctx context.Context) error {

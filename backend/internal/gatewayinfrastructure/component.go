@@ -231,6 +231,13 @@ func (component *WorkspaceOwner) CloseWorkspace(handle *WorkspaceHandle, resolve
 	return err
 }
 
+func (component *WorkspaceOwner) WaitWorkspaceClosed(ctx context.Context, handle *WorkspaceHandle) error {
+	if component == nil || !component.belongs(handle) || handle.workspace == nil {
+		return InitializationError()
+	}
+	return handle.workspace.WaitTeardown(ctx)
+}
+
 func (component *WorkspaceOwner) ConfiguredGatewaySecret(handle *WorkspaceHandle) string {
 	owner, ok := component.resolve(handle)
 	if !ok {

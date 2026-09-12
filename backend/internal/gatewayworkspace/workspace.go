@@ -140,6 +140,13 @@ func (runtime *Runtime) TagActionIdentity(canonical []byte) (string, error) {
 	return workspaceruntime.TagActionIdentity(runtime.owner, canonical)
 }
 
+func (runtime *Runtime) WaitTeardown(ctx context.Context) error {
+	if runtime == nil || runtime.owner == nil {
+		return nil
+	}
+	return runtime.owner.WaitTeardown(ctx)
+}
+
 type Dependencies struct {
 	DataPath              string
 	Open                  func(string, string, string) (*Runtime, error)

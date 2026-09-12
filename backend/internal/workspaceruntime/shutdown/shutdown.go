@@ -17,7 +17,14 @@ const deferredShutdownWait = 2 * time.Minute
 const deferredRetryWait = 250 * time.Millisecond
 const deferredRetryMax = 30 * time.Second
 
-var ErrShutdownDeferred = errors.New("workspace shutdown is continuing in the background")
+type deferredShutdownError struct{}
+
+func (deferredShutdownError) Error() string {
+	return "workspace shutdown is continuing in the background"
+}
+func (deferredShutdownError) WorkspaceCloseDeferred() {}
+
+var ErrShutdownDeferred error = deferredShutdownError{}
 
 // ActionWorkflow is the action lifecycle needed during workspace teardown.
 type ActionWorkflow interface {

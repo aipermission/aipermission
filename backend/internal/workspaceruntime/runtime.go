@@ -1,6 +1,7 @@
 package workspaceruntime
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -79,6 +80,27 @@ func (runtime *Runtime) StartTeardown(run func()) <-chan struct{} {
 		}()
 	})
 	return done
+}
+
+func (runtime *Runtime) WaitTeardown(ctx context.Context) error {
+	if runtime == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runtime.teardownMu.Lock()
+	done := runtime.teardownDone
+	runtime.teardownMu.Unlock()
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func New(state foundation.State) *Runtime {

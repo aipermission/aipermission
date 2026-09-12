@@ -19,6 +19,7 @@ type fakeLifecycle struct {
 	status      workspacelifecycle.Status
 	renameError error
 	unlockError error
+	lockError   error
 	lockCalls   int
 }
 
@@ -32,7 +33,7 @@ func (f *fakeLifecycle) Unlock(string, string) (workspacelifecycle.Transition, e
 }
 func (f *fakeLifecycle) Lock(string) (workspacelifecycle.Status, error) {
 	f.lockCalls++
-	return f.status, nil
+	return f.status, f.lockError
 }
 func (f *fakeLifecycle) WillLockAll(string) bool { return true }
 func (f *fakeLifecycle) Rename(context.Context, string, string) (workspacelifecycle.Transition, error) {
@@ -83,6 +84,24 @@ func TestInvalidLockScopeHasNoLifecycleSideEffects(t *testing.T) {
 	handlers.Lock(response, request)
 	if response.Code != http.StatusBadRequest || maintenanceClosed || lifecycle.lockCalls != 0 {
 		t.Fatalf("code=%d maintenance_closed=%t lock_calls=%d", response.Code, maintenanceClosed, lifecycle.lockCalls)
+	}
+}
+
+func TestLockClearsSessionWhenRuntimeDetachedDespiteCleanupError(t *testing.T) {
+	cleared := false
+	handlers := New(Dependencies{
+		Lifecycle: &fakeLifecycle{
+			status:    workspacelifecycle.Status{State: "locked"},
+			lockError: errors.New("cleanup failed"),
+		},
+		ClearSessions: func(http.ResponseWriter) { cleared = true },
+	})
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/lock", strings.NewReader(`{"scope":"all"}`))
+	request.Header.Set("Content-Type", "application/json")
+	handlers.Lock(response, request)
+	if response.Code != http.StatusInternalServerError || !cleared {
+		t.Fatalf("code=%d cleared=%t", response.Code, cleared)
 	}
 }
 

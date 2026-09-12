@@ -113,6 +113,13 @@ type classifiedError struct {
 	err  error
 }
 
+type deferredWorkspaceClose interface{ WorkspaceCloseDeferred() }
+
+func closeWasDeferred(err error) bool {
+	var deferred deferredWorkspaceClose
+	return errors.As(err, &deferred)
+}
+
 func (e classifiedError) Error() string { return e.err.Error() }
 func (e classifiedError) Unwrap() error { return e.err }
 func (e classifiedError) Is(target error) bool {
@@ -337,14 +344,14 @@ func (s *Service[T]) Lock(scope string) (Status, error) {
 	var closeErrors []error
 	if scope == "all" {
 		for _, runtime := range s.registry.Clear(databasecatalog.DefaultDatabaseID(s.dataPath)) {
-			if err := s.close(runtime); err != nil {
+			if err := s.close(runtime); err != nil && !closeWasDeferred(err) {
 				closeErrors = append(closeErrors, err)
 			}
 		}
 	} else {
 		selection := s.registry.Selection()
 		if runtime, ok := s.registry.Lookup(selection.ID); ok {
-			if err := s.close(runtime); err != nil {
+			if err := s.close(runtime); err != nil && !closeWasDeferred(err) {
 				closeErrors = append(closeErrors, err)
 			}
 		}
@@ -366,7 +373,7 @@ func (s *Service[T]) CloseAll() error {
 	defer s.mu.Unlock()
 	var closeErrors []error
 	for _, runtime := range s.registry.Clear(databasecatalog.DefaultDatabaseID(s.dataPath)) {
-		if err := s.close(runtime); err != nil {
+		if err := s.close(runtime); err != nil && !closeWasDeferred(err) {
 			closeErrors = append(closeErrors, err)
 		}
 	}
