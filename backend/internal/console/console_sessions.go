@@ -131,7 +131,7 @@ type RuntimeSession struct {
 	Stdin                    io.WriteCloser
 	Stdout                   io.Reader
 	Stderr                   io.Reader
-	Wait                     func() error
+	Done                     <-chan error // Transport-owned completion signal.
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
 	ApplyEnvironment         func(context.Context, *sessionenv.Envelope) error

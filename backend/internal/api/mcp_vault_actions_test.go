@@ -422,6 +422,12 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	var openedGeometry [][2]int
 	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
+		done := make(chan error, 1)
+		go func() {
+			<-openCtx.Done()
+			done <- openCtx.Err()
+			close(done)
+		}()
 		return &gatewayoperations.RuntimeSession{
 			Stdin:        discardWriteCloser{},
 			Stdout:       strings.NewReader(""),
@@ -432,10 +438,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 					return nil
 				})
 			},
-			Wait: func() error {
-				<-openCtx.Done()
-				return openCtx.Err()
-			},
+			Done:  done,
 			Close: func() error { return nil },
 		}, nil
 	}, fixture.server.runtimeRedactor(runtime)); err != nil {

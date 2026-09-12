@@ -171,11 +171,16 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
+	done := make(chan error, 1)
+	go func() {
+		done <- sshSession.Wait()
+		close(done)
+	}()
 	runtimeSession = &connectorapi.LiveConsoleSession{
 		Stdin:                    stdin,
 		Stdout:                   runtimeStdout,
 		Stderr:                   stderr,
-		Wait:                     sshSession.Wait,
+		Done:                     done,
 		Resize:                   func(cols int, rows int) error { return sshSession.WindowChange(rows, cols) },
 		Close:                    func() error { _ = sshSession.Close(); return sshClient.Close() },
 		PeerIdentity:             peerIdentity,

@@ -20,6 +20,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+func testRuntimeDone(wait func() error) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		done <- wait()
+		close(done)
+	}()
+	return done
+}
+
 func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
@@ -47,10 +56,10 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
 			Stdout: strings.NewReader("closing output"),
-			Wait: func() error {
+			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
-			},
+			}),
 			Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -70,6 +79,32 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 		RuntimeID: runtimeID, Name: "late", Principal: testExecutionPrincipal(),
 	}); !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("late create error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestConsoleSessionCloseDoesNotWaitForTransportCompletionSignal(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-stalled-completion", "127.0.0.1", 22)
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+			Done: make(chan error), Close: func() error { return nil },
+		}, nil
+	}, nil)
+	record, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "active", Principal: testExecutionPrincipal(), WaitForStart: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := manager.Close(ctx, testExecutionPrincipal(), record.ID); err != nil {
+		t.Fatalf("close with stalled transport completion: %v", err)
 	}
 }
 
@@ -131,7 +166,7 @@ func TestConsoleSessionManagerCloseAllIsBoundedAndClosesTransportOnce(t *testing
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
 			Stdout: strings.NewReader(""),
-			Wait:   func() error { <-release; return nil },
+			Done:   testRuntimeDone(func() error { <-release; return nil }),
 			Close: func() error {
 				closeCalls.Add(1)
 				closeOnce.Do(func() { close(closeStarted) })
@@ -195,7 +230,7 @@ func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testin
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin: &recordingWriteCloser{}, Stdout: reader,
-			Wait:  func() error { <-ctx.Done(); return ctx.Err() },
+			Done:  testRuntimeDone(func() error { <-ctx.Done(); return ctx.Err() }),
 			Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -237,7 +272,7 @@ func TestConsoleSessionClosesTransportBeforeDrainingOutputPipes(t *testing.T) {
 	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin: &recordingWriteCloser{}, Stdout: reader,
-			Wait: func() error { return nil },
+			Done: testRuntimeDone(func() error { return nil }),
 			Close: func() error {
 				_ = writer.Close()
 				close(closed)
@@ -325,7 +360,7 @@ func TestConsoleSessionManagerCloseAllWaitsForSessionClosedHook(t *testing.T) {
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
-			Wait: func() error { <-ctx.Done(); return ctx.Err() }, Close: func() error { return nil },
+			Done: testRuntimeDone(func() error { <-ctx.Done(); return ctx.Err() }), Close: func() error { return nil },
 		}, nil
 	}, nil)
 	hookStarted := make(chan struct{})
@@ -396,7 +431,7 @@ func TestConsoleSessionClosePathsRespectContextWhileTransportCloses(t *testing.T
 			manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 				return &RuntimeSession{
 					Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
-					Wait:  func() error { <-release; return nil },
+					Done:  testRuntimeDone(func() error { <-release; return nil }),
 					Close: func() error { closeCalls.Add(1); <-release; return nil },
 				}, nil
 			}, nil)
@@ -459,10 +494,10 @@ func TestConsoleSessionManagerReplaceIfCurrentUsesExactSessionCAS(t *testing.T) 
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
 			Stdout: strings.NewReader(""),
-			Wait: func() error {
+			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
-			},
+			}),
 			Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -582,10 +617,10 @@ func TestConsoleSessionManagerPreparesEnvironmentAfterPeerVerification(t *testin
 					return nil
 				})
 			},
-			Wait: func() error {
+			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
-			},
+			}),
 			Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -643,10 +678,10 @@ func TestConsoleSessionManagerFinalizationFailureNeverBecomesReady(t *testing.T)
 			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
 				return nil
 			},
-			Wait: func() error {
+			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
-			},
+			}),
 			Close: func() error {
 				select {
 				case closed <- struct{}{}:
@@ -706,10 +741,10 @@ func TestConsoleSessionManagerPostDeliveryDriftNeverBecomesReady(t *testing.T) {
 			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
 				return nil
 			},
-			Wait: func() error {
+			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
-			},
+			}),
 			Close: func() error { return nil },
 		}, nil
 	}, nil)

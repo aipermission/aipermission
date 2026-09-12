@@ -187,10 +187,12 @@ type LiveConsoleOpenRequest struct {
 }
 
 type LiveConsoleSession struct {
-	Stdin                    io.WriteCloser
-	Stdout                   io.Reader
-	Stderr                   io.Reader
-	Wait                     func() error
+	Stdin  io.WriteCloser
+	Stdout io.Reader
+	Stderr io.Reader
+	// Done is transport-owned and must report completion after Close. Core only
+	// observes the channel, so an adapter cannot strand a core-owned waiter.
+	Done                     <-chan error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
 	ApplyEnvironment         func(context.Context, SessionEnvironment) error

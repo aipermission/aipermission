@@ -84,9 +84,9 @@ func (s *managedConsoleSession) run() {
 		s.fail("console transport did not provide stdout")
 		return
 	}
-	if runtime.Wait == nil {
-		s.markStarted(fmt.Errorf("console transport did not provide wait"))
-		s.fail("console transport did not provide wait")
+	if runtime.Done == nil {
+		s.markStarted(fmt.Errorf("console transport did not provide completion signal"))
+		s.fail("console transport did not provide completion signal")
 		return
 	}
 
@@ -102,27 +102,23 @@ func (s *managedConsoleSession) run() {
 	}
 
 	pipeGroup := pipedrain.New(runtime.Stderr != nil)
+	pipeContext, cancelPipes := context.WithCancel(s.ctx)
 	go func() {
 		defer pipeGroup.Done()
-		s.pipe(runtime.Stdout, s.stdoutExactRedactor)
+		s.consumePipe(pipeContext, readConsolePipe(pipeContext, runtime.Stdout), s.stdoutExactRedactor)
 	}()
 	if runtime.Stderr != nil {
 		go func() {
 			defer pipeGroup.Done()
-			s.pipe(runtime.Stderr, s.stderrExactRedactor)
+			s.consumePipe(pipeContext, readConsolePipe(pipeContext, runtime.Stderr), s.stderrExactRedactor)
 		}()
 	}
 	pipeOwnsRedactors = true
 
-	waitDone := make(chan error, 1)
-	go func() {
-		waitDone <- runtime.Wait()
-	}()
-
 	select {
-	case err := <-waitDone:
+	case err := <-runtime.Done:
 		_ = s.closeRuntime()
-		pipeGroup.Finish(2*time.Second, s.closeExactRedactor)
+		s.finishPipeDrain(pipeGroup, cancelPipes)
 		if err != nil && !errors.Is(err, io.EOF) {
 			s.finish("closed", err.Error())
 			return
@@ -130,7 +126,7 @@ func (s *managedConsoleSession) run() {
 		s.finish("closed", "")
 	case <-s.ctx.Done():
 		_ = s.closeRuntime()
-		pipeGroup.Finish(2*time.Second, s.closeExactRedactor)
+		s.finishPipeDrain(pipeGroup, cancelPipes)
 		s.finish("closed", "")
 	}
 }
@@ -187,17 +183,52 @@ func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error 
 	return nil
 }
 
-func (s *managedConsoleSession) pipe(reader io.Reader, redactor *sessionenv.Redactor) {
-	buffer := make([]byte, 4096)
-	for {
-		n, err := reader.Read(buffer)
-		if n > 0 {
-			s.appendStreamOutput(string(buffer[:n]), redactor)
+func readConsolePipe(ctx context.Context, reader io.Reader) <-chan string {
+	chunks := make(chan string)
+	go func() {
+		defer close(chunks)
+		buffer := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buffer)
+			if n > 0 {
+				chunk := string(buffer[:n])
+				clear(buffer[:n])
+				select {
+				case chunks <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
 		}
-		if err != nil {
+	}()
+	return chunks
+}
+
+func (s *managedConsoleSession) consumePipe(ctx context.Context, chunks <-chan string, redactor *sessionenv.Redactor) {
+	for {
+		select {
+		case chunk, ok := <-chunks:
+			if !ok {
+				return
+			}
+			s.appendStreamOutput(chunk, redactor)
+		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (s *managedConsoleSession) finishPipeDrain(group *pipedrain.Group, cancel context.CancelFunc) {
+	if !group.Wait(2 * time.Second) {
+		cancel()
+		group.Wait(100 * time.Millisecond)
+	} else {
+		cancel()
+	}
+	s.closeExactRedactor()
 }
 
 func (s *managedConsoleSession) addClient(ws *websocket.Conn) (*sync.Mutex, error) {

@@ -13,13 +13,16 @@ import (
 
 func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	wantError := errors.New("wait")
+	done := make(chan error, 1)
+	done <- wantError
+	close(done)
 	wantEnvironment := func(context.Context, gatewayoperations.SessionEnvironment) error { return nil }
 	var received gatewayoperations.RuntimeOpenRequest
 	adapted := gatewayoperations.AdaptRuntimeOpener(func(_ context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		received = request
 		return &gatewayoperations.RuntimeSession{
 			Stdin: nopWriteCloser{}, Stdout: strings.NewReader("stdout"), Stderr: strings.NewReader("stderr"),
-			Wait: func() error { return wantError }, Resize: func(int, int) error { return nil },
+			Done: done, Resize: func(int, int) error { return nil },
 			Close: func() error { return nil }, ApplyEnvironment: wantEnvironment,
 			PeerIdentity: "peer", StartupInputAfterConnect: "q",
 		}, nil
@@ -38,7 +41,7 @@ func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	if session == nil || session.PeerIdentity != "peer" || session.StartupInputAfterConnect != "q" || session.ApplyEnvironment == nil {
 		t.Fatalf("adapted session = %#v", session)
 	}
-	if err := session.Wait(); !errors.Is(err, wantError) {
+	if err := <-session.Done; !errors.Is(err, wantError) {
 		t.Fatalf("wait error = %v", err)
 	}
 }
