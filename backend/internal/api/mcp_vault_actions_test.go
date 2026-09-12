@@ -430,7 +430,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		}()
 		return &gatewayoperations.RuntimeSession{
 			Stdin:        discardWriteCloser{},
-			Stdout:       strings.NewReader(""),
+			Output:       closedTerminalOutput(),
 			PeerIdentity: identities[0],
 			ApplyEnvironment: func(_ context.Context, environment gatewayoperations.SessionEnvironment) error {
 				return environment.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
@@ -545,6 +545,12 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		strings.Contains(run.Body.String(), secretValue) {
 		t.Fatal("Vault secret leaked into a persisted or MCP response surface")
 	}
+}
+
+func closedTerminalOutput() <-chan console.RuntimeOutput {
+	output := make(chan console.RuntimeOutput)
+	close(output)
+	return output
 }
 
 type discardWriteCloser struct{}

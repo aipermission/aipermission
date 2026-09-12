@@ -132,8 +132,8 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
-	runtimeStdout := io.Reader(stdout)
-	var runtimeSession *connectorapi.LiveConsoleSession
+	closeProducer := func() error { return closeLiveConsoleProducer(sshSession, sshClient) }
+	ownedOutput := newLiveConsoleOutput(sshSession.Wait, closeProducer)
 	var applyEnvironment func(context.Context, connectorapi.SessionEnvironment) error
 	if hasEnvironment {
 		bootstrap, err := newSessionEnvironmentBootstrap(options.Generation)
@@ -157,7 +157,9 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 			if err != nil {
 				return err
 			}
-			runtimeSession.Stdout = io.MultiReader(bytes.NewReader(result.Prelude), result.Reader)
+			if !ownedOutput.Start(io.MultiReader(bytes.NewReader(result.Prelude), result.Reader), stderr) {
+				return context.Canceled
+			}
 			return nil
 		}
 	} else if target.ForceShellCommand != "" {
@@ -171,23 +173,33 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
-	done := make(chan error, 1)
-	go func() {
-		done <- sshSession.Wait()
-		close(done)
-	}()
-	runtimeSession = &connectorapi.LiveConsoleSession{
+	if !hasEnvironment {
+		ownedOutput.Start(stdout, stderr)
+	}
+	return &connectorapi.LiveConsoleSession{
 		Stdin:                    stdin,
-		Stdout:                   runtimeStdout,
-		Stderr:                   stderr,
-		Done:                     done,
+		Output:                   ownedOutput.output,
+		Done:                     ownedOutput.done,
 		Resize:                   func(cols int, rows int) error { return sshSession.WindowChange(rows, cols) },
-		Close:                    func() error { _ = sshSession.Close(); return sshClient.Close() },
+		Close:                    ownedOutput.Close,
 		PeerIdentity:             peerIdentity,
 		StartupInputAfterConnect: startupInputAfterConnect(target.StartupInputAfterConnect, hasEnvironment),
 		ApplyEnvironment:         applyEnvironment,
+	}, nil
+}
+
+func closeLiveConsoleProducer(session io.Closer, client io.Closer) error {
+	var closeErrors []error
+	// Closing the client first interrupts blocked channel writes and reads.
+	for _, closer := range []io.Closer{client, session} {
+		if closer == nil {
+			continue
+		}
+		if err := closer.Close(); err != nil && !errors.Is(err, io.EOF) {
+			closeErrors = append(closeErrors, err)
+		}
 	}
-	return runtimeSession, nil
+	return errors.Join(closeErrors...)
 }
 
 type sessionEnvironmentBootstrap struct {

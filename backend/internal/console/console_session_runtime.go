@@ -12,18 +12,14 @@ import (
 	"time"
 
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
-	"github.com/aipermission/aipermission/backend/internal/console/pipedrain"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
 )
 
 func (s *managedConsoleSession) run() {
-	pipeOwnsRedactors := false
 	defer func() {
-		if !pipeOwnsRedactors {
-			s.closeExactRedactor()
-		}
+		s.closeExactRedactor()
 		s.drainOwnedWork()
 		if s.environment != nil {
 			s.environment.Destroy()
@@ -56,20 +52,24 @@ func (s *managedConsoleSession) run() {
 		s.fail(err.Error())
 		return
 	}
-	s.mu.Lock()
-	s.runtime = runtime
-	s.mu.Unlock()
-	defer s.closeRuntime()
-
+	if runtime == nil {
+		err := fmt.Errorf("console transport returned no session")
+		s.markStarted(err)
+		s.fail(err.Error())
+		return
+	}
 	stdin := runtime.Stdin
 	if stdin == nil {
+		_ = runtime.close()
 		s.markStarted(fmt.Errorf("console transport did not provide stdin"))
 		s.fail("console transport did not provide stdin")
 		return
 	}
-	s.mu.Lock()
-	s.stdin = stdin
-	s.mu.Unlock()
+	if !s.publishRuntime(runtime) {
+		s.markStarted(ErrSessionClosing)
+		return
+	}
+	defer s.closeRuntime()
 
 	if s.environment != nil || s.prepareEnvironment != nil {
 		if err := s.applyEnvironment(runtime); err != nil {
@@ -79,9 +79,9 @@ func (s *managedConsoleSession) run() {
 		}
 	}
 
-	if runtime.Stdout == nil {
-		s.markStarted(fmt.Errorf("console transport did not provide stdout"))
-		s.fail("console transport did not provide stdout")
+	if runtime.Output == nil {
+		s.markStarted(fmt.Errorf("console transport did not provide output"))
+		s.fail("console transport did not provide output")
 		return
 	}
 	if runtime.Done == nil {
@@ -101,38 +101,7 @@ func (s *managedConsoleSession) run() {
 		}
 	}
 
-	pipeGroup := pipedrain.New(runtime.Stderr != nil)
-	pipeContext, cancelPipes := context.WithCancel(s.ctx)
-	go func() {
-		defer pipeGroup.Done()
-		pipedrain.Consume(pipeContext, pipedrain.Read(pipeContext, runtime.Stdout), func(chunk string) {
-			s.appendStreamOutput(chunk, s.stdoutExactRedactor)
-		})
-	}()
-	if runtime.Stderr != nil {
-		go func() {
-			defer pipeGroup.Done()
-			pipedrain.Consume(pipeContext, pipedrain.Read(pipeContext, runtime.Stderr), func(chunk string) {
-				s.appendStreamOutput(chunk, s.stderrExactRedactor)
-			})
-		}()
-	}
-	pipeOwnsRedactors = true
-
-	select {
-	case err := <-runtime.Done:
-		_ = s.closeRuntime()
-		s.finishPipeDrain(pipeGroup, cancelPipes)
-		if err != nil && !errors.Is(err, io.EOF) {
-			s.finish("closed", err.Error())
-			return
-		}
-		s.finish("closed", "")
-	case <-s.ctx.Done():
-		_ = s.closeRuntime()
-		s.finishPipeDrain(pipeGroup, cancelPipes)
-		s.finish("closed", "")
-	}
+	s.consumeRuntime(runtime)
 }
 
 func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error {
@@ -187,14 +156,53 @@ func (s *managedConsoleSession) applyEnvironment(runtime *RuntimeSession) error 
 	return nil
 }
 
-func (s *managedConsoleSession) finishPipeDrain(group *pipedrain.Group, cancel context.CancelFunc) {
-	if !group.Wait(2 * time.Second) {
-		cancel()
-		group.Wait(100 * time.Millisecond)
-	} else {
-		cancel()
+func (s *managedConsoleSession) publishRuntime(runtime *RuntimeSession) bool {
+	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		_ = runtime.close()
+		return false
 	}
-	s.closeExactRedactor()
+	s.runtime = runtime
+	s.stdin = runtime.Stdin
+	s.mu.Unlock()
+	return true
+}
+
+func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
+	output := runtime.Output
+	done := runtime.Done
+	var completion error
+	for output != nil || done != nil {
+		select {
+		case item, ok := <-output:
+			if !ok {
+				output = nil
+				continue
+			}
+			switch item.Kind {
+			case RuntimeStderr:
+				s.appendStreamOutput(item.Data, s.stderrExactRedactor)
+			default:
+				s.appendStreamOutput(item.Data, s.stdoutExactRedactor)
+			}
+		case err, ok := <-done:
+			if ok {
+				completion = err
+			}
+			done = nil
+		case <-s.ctx.Done():
+			_ = s.closeRuntime()
+			s.finish("closed", "")
+			return
+		}
+	}
+	_ = s.closeRuntime()
+	if completion != nil && !errors.Is(completion, io.EOF) {
+		s.finish("closed", completion.Error())
+		return
+	}
+	s.finish("closed", "")
 }
 
 func (s *managedConsoleSession) addClient(ws *websocket.Conn) (*sync.Mutex, error) {
@@ -284,6 +292,7 @@ func (s *managedConsoleSession) beginClose() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	s.closeKick.Do(func() { go func() { _ = s.closeRuntime() }() })
 	for _, client := range clients {
 		_ = client.Close()
 	}

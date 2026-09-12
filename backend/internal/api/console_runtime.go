@@ -37,7 +37,7 @@ func (s *Server) runtimeConsoleOpener(runtime *gatewayinfra.WorkspaceHandle) gat
 			}
 		}
 		return &gatewayoperations.RuntimeSession{
-			Stdin: session.Stdin, Stdout: session.Stdout, Stderr: session.Stderr,
+			Stdin: session.Stdin, Output: session.Output,
 			Done: session.Done, Resize: session.Resize, Close: session.Close,
 			ApplyEnvironment:         applyEnvironment,
 			PeerIdentity:             session.PeerIdentity,

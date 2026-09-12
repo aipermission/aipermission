@@ -129,8 +129,7 @@ type RuntimeOpener func(context.Context, RuntimeOpenRequest) (*RuntimeSession, e
 
 type RuntimeSession struct {
 	Stdin                    io.WriteCloser
-	Stdout                   io.Reader
-	Stderr                   io.Reader
+	Output                   <-chan RuntimeOutput
 	Done                     <-chan error // Transport-owned completion signal.
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
@@ -238,6 +237,7 @@ type managedConsoleSession struct {
 	done       chan struct{}
 	startOnce  sync.Once
 	closeOnce  sync.Once
+	closeKick  sync.Once
 	closeErr   error
 	workMu     sync.Mutex
 	workWG     sync.WaitGroup

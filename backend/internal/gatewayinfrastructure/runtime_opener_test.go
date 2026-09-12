@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
@@ -16,12 +15,16 @@ func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	done := make(chan error, 1)
 	done <- wantError
 	close(done)
+	output := make(chan console.RuntimeOutput, 2)
+	output <- console.RuntimeOutput{Kind: console.RuntimeStdout, Data: "stdout"}
+	output <- console.RuntimeOutput{Kind: console.RuntimeStderr, Data: "stderr"}
+	close(output)
 	wantEnvironment := func(context.Context, gatewayoperations.SessionEnvironment) error { return nil }
 	var received gatewayoperations.RuntimeOpenRequest
 	adapted := gatewayoperations.AdaptRuntimeOpener(func(_ context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		received = request
 		return &gatewayoperations.RuntimeSession{
-			Stdin: nopWriteCloser{}, Stdout: strings.NewReader("stdout"), Stderr: strings.NewReader("stderr"),
+			Stdin: nopWriteCloser{}, Output: output,
 			Done: done, Resize: func(int, int) error { return nil },
 			Close: func() error { return nil }, ApplyEnvironment: wantEnvironment,
 			PeerIdentity: "peer", StartupInputAfterConnect: "q",
@@ -40,6 +43,12 @@ func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	}
 	if session == nil || session.PeerIdentity != "peer" || session.StartupInputAfterConnect != "q" || session.ApplyEnvironment == nil {
 		t.Fatalf("adapted session = %#v", session)
+	}
+	if event := <-session.Output; event.Kind != console.RuntimeStdout || event.Data != "stdout" {
+		t.Fatalf("adapted output = %#v", event)
+	}
+	if event := <-session.Output; event.Kind != console.RuntimeStderr || event.Data != "stderr" {
+		t.Fatalf("adapted output = %#v", event)
 	}
 	if err := <-session.Done; !errors.Is(err, wantError) {
 		t.Fatalf("wait error = %v", err)

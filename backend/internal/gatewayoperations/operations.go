@@ -51,8 +51,7 @@ type SessionEnvironment interface {
 
 type RuntimeSession struct {
 	Stdin                    io.WriteCloser
-	Stdout                   io.Reader
-	Stderr                   io.Reader
+	Output                   <-chan console.RuntimeOutput
 	Done                     <-chan error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error
@@ -80,7 +79,7 @@ func AdaptRuntimeOpener(opener RuntimeOpener) console.RuntimeOpener {
 			}
 		}
 		return &console.RuntimeSession{
-			Stdin: session.Stdin, Stdout: session.Stdout, Stderr: session.Stderr,
+			Stdin: session.Stdin, Output: session.Output,
 			Done: session.Done, Resize: session.Resize, Close: session.Close,
 			ApplyEnvironment: applyEnvironment, PeerIdentity: session.PeerIdentity,
 			StartupInputAfterConnect: session.StartupInputAfterConnect,

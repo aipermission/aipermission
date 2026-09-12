@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/console"
 )
 
 var (
@@ -188,10 +189,9 @@ type LiveConsoleOpenRequest struct {
 
 type LiveConsoleSession struct {
 	Stdin  io.WriteCloser
-	Stdout io.Reader
-	Stderr io.Reader
-	// Done is transport-owned and must report completion after Close. Core only
-	// observes the channel, so an adapter cannot strand a core-owned waiter.
+	Output <-chan console.RuntimeOutput
+	// Output and Done are transport-owned. Close must stop the producers, wait
+	// for their pumps, close Output, and then report completion through Done.
 	Done                     <-chan error
 	Resize                   func(cols int, rows int) error
 	Close                    func() error

@@ -29,6 +29,15 @@ func testRuntimeDone(wait func() error) <-chan error {
 	return done
 }
 
+func testRuntimeOutput(chunks ...string) <-chan RuntimeOutput {
+	output := make(chan RuntimeOutput, len(chunks))
+	for _, chunk := range chunks {
+		output <- RuntimeOutput{Kind: RuntimeStdout, Data: chunk}
+	}
+	close(output)
+	return output
+}
+
 func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
@@ -55,7 +64,7 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
-			Stdout: strings.NewReader("closing output"),
+			Output: testRuntimeOutput("closing output"),
 			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
@@ -91,7 +100,7 @@ func TestConsoleSessionCloseDoesNotWaitForTransportCompletionSignal(t *testing.T
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-stalled-completion", "127.0.0.1", 22)
 	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
-			Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+			Stdin: &recordingWriteCloser{}, Output: testRuntimeOutput(),
 			Done: make(chan error), Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -165,7 +174,7 @@ func TestConsoleSessionManagerCloseAllIsBoundedAndClosesTransportOnce(t *testing
 	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
-			Stdout: strings.NewReader(""),
+			Output: testRuntimeOutput(),
 			Done:   testRuntimeDone(func() error { <-release; return nil }),
 			Close: func() error {
 				closeCalls.Add(1)
@@ -218,20 +227,20 @@ func TestConsoleSessionManagerCloseAllIsBoundedAndClosesTransportOnce(t *testing
 	}
 }
 
-func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testing.T) {
+func TestConsoleSessionManagerCloseAllWaitsForTransportAndOwnedPersistence(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-owned-drain", "127.0.0.1", 22)
-	reader, writer := io.Pipe()
-	t.Cleanup(func() { _ = reader.Close() })
+	output := make(chan RuntimeOutput)
+	var closeOnce sync.Once
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
-			Stdin: &recordingWriteCloser{}, Stdout: reader,
+			Stdin: &recordingWriteCloser{}, Output: output,
 			Done:  testRuntimeDone(func() error { <-ctx.Done(); return ctx.Err() }),
-			Close: func() error { return nil },
+			Close: func() error { closeOnce.Do(func() { close(output) }); return nil },
 		}, nil
 	}, nil)
 	record, err := manager.Create(t.Context(), CreateRequest{
@@ -252,30 +261,27 @@ func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testin
 		t.Fatalf("CloseAll() error = %v, want blocked ownership deadline", err)
 	}
 	close(ownedRelease)
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
 	if err := manager.CloseAll(t.Context()); err != nil {
 		t.Fatalf("CloseAll() did not observe full ownership drain: %v", err)
 	}
 }
 
-func TestConsoleSessionClosesTransportBeforeDrainingOutputPipes(t *testing.T) {
+func TestConsoleSessionClosesTransportBeforeFinishingOutputConsumption(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-close-order", "127.0.0.1", 22)
-	reader, writer := io.Pipe()
+	output := make(chan RuntimeOutput)
 	closed := make(chan struct{})
+	var closeOnce sync.Once
 	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
-			Stdin: &recordingWriteCloser{}, Stdout: reader,
-			Done: testRuntimeDone(func() error { return nil }),
+			Stdin: &recordingWriteCloser{}, Output: output,
+			Done: make(chan error),
 			Close: func() error {
-				_ = writer.Close()
-				close(closed)
+				closeOnce.Do(func() { close(output); close(closed) })
 				return nil
 			},
 		}, nil
@@ -294,6 +300,128 @@ func TestConsoleSessionClosesTransportBeforeDrainingOutputPipes(t *testing.T) {
 	case <-closed:
 	default:
 		t.Fatal("transport was not closed before pipe ownership drained")
+	}
+}
+
+type closeUnblocksWriteCloser struct {
+	started   chan struct{}
+	release   chan struct{}
+	startOnce sync.Once
+	closeOnce sync.Once
+}
+
+func (writer *closeUnblocksWriteCloser) Write([]byte) (int, error) {
+	writer.startOnce.Do(func() { close(writer.started) })
+	<-writer.release
+	return 0, io.ErrClosedPipe
+}
+
+func (writer *closeUnblocksWriteCloser) Close() error {
+	writer.closeOnce.Do(func() { close(writer.release) })
+	return nil
+}
+
+func TestClosingConnectingSessionUnblocksEnvironmentWriteAndDestroysEnvelope(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-blocked-environment", "127.0.0.1", 22)
+	writer := &closeUnblocksWriteCloser{started: make(chan struct{}), release: make(chan struct{})}
+	output := make(chan RuntimeOutput)
+	done := make(chan error, 1)
+	var closeOnce sync.Once
+	var closeCalls atomic.Int32
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: writer, Output: output, Done: done, PeerIdentity: "SHA256:test-peer",
+			ApplyEnvironment: func(_ context.Context, environment *sessionenv.Envelope) error {
+				return environment.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
+					_, writeErr := writer.Write(value)
+					return writeErr
+				})
+			},
+			Close: func() error {
+				closeCalls.Add(1)
+				closeOnce.Do(func() {
+					_ = writer.Close()
+					close(output)
+					done <- context.Canceled
+					close(done)
+				})
+				return nil
+			},
+		}, nil
+	}, nil)
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{
+		Name: "API_TOKEN", Value: []byte("blocked-environment-secret"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "blocked environment", Principal: testExecutionPrincipal(), Environment: envelope,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("environment write did not block")
+	}
+	closeCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := manager.Close(closeCtx, testExecutionPrincipal(), record.ID); err != nil {
+		t.Fatalf("close connecting session: %v", err)
+	}
+	if closeCalls.Load() != 1 {
+		t.Fatalf("transport close calls = %d, want 1", closeCalls.Load())
+	}
+	if err := envelope.WithEntries(func([]sessionenv.EntryView) error { return nil }); !errors.Is(err, sessionenv.ErrDestroyed) {
+		t.Fatalf("environment remained readable after close: %v", err)
+	}
+}
+
+func TestClosingBeforeRuntimePublicationClosesPublishedTransportOnce(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-publication-race", "127.0.0.1", 22)
+	openStarted := make(chan struct{})
+	releaseOpen := make(chan struct{})
+	var closeCalls atomic.Int32
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+		close(openStarted)
+		<-releaseOpen
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Output: testRuntimeOutput(), Done: make(chan error),
+			Close: func() error { closeCalls.Add(1); return nil },
+		}, nil
+	}, nil)
+	record, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "publication race", Principal: testExecutionPrincipal(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-openStarted
+	closed := make(chan error, 1)
+	go func() { closed <- manager.Close(t.Context(), testExecutionPrincipal(), record.ID) }()
+	close(releaseOpen)
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("close racing publication: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("close did not complete after runtime publication")
+	}
+	if closeCalls.Load() != 1 {
+		t.Fatalf("transport close calls = %d, want 1", closeCalls.Load())
 	}
 }
 
@@ -359,7 +487,7 @@ func TestConsoleSessionManagerCloseAllWaitsForSessionClosedHook(t *testing.T) {
 	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-hook-drain", "127.0.0.1", 22)
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
-			Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+			Stdin: &recordingWriteCloser{}, Output: testRuntimeOutput(),
 			Done: testRuntimeDone(func() error { <-ctx.Done(); return ctx.Err() }), Close: func() error { return nil },
 		}, nil
 	}, nil)
@@ -430,7 +558,7 @@ func TestConsoleSessionClosePathsRespectContextWhileTransportCloses(t *testing.T
 			var closeCalls atomic.Int32
 			manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 				return &RuntimeSession{
-					Stdin: &recordingWriteCloser{}, Stdout: strings.NewReader(""),
+					Stdin: &recordingWriteCloser{}, Output: testRuntimeOutput(),
 					Done:  testRuntimeDone(func() error { <-release; return nil }),
 					Close: func() error { closeCalls.Add(1); <-release; return nil },
 				}, nil
@@ -493,7 +621,7 @@ func TestConsoleSessionManagerReplaceIfCurrentUsesExactSessionCAS(t *testing.T) 
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin:  &recordingWriteCloser{},
-			Stdout: strings.NewReader(""),
+			Output: testRuntimeOutput(),
 			Done: testRuntimeDone(func() error {
 				<-ctx.Done()
 				return ctx.Err()
@@ -605,7 +733,7 @@ func TestConsoleSessionManagerPreparesEnvironmentAfterPeerVerification(t *testin
 		events = append(events, "open")
 		return &RuntimeSession{
 			Stdin:        &recordingWriteCloser{},
-			Stdout:       strings.NewReader(""),
+			Output:       testRuntimeOutput(),
 			PeerIdentity: "SHA256:test-peer",
 			ApplyEnvironment: func(_ context.Context, environment *sessionenv.Envelope) error {
 				events = append(events, "apply")
@@ -673,7 +801,7 @@ func TestConsoleSessionManagerFinalizationFailureNeverBecomesReady(t *testing.T)
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin:        &recordingWriteCloser{},
-			Stdout:       strings.NewReader(""),
+			Output:       testRuntimeOutput(),
 			PeerIdentity: "SHA256:test-peer",
 			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
 				return nil
@@ -736,7 +864,7 @@ func TestConsoleSessionManagerPostDeliveryDriftNeverBecomesReady(t *testing.T) {
 	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
 		return &RuntimeSession{
 			Stdin:        &recordingWriteCloser{},
-			Stdout:       strings.NewReader(""),
+			Output:       testRuntimeOutput(),
 			PeerIdentity: "SHA256:test-peer",
 			ApplyEnvironment: func(context.Context, *sessionenv.Envelope) error {
 				return nil
