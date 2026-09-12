@@ -66,7 +66,7 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 		connectorRegistryOwner: owner.registry, connectorAdaptersOwner: owner.adapters,
 		transfers: gatewaytransfer.NewComponent(),
 	}
-	server.connectorPorts = server.newConnectorPortsApplication()
+	server.connectorRuntime = server.newConnectorRuntimeApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
 	if err := server.configureConnectorActionApplication(); err != nil {

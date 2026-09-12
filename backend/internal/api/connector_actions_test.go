@@ -78,6 +78,7 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	server := testServerForRuntime(t, runtime)
 	server.connectorRegistryOwner = catalog.connectors
 	server.connectorAdaptersOwner = catalog.adapters
+	server.connectorRuntime = server.newConnectorRuntimeApplication()
 	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)
 	if capabilities == nil || capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
 		t.Fatalf("postgres should receive generic network transport capability: %#v", capabilities)
@@ -94,10 +95,22 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	}
 }
 
+func testConnectorNetworkTransport(t *testing.T, capabilities connectors.RuntimeCapabilityResolver) connectors.NetworkTransport {
+	t.Helper()
+	if capabilities == nil {
+		t.Fatal("connector runtime capabilities are unavailable")
+	}
+	transport, ok := capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
+	if !ok || transport == nil {
+		t.Fatal("connector network transport capability is unavailable")
+	}
+	return transport
+}
+
 func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T) {
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := connectorports.NetworkTransport(testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil)
+	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.RuntimeCapabilities(runtime, "fixture"))
 
 	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
 		Mode:               "over_fixture",
@@ -124,7 +137,7 @@ func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
 func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := connectorports.ApprovedNetworkTransport(testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil, nil)
+	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", nil))
 
 	_, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		Mode:               "over_ssh",
@@ -165,9 +178,7 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	}
 
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := connectorports.ApprovedNetworkTransport(
-		testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil, dependencies,
-	)
+	transport := testConnectorNetworkTransport(t, testServerForRuntime(t, runtime).connectorRuntime.ActionCapabilities(runtime, "fixture", dependencies))
 	connection, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		SourceProjectID: targetView.ProjectID, Mode: "over_ssh", Host: "127.0.0.1", Port: 5432,
 		TransportTargetRef: profile.TargetRef,

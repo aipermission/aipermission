@@ -12,13 +12,13 @@ import (
 func (s *Server) configureConnectorActionApplication() error {
 	application, err := s.connectorActionOwner.NewConnectorActionApplication(connectorActionJSONBodyBytes, gatewayinfra.ConnectorActionPorts{
 		Capabilities: func(runtime *gatewayinfra.WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
-			return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
+			return s.connectorRuntime.ActionCapabilities(runtime, kind, dependencies)
 		},
 		SupportsRunning: func(prepared gatewayactions.PreparedRequest) bool {
-			return s != nil && s.connectorActionSupportsRunning(prepared)
+			return s != nil && s.connectorRuntime.SupportsRunning(prepared)
 		},
 		FinishRunning: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, id int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
-			s.finishActiveConnectorActionRequest(ctx, runtime, id, prepared, principal, handles)
+			s.connectorRuntime.FinishRunning(ctx, runtime, id, prepared, principal, handles)
 		},
 	})
 	if err != nil {

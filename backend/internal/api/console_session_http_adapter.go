@@ -46,8 +46,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 		},
 		PresentEnvironmentError: presentVaultSessionEnvironmentError,
 		ErrorAdapter: func(ctx context.Context, runtimeID int64) connectorapi.ErrorPresenter {
-			adapter, _ := s.consoleErrorPresenter(ctx, runtime, runtimeID).(connectorapi.ErrorPresenter)
-			return adapter
+			return s.consoleErrorPresenter(ctx, runtime, runtimeID)
 		},
 		CancelForSession: func(ctx context.Context, sessionID int64, errorText string) error {
 			requests, err := s.commandRuntime(runtime)

@@ -72,7 +72,7 @@ func TestConnectorRuntimeActionGatewayRejectsCrossConnectorRuntime(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	port, _ := fixture.server.connectorPortsApplication().RuntimeActionPorts(fixture.server.connectorPortsWorkspace(runtime), "beta")
+	port, _ := fixture.server.connectorRuntime.RuntimeActionPorts(runtime, "beta")
 	_, err = port.ConnectorRestartConsoleSession(context.Background(), executionprincipal.Principal{}, surface.ID, "test")
 	if !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
 		t.Fatalf("cross-connector restart error = %v", err)

@@ -6,7 +6,6 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"time"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -21,11 +20,10 @@ func (port vaultActionConnectorPort) SessionEnvironmentVersion(ctx context.Conte
 }
 
 func (port vaultActionConnectorPort) LiveConsolePermission(ctx context.Context, tokenID, targetID, profileID int64, kind string) (connectormgmt.ActionPermission, string, error) {
-	liveConsole, ok := port.server.connectorAPIAdapterFor(kind).(connectorapi.LiveConsoleAdapter)
+	action, ok := port.server.connectorRuntime.LiveConsoleActionName(kind)
 	if !ok {
 		return connectormgmt.ActionPermission{}, "", errors.New("this connector does not expose a live console action")
 	}
-	action := liveConsole.LiveConsoleActionName()
 	permission, err := port.server.connectorCatalog(port.runtime).ActionPermission(ctx, tokenID, targetID, profileID, action, time.Now().UTC())
 	return permission, action, err
 }
@@ -35,14 +33,13 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 	if err != nil {
 		return gatewayvault.PeerIdentityExpectation{}, err
 	}
-	adapter, _ := port.server.connectorAPIAdapterFor(surface.ConnectorKind).(connectorapi.LiveConsolePeerIdentityAdapter)
-	if adapter == nil {
+	items, supported, err := port.server.connectorRuntime.ExpectedLiveConsolePeerIdentities(ctx, port.runtime, surface.ConnectorKind, surface.ID)
+	if !supported {
 		if capability.SessionEnvironmentPeerIdentityRequired() {
 			return gatewayvault.PeerIdentityExpectation{}, errors.New("this connector requires a peer identity adapter for Vault session environments")
 		}
 		return gatewayvault.PeerIdentityExpectation{}, nil
 	}
-	items, err := adapter.ExpectedLiveConsolePeerIdentities(ctx, port.server.connectorPortsApplication().PeerGateway(), port.server.connectorLiveRuntime(port.runtime, surface.ConnectorKind), surface.ID)
 	if err != nil {
 		return gatewayvault.PeerIdentityExpectation{}, err
 	}

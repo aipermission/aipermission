@@ -13,13 +13,7 @@ func (s *Server) vaultApplication() *gatewayvault.Component {
 
 func (s *Server) newVaultApplication() *gatewayvault.Component {
 	return gatewayvault.New(gatewayvault.Dependencies{
-		LiveConsoleKind: func(kind string) (string, bool) {
-			adapter := s.connectorLiveConsoleTargetAdapterFor(kind)
-			if adapter == nil {
-				return "", false
-			}
-			return adapter.LiveConsoleCapabilityKind(), true
-		},
+		LiveConsoleKind: s.connectorRuntime.LiveConsoleCapabilityKind,
 		AllowGenerate: func(key string) bool {
 			return s.access.AllowVaultGenerate(key)
 		},

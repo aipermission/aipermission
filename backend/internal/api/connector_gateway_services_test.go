@@ -75,7 +75,7 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	firstRequest := createRuntimeScopedVaultRequest(t, fixture.server, first, "first")
 	secondRequest := createRuntimeScopedVaultRequest(t, fixture.server, second, "second")
 	changeCalled := false
-	if err := fixture.server.connectorPortsApplication().RouteGateway().ConnectorChangeVaultPeerTrust(ctx, func() error {
+	if err := fixture.server.connectorRuntime.RouteGateway().ConnectorChangeVaultPeerTrust(ctx, func() error {
 		changeCalled = true
 		return nil
 	}); err != nil {

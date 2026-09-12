@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
@@ -55,13 +54,13 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 		return gatewaytransfer.FileTransferConnectorPorts{}, err
 	}
 	boundary := gatewaytransfer.NewCredentialBoundary(nil)
-	transferRuntime := connectorports.TransferRuntimeWithSecretAccessor(server.connectorWorkspace(runtime), target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
+	transferRuntime := server.connectorRuntime.TransferRuntimeWithSecretAccessor(runtime, target.ConnectorKind, func(secrets map[string]any) connectors.SecretAccessor {
 		boundary.AddStructured(secrets)
 		return connectorSecretAccessor{values: secrets, boundary: boundary}
 	})
 	return gatewaytransfer.FileTransferConnectorPorts{
 		ConnectorKind:      target.ConnectorKind,
-		Gateway:            server.connectorPortsApplication().FileTransferGateway(server.connectorPortsWorkspace(runtime), target.ConnectorKind),
+		Gateway:            server.connectorRuntime.FileTransferGateway(runtime, target.ConnectorKind),
 		Runtime:            transferRuntime,
 		CredentialBoundary: boundary,
 	}, nil
@@ -70,7 +69,7 @@ func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtim
 func (s *Server) fileTransferHTTPHandlers() *gatewaytransfer.FileTransferHTTPHandlers {
 	return s.transfers.NewHTTPHandlers(gatewaytransfer.FileTransferHTTPDependencies{
 		Scope:      s.fileTransferWorkspace,
-		AdapterFor: s.connectorFileTransferAdapterFor,
+		AdapterFor: s.connectorRuntime.FileTransferAdapter,
 		DataPath:   s.config.DataPath,
 	})
 }

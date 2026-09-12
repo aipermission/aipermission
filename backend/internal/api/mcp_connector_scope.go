@@ -38,7 +38,7 @@ func (s mcpHandlers) mcpConnectorReadPorts(w http.ResponseWriter, r *http.Reques
 			return settings.ExposeMCPServerMetadata, err
 		},
 		Metadata: gatewayaccess.NewMCPMetadataResolver(func(kind string) gatewayaccess.MCPMetadataAdapter {
-			return s.connectorLiveConsoleTargetAdapterFor(kind)
+			return s.connectorRuntime.MetadataAdapter(kind)
 		}),
 	}
 	return auth.runtime, ports, true

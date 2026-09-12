@@ -13,7 +13,7 @@ func (s *Server) connectorCredentialRuntimePorts(runtime *gatewayinfra.Workspace
 	return s.connectorManagementApplication().RuntimeCredentialPorts(
 		s.connectorCredentialStorage(runtime),
 		func(kind string) connectors.RuntimeCapabilityResolver {
-			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
+			return s.connectorRuntime.RuntimeCapabilities(runtime, kind)
 		},
 		func(ctx context.Context, result connectors.ActionResult, boundary connectormgmt.CredentialBoundary) (connectors.ActionResult, error) {
 			return s.redactConnectorActionResultWithCredentialBoundary(ctx, runtime, result, gatewayactions.AdoptCredentialBoundary(boundary))

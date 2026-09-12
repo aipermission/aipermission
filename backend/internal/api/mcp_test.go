@@ -108,7 +108,7 @@ func testSSHKeyStore(t *testing.T, server *Server, runtime *gatewayinfra.Workspa
 	if server == nil || runtime == nil {
 		t.Fatalf("ssh key resource store is not available")
 	}
-	resources := server.connectorCredentialResourceRuntime(runtime, sshconnector.Kind)
+	resources := server.connectorRuntime.CredentialResourceRuntime(runtime, sshconnector.Kind)
 	return sshkeys.NewResourceStore(resources.CredentialResources("private_key"))
 }
 

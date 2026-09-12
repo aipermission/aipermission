@@ -9,12 +9,12 @@ import (
 
 func (s *Server) connectorCredentialPreparationPorts(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialPreparationPorts {
 	return s.connectorManagementApplication().RuntimeCredentialPreparation(s.connectorCredentialStorage(runtime), func(connectorKind string) connectormgmt.CredentialCanonicalizer {
-		adapter := s.connectorCredentialCanonicalizerFor(connectorKind)
+		adapter := s.connectorRuntime.CredentialCanonicalizer(connectorKind)
 		if adapter == nil {
 			return nil
 		}
 		return func(ctx context.Context, _, credentialKind string, public map[string]any) (map[string]any, error) {
-			return adapter.CanonicalCredentialPublic(ctx, s.connectorDataRuntimePort(runtime, connectorKind), credentialKind, public)
+			return adapter.CanonicalCredentialPublic(ctx, s.connectorRuntime.DataRuntime(runtime, connectorKind), credentialKind, public)
 		}
 	})
 }

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
@@ -11,7 +10,6 @@ import (
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
 type provisionConnectorCredentialProfileRequest = connectormgmt.ProvisionRequest
@@ -19,7 +17,7 @@ type provisionConnectorCredentialProfileRequest = connectormgmt.ProvisionRequest
 func (s *Server) connectorCredentialResourceDependencies() connectormgmt.CredentialResourceDependencies {
 	return connectormgmt.CredentialResourceDependencies{
 		Adapter: func(kind string) connectormgmt.CredentialResourceAdapter {
-			return s.connectorCredentialResourceAdapterFor(kind)
+			return s.connectorRuntime.CredentialResourceAdapter(kind)
 		},
 		WriteError: writeError,
 	}
@@ -43,21 +41,12 @@ func (s *Server) newConnectorManagementApplication() *connectormgmt.Component {
 			return s.connectorManagementWorkspace(runtime), true
 		},
 		Capabilities: connectormgmt.CapabilityDependencies{
-			LiveConsoleKind: func(kind string) (string, bool) {
-				adapter := s.connectorLiveConsoleTargetAdapterFor(kind)
-				if adapter == nil {
-					return "", false
-				}
-				return adapter.LiveConsoleCapabilityKind(), true
-			},
-			HasFileTransfer: func(kind string) bool { return s.connectorFileTransferAdapterFor(kind) != nil },
-			HasTCPTransport: func(kind string) bool {
-				adapter, _ := s.connectorAPIAdapterFor(kind).(connectorapi.TCPTransportAdapter)
-				return adapter != nil
-			},
+			LiveConsoleKind: s.connectorRuntime.LiveConsoleCapabilityKind,
+			HasFileTransfer: s.connectorRuntime.HasFileTransfer,
+			HasTCPTransport: s.connectorRuntime.HasTCPTransport,
 		},
 		Adapters:     s.connectorAdapterRegistry(),
-		PeerIdentity: s.connectorPorts.PeerGateway(),
+		PeerIdentity: s.connectorRuntime.PeerGateway(),
 	})
 }
 
@@ -84,24 +73,24 @@ func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHan
 				return requireSessionEnvironmentCapability(ctx, s, runtime, id) == nil
 			},
 			BeforeCreate: func(ctx context.Context, target connectormgmt.Target) error {
-				if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-					return adapter.BeforeCreateCredentialProfile(ctx, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target)
+				if adapter := s.connectorRuntime.CredentialProfileLifecycleAdapter(target.ConnectorKind); adapter != nil {
+					return adapter.BeforeCreateCredentialProfile(ctx, s.connectorRuntime.TargetLifecycleRuntime(runtime, target.ConnectorKind), target)
 				}
 				return nil
 			},
 			BeforeDelete: func(ctx context.Context, target connectormgmt.Target, profile connectormgmt.CredentialProfile) error {
-				if adapter := s.connectorCredentialProfileLifecycleAdapterFor(target.ConnectorKind); adapter != nil {
-					gateway, _ := s.connectorPortsApplication().RuntimeActionPorts(s.connectorPortsWorkspace(runtime), target.ConnectorKind)
-					return adapter.BeforeDeleteCredentialProfile(ctx, gateway, s.connectorTargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
+				if adapter := s.connectorRuntime.CredentialProfileLifecycleAdapter(target.ConnectorKind); adapter != nil {
+					gateway, _ := s.connectorRuntime.RuntimeActionPorts(runtime, target.ConnectorKind)
+					return adapter.BeforeDeleteCredentialProfile(ctx, gateway, s.connectorRuntime.TargetLifecycleRuntime(runtime, target.ConnectorKind), target, profile)
 				}
 				return nil
 			},
 			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
-				adapter := s.connectorCredentialProfileTesterFor(target.ConnectorKind)
+				adapter := s.connectorRuntime.CredentialProfileTester(target.ConnectorKind)
 				if adapter == nil {
 					return false
 				}
-				adapter.TestCredentialProfile(s.connectorPortsApplication().PeerGateway(), w, r, s.connectorDataRuntimePort(runtime, target.ConnectorKind), target, profile)
+				adapter.TestCredentialProfile(s.connectorRuntime.PeerGateway(), w, r, s.connectorRuntime.DataRuntime(runtime, target.ConnectorKind), target, profile)
 				return true
 			},
 			RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
@@ -115,7 +104,7 @@ func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHan
 				return map[string]any{"value": redacted}, nil
 			},
 			ResourceRuntime: func(kind string) connectorapi.CredentialResourceRuntime {
-				return s.connectorCredentialResourceRuntime(runtime, kind)
+				return s.connectorRuntime.CredentialResourceRuntime(runtime, kind)
 			},
 		},
 		Lifecycle: connectormgmt.LifecyclePorts{
@@ -131,26 +120,17 @@ func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHan
 		},
 		Adapters: connectormgmt.TargetAdapterPorts{
 			DataRuntime: func(kind string) connectorapi.ConnectorDataRuntime {
-				return s.connectorDataRuntimePort(runtime, kind)
+				return s.connectorRuntime.DataRuntime(runtime, kind)
 			},
 			LifecycleRuntime: func(kind string) connectorapi.TargetLifecycleRuntime {
-				return s.connectorTargetLifecycleRuntime(runtime, kind)
+				return s.connectorRuntime.TargetLifecycleRuntime(runtime, kind)
 			},
-			DeletionGateway:  s.connectorPorts.TargetDeletionGatewayProvider(s.connectorPortsWorkspace(runtime)),
-			OperationGateway: s.connectorPorts.TargetOperationGatewayProvider(s.connectorPortsWorkspace(runtime)),
+			DeletionGateway:  s.connectorRuntime.TargetDeletionGateway(runtime),
+			OperationGateway: s.connectorRuntime.TargetOperationGateway(runtime),
 		},
 		Network: connectormgmt.NetworkPorts{
 			Probe: func(ctx context.Context, request connectors.NetworkDialRequest) error {
-				transport := connectorports.NetworkTransport(s.connectorWorkspace(runtime), s.connectorAPIAdapterFor, s.connectorTrustStorePath)
-				connection, err := transport.DialConnectorTCP(ctx, request)
-				if err != nil {
-					return err
-				}
-				if connection == nil {
-					return errors.New("connector transport returned no connection")
-				}
-				_ = connection.Close()
-				return nil
+				return s.connectorRuntime.NetworkProbe(ctx, runtime, request)
 			},
 			Redact: func(ctx context.Context, value string) string {
 				return s.redactForPersistence(ctx, runtime, value)

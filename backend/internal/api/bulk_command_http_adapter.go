@@ -55,18 +55,17 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *gatewayinfra.Wo
 	if err != nil {
 		return gatewayoperations.CommandBulkTarget{}, err
 	}
-	actionAdapter, ok := s.connectorAPIAdapterFor(target.ConnectorKind).(connectorapi.LiveConsoleAdapter)
-	if !ok || strings.TrimSpace(actionAdapter.LiveConsoleActionName()) == "" {
+	if _, ok := s.connectorRuntime.LiveConsoleActionName(target.ConnectorKind); !ok {
 		return gatewayoperations.CommandBulkTarget{}, connectormgmt.InvalidTargetRefError()
 	}
 	name := target.Name
-	if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
-		metadata := adapter.LiveConsoleTargetMetadata(connectors.TargetView{
-			ID: target.ID, ConnectorKind: target.ConnectorKind, Name: target.Name, Config: target.Config,
-		}, connectors.CredentialProfileView{
-			ID: profile.ID, TargetID: profile.TargetID, ConnectorKind: profile.ConnectorKind,
-			Kind: profile.Kind, Label: profile.Label, Public: profile.Public,
-		})
+	metadata := s.connectorRuntime.LiveConsoleTargetMetadata(target.ConnectorKind, connectors.TargetView{
+		ID: target.ID, ConnectorKind: target.ConnectorKind, Name: target.Name, Config: target.Config,
+	}, connectors.CredentialProfileView{
+		ID: profile.ID, TargetID: profile.TargetID, ConnectorKind: profile.ConnectorKind,
+		Kind: profile.Kind, Label: profile.Label, Public: profile.Public,
+	})
+	if metadata != nil {
 		if label, _ := metadata["label"].(string); strings.TrimSpace(label) != "" {
 			name = strings.TrimSpace(label)
 		}
@@ -74,7 +73,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *gatewayinfra.Wo
 	return gatewayoperations.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
 }
 
-func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) any {
+func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) connectorapi.ErrorPresenter {
 	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil
@@ -83,5 +82,5 @@ func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *gatewayinfr
 	if err != nil {
 		return nil
 	}
-	return s.connectorAPIAdapterFor(target.ConnectorKind)
+	return s.connectorRuntime.ErrorPresenter(target.ConnectorKind)
 }
