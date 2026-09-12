@@ -18,6 +18,8 @@ type Workspace struct {
 	RuntimeID string
 }
 
+type Jobs = transferapp.Jobs
+
 func (workspace Workspace) RuntimeIdentifier() string { return workspace.RuntimeID }
 
 type FileTransferWorkspaceScope func(http.ResponseWriter) (Workspace, bool)

@@ -279,6 +279,30 @@ func TestGatewayFeatureProjectionsCannotRecoverWorkspaceRuntime(t *testing.T) {
 	}
 }
 
+func TestAPITransportDoesNotComposeConnectorExecutionInternals(t *testing.T) {
+	forbiddenSelectors := map[string]bool{
+		"TargetProfileByRuntimeID":          true,
+		"NewCredentialBoundary":             true,
+		"TransferRuntimeWithSecretAccessor": true,
+		"FileTransferGateway":               true,
+	}
+	inspectProductionGoPackages(t, filepath.Join("..", "..", "internal", "api"), func(path string, file *ast.File, _ map[string][]ast.Expr) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch typed := node.(type) {
+			case *ast.TypeSpec:
+				if typed.Name.Name == "connectorSecretAccessor" {
+					t.Errorf("%s defines connector secret access behavior; compose it in gatewayinfrastructure", path)
+				}
+			case *ast.SelectorExpr:
+				if forbiddenSelectors[typed.Sel.Name] {
+					t.Errorf("%s calls %s; API transport must receive an opaque connector operation", path, typed.Sel.Name)
+				}
+			}
+			return true
+		})
+	})
+}
+
 func TestWorkspaceCapabilityProjectionIsBoundOnlyByGatewayInfrastructure(t *testing.T) {
 	inspectProductionGoPackages(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File, _ map[string][]ast.Expr) {
 		ast.Inspect(file, func(node ast.Node) bool {

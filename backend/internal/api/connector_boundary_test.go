@@ -1,23 +1,12 @@
 package api
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
-
-func TestConnectorSecretAccessorIdentifiesMissingOptionalSecrets(t *testing.T) {
-	_, err := (connectorSecretAccessor{values: map[string]any{}}).GetSecret(context.Background(), "password")
-	if !errors.Is(err, connectors.ErrSecretNotFound) {
-		t.Fatalf("missing secret error = %v, want ErrSecretNotFound", err)
-	}
-}
 
 func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)

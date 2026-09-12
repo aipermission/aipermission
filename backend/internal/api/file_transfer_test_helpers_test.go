@@ -1,21 +1,21 @@
 package api
 
 import (
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"testing"
 
-	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
-func requireTransferJobs(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) transferapp.Jobs {
+func requireTransferJobs(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) gatewaytransfer.Jobs {
 	t.Helper()
 	if runtime == nil {
 		t.Fatal("file transfer test workspace is unavailable")
 	}
-	if server == nil || server.transfers == nil {
+	if server == nil || server.operationsOwner == nil {
 		t.Fatal("file transfer test component is unavailable")
 	}
-	jobs, err := server.transfers.WorkspaceJobs(fileTransferWorkspaceIdentity(runtime))
+	jobs, err := server.operationsOwner.FileTransferJobs(runtime)
 	if err != nil {
 		t.Fatalf("file transfer test jobs: %v", err)
 	}

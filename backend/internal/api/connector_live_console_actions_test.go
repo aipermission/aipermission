@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
 type liveConsoleLookupTestAdapter struct {
@@ -128,8 +129,8 @@ func TestBulkConsoleTargetRejectsRuntimeWithoutCommandActionCapability(t *testin
 		t.Fatal(err)
 	}
 
-	_, err = fixture.server.bulkConsoleTarget(t.Context(), runtime, surface.ID)
-	if !errors.Is(err, connectortargets.ErrInvalidTargetRef) {
-		t.Fatalf("bulk console target error = %v, want invalid target ref", err)
+	_, err = fixture.server.connectorRuntime.ResolveBulkCommandTarget(t.Context(), runtime, fixture.server.connectorManagementApplication(), fixture.server.connectorKinds(), surface.ID)
+	if !errors.Is(err, gatewayoperations.ErrBulkTargetNotFound) {
+		t.Fatalf("bulk console target error = %v, want bulk target not found", err)
 	}
 }

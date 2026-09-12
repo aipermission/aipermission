@@ -9,7 +9,6 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
-	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -30,7 +29,6 @@ type Server struct {
 	vaultOwner               *gatewayinfra.VaultOwner
 	mux                      *http.ServeMux
 	commands                 gatewayoperations.CommandComponent
-	transfers                *gatewaytransfer.Component
 	connectorRegistryOwner   *connectors.Registry
 	connectorAdaptersOwner   *connectorapi.Registry
 	maintenanceConsole       gatewayoperations.MaintenanceConsoleRuntime
@@ -51,11 +49,14 @@ func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption
 func newServerComposition(cfg serverConfig, resolved serverOptions, infrastructure *gatewayinfra.Component) *Server {
 	server := &Server{
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort),
-		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
+		mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
 		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
 	}
 	server.bindInfrastructure(infrastructure)
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
+	if err := server.operationsOwner.ConfigureFileTransfers(server.activeRuntimeOrLocked, server.connectorRuntime.FileTransferAdapter, cfg.DataPath); err != nil {
+		panic(fmt.Sprintf("initialize file transfer application: %v", err))
+	}
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
 	if err := server.configureConnectorActionApplication(); err != nil {

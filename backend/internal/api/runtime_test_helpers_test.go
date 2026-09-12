@@ -11,7 +11,6 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -69,9 +68,11 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 		operationsOwner: owner.operationsOwner, vaultOwner: owner.vaultOwner,
 		access:                 gatewayaccess.NewComponent("3001"),
 		connectorRegistryOwner: owner.registry, connectorAdaptersOwner: owner.adapters,
-		transfers: gatewaytransfer.NewComponent(),
 	}
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
+	if err := server.operationsOwner.ConfigureFileTransfers(server.activeRuntimeOrLocked, server.connectorRuntime.FileTransferAdapter, server.config.DataPath); err != nil {
+		t.Fatal(err)
+	}
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
 	if err := server.configureConnectorActionApplication(); err != nil {

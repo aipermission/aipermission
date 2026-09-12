@@ -65,7 +65,7 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayin
 
 func (s *Server) discardOpeningRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
 	err := s.workspaceOwner.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
-		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
+		return s.operationsOwner.TransferLifecycle(runtime)
 	}, func() { s.releaseRuntimeApplications(runtime) })
 	if err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.Identity().DatabaseID, err)
@@ -98,7 +98,7 @@ func (s *Server) closeRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
 		}
 		return workflow, err
 	}, func() gatewayinfra.TransferWorkflow {
-		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
+		return s.operationsOwner.TransferLifecycle(runtime)
 	}, func() { s.releaseRuntimeApplications(runtime) })
 }
 

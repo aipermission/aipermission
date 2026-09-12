@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -27,6 +28,18 @@ const connectorActionTestWorkspaceID = "connector-action-test-workspace"
 
 const connectorActionPersistenceUnknownMessage = actions.PersistenceUnknownMessage
 const connectorActionLeaseExpiredBeforeDispatchMessage = actions.LeaseExpiredBeforeDispatchMessage
+
+func (s *Server) callConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call gatewayactions.Call) (gatewayactions.CallResult, error) {
+	return s.connectorActions.Call(ctx, runtime, call)
+}
+
+func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call gatewayactions.Call) (gatewayactions.CallResult, error) {
+	return s.connectorActions.RunLocal(ctx, runtime, call)
+}
+
+func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
+	return s.connectorActions.Finish(ctx, runtime, requestID, status, output, displayText, errorText, hints...)
+}
 
 type connectorActionExecutionOptions = gatewayactions.ExecutionOptions
 type connectorActionExecutionEnvelope = actions.ExecutionEnvelope
