@@ -976,7 +976,6 @@ func TestBuiltInConnectorImplementationsStayBehindConnectorBoundary(t *testing.T
 
 func TestConnectorPackagesDoNotImportGatewayState(t *testing.T) {
 	connectorRoot := modulePath + "/internal/connectors/"
-	allowedVaultOwner := modulePath + "/internal/connectors/ssh/sshkeys"
 	forbidden := []string{
 		modulePath + "/internal/api",
 		modulePath + "/internal/config",
@@ -997,8 +996,8 @@ func TestConnectorPackagesDoNotImportGatewayState(t *testing.T) {
 							t.Errorf("%s directly imports gateway state %s", importer, imported)
 						}
 					}
-					if (imported == modulePath+"/internal/vault" || strings.HasPrefix(imported, modulePath+"/internal/vault/")) && importer != allowedVaultOwner {
-						t.Errorf("%s directly imports Vault state %s; encrypted resource ownership belongs in %s", importer, imported, allowedVaultOwner)
+					if imported == modulePath+"/internal/vault" || strings.HasPrefix(imported, modulePath+"/internal/vault/") {
+						t.Errorf("%s directly imports Vault state %s; encrypted resource ownership belongs outside connector implementations", importer, imported)
 					}
 				}
 			}

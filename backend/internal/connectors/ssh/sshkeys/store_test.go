@@ -34,7 +34,8 @@ func openSSHKeyTestStore(t *testing.T) (*sql.DB, *Store) {
 	if err != nil {
 		t.Fatalf("new vault: %v", err)
 	}
-	return database, NewStore(database, secretVault, "ssh-key-test-workspace")
+	resources := connectorresources.NewStore(database, secretVault, "ssh-key-test-workspace")
+	return database, NewResourceStore(resources.Scope(connectorKind, resourceKind))
 }
 
 func openScopedSSHKeyTestStore(t *testing.T) (*sql.DB, *Store, *connectorresources.Store) {
@@ -130,7 +131,7 @@ func TestSSHKeyStoreCreateListGetPrivateKeyAndDelete(t *testing.T) {
 	}
 }
 
-func TestSSHKeyStoreRejectsPrivateKeyReadWithoutWorkspaceIdentity(t *testing.T) {
+func TestSSHKeyStoreFailsClosedWithoutWorkspaceResourcePort(t *testing.T) {
 	ctx := context.Background()
 	database, store := openSSHKeyTestStore(t)
 	created, err := store.Create(ctx, CreateRequest{Name: "workspace-bound", KeyType: TypeED25519})
@@ -138,9 +139,13 @@ func TestSSHKeyStoreRejectsPrivateKeyReadWithoutWorkspaceIdentity(t *testing.T) 
 		t.Fatalf("create ssh key: %v", err)
 	}
 
-	withoutWorkspace := NewStore(database, store.vault, "")
-	if _, err := withoutWorkspace.GetPrivateKey(ctx, created.ID); err == nil || !strings.Contains(err.Error(), "workspace ID is required") {
-		t.Fatalf("private key read without workspace identity error = %v", err)
+	secretVault, err := vault.New("gateway-secret")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	withoutWorkspace := NewResourceStore(connectorresources.NewStore(database, secretVault, "").Scope(connectorKind, resourceKind))
+	if _, err := withoutWorkspace.GetPrivateKey(ctx, created.ID); err == nil || !strings.Contains(err.Error(), "resource store is unavailable") {
+		t.Fatalf("private key read without workspace resource port error = %v", err)
 	}
 }
 

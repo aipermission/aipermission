@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
@@ -41,7 +42,8 @@ func testConnectorApprovalContext(prepared actions.PreparedRequest, token tokens
 
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
-	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace"), "core-1")
+	resources := connectorresources.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace").Scope(sshconnector.Kind, "private_key")
+	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewResourceStore(resources), "core-1")
 	targetRef := profile.TargetRef
 	runtime := newTestDatabaseRuntime(t, database)
 
@@ -154,7 +156,8 @@ func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	database := openAPITestDB(t)
 	vault := openAPITestVault(t)
-	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewStore(database, vault, "transport-drift-workspace"), "transport")
+	resources := connectorresources.NewStore(database, vault, "transport-drift-workspace").Scope(sshconnector.Kind, "private_key")
+	profile := createTestSSHConnectorProfile(t, database, sshkeys.NewResourceStore(resources), "transport")
 	store := connectortargets.NewStore(database)
 	targetView, profileView, err := store.ResolveConnectorActionTarget(t.Context(), profile.TargetRef)
 	if err != nil {

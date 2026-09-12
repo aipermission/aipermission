@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
@@ -123,7 +124,8 @@ func TestRecoveryDrillLegacy010To020CopiesMinimumSSHConfiguration(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read migrated workspace UUID: %v", err)
 	}
-	privateKey, err := sshkeys.NewStore(targetDB, secretVault, workspaceID).GetPrivateKey(ctx, 1)
+	resources := connectorresources.NewStore(targetDB, secretVault, workspaceID).Scope("ssh", "private_key")
+	privateKey, err := sshkeys.NewResourceStore(resources).GetPrivateKey(ctx, 1)
 	if err != nil {
 		t.Fatalf("read migrated private key: %v", err)
 	}
