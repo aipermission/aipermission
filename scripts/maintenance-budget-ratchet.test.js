@@ -68,6 +68,25 @@ test("rejects removed coverage roots, extensions, markers, and classifiers", () 
   );
 });
 
+test("ratchets backend coverage floor membership and values", () => {
+  const base = policySnapshot(policy);
+  const lower = copyPolicy();
+  lower.backendCoverageFloors["internal/api"]--;
+  assert.deepEqual(budgetIncreases(base, policySnapshot(lower)), [
+    "coverage.backend.floor.internal/api increased from -57 to -56",
+  ]);
+
+  const removed = copyPolicy();
+  delete removed.backendCoverageFloors["internal/api"];
+  assert.deepEqual(budgetIncreases(base, policySnapshot(removed)), [
+    "coverage.backend.floor.internal/api was removed from the current maintenance budget",
+  ]);
+
+  const added = copyPolicy();
+  added.backendCoverageFloors["internal/new-owner"] = 10;
+  assert.deepEqual(budgetIncreases(base, policySnapshot(added)), []);
+});
+
 test("allows new covered roots only within bootstrap ceilings", () => {
   const base = policySnapshot(policy);
   const tighter = copyPolicy();

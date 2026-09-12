@@ -83,6 +83,23 @@ test("frontend runtime, browser, and public roots all have source budgets", () =
   assert.ok(byID.get("frontend-public").productionMaxLines);
 });
 
+test("gateway behavior owners have explicit backend coverage floors", () => {
+  for (const packagePath of [
+    "internal/gatewayaccess",
+    "internal/gatewayaccess/httpowner",
+    "internal/gatewayconnectorapi",
+    "internal/gatewayconnectormanagement",
+    "internal/gatewayinfrastructure",
+    "internal/gatewayvault",
+    "internal/gatewayworkspace",
+  ]) {
+    assert.ok(
+      policy.backendCoverageFloors[packagePath] > 0,
+      `${packagePath} coverage floor`,
+    );
+  }
+});
+
 test("rejects unknown classifiers instead of silently weakening policy", () => {
   assert.throws(
     () => isTestSource("unknown", "/tmp/service.test.js", markers),

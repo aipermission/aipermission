@@ -49,6 +49,11 @@ function policySnapshot(input) {
   for (const [file, value] of Object.entries(policy.sourceOverrides)) {
     snapshot[`source.override.${file}`] = value;
   }
+  for (const [packagePath, floor] of Object.entries(
+    policy.backendCoverageFloors || {},
+  )) {
+    snapshot[`coverage.backend.floor.${packagePath}`] = -floor;
+  }
   for (const [directory, value] of Object.entries(
     policy.backendPackage.overrides,
   )) {
@@ -114,7 +119,12 @@ function budgetIncreases(base, current) {
     .map((name) => `${name} was removed from the current maintenance budget`);
   const increases = Object.entries(current).flatMap(([name, value]) => {
     if (!Object.hasOwn(base, name)) {
-      if (name.startsWith("coverage.") && value === 0) return [];
+      if (
+        name.startsWith("coverage.") &&
+        (value === 0 || name.startsWith("coverage.backend.floor."))
+      ) {
+        return [];
+      }
       const inherited = inheritedBudget(base, name);
       if (inherited !== undefined && value <= inherited) return [];
       return [`${name} is a new unreviewed budget (${value})`];

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,34 +12,8 @@ import (
 	"strings"
 )
 
-var criticalCoverageFloors = map[string]float64{
-	"internal/accesscontrol":         69.0,
-	"internal/api":                   57.0,
-	"internal/observability":         60.0,
-	"internal/backups":               64.0,
-	"internal/connectors/clickhouse": 58.0,
-	"internal/connectors/docker":     52.0,
-	"internal/connectors/kafka":      58.0,
-	"internal/connectors/kubernetes": 36.0,
-	"internal/connectors/mail":       53.0,
-	"internal/connectors/postgres":   32.0,
-	"internal/connectors/rabbitmq":   53.0,
-	"internal/connectors/redis":      62.0,
-	"internal/connectors/s3":         64.0,
-	"internal/connectors/sqlsafe":    63.0,
-	"internal/connectors/ssh":        76.0,
-	"internal/connectormanagement":   73.0,
-	"internal/connectortargets":      63.0,
-	"internal/console":               72.0,
-	"internal/db":                    75.0,
-	"internal/filetransfer":          66.0,
-	"internal/projectvault":          69.0,
-	"internal/restcontract":          84.0,
-	"internal/sessionenv":            64.0,
-	"internal/tokens":                82.0,
-	"internal/vault":                 82.0,
-	"internal/vaultrequests":         62.0,
-	"internal/vaultsessions":         82.0,
+type maintenancePolicy struct {
+	BackendCoverageFloors map[string]float64 `json:"backendCoverageFloors"`
 }
 
 type coverageCount struct {
@@ -48,15 +23,21 @@ type coverageCount struct {
 
 func main() {
 	profilePath := flag.String("profile", "coverage.out", "Go coverage profile to check")
+	policyPath := flag.String("policy", "../maintenance-policy.json", "maintenance policy containing backend coverage floors")
 	flag.Parse()
+	floors, err := readCoverageFloors(*policyPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	counts, err := readCoverageProfile(*profilePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	failed := false
-	for _, packagePath := range sortedFloorPaths() {
-		floor := criticalCoverageFloors[packagePath]
+	for _, packagePath := range sortedFloorPaths(floors) {
+		floor := floors[packagePath]
 		count, ok := counts[packagePath]
 		if !ok || count.statements == 0 {
 			fmt.Fprintf(os.Stderr, "%s: no coverage statements found\n", packagePath)
@@ -73,6 +54,26 @@ func main() {
 		fmt.Fprintln(os.Stderr, "critical backend coverage floor failed")
 		os.Exit(1)
 	}
+}
+
+func readCoverageFloors(path string) (map[string]float64, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read maintenance policy: %w", err)
+	}
+	var policy maintenancePolicy
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return nil, fmt.Errorf("decode maintenance policy: %w", err)
+	}
+	if len(policy.BackendCoverageFloors) == 0 {
+		return nil, fmt.Errorf("maintenance policy defines no backend coverage floors")
+	}
+	for packagePath, floor := range policy.BackendCoverageFloors {
+		if !strings.HasPrefix(packagePath, "internal/") || floor <= 0 || floor > 100 {
+			return nil, fmt.Errorf("invalid backend coverage floor %q: %.1f", packagePath, floor)
+		}
+	}
+	return policy.BackendCoverageFloors, nil
 }
 
 func readCoverageProfile(path string) (map[string]coverageCount, error) {
@@ -130,9 +131,9 @@ func coveragePackage(position string) string {
 	return filepath.ToSlash(filepath.Dir(file))
 }
 
-func sortedFloorPaths() []string {
-	paths := make([]string, 0, len(criticalCoverageFloors))
-	for path := range criticalCoverageFloors {
+func sortedFloorPaths(floors map[string]float64) []string {
+	paths := make([]string, 0, len(floors))
+	for path := range floors {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)

@@ -88,16 +88,15 @@ This runs:
 
 The reviewed backend coverage floors are enforced by
 `backend/cmd/coveragecheck` after the full package test run. That command is the
-single source of truth for the numeric thresholds; it currently protects the
-API, audit outbox, connector target, project capability, REST contract,
-session environment, token, Vault, Vault request, SQL safety, and selected
-built-in connector packages. A new security-sensitive package should be added
-there once its baseline coverage is established.
+consumer; `maintenance-policy.json` is the single source of truth for numeric
+thresholds. The policy protects transport, gateway-owner, audit, connector,
+session, token, Vault, and storage packages. A new security-sensitive package
+must be added once its baseline coverage is established.
 
 Coverage floors intentionally trail the measured baseline by a small margin so
 toolchain-only statement shifts do not create noise. Critical package floors
-must not decrease; raise them incrementally when a release adds behavioral
-coverage.
+cannot be removed or decreased by the maintenance ratchet; raise them
+incrementally when a release adds behavioral coverage.
 
 The frontend coverage gate uses per-file V8 thresholds rather than one broad
 aggregate percentage. This keeps a well-covered utility from masking a weak

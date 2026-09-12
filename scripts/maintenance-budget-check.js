@@ -115,6 +115,21 @@ function validatePolicy(candidate = policy, target = failures) {
     if (!positiveInteger(value))
       target.push(`${name} must be a positive integer`);
   }
+  for (const [packagePath, floor] of Object.entries(
+    candidate.backendCoverageFloors || {},
+  )) {
+    if (
+      !packagePath.startsWith("internal/") ||
+      typeof floor !== "number" ||
+      floor <= 0 ||
+      floor > 100
+    ) {
+      target.push(`invalid backend coverage floor ${packagePath}: ${floor}`);
+    }
+  }
+  if (Object.keys(candidate.backendCoverageFloors || {}).length === 0) {
+    target.push("backend coverage floors must not be empty");
+  }
   for (const [name, values] of [
     ["source override", candidate.sourceOverrides],
     ["backend package override", candidate.backendPackage?.overrides],

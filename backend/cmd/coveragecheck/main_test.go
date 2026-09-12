@@ -37,3 +37,34 @@ func TestReadCoverageProfileRejectsMalformedInput(t *testing.T) {
 		t.Fatal("expected malformed profile error")
 	}
 }
+
+func TestReadCoverageFloorsUsesCanonicalPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "maintenance-policy.json")
+	if err := os.WriteFile(path, []byte(`{"backendCoverageFloors":{"internal/gatewayworkspace":7}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	floors, err := readCoverageFloors(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if floors["internal/gatewayworkspace"] != 7 {
+		t.Fatalf("unexpected gateway workspace floor: %v", floors)
+	}
+}
+
+func TestReadCoverageFloorsRejectsMissingAndInvalidEntries(t *testing.T) {
+	for _, content := range []string{
+		`{}`,
+		`{"backendCoverageFloors":{"gatewayworkspace":7}}`,
+		`{"backendCoverageFloors":{"internal/gatewayworkspace":0}}`,
+		`{"backendCoverageFloors":{"internal/gatewayworkspace":101}}`,
+	} {
+		path := filepath.Join(t.TempDir(), "maintenance-policy.json")
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readCoverageFloors(path); err == nil {
+			t.Fatalf("expected invalid policy to fail: %s", content)
+		}
+	}
+}

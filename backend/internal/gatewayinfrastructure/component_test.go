@@ -64,6 +64,67 @@ func TestOwnedWorkspaceSnapshotRetainsHandlesOutsideLifecycleRegistry(t *testing
 	}
 }
 
+func TestWorkspaceOwnerProjectsOnlyOwnedLifecycleState(t *testing.T) {
+	component := NewComponent(t.TempDir(), nil)
+	workspace := component.WorkspaceOwner()
+	firstOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{
+		DatabaseID: "first", DatabasePath: "/data/first.aipdb", UIRetryID: "retry-first",
+	}}
+	secondOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{
+		DatabaseID: "second", DatabasePath: "/data/second.aipdb", UIRetryID: "retry-second",
+	}}
+	first := component.handleFor(firstOwner)
+	second := component.handleFor(secondOwner)
+
+	workspace.ActivateWorkspace(first)
+	workspace.ActivateWorkspace(second)
+	if !workspace.WorkspaceIsUnlocked() || workspace.WorkspaceCount() != 2 {
+		t.Fatalf("workspace state unlocked=%t count=%d, want unlocked with two runtimes", workspace.WorkspaceIsUnlocked(), workspace.WorkspaceCount())
+	}
+	if got := workspace.ActiveWorkspace(); got != second {
+		t.Fatalf("active workspace = %p, want second handle %p", got, second)
+	}
+	if got := workspace.WorkspaceSelection(); got.ID != "second" || got.Path != "/data/second.aipdb" || got.RetryIdentity != "retry-second" {
+		t.Fatalf("selection = %#v, want second workspace identity", got)
+	}
+	if got, ok := workspace.LookupWorkspace("first"); !ok || got != first {
+		t.Fatalf("lookup first = (%p, %t), want (%p, true)", got, ok, first)
+	}
+	if snapshot := workspace.WorkspaceSnapshot(); len(snapshot) != 2 || !containsWorkspaceHandle(snapshot, first) || !containsWorkspaceHandle(snapshot, second) {
+		t.Fatalf("lifecycle snapshot = %#v, want both owned handles", snapshot)
+	}
+
+	foreign := NewComponent(t.TempDir(), nil)
+	foreign.WorkspaceOwner().ActivateWorkspace(first)
+	if foreign.WorkspaceOwner().WorkspaceIsUnlocked() || foreign.WorkspaceOwner().WorkspaceCount() != 0 {
+		t.Fatal("foreign workspace owner accepted another component's capability")
+	}
+	component.forgetHandle(first)
+	workspace.ActivateWorkspace(first)
+	if got, ok := workspace.LookupWorkspace("first"); !ok || got == first {
+		t.Fatalf("forgotten handle was reused by lifecycle projection: (%p, %t)", got, ok)
+	}
+}
+
+func TestNilWorkspaceOwnerFailsClosed(t *testing.T) {
+	var workspace *WorkspaceOwner
+	if workspace.WorkspaceLifecycle() != nil || workspace.WorkspaceIsUnlocked() || workspace.WorkspaceCount() != 0 {
+		t.Fatal("nil workspace owner exposed lifecycle state")
+	}
+	if workspace.WorkspaceSelection() != (Identity{}) || workspace.ActiveWorkspace() != nil || workspace.WorkspaceSnapshot() != nil || workspace.OwnedWorkspaceSnapshot() != nil {
+		t.Fatal("nil workspace owner exposed workspace capabilities")
+	}
+	if handle, ok := workspace.LookupWorkspace("missing"); ok || handle != nil {
+		t.Fatalf("nil workspace lookup = (%p, %t), want (nil, false)", handle, ok)
+	}
+	if _, err := workspace.AdoptWorkspace(t.Context(), gatewayworkspace.AdoptInput{}); !errors.Is(err, gatewayworkspace.InitializationError()) {
+		t.Fatalf("nil workspace adoption error = %v, want initialization error", err)
+	}
+	if _, err := workspace.OpenWorkspace(t.Context(), OpenWorkspaceInput{}); !errors.Is(err, gatewayworkspace.InitializationError()) {
+		t.Fatalf("nil workspace open error = %v, want initialization error", err)
+	}
+}
+
 func containsWorkspaceHandle(handles []*WorkspaceHandle, candidate *WorkspaceHandle) bool {
 	for _, handle := range handles {
 		if handle == candidate {
