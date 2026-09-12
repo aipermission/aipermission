@@ -13,20 +13,29 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 type reflectingTransferErrorPresenter struct {
 	rejectingTransferAdapter
 	responseValue string
+	headerKey     string
+	headerValue   string
 }
 
-func (presenter reflectingTransferErrorPresenter) WriteConnectorError(w http.ResponseWriter, _ error) bool {
+func (presenter reflectingTransferErrorPresenter) PresentConnectorError(_ error) (connectorapi.ErrorPresentation, bool) {
 	if presenter.responseValue == "" {
-		return false
+		return connectorapi.ErrorPresentation{}, false
 	}
-	w.WriteHeader(http.StatusConflict)
-	_, _ = w.Write([]byte(`{"detail":"` + presenter.responseValue + `"}`))
-	return true
+	header := http.Header{}
+	if presenter.headerKey != "" {
+		header.Add(presenter.headerKey, presenter.headerValue)
+	}
+	return connectorapi.ErrorPresentation{
+		StatusCode: http.StatusConflict,
+		Header:     header,
+		Payload:    map[string]string{"detail": presenter.responseValue},
+	}, true
 }
 
 func (presenter reflectingTransferErrorPresenter) ConnectorErrorMessage(prefix string, _ error) string {
@@ -40,25 +49,35 @@ func TestFileTransferConnectorErrorsDoNotReflectCredentials(t *testing.T) {
 	fixture := newTransferTestFixture(t)
 
 	for _, testCase := range []struct {
-		name      string
-		presenter reflectingTransferErrorPresenter
-		err       error
+		name       string
+		presenter  reflectingTransferErrorPresenter
+		err        error
+		wantStatus int
+		wantBody   string
+		credential string
 	}{
-		{name: "raw connector error", err: errors.New("remote rejected secret")},
-		{name: "presented structured error", presenter: reflectingTransferErrorPresenter{responseValue: "secret"}, err: errors.New("remote rejected request")},
+		{name: "raw connector error", err: errors.New("remote rejected secret"), wantStatus: http.StatusBadGateway, wantBody: "remote operation failed"},
+		{name: "safe structured error", presenter: reflectingTransferErrorPresenter{responseValue: "approve host key"}, err: errors.New("remote rejected request"), wantStatus: http.StatusConflict, wantBody: "approve host key"},
+		{name: "credential in payload", presenter: reflectingTransferErrorPresenter{responseValue: "secret"}, err: errors.New("remote rejected request"), wantStatus: http.StatusBadGateway, wantBody: "remote operation failed"},
+		{name: "credential in header", presenter: reflectingTransferErrorPresenter{responseValue: "safe", headerKey: "X-Detail", headerValue: "secret"}, err: errors.New("remote rejected request"), wantStatus: http.StatusBadGateway, wantBody: "remote operation failed"},
+		{name: "credential in header name", presenter: reflectingTransferErrorPresenter{responseValue: "safe", headerKey: "X-Secret", headerValue: "safe"}, err: errors.New("remote rejected request"), wantStatus: http.StatusBadGateway, wantBody: "remote operation failed", credential: "X-Secret"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			execution := transferExecution{adapter: testCase.presenter, boundary: actionresult.NewCredentialBoundary(map[string]any{"password": "secret"})}
+			credential := testCase.credential
+			if credential == "" {
+				credential = "secret"
+			}
+			execution := transferExecution{adapter: testCase.presenter, boundary: actionresult.NewCredentialBoundary(map[string]any{"password": credential})}
 			fixture.handlers.writeCredentialSafeConnectorError(response, execution, http.StatusBadGateway, "remote operation failed", testCase.err)
-			if response.Code != http.StatusBadGateway {
+			if response.Code != testCase.wantStatus {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
 			if bytes.Contains(response.Body.Bytes(), []byte("secret")) {
 				t.Fatalf("credential leaked in response: %s", response.Body.String())
 			}
-			if !bytes.Contains(response.Body.Bytes(), []byte("remote operation failed")) {
-				t.Fatalf("generic error missing: %s", response.Body.String())
+			if !bytes.Contains(response.Body.Bytes(), []byte(testCase.wantBody)) {
+				t.Fatalf("expected response missing: %s", response.Body.String())
 			}
 		})
 	}

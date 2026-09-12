@@ -62,9 +62,11 @@ type fakeSessions struct {
 
 type liveConsoleTestErrorPresenter struct{}
 
-func (liveConsoleTestErrorPresenter) WriteConnectorError(w http.ResponseWriter, _ error) bool {
-	http.Error(w, "approve host key", http.StatusConflict)
-	return true
+func (liveConsoleTestErrorPresenter) PresentConnectorError(_ error) (ErrorPresentation, bool) {
+	return ErrorPresentation{
+		StatusCode: http.StatusConflict,
+		Payload:    map[string]string{"error": "approve host key"},
+	}, true
 }
 
 func (liveConsoleTestErrorPresenter) ConnectorErrorMessage(prefix string, err error) string {

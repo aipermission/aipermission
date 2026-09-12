@@ -1,11 +1,8 @@
 package gatewaytransfer
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 
@@ -28,19 +25,13 @@ func (s FileTransferHTTPHandlers) writeCredentialSafeConnectorError(
 	}
 	presenter, _ := execution.adapter.(connectorapi.ErrorPresenter)
 	if presenter != nil {
-		response := httptest.NewRecorder()
-		if presenter.WriteConnectorError(response, err) {
-			if connectorResponseContainsCredential(boundary, response.Result()) {
+		if presentation, handled := presenter.PresentConnectorError(err); handled {
+			payload, marshalErr := connectorapi.MarshalErrorPresentation(presentation)
+			if marshalErr != nil || connectorPresentationContainsCredential(boundary, presentation, payload) {
 				writeError(w, status, prefix)
 				return
 			}
-			for key, values := range response.Header() {
-				for _, value := range values {
-					w.Header().Add(key, value)
-				}
-			}
-			w.WriteHeader(response.Code)
-			_, _ = w.Write(response.Body.Bytes())
+			connectorapi.WriteMarshaledErrorPresentation(w, presentation, payload)
 			return
 		}
 	}
@@ -51,11 +42,8 @@ func (s FileTransferHTTPHandlers) writeCredentialSafeConnectorError(
 	writeError(w, status, message)
 }
 
-func connectorResponseContainsCredential(boundary actionresult.CredentialBoundary, response *http.Response) bool {
-	if response == nil || boundary.Redact(response.Header.Get("Location")) != response.Header.Get("Location") {
-		return true
-	}
-	for key, values := range response.Header {
+func connectorPresentationContainsCredential(boundary actionresult.CredentialBoundary, presentation connectorapi.ErrorPresentation, payload []byte) bool {
+	for key, values := range presentation.Header {
 		if boundary.Redact(key) != key {
 			return true
 		}
@@ -65,12 +53,7 @@ func connectorResponseContainsCredential(boundary actionresult.CredentialBoundar
 			}
 		}
 	}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return true
-	}
-	response.Body = io.NopCloser(bytes.NewReader(body))
-	return boundary.Redact(string(body)) != string(body)
+	return boundary.Redact(string(payload)) != string(payload)
 }
 
 func connectorValueContainsCredential(boundary actionresult.CredentialBoundary, value any) bool {

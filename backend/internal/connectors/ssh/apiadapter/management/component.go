@@ -22,11 +22,8 @@ func (m Management) Routes() []connectorapi.RouteDefinition {
 	}
 }
 
-func (Management) WriteConnectorError(w http.ResponseWriter, err error) bool {
-	if w == nil {
-		return false
-	}
-	return WriteUnknownHostKeyError(w, err)
+func (Management) PresentConnectorError(err error) (connectorapi.ErrorPresentation, bool) {
+	return PresentUnknownHostKeyError(err)
 }
 
 func (Management) ConnectorErrorMessage(prefix string, err error) string {

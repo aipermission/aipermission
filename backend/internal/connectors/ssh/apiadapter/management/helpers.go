@@ -15,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
 func decodeDraftRequest(value any) (draftTargetRequest, error) {
@@ -135,25 +136,33 @@ func safeErrorDetail(err error) string {
 }
 
 func WriteUnknownHostKeyError(w http.ResponseWriter, err error) bool {
+	presentation, ok := PresentUnknownHostKeyError(err)
+	if !ok {
+		return false
+	}
+	connectorapi.WriteErrorPresentation(w, presentation)
+	return true
+}
+
+func PresentUnknownHostKeyError(err error) (connectorapi.ErrorPresentation, bool) {
 	var unknown *execution.UnknownHostKeyError
 	if errors.As(err, &unknown) {
-		writeHostKeyConflict(w, "ssh host key approval required", "unknown_ssh_host_key", unknownHostKeyDTOFromUnknown(unknown))
-		return true
+		return hostKeyConflictPresentation("ssh host key approval required", "unknown_ssh_host_key", unknownHostKeyDTOFromUnknown(unknown)), true
 	}
 	var changed *execution.ChangedHostKeyError
 	if errors.As(err, &changed) {
-		writeHostKeyConflict(w, "ssh host key changed; replace trusted fingerprint only if this change is expected", "changed_ssh_host_key", unknownHostKeyDTOFromChanged(changed))
-		return true
+		return hostKeyConflictPresentation("ssh host key changed; replace trusted fingerprint only if this change is expected", "changed_ssh_host_key", unknownHostKeyDTOFromChanged(changed)), true
 	}
-	return false
+	return connectorapi.ErrorPresentation{}, false
 }
 
-func writeHostKeyConflict(w http.ResponseWriter, errorMessage string, code string, hostKey unknownHostKeyDTO) {
-	writeJSON(w, http.StatusConflict, unknownHostKeyResponse{
-		Error:   errorMessage,
-		Code:    code,
-		HostKey: hostKey,
-	})
+func hostKeyConflictPresentation(errorMessage string, code string, hostKey unknownHostKeyDTO) connectorapi.ErrorPresentation {
+	return connectorapi.ErrorPresentation{
+		StatusCode: http.StatusConflict,
+		Payload: unknownHostKeyResponse{
+			Error: errorMessage, Code: code, HostKey: hostKey,
+		},
+	}
 }
 
 func unknownHostKeyDTOFromUnknown(err *execution.UnknownHostKeyError) unknownHostKeyDTO {

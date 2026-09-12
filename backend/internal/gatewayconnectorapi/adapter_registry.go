@@ -531,8 +531,14 @@ type PaginatedFileTransferAdapter interface {
 }
 
 type ErrorPresenter interface {
-	WriteConnectorError(w http.ResponseWriter, err error) bool
+	PresentConnectorError(err error) (ErrorPresentation, bool)
 	ConnectorErrorMessage(prefix string, err error) string
+}
+
+type ErrorPresentation struct {
+	StatusCode int
+	Header     http.Header
+	Payload    any
 }
 
 // CredentialResourceAdapter manages connector-owned credential resources.
