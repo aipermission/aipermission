@@ -109,10 +109,22 @@ func (h *Handlers) Lock(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, workspacelifecycle.ErrInvalidScope.Error())
 		return
 	}
+	lockedDatabaseID := ""
+	if request.Scope == "current" {
+		before, statusErr := h.dependencies.Lifecycle.Status()
+		if statusErr != nil {
+			httptransport.WriteInternalError(w)
+			return
+		}
+		lockedDatabaseID = before.Identity.ID
+	}
 	if h.dependencies.Lifecycle.WillLockAll(request.Scope) && h.dependencies.CloseMaintenance != nil {
 		h.dependencies.CloseMaintenance("database_lock_" + request.Scope)
 	}
 	status, err := h.dependencies.Lifecycle.Lock(request.Scope)
+	if request.Scope == "current" && h.dependencies.InvalidateSessions != nil {
+		h.dependencies.InvalidateSessions(lockedDatabaseID)
+	}
 	if status.State != "unlocked" || request.Scope == "all" {
 		if h.dependencies.ClearSessions != nil {
 			h.dependencies.ClearSessions(w)

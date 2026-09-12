@@ -302,8 +302,9 @@ func (component *WorkspaceOwner) WorkspaceHTTP(dependencies WorkspaceHTTPDepende
 	}
 	converted := gatewayworkspace.HTTPDependencies{
 		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
-		ClearSessions: dependencies.ClearSessions, CloseMaintenance: dependencies.CloseMaintenance,
-		Now: dependencies.Now,
+		ClearSessions: dependencies.ClearSessions, InvalidateSessions: dependencies.InvalidateSessions,
+		CloseMaintenance: dependencies.CloseMaintenance,
+		Now:              dependencies.Now,
 	}
 	if dependencies.BeginAttempt != nil {
 		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (gatewayworkspace.PasswordAttempt, bool) {

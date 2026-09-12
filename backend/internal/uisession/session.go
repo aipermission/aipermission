@@ -147,6 +147,19 @@ func (m *Manager) Valid(r *http.Request, activeDatabase string) bool {
 	return true
 }
 
+func (m *Manager) InvalidateDatabase(databaseID string) {
+	if m == nil || strings.TrimSpace(databaseID) == "" {
+		return
+	}
+	m.mu.Lock()
+	for hash, session := range m.sessions {
+		if session.databaseID == databaseID {
+			delete(m.sessions, hash)
+		}
+	}
+	m.mu.Unlock()
+}
+
 func (m *Manager) ValidCSRF(r *http.Request) bool {
 	if m == nil || r == nil {
 		return false

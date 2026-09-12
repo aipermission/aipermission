@@ -139,12 +139,13 @@ type PasswordAttempt interface {
 }
 
 type WorkspaceHTTPDependencies struct {
-	BeginAttempt     func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
-	HasSession       func(*http.Request) bool
-	IssueSession     func(http.ResponseWriter) error
-	ClearSessions    func(http.ResponseWriter)
-	CloseMaintenance func(string)
-	Now              func() time.Time
+	BeginAttempt       func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
+	HasSession         func(*http.Request) bool
+	IssueSession       func(http.ResponseWriter) error
+	ClearSessions      func(http.ResponseWriter)
+	InvalidateSessions func(string)
+	CloseMaintenance   func(string)
+	Now                func() time.Time
 }
 
 type WorkspaceHTTPHandlers interface {

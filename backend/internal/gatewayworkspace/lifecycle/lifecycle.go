@@ -21,12 +21,13 @@ type PasswordAttempt interface {
 }
 
 type HTTPDependencies struct {
-	BeginAttempt     func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
-	HasSession       func(*http.Request) bool
-	IssueSession     func(http.ResponseWriter) error
-	ClearSessions    func(http.ResponseWriter)
-	CloseMaintenance func(string)
-	Now              func() time.Time
+	BeginAttempt       func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
+	HasSession         func(*http.Request) bool
+	IssueSession       func(http.ResponseWriter) error
+	ClearSessions      func(http.ResponseWriter)
+	InvalidateSessions func(string)
+	CloseMaintenance   func(string)
+	Now                func() time.Time
 }
 
 type HTTPHandlers interface {
@@ -186,8 +187,9 @@ func newHTTP(service *workspacelifecycle.Service[Runtime], dependencies HTTPDepe
 	converted := workspacehttp.Dependencies{
 		Lifecycle:  service,
 		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
-		ClearSessions: dependencies.ClearSessions, CloseMaintenance: dependencies.CloseMaintenance,
-		Now: dependencies.Now,
+		ClearSessions: dependencies.ClearSessions, InvalidateSessions: dependencies.InvalidateSessions,
+		CloseMaintenance: dependencies.CloseMaintenance,
+		Now:              dependencies.Now,
 	}
 	if dependencies.BeginAttempt != nil {
 		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (workspacehttp.PasswordAttempt, bool) {

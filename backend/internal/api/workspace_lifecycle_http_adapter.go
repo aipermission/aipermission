@@ -11,10 +11,11 @@ func (s *Server) workspaceLifecycleHTTPHandlers() gatewayinfra.WorkspaceHTTPHand
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayinfra.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
-		HasSession:       s.hasValidUISession,
-		IssueSession:     s.issueUISessionLocked,
-		ClearSessions:    s.clearUISessions,
-		CloseMaintenance: func(reason string) { s.closeMaintenanceConsoleForLifecycle(reason) },
+		HasSession:         s.hasValidUISession,
+		IssueSession:       s.issueUISessionLocked,
+		ClearSessions:      s.clearUISessions,
+		InvalidateSessions: s.access.InvalidateUISessions,
+		CloseMaintenance:   func(reason string) { s.closeMaintenanceConsoleForLifecycle(reason) },
 	})
 }
 

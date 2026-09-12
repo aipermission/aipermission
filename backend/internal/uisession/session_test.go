@@ -34,6 +34,14 @@ func TestManagerIssuesScopedSecureDatabaseBoundSession(t *testing.T) {
 	if !manager.Valid(request, "workspace-a") || manager.Valid(request, "workspace-b") {
 		t.Fatal("session was not bound to its workspace")
 	}
+	manager.InvalidateDatabase("workspace-b")
+	if !manager.Valid(request, "workspace-a") {
+		t.Fatal("invalidating another workspace revoked this session")
+	}
+	manager.InvalidateDatabase("workspace-a")
+	if manager.Valid(request, "workspace-a") {
+		t.Fatal("invalidated workspace session remained valid")
+	}
 	request.AddCookie(csrf)
 	request.Header.Set(CSRFHeaderName, csrf.Value)
 	if !manager.ValidCSRF(request) {

@@ -32,13 +32,14 @@ type PasswordAttempt interface {
 }
 
 type Dependencies struct {
-	Lifecycle        Lifecycle
-	BeginAttempt     func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
-	HasSession       func(*http.Request) bool
-	IssueSession     func(http.ResponseWriter) error
-	ClearSessions    func(http.ResponseWriter)
-	CloseMaintenance func(string)
-	Now              func() time.Time
+	Lifecycle          Lifecycle
+	BeginAttempt       func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
+	HasSession         func(*http.Request) bool
+	IssueSession       func(http.ResponseWriter) error
+	ClearSessions      func(http.ResponseWriter)
+	InvalidateSessions func(string)
+	CloseMaintenance   func(string)
+	Now                func() time.Time
 }
 
 type Handlers struct{ dependencies Dependencies }

@@ -105,6 +105,24 @@ func TestLockClearsSessionWhenRuntimeDetachedDespiteCleanupError(t *testing.T) {
 	}
 }
 
+func TestLockCurrentInvalidatesOnlyTheDetachedWorkspaceSessions(t *testing.T) {
+	invalidated := ""
+	handlers := New(Dependencies{
+		Lifecycle: &fakeLifecycle{status: workspacelifecycle.Status{
+			State: "unlocked", Identity: workspacelifecycle.Identity{ID: "workspace-a"},
+		}},
+		InvalidateSessions: func(databaseID string) { invalidated = databaseID },
+		IssueSession:       func(http.ResponseWriter) error { return nil },
+	})
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/lock", strings.NewReader(`{"scope":"current"}`))
+	request.Header.Set("Content-Type", "application/json")
+	handlers.Lock(response, request)
+	if response.Code != http.StatusOK || invalidated != "workspace-a" {
+		t.Fatalf("code=%d invalidated=%q", response.Code, invalidated)
+	}
+}
+
 func TestUnlockErrorsAndAttemptsAreClassifiedAtTheWorkspaceBoundary(t *testing.T) {
 	tests := []struct {
 		name         string

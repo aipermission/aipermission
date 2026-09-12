@@ -91,6 +91,11 @@ func (component *Component) ClearUISessions(w http.ResponseWriter) {
 func (component *Component) ValidUISession(r *http.Request, databaseID string) bool {
 	return component != nil && component.uiSessions != nil && component.uiSessions.Valid(r, databaseID)
 }
+func (component *Component) InvalidateUISessions(databaseID string) {
+	if component != nil && component.uiSessions != nil {
+		component.uiSessions.InvalidateDatabase(databaseID)
+	}
+}
 func (component *Component) ValidUICSRF(r *http.Request) bool {
 	return component != nil && component.uiSessions != nil && component.uiSessions.ValidCSRF(r)
 }
