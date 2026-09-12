@@ -17,9 +17,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const consolePipeDrainTimeout = 2 * time.Second
+
 func (s *managedConsoleSession) run() {
+	pipeOwnsRedactors := false
 	defer func() {
-		s.closeExactRedactor()
+		if !pipeOwnsRedactors {
+			s.closeExactRedactor()
+		}
 		s.drainOwnedWork()
 		if s.environment != nil {
 			s.environment.Destroy()
@@ -110,6 +115,7 @@ func (s *managedConsoleSession) run() {
 			s.pipe(runtime.Stderr, s.stderrExactRedactor)
 		}()
 	}
+	pipeOwnsRedactors = true
 
 	waitDone := make(chan error, 1)
 	go func() {
@@ -118,8 +124,8 @@ func (s *managedConsoleSession) run() {
 
 	select {
 	case err := <-waitDone:
-		pipeWG.Wait()
-		s.closeExactRedactor()
+		_ = s.closeRuntime()
+		s.finishPipeDrain(&pipeWG)
 		if err != nil && !errors.Is(err, io.EOF) {
 			s.finish("closed", err.Error())
 			return
@@ -127,9 +133,44 @@ func (s *managedConsoleSession) run() {
 		s.finish("closed", "")
 	case <-s.ctx.Done():
 		_ = s.closeRuntime()
-		pipeWG.Wait()
-		s.closeExactRedactor()
+		s.finishPipeDrain(&pipeWG)
 		s.finish("closed", "")
+	}
+}
+
+func (s *managedConsoleSession) finishPipeDrain(pipeWG *sync.WaitGroup) {
+	done := consolePipesDone(pipeWG)
+	if waitConsolePipes(done, consolePipeDrainTimeout) {
+		s.closeExactRedactor()
+		return
+	}
+	go func() {
+		<-done
+		s.closeExactRedactor()
+	}()
+}
+
+func consolePipesDone(pipeWG *sync.WaitGroup) <-chan struct{} {
+	done := make(chan struct{})
+	if pipeWG == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		pipeWG.Wait()
+		close(done)
+	}()
+	return done
+}
+
+func waitConsolePipes(done <-chan struct{}, timeout time.Duration) bool {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
 

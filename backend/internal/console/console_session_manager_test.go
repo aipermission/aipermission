@@ -225,6 +225,52 @@ func TestConsoleSessionManagerCloseAllWaitsForPipesAndOwnedPersistence(t *testin
 	}
 }
 
+func TestConsoleSessionClosesTransportBeforeDrainingOutputPipes(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-close-order", "127.0.0.1", 22)
+	reader, writer := io.Pipe()
+	closed := make(chan struct{})
+	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Stdout: reader,
+			Wait: func() error { return nil },
+			Close: func() error {
+				_ = writer.Close()
+				close(closed)
+				return nil
+			},
+		}, nil
+	}, nil)
+	if _, err := manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Name: "close-order", Principal: testExecutionPrincipal(), WaitForStart: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := manager.CloseAll(ctx); err != nil {
+		t.Fatalf("close after wait: %v", err)
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("transport was not closed before pipe ownership drained")
+	}
+}
+
+func TestWaitConsolePipesIsBounded(t *testing.T) {
+	var pipes sync.WaitGroup
+	pipes.Add(1)
+	if waitConsolePipes(consolePipesDone(&pipes), time.Millisecond) {
+		t.Fatal("blocked pipe was reported as drained")
+	}
+	pipes.Done()
+}
+
 func TestConsoleSessionFinalizationRetriesPersistenceAndOwnershipHook(t *testing.T) {
 	persistErr := errors.New("injected transcript persistence failure")
 	hookErr := errors.New("injected session ownership failure")
