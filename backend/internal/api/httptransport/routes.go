@@ -3,11 +3,19 @@ package httptransport
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type Handler func(http.ResponseWriter, *http.Request)
+
+type AdapterRoute struct {
+	Method  string
+	Path    string
+	Handler Handler
+}
 
 func Health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -272,7 +280,7 @@ type Dependencies struct {
 	MCPConnectorReads           MCPConnectorReads
 	MCPConnectorActions         MCPConnectorActions
 	MCPVaultActions             MCPVaultActions
-	RegisterAdapterRoutes       func(*http.ServeMux)
+	AdapterRoutes               []AdapterRoute
 }
 
 func Register(mux *http.ServeMux, d Dependencies) {
@@ -399,8 +407,17 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("POST /api/mcp/vault-actions/call", d.MCPVaultActions.Call)
 	mux.HandleFunc("GET /api/mcp/vault-action-requests/{id}", d.MCPVaultActions.GetRequest)
 	mux.HandleFunc("POST /api/mcp/vault-action-requests/{id}/cancel", d.MCPVaultActions.CancelRequest)
-	if d.RegisterAdapterRoutes != nil {
-		d.RegisterAdapterRoutes(mux)
+	registerAdapterRoutes(mux, d.AdapterRoutes)
+}
+
+func registerAdapterRoutes(mux *http.ServeMux, routes []AdapterRoute) {
+	for _, route := range routes {
+		method := strings.ToUpper(strings.TrimSpace(route.Method))
+		path := strings.TrimSpace(route.Path)
+		if method == "" || !strings.HasPrefix(path, "/api/") || route.Handler == nil {
+			panic(fmt.Sprintf("invalid connector adapter route %q %q", method, path))
+		}
+		mux.HandleFunc(method+" "+path, route.Handler)
 	}
 }
 

@@ -78,9 +78,7 @@ func (s *Server) routes() {
 		MCPConnectorReads:   accessHTTP.MCPConnectorReads,
 		MCPConnectorActions: accessHTTP.MCPConnectorActions,
 		MCPVaultActions:     vaultHTTP.MCPVault,
-		RegisterAdapterRoutes: func(mux *http.ServeMux) {
-			registerConnectorAdapterRoutes(mux, s)
-		},
+		AdapterRoutes:       connectorAdapterRoutes(s),
 	})
 }
 

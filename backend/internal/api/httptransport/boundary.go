@@ -1,6 +1,4 @@
-// Package gatewayoperations owns the local-only browser, lifecycle, and
-// timeout boundary applied around gateway HTTP routes.
-package gatewayoperations
+package httptransport
 
 import (
 	"context"

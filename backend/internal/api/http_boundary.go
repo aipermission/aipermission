@@ -4,18 +4,18 @@ import (
 	"log"
 	"net/http"
 
-	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 )
 
 func (s *Server) Handler() http.Handler {
-	return gatewayoperations.HTTPBoundary{
+	return httptransport.HTTPBoundary{
 		Routes: s.mux, Lifecycle: s.workspaceOwner.WorkspaceLifecycle(), IsUnlocked: s.isUnlocked,
 		IsLocalRemoteAddr: s.config.IsLocalRemoteAddr, IsLocalhostHeader: s.config.IsLocalhostHeader,
 		AllowsOrigin: s.config.AllowsOrigin, HasSession: s.hasValidUISession,
 		EnsureWorkspace: s.ensureUIWorkspaceCookie, HasCSRF: s.hasValidUICSRF,
 		IsSessionExempt: s.access.IsUIExempt,
 		RequiresCSRF: func(method, path string) bool {
-			return !s.access.IsUIExempt(path) && gatewayoperations.IsStateChangingMethod(method)
+			return !s.access.IsUIExempt(path) && httptransport.IsStateChangingMethod(method)
 		},
 		WriteError: writeError,
 	}.Handler()

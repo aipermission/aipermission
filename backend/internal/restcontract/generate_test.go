@@ -8,7 +8,7 @@ import (
 
 func TestParseRoutesSortsAndRejectsDuplicates(t *testing.T) {
 	source := []byte(`package api
-func routes() {
+func Register() {
 	mux.HandleFunc("POST /api/items/{id}", post)
 	mux.HandleFunc("GET /health", health)
 }`)
@@ -21,7 +21,7 @@ func routes() {
 	}
 
 	duplicate := []byte(`package api
-func routes() {
+func Register() {
 	mux.HandleFunc("GET /health", first)
 	mux.HandleFunc("GET /health", second)
 }`)
@@ -49,13 +49,13 @@ func TestParseRoutesRejectsRegistrationsThatCouldEscapeTheContract(t *testing.T)
 		{
 			name: "dynamic HandleFunc pattern",
 			source: `package api
-func routes() { mux.HandleFunc(pattern, handler) }`,
+func Register() { mux.HandleFunc(pattern, handler) }`,
 			want: "must be a string literal",
 		},
 		{
 			name: "Handle registration",
 			source: `package api
-func routes() { mux.Handle("GET /health", handler) }`,
+func Register() { mux.Handle("GET /health", handler) }`,
 			want: "unsupported Handle route registration",
 		},
 	}
@@ -68,6 +68,43 @@ func routes() { mux.Handle("GET /health", handler) }`,
 	}
 }
 
+func TestParseRoutesFollowsOnlyReachableDirectRegistrationFunctions(t *testing.T) {
+	source := []byte(`package api
+func Register() {
+	mux.HandleFunc("GET /health", health)
+	registerItems(mux)
+}
+func registerItems(mux any) { mux.HandleFunc("GET /api/items", items) }
+func dead() { fake.HandleFunc("DELETE /api/not-runtime", remove) }
+`)
+	routes, err := ParseRoutes(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("reachable routes = %+v, want two", routes)
+	}
+	for _, route := range routes {
+		if route.Path == "/api/not-runtime" {
+			t.Fatal("unreachable route leaked into the generated contract")
+		}
+	}
+
+	conditional := []byte(`package api
+func Register() {
+	if false { mux.HandleFunc("GET /api/not-runtime", handler) }
+}`)
+	if _, err := ParseRoutes(conditional); err == nil || !strings.Contains(err.Error(), "must be direct statements") {
+		t.Fatalf("expected conditional registration rejection, got %v", err)
+	}
+
+	wrapper := []byte(`package api
+func Register() { routes.Add("GET /api/not-visible", handler) }`)
+	if _, err := ParseRoutes(wrapper); err == nil || !strings.Contains(err.Error(), "unsupported method call Add") {
+		t.Fatalf("expected opaque wrapper rejection, got %v", err)
+	}
+}
+
 func TestRouteGenerationRejectsMalformedAndAmbiguousInputs(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -75,9 +112,9 @@ func TestRouteGenerationRejectsMalformedAndAmbiguousInputs(t *testing.T) {
 		want   string
 	}{
 		{name: "invalid Go", source: `package api func`, want: "parse routes source"},
-		{name: "missing pattern", source: `package api; func routes() { mux.HandleFunc() }`, want: "has no pattern"},
-		{name: "invalid pattern", source: `package api; func routes() { mux.HandleFunc("health", handler) }`, want: "invalid route pattern"},
-		{name: "no routes", source: `package api; func routes() {}`, want: "no routes found"},
+		{name: "missing pattern", source: `package api; func Register() { mux.HandleFunc() }`, want: "has no pattern"},
+		{name: "invalid pattern", source: `package api; func Register() { mux.HandleFunc("health", handler) }`, want: "invalid route pattern"},
+		{name: "no routes", source: `package api; func Register() {}`, want: "no routes found"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -119,7 +156,7 @@ func TestRouteMetadataHelpersCoverSupportedShapes(t *testing.T) {
 
 func TestGenerateProducesBoundedRouteInventory(t *testing.T) {
 	source := []byte(`package api
-func routes() { mux.HandleFunc("GET /api/items/{item_id}", get) }`)
+func Register() { mux.HandleFunc("GET /api/items/{item_id}", get) }`)
 	output, err := Generate(source)
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +179,7 @@ func routes() { mux.HandleFunc("GET /api/items/{item_id}", get) }`)
 
 func TestGenerateTypesSharedConnectorResponses(t *testing.T) {
 	source := []byte(`package api
-func routes() {
+func Register() {
 	mux.HandleFunc("GET /api/targets", listTargets)
 	mux.HandleFunc("GET /api/history", listHistory)
 }`)
@@ -185,7 +222,7 @@ func TestTypedContractsReferenceDefinedSchemas(t *testing.T) {
 
 func TestGenerateTypesLocalConnectorActionRequestAndUncertainOutcome(t *testing.T) {
 	source := []byte(`package api
-func routes() { mux.HandleFunc("POST /api/connector-actions/local-run", run) }`)
+func Register() { mux.HandleFunc("POST /api/connector-actions/local-run", run) }`)
 	output, err := Generate(source)
 	if err != nil {
 		t.Fatal(err)

@@ -23,52 +23,112 @@ func ParseRoutes(source []byte) ([]Route, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse routes source: %w", err)
 	}
-	routes := []Route{}
-	ast.Inspect(file, func(node ast.Node) bool {
-		if err != nil {
-			return false
+	functions := map[string]*ast.FuncDecl{}
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if ok && function.Recv == nil {
+			functions[function.Name.Name] = function
 		}
-		call, ok := node.(*ast.CallExpr)
+	}
+	if functions["Register"] == nil {
+		return nil, fmt.Errorf("route registration root Register was not found")
+	}
+
+	routes := []Route{}
+	visited := map[string]bool{}
+	var inspectFunction func(string) error
+	inspectFunction = func(name string) error {
+		if visited[name] || name == "registerAdapterRoutes" {
+			return nil
+		}
+		function := functions[name]
+		if function == nil || function.Body == nil {
+			return nil
+		}
+		visited[name] = true
+		for _, statement := range function.Body.List {
+			expression, direct := statement.(*ast.ExprStmt)
+			if !direct {
+				if containsRouteRegistration(statement) {
+					return fmt.Errorf("route registrations in %s must be direct statements", name)
+				}
+				continue
+			}
+			call, ok := expression.X.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			if identifier, ok := call.Fun.(*ast.Ident); ok {
+				if functions[identifier.Name] == nil {
+					return fmt.Errorf("route registration in %s calls unknown helper %s", name, identifier.Name)
+				}
+				if err := inspectFunction(identifier.Name); err != nil {
+					return err
+				}
+				continue
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			if selector.Sel.Name != "Handle" && selector.Sel.Name != "HandleFunc" {
+				return fmt.Errorf("route registration in %s uses unsupported method call %s", name, selector.Sel.Name)
+			}
+			receiver, ok := selector.X.(*ast.Ident)
+			if !ok || receiver.Name != "mux" {
+				return fmt.Errorf("route registration in %s must use the mux parameter directly", name)
+			}
+			if selector.Sel.Name == "Handle" {
+				return fmt.Errorf("unsupported Handle route registration; use HandleFunc so the route contract can be generated")
+			}
+			route, err := parseHandleFuncRoute(call)
+			if err != nil {
+				return err
+			}
+			routes = append(routes, route)
+		}
+		return nil
+	}
+	if err := inspectFunction("Register"); err != nil {
+		return nil, err
+	}
+	return NormalizeRoutes(routes)
+}
+
+func containsRouteRegistration(node ast.Node) bool {
+	found := false
+	ast.Inspect(node, func(candidate ast.Node) bool {
+		call, ok := candidate.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 		selector, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		if selector.Sel.Name == "Handle" {
-			err = fmt.Errorf("unsupported Handle route registration; use HandleFunc so the route contract can be generated")
+		if ok && (selector.Sel.Name == "Handle" || selector.Sel.Name == "HandleFunc") {
+			found = true
 			return false
 		}
-		if selector.Sel.Name != "HandleFunc" {
-			return true
-		}
-		if len(call.Args) == 0 {
-			err = fmt.Errorf("HandleFunc route registration has no pattern")
-			return false
-		}
-		literal, ok := call.Args[0].(*ast.BasicLit)
-		if !ok || literal.Kind != token.STRING {
-			err = fmt.Errorf("HandleFunc route pattern must be a string literal")
-			return false
-		}
-		pattern, unquoteErr := strconv.Unquote(literal.Value)
-		if unquoteErr != nil {
-			err = fmt.Errorf("decode route pattern %s: %w", literal.Value, unquoteErr)
-			return false
-		}
-		method, path, ok := strings.Cut(strings.TrimSpace(pattern), " ")
-		if !ok || method == "" || !strings.HasPrefix(path, "/") {
-			err = fmt.Errorf("invalid route pattern %q", pattern)
-			return false
-		}
-		routes = append(routes, Route{Method: strings.ToUpper(method), Path: path})
 		return true
 	})
-	if err != nil {
-		return nil, err
+	return found
+}
+
+func parseHandleFuncRoute(call *ast.CallExpr) (Route, error) {
+	if len(call.Args) == 0 {
+		return Route{}, fmt.Errorf("HandleFunc route registration has no pattern")
 	}
-	return NormalizeRoutes(routes)
+	literal, ok := call.Args[0].(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return Route{}, fmt.Errorf("HandleFunc route pattern must be a string literal")
+	}
+	pattern, err := strconv.Unquote(literal.Value)
+	if err != nil {
+		return Route{}, fmt.Errorf("decode route pattern %s: %w", literal.Value, err)
+	}
+	method, path, ok := strings.Cut(strings.TrimSpace(pattern), " ")
+	if !ok || method == "" || !strings.HasPrefix(path, "/") {
+		return Route{}, fmt.Errorf("invalid route pattern %q", pattern)
+	}
+	return Route{Method: strings.ToUpper(method), Path: path}, nil
 }
 
 // NormalizeRoutes validates, sorts, and deduplicates a combined core and

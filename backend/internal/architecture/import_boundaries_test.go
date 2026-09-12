@@ -762,6 +762,33 @@ func TestOpenAPICommandsUseOwnedGatewayRouteSource(t *testing.T) {
 	}
 }
 
+func TestHTTPPolicyAndAdapterRegistrationStayInTransportOwner(t *testing.T) {
+	transportBoundary := filepath.Join("..", "api", "httptransport", "boundary.go")
+	if _, err := os.Stat(transportBoundary); err != nil {
+		t.Fatalf("HTTP transport boundary is missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join("..", "gatewayoperations", "http_boundary.go")); !os.IsNotExist(err) {
+		t.Fatal("gatewayoperations must not own HTTP path classification or browser security policy")
+	}
+
+	routes, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "api", "httptransport", "routes.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(routes, func(node ast.Node) bool {
+		field, ok := node.(*ast.Field)
+		if !ok {
+			return true
+		}
+		for _, name := range field.Names {
+			if name.Name == "RegisterAdapterRoutes" {
+				t.Error("connector adapters must return declarative routes instead of receiving the HTTP mux")
+			}
+		}
+		return true
+	})
+}
+
 func TestConcreteWorkspaceRuntimeStaysInsideGatewayOwner(t *testing.T) {
 	concreteRuntime := modulePath + "/internal/workspaceruntime"
 	allowedImporter := modulePath + "/internal/gatewayworkspace"

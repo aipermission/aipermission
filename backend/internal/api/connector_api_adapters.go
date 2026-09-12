@@ -1,13 +1,14 @@
 package api
 
 import (
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
@@ -73,7 +74,7 @@ func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *gatew
 	return capabilities
 }
 
-func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
+func connectorAdapterRoutes(server *Server) []httptransport.AdapterRoute {
 	connectorInfos := server.connectorRegistry().List()
 	kinds := make([]string, 0, len(connectorInfos))
 	for _, info := range connectorInfos {
@@ -83,12 +84,18 @@ func registerConnectorAdapterRoutes(mux *http.ServeMux, server *Server) {
 	if err != nil {
 		panic(err)
 	}
+	registered := make([]httptransport.AdapterRoute, 0, len(routes))
 	for _, route := range routes {
 		handler := route.Handler
-		mux.HandleFunc(route.Pattern(), func(w http.ResponseWriter, r *http.Request) {
-			handler(server.connectorPortsApplication().RouteGateway(), w, r)
+		registered = append(registered, httptransport.AdapterRoute{
+			Method: route.Method,
+			Path:   route.Path,
+			Handler: func(w http.ResponseWriter, r *http.Request) {
+				handler(server.connectorPortsApplication().RouteGateway(), w, r)
+			},
 		})
 	}
+	return registered
 }
 
 func (s *Server) connectorCredentialProfileLifecycleAdapterFor(kind string) connectorapi.CredentialProfileLifecycleAdapter {

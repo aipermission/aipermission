@@ -1,4 +1,4 @@
-package gatewayoperations
+package httptransport
 
 import (
 	"net/http"
