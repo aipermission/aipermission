@@ -45,6 +45,47 @@ func TestAPISubpackagesCannotSmuggleDomainDependencies(t *testing.T) {
 	}
 }
 
+func TestAPIProductionTypesAreBoundaryOwned(t *testing.T) {
+	inspectProductionGoFiles(t, filepath.Join("..", "api"), func(path string, file *ast.File) {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.TYPE {
+				continue
+			}
+			for _, specification := range general.Specs {
+				typeSpec := specification.(*ast.TypeSpec)
+				if typeSpec.Assign.IsValid() {
+					t.Errorf("%s reexports type %s; API transport contracts must be boundary-owned", path, typeSpec.Name.Name)
+				}
+			}
+		}
+	})
+}
+
+func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
+	inspectProductionGoFiles(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File) {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.VAR {
+				continue
+			}
+			for _, specification := range general.Specs {
+				value := specification.(*ast.ValueSpec)
+				for index, identifier := range value.Names {
+					if !identifier.IsExported() || strings.HasPrefix(identifier.Name, "Err") {
+						continue
+					}
+					initializer := valueInitializer(value, index)
+					switch initializer.(type) {
+					case *ast.SelectorExpr, *ast.FuncLit:
+						t.Errorf("%s exposes mutable facade %s; declare an owned function or immutable contract", path, identifier.Name)
+					}
+				}
+			}
+		}
+	})
+}
+
 func TestProductionAPIDoesNotConsumeRawWorkspaceScopes(t *testing.T) {
 	forbidden := map[string]map[string]bool{
 		modulePath + "/internal/gatewayaccess": {
@@ -264,4 +305,35 @@ func assertSameStrings(t *testing.T, leftName string, left []string, rightName s
 	if strings.Join(left, "\x00") != strings.Join(right, "\x00") {
 		t.Errorf("%s and %s differ:\n%s: %v\n%s: %v", leftName, rightName, leftName, left, rightName, right)
 	}
+}
+
+func inspectProductionGoFiles(t *testing.T, root string, inspect func(string, *ast.File)) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		inspect(path, file)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect production Go files in %s: %v", root, err)
+	}
+}
+
+func valueInitializer(value *ast.ValueSpec, index int) ast.Expr {
+	if index < len(value.Values) {
+		return value.Values[index]
+	}
+	if len(value.Values) == 1 {
+		return value.Values[0]
+	}
+	return nil
 }

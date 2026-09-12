@@ -37,3 +37,36 @@ test("keeps nested javascript tests in their declared owner package", () => {
   assert.equal(first, second);
   assert.equal(first, path.join(root, "packages/mcp/test/transport"));
 });
+
+test("rejects every internal API budget exception form", () => {
+  const candidates = [
+    (candidate) => {
+      candidate.sourceOverrides["backend/internal/api/routes.go"] = 100;
+    },
+    (candidate) => {
+      candidate.backendPackage.overrides["backend/internal/api"] = 100;
+    },
+    (candidate) => {
+      candidate.goFunction.overrides[
+        "backend/internal/api/routes.go:registerRoutes"
+      ] = { lines: 100, complexity: 20 };
+    },
+    (candidate) => {
+      candidate.backendFanout.overrides[
+        "github.com/aipermission/aipermission/backend/internal/api"
+      ] = 10;
+    },
+  ];
+
+  for (const mutate of candidates) {
+    const candidate = copyPolicy();
+    mutate(candidate);
+    const failures = validatePolicy(candidate, []);
+    assert.ok(
+      failures.some((failure) =>
+        failure.includes("internal/api must satisfy shared budgets without exceptions"),
+      ),
+      failures,
+    );
+  }
+});

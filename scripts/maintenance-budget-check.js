@@ -41,6 +41,10 @@ function positiveInteger(value) {
   return Number.isInteger(value) && value > 0;
 }
 
+function isAPIExceptionPath(value) {
+  return /(^|\/)internal\/api(?:\/|$)/.test(value);
+}
+
 function validatePolicy(candidate = policy, target = failures) {
   if (candidate.version !== 1)
     target.push("maintenance policy version must be 1");
@@ -119,6 +123,20 @@ function validatePolicy(candidate = policy, target = failures) {
     for (const [key, value] of Object.entries(values || {})) {
       if (!positiveInteger(value))
         target.push(`${name} ${key} must be a positive integer`);
+    }
+  }
+  for (const [name, values] of [
+    ["source override", candidate.sourceOverrides],
+    ["backend package override", candidate.backendPackage?.overrides],
+    ["Go function override", candidate.goFunction?.overrides],
+    ["backend fanout override", candidate.backendFanout?.overrides],
+  ]) {
+    for (const key of Object.keys(values || {})) {
+      if (isAPIExceptionPath(key)) {
+        target.push(
+          `${name} ${key} is forbidden; internal/api must satisfy shared budgets without exceptions`,
+        );
+      }
     }
   }
   return target;
