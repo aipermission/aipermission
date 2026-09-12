@@ -247,7 +247,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 		t.Fatalf("server should be unlocked after setup")
 	}
 	runtime := server.activeRuntime()
-	identityBeforePasswordChange, err := server.connectorActionWorkspace(runtime).Identity.Tag([]byte("stable-retry-identity"))
+	identityBeforePasswordChange, err := server.connectorActions.Tag(runtime, []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity before password change: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestUnlockSetupLockUnlockAndDatabaseLifecycle(t *testing.T) {
 	if response := performJSON(handler, http.MethodPost, "/api/unlock", "", unlockRequest{DatabaseID: "renamed-database", Password: "ChangedPassword123"}); response.Code != http.StatusOK {
 		t.Fatalf("unlock renamed database failed: %d %s", response.Code, response.Body.String())
 	}
-	identityAfterPasswordChange, err := server.connectorActionWorkspace(server.activeRuntime()).Identity.Tag([]byte("stable-retry-identity"))
+	identityAfterPasswordChange, err := server.connectorActions.Tag(server.activeRuntime(), []byte("stable-retry-identity"))
 	if err != nil {
 		t.Fatalf("derive action identity after password change: %v", err)
 	}

@@ -34,6 +34,18 @@ type OperationsOwner struct{ ownerBase }
 type VaultOwner struct{ ownerBase }
 type WorkspaceOwner struct{ ownerBase }
 
+func (component *Component) bindOwners() {
+	base := ownerBase{owner: component}
+	component.accessOwner = &AccessOwner{ownerBase: base}
+	component.actionOwner = &ConnectorActionOwner{ownerBase: base}
+	component.managementOwner = &ConnectorManagementOwner{ownerBase: base}
+	component.portsOwner = &ConnectorPortsOwner{ownerBase: base}
+	component.observationOwner = &ObservationOwner{ownerBase: base}
+	component.operationsOwner = &OperationsOwner{ownerBase: base}
+	component.vaultOwner = &VaultOwner{ownerBase: base}
+	component.workspaceOwner = &WorkspaceOwner{ownerBase: base}
+}
+
 func (component *AccessOwner) resolve(handle *WorkspaceHandle) (*gatewayworkspace.AccessCapabilities, bool) {
 	if component == nil || !component.valid(handle) {
 		return nil, false
@@ -91,33 +103,57 @@ func (component *WorkspaceOwner) resolve(handle *WorkspaceHandle) (*gatewayworks
 }
 
 func (component *Component) AccessOwner() *AccessOwner {
-	return &AccessOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.accessOwner
 }
 
 func (component *Component) ConnectorActionOwner() *ConnectorActionOwner {
-	return &ConnectorActionOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.actionOwner
 }
 
 func (component *Component) ConnectorManagementOwner() *ConnectorManagementOwner {
-	return &ConnectorManagementOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.managementOwner
 }
 
 func (component *Component) ConnectorPortsOwner() *ConnectorPortsOwner {
-	return &ConnectorPortsOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.portsOwner
 }
 
 func (component *Component) ObservationOwner() *ObservationOwner {
-	return &ObservationOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.observationOwner
 }
 
 func (component *Component) OperationsOwner() *OperationsOwner {
-	return &OperationsOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.operationsOwner
 }
 
 func (component *Component) VaultOwner() *VaultOwner {
-	return &VaultOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.vaultOwner
 }
 
 func (component *Component) WorkspaceOwner() *WorkspaceOwner {
-	return &WorkspaceOwner{ownerBase{owner: component}}
+	if component == nil {
+		return nil
+	}
+	return component.workspaceOwner
 }

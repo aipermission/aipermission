@@ -70,7 +70,7 @@ func gatewayConnectorActionWorkspace(runtime *gatewayinfra.WorkspaceHandle) gate
 }
 
 func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, tokenID int64, prepared gatewayactions.PreparedRequest, permission connectortargets.ActionPermission, status connectors.ResultStatus, errorText string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
-	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
+	persistence, err := s.connectorActions.Persistence(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
@@ -78,7 +78,7 @@ func (s *Server) insertConnectorActionRequest(ctx context.Context, runtime *gate
 }
 
 func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, tokenID *int64, prepared gatewayactions.PreparedRequest, status connectors.ResultStatus, errorText string, approvalContext string, approvalHash string, idempotencyKey string) (connectortargets.ActionRequest, bool, error) {
-	persistence, err := s.connectorActionApplication().Persistence(s.connectorActionWorkspace(runtime))
+	persistence, err := s.connectorActions.Persistence(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
@@ -86,7 +86,7 @@ func (s *Server) insertPreparedConnectorActionRequest(ctx context.Context, runti
 }
 
 func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, prepared gatewayactions.PreparedRequest, request connectortargets.ActionRequest, principal executionprincipal.Principal, options connectorActionExecutionOptions) (gatewayactions.CallResult, error) {
-	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
+	dispatch, err := s.connectorActions.Dispatch(runtime)
 	if err != nil {
 		return gatewayactions.CallResult{}, err
 	}
@@ -94,7 +94,7 @@ func (s *Server) executeInsertedConnectorAction(ctx context.Context, runtime *ga
 }
 
 func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, prepared gatewayactions.PreparedRequest) (gatewayactions.ExecutionSnapshot, error) {
-	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
+	dispatch, err := s.connectorActions.Dispatch(runtime)
 	if err != nil {
 		return gatewayactions.ExecutionSnapshot{}, err
 	}
@@ -102,7 +102,7 @@ func (s *Server) snapshotPreparedConnectorAction(ctx context.Context, runtime *g
 }
 
 func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, request connectortargets.ActionRequest, handles connectors.ActionHandles) (connectortargets.ActionRequest, error) {
-	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
+	dispatch, err := s.connectorActions.Dispatch(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -110,7 +110,7 @@ func (s *Server) captureConnectorActionSessionHandleIfReturned(ctx context.Conte
 }
 
 func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Server, runtime *gatewayinfra.WorkspaceHandle, requestID int64) (connectorCredentialBoundary, error) {
-	recovery, err := server.connectorActionApplication().Recovery(server.connectorActionWorkspace(runtime))
+	recovery, err := server.connectorActions.Recovery(runtime)
 	if err != nil {
 		return connectorCredentialBoundary{}, err
 	}
@@ -118,7 +118,7 @@ func connectorCredentialBoundaryForActionRequest(ctx context.Context, server *Se
 }
 
 func (s *Server) trackConnectorCredentialBoundary(runtime *gatewayinfra.WorkspaceHandle, requestID int64, boundary connectorCredentialBoundary) error {
-	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
+	recovery, err := s.connectorActions.Recovery(runtime)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (s *Server) trackConnectorCredentialBoundary(runtime *gatewayinfra.Workspac
 }
 
 func (s *Server) connectorCredentialBoundary(runtime *gatewayinfra.WorkspaceHandle, requestID int64) (connectorCredentialBoundary, bool) {
-	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
+	recovery, err := s.connectorActions.Recovery(runtime)
 	if err != nil {
 		return connectorCredentialBoundary{}, false
 	}
@@ -135,13 +135,13 @@ func (s *Server) connectorCredentialBoundary(runtime *gatewayinfra.WorkspaceHand
 }
 
 func (s *Server) recoverOrphanedConnectorActions(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, now time.Time) {
-	if recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime)); err == nil {
+	if recovery, err := s.connectorActions.Recovery(runtime); err == nil {
 		recovery.Recover(ctx, now)
 	}
 }
 
 func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, requestID int64, now time.Time) (connectortargets.ActionRequest, error) {
-	recovery, err := s.connectorActionApplication().Recovery(s.connectorActionWorkspace(runtime))
+	recovery, err := s.connectorActions.Recovery(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, err
 	}
@@ -149,7 +149,7 @@ func (s *Server) persistExpiredConnectorActionRecovery(ctx context.Context, runt
 }
 
 func (s *Server) beginConnectorActionDispatch(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, requestID int64) (connectortargets.ActionRequest, bool, error) {
-	dispatch, err := s.connectorActionApplication().Dispatch(s.connectorActionWorkspace(runtime))
+	dispatch, err := s.connectorActions.Dispatch(runtime)
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
@@ -247,7 +247,7 @@ func newConnectorActionTestRuntime(
 		t.Fatal(err)
 	}
 	testServer := testServerForRuntime(t, runtime)
-	gotTag, err := testServer.connectorActionWorkspace(runtime).Identity.Tag([]byte("test"))
+	gotTag, err := testServer.connectorActions.Tag(runtime, []byte("test"))
 	if err != nil || gotTag != wantTag {
 		t.Fatalf("test runtime action identity tag = %q, %v; want %q", gotTag, err, wantTag)
 	}

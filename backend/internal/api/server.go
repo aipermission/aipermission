@@ -7,7 +7,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
@@ -20,7 +19,7 @@ import (
 type Server struct {
 	config                   serverConfig
 	access                   *gatewayaccess.Component
-	connectorActions         *gatewayactions.Component
+	connectorActions         *gatewayinfra.ConnectorActionApplication
 	connectorPorts           *connectorports.PortsComponent
 	connectorManagement      *connectormgmt.Component
 	vault                    *gatewayvault.Component
@@ -64,10 +63,12 @@ func newServerComposition(cfg serverConfig, resolved serverOptions, infrastructu
 		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
 	}
 	server.bindInfrastructure(infrastructure)
-	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
+	if err := server.configureConnectorActionApplication(); err != nil {
+		panic(fmt.Sprintf("initialize connector action application: %v", err))
+	}
 	return server
 }
 

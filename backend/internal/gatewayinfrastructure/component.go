@@ -18,6 +18,14 @@ type Component struct {
 	workspace        *gatewayworkspace.Component
 	runtimeMu        sync.Mutex
 	handlesByOwner   map[*gatewayworkspace.Runtime]*WorkspaceHandle
+	accessOwner      *AccessOwner
+	actionOwner      *ConnectorActionOwner
+	managementOwner  *ConnectorManagementOwner
+	portsOwner       *ConnectorPortsOwner
+	observationOwner *ObservationOwner
+	operationsOwner  *OperationsOwner
+	vaultOwner       *VaultOwner
+	workspaceOwner   *WorkspaceOwner
 }
 
 func NewComponent(dataPath string, describe func(*WorkspaceHandle) Identity) *Component {
@@ -38,6 +46,7 @@ func NewComponent(dataPath string, describe func(*WorkspaceHandle) Identity) *Co
 		identity := describe(component.handleFor(runtime))
 		return gatewayworkspace.Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 	})
+	component.bindOwners()
 	return component
 }
 
@@ -318,5 +327,12 @@ func (component *WorkspaceOwner) AcquireBackupOperation(ctx context.Context) (fu
 	if component == nil || component.owner == nil {
 		return nil, InitializationError()
 	}
-	return component.owner.backupOperations.acquire(ctx)
+	return component.owner.acquireBackupOperation(ctx)
+}
+
+func (component *Component) acquireBackupOperation(ctx context.Context) (func(), error) {
+	if component == nil {
+		return nil, InitializationError()
+	}
+	return component.backupOperations.acquire(ctx)
 }

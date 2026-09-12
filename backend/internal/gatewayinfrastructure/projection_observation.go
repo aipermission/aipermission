@@ -14,7 +14,14 @@ import (
 type ObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error
 
 func (component *ObservationOwner) observationWorkspace(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
-	owner, ok := component.resolve(handle)
+	if component == nil || component.owner == nil {
+		return observationapp.Runtime{}, false
+	}
+	return component.owner.observationRuntime(handle)
+}
+
+func (component *Component) observationRuntime(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
+	owner, ok := component.observationOwner.resolve(handle)
 	if !ok {
 		return observationapp.Runtime{}, false
 	}
@@ -36,6 +43,37 @@ func (component *ObservationOwner) observationWorkspace(handle *WorkspaceHandle)
 		RetentionService:    owner.Observation.RetentionService,
 		SetRetentionService: owner.Observation.SetRetentionService,
 	}, true
+}
+
+func (component *Component) withObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
+	runtime, _ := component.observationRuntime(handle)
+	return component.observation.WithTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation observationapp.Appender) error {
+		return mutate(tx, ObservationAppender(appendObservation))
+	})
+}
+
+func (component *Component) withObservationMutation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
+	runtime, _ := component.observationRuntime(handle)
+	return component.observation.WithMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
+}
+
+func (component *Component) writeObservation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
+	runtime, _ := component.observationRuntime(handle)
+	component.observation.WriteObservation(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+}
+
+func (component *Component) writeObservationRequired(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) error {
+	runtime, _ := component.observationRuntime(handle)
+	return component.observation.WriteRequired(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+}
+
+func (component *Component) observationMutationRunner(handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64) observationMutationRunner {
+	if _, ok := component.observationRuntime(handle); !ok {
+		return nil
+	}
+	return func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		return component.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
+	}
 }
 
 func (component *ObservationOwner) ConfigureObservationDispatcher(handle *WorkspaceHandle) {
@@ -80,13 +118,11 @@ func (component *ObservationOwner) RecordObservationFailure(at time.Time) {
 }
 
 func (component *ObservationOwner) WriteObservation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-	runtime, _ := component.observationWorkspace(handle)
-	component.owner.observation.WriteObservation(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+	component.owner.writeObservation(ctx, handle, actor, tokenID, runtimeID, action, payload)
 }
 
 func (component *ObservationOwner) WriteObservationRequired(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) error {
-	runtime, _ := component.observationWorkspace(handle)
-	return component.owner.observation.WriteRequired(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+	return component.owner.writeObservationRequired(ctx, handle, actor, tokenID, runtimeID, action, payload)
 }
 
 func (component *ObservationOwner) PrepareObservationRedactor(ctx context.Context, handle *WorkspaceHandle) func(string) string {
@@ -95,26 +131,17 @@ func (component *ObservationOwner) PrepareObservationRedactor(ctx context.Contex
 }
 
 func (component *ObservationOwner) WithObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
-	runtime, _ := component.observationWorkspace(handle)
-	return component.owner.observation.WithTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation observationapp.Appender) error {
-		return mutate(tx, ObservationAppender(appendObservation))
-	})
+	return component.owner.withObservationTransaction(ctx, handle, mutate)
 }
 
 func (component *ObservationOwner) WithObservationMutation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-	runtime, _ := component.observationWorkspace(handle)
-	return component.owner.observation.WithMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
+	return component.owner.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
 }
 
 type observationMutationRunner func(context.Context, string, func() any, func(*sql.Tx) error) error
 
 func (component *ObservationOwner) mutationRunner(handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64) observationMutationRunner {
-	if _, ok := component.observationWorkspace(handle); !ok {
-		return nil
-	}
-	return func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-		return component.WithObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
-	}
+	return component.owner.observationMutationRunner(handle, actor, tokenID, runtimeID)
 }
 
 func (component *ObservationOwner) ProjectObservations(ctx context.Context, handle *WorkspaceHandle) {
@@ -176,11 +203,19 @@ func (component *ObservationOwner) PrepareDiagnosticsDownload(w http.ResponseWri
 }
 
 func (component *ObservationOwner) VaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {
-	runtime, _ := component.observationWorkspace(handle)
-	return gatewayvault.RequestStoreFactory(component.owner.observation.VaultRequestStoreFactory(runtime))
+	return component.owner.vaultRequestStoreFactory(handle)
 }
 
 func (component *ObservationOwner) SyncVaultActionRequest(ctx context.Context, handle *WorkspaceHandle, id int64) error {
-	runtime, _ := component.observationWorkspace(handle)
-	return component.owner.observation.SyncVaultActionRequest(ctx, runtime, id)
+	return component.owner.syncVaultActionRequest(ctx, handle, id)
+}
+
+func (component *Component) vaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {
+	runtime, _ := component.observationRuntime(handle)
+	return gatewayvault.RequestStoreFactory(component.observation.VaultRequestStoreFactory(runtime))
+}
+
+func (component *Component) syncVaultActionRequest(ctx context.Context, handle *WorkspaceHandle, id int64) error {
+	runtime, _ := component.observationRuntime(handle)
+	return component.observation.SyncVaultActionRequest(ctx, runtime, id)
 }

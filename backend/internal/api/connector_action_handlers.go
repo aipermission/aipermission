@@ -6,18 +6,16 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 type localConnectorActionRequest = gatewayactions.LocalRequest
 
 func (s *Server) localConnectorActionHTTP() gatewayactions.LocalHTTPHandlers {
-	return s.connectorActionApplication().LocalHTTP(gatewayactions.LocalHTTPDependencies{
-		ActiveRuntime: func(w http.ResponseWriter) (gatewayactions.Workspace, bool) {
-			runtime, ok := s.activeRuntimeOrLocked(w)
-			return s.connectorActionWorkspace(runtime), ok
-		},
-		DecodeJSON: decodeJSON,
-		WriteError: writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
+	return s.connectorActions.LocalHTTP(gatewayinfra.ConnectorLocalHTTPDependencies{
+		ActiveRuntime: s.activeRuntimeOrLocked,
+		DecodeJSON:    decodeJSON,
+		WriteError:    writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
 		HandleTargetError: connectormgmt.WriteTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
 			response := gatewayactions.MCPResponseFromResult(request, result, s.connectorRunningHint)

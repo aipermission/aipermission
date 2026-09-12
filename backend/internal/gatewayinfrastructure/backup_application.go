@@ -62,14 +62,14 @@ type BackupHTTPHandlers struct {
 
 func (component *OperationsOwner) NewBackupApplication(dependencies BackupApplicationDependencies) *BackupApplication {
 	owner := gatewaybackup.New(gatewaybackup.Dependencies{
-		DataPath: dependencies.DataPath, Lifecycle: component.owner.WorkspaceOwner().WorkspaceLifecycle(),
+		DataPath: dependencies.DataPath, Lifecycle: component.owner.workspace,
 		ActiveRuntime: func(w http.ResponseWriter) (gatewaybackup.Runtime, bool) {
 			handle, ports, ok := dependencies.ActiveRuntime(w)
 			if !ok {
 				return gatewaybackup.Runtime{}, false
 			}
 			return component.backupWorkspace(handle, gatewaybackup.Runtime{
-				Mutate:        component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0),
+				Mutate:        component.owner.observationMutationRunner(handle, "user", nil, 0),
 				AuditRequired: ports.AuditRequired, Observe: ports.Observe,
 			})
 		},
@@ -81,7 +81,7 @@ func (component *OperationsOwner) NewBackupApplication(dependencies BackupApplic
 		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 			return dependencies.IssuePrepared(w, prepared)
 		},
-		AcquireOperation: component.owner.WorkspaceOwner().AcquireBackupOperation,
+		AcquireOperation: component.owner.acquireBackupOperation,
 	})
 	return &BackupApplication{owner: owner}
 }

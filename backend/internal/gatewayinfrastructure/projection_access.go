@@ -42,7 +42,7 @@ func (component *AccessOwner) accessControlWorkspace(handle *WorkspaceHandle, po
 			settings, err := owner.Security.PolicyService().ReadSettings(ctx)
 			return settings.ReusableTokens, err
 		},
-		Mutate:                  gatewayaccess.MutationRunner(component.owner.ObservationOwner().mutationRunner(handle, "user", nil, 0)),
+		Mutate:                  gatewayaccess.MutationRunner(component.owner.observationMutationRunner(handle, "user", nil, 0)),
 		AcquireExclusive:        owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		FinishTokenInvalidation: ports.FinishTokenInvalidation,
 	}, true

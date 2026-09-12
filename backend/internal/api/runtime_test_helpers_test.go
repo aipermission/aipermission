@@ -66,10 +66,12 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 		connectorRegistryOwner: owner.registry, connectorAdaptersOwner: owner.adapters,
 		transfers: gatewaytransfer.NewComponent(),
 	}
-	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()
 	server.connectorManagement = server.newConnectorManagementApplication()
 	server.vault = server.newVaultApplication()
+	if err := server.configureConnectorActionApplication(); err != nil {
+		t.Fatal(err)
+	}
 	return server
 }
 
@@ -163,7 +165,7 @@ func testMCPOutputAuthorization(t testing.TB, server *Server, runtime *gatewayin
 	}
 	return &gatewayaccess.MCPOutputAuthorization{
 		Database: resources.database, Tokens: resources.tokens, Leases: testRuntimeLeases(t, server, runtime),
-		Delivery:   server.connectorActionApplication().Delivery(projection.Session.AcquireDelivery),
+		Delivery:   server.connectorActions.Delivery(projection.Session.AcquireDelivery),
 		MCPStarted: projection.Session.MCPStarted,
 		Principal:  func(id int64) (gatewayaccess.Principal, error) { return server.tokenExecutionPrincipal(runtime, id) },
 	}

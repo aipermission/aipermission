@@ -128,6 +128,6 @@ func (s *Server) releaseRuntimeApplications(runtime *gatewayinfra.WorkspaceHandl
 		return
 	}
 	s.commands.Release(runtime.Identity().RuntimeID)
-	s.connectorActions.ReleaseWorkspace(s.connectorActionWorkspace(runtime))
+	s.connectorActions.Release(runtime)
 	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
 }

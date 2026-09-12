@@ -23,7 +23,7 @@ func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRu
 	}
 	identity := handle.Identity()
 	delivery := owner.Security.VaultDeliveryCoordinator()
-	observation := component.owner.ObservationOwner()
+	observation := component.owner
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
 			Database: owner.Storage.DatabaseHandle(), SecretVault: owner.Storage.SecretVault(),
@@ -38,28 +38,28 @@ func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRu
 			InvalidateSessions: ports.InvalidateSessions,
 			SessionEnvironment: ports.SessionEnvironment,
 			Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-				return observation.WithObservationMutation(ctx, handle, "user", nil, 0, action, payload, mutate)
+				return observation.withObservationMutation(ctx, handle, "user", nil, 0, action, payload, mutate)
 			},
 			Observe: func(ctx context.Context, action string, payload any) error {
-				return observation.WriteObservationRequired(ctx, handle, "user", nil, 0, action, payload)
+				return observation.writeObservationRequired(ctx, handle, "user", nil, 0, action, payload)
 			},
 		},
 		Action: gatewayvault.ActionRuntimePorts{
 			Connector: ports.Connector,
 			Mutate: func(ctx context.Context, tokenID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-				return observation.WithObservationMutation(ctx, handle, "mcp", &tokenID, 0, action, payload, mutate)
+				return observation.withObservationMutation(ctx, handle, "mcp", &tokenID, 0, action, payload, mutate)
 			},
 		},
 		Requests: gatewayvault.RequestRuntimePorts{
-			Store: observation.VaultRequestStoreFactory(handle),
+			Store: observation.vaultRequestStoreFactory(handle),
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-				return observation.WithObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
+				return observation.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
 			},
 			Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-				observation.WriteObservation(ctx, handle, actor, tokenID, runtimeID, action, payload)
+				observation.writeObservation(ctx, handle, actor, tokenID, runtimeID, action, payload)
 			},
 			RepairProjection: func(ctx context.Context, id int64) error {
-				if err := observation.SyncVaultActionRequest(ctx, handle, id); err != nil {
+				if err := observation.syncVaultActionRequest(ctx, handle, id); err != nil {
 					log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 				}
 				return nil

@@ -49,10 +49,10 @@ func (s mcpHandlers) mcpConnectorActionPorts(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return nil, gatewayinfra.MCPActionPorts{}, false
 	}
-	call := s.connectorActionApplication().MCPCall(s.connectorActionWorkspace(auth.runtime))
+	call := s.connectorActions.MCPCall(auth.runtime)
 	ports := gatewayinfra.MCPActionPorts{
 		TokenID: auth.TokenID, RunningHint: s.connectorRunningHint,
-		Delivery: s.connectorActionApplication().Delivery,
+		Delivery: s.connectorActions.Delivery,
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(auth.runtime, tokenID)
 		},
