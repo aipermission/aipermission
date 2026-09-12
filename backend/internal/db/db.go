@@ -128,7 +128,7 @@ func createPreMigrationSnapshot(database *sql.DB, databasePath string) (string, 
 		return "", nil
 	}
 	needsMigration := false
-	for _, migration := range migrations {
+	for _, migration := range migrations() {
 		applied, err := migrationApplied(database, migration.version)
 		if err != nil {
 			return "", fmt.Errorf("inspect migrations before snapshot: %w", err)

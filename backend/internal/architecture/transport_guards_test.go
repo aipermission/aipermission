@@ -87,12 +87,12 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 			for _, specification := range general.Specs {
 				value := specification.(*ast.ValueSpec)
 				for index, identifier := range value.Names {
-					if !identifier.IsExported() {
+					if identifier.Name == "_" {
 						continue
 					}
 					initializer := valueInitializer(value, index)
 					if mutableFacadeInitializerWithBindings(initializer, bindings, map[string]bool{}) {
-						t.Errorf("%s exposes mutable facade %s; declare an owned function or immutable contract", path, identifier.Name)
+						t.Errorf("%s declares mutable facade %s; use an owned function or immutable constructor dependency", path, identifier.Name)
 					}
 				}
 			}
@@ -416,8 +416,14 @@ func expressionContainsMutableFacade(expression ast.Expr, bindings map[string][]
 	case *ast.Ellipsis:
 		return expressionContainsMutableFacade(value.Elt, bindings, visiting, false)
 	case *ast.CompositeLit:
-		return expressionsContainMutableFacade(value.Elts, bindings, visiting)
+		// Function fields inside a package-owned configuration value are not a
+		// replaceable function facade. Index and selector expressions that
+		// extract a function from a composite are handled by their parent node.
+		return false
 	case *ast.IndexExpr:
+		if composite, ok := value.X.(*ast.CompositeLit); ok && expressionsContainMutableFacade(composite.Elts, bindings, visiting) {
+			return true
+		}
 		return expressionContainsMutableFacade(value.X, bindings, visiting, false) ||
 			expressionContainsMutableFacade(value.Index, bindings, visiting, false)
 	case *ast.IndexListExpr:
@@ -503,9 +509,16 @@ import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	bindings := map[string][]ast.Expr{
 		"local":    {mustParseExpression(t, "owner.Function")},
 		"exported": {mustParseExpression(t, "local")},
+		"private":  {mustParseExpression(t, "owner.Function")},
 	}
 	if !mutableFacadeInitializerWithBindings(bindings["exported"][0], bindings, map[string]bool{}) {
 		t.Fatal("identifier-chain mutable facade escaped detection")
+	}
+	if !mutableFacadeInitializerWithBindings(bindings["private"][0], bindings, map[string]bool{}) {
+		t.Fatal("unexported mutable facade escaped detection")
+	}
+	if mutableFacadeInitializerWithBindings(mustParseExpression(t, "struct{ Run func() }{Run: owner.Function}"), nil, map[string]bool{}) {
+		t.Fatal("function-valued configuration was mistaken for a facade")
 	}
 	crossFileBindings := map[string][]ast.Expr{
 		"local": {

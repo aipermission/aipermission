@@ -90,7 +90,7 @@ func hasPreexistingApplicationSchema(database *sql.DB) (bool, error) {
 }
 
 func runSchemaMigrations(database *sql.DB) error {
-	for _, migration := range migrations {
+	for _, migration := range migrations() {
 		applied, err := migrationApplied(database, migration.version)
 		if err != nil {
 			return err

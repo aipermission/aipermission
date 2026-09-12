@@ -934,7 +934,7 @@ func TestOpenEncryptedMigratesConnectorNativeBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open encrypted db: %v", err)
 	}
-	if err := runSingleMigration(database, migrations[0]); err != nil {
+	if err := runSingleMigration(database, migrations()[0]); err != nil {
 		t.Fatalf("create connector-native baseline: %v", err)
 	}
 	if tableExists(t, database, "backup_providers") {
@@ -971,8 +971,8 @@ func TestOpenEncryptedAppliesAuditRecoveryThenRepairsVaultSessionLeaseSchema(t *
 		t.Fatalf("open encrypted db: %v", err)
 	}
 	for index := 0; index < 14; index++ {
-		if err := runSingleMigration(database, migrations[index]); err != nil {
-			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		if err := runSingleMigration(database, migrations()[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations()[index].version, err)
 		}
 	}
 	if _, err := database.Exec(`ALTER TABLE vault_session_leases DROP COLUMN environment_content_hash`); err != nil {
@@ -1013,19 +1013,19 @@ func TestOpenEncryptedRepairsRecordedAuditRecoverySchemaDrift(t *testing.T) {
 		t.Fatalf("open encrypted db: %v", err)
 	}
 	for index := 0; index < 13; index++ {
-		if err := runSingleMigration(database, migrations[index]); err != nil {
-			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		if err := runSingleMigration(database, migrations()[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations()[index].version, err)
 		}
 	}
 	if _, err := database.Exec(
 		`INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, datetime('now'))`,
-		migrations[13].version,
-		migrations[13].description,
+		migrations()[13].version,
+		migrations()[13].description,
 	); err != nil {
 		t.Fatalf("record drifted audit recovery migration: %v", err)
 	}
-	if err := runSingleMigration(database, migrations[14]); err != nil {
-		t.Fatalf("apply migration %d: %v", migrations[14].version, err)
+	if err := runSingleMigration(database, migrations()[14]); err != nil {
+		t.Fatalf("apply migration %d: %v", migrations()[14].version, err)
 	}
 	if err := database.Close(); err != nil {
 		t.Fatalf("close drifted db: %v", err)
@@ -1084,8 +1084,8 @@ func TestSelfHostedBackupMigrationArchivesGoogleProviderAndClearsSecret(t *testi
 		t.Fatal(err)
 	}
 	for index := 0; index < 9; index++ {
-		if err := runSingleMigration(database, migrations[index]); err != nil {
-			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		if err := runSingleMigration(database, migrations()[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations()[index].version, err)
 		}
 	}
 	if _, err := database.Exec(`
@@ -1123,8 +1123,8 @@ func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
 	}
 	defer database.Close()
 	for index := 0; index < 7; index++ {
-		if err := runSingleMigration(database, migrations[index]); err != nil {
-			t.Fatalf("apply migration %d: %v", migrations[index].version, err)
+		if err := runSingleMigration(database, migrations()[index]); err != nil {
+			t.Fatalf("apply migration %d: %v", migrations()[index].version, err)
 		}
 	}
 	if _, err := database.Exec(`
@@ -1143,7 +1143,7 @@ func TestVaultGlobalNameMigrationRejectsCrossProjectDuplicates(t *testing.T) {
 	); err != nil {
 		t.Fatalf("prepare pre-v8 duplicate data: %v", err)
 	}
-	err = runSingleMigration(database, migrations[7])
+	err = runSingleMigration(database, migrations()[7])
 	if err == nil || !strings.Contains(err.Error(), "active Vault item names must be globally unique") ||
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate_env") {
 		t.Fatalf("global Vault name migration error = %v", err)
