@@ -53,7 +53,12 @@ func TestWorkspaceCapabilitySurvivesDeferredCloseUntilOwnersRelease(t *testing.T
 		}
 		<-secondResolve
 		return &deferredCloseActionWorkflow{}, nil
-	}, nil, nil, func() { close(completed) })
+	}, nil, nil, func() {
+		if secret := server.workspaceOwner.ConfiguredGatewaySecret(runtime); secret == "" {
+			t.Error("workspace capability was revoked before runtime applications released")
+		}
+		close(completed)
+	})
 	if err == nil {
 		t.Fatal("transient resolver failure did not defer workspace close")
 	}

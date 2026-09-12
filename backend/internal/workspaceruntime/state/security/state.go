@@ -46,5 +46,3 @@ func (s *State) VaultDeliveryCoordinator() *vaultsessions.DeliveryCoordinator {
 	}
 	return &s.vaultDelivery
 }
-
-var _ Port = (*State)(nil)

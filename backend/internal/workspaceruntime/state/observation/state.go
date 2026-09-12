@@ -35,5 +35,3 @@ func (s *State) SetRetentionService(service *retention.Service) {
 		s.retention = service
 	}
 }
-
-var _ Port = (*State)(nil)

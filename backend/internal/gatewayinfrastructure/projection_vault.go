@@ -16,20 +16,24 @@ type VaultRuntimePorts struct {
 	Connector          gatewayvault.ConnectorPort
 }
 
-func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRuntimePorts) (gatewayvault.Runtime, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil || ports.InvalidateSessions == nil ||
+func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRuntimePorts) (gatewayvault.Runtime, bool) {
+	capabilities, available := component.projection(handle)
+	if !available || ports.InvalidateSessions == nil ||
 		ports.SessionEnvironment == nil || ports.Connector == nil {
 		return gatewayvault.Runtime{}, false
 	}
+	projected := capabilities.Runtime
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil || capability.Control == nil {
+		return gatewayvault.Runtime{}, false
+	}
 	identity := handle.Identity()
-	delivery := owner.Security.VaultDeliveryCoordinator()
 	observation := component.owner
 	return gatewayvault.Runtime{
 		Storage: gatewayvault.StorageRuntime{
-			Database: owner.Storage.DatabaseHandle(), SecretVault: owner.Storage.SecretVault(),
+			Database: capability.Database, SecretVault: capability.Vault,
 			ReadToken: func(ctx context.Context, id int64) (gatewayvault.TokenState, error) {
-				token, err := owner.Storage.TokenStore().Get(ctx, id)
+				token, err := capability.Tokens.Get(ctx, id)
 				return gatewayvault.TokenState{
 					Active: token.ActiveAt(time.Now().UTC()), ExpiresAt: token.ExpiresAt, UpdatedAt: token.UpdatedAt,
 				}, err
@@ -37,9 +41,9 @@ func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRu
 			WorkspaceID: identity.WorkspaceID, DatabaseID: identity.DatabaseID,
 		},
 		Session: gatewayvault.SessionRuntime{
-			Sessions: owner.Connectors.ConsoleSessionManager(), Leases: owner.Security.VaultLeaseStore(),
-			RuntimeInstanceID: identity.RuntimeID, MCPStarted: owner.Security.RuntimeControlState().MCPStarted,
-			AcquireDelivery: delivery.AcquireDelivery, AcquireExclusive: delivery.AcquireExclusive,
+			Sessions: capability.Sessions, Leases: capability.Leases,
+			RuntimeInstanceID: identity.RuntimeID, MCPStarted: capability.Control.MCPStarted,
+			AcquireDelivery: capability.Delivery.AcquireDelivery, AcquireExclusive: capability.Delivery.AcquireExclusive,
 		},
 		Project: gatewayvault.ProjectRuntimePorts{
 			InvalidateSessions: ports.InvalidateSessions,
@@ -75,10 +79,41 @@ func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRu
 				if err == nil {
 					return ""
 				}
-				return owner.Security.PolicyService().Redact(ctx, err.Error())
+				return capability.Policy.Redact(ctx, err.Error())
 			},
 		},
 	}, true
+}
+
+// VaultRuntime is the low-level composition projection used by boundary tests.
+// Production API code must consume the behavioral application methods below.
+func (component *VaultOwner) VaultRuntime(handle *WorkspaceHandle, ports VaultRuntimePorts) (gatewayvault.Runtime, bool) {
+	return component.vaultRuntime(handle, ports)
+}
+
+func (component *VaultOwner) VaultActionApplication(handle *WorkspaceHandle, application *gatewayvault.Component, ports VaultRuntimePorts) (gatewayvault.VaultActionApplication, error) {
+	runtime, ok := component.vaultRuntime(handle, ports)
+	if !ok || application == nil {
+		return nil, ErrWorkspaceHandleUnavailable
+	}
+	return application.ActionRuntime(runtime)
+}
+
+func (component *VaultOwner) VaultRequestApplication(ctx context.Context, handle *WorkspaceHandle, application *gatewayvault.Component, ports VaultRuntimePorts) (gatewayvault.VaultRequestApplication, error) {
+	runtime, ok := component.vaultRuntime(handle, ports)
+	if !ok || application == nil {
+		return nil, ErrWorkspaceHandleUnavailable
+	}
+	return application.RequestRuntime(ctx, runtime)
+}
+
+func (component *VaultOwner) ReleaseVaultWorkspace(handle *WorkspaceHandle, application *gatewayvault.Component, ports VaultRuntimePorts) bool {
+	runtime, ok := component.vaultRuntime(handle, ports)
+	if !ok || application == nil {
+		return false
+	}
+	application.ReleaseWorkspace(runtime)
+	return true
 }
 
 type VaultSessionPorts struct {
@@ -86,28 +121,56 @@ type VaultSessionPorts struct {
 	Requests  func(context.Context) (gatewayvault.RequestInvalidator, error)
 }
 
-func (component *VaultOwner) VaultSessionRuntime(handle *WorkspaceHandle, ports VaultSessionPorts) (gatewayvault.SessionLifecycleRuntime, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Connectors.ConsoleSessionManager() == nil {
+func (component *VaultOwner) vaultSessionRuntime(handle *WorkspaceHandle, ports VaultSessionPorts) (gatewayvault.SessionLifecycleRuntime, bool) {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return gatewayvault.SessionLifecycleRuntime{}, false
 	}
-	sessions := owner.Connectors.ConsoleSessionManager()
-	leases := owner.Security.VaultLeaseStore()
-	delivery := owner.Security.VaultDeliveryCoordinator()
+	projected := capabilities.Session
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil {
+		return gatewayvault.SessionLifecycleRuntime{}, false
+	}
 	return gatewayvault.SessionLifecycleRuntime{
-		Database: owner.Storage.DatabaseHandle(), Leases: leases, Sessions: sessions,
-		Principal: ports.Principal, Requests: ports.Requests, AcquireDelivery: delivery.AcquireDelivery,
+		Database: capability.Database, Leases: capability.Leases, Sessions: capability.Sessions,
+		Principal: ports.Principal, Requests: ports.Requests, AcquireDelivery: capability.Delivery.AcquireDelivery,
 		InstallAuthorizer: func(guard gatewayvault.SessionAuthorizationGuard) {
-			owner.Connectors.ConfigureVaultSessionAuthorizer(leases, guard)
+			capability.InstallAuthorizer(guard)
 		},
 		InstallSessionClosed: func(hook func(context.Context, gatewayvault.VaultSessionReference) error) {
-			owner.Connectors.ConfigureSessionClosedHook(func(ctx context.Context, sessionID, runtimeID, generation int64) error {
+			capability.InstallSessionClosed(func(ctx context.Context, sessionID, runtimeID, generation int64) error {
 				return hook(ctx, gatewayvault.VaultSessionReference{
 					SessionID: sessionID, RuntimeID: runtimeID, Generation: generation,
 				})
 			})
 		},
 	}, true
+}
+
+func (component *VaultOwner) VaultSessionLifecycle(handle *WorkspaceHandle, application *gatewayvault.Component, runtimePorts VaultRuntimePorts, sessionPorts VaultSessionPorts) (*gatewayvault.SessionLifecycle, error) {
+	if application == nil {
+		return nil, gatewayvault.InvalidatorUnavailableError()
+	}
+	sessionPorts.Requests = func(ctx context.Context) (gatewayvault.RequestInvalidator, error) {
+		return component.VaultRequestApplication(ctx, handle, application, runtimePorts)
+	}
+	runtime, ok := component.vaultSessionRuntime(handle, sessionPorts)
+	if !ok {
+		return nil, gatewayvault.InvalidatorUnavailableError()
+	}
+	return application.SessionLifecycle(runtime)
+}
+
+func (component *VaultOwner) StopMCP(ctx context.Context, handle *WorkspaceHandle, application *gatewayvault.Component, runtimePorts VaultRuntimePorts, sessionPorts VaultSessionPorts) error {
+	lifecycle, err := component.VaultSessionLifecycle(handle, application, runtimePorts, sessionPorts)
+	if err != nil {
+		return err
+	}
+	requests, err := component.VaultRequestApplication(ctx, handle, application, runtimePorts)
+	if err != nil {
+		return err
+	}
+	return application.StopMCP(ctx, lifecycle, requests)
 }
 
 type VaultMCPPorts struct {
@@ -117,24 +180,34 @@ type VaultMCPPorts struct {
 }
 
 func (component *VaultOwner) vaultMCPScope(handle *WorkspaceHandle, ports VaultMCPPorts) (gatewayvault.VaultMCPHTTPScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayvault.VaultMCPHTTPScope{}, false
+	}
+	projected := capabilities.MCP
+	capability, ok := projected.Current()
+	if !ok || capability.Control == nil {
 		return gatewayvault.VaultMCPHTTPScope{}, false
 	}
 	return gatewayvault.VaultMCPHTTPScope{
-		Database: owner.Storage.DatabaseHandle(), Vault: owner.Storage.SecretVault(),
+		Database: capability.Database, Vault: capability.Vault,
 		WorkspaceUUID: handle.Identity().WorkspaceID, TokenID: ports.TokenID,
-		MCPStarted: owner.Security.RuntimeControlState().MCPStarted,
+		MCPStarted: capability.Control.MCPStarted,
 		Runtime:    ports.Runtime, MetadataRead: ports.MetadataRead,
 	}, true
 }
 
 func (component *VaultOwner) vaultApprovalScope(handle *WorkspaceHandle, runtime func(context.Context) (gatewayvault.VaultRequestApplication, error)) (gatewayvault.VaultApprovalHTTPScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayvault.VaultApprovalHTTPScope{}, false
+	}
+	projected := capabilities.Approval
+	capability, ok := projected.Current()
+	if !ok || capability.Control == nil {
 		return gatewayvault.VaultApprovalHTTPScope{}, false
 	}
 	return gatewayvault.VaultApprovalHTTPScope{
-		MCPStarted: owner.Security.RuntimeControlState().MCPStarted, Runtime: runtime,
+		MCPStarted: capability.Control.MCPStarted, Runtime: runtime,
 	}, true
 }

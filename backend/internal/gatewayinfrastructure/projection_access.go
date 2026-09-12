@@ -19,11 +19,16 @@ func (component *AccessOwner) CanReadVaultMetadata(
 	projectID int64,
 	now time.Time,
 ) (bool, error) {
-	owner, ok := component.resolve(handle)
-	if !ok || factory == nil {
+	capabilities, available := component.projection(handle)
+	if !available || factory == nil {
 		return false, gatewayaccess.ErrVaultMetadataAccessUnavailable
 	}
-	reader := factory.ForDatabase(owner.Storage.DatabaseHandle())
+	projected := capabilities.VaultMetadata
+	capability, ok := projected.Current()
+	if !ok {
+		return false, gatewayaccess.ErrVaultMetadataAccessUnavailable
+	}
+	reader := factory.ForDatabase(capability.Database)
 	if reader == nil {
 		return false, gatewayaccess.ErrVaultMetadataAccessUnavailable
 	}
@@ -31,19 +36,24 @@ func (component *AccessOwner) CanReadVaultMetadata(
 }
 
 func (component *AccessOwner) accessControlWorkspace(handle *WorkspaceHandle, ports AccessControlPorts) (gatewayaccess.AccessScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.AccessScope{}, false
+	}
+	projected := capabilities.AccessControl
+	capability, ok := projected.Current()
+	if !ok || capability.Policy == nil || capability.Delivery == nil {
 		return gatewayaccess.AccessScope{}, false
 	}
 	return gatewayaccess.AccessScope{
-		Database: owner.Storage.DatabaseHandle(), Tokens: owner.Storage.TokenStore(),
-		Registry: owner.Connectors.ConnectorRegistry(),
+		Database: capability.Database, Tokens: capability.Tokens,
+		Registry: capability.Registry,
 		ReusableTokens: func(ctx context.Context) (bool, error) {
-			settings, err := owner.Security.PolicyService().ReadSettings(ctx)
+			settings, err := capability.Policy.ReadSettings(ctx)
 			return settings.ReusableTokens, err
 		},
 		Mutate:                  gatewayaccess.MutationRunner(component.owner.observationMutationRunner(handle, "user", nil, 0)),
-		AcquireExclusive:        owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireExclusive:        capability.Delivery.AcquireExclusive,
 		FinishTokenInvalidation: ports.FinishTokenInvalidation,
 	}, true
 }

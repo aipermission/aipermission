@@ -6,11 +6,11 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
-	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation"
+	connectorstate "github.com/aipermission/aipermission/backend/internal/workspaceruntime/state/connectors"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/state/observation"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/state/security"
+	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/state/storage"
 )
 
 func TagActionIdentity(runtime *Runtime, canonical []byte) (string, error) {

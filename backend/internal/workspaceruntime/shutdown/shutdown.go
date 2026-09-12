@@ -91,13 +91,12 @@ func closeWithTimeoutAndComplete(runtime *workspaceruntime.Runtime, resolveActio
 			drainErr = errors.Join(drainErr, closeErr)
 		}
 	}
-	done := runtime.StartTeardown(coordinator.run)
-	if onComplete != nil {
-		go func() {
-			<-done
+	runtime.StartTeardown(func() {
+		coordinator.run()
+		if onComplete != nil {
 			onComplete()
-		}()
-	}
+		}
+	})
 	return errors.Join(drainErr, ErrShutdownDeferred)
 }
 
@@ -357,13 +356,12 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 		}
 		return err
 	}
-	done := runtime.StartTeardown(func() { retryDiscardStorage(runtime) })
-	if onComplete != nil {
-		go func() {
-			<-done
+	runtime.StartTeardown(func() {
+		retryDiscardStorage(runtime)
+		if onComplete != nil {
 			onComplete()
-		}()
-	}
+		}
+	})
 	return errors.Join(err, ErrShutdownDeferred)
 }
 

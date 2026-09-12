@@ -12,6 +12,7 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
+	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -78,6 +79,17 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 
 func (s *Server) connectorCredentialPreparationPorts(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialPreparationPorts {
 	return s.connectorManagement.CredentialPreparation(runtime)
+}
+
+func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvault.Runtime {
+	if runtime == nil {
+		return gatewayvault.Runtime{}
+	}
+	composed, ok := s.vaultOwner.VaultRuntime(runtime, s.vaultRuntimePorts(runtime))
+	if !ok {
+		return gatewayvault.Runtime{}
+	}
+	return composed
 }
 
 func testRuntimeDatabase(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) *sql.DB {

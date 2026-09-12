@@ -47,5 +47,5 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 }
 
 func (s *Server) vaultActionApplication(runtime *gatewayinfra.WorkspaceHandle) (gatewayvault.VaultActionApplication, error) {
-	return s.vaultApplication().ActionRuntime(s.vaultRuntime(runtime))
+	return s.vaultOwner.VaultActionApplication(runtime, s.vaultApplication(), s.vaultRuntimePorts(runtime))
 }

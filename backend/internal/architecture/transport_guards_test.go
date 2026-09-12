@@ -215,6 +215,93 @@ func TestProductionAPIDoesNotConsumeRawWorkspaceScopes(t *testing.T) {
 	}
 }
 
+func TestProductionAPIDoesNotConsumeRawVaultRuntime(t *testing.T) {
+	forbiddenPackage := modulePath + "/internal/gatewayvault"
+	inspectProductionGoFiles(t, filepath.Join("..", "api"), func(path string, file *ast.File) {
+		aliases, dotImports := importedPackageAliases(file, map[string]map[string]bool{
+			forbiddenPackage: {"Runtime": true},
+		})
+		for _, packagePath := range dotImports {
+			if packagePath == forbiddenPackage {
+				t.Errorf("%s dot-imports %s; raw Vault runtime use must remain mechanically enforceable", path, packagePath)
+			}
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if owner, ok := selector.X.(*ast.Ident); ok && aliases[owner.Name] == forbiddenPackage && selector.Sel.Name == "Runtime" {
+				t.Errorf("%s consumes gatewayvault.Runtime; production API must use behavior-owned Vault applications", path)
+			}
+			if selector.Sel.Name == "VaultRuntime" {
+				t.Errorf("%s calls VaultRuntime; production API must not project raw Vault state", path)
+			}
+			return true
+		})
+	})
+}
+
+func TestGatewayFeatureProjectionsCannotRecoverWorkspaceRuntime(t *testing.T) {
+	root := filepath.Join("..", "gatewayinfrastructure")
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "projection_") || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imported := range file.Imports {
+			packagePath, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				return err
+			}
+			if packagePath == modulePath+"/internal/gatewayworkspace" {
+				t.Errorf("%s imports gatewayworkspace; feature projections must consume only pre-bound capabilities", path)
+			}
+		}
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if ok && (selector.Sel.Name == "resolve" || selector.Sel.Name == "lifecycle") {
+				t.Errorf("%s accesses %s; only the workspace lifecycle owner may retain the opaque runtime", path, selector.Sel.Name)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect gateway feature projections: %v", err)
+	}
+}
+
+func TestWorkspaceCapabilityProjectionIsBoundOnlyByGatewayInfrastructure(t *testing.T) {
+	inspectProductionGoPackages(t, filepath.Join("..", "..", "internal"), func(path string, file *ast.File, _ map[string][]ast.Expr) {
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "ProjectCapabilities" {
+				return true
+			}
+			if filepath.Clean(path) != filepath.Clean(filepath.Join("..", "..", "internal", "gatewayinfrastructure", "component.go")) {
+				t.Errorf("%s binds workspace capability families; only gateway infrastructure composition may do so", path)
+			}
+			return true
+		})
+	})
+}
+
 func TestOpenAPIRouteSourceHasOneFlagAndOneRead(t *testing.T) {
 	file, err := parser.ParseFile(
 		token.NewFileSet(),

@@ -98,5 +98,3 @@ func (s *State) ConnectorScope(kind string, accessor connectorruntime.SecretAcce
 		Resources: s.resources, ConsoleSessions: s.consoleSessions, SecretAccessor: accessor,
 	})
 }
-
-var _ Port = (*State)(nil)

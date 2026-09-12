@@ -11,10 +11,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/catalog"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/lifecycle"
-	connectorstate "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/connectors"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/observation"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/security"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtimeinput"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
@@ -34,15 +30,11 @@ func (identity RuntimeIdentity) Ready() bool {
 	return identity.WorkspaceID != "" && identity.RuntimeID != ""
 }
 
-// Runtime is an explicit composition DTO. The concrete encrypted runtime is
-// retained privately for teardown; consumers receive only owned feature ports.
+// Runtime is an opaque workspace capability. The concrete encrypted runtime is
+// retained privately and projected only through use-case-specific capabilities.
 type Runtime struct {
-	Identity    RuntimeIdentity
-	Storage     storage.Port
-	Connectors  connectorstate.Port
-	Security    security.Port
-	Observation observation.Port
-	owner       *workspaceruntime.Runtime
+	Identity RuntimeIdentity
+	owner    *workspaceruntime.Runtime
 }
 
 type AdoptInput runtimeinput.Adopt
@@ -107,10 +99,18 @@ func (runtime *Runtime) WorkspaceIdentity() workspacelifecycle.Identity {
 }
 
 func (runtime *Runtime) WorkspaceDatabase() *sql.DB {
-	if runtime == nil || runtime.Storage == nil {
+	owner, ok := runtime.concreteOwner()
+	if !ok {
 		return nil
 	}
-	return runtime.Storage.DatabaseHandle()
+	return owner.Storage.DatabaseHandle()
+}
+
+func (runtime *Runtime) concreteOwner() (*workspaceruntime.Runtime, bool) {
+	if runtime == nil || runtime.owner == nil {
+		return nil, false
+	}
+	return runtime.owner, true
 }
 
 func composeRuntime(owner *workspaceruntime.Runtime) (*Runtime, error) {
@@ -123,7 +123,7 @@ func composeRuntime(owner *workspaceruntime.Runtime) (*Runtime, error) {
 			WorkspaceID: owner.WorkspaceUUID, RuntimeID: owner.RuntimeInstanceID,
 			UIRetryID: owner.UIRetryIdentity,
 		},
-		Storage: &owner.Storage, Connectors: &owner.Connectors, Security: &owner.Security, Observation: &owner.Observation, owner: owner,
+		owner: owner,
 	}, nil
 }
 

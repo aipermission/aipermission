@@ -3,14 +3,19 @@ package gatewayinfrastructure
 import connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 
 func (component *ConnectorPortsOwner) connectorWorkspace(handle *WorkspaceHandle, ports connectorports.Workspace) (connectorports.Workspace, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return connectorports.Workspace{}, false
+	}
+	projected := capabilities.Transport
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil {
 		return connectorports.Workspace{}, false
 	}
 	workspace := connectorports.NewWorkspace(
-		owner.Connectors,
-		owner.Storage.DatabaseHandle(),
-		owner.Security.VaultDeliveryCoordinator().AcquireDelivery,
+		capability.Scopes,
+		capability.Database,
+		capability.Delivery.AcquireDelivery,
 	)
 	workspace.Principal = ports.Principal
 	workspace.Actions = ports.Actions

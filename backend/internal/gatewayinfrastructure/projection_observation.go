@@ -21,27 +21,26 @@ func (component *ObservationOwner) observationWorkspace(handle *WorkspaceHandle)
 }
 
 func (component *Component) observationRuntime(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
-	owner, ok := component.observationOwner.resolve(handle)
+	if component.observationOwner == nil {
+		return observationapp.Runtime{}, false
+	}
+	capabilities, available := component.observationOwner.projection(handle)
+	if !available {
+		return observationapp.Runtime{}, false
+	}
+	projected := capabilities.Runtime
+	capability, ok := projected.Current()
 	if !ok {
 		return observationapp.Runtime{}, false
 	}
-	identity := handle.Identity()
 	return observationapp.Runtime{
-		Database:   owner.Storage.DatabaseHandle(),
-		DatabaseID: identity.DatabaseID,
-		Registry:   owner.Connectors.ConnectorRegistry(),
-		MCPStarted: owner.Security.RuntimeControlState().MCPStarted(),
-		PrepareRedactor: func(ctx context.Context) func(string) string {
-			policy := owner.Security.PolicyService()
-			if policy == nil {
-				return nil
-			}
-			return policy.PrepareRedactor(ctx)
-		},
-		AuditDispatcher:     owner.Observation.AuditDispatcherService,
-		SetAuditDispatcher:  owner.Observation.SetAuditDispatcherService,
-		RetentionService:    owner.Observation.RetentionService,
-		SetRetentionService: owner.Observation.SetRetentionService,
+		Database: capability.Database, DatabaseID: handle.Identity().DatabaseID,
+		Registry: capability.Registry, MCPStarted: capability.MCPStarted != nil && capability.MCPStarted(),
+		PrepareRedactor:     capability.PrepareRedactor,
+		AuditDispatcher:     capability.AuditDispatcher,
+		SetAuditDispatcher:  capability.SetAuditDispatcher,
+		RetentionService:    capability.RetentionService,
+		SetRetentionService: capability.SetRetentionService,
 	}, true
 }
 

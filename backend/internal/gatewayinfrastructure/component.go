@@ -43,11 +43,11 @@ func NewComponent(dataPath string, describe func(*WorkspaceHandle) Identity) *Co
 		identity:       &componentIdentity{},
 		observation:    observationapp.New(),
 	}
+	component.bindOwners()
 	component.workspace = gatewayworkspace.NewComponent(dataPath, func(runtime *gatewayworkspace.Runtime) gatewayworkspace.Identity {
 		identity := describe(component.handleFor(runtime))
 		return gatewayworkspace.Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 	})
-	component.bindOwners()
 	return component
 }
 
@@ -61,6 +61,7 @@ func (component *Component) handleFor(owner *gatewayworkspace.Runtime) *Workspac
 		return handle
 	}
 	handle := newWorkspaceHandle(component.identity, owner)
+	component.bindHandleCapabilities(handle, gatewayworkspace.ProjectCapabilities(owner))
 	component.handlesByOwner[owner] = handle
 	return handle
 }
@@ -76,6 +77,7 @@ func (component *Component) forgetHandle(handle *WorkspaceHandle) {
 	component.runtimeMu.Lock()
 	if component.handlesByOwner[handle.workspace] == handle {
 		delete(component.handlesByOwner, handle.workspace)
+		component.forgetHandleCapabilities(handle)
 		handle.active.Store(false)
 	}
 	component.runtimeMu.Unlock()
@@ -92,7 +94,7 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 			if err != nil {
 				return nil, err
 			}
-			owner, ok := component.resolve(runtime)
+			owner, ok := component.lifecycleRuntime(runtime)
 			if !ok {
 				return nil, InitializationError()
 			}
@@ -118,11 +120,11 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 		Move: dependencies.Move, Delete: dependencies.Delete,
 		ValidateNewPassword: func(ctx context.Context, runtime *gatewayworkspace.Runtime, databaseName, password string) error {
 			handle := component.handleFor(runtime)
-			owner, ok := component.resolve(handle)
+			database, ok := component.owner.operationsOwner.passwordValidationDatabase(handle)
 			if !ok {
 				return InitializationError()
 			}
-			return gatewaybackup.ValidateNewPassword(ctx, owner.Storage.DatabaseHandle(), databaseName, password)
+			return gatewaybackup.ValidateNewPassword(ctx, database, databaseName, password)
 		},
 		Publish: dependencies.Publish, GatewaySecret: dependencies.GatewaySecret,
 	})
@@ -156,7 +158,7 @@ func (component *WorkspaceOwner) LookupWorkspace(id string) (*WorkspaceHandle, b
 }
 
 func (component *WorkspaceOwner) ActivateWorkspace(handle *WorkspaceHandle) {
-	if owner, ok := component.resolve(handle); ok && component.owner.workspace != nil {
+	if owner, ok := component.lifecycleRuntime(handle); ok && component.owner.workspace != nil {
 		component.owner.workspace.Activate(owner)
 	}
 }
@@ -221,7 +223,7 @@ func (component *WorkspaceOwner) OpenWorkspace(ctx context.Context, input OpenWo
 }
 
 func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resolveTransfers func() TransferWorkflow, onComplete func()) error {
-	owner, ok := component.resolve(handle)
+	owner, ok := component.lifecycleRuntime(handle)
 	if !ok || component.owner.workspace == nil {
 		return InitializationError()
 	}
@@ -230,16 +232,16 @@ func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resol
 		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
 	}
 	err := component.owner.workspace.Discard(owner, transfers, func() {
-		component.forgetHandle(handle)
 		if onComplete != nil {
 			onComplete()
 		}
+		component.forgetHandle(handle)
 	})
 	return err
 }
 
 func (component *WorkspaceOwner) CloseWorkspace(handle *WorkspaceHandle, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow, onComplete func()) error {
-	owner, ok := component.resolve(handle)
+	owner, ok := component.lifecycleRuntime(handle)
 	if !ok || component.owner.workspace == nil {
 		return InitializationError()
 	}
@@ -256,10 +258,10 @@ func (component *WorkspaceOwner) CloseWorkspace(handle *WorkspaceHandle, resolve
 		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
 	}
 	err := component.owner.workspace.Close(owner, actions, commands, transfers, func() {
-		component.forgetHandle(handle)
 		if onComplete != nil {
 			onComplete()
 		}
+		component.forgetHandle(handle)
 	})
 	return err
 }
@@ -272,7 +274,7 @@ func (component *WorkspaceOwner) WaitWorkspaceClosed(ctx context.Context, handle
 }
 
 func (component *WorkspaceOwner) ConfiguredGatewaySecret(handle *WorkspaceHandle) string {
-	owner, ok := component.resolve(handle)
+	owner, ok := component.lifecycleRuntime(handle)
 	if !ok {
 		return ""
 	}

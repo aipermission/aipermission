@@ -108,5 +108,5 @@ func (s *Server) releaseRuntimeApplications(runtime *gatewayinfra.WorkspaceHandl
 	}
 	s.commands.Release(runtime.Identity().RuntimeID)
 	s.connectorActions.Release(runtime)
-	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
+	s.vaultOwner.ReleaseVaultWorkspace(runtime, s.vaultApplication(), s.vaultRuntimePorts(runtime))
 }

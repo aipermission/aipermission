@@ -8,5 +8,5 @@ import (
 )
 
 func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) (gatewayvault.VaultRequestApplication, error) {
-	return s.vaultApplication().RequestRuntime(ctx, s.vaultRuntime(runtime))
+	return s.vaultOwner.VaultRequestApplication(ctx, runtime, s.vaultApplication(), s.vaultRuntimePorts(runtime))
 }

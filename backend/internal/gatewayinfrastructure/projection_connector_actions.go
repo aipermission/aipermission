@@ -44,18 +44,23 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 	if component == nil || component.owner == nil {
 		return gatewayactions.Workspace{}, false
 	}
-	owner, ok := component.owner.resolve(handle)
-	if !ok || component.application == nil || owner.Security.PolicyService() == nil {
+	capabilities, available := component.owner.projection(handle)
+	if !available || component.application == nil {
+		return gatewayactions.Workspace{}, false
+	}
+	projected := capabilities.Action
+	capability, ok := projected.Current()
+	if !ok || capability.Policy == nil || capability.Delivery == nil || capability.Control == nil || capabilities.Tag == nil {
 		return gatewayactions.Workspace{}, false
 	}
 	identity := handle.Identity()
 	workflow := gatewayactions.WorkflowPorts{
-		AcquireSecret: owner.Security.VaultDeliveryCoordinator().AcquireDelivery,
+		AcquireSecret: capability.Delivery.AcquireDelivery,
 		RedactBasic: func(ctx context.Context, value string) string {
-			return owner.Security.PolicyService().Redact(ctx, value)
+			return capability.Policy.Redact(ctx, value)
 		},
 		RedactCustom: func(ctx context.Context, value string) string {
-			return owner.Security.PolicyService().RedactCustom(ctx, value)
+			return capability.Policy.RedactCustom(ctx, value)
 		},
 		Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return component.owner.owner.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
@@ -77,15 +82,15 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 	}
 	return gatewayactions.Workspace{
 		Storage: gatewayactions.ActionStorage{
-			Database: owner.Storage.DatabaseHandle(), Tokens: owner.Storage.TokenStore(),
-			Registry: owner.Connectors.ConnectorRegistry(), SecretVault: owner.Storage.SecretVault(),
+			Database: capability.Database, Tokens: capability.Tokens,
+			Registry: capability.Registry, SecretVault: capability.Vault,
 			WorkspaceID: identity.WorkspaceID,
 		},
 		Identity: gatewayactions.ActionIdentity{
-			Tag: owner.TagActionIdentity, RuntimeInstanceID: identity.RuntimeID,
-			MCPStarted: owner.Security.RuntimeControlState().MCPStarted,
+			Tag: capabilities.Tag, RuntimeInstanceID: identity.RuntimeID,
+			MCPStarted: capability.Control.MCPStarted,
 			Ensure: func() error {
-				if current, valid := component.owner.resolve(handle); !valid || current != owner || !handle.Identity().Ready() {
+				if !component.owner.valid(handle) || !handle.Identity().Ready() {
 					return ErrWorkspaceHandleUnavailable
 				}
 				return nil

@@ -29,7 +29,7 @@ func (component *VaultOwner) HTTPHandlers(
 	}
 	requestRuntime := func(handle *WorkspaceHandle) func(context.Context) (gatewayvault.VaultRequestApplication, error) {
 		return func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
-			runtime, ok := component.VaultRuntime(handle, dependencies.RuntimePorts(handle))
+			runtime, ok := component.vaultRuntime(handle, dependencies.RuntimePorts(handle))
 			if !ok {
 				return nil, ErrWorkspaceHandleUnavailable
 			}
@@ -49,7 +49,7 @@ func (component *VaultOwner) HTTPHandlers(
 			if !ok {
 				return gatewayvault.ProjectVaultHTTPScope{}, false
 			}
-			runtime, ok := component.VaultRuntime(handle, dependencies.RuntimePorts(handle))
+			runtime, ok := component.vaultRuntime(handle, dependencies.RuntimePorts(handle))
 			if !ok {
 				return gatewayvault.ProjectVaultHTTPScope{}, true
 			}

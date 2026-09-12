@@ -4,12 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
@@ -26,23 +31,78 @@ func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
 		t.Fatal("workspace capabilities did not retain their shared component identity")
 	}
 	workspace := component.WorkspaceOwner()
-	if owner, ok := workspace.resolve(first); !ok || owner != firstOwner {
+	if owner, ok := workspace.lifecycleRuntime(first); !ok || owner != firstOwner {
 		t.Fatal("first workspace capability stopped resolving after adding the second")
 	}
-	if owner, ok := workspace.resolve(second); !ok || owner != secondOwner {
+	if owner, ok := workspace.lifecycleRuntime(second); !ok || owner != secondOwner {
 		t.Fatal("second workspace capability did not resolve to its owner")
 	}
 
 	foreign := NewComponent(t.TempDir(), nil)
-	if _, ok := foreign.WorkspaceOwner().resolve(first); ok {
+	if _, ok := foreign.WorkspaceOwner().lifecycleRuntime(first); ok {
 		t.Fatal("workspace capability resolved in a foreign component")
 	}
 	component.forgetHandle(first)
-	if _, ok := workspace.resolve(first); ok {
+	if _, ok := workspace.lifecycleRuntime(first); ok {
 		t.Fatal("forgotten workspace capability remained valid")
 	}
-	if _, ok := component.AccessOwner().resolve(first); ok {
+	if component.AccessOwner().valid(first) {
 		t.Fatal("forgotten workspace capability remained valid through a feature owner")
+	}
+}
+
+func TestFeatureCapabilityRegistriesAreHandleScopedAndReleased(t *testing.T) {
+	component := NewComponent(t.TempDir(), nil)
+	handle := component.handleFor(&gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}})
+	foreign := NewComponent(t.TempDir(), nil)
+
+	checks := []struct {
+		name      string
+		available func(*Component, *WorkspaceHandle) bool
+	}{
+		{"access", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.AccessOwner().projection(handle)
+			return ok
+		}},
+		{"connector actions", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.ConnectorActionOwner().projection(handle)
+			return ok
+		}},
+		{"connector management", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.ConnectorManagementOwner().projection(handle)
+			return ok
+		}},
+		{"connector ports", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.ConnectorPortsOwner().projection(handle)
+			return ok
+		}},
+		{"observation", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.ObservationOwner().projection(handle)
+			return ok
+		}},
+		{"operations", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.OperationsOwner().projection(handle)
+			return ok
+		}},
+		{"vault", func(owner *Component, handle *WorkspaceHandle) bool {
+			_, ok := owner.VaultOwner().projection(handle)
+			return ok
+		}},
+	}
+	for _, check := range checks {
+		if !check.available(component, handle) {
+			t.Fatalf("%s capabilities were not bound to the owned handle", check.name)
+		}
+		if check.available(foreign, handle) {
+			t.Fatalf("%s capabilities crossed component ownership", check.name)
+		}
+	}
+
+	component.forgetHandle(handle)
+	for _, check := range checks {
+		if check.available(component, handle) {
+			t.Fatalf("%s capabilities remained available after workspace teardown", check.name)
+		}
 	}
 }
 
@@ -150,9 +210,25 @@ func (factory *metadataReaderFactory) CanRead(context.Context, int64, int64, tim
 }
 
 func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.T) {
-	database := &sql.DB{}
-	storageState := storage.New(database, nil, nil, "workspace", nil)
-	owner := &gatewayworkspace.Runtime{Storage: &storageState}
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "workspace.aipdb"), "TestPassword123!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	secretVault, err := vault.New("gateway-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := gatewayworkspace.NewComponent(t.TempDir(), nil)
+	owner, err := workspace.Adopt(t.Context(), gatewayworkspace.AdoptInput{
+		ID: "workspace", Path: "workspace.aipdb", Database: database, Vault: secretVault,
+		TokenStore: tokens.NewStore(database), ConfiguredGatewaySecret: "gateway-secret",
+		Registry: connectors.NewRegistry(), AdapterRegistry: connectorapi.NewRegistry(),
+		RuntimeInstanceID: func() (string, error) { return "runtime-one", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	component := NewComponent(t.TempDir(), nil)
 	handle := component.handleFor(owner)
 	factory := &metadataReaderFactory{allowed: true}

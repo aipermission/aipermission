@@ -11,11 +11,12 @@ import (
 )
 
 func (component *AccessOwner) MCPTokenSource(handle *WorkspaceHandle) (gatewayaccess.MCPTokenSource, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Storage.TokenStore() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return nil, false
 	}
-	return owner.Storage.TokenStore(), true
+	projected := capabilities.MCPTokenSource
+	return projected.Current()
 }
 
 type MCPReadPorts struct {
@@ -26,12 +27,17 @@ type MCPReadPorts struct {
 }
 
 func (component *AccessOwner) mcpReadScope(handle *WorkspaceHandle, ports MCPReadPorts) (gatewayaccess.MCPScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || !ports.Metadata.Ready() {
+	capabilities, available := component.projection(handle)
+	if !available || !ports.Metadata.Ready() {
+		return gatewayaccess.MCPScope{}, false
+	}
+	projected := capabilities.MCPRead
+	capability, ok := projected.Current()
+	if !ok {
 		return gatewayaccess.MCPScope{}, false
 	}
 	return gatewayaccess.MCPScope{
-		Database: owner.Storage.DatabaseHandle(), Registry: owner.Connectors.ConnectorRegistry(),
+		Database: capability.Database, Registry: capability.Registry,
 		TokenID: ports.TokenID, Permissions: ports.Permissions,
 		MetadataEnabled: ports.MetadataEnabled, Metadata: ports.Metadata,
 	}, true
@@ -48,20 +54,25 @@ type MCPActionPorts struct {
 }
 
 func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.MCPActionScope{}, false
+	}
+	projected := capabilities.MCPAction
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil || capability.Control == nil {
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	if ports.Delivery == nil {
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	output := &gatewayaccess.MCPOutputAuthorization{
-		Database: owner.Storage.DatabaseHandle(), Tokens: owner.Storage.TokenStore(),
-		Leases: owner.Security.VaultLeaseStore(), Delivery: ports.Delivery(owner.Security.VaultDeliveryCoordinator().AcquireDelivery),
-		MCPStarted: owner.Security.RuntimeControlState().MCPStarted, Principal: ports.Principal,
+		Database: capability.Database, Tokens: capability.Tokens,
+		Leases: capability.Leases, Delivery: ports.Delivery(capability.Delivery.AcquireDelivery),
+		MCPStarted: capability.Control.MCPStarted, Principal: ports.Principal,
 	}
 	return gatewayaccess.MCPActionScope{
-		Database: owner.Storage.DatabaseHandle(), TokenID: ports.TokenID, Output: output,
+		Database: capability.Database, TokenID: ports.TokenID, Output: output,
 		Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
 	}, true
 }
@@ -73,13 +84,18 @@ type MCPRuntimePorts struct {
 }
 
 func (component *AccessOwner) mcpRuntimeScope(handle *WorkspaceHandle, ports MCPRuntimePorts) (gatewayaccess.MCPRuntimeScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.MCPRuntimeScope{}, false
+	}
+	projected := capabilities.MCPRuntime
+	capability, ok := projected.Current()
+	if !ok || capability.Control == nil || capability.Delivery == nil {
 		return gatewayaccess.MCPRuntimeScope{}, false
 	}
 	return gatewayaccess.MCPRuntimeScope{
-		State: owner.Security.RuntimeControlState(), StartEnabled: ports.StartEnabled,
-		AcquireStop: owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
+		State: capability.Control, StartEnabled: ports.StartEnabled,
+		AcquireStop: capability.Delivery.AcquireExclusive,
 		StopEffects: ports.StopEffects, Observe: ports.Observe,
 	}, true
 }
@@ -91,30 +107,45 @@ func (component *AccessOwner) RecoverConsoleRuntime(
 	runtimeID int64,
 	cancelRunning func() error,
 ) ([]int64, error) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Connectors.ConsoleSessionManager() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return nil, ErrWorkspaceHandleUnavailable
 	}
-	return owner.Connectors.ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, cancelRunning)
+	projected := capabilities.ConsoleRecovery
+	capability, ok := projected.Current()
+	if !ok {
+		return nil, ErrWorkspaceHandleUnavailable
+	}
+	return capability.Recover(ctx, principal, runtimeID, cancelRunning)
 }
 
 func (component *AccessOwner) securityScope(handle *WorkspaceHandle) (gatewayaccess.SecurityHTTPScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.SecurityHTTPScope{}, false
+	}
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
 	return gatewayaccess.SecurityHTTPScope{
-		Service: owner.Security.PolicyService(),
+		Service: capability.Policy,
 		Mutate:  gatewayaccess.MutationRunner(component.owner.observationMutationRunner(handle, "user", nil, 0)),
 	}, true
 }
 
 func (component *AccessOwner) ReadSecuritySettings(ctx context.Context, handle *WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
-	return owner.Security.PolicyService().ReadSettings(ctx)
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
+		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
+	}
+	return capability.Policy.ReadSettings(ctx)
 }
 
 func (component *AccessOwner) UpdateSecuritySettings(
@@ -122,15 +153,20 @@ func (component *AccessOwner) UpdateSecuritySettings(
 	handle *WorkspaceHandle,
 	settings gatewayaccess.SecuritySettings,
 ) (gatewayaccess.SecuritySettings, error) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
+	}
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
 	mutate := component.owner.observationMutationRunner(handle, "user", nil, 0)
 	if mutate == nil {
 		return gatewayaccess.SecuritySettings{}, ErrWorkspaceHandleUnavailable
 	}
-	return owner.Security.PolicyService().UpdateSettings(
+	return capability.Policy.UpdateSettings(
 		ctx,
 		settings,
 		func(ctx context.Context, action string, payload func() any, change func(*sql.Tx) error) error {
@@ -144,15 +180,20 @@ func (component *AccessOwner) CreateSecurityRule(
 	handle *WorkspaceHandle,
 	input gatewayaccess.SecurityRuleInput,
 ) (gatewayaccess.SecurityRule, error) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
+	}
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
 		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
 	}
 	mutate := component.owner.observationMutationRunner(handle, "user", nil, 0)
 	if mutate == nil {
 		return gatewayaccess.SecurityRule{}, ErrWorkspaceHandleUnavailable
 	}
-	return owner.Security.PolicyService().CreateRule(
+	return capability.Policy.CreateRule(
 		ctx,
 		input,
 		func(ctx context.Context, action string, payload func() any, change func(*sql.Tx) error) error {
@@ -162,44 +203,69 @@ func (component *AccessOwner) CreateSecurityRule(
 }
 
 func (component *AccessOwner) MCPStarted(handle *WorkspaceHandle) (bool, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.RuntimeControlState() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return false, false
 	}
-	return owner.Security.RuntimeControlState().MCPStarted(), true
+	projected := capabilities.RuntimeControl
+	capability, ok := projected.Current()
+	if !ok || capability.MCPStarted == nil {
+		return false, false
+	}
+	return capability.MCPStarted(), true
 }
 
 func (component *AccessOwner) SetMCPStarted(handle *WorkspaceHandle, enabled bool) bool {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.RuntimeControlState() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return false
 	}
-	owner.Security.RuntimeControlState().SetMCPStarted(enabled)
+	projected := capabilities.RuntimeControl
+	capability, ok := projected.Current()
+	if !ok || capability.SetMCPStarted == nil {
+		return false
+	}
+	capability.SetMCPStarted(enabled)
 	return true
 }
 
 func (component *AccessOwner) RedactForPersistence(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return "", false
 	}
-	return owner.Security.PolicyService().Redact(ctx, value), true
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
+		return "", false
+	}
+	return capability.Policy.Redact(ctx, value), true
 }
 
 func (component *AccessOwner) RedactCustom(ctx context.Context, handle *WorkspaceHandle, value string) (string, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return "", false
 	}
-	return owner.Security.PolicyService().RedactCustom(ctx, value), true
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
+		return "", false
+	}
+	return capability.Policy.RedactCustom(ctx, value), true
 }
 
 func (component *AccessOwner) RuntimeRedactor(handle *WorkspaceHandle) (func(string) string, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return nil, false
 	}
-	return owner.Security.PolicyService().Redactor(), true
+	projected := capabilities.SecurityPolicy
+	capability, ok := projected.Current()
+	if !ok {
+		return nil, false
+	}
+	return capability.Policy.Redactor(), true
 }
 
 func (component *AccessOwner) ConfigureWorkspaceRuntime(
@@ -207,16 +273,21 @@ func (component *AccessOwner) ConfigureWorkspaceRuntime(
 	handle *WorkspaceHandle,
 	opener gatewayoperations.RuntimeOpener,
 ) error {
-	owner, ok := component.resolve(handle)
-	if !ok || owner.Security.PolicyService() == nil {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return ErrWorkspaceHandleUnavailable
 	}
-	settings, err := owner.Security.PolicyService().ReadSettings(ctx)
+	projected := capabilities.RuntimeConfiguration
+	capability, ok := projected.Current()
+	if !ok || capability.Control == nil || capability.ConfigureConsole == nil {
+		return ErrWorkspaceHandleUnavailable
+	}
+	settings, err := capability.Policy.ReadSettings(ctx)
 	if err != nil {
 		return err
 	}
-	owner.Security.RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
-	owner.Connectors.ConfigureConsoleSessions(gatewayoperations.AdaptRuntimeOpener(opener), owner.Security.PolicyService().Redactor())
+	capability.Control.SetMCPStarted(settings.MCPStartEnabled)
+	capability.ConfigureConsole(gatewayoperations.AdaptRuntimeOpener(opener), capability.Policy.Redactor())
 	return nil
 }
 
@@ -225,20 +296,30 @@ func (component *AccessOwner) ConfigureConsoleRuntime(
 	opener gatewayoperations.RuntimeOpener,
 	redact func(string) string,
 ) error {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
 		return ErrWorkspaceHandleUnavailable
 	}
-	owner.Connectors.ConfigureConsoleSessions(gatewayoperations.AdaptRuntimeOpener(opener), redact)
+	projected := capabilities.ConsoleConfiguration
+	capability, ok := projected.Current()
+	if !ok || capability.Configure == nil {
+		return ErrWorkspaceHandleUnavailable
+	}
+	capability.Configure(gatewayoperations.AdaptRuntimeOpener(opener), redact)
 	return nil
 }
 
 func (component *OperationsOwner) MessageStore(handle *WorkspaceHandle, redact func(context.Context, string) string) (*gatewayoperations.MessageStore, bool) {
-	owner, ok := component.resolve(handle)
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil, false
+	}
+	projected := capabilities.Message
+	capability, ok := projected.Current()
 	if !ok {
 		return nil, false
 	}
-	return gatewayoperations.NewMessageStore(owner.Storage.DatabaseHandle(), redact), true
+	return gatewayoperations.NewMessageStore(capability.Database, redact), true
 }
 
 type ProjectPorts struct {
@@ -246,14 +327,19 @@ type ProjectPorts struct {
 }
 
 func (component *VaultOwner) projectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewayvault.ProjectScope{}, false
+	}
+	projected := capabilities.Project
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil {
 		return gatewayvault.ProjectScope{}, false
 	}
 	return gatewayvault.ProjectScope{
-		Database:         owner.Storage.DatabaseHandle(),
+		Database:         capability.Database,
 		Mutate:           gatewayvault.ProjectMutation(component.owner.observationMutationRunner(handle, "user", nil, 0)),
-		AcquireExclusive: owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireExclusive: capability.Delivery.AcquireExclusive,
 		Invalidate:       ports.Invalidate,
 	}, true
 }

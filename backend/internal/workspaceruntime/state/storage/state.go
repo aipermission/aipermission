@@ -16,6 +16,10 @@ type State struct {
 	ownership   Ownership
 }
 
+type Ownership interface {
+	Release() (bool, error)
+}
+
 func New(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store, workspaceUUID string, ownership Ownership) State {
 	if tokenStore == nil {
 		tokenStore = tokens.NewEncryptedStore(database, secretVault, workspaceUUID)
@@ -60,5 +64,3 @@ func (s *State) ClearDatabaseOwnership() {
 		s.ownershipMu.Unlock()
 	}
 }
-
-var _ Port = (*State)(nil)

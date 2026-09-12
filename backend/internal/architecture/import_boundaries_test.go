@@ -864,7 +864,16 @@ func TestConcreteWorkspaceRuntimeStaysInsideGatewayOwner(t *testing.T) {
 	for _, retired := range []string{"connectors", "gatewayadapter", "observation", "security", "storage"} {
 		path := filepath.Join("..", "..", "internal", "workspaceruntime", retired)
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Errorf("%s must stay retired; workspace components belong to the gateway runtime boundary", path)
+			t.Errorf("%s must stay retired; concrete runtime state belongs under workspaceruntime/state", path)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("..", "gatewayworkspace", "runtime")); !os.IsNotExist(err) {
+		t.Fatal("gatewayworkspace/runtime must stay retired; concrete mutable state belongs to workspaceruntime")
+	}
+	for _, state := range []string{"connectors", "observation", "security", "storage"} {
+		path := filepath.Join("..", "workspaceruntime", "state", state)
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			t.Errorf("concrete runtime state owner %s is missing", path)
 		}
 	}
 }
@@ -884,7 +893,8 @@ func TestGatewayWorkspaceOwnsExplicitRuntimeComposition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFields := map[string]bool{"Identity": false, "Storage": false, "Connectors": false, "Security": false, "Observation": false, "owner": false}
+	wantFields := map[string]bool{"Identity": false, "owner": false}
+	forbiddenFields := map[string]bool{"Storage": true, "Connectors": true, "Security": true, "Observation": true}
 	for _, declaration := range file.Decls {
 		general, ok := declaration.(*ast.GenDecl)
 		if !ok || general.Tok != token.TYPE {
@@ -903,6 +913,9 @@ func TestGatewayWorkspaceOwnsExplicitRuntimeComposition(t *testing.T) {
 				for _, name := range field.Names {
 					if _, tracked := wantFields[name.Name]; tracked {
 						wantFields[name.Name] = true
+					}
+					if forbiddenFields[name.Name] {
+						t.Errorf("gateway workspace Runtime exposes aggregate service-locator field %s", name.Name)
 					}
 				}
 			}

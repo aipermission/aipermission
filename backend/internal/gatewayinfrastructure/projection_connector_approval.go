@@ -12,12 +12,17 @@ type ConnectorApprovalPorts struct {
 }
 
 func (component *ConnectorActionOwner) ConnectorApprovalWorkspace(handle *WorkspaceHandle, ports ConnectorApprovalPorts) (connectormgmt.ConnectorApprovalScope, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return connectormgmt.ConnectorApprovalScope{}, false
+	}
+	projected := capabilities.Approval
+	capability, ok := projected.Current()
+	if !ok || capability.Control == nil {
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
 	return connectormgmt.ConnectorApprovalScope{
-		Database: owner.Storage.DatabaseHandle(), Workflow: ports.Workflow,
-		MCPStarted: owner.Security.RuntimeControlState().MCPStarted, Redact: ports.Redact,
+		Database: capability.Database, Workflow: ports.Workflow,
+		MCPStarted: capability.Control.MCPStarted, Redact: ports.Redact,
 	}, true
 }

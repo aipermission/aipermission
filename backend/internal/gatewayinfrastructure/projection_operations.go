@@ -12,24 +12,47 @@ import (
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
 )
 
+func (component *OperationsOwner) passwordValidationDatabase(handle *WorkspaceHandle) (*sql.DB, bool) {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil, false
+	}
+	projected := capabilities.PasswordValidation
+	capability, ok := projected.Current()
+	if !ok || capability.Database == nil {
+		return nil, false
+	}
+	return capability.Database, true
+}
+
 func (component *OperationsOwner) InitializeCommandRuntime(handle *WorkspaceHandle, commands *gatewayoperations.CommandComponent, redact func(context.Context, string) string, timeout time.Duration) error {
-	owner, ok := component.resolve(handle)
-	if !ok || commands == nil {
+	capabilities, available := component.projection(handle)
+	if !available || commands == nil {
+		return ErrWorkspaceHandleUnavailable
+	}
+	projected := capabilities.Command
+	capability, ok := projected.Current()
+	if !ok {
 		return ErrWorkspaceHandleUnavailable
 	}
 	identity := handle.Identity()
 	return commands.Initialize(identity.RuntimeID, gatewayoperations.CommandRuntimeDependencies{
-		Database: owner.Storage.DatabaseHandle(), Vault: owner.Storage.SecretVault(), WorkspaceID: identity.WorkspaceID,
-		Redact: redact, Sessions: owner.Connectors.ConsoleSessionManager(), BackgroundTimeout: timeout,
+		Database: capability.Database, Vault: capability.Vault, WorkspaceID: identity.WorkspaceID,
+		Redact: redact, Sessions: capability.Sessions, BackgroundTimeout: timeout,
 	})
 }
 
 func (component *OperationsOwner) CommandBulkRuntime(handle *WorkspaceHandle, runtime gatewayoperations.CommandBulkHTTPRuntime) (*gatewayoperations.CommandBulkHTTPRuntime, bool) {
-	owner, ok := component.resolve(handle)
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil, false
+	}
+	projected := capabilities.CommandBulk
+	capability, ok := projected.Current()
 	if !ok {
 		return nil, false
 	}
-	runtime.Sessions = owner.Connectors.ConsoleSessionManager()
+	runtime.Sessions = capability.Sessions
 	runtime.WithTransaction = func(ctx context.Context, mutate func(*sql.Tx, gatewayoperations.CommandBulkAuditAppender) error) error {
 		return component.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 			return mutate(tx, gatewayoperations.CommandBulkAuditAppender(appendAudit))
@@ -39,22 +62,32 @@ func (component *OperationsOwner) CommandBulkRuntime(handle *WorkspaceHandle, ru
 }
 
 func (component *OperationsOwner) LiveConsoleHTTPRuntime(handle *WorkspaceHandle, runtime connectorapi.LiveConsoleHTTPRuntime) (*connectorapi.LiveConsoleHTTPRuntime, bool) {
-	owner, ok := component.resolve(handle)
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil, false
+	}
+	projected := capabilities.LiveConsole
+	capability, ok := projected.Current()
 	if !ok {
 		return nil, false
 	}
-	runtime.Sessions = connectorports.NewLiveConsoleSessions(owner.Connectors.ConsoleSessionManager())
+	runtime.Sessions = connectorports.NewLiveConsoleSessions(capability.Sessions)
 	return &runtime, true
 }
 
 func (component *OperationsOwner) backupWorkspace(handle *WorkspaceHandle, runtime gatewaybackup.Runtime) (gatewaybackup.Runtime, bool) {
-	owner, ok := component.resolve(handle)
+	capabilities, available := component.projection(handle)
+	if !available {
+		return gatewaybackup.Runtime{}, false
+	}
+	projected := capabilities.Backup
+	capability, ok := projected.Current()
 	if !ok {
 		return gatewaybackup.Runtime{}, false
 	}
 	identity := handle.Identity()
-	runtime.Database = owner.Storage.DatabaseHandle()
-	runtime.SecretVault = owner.Storage.SecretVault()
+	runtime.Database = capability.Database
+	runtime.SecretVault = capability.Vault
 	runtime.DatabaseID = identity.DatabaseID
 	runtime.DatabasePath = identity.DatabasePath
 	runtime.WorkspaceID = identity.WorkspaceID
@@ -67,24 +100,34 @@ func (component *OperationsOwner) InitializeTransferWorkspace(
 	observe func(context.Context, string, *int64, int64, string, any),
 	resolve gatewaytransfer.FileTransferConnectorPortsResolver,
 ) error {
-	owner, ok := component.resolve(handle)
-	if !ok || transfers == nil {
+	capabilities, available := component.projection(handle)
+	if !available || transfers == nil {
+		return ErrWorkspaceHandleUnavailable
+	}
+	projected := capabilities.Transfer
+	capability, ok := projected.Current()
+	if !ok {
 		return ErrWorkspaceHandleUnavailable
 	}
 	return transfers.InitializeWorkspace(
 		gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID},
-		owner.Storage.DatabaseHandle(), observe, resolve,
+		capability.Database, observe, resolve,
 	)
 }
 
 func (component *OperationsOwner) PeerTrustWorkspace(handle *WorkspaceHandle, invalidate func(context.Context, string) error) (connectorports.PeerTrustWorkspace, bool) {
-	owner, ok := component.resolve(handle)
-	if !ok {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return connectorports.PeerTrustWorkspace{}, false
+	}
+	projected := capabilities.PeerTrust
+	capability, ok := projected.Current()
+	if !ok || capability.Delivery == nil {
 		return connectorports.PeerTrustWorkspace{}, false
 	}
 	return connectorports.PeerTrustWorkspace{
 		Identifier:       handle.Identity().DatabaseID,
-		AcquireExclusive: owner.Security.VaultDeliveryCoordinator().AcquireExclusive,
+		AcquireExclusive: capability.Delivery.AcquireExclusive,
 		InvalidateAll:    invalidate,
 	}, true
 }

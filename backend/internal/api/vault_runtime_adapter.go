@@ -9,17 +9,6 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvault.Runtime {
-	if runtime == nil {
-		return gatewayvault.Runtime{}
-	}
-	composed, ok := s.vaultOwner.VaultRuntime(runtime, s.vaultRuntimePorts(runtime))
-	if !ok {
-		return gatewayvault.Runtime{}
-	}
-	return composed
-}
-
 func (s *Server) vaultRuntimePorts(runtime *gatewayinfra.WorkspaceHandle) gatewayinfra.VaultRuntimePorts {
 	return gatewayinfra.VaultRuntimePorts{
 		InvalidateSessions: func(ctx context.Context, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {

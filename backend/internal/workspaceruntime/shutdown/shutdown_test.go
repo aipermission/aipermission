@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	workspacestorage "github.com/aipermission/aipermission/backend/internal/gatewayworkspace/runtime/storage"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime"
+	workspacestorage "github.com/aipermission/aipermission/backend/internal/workspaceruntime/state/storage"
 )
 
 type actionWorkflowSpy struct {
@@ -487,8 +487,12 @@ func TestDiscardRetriesUnconfirmedOwnershipReleaseBeforeCompletion(t *testing.T)
 		ID:      "opening-ownership-retry",
 		Storage: workspacestorage.New(nil, nil, nil, "opening-ownership-retry", ownership),
 	}
-	completed := make(chan struct{})
-	err := Discard(runtime, nil, func() { close(completed) })
+	callbackStarted := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	err := Discard(runtime, nil, func() {
+		close(callbackStarted)
+		<-releaseCallback
+	})
 	if !errors.Is(err, ErrShutdownDeferred) {
 		t.Fatalf("Discard() error = %v, want deferred shutdown", err)
 	}
@@ -504,9 +508,25 @@ func TestDiscardRetriesUnconfirmedOwnershipReleaseBeforeCompletion(t *testing.T)
 	}
 	close(retryRelease)
 	select {
-	case <-completed:
+	case <-callbackStarted:
 	case <-time.After(time.Second):
-		t.Fatal("discard retry did not complete")
+		t.Fatal("discard completion callback did not start")
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- runtime.WaitTeardown(t.Context()) }()
+	select {
+	case err := <-waited:
+		t.Fatalf("teardown completed before its callback returned: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseCallback)
+	select {
+	case err := <-waited:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("teardown did not complete after its callback returned")
 	}
 	if runtime.Storage.DatabaseOwnership() != nil || ownership.calls.Load() < 2 {
 		t.Fatalf("discard ownership retry retained=%v calls=%d", runtime.Storage.DatabaseOwnership() != nil, ownership.calls.Load())
