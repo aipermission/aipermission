@@ -330,7 +330,8 @@ func RequireTargetRuntimeID(ctx context.Context, workspace Workspace, kind strin
 }
 
 var (
-	_ connectorapi.RouteGateway           = RouteGateway{}
+	_ connectorapi.ReadRouteGateway       = RouteGateway{}
+	_ connectorapi.MutationRouteGateway   = RouteGateway{}
 	_ connectorapi.LiveConsoleGateway     = LiveConsoleGateway{}
 	_ connectorapi.RuntimeActionGateway   = RuntimeActionGateway{}
 	_ connectorapi.ActionFinishGateway    = ActionFinishGateway{}

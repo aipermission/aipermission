@@ -28,15 +28,28 @@ func connectorAdapterRoutes(server *Server) []httptransport.AdapterRoute {
 	}
 	registered := make([]httptransport.AdapterRoute, 0, len(routes))
 	for _, route := range routes {
-		handler := route.Handler
-		registered = append(registered, httptransport.AdapterRoute{
-			Method: route.Method,
-			Path:   route.Path,
-			Policy: connectorAdapterRoutePolicy(route.Policy),
-			Handler: func(w http.ResponseWriter, r *http.Request) {
-				handler(server.connectorRuntime.RouteGateway(), w, r)
-			},
-		})
+		registered = append(registered, connectorAdapterRoute(server, route))
+	}
+	return registered
+}
+
+func connectorAdapterRoute(server *Server, route connectorapi.RouteDefinition) httptransport.AdapterRoute {
+	registered := httptransport.AdapterRoute{
+		Method: route.Method,
+		Path:   route.Path,
+		Policy: connectorAdapterRoutePolicy(route.Policy),
+	}
+	switch route.Policy {
+	case connectorapi.RoutePolicyUIRead:
+		handler := route.ReadHandler
+		registered.Handler = func(w http.ResponseWriter, r *http.Request) {
+			handler(server.connectorRuntime.ReadRouteGateway(), w, r)
+		}
+	case connectorapi.RoutePolicyUIMutation:
+		handler := route.MutationHandler
+		registered.Handler = func(w http.ResponseWriter, r *http.Request) {
+			handler(server.connectorRuntime.MutationRouteGateway(), w, r)
+		}
 	}
 	return registered
 }

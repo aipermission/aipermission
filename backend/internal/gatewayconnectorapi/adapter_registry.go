@@ -141,10 +141,11 @@ const (
 // RouteDefinition is the canonical runtime and documentation contract for a
 // connector-owned HTTP route.
 type RouteDefinition struct {
-	Method  string
-	Path    string
-	Policy  RoutePolicy
-	Handler func(RouteGateway, http.ResponseWriter, *http.Request)
+	Method          string
+	Path            string
+	Policy          RoutePolicy
+	ReadHandler     func(ReadRouteGateway, http.ResponseWriter, *http.Request)
+	MutationHandler func(MutationRouteGateway, http.ResponseWriter, *http.Request)
 }
 
 // Pattern returns the Go 1.22 ServeMux method/path pattern.
@@ -240,8 +241,13 @@ type RuntimeCapabilityGateway interface {
 	ConnectorRuntimeCapabilities() connectors.RuntimeCapabilityResolver
 }
 
-type RouteGateway interface {
+type ReadRouteGateway interface {
 	RuntimeAvailabilityGateway
+	PeerIdentityGateway
+}
+
+type MutationRouteGateway interface {
+	ReadRouteGateway
 	PeerTrustGateway
 }
 
@@ -355,9 +361,6 @@ func (r *Registry) RouteDefinitions(kinds []string) ([]RouteDefinition, error) {
 			if !strings.HasPrefix(route.Path, "/") {
 				return nil, fmt.Errorf("connector adapter %q route path %q must start with /", kind, route.Path)
 			}
-			if route.Handler == nil {
-				return nil, fmt.Errorf("connector adapter %q route %s %s has no handler", kind, route.Method, route.Path)
-			}
 			if err := validateRoutePolicy(route); err != nil {
 				return nil, fmt.Errorf("connector adapter %q route %s %s: %w", kind, route.Method, route.Path, err)
 			}
@@ -384,11 +387,23 @@ func validateRoutePolicy(route RouteDefinition) error {
 		if route.Method != http.MethodGet && route.Method != http.MethodHead {
 			return fmt.Errorf("ui_read policy requires GET or HEAD")
 		}
+		if route.ReadHandler == nil {
+			return fmt.Errorf("ui_read route has no read handler")
+		}
+		if route.MutationHandler != nil {
+			return fmt.Errorf("ui_read route must not expose a mutation handler")
+		}
 	case RoutePolicyUIMutation:
 		switch route.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 		default:
 			return fmt.Errorf("ui_mutation policy requires a state-changing method")
+		}
+		if route.MutationHandler == nil {
+			return fmt.Errorf("ui_mutation route has no mutation handler")
+		}
+		if route.ReadHandler != nil {
+			return fmt.Errorf("ui_mutation route must not expose a read handler")
 		}
 	default:
 		return fmt.Errorf("route policy is required")

@@ -291,7 +291,11 @@ func (application *ConnectorRuntimeApplication) PeerGateway() connectorapi.PeerI
 	return application.ports.PeerGateway()
 }
 
-func (application *ConnectorRuntimeApplication) RouteGateway() connectorapi.RouteGateway {
+func (application *ConnectorRuntimeApplication) ReadRouteGateway() connectorapi.ReadRouteGateway {
+	return application.ports.RouteGateway()
+}
+
+func (application *ConnectorRuntimeApplication) MutationRouteGateway() connectorapi.MutationRouteGateway {
 	return application.ports.RouteGateway()
 }
 

@@ -11,8 +11,8 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func (Management) approveHostKey(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
-	gateway, err := routeGatewayFrom(server)
+func (Management) approveHostKey(server connectorapi.MutationRouteGateway, w http.ResponseWriter, r *http.Request) {
+	gateway, err := mutationRouteGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -67,8 +67,8 @@ func (Management) approveHostKey(server connectorapi.RouteGateway, w http.Respon
 	})
 }
 
-func (Management) discoverConfig(server connectorapi.RouteGateway, w http.ResponseWriter, _ *http.Request) {
-	gateway, err := routeGatewayFrom(server)
+func (Management) discoverConfig(server connectorapi.ReadRouteGateway, w http.ResponseWriter, _ *http.Request) {
+	gateway, err := readRouteGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -84,8 +84,8 @@ func (Management) discoverConfig(server connectorapi.RouteGateway, w http.Respon
 	writeJSON(w, http.StatusOK, map[string]any{"items": entries})
 }
 
-func (Management) parseConfig(server connectorapi.RouteGateway, w http.ResponseWriter, r *http.Request) {
-	gateway, err := routeGatewayFrom(server)
+func (Management) parseConfig(server connectorapi.MutationRouteGateway, w http.ResponseWriter, r *http.Request) {
+	gateway, err := mutationRouteGatewayFrom(server)
 	if err != nil {
 		writeInternalError(w)
 		return

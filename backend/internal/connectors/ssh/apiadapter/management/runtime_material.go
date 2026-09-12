@@ -219,9 +219,16 @@ func targetOperationGatewayFrom(value connectorapi.TargetOperationGateway) (conn
 	return value, nil
 }
 
-func routeGatewayFrom(value connectorapi.RouteGateway) (connectorapi.RouteGateway, error) {
+func readRouteGatewayFrom(value connectorapi.ReadRouteGateway) (connectorapi.ReadRouteGateway, error) {
 	if value == nil {
-		return nil, fmt.Errorf("route gateway services are not available")
+		return nil, fmt.Errorf("read route gateway services are not available")
+	}
+	return value, nil
+}
+
+func mutationRouteGatewayFrom(value connectorapi.MutationRouteGateway) (connectorapi.MutationRouteGateway, error) {
+	if value == nil {
+		return nil, fmt.Errorf("mutation route gateway services are not available")
 	}
 	return value, nil
 }

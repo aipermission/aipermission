@@ -14,7 +14,8 @@ func (a testRouteAdapter) Routes() []RouteDefinition {
 	return a
 }
 
-func testRouteHandler(RouteGateway, http.ResponseWriter, *http.Request) {}
+func testReadRouteHandler(ReadRouteGateway, http.ResponseWriter, *http.Request)         {}
+func testMutationRouteHandler(MutationRouteGateway, http.ResponseWriter, *http.Request) {}
 
 func TestRegisterRejectsDuplicateAdapter(t *testing.T) {
 	registry := NewRegistry()
@@ -31,13 +32,13 @@ func TestRouteDefinitionsValidateSortAndRejectDuplicates(t *testing.T) {
 	const secondKind = "route_catalog_second_test"
 	registry := NewRegistry()
 	if err := registry.Register(firstKind, testRouteAdapter{
-		{Method: "post", Path: "/api/z-last", Policy: RoutePolicyUIMutation, Handler: testRouteHandler},
-		{Method: "GET", Path: "/api/a-first", Policy: RoutePolicyUIRead, Handler: testRouteHandler},
+		{Method: "post", Path: "/api/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
+		{Method: "GET", Path: "/api/a-first", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(secondKind, testRouteAdapter{
-		{Method: "POST", Path: "/api/z-last", Policy: RoutePolicyUIMutation, Handler: testRouteHandler},
+		{Method: "POST", Path: "/api/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,12 +61,14 @@ func TestRouteDefinitionsRejectInvalidDefinitions(t *testing.T) {
 		route RouteDefinition
 		want  string
 	}{
-		{name: "method", route: RouteDefinition{Path: "/api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "method is required"},
-		{name: "path", route: RouteDefinition{Method: "GET", Path: "api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "must start with /"},
-		{name: "handler", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIRead}, want: "has no handler"},
-		{name: "policy", route: RouteDefinition{Method: "GET", Path: "/api/test", Handler: testRouteHandler}, want: "route policy is required"},
-		{name: "read method", route: RouteDefinition{Method: "POST", Path: "/api/test", Policy: RoutePolicyUIRead, Handler: testRouteHandler}, want: "ui_read policy requires GET or HEAD"},
-		{name: "mutation method", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIMutation, Handler: testRouteHandler}, want: "ui_mutation policy requires a state-changing method"},
+		{name: "method", route: RouteDefinition{Path: "/api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "method is required"},
+		{name: "path", route: RouteDefinition{Method: "GET", Path: "api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "must start with /"},
+		{name: "handler", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIRead}, want: "has no read handler"},
+		{name: "policy", route: RouteDefinition{Method: "GET", Path: "/api/test", ReadHandler: testReadRouteHandler}, want: "route policy is required"},
+		{name: "read method", route: RouteDefinition{Method: "POST", Path: "/api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "ui_read policy requires GET or HEAD"},
+		{name: "mutation method", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler}, want: "ui_mutation policy requires a state-changing method"},
+		{name: "read authority", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler, MutationHandler: testMutationRouteHandler}, want: "must not expose a mutation handler"},
+		{name: "mutation authority", route: RouteDefinition{Method: "POST", Path: "/api/test", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler, ReadHandler: testReadRouteHandler}, want: "must not expose a read handler"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -104,7 +107,8 @@ func TestConnectorCapabilityPortsStayLeastPrivilege(t *testing.T) {
 		{name: "action finish gateway", value: (*ActionFinishGateway)(nil), methods: []string{"ConnectorFinishActionRequest"}},
 		{name: "transfer batch gateway", value: (*TransferBatchGateway)(nil), methods: []string{"ConnectorCreateAndRunDownloadBatch"}},
 		{name: "runtime capability gateway", value: (*RuntimeCapabilityGateway)(nil), methods: []string{"ConnectorRuntimeCapabilities"}},
-		{name: "route gateway", value: (*RouteGateway)(nil), methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
+		{name: "read route gateway", value: (*ReadRouteGateway)(nil), methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorTrustStorePath"}},
+		{name: "mutation route gateway", value: (*MutationRouteGateway)(nil), methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
 		{name: "runtime action gateway", value: (*RuntimeActionGateway)(nil), methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
 		{name: "file transfer gateway", value: (*FileTransferGateway)(nil), methods: []string{"ConnectorRuntimeCapabilities", "ConnectorTrustStorePath"}},
 		{name: "target deletion gateway", value: (*TargetDeletionGateway)(nil), methods: []string{"ConnectorDeleteTargetRecord", "ConnectorFinalizeDeletedTarget", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},

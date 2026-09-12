@@ -70,7 +70,7 @@ func TestConnectorPeerTrustChangeInvalidatesVaultStateBeforeMutation(t *testing.
 	}
 
 	changeCalled := false
-	if err := fixture.server.connectorRuntime.RouteGateway().ConnectorChangeVaultPeerTrust(ctx, func() error {
+	if err := fixture.server.connectorRuntime.MutationRouteGateway().ConnectorChangeVaultPeerTrust(ctx, func() error {
 		changeCalled = true
 		var sessionStatus, leaseStatus string
 		if err := fixture.db.QueryRowContext(ctx, `SELECT status FROM console_sessions WHERE id = ?`, sessionID).Scan(&sessionStatus); err != nil {
