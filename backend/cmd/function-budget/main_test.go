@@ -55,3 +55,33 @@ func TestInspectTreeAppliesSeparateTestFunctionBudget(t *testing.T) {
 		t.Fatalf("findings = %#v, want only production line-budget violation", findings)
 	}
 }
+
+func TestInspectTreeRejectsOversizedTopLevelFunctionLiteral(t *testing.T) {
+	root := t.TempDir()
+	source := "package fixture\nvar oversized = func() {\n" + strings.Repeat("\n", defaultMaxLines) + "}\n"
+	if err := os.WriteFile(filepath.Join(root, "production.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := inspectTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].function != "var.oversized" || findings[0].metric != "lines" {
+		t.Fatalf("findings = %#v, want top-level function literal line-budget violation", findings)
+	}
+}
+
+func TestInspectTreeRejectsWrappedTopLevelFunctionLiteral(t *testing.T) {
+	root := t.TempDir()
+	source := "package fixture\nvar wrapped = (func() {\n" + strings.Repeat("\n", defaultMaxLines) + "})\n"
+	if err := os.WriteFile(filepath.Join(root, "production.go"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := inspectTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].function != "var.wrapped" || findings[0].metric != "lines" {
+		t.Fatalf("findings = %#v, want wrapped top-level function literal violation", findings)
+	}
+}

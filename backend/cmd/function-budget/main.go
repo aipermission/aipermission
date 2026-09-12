@@ -65,12 +65,13 @@ func inspectTree(root string) ([]finding, error) {
 			maxLines, maxComplexity = defaultMaxTestLines, defaultMaxTestComplexity
 		}
 		for _, declaration := range parsed.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Body == nil {
-				continue
+			if function, ok := declaration.(*ast.FuncDecl); ok && function.Body != nil {
+				name := functionName(function)
+				inspectFunction(fileSet, filepath.ToSlash(path), name, function, function.Body, maxLines, maxComplexity, &findings)
 			}
-			name := functionName(function)
-			inspectFunction(fileSet, filepath.ToSlash(path), name, function, function.Body, maxLines, maxComplexity, &findings)
+			for _, function := range topLevelFunctionLiterals(declaration) {
+				inspectFunction(fileSet, filepath.ToSlash(path), function.name, function.node, function.node.Body, maxLines, maxComplexity, &findings)
+			}
 		}
 		return nil
 	})
@@ -80,6 +81,46 @@ func inspectTree(root string) ([]finding, error) {
 		return left < right
 	})
 	return findings, err
+}
+
+type namedFunctionLiteral struct {
+	name string
+	node *ast.FuncLit
+}
+
+func topLevelFunctionLiterals(declaration ast.Decl) []namedFunctionLiteral {
+	values, ok := declaration.(*ast.GenDecl)
+	if !ok || values.Tok != token.VAR {
+		return nil
+	}
+	var functions []namedFunctionLiteral
+	for _, specification := range values.Specs {
+		value, ok := specification.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for index, expression := range value.Values {
+			baseName := fmt.Sprintf("var$%d", index+1)
+			if index < len(value.Names) {
+				baseName = "var." + value.Names[index].Name
+			}
+			literalIndex := 0
+			ast.Inspect(expression, func(node ast.Node) bool {
+				literal, ok := node.(*ast.FuncLit)
+				if !ok {
+					return true
+				}
+				literalIndex++
+				name := baseName
+				if literalIndex > 1 {
+					name = fmt.Sprintf("%s$literal%d", baseName, literalIndex)
+				}
+				functions = append(functions, namedFunctionLiteral{name: name, node: literal})
+				return false
+			})
+		}
+	}
+	return functions
 }
 
 func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, maxLines int, maxComplexity int, findings *[]finding) {

@@ -41,6 +41,9 @@ function policySnapshot(input) {
     for (const extension of budget.extensions) {
       snapshot[`coverage.source.${budget.id}.extension.${extension}`] = 0;
     }
+    if (budget.testPackageDepth !== undefined) {
+      snapshot[`test.package.depth.${budget.id}`] = budget.testPackageDepth;
+    }
     setSourceBudget(snapshot, budget);
   }
   for (const [file, value] of Object.entries(policy.sourceOverrides)) {
@@ -162,6 +165,12 @@ function inheritedBudget(base, name) {
     "source.mcp-tooling.maxLines": 550,
     mcpToolingTestSourceBudget: 800,
     mcpToolingTestPackageBudget: 1200,
+    "test.package.depth.frontend": 3,
+    "test.package.depth.mcp-source": 1,
+    "test.package.depth.mcp-test": 1,
+    "test.package.depth.repository-tooling": 0,
+    "test.package.depth.frontend-tooling": 0,
+    "test.package.depth.mcp-tooling": 0,
     "go.function.test.lines": 220,
     "go.function.test.complexity": 60,
     "go.testImports.maxPerFile": 14,

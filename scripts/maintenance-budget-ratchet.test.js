@@ -18,6 +18,7 @@ test("reads the exact machine policy consumed by enforcement", () => {
   assert.equal(snapshot["go.function.default.lines"], 180);
   assert.equal(snapshot["go.fanout.package"], 12);
   assert.equal(snapshot.repositoryToolingTestPackageBudget, 1500);
+  assert.equal(snapshot["test.package.depth.frontend"], 3);
 });
 
 test("source-code decoys cannot influence the canonical policy snapshot", () => {
@@ -33,6 +34,18 @@ test("rejects relaxed numeric budgets", () => {
   assert.deepEqual(
     budgetIncreases(policySnapshot(policy), policySnapshot(current)),
     ["backendPackageBudget increased from 3500 to 3501"],
+  );
+});
+
+test("rejects test package depth increases", () => {
+  const current = copyPolicy();
+  const frontend = current.sourceBudgets.find(
+    (budget) => budget.id === "frontend",
+  );
+  frontend.testPackageDepth++;
+  assert.deepEqual(
+    budgetIncreases(policySnapshot(policy), policySnapshot(current)),
+    ["test.package.depth.frontend increased from 3 to 4"],
   );
 });
 

@@ -37,28 +37,104 @@ function testSource(budget, file) {
   );
 }
 
-function validatePolicy() {
-  if (policy.version !== 1)
-    failures.push("maintenance policy version must be 1");
+function positiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+function validatePolicy(candidate = policy, target = failures) {
+  if (candidate.version !== 1)
+    target.push("maintenance policy version must be 1");
+  const allowedMarkers = [".spec.", ".test."];
+  const markers = [
+    ...(candidate.frontendArchitecture?.testModuleMarkers || []),
+  ].sort();
+  if (JSON.stringify(markers) !== JSON.stringify(allowedMarkers)) {
+    target.push(
+      "frontend test module markers must be exactly .test. and .spec.",
+    );
+  }
   const identifiers = new Set();
-  for (const budget of policy.sourceBudgets) {
+  for (const budget of candidate.sourceBudgets || []) {
     if (identifiers.has(budget.id)) {
-      failures.push(`duplicate source budget id ${budget.id}`);
+      target.push(`duplicate source budget id ${budget.id}`);
     }
     identifiers.add(budget.id);
     if (!budget.directory || !budget.extensions?.length) {
-      failures.push(`source budget ${budget.id} is incomplete`);
+      target.push(`source budget ${budget.id} is incomplete`);
+    }
+    for (const name of [
+      "productionMaxLines",
+      "testMaxLines",
+      "testPackageMaxLines",
+    ]) {
+      if (budget[name] !== undefined && !positiveInteger(budget[name])) {
+        target.push(
+          `source budget ${budget.id} ${name} must be a positive integer`,
+        );
+      }
+    }
+    if (
+      budget.classifier !== "go" &&
+      (!Number.isInteger(budget.testPackageDepth) ||
+        budget.testPackageDepth < 0)
+    ) {
+      target.push(
+        `source budget ${budget.id} must define a non-negative testPackageDepth`,
+      );
     }
     try {
       isTestSource(
         budget.classifier,
         path.join(root, budget.directory, "policy-probe.js"),
-        policy.frontendArchitecture.testModuleMarkers,
+        candidate.frontendArchitecture.testModuleMarkers,
       );
     } catch (error) {
-      failures.push(`source budget ${budget.id}: ${error.message}`);
+      target.push(`source budget ${budget.id}: ${error.message}`);
     }
   }
+  const positiveValues = {
+    connectorSourceMaxLines: candidate.connectorSourceMaxLines,
+    backendPackageDefaultMaxLines: candidate.backendPackage?.defaultMaxLines,
+    frontendMaxDependencyFanout:
+      candidate.frontendArchitecture?.maxDependencyFanout,
+    frontendMaxProductionModuleLines:
+      candidate.frontendArchitecture?.maxProductionModuleLines,
+    goProductionMaxLines: candidate.goFunction?.productionMaxLines,
+    goProductionMaxComplexity: candidate.goFunction?.productionMaxComplexity,
+    goTestMaxLines: candidate.goFunction?.testMaxLines,
+    goTestMaxComplexity: candidate.goFunction?.testMaxComplexity,
+    backendPackageFanout: candidate.backendFanout?.packageMax,
+    backendOwnerFanout: candidate.backendFanout?.ownerMax,
+    backendTestFileImports: candidate.backendFanout?.testFileInternalImportsMax,
+  };
+  for (const [name, value] of Object.entries(positiveValues)) {
+    if (!positiveInteger(value))
+      target.push(`${name} must be a positive integer`);
+  }
+  for (const [name, values] of [
+    ["source override", candidate.sourceOverrides],
+    ["backend package override", candidate.backendPackage?.overrides],
+    ["backend fanout override", candidate.backendFanout?.overrides],
+  ]) {
+    for (const [key, value] of Object.entries(values || {})) {
+      if (!positiveInteger(value))
+        target.push(`${name} ${key} must be a positive integer`);
+    }
+  }
+  return target;
+}
+
+function testPackageDirectory(budget, file) {
+  if (budget.classifier === "go") return path.dirname(file);
+  const budgetRoot = path.join(root, budget.directory);
+  const directories = path
+    .dirname(path.relative(budgetRoot, file))
+    .split(path.sep)
+    .filter((part) => part !== ".");
+  return path.join(
+    budgetRoot,
+    ...directories.slice(0, budget.testPackageDepth),
+  );
 }
 
 function checkSourceBudgets() {
@@ -76,7 +152,7 @@ function checkSourceBudgets() {
             `${relativePath} has ${lines} test lines; budget is ${budget.testMaxLines}`,
           );
         }
-        const directory = path.dirname(file);
+        const directory = testPackageDirectory(budget, file);
         packageLines.set(directory, (packageLines.get(directory) || 0) + lines);
         continue;
       }
@@ -147,17 +223,23 @@ function checkFrontendSuppressions() {
   return count;
 }
 
-validatePolicy();
-checkSourceBudgets();
-checkBackendPackageBudgets();
-const suppressionCount = checkFrontendSuppressions();
+function main() {
+  validatePolicy();
+  checkSourceBudgets();
+  checkBackendPackageBudgets();
+  const suppressionCount = checkFrontendSuppressions();
 
-if (failures.length > 0) {
-  console.error("Maintenance budget check failed:");
-  failures.forEach((failure) => console.error(`- ${failure}`));
-  process.exit(1);
+  if (failures.length > 0) {
+    console.error("Maintenance budget check failed:");
+    failures.forEach((failure) => console.error(`- ${failure}`));
+    process.exit(1);
+  }
+
+  console.log(
+    `Maintenance budgets passed: production/test source, package, tooling, and ${suppressionCount}/${policy.frontendSuppressions.maxCount} frontend hook suppressions.`,
+  );
 }
 
-console.log(
-  `Maintenance budgets passed: production/test source, package, tooling, and ${suppressionCount}/${policy.frontendSuppressions.maxCount} frontend hook suppressions.`,
-);
+if (require.main === module) main();
+
+module.exports = { testPackageDirectory, validatePolicy };
