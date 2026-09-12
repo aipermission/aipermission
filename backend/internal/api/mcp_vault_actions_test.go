@@ -364,7 +364,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	target := fixture.createKeyAndServer(t, "vault-session-e2e")
 	fixture.trustServerHostKey(t, target)
 	identities, err := execution.TrustedHostFingerprints(
-		fixture.server.ConnectorTrustStorePath(),
+		fixture.server.connectorTrustStorePath(),
 		net.JoinHostPort(target.Host, strconv.Itoa(target.Port)),
 	)
 	if err != nil || len(identities) != 1 {

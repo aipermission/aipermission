@@ -105,7 +105,7 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 		"provider_id": prepared.ProviderID, "record_id": prepared.RecordID, "filename": prepared.Filename,
 		"database_name": strings.TrimSpace(request.DatabaseName), "source_machine": prepared.SourceMachine,
 	})
-	component.InstallImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
+	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
 	})
 }

@@ -2,7 +2,6 @@ package gatewayinfrastructure
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -93,15 +92,4 @@ func (application *BackupApplication) HTTPHandlers() BackupHTTPHandlers {
 		RestoreRemote: Handler(handlers.RestoreRemote), RestoreProvider: Handler(handlers.RestoreProvider),
 		Providers: handlers.Providers, Transient: handlers.Transient,
 	}
-}
-
-func (application *BackupApplication) InstallImportedDatabase(
-	w http.ResponseWriter,
-	r *http.Request,
-	databaseName string,
-	password string,
-	writeTemp func(string) error,
-	mutate func(*sql.DB) error,
-) {
-	application.owner.InstallImportedDatabase(w, r, databaseName, password, writeTemp, mutate)
 }

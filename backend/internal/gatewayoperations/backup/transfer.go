@@ -75,7 +75,7 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer file.Close()
-	component.InstallImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, func(path string) error {
+	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, func(path string) error {
 		output, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {
 			return err
@@ -88,7 +88,7 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 	}, nil)
 }
 
-func (component *Component) InstallImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error) {
+func (component *Component) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error) {
 	attempt, ok := component.dependencies.BeginAttempt(w, r)
 	if !ok {
 		return

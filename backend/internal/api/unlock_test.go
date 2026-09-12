@@ -650,6 +650,42 @@ func TestDatabaseImportRequiresMultipart(t *testing.T) {
 	}
 }
 
+func performDatabaseImport(t *testing.T, handler http.Handler, databaseName, password string, content []byte, authenticated bool) *httptest.ResponseRecorder {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("database_name", databaseName); err != nil {
+		t.Fatalf("write database_name field: %v", err)
+	}
+	if err := writer.WriteField("database_password", password); err != nil {
+		t.Fatalf("write database_password field: %v", err)
+	}
+	part, err := writer.CreateFormFile("sqlite", "source.aipdb")
+	if err != nil {
+		t.Fatalf("create sqlite part: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write sqlite part: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", body)
+	request.Host = "localhost:8080"
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if authenticated {
+		if cookie := currentTestUICookie(); cookie != nil {
+			request.AddCookie(cookie)
+		}
+		request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
+		request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
 func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 	sourcePath := filepath.Join(t.TempDir(), "source.aipdb")
 	sourceDB, err := dbpkg.OpenEncrypted(sourcePath, "import-password")
@@ -785,11 +821,7 @@ func TestImportedDatabaseOpenFailureRestoresPreviousWorkspace(t *testing.T) {
 		return server.openRuntime(ctx, path, id, password)
 	}
 
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
-	server.backupApplication().InstallImportedDatabase(response, request, "Imported Project", "ImportPassword123", func(path string) error {
-		return os.WriteFile(path, sourceBytes, 0o600)
-	}, nil)
+	response := performDatabaseImport(t, handler, "Imported Project", "ImportPassword123", sourceBytes, true)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("injected import open failure should return 500, got %d %s", response.Code, response.Body.String())
 	}
@@ -834,11 +866,7 @@ func TestImportedDatabasePublishConflictPreservesForeignTarget(t *testing.T) {
 		return dbpkg.ErrPublishTargetExists
 	}
 
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/backup/import", nil)
-	server.backupApplication().InstallImportedDatabase(response, request, "Partial Import", "ImportPassword123", func(path string) error {
-		return os.WriteFile(path, sourceBytes, 0o600)
-	}, nil)
+	response := performDatabaseImport(t, server.Handler(), "Partial Import", "ImportPassword123", sourceBytes, false)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("publish failure status=%d body=%s", response.Code, response.Body.String())
 	}

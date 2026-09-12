@@ -128,7 +128,7 @@ func (f apiTestFixture) trustServerHostKey(t *testing.T, profile testSSHConnecto
 		t.Fatalf("parse test SSH public key: %v", err)
 	}
 	if err := execution.TrustHostKey(
-		f.server.ConnectorTrustStorePath(),
+		f.server.connectorTrustStorePath(),
 		net.JoinHostPort(profile.Host, strconv.Itoa(profile.Port)),
 		base64.StdEncoding.EncodeToString(publicKey.Marshal()),
 	); err != nil {

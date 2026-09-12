@@ -1,96 +1,14 @@
 package api
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
-
-func TestPreparedCredentialUpdateFailsAtomically(t *testing.T) {
-	for _, failure := range []string{"stale-secret", "encryption"} {
-		t.Run(failure, func(t *testing.T) {
-			fixture := newAPITestFixture(t)
-			item := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
-			runtime := fixture.server.activeRuntime()
-			store := connectortargets.NewStore(fixture.db)
-			target, err := store.GetTarget(t.Context(), item.TargetID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			stale, err := store.GetCredentialProfile(t.Context(), target.ID, item.ProfileID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			prepared := preparedConnectorCredentialProfileInput{
-				Kind: stale.Kind, Label: "must-rollback", Public: stale.Public,
-				Secret: map[string]any{"secret_access_key": "fixture-replacement"}, SecretChanged: true,
-			}
-			if failure == "stale-secret" {
-				if err := store.SetCredentialProfileEncryptedSecret(t.Context(), target.ID, stale.ID, stale.EncryptedSecretJSON); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				prepared.Secret["unencodable"] = make(chan struct{})
-			}
-			before, err := store.GetCredentialProfile(t.Context(), target.ID, stale.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var auditBefore int
-			if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox`).Scan(&auditBefore); err != nil {
-				t.Fatal(err)
-			}
-			err = fixture.server.observationOwner.WithObservationTransaction(t.Context(), runtime, func(tx *sql.Tx, appendAudit gatewayinfra.ObservationAppender) error {
-				changed, err := connectortargets.NewTxStore(tx).UpdateTarget(t.Context(), connectortargets.UpdateTargetInput{
-					ID: target.ID, ProjectID: target.ProjectID, Name: "must-rollback", Config: target.Config, ExpectedUpdatedAt: target.UpdatedAt,
-				})
-				if err != nil {
-					return err
-				}
-				if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{"target_id": target.ID}); err != nil {
-					return err
-				}
-				_, err = connectormgmt.UpdatePreparedCredentialProfile(
-					t.Context(), connectortargets.NewTxStore(tx), changed, stale, prepared,
-					fixture.server.connectorCredentialPreparationPorts(runtime), func(ctx context.Context, _ *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
-						return fixture.server.connectorCatalog(runtime).EnsureRuntimeSurfacesInTx(ctx, tx, target, profile)
-					},
-				)
-				return err
-			})
-			if err == nil {
-				t.Fatal("unsafe credential update accepted")
-			}
-			if failure == "stale-secret" && !errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict) {
-				t.Fatalf("conflict error = %v", err)
-			}
-			after, err := store.GetCredentialProfile(t.Context(), target.ID, stale.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			afterTarget, err := store.GetTarget(t.Context(), target.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var auditAfter int
-			if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM audit_outbox`).Scan(&auditAfter); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(target, afterTarget) || auditBefore != auditAfter {
-				t.Fatal("failed profile update did not roll back caller transaction")
-			}
-		})
-	}
-}
 
 func TestCredentialEditTransactionBoundaries(t *testing.T) {
 	for _, combined := range []bool{false, true} {

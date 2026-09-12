@@ -41,7 +41,7 @@ func (component *Component) restoreTransientRemoteBackup(w http.ResponseWriter, 
 		return
 	}
 	defer prepared.Remove()
-	component.InstallImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
+	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
 	})
 }

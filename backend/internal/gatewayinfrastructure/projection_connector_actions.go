@@ -61,7 +61,7 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 			return component.owner.owner.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
 		},
 		Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
-			return component.owner.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit ObservationAppender) error {
+			return component.owner.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 				return mutate(tx, gatewayactions.AuditAppender(appendAudit))
 			})
 		},

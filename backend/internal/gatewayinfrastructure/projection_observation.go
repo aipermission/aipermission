@@ -11,7 +11,7 @@ import (
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-type ObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error
+type observationAppender func(*sql.Tx, string, *int64, int64, string, any) error
 
 func (component *ObservationOwner) observationWorkspace(handle *WorkspaceHandle) (observationapp.Runtime, bool) {
 	if component == nil || component.owner == nil {
@@ -45,10 +45,10 @@ func (component *Component) observationRuntime(handle *WorkspaceHandle) (observa
 	}, true
 }
 
-func (component *Component) withObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
+func (component *Component) withObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, observationAppender) error) error {
 	runtime, _ := component.observationRuntime(handle)
 	return component.observation.WithTransaction(ctx, runtime, func(tx *sql.Tx, appendObservation observationapp.Appender) error {
-		return mutate(tx, ObservationAppender(appendObservation))
+		return mutate(tx, observationAppender(appendObservation))
 	})
 }
 
@@ -130,14 +130,6 @@ func (component *ObservationOwner) PrepareObservationRedactor(ctx context.Contex
 	return component.owner.observation.PrepareRedactor(ctx, runtime)
 }
 
-func (component *ObservationOwner) WithObservationTransaction(ctx context.Context, handle *WorkspaceHandle, mutate func(*sql.Tx, ObservationAppender) error) error {
-	return component.owner.withObservationTransaction(ctx, handle, mutate)
-}
-
-func (component *ObservationOwner) WithObservationMutation(ctx context.Context, handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-	return component.owner.withObservationMutation(ctx, handle, actor, tokenID, runtimeID, action, payload, mutate)
-}
-
 type observationMutationRunner func(context.Context, string, func() any, func(*sql.Tx) error) error
 
 func (component *ObservationOwner) mutationRunner(handle *WorkspaceHandle, actor string, tokenID *int64, runtimeID int64) observationMutationRunner {
@@ -200,14 +192,6 @@ func (component *ObservationOwner) ObservationDiagnostics(ctx context.Context, h
 
 func (component *ObservationOwner) PrepareDiagnosticsDownload(w http.ResponseWriter) string {
 	return component.owner.observation.PrepareDiagnosticsDownload(w)
-}
-
-func (component *ObservationOwner) VaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {
-	return component.owner.vaultRequestStoreFactory(handle)
-}
-
-func (component *ObservationOwner) SyncVaultActionRequest(ctx context.Context, handle *WorkspaceHandle, id int64) error {
-	return component.owner.syncVaultActionRequest(ctx, handle, id)
 }
 
 func (component *Component) vaultRequestStoreFactory(handle *WorkspaceHandle) gatewayvault.RequestStoreFactory {

@@ -31,7 +31,7 @@ func (component *OperationsOwner) CommandBulkRuntime(handle *WorkspaceHandle, ru
 	}
 	runtime.Sessions = owner.Connectors.ConsoleSessionManager()
 	runtime.WithTransaction = func(ctx context.Context, mutate func(*sql.Tx, gatewayoperations.CommandBulkAuditAppender) error) error {
-		return component.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit ObservationAppender) error {
+		return component.owner.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 			return mutate(tx, gatewayoperations.CommandBulkAuditAppender(appendAudit))
 		})
 	}
