@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
@@ -13,13 +14,11 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 	if !ok {
 		return gatewayaccess.MCPRuntimeScope{}, false
 	}
-	return gatewayaccess.MCPRuntimeScope{
-		State: runtime.Security.RuntimeControlState(),
+	scope, valid := s.infrastructure.MCPRuntimeScope(runtime, gatewayinfra.MCPRuntimePorts{
 		StartEnabled: func(ctx context.Context) (bool, error) {
-			settings, err := readSecuritySettings(ctx, runtime)
+			settings, err := s.readSecuritySettings(ctx, runtime)
 			return settings.MCPStartEnabled, err
 		},
-		AcquireStop: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		StopEffects: func(ctx context.Context) error {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err != nil {
@@ -40,5 +39,6 @@ func (s *Server) mcpRuntimeHTTPScope(w http.ResponseWriter) (gatewayaccess.MCPRu
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			s.writeObservationAudit(ctx, runtime, "user", nil, 0, action, payload)
 		},
-	}, true
+	})
+	return scope, valid
 }

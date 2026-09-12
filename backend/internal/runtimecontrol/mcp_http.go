@@ -8,8 +8,13 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
+type MCPRuntimeState interface {
+	MCPStarted() bool
+	SetMCPStarted(bool)
+}
+
 type MCPRuntimeScope struct {
-	State        *State
+	State        MCPRuntimeState
 	StartEnabled func(context.Context) (bool, error)
 	AcquireStop  func(context.Context) (func(), error)
 	StopEffects  func(context.Context) error

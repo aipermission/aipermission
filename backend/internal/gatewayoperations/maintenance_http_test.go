@@ -7,24 +7,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/gorilla/websocket"
 )
 
 type fakeMaintenanceRuntime struct {
-	descriptor console.MaintenanceConsoleDescriptor
-	snapshot   console.MaintenanceConsoleSnapshot
+	descriptor MaintenanceConsoleDescriptor
+	snapshot   MaintenanceConsoleSnapshot
 	active     bool
 	closed     bool
 }
 
-func (r *fakeMaintenanceRuntime) Descriptor() console.MaintenanceConsoleDescriptor {
+func (r *fakeMaintenanceRuntime) Descriptor() MaintenanceConsoleDescriptor {
 	return r.descriptor
 }
-func (r *fakeMaintenanceRuntime) Snapshot() (console.MaintenanceConsoleSnapshot, bool) {
+func (r *fakeMaintenanceRuntime) Snapshot() (MaintenanceConsoleSnapshot, bool) {
 	return r.snapshot, r.active
 }
-func (r *fakeMaintenanceRuntime) Open() (console.MaintenanceConsoleSnapshot, error) {
+func (r *fakeMaintenanceRuntime) Open() (MaintenanceConsoleSnapshot, error) {
 	r.active = true
 	return r.snapshot, nil
 }
@@ -39,8 +38,8 @@ func (r *fakeMaintenanceRuntime) Close() bool {
 
 func TestMaintenanceHTTPHandlersOwnLifecycleResponses(t *testing.T) {
 	runtime := &fakeMaintenanceRuntime{
-		descriptor: console.MaintenanceConsoleDescriptor{Supported: true, Shell: "/bin/sh", MaxInputBytes: 1024, MaxTranscriptBytes: 2048},
-		snapshot:   console.MaintenanceConsoleSnapshot{Status: "connected", Shell: "/bin/sh"},
+		descriptor: MaintenanceConsoleDescriptor{Supported: true, Shell: "/bin/sh", MaxInputBytes: 1024, MaxTranscriptBytes: 2048},
+		snapshot:   MaintenanceConsoleSnapshot{Status: "connected", Shell: "/bin/sh"},
 	}
 	observed := make([]string, 0, 2)
 	handlers := NewMaintenanceHTTPHandlers(func(http.ResponseWriter) (MaintenanceHTTPScope, bool) {

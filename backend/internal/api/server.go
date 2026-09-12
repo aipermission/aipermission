@@ -12,6 +12,7 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewaybootstrap "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/bootstrap"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewaytransfer "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer"
@@ -27,41 +28,27 @@ type Server struct {
 	vault                   *gatewayvault.Component
 	infrastructure          *gatewayinfra.Component
 	mux                     *http.ServeMux
-	observation             gatewayoperations.Observation
 	commands                gatewayoperations.CommandComponent
 	transfers               *gatewaytransfer.Component
-	openRuntimeOverride     func(string, string, string) (databaseRuntime, error)
+	connectorRegistryOwner  *connectors.Registry
+	connectorAdaptersOwner  *connectorapi.Registry
+	maintenanceConsole      gatewayoperations.MaintenanceConsoleRuntime
+	runtimeIDGenerator      func() (string, error)
+	openRuntimeOverride     func(string, string, string) (*gatewayinfra.WorkspaceHandle, error)
 	moveDatabaseOverride    func(string, string) error
 	publishDatabaseOverride func(string, string) error
 }
 
-type databaseRuntime = *gatewayinfra.Runtime
-
-type ServerOption = gatewayinfra.ServerOption
-
-func WithConnectorRegistry(registry *connectors.Registry) ServerOption {
-	return gatewayinfra.WithConnectorRegistry(registry)
-}
-
-func WithConnectorAdapterRegistry(registry *connectorapi.Registry) ServerOption {
-	return gatewayinfra.WithConnectorAdapterRegistry(registry)
-}
-
-func WithMaintenanceConsole(runtime gatewayoperations.MaintenanceConsoleRuntime) ServerOption {
-	return gatewayinfra.WithMaintenanceConsole(runtime)
-}
-
-func withRuntimeInstanceIDGenerator(generator func() (string, error)) ServerOption {
-	return gatewayinfra.WithRuntimeInstanceIDGenerator(generator)
-}
-
-func NewServer(configuration RuntimeConfiguration, adopted gatewayinfra.AdoptInput, options ...ServerOption) (*Server, error) {
+func NewServer(configuration RuntimeConfiguration, adopted gatewaybootstrap.Adopt, options ...ServerOption) (*Server, error) {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
-	registry := infrastructure.ConnectorRegistry()
+	resolved := resolveServerOptions(options)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
+	registry := resolved.registry
 	server := &Server{
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
-		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(),
+		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: registry,
+		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
+		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
 	}
 	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()
@@ -74,8 +61,8 @@ func NewServer(configuration RuntimeConfiguration, adopted gatewayinfra.AdoptInp
 	adopted.Path = cfg.DataPath
 	adopted.ConfiguredGatewaySecret = cfg.GatewaySecret
 	adopted.Registry = registry
-	adopted.AdapterRegistry = infrastructure.ConnectorAdapterRegistry()
-	adopted.RuntimeInstanceID = infrastructure.RuntimeInstanceIDGenerator()
+	adopted.AdapterRegistry = resolved.adapterRegistry
+	adopted.RuntimeInstanceID = resolved.runtimeInstanceIDGenerator
 	runtime, err := infrastructure.AdoptWorkspace(context.Background(), adopted)
 	if err != nil {
 		return nil, err
@@ -92,10 +79,13 @@ func NewServer(configuration RuntimeConfiguration, adopted gatewayinfra.AdoptInp
 
 func NewLockedServer(configuration RuntimeConfiguration, options ...ServerOption) *Server {
 	cfg := snapshotRuntimeConfiguration(configuration)
-	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime, options...)
+	resolved := resolveServerOptions(options)
+	infrastructure := gatewayinfra.NewComponent(cfg.DataPath, describeDatabaseRuntime)
 	server := &Server{
 		config: cfg, access: gatewayaccess.NewComponent(cfg.FrontendPort), infrastructure: infrastructure,
-		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(),
+		transfers: gatewaytransfer.NewComponent(), mux: http.NewServeMux(), connectorRegistryOwner: resolved.registry,
+		connectorAdaptersOwner: resolved.adapterRegistry, maintenanceConsole: resolved.maintenanceConsole,
+		runtimeIDGenerator: resolved.runtimeInstanceIDGenerator,
 	}
 	server.connectorActions = server.newConnectorActionApplication()
 	server.connectorPorts = server.newConnectorPortsApplication()
@@ -117,9 +107,9 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 		Delete:        s.infrastructure.DeleteDatabase,
 		Publish:       s.publishDatabase,
 		GatewaySecret: func() string { return s.config.GatewaySecret },
-		OnActivated: func(runtime databaseRuntime) {
-			if runtime != nil && runtime.ConfiguredGatewaySecret() != "" {
-				s.config.GatewaySecret = runtime.ConfiguredGatewaySecret()
+		OnActivated: func(runtime *gatewayinfra.WorkspaceHandle) {
+			if secret := s.infrastructure.ConfiguredGatewaySecret(runtime); secret != "" {
+				s.config.GatewaySecret = secret
 			}
 		},
 		OnOpened: s.initializeRetention,
@@ -140,7 +130,7 @@ func (s *Server) initializeWorkspaceLifecycle() error {
 	return nil
 }
 
-func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
+func describeDatabaseRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayinfra.Identity {
 	if runtime == nil {
 		return gatewayinfra.Identity{}
 	}
@@ -148,23 +138,15 @@ func describeDatabaseRuntime(runtime databaseRuntime) gatewayinfra.Identity {
 }
 
 func (s *Server) connectorRegistry() *connectors.Registry {
-	if s == nil || s.infrastructure == nil {
+	if s == nil {
 		return nil
 	}
-	return s.infrastructure.ConnectorRegistry()
+	return s.connectorRegistryOwner
 }
 
 func (s *Server) connectorAdapterRegistry() *connectorapi.Registry {
-	if s == nil || s.infrastructure == nil {
+	if s == nil {
 		return nil
 	}
-	return s.infrastructure.ConnectorAdapterRegistry()
-}
-
-func runtimeConnectorRegistry(runtime databaseRuntime) *connectors.Registry {
-	return runtime.Connectors.ConnectorRegistry()
-}
-
-func runtimeConnectorAdapterRegistry(runtime databaseRuntime) *connectorapi.Registry {
-	return runtime.Connectors.ConnectorAdapterRegistry()
+	return s.connectorAdaptersOwner
 }

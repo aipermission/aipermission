@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
@@ -14,7 +15,7 @@ func (s *Server) connectorActionApprovalItemFromRequest(item connectormgmt.Actio
 	return s.connectorManagementApplication().ConnectorApprovalItemFromRequest(item)
 }
 
-func (s *Server) runPendingConnectorAction(ctx context.Context, runtime databaseRuntime, id int64, userNote string) (connectormgmt.ActionRequest, error) {
+func (s *Server) runPendingConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, id int64, userNote string) (connectormgmt.ActionRequest, error) {
 	workflow, err := s.connectorActionApprovalWorkflow(runtime)
 	if err != nil {
 		return connectormgmt.ActionRequest{}, err
@@ -22,7 +23,7 @@ func (s *Server) runPendingConnectorAction(ctx context.Context, runtime database
 	return workflow.RunPending(ctx, id, userNote)
 }
 
-func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime databaseRuntime, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
+func (s *Server) connectorActionApprovalItemForResponse(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, item connectormgmt.ActionRequest) (connectorActionApprovalItem, error) {
 	workflow, err := s.connectorActionApprovalWorkflow(runtime)
 	if err != nil {
 		return connectorActionApprovalItem{}, err

@@ -2,6 +2,10 @@ package gatewayaccess
 
 import "github.com/aipermission/aipermission/backend/internal/executionprincipal"
 
+func NewRuntimeInstanceID() (string, error) {
+	return executionprincipal.NewRuntimeInstanceID()
+}
+
 type RuntimeIdentity struct {
 	WorkspaceID string
 	RuntimeID   string

@@ -16,7 +16,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -74,13 +73,11 @@ func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 
 func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 	catalog := newTestConnectorCatalog(t)
-	server := &Server{infrastructure: gatewayinfra.NewComponent(
-		"test.db", describeDatabaseRuntime,
-		gatewayinfra.WithConnectorAdapterRegistry(catalog.adapters),
-	)}
-	server.connectorPorts = server.newConnectorPortsApplication()
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
+	server := testServerForRuntime(t, runtime)
+	server.connectorRegistryOwner = catalog.connectors
+	server.connectorAdaptersOwner = catalog.adapters
 	capabilities := connectorRuntimeCapabilitiesFor(postgresconnector.Kind, server, runtime)
 	if capabilities == nil || capabilities.RuntimeCapability(connectors.NetworkTransportCapabilityName) == nil {
 		t.Fatalf("postgres should receive generic network transport capability: %#v", capabilities)
@@ -99,7 +96,8 @@ func TestConnectorRuntimeCapabilitiesAreKindScoped(t *testing.T) {
 
 func TestConnectorNetworkTransportFailsClosedWithoutSourceIdentity(t *testing.T) {
 	database := openAPITestDB(t)
-	transport := connectorports.NetworkTransport(connectorBaseWorkspace(newTestDatabaseRuntime(t, database)), nil, nil)
+	runtime := newTestDatabaseRuntime(t, database)
+	transport := connectorports.NetworkTransport(testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil)
 
 	_, err := transport.DialConnectorTCP(context.Background(), connectors.NetworkDialRequest{
 		Mode:               "over_fixture",
@@ -126,7 +124,7 @@ func TestConnectorCommandTransportAcceptsConnectorOwnedModes(t *testing.T) {
 func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 	database := openAPITestDB(t)
 	runtime := newTestDatabaseRuntime(t, database)
-	transport := connectorports.ApprovedNetworkTransport(connectorBaseWorkspace(runtime), nil, nil, nil)
+	transport := connectorports.ApprovedNetworkTransport(testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil, nil)
 
 	_, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		Mode:               "over_ssh",
@@ -166,8 +164,9 @@ func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 		t.Fatalf("update transport profile: %v", err)
 	}
 
+	runtime := newTestDatabaseRuntime(t, database)
 	transport := connectorports.ApprovedNetworkTransport(
-		(&Server{}).connectorWorkspace(newTestDatabaseRuntime(t, database)), nil, nil, dependencies,
+		testServerForRuntime(t, runtime).connectorWorkspace(runtime), nil, nil, dependencies,
 	)
 	connection, err := transport.DialConnectorTCP(t.Context(), connectors.NetworkDialRequest{
 		SourceProjectID: targetView.ProjectID, Mode: "over_ssh", Host: "127.0.0.1", Port: 5432,

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
@@ -15,6 +16,26 @@ import (
 )
 
 var ErrOperationUnavailable = errors.New("backup operation lease is unavailable")
+
+const defaultConcurrentOperations = 2
+
+// OperationLimiter owns the process-wide concurrency boundary for encrypted
+// backup and restore operations.
+type OperationLimiter struct {
+	once  sync.Once
+	slots chan struct{}
+}
+
+func (limiter *OperationLimiter) Acquire(ctx context.Context) (func(), error) {
+	limiter.once.Do(func() { limiter.slots = make(chan struct{}, defaultConcurrentOperations) })
+	select {
+	case limiter.slots <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-limiter.slots }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
 
 type Lifecycle interface {
 	AcquireRead() func()

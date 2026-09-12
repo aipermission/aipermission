@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPScope, bool) {
@@ -14,8 +14,8 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return gatewayaccess.MCPScope{}, false
 	}
-	return gatewayaccess.MCPScope{
-		Database: auth.runtime.Storage.DatabaseHandle(), Registry: runtimeConnectorRegistry(auth.runtime), TokenID: auth.TokenID,
+	scope, valid := s.infrastructure.MCPReadScope(auth.runtime, gatewayinfra.MCPReadPorts{
+		TokenID: auth.TokenID,
 		Permissions: func(ctx context.Context) ([]gatewayaccess.MCPPermission, error) {
 			permissions, err := s.connectorCatalog(auth.runtime).ProjectScopedSupportedConnectorPermissions(ctx, auth.TokenID)
 			if err != nil {
@@ -34,16 +34,14 @@ func (s mcpHandlers) mcpConnectorReadScope(w http.ResponseWriter, r *http.Reques
 			return result, nil
 		},
 		MetadataEnabled: func(ctx context.Context) (bool, error) {
-			settings, err := readSecuritySettings(ctx, auth.runtime)
+			settings, err := s.readSecuritySettings(ctx, auth.runtime)
 			return settings.ExposeMCPServerMetadata, err
 		},
-		Metadata: func(target connectors.TargetView, profile connectors.CredentialProfileView) map[string]any {
-			if adapter := s.connectorLiveConsoleTargetAdapterFor(target.ConnectorKind); adapter != nil {
-				return adapter.LiveConsoleTargetMetadata(target, profile)
-			}
-			return nil
-		},
-	}, true
+		Metadata: gatewayaccess.NewMCPMetadataResolver(func(kind string) gatewayaccess.MCPMetadataAdapter {
+			return s.connectorLiveConsoleTargetAdapterFor(kind)
+		}),
+	})
+	return scope, valid
 }
 
 func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Request) (gatewayaccess.MCPActionScope, bool) {
@@ -52,9 +50,12 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	call := s.connectorActionApplication().MCPCall(s.connectorActionWorkspace(auth.runtime))
-	return gatewayaccess.MCPActionScope{
-		Database: auth.runtime.Storage.DatabaseHandle(), AdapterRegistry: s.connectorAdapterRegistry(), TokenID: auth.TokenID,
-		Output: s.mcpConnectorOutputAuthorization(auth.runtime),
+	scope, valid := s.infrastructure.MCPActionScope(auth.runtime, gatewayinfra.MCPActionPorts{
+		TokenID: auth.TokenID, RunningHint: s.connectorRunningHint,
+		Delivery: s.connectorActionApplication().Delivery,
+		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
+			return s.tokenExecutionPrincipal(auth.runtime, tokenID)
+		},
 		Call: func(ctx context.Context, request gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error) {
 			result, err := call(ctx, gatewayactions.Call{
 				Source: request.Source, TokenID: request.TokenID, TargetRef: request.TargetRef,
@@ -69,18 +70,6 @@ func (s mcpHandlers) mcpConnectorActionScope(w http.ResponseWriter, r *http.Requ
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, auth.runtime, value)
 		},
-	}, true
-}
-
-func (s *Server) mcpConnectorOutputAuthorization(runtime databaseRuntime) *gatewayaccess.MCPOutputAuthorization {
-	if runtime == nil {
-		return nil
-	}
-	return &gatewayaccess.MCPOutputAuthorization{
-		Database: runtime.Storage.DatabaseHandle(), Tokens: runtime.Storage.TokenStore(), Leases: runtime.Security.VaultLeaseStore(),
-		Delivery: s.connectorActionApplication().Delivery(runtime.Security.VaultDeliveryCoordinator().AcquireDelivery), MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
-		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
-			return s.tokenExecutionPrincipal(runtime, tokenID)
-		},
-	}
+	})
+	return scope, valid
 }

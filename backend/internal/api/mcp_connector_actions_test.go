@@ -19,6 +19,8 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayaccesshttp "github.com/aipermission/aipermission/backend/internal/gatewayaccess/httpowner"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -36,7 +38,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID:       token.ID,
 		TargetID:      target.ID,
@@ -123,8 +125,8 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		) VALUES (?, 1, 'mcp_token', ?, ?, ?, 'environment-hash', 'approval-hash', 'Vault session', 'connected', ?, ?)`,
 		target.ID,
 		token.ID,
-		runtime.Identity.WorkspaceID,
-		runtime.Identity.RuntimeID,
+		runtime.Identity().WorkspaceID,
+		runtime.Identity().RuntimeID,
 		now,
 		now,
 	)
@@ -147,10 +149,10 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 		"missing session generation": {SessionID: &sessionID},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, malformed) {
+			if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, malformed) {
 				t.Fatalf("partial Vault session handle authorized output")
 			}
-			response := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, malformed, connectors.ActionResult{
+			response := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, malformed, connectors.ActionResult{
 				Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 			})
 			if !response.OutputWithheld || response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" {
@@ -158,17 +160,17 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 			}
 		})
 	}
-	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("Vault session output was authorized without a lease")
 	}
-	withheld := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
+	withheld := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if !withheld.OutputWithheld || withheld.Input != nil || withheld.Output != nil || withheld.DisplayText != "" || withheld.Error != "" {
 		t.Fatalf("completed call/replay response exposed output without a lease: %#v", withheld)
 	}
-	if err := runtime.Security.VaultLeaseStore().Grant(vaultsessions.Lease{
-		WorkspaceID: runtime.Identity.WorkspaceID, RuntimeInstanceID: runtime.Identity.RuntimeID,
+	if err := testRuntimeLeases(t, fixture.server, runtime).Grant(vaultsessions.Lease{
+		WorkspaceID: runtime.Identity().WorkspaceID, RuntimeInstanceID: runtime.Identity().RuntimeID,
 		TokenID: token.ID, RuntimeID: target.ID, SessionID: sessionID, SessionGeneration: generation,
 		EnvironmentContentHash: "environment-hash", ApprovalContextHash: "approval-hash",
 		ExpiresAt: time.Now().UTC().Add(time.Hour),
@@ -179,17 +181,17 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	if err != nil {
 		t.Fatalf("create token execution principal: %v", err)
 	}
-	if err := runtime.Security.VaultLeaseStore().Authorize(ctx, principal, console.SessionAuthorization{
+	if err := testRuntimeLeases(t, fixture.server, runtime).Authorize(ctx, principal, console.SessionAuthorization{
 		Handle:                 console.SessionHandle{ID: sessionID, RuntimeID: target.ID, Generation: generation},
 		EnvironmentContentHash: "environment-hash",
 		ApprovalContextHash:    "approval-hash",
 	}, console.OperationObserve); err != nil {
 		t.Fatalf("exact Vault lease should authorize output: %v", err)
 	}
-	if !fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if !gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("valid exact Vault lease did not authorize connector output")
 	}
-	authorized := fixture.server.mcpConnectorOutputAuthorization(runtime).ResponseForToken(ctx, fixture.server.connectorAdapterRegistry(), token.ID, request, connectors.ActionResult{
+	authorized := gatewayaccesshttp.ResponseForToken(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), fixture.server.connectorRunningHint, token.ID, request, connectors.ActionResult{
 		Status: connectors.ResultCompleted, Output: request.Output, DisplayText: request.DisplayText,
 	})
 	if authorized.OutputWithheld || authorized.Output == nil || authorized.DisplayText == "" {
@@ -201,7 +203,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("block action permission: %v", err)
 	}
-	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("blocked action permission still authorized stored output")
 	}
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -210,8 +212,8 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 	}); err != nil {
 		t.Fatalf("restore action permission: %v", err)
 	}
-	runtime.Security.VaultLeaseStore().RevokeToken(token.ID)
-	if fixture.server.mcpConnectorOutputAuthorization(runtime).Authorized(ctx, token.ID, request) {
+	testRuntimeLeases(t, fixture.server, runtime).RevokeToken(token.ID)
+	if gatewayaccesshttp.Authorized(ctx, testMCPOutputAuthorization(t, fixture.server, runtime, token.ID), token.ID, request) {
 		t.Fatalf("revoked Vault lease still authorized connector output")
 	}
 }
@@ -229,7 +231,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	target, err = store.UpdateTarget(ctx, connectortargets.UpdateTargetInput{
 		ID:        target.ID,
 		ProjectID: project.ID,
@@ -289,7 +291,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName:    postgresconnector.ActionGetSchemas,
@@ -368,7 +370,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	if newKey.Code != http.StatusOK || !strings.Contains(newKey.Body.String(), `"status":"approval_pending"`) {
 		t.Fatalf("refreshed logical attempt with new key: %d %s", newKey.Code, newKey.Body.String())
 	}
-	fixture.server.activeRuntime().Security.RuntimeControlState().SetMCPStarted(false)
+	testRuntimeControlState(t, fixture.server, fixture.server.activeRuntime()).SetMCPStarted(false)
 	stoppedReplay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, request)
 	if stoppedReplay.Code != http.StatusOK || !strings.Contains(stoppedReplay.Body.String(), `"status":"stopped"`) {
 		t.Fatalf("stopped MCP replay: %d %s", stoppedReplay.Code, stoppedReplay.Body.String())
@@ -383,7 +385,7 @@ func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	if stoppedNew.Code != http.StatusOK || !strings.Contains(stoppedNew.Body.String(), `"status":"stopped"`) {
 		t.Fatalf("stopped MCP new call: %d %s", stoppedNew.Code, stoppedNew.Body.String())
 	}
-	fixture.server.activeRuntime().Security.RuntimeControlState().SetMCPStarted(true)
+	testRuntimeControlState(t, fixture.server, fixture.server.activeRuntime()).SetMCPStarted(true)
 	if _, err := fixture.db.Exec(`UPDATE connector_targets SET status = 'archived' WHERE id = ?`, target.ID); err != nil {
 		t.Fatalf("archive target: %v", err)
 	}
@@ -414,7 +416,7 @@ func TestMCPConnectorActionAllowsLegacyReadsButRequiresIdempotencyForMutations(t
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
@@ -464,7 +466,7 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 		SessionID: &sessionID,
 		Output:    map[string]any{"secret_derived_result": "withhold-me"},
 	}
-	response := (&Server{}).mcpConnectorOutputAuthorization(nil).ResponseForToken(context.Background(), nil, 9, request, connectors.ActionResult{
+	response := gatewayaccesshttp.ResponseForToken(context.Background(), &gatewayaccess.MCPOutputAuthorization{}, nil, 9, request, connectors.ActionResult{
 		Status: connectors.ResultOutcomeUnknown,
 		Output: request.Output,
 	})
@@ -484,7 +486,7 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	target, profile := createAPITestPostgresTargetProfile(t, store, fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID)
+	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
 		TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ActionName: postgresconnector.ActionGetSchemas, ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
@@ -492,20 +494,21 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 		t.Fatalf("set permission: %v", err)
 	}
 	runtime := fixture.server.activeRuntime()
-	runtime.Security.RuntimeControlState().SetMCPStarted(true)
+	testRuntimeControlState(t, fixture.server, runtime).SetMCPStarted(true)
 	request := connectortargets.ActionRequest{
 		ID: 1, TokenID: &token.ID, TargetID: target.ID, ProfileID: profile.ID,
 		ConnectorKind: postgresconnector.Kind, ActionName: postgresconnector.ActionGetSchemas,
 	}
-	response := mcpconnector.ResponseFromRequest(fixture.server.connectorAdapterRegistry(), request)
+	response := mcpconnector.ResponseFromRequest(fixture.server.connectorRunningHint, request)
 	response.Output = map[string]any{"sensitive": "bounded-result"}
 	w := newBlockingResponseWriter()
 	writeDone := make(chan struct{})
 	go func() {
 		defer close(writeDone)
-		fixture.server.mcpConnectorOutputAuthorization(runtime).Deliver(
+		gatewayaccesshttp.Deliver(
 			w,
 			httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
+			testMCPOutputAuthorization(t, fixture.server, runtime, token.ID),
 			token.ID,
 			request,
 			response,
@@ -536,9 +539,10 @@ func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	}
 
 	after := httptest.NewRecorder()
-	fixture.server.mcpConnectorOutputAuthorization(runtime).Deliver(
+	gatewayaccesshttp.Deliver(
 		after,
 		httptest.NewRequest(http.MethodGet, "/api/mcp/connector-action-requests/1", nil),
+		testMCPOutputAuthorization(t, fixture.server, runtime, token.ID),
 		token.ID,
 		request,
 		response,

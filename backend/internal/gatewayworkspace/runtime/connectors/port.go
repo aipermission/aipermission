@@ -2,10 +2,13 @@
 package connectors
 
 import (
+	"context"
+
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	connectorcatalog "github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type Port interface {
@@ -14,5 +17,7 @@ type Port interface {
 	ResourceScopes() connectorruntime.ResourceScopes
 	ConsoleSessionManager() *console.Manager
 	ConfigureConsoleSessions(console.RuntimeOpener, func(string) string)
+	ConfigureVaultSessionAuthorizer(*vaultsessions.Store, func(context.Context, func() error, func() error) error)
+	ConfigureSessionClosedHook(func(sessionID, runtimeID, generation int64))
 	ConnectorScope(string, connectorruntime.SecretAccessorFactory) *connectorruntime.Scope
 }

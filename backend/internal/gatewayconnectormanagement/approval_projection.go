@@ -7,10 +7,11 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-func (*Component) ConnectorApprovalItemForResponse(ctx context.Context, workflow connectorapproval.Workflow, item connectortargets.ActionRequest) (connectorapproval.Item, error) {
-	return connectorapproval.ItemForResponse(ctx, workflow, item)
+func (*Component) ConnectorApprovalItemForResponse(ctx context.Context, workflow ConnectorApprovalWorkflow, item ActionRequest) (ConnectorApprovalItem, error) {
+	result, err := connectorapproval.ItemForResponse(ctx, workflow, connectortargets.ActionRequest(item))
+	return ConnectorApprovalItem(result), err
 }
 
-func (*Component) ConnectorApprovalItemFromRequest(item connectortargets.ActionRequest) connectorapproval.Item {
-	return connectorapproval.ItemFromRequest(item)
+func (*Component) ConnectorApprovalItemFromRequest(item ActionRequest) ConnectorApprovalItem {
+	return ConnectorApprovalItem(connectorapproval.ItemFromRequest(connectortargets.ActionRequest(item)))
 }

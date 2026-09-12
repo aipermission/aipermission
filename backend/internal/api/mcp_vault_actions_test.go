@@ -17,6 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
@@ -420,9 +421,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
-	runtime.Connectors.ConfigureConsoleSessions(func(openCtx context.Context, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	if err := fixture.server.infrastructure.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
-		return &console.RuntimeSession{
+		return &gatewayoperations.RuntimeSession{
 			Stdin:        discardWriteCloser{},
 			Stdout:       strings.NewReader(""),
 			PeerIdentity: identities[0],
@@ -440,7 +441,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 			},
 			Close: func() error { return nil },
 		}, nil
-	}, fixture.server.runtimeRedactor(runtime))
+	}, fixture.server.runtimeRedactor(runtime)); err != nil {
+		t.Fatal(err)
+	}
 	if err := fixture.server.configureVaultSessionRuntime(runtime); err != nil {
 		t.Fatal(err)
 	}
@@ -471,14 +474,14 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observer := vaultsessions.NewObserver(runtime.Storage.DatabaseHandle(), runtime.Security.VaultLeaseStore())
+	observer := vaultsessions.NewObserver(fixture.db, testRuntimeLeases(t, fixture.server, runtime))
 	if !observer.Authorized(ctx, principal, vaultsessions.ObserveRequest{
 		SessionID: alwaysSessionID, SessionGeneration: alwaysGeneration,
 		ExpectedRuntimeID: target.ID, RequireEnvironment: true,
 	}) {
 		t.Fatal("Always session was not authorized for the owning token")
 	}
-	runtime.Connectors.ConsoleSessionManager().Resize(alwaysSessionID, 141, 47)
+	testRuntimeConsoleSessions(t, fixture.server, runtime).Resize(alwaysSessionID, 141, 47)
 
 	setPermission(connectortargets.ActionPermissionApprovalRequired)
 	callBody.IdempotencyKey = "vault-session-e2e-prompt"
@@ -685,8 +688,8 @@ func TestVaultActionCompensationRemovesGeneratedItemAndSession(t *testing.T) {
 	}
 	store, err := projectvault.NewStore(
 		fixture.db,
-		fixture.server.activeRuntime().Storage.SecretVault(),
-		fixture.server.activeRuntime().Identity.WorkspaceID,
+		testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()),
+		fixture.server.activeRuntime().Identity().WorkspaceID,
 	)
 	if err != nil {
 		t.Fatalf("create Vault store: %v", err)

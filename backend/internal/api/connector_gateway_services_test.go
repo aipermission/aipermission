@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"path/filepath"
 	"testing"
 	"time"
@@ -64,9 +65,15 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 	}
 	fixture.server.infrastructure.ActivateWorkspace(second)
 	fixture.server.infrastructure.ActivateWorkspace(first)
+	if current, ok := fixture.server.infrastructure.LookupWorkspace(first.Identity().DatabaseID); !ok || current != first {
+		t.Fatalf("first workspace handle changed after opening second: found=%t same=%t first=%p current=%p id=%q", ok, current == first, first, current, first.Identity().DatabaseID)
+	}
+	if _, ok := fixture.server.infrastructure.RuntimeRedactor(first); !ok {
+		t.Fatal("first workspace handle stopped resolving after lookup")
+	}
 
-	firstRequest := createRuntimeScopedVaultRequest(t, first, "first")
-	secondRequest := createRuntimeScopedVaultRequest(t, second, "second")
+	firstRequest := createRuntimeScopedVaultRequest(t, fixture.server, first, "first")
+	secondRequest := createRuntimeScopedVaultRequest(t, fixture.server, second, "second")
 	changeCalled := false
 	if err := fixture.server.connectorPortsApplication().RouteGateway().ConnectorChangeVaultPeerTrust(ctx, func() error {
 		changeCalled = true
@@ -78,34 +85,35 @@ func TestConnectorPeerTrustChangeInvalidatesEveryUnlockedWorkspace(t *testing.T)
 		t.Fatal("trust change callback was not called")
 	}
 	for _, item := range []struct {
-		runtime databaseRuntime
+		runtime *gatewayinfra.WorkspaceHandle
 		id      int64
 	}{
 		{runtime: first, id: firstRequest.ID},
 		{runtime: second, id: secondRequest.ID},
 	} {
-		current, err := vaultrequests.NewStore(item.runtime.Storage.DatabaseHandle()).Get(ctx, item.id)
+		current, err := vaultrequests.NewStore(testRuntimeDatabase(t, fixture.server, item.runtime)).Get(ctx, item.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if current.Status != vaultrequests.StatusStale {
-			t.Fatalf("workspace %q request status = %q", item.runtime.Identity.DatabaseID, current.Status)
+			t.Fatalf("workspace %q request status = %q", item.runtime.Identity().DatabaseID, current.Status)
 		}
 	}
 }
 
-func createRuntimeScopedVaultRequest(t *testing.T, runtime databaseRuntime, suffix string) vaultrequests.Request {
+func createRuntimeScopedVaultRequest(t *testing.T, server *Server, runtime *gatewayinfra.WorkspaceHandle, suffix string) vaultrequests.Request {
 	t.Helper()
 	ctx := context.Background()
-	project, err := projectstore.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, "Trust "+suffix)
+	database := testRuntimeDatabase(t, server, runtime)
+	project, err := projectstore.NewStore(database).Create(ctx, "Trust "+suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := tokens.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
+	token, err := tokens.NewStore(database).Create(ctx, tokens.CreateRequest{Name: "trust-" + suffix})
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := connectortargets.NewStore(runtime.Storage.DatabaseHandle())
+	targets := connectortargets.NewStore(database)
 	target, err := targets.CreateTarget(ctx, connectortargets.CreateTargetInput{
 		ProjectID: project.ID, ConnectorKind: "test", Name: "trust-" + suffix,
 	})
@@ -127,7 +135,7 @@ func createRuntimeScopedVaultRequest(t *testing.T, runtime databaseRuntime, suff
 		t.Fatal(err)
 	}
 	runtimeID := surface.ID
-	request, _, err := vaultrequests.NewStore(runtime.Storage.DatabaseHandle()).Create(ctx, vaultrequests.CreateInput{
+	request, _, err := vaultrequests.NewStore(database).Create(ctx, vaultrequests.CreateInput{
 		TokenID: token.ID, ProjectID: project.ID, RuntimeID: &runtimeID,
 		ActionName:          vaultrequests.ActionRestartSession,
 		Input:               map[string]any{"target_ref": "test:" + suffix},

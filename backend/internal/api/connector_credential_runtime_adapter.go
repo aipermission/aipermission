@@ -2,15 +2,16 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorCredentialRuntimePorts(runtime databaseRuntime) connectormgmt.CredentialRuntimePorts {
+func (s *Server) connectorCredentialRuntimePorts(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialRuntimePorts {
 	return s.connectorManagementApplication().RuntimeCredentialPorts(
-		connectorCredentialStorage(runtime),
+		s.connectorCredentialStorage(runtime),
 		func(kind string) connectors.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
 		},

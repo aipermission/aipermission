@@ -21,8 +21,20 @@ func TestStateOwnsConsoleSessionManagerConstruction(t *testing.T) {
 func TestNilStateConsoleSessionConfigurationIsSafe(t *testing.T) {
 	var state *State
 	state.ConfigureConsoleSessions(nil, nil)
+	state.ConfigureVaultSessionAuthorizer(nil, nil)
+	state.ConfigureSessionClosedHook(nil)
 	if state.ConsoleSessionManager() != nil {
 		t.Fatal("nil state exposed a console session manager")
+	}
+}
+
+func TestIncompleteConsoleSessionCallbacksAreIgnored(t *testing.T) {
+	state := New(nil, nil, &sql.DB{}, nil, "workspace")
+	state.ConfigureConsoleSessions(nil, nil)
+	state.ConfigureVaultSessionAuthorizer(nil, nil)
+	state.ConfigureSessionClosedHook(nil)
+	if state.ConsoleSessionManager() == nil {
+		t.Fatal("incomplete callback wiring removed the console session manager")
 	}
 }
 

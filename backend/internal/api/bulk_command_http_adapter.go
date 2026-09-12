@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strings"
 
@@ -23,9 +24,8 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayoperations
 		writeInternalError(w)
 		return nil, false
 	}
-	return &gatewayoperations.CommandBulkHTTPRuntime{
+	return s.infrastructure.CommandBulkRuntime(runtime, gatewayoperations.CommandBulkHTTPRuntime{
 		Requests: requests,
-		Sessions: runtime.Connectors.ConsoleSessionManager(),
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},
@@ -49,10 +49,10 @@ func (s *Server) bulkCommandHTTPScope(w http.ResponseWriter) (*gatewayoperations
 			return connectorapi.PresentedErrorMessage(adapter, "command execution failed", err)
 		},
 		InitialTimeout: mcpInitialExecTimeout,
-	}, true
+	})
 }
 
-func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime, runtimeID int64) (gatewayoperations.CommandBulkTarget, error) {
+func (s *Server) bulkConsoleTarget(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) (gatewayoperations.CommandBulkTarget, error) {
 	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return gatewayoperations.CommandBulkTarget{}, err
@@ -80,7 +80,7 @@ func (s *Server) bulkConsoleTarget(ctx context.Context, runtime databaseRuntime,
 	return gatewayoperations.CommandBulkTarget{RuntimeID: runtimeID, Name: name}, nil
 }
 
-func (s *Server) consoleErrorPresenter(ctx context.Context, runtime databaseRuntime, runtimeID int64) any {
+func (s *Server) consoleErrorPresenter(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) any {
 	targetRef, err := s.liveConsoleTargetRefForRuntimeID(ctx, runtime, runtimeID)
 	if err != nil {
 		return nil

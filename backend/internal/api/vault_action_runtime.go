@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -12,14 +13,12 @@ func (s *Server) vaultRequestHTTPScope(w http.ResponseWriter) (gatewayvault.Vaul
 	if !ok {
 		return gatewayvault.VaultApprovalHTTPScope{}, false
 	}
-	return gatewayvault.VaultApprovalHTTPScope{
-		MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
-		Runtime: func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
-			return s.vaultRequestRuntime(ctx, runtime)
-		},
-	}, true
+	scope, valid := s.infrastructure.VaultApprovalScope(runtime, func(ctx context.Context) (gatewayvault.VaultRequestApplication, error) {
+		return s.vaultRequestRuntime(ctx, runtime)
+	})
+	return scope, valid
 }
 
-func (s *Server) vaultRequestRuntime(ctx context.Context, runtime databaseRuntime) (gatewayvault.VaultRequestApplication, error) {
+func (s *Server) vaultRequestRuntime(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) (gatewayvault.VaultRequestApplication, error) {
 	return s.vaultApplication().RequestRuntime(ctx, s.vaultRuntime(runtime))
 }

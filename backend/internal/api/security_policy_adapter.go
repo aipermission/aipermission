@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 var errSecurityPolicyUnavailable = errors.New("security policy runtime is unavailable")
@@ -16,38 +17,51 @@ func (s *Server) securityPolicyHTTPScope(w http.ResponseWriter) (gatewayaccess.S
 	if !ok {
 		return gatewayaccess.SecurityHTTPScope{}, false
 	}
-	return gatewayaccess.SecurityHTTPScope{
-		Service: runtime.Security.PolicyService(),
+	scope, valid := s.infrastructure.SecurityScope(runtime, gatewayinfra.SecurityPorts{
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-	}, true
+	})
+	return scope, valid
 }
 
-func readSecuritySettings(ctx context.Context, runtime databaseRuntime) (gatewayaccess.SecuritySettings, error) {
-	if runtime == nil || runtime.Security.PolicyService() == nil {
+func (s *Server) readSecuritySettings(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) (gatewayaccess.SecuritySettings, error) {
+	if s == nil || runtime == nil {
 		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
 	}
-	return runtime.Security.PolicyService().ReadSettings(ctx)
+	settings, err := s.infrastructure.ReadSecuritySettings(ctx, runtime)
+	if err != nil {
+		return gatewayaccess.SecuritySettings{}, errSecurityPolicyUnavailable
+	}
+	return settings, nil
 }
 
-func (s *Server) redactForPersistence(ctx context.Context, runtime databaseRuntime, value string) string {
-	if runtime == nil || runtime.Security.PolicyService() == nil {
+func (s *Server) redactForPersistence(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, value string) string {
+	if runtime == nil {
 		return s.access.RedactFallback(value)
 	}
-	return runtime.Security.PolicyService().Redact(ctx, value)
+	if redacted, ok := s.infrastructure.RedactForPersistence(ctx, runtime, value); ok {
+		return redacted
+	}
+	return s.access.RedactFallback(value)
 }
 
-func (s *Server) runtimeRedactor(runtime databaseRuntime) func(string) string {
-	if runtime == nil || runtime.Security.PolicyService() == nil {
+func (s *Server) runtimeRedactor(runtime *gatewayinfra.WorkspaceHandle) func(string) string {
+	if runtime == nil {
 		return s.access.RedactFallback
 	}
-	return runtime.Security.PolicyService().Redactor()
+	if redact, ok := s.infrastructure.RuntimeRedactor(runtime); ok {
+		return redact
+	}
+	return s.access.RedactFallback
 }
 
-func (s *Server) redactCustom(ctx context.Context, runtime databaseRuntime, value string) string {
-	if runtime == nil || runtime.Security.PolicyService() == nil {
+func (s *Server) redactCustom(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, value string) string {
+	if runtime == nil {
 		return value
 	}
-	return runtime.Security.PolicyService().RedactCustom(ctx, value)
+	if redacted, ok := s.infrastructure.RedactCustom(ctx, runtime, value); ok {
+		return redacted
+	}
+	return value
 }

@@ -15,8 +15,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 	if !ok {
 		return nil, false
 	}
-	return &connectorapi.LiveConsoleHTTPRuntime{
-		Sessions: runtime.Connectors.ConsoleSessionManager(),
+	return s.infrastructure.LiveConsoleHTTPRuntime(runtime, connectorapi.LiveConsoleHTTPRuntime{
 		Principal: func() (gatewayaccess.Principal, error) {
 			return s.localExecutionPrincipal(runtime)
 		},
@@ -71,7 +70,7 @@ func (s *Server) consoleSessionHTTPScope(w http.ResponseWriter) (*connectorapi.L
 			s.writeObservationAudit(ctx, runtime, "user", nil, runtimeID, action, payload)
 		},
 		UpgradeWebSocket: s.upgradeWebSocket,
-	}, true
+	})
 }
 
 func presentVaultSessionEnvironmentError(err error) (int, string, bool) {

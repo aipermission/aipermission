@@ -13,7 +13,18 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-type Transaction func(context.Context, func(*sql.Tx, connectormanagement.AuditAppender) error) error
+type Transaction func(context.Context, func(*sql.Tx, AuditAppender) error) error
+
+func adaptTransaction(transaction Transaction) func(context.Context, func(*sql.Tx, connectormanagement.AuditAppender) error) error {
+	if transaction == nil {
+		return nil
+	}
+	return func(ctx context.Context, mutate func(*sql.Tx, connectormanagement.AuditAppender) error) error {
+		return transaction(ctx, func(tx *sql.Tx, appendAudit AuditAppender) error {
+			return mutate(tx, connectormanagement.AuditAppender(appendAudit))
+		})
+	}
+}
 
 type StoragePorts struct {
 	Database         *sql.DB
@@ -24,18 +35,18 @@ type StoragePorts struct {
 }
 
 type CredentialPorts struct {
-	Preparation        connectormanagement.CredentialPreparationPorts
-	Runtime            connectormanagement.CredentialRuntimePorts
+	Preparation        CredentialPreparationPorts
+	Runtime            CredentialRuntimePorts
 	SessionEnvironment func(context.Context, int64) bool
 	BeforeCreate       func(context.Context, connectortargets.Target) error
 	BeforeDelete       func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) error
 	SpecialTest        func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
-	RedactDetails      func(context.Context, map[string]any, connectormanagement.CredentialBoundary) (map[string]any, error)
+	RedactDetails      func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 	ResourceRuntime    func(string) connectorapi.CredentialResourceRuntime
 }
 
 type LifecyclePorts struct {
-	AfterChange    func(context.Context, connectormanagement.TargetLifecycleChange) error
+	AfterChange    func(context.Context, TargetLifecycleChange) error
 	DeleteTarget   func(context.Context, connectortargets.Target, map[string]any) error
 	FinalizeTarget func(context.Context, connectortargets.Target, string) (int64, error)
 }
@@ -74,7 +85,7 @@ type CapabilityDependencies struct {
 
 type Dependencies struct {
 	Active       func(http.ResponseWriter) (Workspace, bool)
-	Approvals    connectorapproval.ScopeProvider
+	Approvals    ConnectorApprovalScopeProvider
 	Capabilities CapabilityDependencies
 	Adapters     *connectorapi.Registry
 	PeerIdentity connectorapi.PeerIdentityGateway
@@ -103,7 +114,7 @@ type HTTPHandlers struct {
 func (component *Component) HTTPHandlers() HTTPHandlers {
 	return HTTPHandlers{
 		Queries:           connectormanagement.NewHTTPHandlers(component.QueryScope),
-		Approvals:         connectorapproval.NewHTTPHandlers(component.dependencies.Approvals),
+		Approvals:         connectorapproval.NewHTTPHandlers(component.approvalScope),
 		CombinedMutations: connectormanagement.NewCombinedMutationHTTPHandler(component.CombinedMutationScope),
 		TargetMutations:   connectormanagement.NewTargetMutationHTTPHandler(component.TargetMutationScope),
 		HostPing:          connectormanagement.NewHostPingHTTPHandler(component.HostPingScope),
@@ -116,6 +127,22 @@ func (component *Component) HTTPHandlers() HTTPHandlers {
 		TargetDelete:      &TargetDeleteHTTPHandler{component: component},
 		TargetOperation:   &TargetOperationHTTPHandler{component: component},
 	}
+}
+
+func (component *Component) approvalScope(w http.ResponseWriter) (connectorapproval.Scope, bool) {
+	if component == nil || component.dependencies.Approvals == nil {
+		return connectorapproval.Scope{}, false
+	}
+	scope, ok := component.dependencies.Approvals(w)
+	var workflow func() (connectorapproval.Workflow, error)
+	if scope.Workflow != nil {
+		workflow = func() (connectorapproval.Workflow, error) {
+			return scope.Workflow()
+		}
+	}
+	return connectorapproval.Scope{
+		Database: scope.Database, Workflow: workflow, MCPStarted: scope.MCPStarted, Redact: scope.Redact,
+	}, ok
 }
 
 func (component *Component) active(w http.ResponseWriter) (Workspace, bool) {
@@ -160,12 +187,12 @@ func (component *Component) targetMutation(workspace Workspace) connectormanagem
 			return ValidateTransport(ctx, connectortargets.NewStore(workspace.Storage.Database), projectID, config, component.dependencies.Capabilities.HasTCPTransport)
 		},
 		AcquireExclusive: workspace.Storage.AcquireExclusive,
-		WithTransaction:  workspace.Storage.Transaction,
+		WithTransaction:  adaptTransaction(workspace.Storage.Transaction),
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
-			return workspace.Lifecycle.AfterChange(ctx, change)
+			return workspace.Lifecycle.AfterChange(ctx, TargetLifecycleChange(change))
 		},
 	}
 }
@@ -181,8 +208,8 @@ func (component *Component) ProfileMutationScope(w http.ResponseWriter) (connect
 func (component *Component) profileMutation(workspace Workspace) connectormanagement.ProfileMutationScope {
 	return connectormanagement.ProfileMutationScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry,
-		Preparation: workspace.Credentials.Preparation, AcquireExclusive: workspace.Storage.AcquireExclusive,
-		WithTransaction: workspace.Storage.Transaction,
+		Preparation: workspace.Credentials.Preparation.domain(), AcquireExclusive: workspace.Storage.AcquireExclusive,
+		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		BeforeCreate: func(ctx context.Context, target connectortargets.Target) error {
 			return workspace.Credentials.BeforeCreate(ctx, target)
 		},
@@ -190,7 +217,7 @@ func (component *Component) profileMutation(workspace Workspace) connectormanage
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
-			return workspace.Lifecycle.AfterChange(ctx, change)
+			return workspace.Lifecycle.AfterChange(ctx, TargetLifecycleChange(change))
 		},
 	}
 }
@@ -242,9 +269,9 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 		return connectormanagement.ProvisioningScope{}, false
 	}
 	return connectormanagement.ProvisioningScope{
-		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime,
+		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
 		EncryptSecret:   workspace.Storage.EncryptSecret,
-		WithTransaction: workspace.Storage.Transaction,
+		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},

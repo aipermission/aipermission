@@ -29,12 +29,14 @@ func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *
 		if err != nil {
 			t.Fatal(err)
 		}
-		runtime, err := server.infrastructure.AdoptWorkspace(t.Context(), gatewayinfra.AdoptInput{
-			ID: databaseID, Path: configuration.DataPath, Database: database, Vault: secretVault,
-			TokenStore: tokens.NewStore(database), ConfiguredGatewaySecret: "test-password",
-			Registry: testConnectorRegistry(t), AdapterRegistry: connectorapi.NewRegistry(),
-			RuntimeInstanceID: func() (string, error) { return "ui-session-runtime-" + port, nil },
-		})
+		adopted := testAdoptInput(database, secretVault, tokens.NewStore(database))
+		adopted.ID = databaseID
+		adopted.Path = configuration.DataPath
+		adopted.ConfiguredGatewaySecret = "test-password"
+		adopted.Registry = testConnectorRegistry(t)
+		adopted.AdapterRegistry = connectorapi.NewRegistry()
+		adopted.RuntimeInstanceID = func() (string, error) { return "ui-session-runtime-" + port, nil }
+		runtime, err := server.infrastructure.AdoptWorkspace(t.Context(), adopted)
 		if err != nil {
 			t.Fatal(err)
 		}

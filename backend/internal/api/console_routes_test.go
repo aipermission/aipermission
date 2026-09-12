@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	"github.com/aipermission/aipermission/backend/internal/messagequeue"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"golang.org/x/crypto/ssh"
@@ -145,9 +146,11 @@ func TestCreateConsoleSessionReturnsHostKeyConflict(t *testing.T) {
 		t.Fatalf("parse public key: %v", err)
 	}
 	runtime := fixture.server.activeRuntime()
-	runtime.Connectors.ConfigureConsoleSessions(func(context.Context, console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+	if err := fixture.server.infrastructure.ConfigureConsoleRuntime(runtime, func(context.Context, gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		return nil, fmt.Errorf("ssh dial: %w", execution.NewUnknownHostKeyError("[example.test]:22", publicKey))
-	}, fixture.server.runtimeRedactor(runtime))
+	}, fixture.server.runtimeRedactor(runtime)); err != nil {
+		t.Fatal(err)
+	}
 
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/console/sessions", "", map[string]any{
 		"runtime_id":     server.ID,

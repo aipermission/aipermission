@@ -3,11 +3,12 @@ package api
 import (
 	"context"
 	"database/sql"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorLifecycleApplication(runtime databaseRuntime) *connectormgmt.LifecycleService {
+func (s *Server) connectorLifecycleApplication(runtime *gatewayinfra.WorkspaceHandle) *connectormgmt.LifecycleService {
 	return connectormgmt.NewLifecycleService(connectormgmt.LifecycleServiceDependencies{
 		Mutate: func(
 			ctx context.Context,

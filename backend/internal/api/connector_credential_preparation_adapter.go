@@ -2,12 +2,13 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) connectorCredentialPreparationPorts(runtime databaseRuntime) connectormgmt.CredentialPreparationPorts {
-	return s.connectorManagementApplication().RuntimeCredentialPreparation(connectorCredentialStorage(runtime), func(connectorKind string) connectormgmt.CredentialCanonicalizer {
+func (s *Server) connectorCredentialPreparationPorts(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialPreparationPorts {
+	return s.connectorManagementApplication().RuntimeCredentialPreparation(s.connectorCredentialStorage(runtime), func(connectorKind string) connectormgmt.CredentialCanonicalizer {
 		adapter := s.connectorCredentialCanonicalizerFor(connectorKind)
 		if adapter == nil {
 			return nil
@@ -18,11 +19,10 @@ func (s *Server) connectorCredentialPreparationPorts(runtime databaseRuntime) co
 	})
 }
 
-func connectorCredentialStorage(runtime databaseRuntime) connectormgmt.CredentialStorage {
-	if runtime == nil {
+func (s *Server) connectorCredentialStorage(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.CredentialStorage {
+	if s == nil || s.infrastructure == nil {
 		return connectormgmt.CredentialStorage{}
 	}
-	return connectormgmt.CredentialStorage{
-		Vault: runtime.Storage.SecretVault(), WorkspaceID: runtime.Identity.WorkspaceID,
-	}
+	storage, _ := s.infrastructure.ConnectorCredentialStorage(runtime)
+	return storage
 }

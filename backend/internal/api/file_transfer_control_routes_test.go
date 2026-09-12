@@ -16,14 +16,14 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	item := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+	batch, err := filetransfer.NewStore(fixture.db).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
 		RuntimeID: item.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
 		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(fixture.db).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
 		t.Fatalf("start batch: %t %v", changed, err)
 	}
 	control := &transferjobs.Control{}
@@ -37,7 +37,7 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 		if response.Code != wantCode {
 			t.Fatalf("%s: %d %s", action, response.Code, response.Body.String())
 		}
-		stored, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).GetBatch(t.Context(), batch.ID)
+		stored, err := filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
 		if err != nil || stored.Status != wantStatus {
 			t.Fatalf("%s persisted status = %q: %v", action, stored.Status, err)
 		}
@@ -82,13 +82,13 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	item, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).Create(t.Context(), filetransfer.CreateRequest{
+	item, err := filetransfer.NewStore(fixture.db).Create(t.Context(), filetransfer.CreateRequest{
 		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionUpload, RemotePath: "/report", FileName: "report",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).MarkRunning(t.Context(), item.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(fixture.db).MarkRunning(t.Context(), item.ID); err != nil || !changed {
 		t.Fatalf("start transfer: changed=%t err=%v", changed, err)
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
@@ -107,7 +107,7 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	if workerCtx.Err() != nil {
 		t.Fatal("worker was canceled before terminal state became durable")
 	}
-	stored, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).Get(t.Context(), item.ID)
+	stored, err := filetransfer.NewStore(fixture.db).Get(t.Context(), item.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
 		t.Fatalf("rolled-back transfer status=%q err=%v", stored.Status, err)
 	}
@@ -127,14 +127,14 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+	batch, err := filetransfer.NewStore(fixture.db).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
 		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
 		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
+	if changed, err := filetransfer.NewStore(fixture.db).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
 		t.Fatalf("start batch: changed=%t err=%v", changed, err)
 	}
 	workerCtx, cancel := context.WithCancel(t.Context())
@@ -153,7 +153,7 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	if workerCtx.Err() != nil {
 		t.Fatal("batch worker was canceled before terminal state became durable")
 	}
-	stored, err := filetransfer.NewStore(runtime.Storage.DatabaseHandle()).GetBatch(t.Context(), batch.ID)
+	stored, err := filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
 		t.Fatalf("rolled-back batch status=%q err=%v", stored.Status, err)
 	}

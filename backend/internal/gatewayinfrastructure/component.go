@@ -3,93 +3,81 @@ package gatewayinfrastructure
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"sync"
 
-	"github.com/aipermission/aipermission/backend/internal/backups"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
-	"github.com/aipermission/aipermission/backend/internal/console"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/bootstrap"
+	observationapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/observation"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
 // Component owns process-scoped gateway infrastructure. Callers compose
 // behavior through its methods instead of sharing mutable state containers.
 type Component struct {
-	connectorRegistry          *connectors.Registry
-	connectorAdapterRegistry   *connectorapi.Registry
-	maintenanceConsole         console.MaintenanceConsoleRuntime
-	backupOperations           backups.OperationLimiter
-	workspace                  *gatewayworkspace.Component
-	runtimeInstanceIDGenerator func() (string, error)
-	runtimeMu                  sync.Mutex
-	runtimes                   map[*gatewayworkspace.Runtime]*Runtime
+	backupOperations backupOperationLimiter
+	observation      *observationapp.Component
+	workspace        *gatewayworkspace.Component
+	runtimeMu        sync.Mutex
+	handlesByOwner   map[*gatewayworkspace.Runtime]*WorkspaceHandle
+	ownersByToken    map[*workspaceToken]*gatewayworkspace.Runtime
 }
 
-func NewComponent(dataPath string, describe func(*Runtime) Identity, options ...ServerOption) *Component {
+func NewComponent(dataPath string, describe func(*WorkspaceHandle) Identity) *Component {
 	if describe == nil {
-		describe = func(runtime *Runtime) Identity {
-			if runtime == nil {
+		describe = func(handle *WorkspaceHandle) Identity {
+			if handle == nil {
 				return Identity{}
 			}
-			return runtime.WorkspaceIdentity()
+			return handle.WorkspaceIdentity()
 		}
 	}
-	resolved := resolveOptions(options)
 	component := &Component{
-		connectorRegistry:          resolved.Registry,
-		connectorAdapterRegistry:   resolved.AdapterRegistry,
-		maintenanceConsole:         resolved.MaintenanceConsole,
-		runtimes:                   make(map[*gatewayworkspace.Runtime]*Runtime),
-		runtimeInstanceIDGenerator: resolved.RuntimeInstanceIDGenerator,
+		handlesByOwner: make(map[*gatewayworkspace.Runtime]*WorkspaceHandle),
+		ownersByToken:  make(map[*workspaceToken]*gatewayworkspace.Runtime),
+		observation:    observationapp.New(),
 	}
-	component.workspace = gatewayworkspace.NewComponent(dataPath, func(runtime *gatewayworkspace.Runtime) Identity {
-		return describe(component.wrapRuntime(runtime))
+	component.workspace = gatewayworkspace.NewComponent(dataPath, func(runtime *gatewayworkspace.Runtime) gatewayworkspace.Identity {
+		identity := describe(component.handleFor(runtime))
+		return gatewayworkspace.Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 	})
 	return component
 }
 
-func (component *Component) wrapRuntime(owner *gatewayworkspace.Runtime) *Runtime {
+func (component *Component) handleFor(owner *gatewayworkspace.Runtime) *WorkspaceHandle {
 	if component == nil || owner == nil {
 		return nil
 	}
 	component.runtimeMu.Lock()
 	defer component.runtimeMu.Unlock()
-	if runtime := component.runtimes[owner]; runtime != nil {
-		return runtime
+	if handle := component.handlesByOwner[owner]; handle != nil {
+		return handle
 	}
-	runtime := wrapRuntime(owner)
-	component.runtimes[owner] = runtime
-	return runtime
+	handle := newWorkspaceHandle(owner)
+	component.handlesByOwner[owner] = handle
+	component.ownersByToken[handle.token] = owner
+	return handle
 }
 
-func (component *Component) forgetRuntime(runtime *Runtime) {
-	if component == nil || runtime == nil || runtime.owner == nil {
+func (component *Component) resolve(handle *WorkspaceHandle) (*gatewayworkspace.Runtime, bool) {
+	if component == nil || handle == nil || handle.token == nil {
+		return nil, false
+	}
+	component.runtimeMu.Lock()
+	defer component.runtimeMu.Unlock()
+	owner, ok := component.ownersByToken[handle.token]
+	return owner, ok && component.handlesByOwner[owner] == handle
+}
+
+func (component *Component) forgetHandle(handle *WorkspaceHandle) {
+	if component == nil || handle == nil || handle.token == nil {
 		return
 	}
 	component.runtimeMu.Lock()
-	delete(component.runtimes, runtime.owner)
+	if owner, ok := component.ownersByToken[handle.token]; ok {
+		delete(component.ownersByToken, handle.token)
+		delete(component.handlesByOwner, owner)
+	}
 	component.runtimeMu.Unlock()
-}
-
-func (component *Component) RuntimeInstanceIDGenerator() func() (string, error) {
-	if component == nil {
-		return nil
-	}
-	return component.runtimeInstanceIDGenerator
-}
-
-func (component *Component) ConnectorRegistry() *connectors.Registry {
-	if component == nil {
-		return nil
-	}
-	return component.connectorRegistry
-}
-
-func (component *Component) ConnectorAdapterRegistry() *connectorapi.Registry {
-	if component == nil {
-		return nil
-	}
-	return component.connectorAdapterRegistry
 }
 
 func (component *Component) ConfigureWorkspaceLifecycle(dependencies WorkspaceDependencies) error {
@@ -103,24 +91,25 @@ func (component *Component) ConfigureWorkspaceLifecycle(dependencies WorkspaceDe
 			if err != nil {
 				return nil, err
 			}
-			if runtime == nil || runtime.owner == nil {
+			owner, ok := component.resolve(runtime)
+			if !ok {
 				return nil, InitializationError()
 			}
-			return runtime.owner, nil
+			return owner, nil
 		}
 	}
 	var closeRuntime func(*gatewayworkspace.Runtime) error
 	if dependencies.Close != nil {
 		closeRuntime = func(runtime *gatewayworkspace.Runtime) error {
-			return dependencies.Close(component.wrapRuntime(runtime))
+			return dependencies.Close(component.handleFor(runtime))
 		}
 	}
 	var onActivated, onOpened func(*gatewayworkspace.Runtime)
 	if dependencies.OnActivated != nil {
-		onActivated = func(runtime *gatewayworkspace.Runtime) { dependencies.OnActivated(component.wrapRuntime(runtime)) }
+		onActivated = func(runtime *gatewayworkspace.Runtime) { dependencies.OnActivated(component.handleFor(runtime)) }
 	}
 	if dependencies.OnOpened != nil {
-		onOpened = func(runtime *gatewayworkspace.Runtime) { dependencies.OnOpened(component.wrapRuntime(runtime)) }
+		onOpened = func(runtime *gatewayworkspace.Runtime) { dependencies.OnOpened(component.handleFor(runtime)) }
 	}
 	return component.workspace.Configure(gatewayworkspace.Dependencies{
 		DataPath: dependencies.DataPath,
@@ -146,38 +135,39 @@ func (component *Component) WorkspaceSelection() Identity {
 	if component == nil || component.workspace == nil {
 		return Identity{}
 	}
-	return component.workspace.Selection()
+	identity := component.workspace.Selection()
+	return Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 }
 
-func (component *Component) LookupWorkspace(id string) (*Runtime, bool) {
+func (component *Component) LookupWorkspace(id string) (*WorkspaceHandle, bool) {
 	if component == nil || component.workspace == nil {
 		return nil, false
 	}
 	owner, ok := component.workspace.Lookup(id)
-	return component.wrapRuntime(owner), ok
+	return component.handleFor(owner), ok
 }
 
-func (component *Component) ActivateWorkspace(runtime *Runtime) {
-	if component != nil && component.workspace != nil && runtime != nil && runtime.owner != nil {
-		component.workspace.Activate(runtime.owner)
+func (component *Component) ActivateWorkspace(handle *WorkspaceHandle) {
+	if owner, ok := component.resolve(handle); ok && component.workspace != nil {
+		component.workspace.Activate(owner)
 	}
 }
 
-func (component *Component) ActiveWorkspace() *Runtime {
+func (component *Component) ActiveWorkspace() *WorkspaceHandle {
 	if component == nil || component.workspace == nil {
 		return nil
 	}
-	return component.wrapRuntime(component.workspace.Active())
+	return component.handleFor(component.workspace.Active())
 }
 
-func (component *Component) WorkspaceSnapshot() []*Runtime {
+func (component *Component) WorkspaceSnapshot() []*WorkspaceHandle {
 	if component == nil || component.workspace == nil {
 		return nil
 	}
 	items := component.workspace.Snapshot()
-	runtimes := make([]*Runtime, len(items))
+	runtimes := make([]*WorkspaceHandle, len(items))
 	for index, runtime := range items {
-		runtimes[index] = component.wrapRuntime(runtime)
+		runtimes[index] = component.handleFor(runtime)
 	}
 	return runtimes
 }
@@ -189,38 +179,64 @@ func (component *Component) WorkspaceCount() int {
 	return component.workspace.Len()
 }
 
-func (component *Component) AdoptWorkspace(ctx context.Context, input AdoptInput) (*Runtime, error) {
+func (component *Component) AdoptWorkspace(ctx context.Context, input bootstrap.Adopt) (*WorkspaceHandle, error) {
 	if component == nil || component.workspace == nil {
 		return nil, InitializationError()
 	}
-	owner, err := component.workspace.Adopt(ctx, input)
-	return component.wrapRuntime(owner), err
+	owner, err := component.workspace.Adopt(ctx, input.WorkspaceInput())
+	return component.handleFor(owner), err
 }
 
-func (component *Component) OpenWorkspace(ctx context.Context, input OpenInput) (*Runtime, error) {
+func (component *Component) OpenWorkspace(ctx context.Context, input bootstrap.Open) (*WorkspaceHandle, error) {
 	if component == nil || component.workspace == nil {
 		return nil, InitializationError()
 	}
-	owner, err := component.workspace.Open(ctx, input)
-	return component.wrapRuntime(owner), err
+	owner, err := component.workspace.Open(ctx, input.WorkspaceInput())
+	return component.handleFor(owner), err
 }
 
-func (component *Component) DiscardWorkspace(runtime *Runtime, resolveTransfers func() TransferWorkflow) error {
-	if component == nil || component.workspace == nil || runtime == nil || runtime.owner == nil {
+func (component *Component) DiscardWorkspace(handle *WorkspaceHandle, resolveTransfers func() TransferWorkflow) error {
+	owner, ok := component.resolve(handle)
+	if !ok || component.workspace == nil {
 		return InitializationError()
 	}
-	err := component.workspace.Discard(runtime.owner, resolveTransfers)
-	component.forgetRuntime(runtime)
+	var transfers func() gatewayworkspace.TransferWorkflow
+	if resolveTransfers != nil {
+		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
+	}
+	err := component.workspace.Discard(owner, transfers)
+	component.forgetHandle(handle)
 	return err
 }
 
-func (component *Component) CloseWorkspace(runtime *Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
-	if component == nil || component.workspace == nil || runtime == nil || runtime.owner == nil {
+func (component *Component) CloseWorkspace(handle *WorkspaceHandle, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
+	owner, ok := component.resolve(handle)
+	if !ok || component.workspace == nil {
 		return InitializationError()
 	}
-	err := component.workspace.Close(runtime.owner, resolveActions, resolveCommands, resolveTransfers)
-	component.forgetRuntime(runtime)
+	var actions func() (gatewayworkspace.ActionWorkflow, error)
+	if resolveActions != nil {
+		actions = func() (gatewayworkspace.ActionWorkflow, error) { return resolveActions() }
+	}
+	var commands func() (gatewayworkspace.CommandWorkflow, error)
+	if resolveCommands != nil {
+		commands = func() (gatewayworkspace.CommandWorkflow, error) { return resolveCommands() }
+	}
+	var transfers func() gatewayworkspace.TransferWorkflow
+	if resolveTransfers != nil {
+		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
+	}
+	err := component.workspace.Close(owner, actions, commands, transfers)
+	component.forgetHandle(handle)
 	return err
+}
+
+func (component *Component) ConfiguredGatewaySecret(handle *WorkspaceHandle) string {
+	owner, ok := component.resolve(handle)
+	if !ok {
+		return ""
+	}
+	return owner.ConfiguredGatewaySecret()
 }
 
 func (component *Component) MoveDatabase(currentPath, targetPath string) error {
@@ -262,7 +278,17 @@ func (component *Component) WorkspaceHTTP(dependencies WorkspaceHTTPDependencies
 	if component == nil || component.workspace == nil {
 		return nil
 	}
-	return component.workspace.HTTP(dependencies)
+	converted := gatewayworkspace.HTTPDependencies{
+		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
+		ClearSessions: dependencies.ClearSessions, CloseMaintenance: dependencies.CloseMaintenance,
+		Now: dependencies.Now,
+	}
+	if dependencies.BeginAttempt != nil {
+		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (gatewayworkspace.PasswordAttempt, bool) {
+			return dependencies.BeginAttempt(w, r)
+		}
+	}
+	return component.workspace.HTTP(converted)
 }
 
 func (component *Component) HasActiveRemoteBackup(ctx context.Context, database *sql.DB) (bool, error) {
@@ -286,16 +312,9 @@ func (component *Component) PasswordPolicyError(err error) error {
 	return component.workspace.PasswordPolicyError(err)
 }
 
-func (component *Component) MaintenanceConsole() console.MaintenanceConsoleRuntime {
-	if component == nil {
-		return nil
-	}
-	return component.maintenanceConsole
-}
-
 func (component *Component) AcquireBackupOperation(ctx context.Context) (func(), error) {
 	if component == nil {
 		return nil, InitializationError()
 	}
-	return component.backupOperations.Acquire(ctx)
+	return component.backupOperations.acquire(ctx)
 }

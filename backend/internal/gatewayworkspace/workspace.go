@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/catalog"
@@ -44,15 +45,58 @@ type Runtime struct {
 	owner       *workspaceruntime.Runtime
 }
 
-type AdoptInput = runtimeinput.Adopt
-type OpenInput = runtimeinput.Open
-type Identity = workspacelifecycle.Identity
-type HTTPDependencies = lifecycle.HTTPDependencies
-type HTTPHandlers = lifecycle.HTTPHandlers
-type PasswordAttempt = lifecycle.PasswordAttempt
-type ActionWorkflow = runtimeshutdown.ActionWorkflow
-type CommandWorkflow = runtimeshutdown.CommandWorkflow
-type TransferWorkflow = runtimeshutdown.TransferWorkflow
+type AdoptInput runtimeinput.Adopt
+type OpenInput runtimeinput.Open
+type Identity struct {
+	ID            string
+	Path          string
+	RetryIdentity string
+}
+
+type PasswordAttempt interface {
+	Success()
+	Failure()
+}
+
+type HTTPDependencies struct {
+	BeginAttempt     func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
+	HasSession       func(*http.Request) bool
+	IssueSession     func(http.ResponseWriter) error
+	ClearSessions    func(http.ResponseWriter)
+	CloseMaintenance func(string)
+	Now              func() time.Time
+}
+
+type HTTPHandlers interface {
+	Status(http.ResponseWriter, *http.Request)
+	Setup(http.ResponseWriter, *http.Request)
+	Unlock(http.ResponseWriter, *http.Request)
+	Lock(http.ResponseWriter, *http.Request)
+	Rename(http.ResponseWriter, *http.Request)
+	Delete(http.ResponseWriter, *http.Request)
+	DeleteLocked(http.ResponseWriter, *http.Request)
+	Switch(http.ResponseWriter, *http.Request)
+	ChangePassword(http.ResponseWriter, *http.Request)
+}
+
+type ActionWorkflow interface {
+	BeginShutdown()
+	WaitShutdown(context.Context) error
+	MarkRunningOutcomeUnknown(context.Context, string) error
+}
+
+type CommandWorkflow interface {
+	BeginWorkerShutdown()
+	WaitWorkers(context.Context) error
+	CancelRunning(context.Context, string) error
+}
+
+type TransferWorkflow interface {
+	BeginShutdown() (bool, error)
+	Wait(context.Context) bool
+	Recover(context.Context, string, string) error
+	Abort()
+}
 
 func (runtime *Runtime) WorkspaceIdentity() workspacelifecycle.Identity {
 	if runtime == nil {
@@ -121,19 +165,21 @@ type Component struct {
 	lifecycle *lifecycle.Component
 }
 
-func NewComponent(path string, describe func(*Runtime) workspacelifecycle.Identity) *Component {
+func NewComponent(path string, describe func(*Runtime) Identity) *Component {
 	catalog.Scavenge(path, time.Now())
 	if describe == nil {
-		describe = func(runtime *Runtime) workspacelifecycle.Identity {
+		describe = func(runtime *Runtime) Identity {
 			if runtime == nil {
-				return workspacelifecycle.Identity{}
+				return Identity{}
 			}
-			return runtime.WorkspaceIdentity()
+			identity := runtime.WorkspaceIdentity()
+			return Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 		}
 	}
 	return &Component{lifecycle: lifecycle.NewComponent(path, catalog.DefaultID(path), func(runtime lifecycle.Runtime) workspacelifecycle.Identity {
 		owned, _ := runtime.(*Runtime)
-		return describe(owned)
+		identity := describe(owned)
+		return workspacelifecycle.Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 	})}
 }
 
@@ -184,11 +230,12 @@ func (component *Component) Configure(dependencies Dependencies) error {
 func (component *Component) IsUnlocked() bool {
 	return component != nil && component.lifecycle != nil && component.lifecycle.IsUnlocked()
 }
-func (component *Component) Selection() workspacelifecycle.Identity {
+func (component *Component) Selection() Identity {
 	if component == nil || component.lifecycle == nil {
-		return workspacelifecycle.Identity{}
+		return Identity{}
 	}
-	return component.lifecycle.Selection()
+	identity := component.lifecycle.Selection()
+	return Identity{ID: identity.ID, Path: identity.Path, RetryIdentity: identity.RetryIdentity}
 }
 func (component *Component) Lookup(id string) (*Runtime, bool) {
 	if component == nil || component.lifecycle == nil {
@@ -260,14 +307,23 @@ func (component *Component) CloseAll() error {
 	}
 	return component.lifecycle.CloseAll()
 }
-func (component *Component) HTTP(dependencies lifecycle.HTTPDependencies) lifecycle.HTTPHandlers {
+func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
-	return component.lifecycle.HTTP(dependencies)
+	converted := lifecycle.HTTPDependencies{
+		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
+		ClearSessions: dependencies.ClearSessions, CloseMaintenance: dependencies.CloseMaintenance, Now: dependencies.Now,
+	}
+	if dependencies.BeginAttempt != nil {
+		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (lifecycle.PasswordAttempt, bool) {
+			return dependencies.BeginAttempt(w, r)
+		}
+	}
+	return component.lifecycle.HTTP(converted)
 }
 
-func (component *Component) Adopt(ctx context.Context, input runtimeinput.Adopt) (*Runtime, error) {
+func (component *Component) Adopt(ctx context.Context, input AdoptInput) (*Runtime, error) {
 	state, err := foundation.Adopt(ctx, foundation.AdoptInput{
 		ID: input.ID, Path: input.Path, Database: input.Database, Vault: input.Vault,
 		TokenStore: input.TokenStore, ConfiguredGatewaySecret: input.ConfiguredGatewaySecret,
@@ -278,7 +334,7 @@ func (component *Component) Adopt(ctx context.Context, input runtimeinput.Adopt)
 	}
 	return composeRuntime(workspaceruntime.New(state))
 }
-func (component *Component) Open(ctx context.Context, input runtimeinput.Open) (*Runtime, error) {
+func (component *Component) Open(ctx context.Context, input OpenInput) (*Runtime, error) {
 	state, err := foundation.Open(ctx, foundation.OpenInput{
 		ID: input.ID, Path: input.Path, Password: input.Password,
 		ConfiguredGatewaySecret: input.ConfiguredGatewaySecret,
@@ -289,18 +345,34 @@ func (component *Component) Open(ctx context.Context, input runtimeinput.Open) (
 	}
 	return composeRuntime(workspaceruntime.New(state))
 }
-func (component *Component) Discard(runtime *Runtime, resolveTransfers runtimeshutdown.TransferWorkflowResolver) error {
+func (component *Component) Discard(runtime *Runtime, resolveTransfers func() TransferWorkflow) error {
 	if runtime == nil {
 		return nil
 	}
-	err := runtimeshutdown.Discard(runtime.owner, resolveTransfers)
+	var resolver runtimeshutdown.TransferWorkflowResolver
+	if resolveTransfers != nil {
+		resolver = func() runtimeshutdown.TransferWorkflow { return resolveTransfers() }
+	}
+	err := runtimeshutdown.Discard(runtime.owner, resolver)
 	return err
 }
-func (component *Component) Close(runtime *Runtime, resolveActions runtimeshutdown.ActionWorkflowResolver, resolveCommands runtimeshutdown.CommandWorkflowResolver, resolveTransfers runtimeshutdown.TransferWorkflowResolver) error {
+func (component *Component) Close(runtime *Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow) error {
 	if runtime == nil {
 		return nil
 	}
-	err := runtimeshutdown.Close(runtime.owner, resolveActions, resolveCommands, resolveTransfers)
+	var actions runtimeshutdown.ActionWorkflowResolver
+	if resolveActions != nil {
+		actions = func() (runtimeshutdown.ActionWorkflow, error) { return resolveActions() }
+	}
+	var commands runtimeshutdown.CommandWorkflowResolver
+	if resolveCommands != nil {
+		commands = func() (runtimeshutdown.CommandWorkflow, error) { return resolveCommands() }
+	}
+	var transfers runtimeshutdown.TransferWorkflowResolver
+	if resolveTransfers != nil {
+		transfers = func() runtimeshutdown.TransferWorkflow { return resolveTransfers() }
+	}
+	err := runtimeshutdown.Close(runtime.owner, actions, commands, transfers)
 	return err
 }
 func (component *Component) Move(currentPath, targetPath string) error {

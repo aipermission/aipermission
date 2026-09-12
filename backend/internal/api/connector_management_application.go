@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -61,27 +62,19 @@ func (s *Server) newConnectorManagementApplication() *connectormgmt.Component {
 	})
 }
 
-func (s *Server) connectorCatalog(runtime databaseRuntime) connectormgmt.Catalog {
-	if runtime == nil {
-		return s.connectorManagementApplication().Catalog(nil, nil)
-	}
-	return s.connectorManagementApplication().Catalog(
-		runtime.Storage.DatabaseHandle(), runtimeConnectorRegistry(runtime),
-	)
+func (s *Server) connectorCatalog(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.Catalog {
+	return s.infrastructure.ConnectorCatalog(runtime, s.connectorManagementApplication())
 }
 
-func (s *Server) connectorManagementWorkspace(runtime databaseRuntime) connectormgmt.Workspace {
+func (s *Server) connectorManagementWorkspace(runtime *gatewayinfra.WorkspaceHandle) connectormgmt.Workspace {
 	preparation := s.connectorCredentialPreparationPorts(runtime)
-	return connectormgmt.Workspace{
+	workspace, _ := s.infrastructure.ConnectorManagementWorkspace(runtime, connectormgmt.Workspace{
 		Storage: connectormgmt.StoragePorts{
-			Database:         runtime.Storage.DatabaseHandle(),
-			Registry:         runtime.Connectors.ConnectorRegistry(),
-			AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
-			Transaction: func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
+			Transaction: connectormgmt.Transaction(func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
 					return mutate(tx, connectormgmt.AuditAppender(appendAudit))
 				})
-			},
+			}),
 			EncryptSecret: func(ctx context.Context, id int64, raw json.RawMessage) (string, error) {
 				secret := map[string]any{}
 				if err := json.Unmarshal(raw, &secret); err != nil {
@@ -177,5 +170,6 @@ func (s *Server) connectorManagementWorkspace(runtime databaseRuntime) connector
 				return s.writeAuditRequired(ctx, runtime, "gateway", nil, 0, action, payload)
 			},
 		},
-	}
+	})
+	return workspace
 }

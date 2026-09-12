@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -58,7 +57,7 @@ func TestLifecycleCredentialChangeInvalidatesVaultBeforeRequests(t *testing.T) {
 		},
 	})
 
-	err := service.AfterCredentialChange(t.Context(), connectormanagement.TargetLifecycleChange{
+	err := service.AfterCredentialChange(t.Context(), TargetLifecycleChange{
 		TargetID: 4, ProfileID: 7, StaleReason: "vault stale", UserMessage: "request stale",
 	})
 	if err != nil {
@@ -81,7 +80,7 @@ func TestLifecycleStopsWhenVaultInvalidationFails(t *testing.T) {
 		InvalidateVault: func(context.Context, int64, int64, string) error { return want },
 	})
 
-	err := service.AfterCredentialChange(t.Context(), connectormanagement.TargetLifecycleChange{TargetID: 2})
+	err := service.AfterCredentialChange(t.Context(), TargetLifecycleChange{TargetID: 2})
 	if !errors.Is(err, want) {
 		t.Fatalf("error = %v, want %v", err, want)
 	}

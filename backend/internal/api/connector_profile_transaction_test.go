@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 )
 
@@ -58,7 +58,7 @@ func TestPreparedCredentialUpdateFailsAtomically(t *testing.T) {
 				if err := appendAudit(tx, "user", nil, 0, "connector.target.updated", map[string]any{"target_id": target.ID}); err != nil {
 					return err
 				}
-				_, err = connectormanagement.UpdatePreparedCredentialProfile(
+				_, err = connectormgmt.UpdatePreparedCredentialProfile(
 					t.Context(), connectortargets.NewTxStore(tx), changed, stale, prepared,
 					fixture.server.connectorCredentialPreparationPorts(runtime), func(ctx context.Context, _ *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 						return fixture.server.connectorCatalog(runtime).EnsureRuntimeSurfacesInTx(ctx, tx, target, profile)
@@ -190,7 +190,7 @@ func TestCredentialEditTransactionBoundaries(t *testing.T) {
 					t.Fatal("secret revision did not advance exactly once")
 				}
 				var secret map[string]any
-				if err := recordcrypto.DecryptJSON(runtime.Storage.SecretVault(), runtime.Identity.WorkspaceID, recordcrypto.ConnectorCredentialProfile, after.ID, after.EncryptedSecretJSON, &secret); err != nil {
+				if err := recordcrypto.DecryptJSON(testRuntimeVault(t, fixture.server, runtime), runtime.Identity().WorkspaceID, recordcrypto.ConnectorCredentialProfile, after.ID, after.EncryptedSecretJSON, &secret); err != nil {
 					t.Fatal(err)
 				}
 				if secret["secret_access_key"] != "replacement-fixture-value" {

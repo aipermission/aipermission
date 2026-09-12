@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -41,48 +42,37 @@ func (s *Server) connectorPeerTrustApplication() *connectorports.PeerTrustCoordi
 		workspaces := make([]connectorports.PeerTrustWorkspace, 0, len(runtimes))
 		for _, runtime := range runtimes {
 			boundRuntime := runtime
-			workspaces = append(workspaces, connectorports.PeerTrustWorkspace{
-				Identifier:       runtime.Identity.DatabaseID,
-				AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
-				InvalidateAll: func(ctx context.Context, reason string) error {
+			workspace, ok := s.infrastructure.PeerTrustWorkspace(runtime,
+				func(ctx context.Context, reason string) error {
 					lifecycle, err := s.vaultSessionLifecycle(boundRuntime)
 					if err != nil {
 						return err
 					}
 					return lifecycle.InvalidateAll(ctx, reason)
-				},
-			})
+				})
+			if ok {
+				workspaces = append(workspaces, workspace)
+			}
 		}
 		return workspaces
 	})
 }
 
-func (s *Server) connectorWorkspace(runtime databaseRuntime) connectorports.Workspace {
-	workspace := connectorBaseWorkspace(runtime)
-	if runtime != nil {
-		workspace = workspace.WithPrincipal(func() (gatewayaccess.Principal, error) {
-			return s.localExecutionPrincipal(runtime)
-		})
-	}
-	return workspace
-}
-
-func connectorBaseWorkspace(runtime databaseRuntime) connectorports.Workspace {
+func (s *Server) connectorWorkspace(runtime *gatewayinfra.WorkspaceHandle) connectorports.Workspace {
 	if runtime == nil {
 		return connectorports.Workspace{}
 	}
-	database := runtime.Storage.DatabaseHandle()
-	return connectorports.NewWorkspace(
-		runtime.Connectors, database, runtime.Security.VaultDeliveryCoordinator().AcquireDelivery,
-	)
+	workspace, _ := s.infrastructure.ConnectorPortsWorkspace(runtime, connectorports.Workspace{
+		Principal: func() (gatewayaccess.Principal, error) { return s.localExecutionPrincipal(runtime) },
+	})
+	return workspace
 }
 
-func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorports.Workspace {
-	workspace := s.connectorWorkspace(runtime)
+func (s *Server) connectorPortsWorkspace(runtime *gatewayinfra.WorkspaceHandle) connectorports.Workspace {
 	if runtime == nil {
-		return workspace
+		return connectorports.Workspace{}
 	}
-	workspace.Actions = connectorports.WorkspaceActionPorts{
+	ports := connectorports.Workspace{Actions: connectorports.WorkspaceActionPorts{
 		Restart: func(ctx context.Context, principal gatewayaccess.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
 			result, err := s.restartServerConsoleSession(ctx, runtime, principal, runtimeID, runningError)
 			return connectorapi.ConsoleRestartResult{ClosedSessionIDs: result.ClosedSessionIDs, CanceledRunningRequests: result.CanceledRunningRequests}, err
@@ -90,8 +80,7 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorports
 		Finish: func(ctx context.Context, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
 			return s.finishConnectorActionRequest(ctx, runtime, requestID, status, output, displayText, errorText, hints...)
 		},
-	}
-	workspace.Transfers = connectorports.WorkspaceTransferPorts{
+	}, Transfers: connectorports.WorkspaceTransferPorts{
 		RunDownloadBatch: func(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
 			workspace := fileTransferWorkspaceIdentity(runtime)
 			if !s.transfers.WorkspaceReady(workspace) {
@@ -103,8 +92,7 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorports
 		RuntimeCapabilities: func(kind string) connectors.RuntimeCapabilityResolver {
 			return connectorRuntimeCapabilitiesFor(kind, s, runtime)
 		},
-	}
-	workspace.Targets = connectorports.WorkspaceTargetPorts{
+	}, Targets: connectorports.WorkspaceTargetPorts{
 		Delete: func(ctx context.Context, target connectormgmt.Target, payload map[string]any) error {
 			return s.connectorLifecycleApplication(runtime).DeleteTarget(ctx, target, payload)
 		},
@@ -114,22 +102,24 @@ func (s *Server) connectorPortsWorkspace(runtime databaseRuntime) connectorports
 		Audit: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},
-	}
+	}}
+	ports.Principal = func() (gatewayaccess.Principal, error) { return s.localExecutionPrincipal(runtime) }
+	workspace, _ := s.infrastructure.ConnectorPortsWorkspace(runtime, ports)
 	return workspace
 }
 
-func (s *Server) connectorDataRuntimePort(runtime databaseRuntime, kind string) connectorapi.ConnectorDataRuntime {
+func (s *Server) connectorDataRuntimePort(runtime *gatewayinfra.WorkspaceHandle, kind string) connectorapi.ConnectorDataRuntime {
 	return connectorports.DataRuntime(s.connectorWorkspace(runtime), kind)
 }
 
-func (s *Server) connectorLiveRuntime(runtime databaseRuntime, kind string) connectorapi.LiveConsoleRuntime {
+func (s *Server) connectorLiveRuntime(runtime *gatewayinfra.WorkspaceHandle, kind string) connectorapi.LiveConsoleRuntime {
 	return connectorports.LiveRuntime(s.connectorWorkspace(runtime), kind)
 }
 
-func (s *Server) connectorCredentialResourceRuntime(runtime databaseRuntime, kind string) connectorapi.CredentialResourceRuntime {
+func (s *Server) connectorCredentialResourceRuntime(runtime *gatewayinfra.WorkspaceHandle, kind string) connectorapi.CredentialResourceRuntime {
 	return connectorports.PortCredentialResourceRuntime(s.connectorWorkspace(runtime), kind)
 }
 
-func (s *Server) connectorTargetLifecycleRuntime(runtime databaseRuntime, kind string) connectorapi.TargetLifecycleRuntime {
+func (s *Server) connectorTargetLifecycleRuntime(runtime *gatewayinfra.WorkspaceHandle, kind string) connectorapi.TargetLifecycleRuntime {
 	return s.connectorPortsApplication().TargetLifecycleRuntime(s.connectorWorkspace(runtime), kind)
 }

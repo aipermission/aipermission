@@ -6,20 +6,18 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
-	gatewaybackup "github.com/aipermission/aipermission/backend/internal/gatewayoperations/backup"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
-func (s *Server) backupApplication() *gatewaybackup.Component {
-	return gatewaybackup.New(gatewaybackup.Dependencies{
-		DataPath: s.config.DataPath, Lifecycle: s.infrastructure.WorkspaceLifecycle(),
-		ActiveRuntime: func(w http.ResponseWriter) (gatewaybackup.Runtime, bool) {
+func (s *Server) backupApplication() *gatewayinfra.BackupApplication {
+	return s.infrastructure.NewBackupApplication(gatewayinfra.BackupApplicationDependencies{
+		DataPath: s.config.DataPath,
+		ActiveRuntime: func(w http.ResponseWriter) (*gatewayinfra.WorkspaceHandle, gatewayinfra.BackupRuntimePorts, bool) {
 			runtime, ok := s.activeRuntimeOrLocked(w)
 			if !ok {
-				return gatewaybackup.Runtime{}, false
+				return nil, gatewayinfra.BackupRuntimePorts{}, false
 			}
-			return gatewaybackup.Runtime{
-				Database: runtime.Storage.DatabaseHandle(), SecretVault: runtime.Storage.SecretVault(),
-				DatabaseID: runtime.Identity.DatabaseID, DatabasePath: runtime.Identity.DatabasePath, WorkspaceID: runtime.Identity.WorkspaceID,
+			return runtime, gatewayinfra.BackupRuntimePorts{
 				Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 					return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 				},
@@ -33,12 +31,11 @@ func (s *Server) backupApplication() *gatewaybackup.Component {
 		},
 		CurrentDatabaseName: s.currentDatabaseNameLocked,
 		HasSession:          s.hasValidUISession,
-		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewaybackup.PasswordAttempt, bool) {
+		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayinfra.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
 		IssuePrepared: func(w http.ResponseWriter, prepared gatewayaccess.PreparedUISession) error {
 			return s.issuePreparedUISessionLocked(w, prepared)
 		},
-		AcquireOperation: s.infrastructure.AcquireBackupOperation,
 	})
 }

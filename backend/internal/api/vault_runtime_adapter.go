@@ -7,24 +7,15 @@ import (
 	"log"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
 
-func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
+func (s *Server) vaultRuntime(runtime *gatewayinfra.WorkspaceHandle) gatewayvault.Runtime {
 	if runtime == nil {
 		return gatewayvault.Runtime{}
 	}
-	delivery := runtime.Security.VaultDeliveryCoordinator()
-	return gatewayvault.Runtime{
-		Storage: gatewayvault.StorageRuntime{
-			Database: runtime.Storage.DatabaseHandle(), SecretVault: runtime.Storage.SecretVault(),
-			Tokens: runtime.Storage.TokenStore(), WorkspaceID: runtime.Identity.WorkspaceID, DatabaseID: runtime.Identity.DatabaseID,
-		},
-		Session: gatewayvault.SessionRuntime{
-			Sessions: runtime.Connectors.ConsoleSessionManager(), Leases: runtime.Security.VaultLeaseStore(),
-			RuntimeInstanceID: runtime.Identity.RuntimeID, MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
-			AcquireDelivery: delivery.AcquireDelivery, AcquireExclusive: delivery.AcquireExclusive,
-		},
+	composed, ok := s.infrastructure.VaultRuntime(runtime, gatewayinfra.VaultRuntimePorts{
 		Project: gatewayvault.ProjectRuntimePorts{
 			InvalidateSessions: func(ctx context.Context, sessions []gatewayvault.SessionReference, scope gatewayvault.SessionMutationScope) error {
 				lifecycle, err := s.vaultSessionLifecycle(runtime)
@@ -54,7 +45,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 			},
 		},
 		Requests: gatewayvault.RequestRuntimePorts{
-			Store: s.observation.VaultRequestStoreFactory(observationRuntime(runtime)),
+			Store: s.infrastructure.VaultRequestStoreFactory(runtime),
 			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
 				return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 			},
@@ -62,7 +53,7 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 			},
 			RepairProjection: func(ctx context.Context, id int64) error {
-				if err := s.observation.SyncVaultActionRequest(ctx, observationRuntime(runtime), id); err != nil {
+				if err := s.infrastructure.SyncVaultActionRequest(ctx, runtime, id); err != nil {
 					log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
 				}
 				return nil
@@ -71,5 +62,9 @@ func (s *Server) vaultRuntime(runtime databaseRuntime) gatewayvault.Runtime {
 				return s.redactForPersistence(ctx, runtime, err.Error())
 			},
 		},
+	})
+	if !ok {
+		return gatewayvault.Runtime{}
 	}
+	return composed
 }

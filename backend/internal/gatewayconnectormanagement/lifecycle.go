@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -75,7 +74,7 @@ func (service *LifecycleService) FinalizeDeletedTarget(
 
 func (service *LifecycleService) AfterCredentialChange(
 	ctx context.Context,
-	change connectormanagement.TargetLifecycleChange,
+	change TargetLifecycleChange,
 ) error {
 	if err := service.invalidateVault(ctx, change.TargetID, change.ProfileID, change.StaleReason); err != nil {
 		return err

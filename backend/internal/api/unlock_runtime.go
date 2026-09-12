@@ -7,6 +7,7 @@ import (
 	"log"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+	gatewaybootstrap "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/bootstrap"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
@@ -24,7 +25,7 @@ func (s *Server) workspaceSelection() gatewayinfra.Identity {
 	return s.infrastructure.WorkspaceSelection()
 }
 
-func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (databaseRuntime, error) {
+func (s *Server) openRuntimeForLifecycle(path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
 	if s.openRuntimeOverride != nil {
 		return s.openRuntimeOverride(path, id, password)
 	}
@@ -45,8 +46,8 @@ func (s *Server) publishDatabase(sourcePath string, targetPath string) error {
 	return s.infrastructure.PublishDatabase(sourcePath, targetPath)
 }
 
-func (s *Server) openRuntime(path string, id string, password string) (databaseRuntime, error) {
-	runtime, err := s.infrastructure.OpenWorkspace(context.Background(), gatewayinfra.OpenInput{
+func (s *Server) openRuntime(path string, id string, password string) (*gatewayinfra.WorkspaceHandle, error) {
+	runtime, err := s.infrastructure.OpenWorkspace(context.Background(), gatewaybootstrap.Open{
 		ID: id, Path: path, Password: password,
 		ConfiguredGatewaySecret: s.config.GatewaySecret,
 		Registry:                s.connectorRegistry(), AdapterRegistry: s.connectorAdapterRegistry(),
@@ -61,19 +62,16 @@ func (s *Server) openRuntime(path string, id string, password string) (databaseR
 	return runtime, nil
 }
 
-func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRuntime) error {
+func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) error {
 	if runtime == nil {
 		return fmt.Errorf("initialize workspace runtime: runtime is unavailable")
 	}
 	if err := s.reconcileConnectorRuntimeSurfaces(ctx, runtime); err != nil {
 		return fmt.Errorf("reconcile connector runtime surfaces: %w", err)
 	}
-	settings, err := runtime.Security.PolicyService().ReadSettings(ctx)
-	if err != nil {
-		return fmt.Errorf("read workspace security settings: %w", err)
+	if err := s.infrastructure.ConfigureWorkspaceRuntime(ctx, runtime, s.runtimeConsoleOpener(runtime)); err != nil {
+		return fmt.Errorf("configure workspace security runtime: %w", err)
 	}
-	runtime.Security.RuntimeControlState().SetMCPStarted(settings.MCPStartEnabled)
-	runtime.Connectors.ConfigureConsoleSessions(s.runtimeConsoleOpener(runtime), s.runtimeRedactor(runtime))
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		return fmt.Errorf("initialize command request runtime: %w", err)
 	}
@@ -87,11 +85,11 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime databaseRu
 	return nil
 }
 
-func (s *Server) discardOpeningRuntime(runtime databaseRuntime) {
+func (s *Server) discardOpeningRuntime(runtime *gatewayinfra.WorkspaceHandle) {
 	if err := s.infrastructure.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
 		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
 	}); err != nil {
-		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.Identity.DatabaseID, err)
+		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.Identity().DatabaseID, err)
 	}
 	s.releaseRuntimeApplications(runtime)
 }
@@ -100,18 +98,18 @@ func (s *Server) currentDataPath() string {
 	return s.workspaceSelection().Path
 }
 
-func (s *Server) unlockedRuntimeSnapshot() []databaseRuntime {
+func (s *Server) unlockedRuntimeSnapshot() []*gatewayinfra.WorkspaceHandle {
 	return s.infrastructure.WorkspaceSnapshot()
 }
 
-func (s *Server) activeRuntime() databaseRuntime {
+func (s *Server) activeRuntime() *gatewayinfra.WorkspaceHandle {
 	if s == nil || s.infrastructure == nil {
 		return nil
 	}
 	return s.infrastructure.ActiveWorkspace()
 }
 
-func (s *Server) closeRuntime(runtime databaseRuntime) error {
+func (s *Server) closeRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
 	defer s.releaseRuntimeApplications(runtime)
 	return s.infrastructure.CloseWorkspace(runtime, func() (gatewayinfra.ActionWorkflow, error) {
 		return s.connectorActionShutdownWorkflow(runtime)
@@ -126,11 +124,11 @@ func (s *Server) closeRuntime(runtime databaseRuntime) error {
 	})
 }
 
-func (s *Server) releaseRuntimeApplications(runtime databaseRuntime) {
+func (s *Server) releaseRuntimeApplications(runtime *gatewayinfra.WorkspaceHandle) {
 	if s == nil || runtime == nil {
 		return
 	}
-	s.commands.Release(runtime.Identity.RuntimeID)
+	s.commands.Release(runtime.Identity().RuntimeID)
 	s.connectorActions.ReleaseWorkspace(s.connectorActionWorkspace(runtime))
 	s.vault.ReleaseWorkspace(s.vaultRuntime(runtime))
 }

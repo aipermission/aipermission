@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -18,20 +19,18 @@ func (s *Server) fileTransferWorkspace(w http.ResponseWriter) (gatewaytransfer.W
 	return fileTransferWorkspaceIdentity(runtime), true
 }
 
-func fileTransferWorkspaceIdentity(runtime databaseRuntime) gatewaytransfer.Workspace {
+func fileTransferWorkspaceIdentity(runtime *gatewayinfra.WorkspaceHandle) gatewaytransfer.Workspace {
 	if runtime == nil {
 		return gatewaytransfer.Workspace{}
 	}
-	return gatewaytransfer.Workspace{RuntimeID: runtime.Identity.RuntimeID}
+	return gatewaytransfer.Workspace{RuntimeID: runtime.Identity().RuntimeID}
 }
 
-func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
+func (s *Server) initializeFileTransferRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	return s.transfers.InitializeWorkspace(
-		fileTransferWorkspaceIdentity(runtime),
-		runtime.Storage.DatabaseHandle(),
+	return s.infrastructure.InitializeTransferWorkspace(runtime, s.transfers,
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},
@@ -41,14 +40,14 @@ func (s *Server) initializeFileTransferRuntime(runtime databaseRuntime) error {
 	)
 }
 
-func (s *Server) stopFileTransferRuntime(runtime databaseRuntime) {
+func (s *Server) stopFileTransferRuntime(runtime *gatewayinfra.WorkspaceHandle) {
 	if lifecycle := s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime)); lifecycle != nil {
 		lifecycle.Abort()
 	}
 }
 
-func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (gatewaytransfer.FileTransferConnectorPorts, error) {
-	if server == nil || runtime == nil || runtime.Storage.DatabaseHandle() == nil || runtime.Storage.SecretVault() == nil {
+func connectorFileTransferPortsForID(ctx context.Context, server *Server, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) (gatewaytransfer.FileTransferConnectorPorts, error) {
+	if server == nil || runtime == nil {
 		return gatewaytransfer.FileTransferConnectorPorts{}, fmt.Errorf("file transfer connector runtime is unavailable")
 	}
 	target, _, _, err := server.connectorCatalog(runtime).TargetProfileByRuntimeID(ctx, runtimeID)

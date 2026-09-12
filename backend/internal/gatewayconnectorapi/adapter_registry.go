@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 )
 
 var (
@@ -167,7 +169,28 @@ type PeerTrustGateway interface {
 // exposing the provider connector's runtime data or credential resources.
 type LiveConsoleGateway interface {
 	PeerIdentityGateway
-	ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*console.RuntimeSession, error)
+	ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*LiveConsoleSession, error)
+}
+
+type LiveConsoleOpenRequest struct {
+	RuntimeID      int64
+	Generation     int64
+	Rows           int
+	Cols           int
+	Params         map[string]any
+	HasEnvironment bool
+}
+
+type LiveConsoleSession struct {
+	Stdin                    io.WriteCloser
+	Stdout                   io.Reader
+	Stderr                   io.Reader
+	Wait                     func() error
+	Resize                   func(cols int, rows int) error
+	Close                    func() error
+	ApplyEnvironment         func(context.Context, *sessionenv.Envelope) error
+	PeerIdentity             string
+	StartupInputAfterConnect string
 }
 
 // ConsoleRestartGateway owns cancellation and invalidation for one persistent
@@ -407,7 +430,7 @@ type LiveConsoleTargetAdapter interface {
 // LiveConsoleTransportAdapter opens a connector-owned persistent runtime for
 // the generic live console manager.
 type LiveConsoleTransportAdapter interface {
-	OpenLiveConsole(ctx context.Context, server LiveConsoleGateway, runtime LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error)
+	OpenLiveConsole(ctx context.Context, server LiveConsoleGateway, runtime LiveConsoleRuntime, request LiveConsoleOpenRequest) (*LiveConsoleSession, error)
 }
 
 type LiveConsolePeerIdentityAdapter interface {

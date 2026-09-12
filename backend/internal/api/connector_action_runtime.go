@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"log"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -41,15 +42,15 @@ type noopConnectorEventSink struct{}
 
 func (noopConnectorEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
 
-func (s *Server) callConnectorAction(ctx context.Context, runtime databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
+func (s *Server) callConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call connectorActionCall) (connectorActionCallResult, error) {
 	return s.connectorActionApplication().Call(ctx, s.connectorActionWorkspace(runtime), call)
 }
 
-func (s *Server) runLocalConnectorAction(ctx context.Context, runtime databaseRuntime, call connectorActionCall) (connectorActionCallResult, error) {
+func (s *Server) runLocalConnectorAction(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, call connectorActionCall) (connectorActionCallResult, error) {
 	return s.connectorActionApplication().RunLocal(ctx, s.connectorActionWorkspace(runtime), call)
 }
 
-func (s *Server) finishActiveConnectorActionRequest(ctx context.Context, runtime databaseRuntime, requestID int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+func (s *Server) finishActiveConnectorActionRequest(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, requestID int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
 	adapterPrepared := prepared.Adapter()
 	adapter := s.connectorRuntimeAdapterFor(adapterPrepared.TargetConnectorKind)
 	if adapter == nil || !adapter.SupportsRunning(adapterPrepared) {
@@ -67,6 +68,6 @@ func (s *Server) connectorActionSupportsRunning(prepared gatewayactions.Prepared
 	return adapter != nil && adapter.SupportsRunning(adapterPrepared)
 }
 
-func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime databaseRuntime, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
+func (s *Server) finishConnectorActionRequest(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, requestID int64, status connectors.ResultStatus, output any, displayText string, errorText string, hints ...connectors.OutputHint) (connectormgmt.ActionRequest, error) {
 	return s.connectorActionApplication().Finish(ctx, s.connectorActionWorkspace(runtime), requestID, status, output, displayText, errorText, hints...)
 }

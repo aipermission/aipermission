@@ -51,12 +51,14 @@ type ActionRuntimePorts struct {
 }
 
 type RequestRuntimePorts struct {
-	Store              func(context.Context) vaultrequests.RequestStore
+	Store              RequestStoreFactory
 	Mutate             func(context.Context, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
 	Observe            func(context.Context, string, *int64, int64, string, any)
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
 }
+
+type RequestStoreFactory func(context.Context) vaultrequests.RequestStore
 
 // ConnectorPort supplies connector facts to Vault. Execution policy remains
 // owned by this package so transport composition cannot silently broaden it.

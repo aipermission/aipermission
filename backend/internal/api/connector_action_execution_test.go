@@ -32,7 +32,7 @@ func TestCallConnectorActionBlocksMissingPermission(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	server.connectorActions = server.newConnectorActionApplication()
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
@@ -61,7 +61,7 @@ func TestCallConnectorActionCreatesPendingApproval(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -109,8 +109,8 @@ func TestRunPendingConnectorActionRejectsMissingApprovalIntegrity(t *testing.T) 
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	runtime.Security.RuntimeControlState().SetMCPStarted(true)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
+	testRuntimeControlState(t, server, runtime).SetMCPStarted(true)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -177,7 +177,7 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(context.Background(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind,
@@ -296,11 +296,11 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "retry smoke",
 		IdempotencyKey: "local-request-1",
 	}
-	first, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	first, err := testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	second, err := testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestRunLocalConnectorActionIdempotencyDoesNotExecuteTwice(t *testing.T) {
 		t.Fatalf("executions=%d first=%d second=%d replayed=%v", executions, first.Request.ID, second.Request.ID, second.Replayed)
 	}
 	call.Input = map[string]any{"value": "once", "mode": "safe"}
-	if _, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call); !errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
+	if _, err := testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call); !errors.Is(err, connectortargets.ErrActionRequestIdempotency) {
 		t.Fatalf("explicit default must not replay a request that omitted it: %v", err)
 	}
 }
@@ -330,7 +330,7 @@ func TestRunLocalConnectorMutationRequiresIdempotencyKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, connectorActionCall{
+	_, err = testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, connectorActionCall{
 		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
 		ActionName: "mutate", Input: map[string]any{"value": "write"}, Reason: "mutation without retry identity",
 	})
@@ -367,7 +367,7 @@ func TestExecuteInsertedConnectorActionDoesNotDispatchAfterRecoveryWins(t *testi
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
 		ConnectorKind: localActionTestConnectorKind, Name: "dispatch-race", Config: map[string]any{},
@@ -431,7 +431,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestBeginConnectorActionDispatchDoesNotTerminalizeActiveClaim(t *testing.T)
 		dispatchStartedAt string
 	}{
 		{name: "another runtime owns the lease", owner: "another-runtime"},
-		{name: "dispatch already started", owner: runtime.Identity.RuntimeID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
+		{name: "dispatch already started", owner: runtime.Identity().RuntimeID, dispatchStartedAt: time.Now().UTC().Format(time.RFC3339Nano)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request, err := store.InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
@@ -489,11 +489,11 @@ func TestExecuteInsertedConnectorActionRejectsRevokedAlwaysPermissionBeforeDispa
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.Security.RuntimeControlState().SetMCPStarted(true)
+	testRuntimeControlState(t, server, runtime).SetMCPStarted(true)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -568,11 +568,11 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 		database, secretVault, tokens.NewStore(database), registry,
 		connectorActionTestWorkspaceID, connectorActionTestIdentityKey(t),
 	)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	if err := ensureRuntimeIdentity(runtime); err != nil {
 		t.Fatal(err)
 	}
-	runtime.Security.RuntimeControlState().SetMCPStarted(true)
+	testRuntimeControlState(t, server, runtime).SetMCPStarted(true)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
@@ -611,7 +611,7 @@ func TestExecuteInsertedConnectorActionRejectsStoppedMCPBeforeDispatch(t *testin
 	if err != nil || !created {
 		t.Fatalf("insert running request: created=%v err=%v", created, err)
 	}
-	runtime.Security.RuntimeControlState().SetMCPStarted(false)
+	testRuntimeControlState(t, server, runtime).SetMCPStarted(false)
 	principal, err := server.tokenExecutionPrincipal(runtime, tokenID)
 	if err != nil {
 		t.Fatal(err)
@@ -683,7 +683,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "persistence retry smoke",
 		IdempotencyKey: "local-persistence-request-1",
 	}
-	_, err = (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	_, err = testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
 	var persistenceErr *actions.TerminalPersistenceError
 	if !errors.As(err, &persistenceErr) || persistenceErr.RequestID < 1 {
 		t.Fatalf("expected typed terminal persistence error, got %v", err)
@@ -696,7 +696,7 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 		t.Fatalf("persistence response lacks request identity: %s", response.Body.String())
 	}
 
-	replayed, err := (&Server{}).runLocalConnectorAction(t.Context(), runtime, call)
+	replayed, err := testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
 	if err != nil {
 		t.Fatalf("replay uncertain request: %v", err)
 	}
@@ -750,7 +750,7 @@ func TestConnectorActionExecutionSnapshotRejectsProfileDrift(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("update profile: %v", err)
 	}
-	if _, err := (&Server{}).snapshotPreparedConnectorAction(context.Background(), runtime, prepared); err == nil || !strings.Contains(err.Error(), "changed after action preparation") {
+	if _, err := testServerForRuntime(t, runtime).snapshotPreparedConnectorAction(context.Background(), runtime, prepared); err == nil || !strings.Contains(err.Error(), "changed after action preparation") {
 		t.Fatalf("expected profile drift rejection, got %v", err)
 	}
 }
@@ -759,7 +759,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	server.connectorManagement = server.newConnectorManagementApplication()
 	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "approval preview token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
@@ -874,7 +874,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		t.Fatalf("approval list projection exposed exact preview: %#v", redactedApproval.Preview)
 	}
 	var decryptedPayload connectorActionExecutionEnvelope
-	if err := recordcrypto.DecryptJSON(secretVault, runtime.Identity.WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
+	if err := recordcrypto.DecryptJSON(secretVault, runtime.Identity().WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, encryptedPayload, &decryptedPayload); err != nil {
 		t.Fatalf("decrypt execution payload: %v", err)
 	}
 	if decryptedPayload.Input["access_token"] != "raw-access-token" || !strings.Contains(decryptedPayload.Input["sql"].(string), "super-secret") {
@@ -904,7 +904,7 @@ func TestRunningConnectorActionResponseRedactsOutput(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -942,7 +942,7 @@ func TestFinishConnectorActionRequestCanonicalizesTypedOutputBeforePersistence(t
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	if _, err := createSecurityPolicyRule(t.Context(), runtime, securitypolicy.RuleInput{
 		Name: "typed output token", Pattern: `internal_[a-z0-9]+`, Enabled: true,
 	}); err != nil {
@@ -1009,7 +1009,7 @@ func TestConnectorActionResultRejectsOversizedTypedOutput(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	_, err := (&Server{}).redactConnectorActionResult(t.Context(), runtime, connectors.ActionResult{
+	_, err := testServerForRuntime(t, runtime).redactConnectorActionResult(t.Context(), runtime, connectors.ActionResult{
 		Output: []typedConnectorResultItem{{Message: strings.Repeat("x", actions.MaxStringBytes+1)}},
 	})
 	if !errors.Is(err, actions.ErrInvalidOutput) {
@@ -1040,7 +1040,7 @@ func TestConnectorActionResultPreservesDeclaredTemporaryCapability(t *testing.T)
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	signedURL := "https://s3.example.test/object?X-Amz-Security-Token=session-token&X-Amz-Signature=signature"
 
 	redacted, err := server.redactConnectorActionResult(context.Background(), runtime, connectors.ActionResult{
@@ -1082,7 +1082,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -1099,7 +1099,7 @@ func TestFinishConnectorActionRequestRedactsErrorAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert action request: %v", err)
 	}
-	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.Identity.WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
+	encryptedPayload, err := recordcrypto.EncryptJSON(secretVault, runtime.Identity().WorkspaceID, recordcrypto.ConnectorActionRequest, request.ID, connectorActionExecutionEnvelope{})
 	if err != nil {
 		t.Fatalf("encrypt action request: %v", err)
 	}
@@ -1184,7 +1184,7 @@ func TestFinishConnectorActionRequestIgnoresCanceledRequestContext(t *testing.T)
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -1211,7 +1211,7 @@ func TestCaptureConnectorActionSessionHandleIgnoresCanceledRequestContext(t *tes
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -1247,7 +1247,7 @@ func TestFinishConnectorActionRequestDoesNotAuditLateCompletion(t *testing.T) {
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
@@ -1278,7 +1278,7 @@ func TestRecoverOrphanedConnectorActionsPreservesActiveExecutions(t *testing.T) 
 	database := openAPITestDB(t)
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
-	server := &Server{}
+	server := testServerForRuntime(t, runtime)
 	server.connectorActions = server.newConnectorActionApplication()
 	store := connectortargets.NewStore(database)
 	tokenID := insertAPITestToken(t, database)

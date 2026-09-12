@@ -1,13 +1,16 @@
 package connectors
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	connectorcatalog "github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/vault"
+	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
 
 type State struct {
@@ -66,6 +69,24 @@ func (s *State) ConfigureConsoleSessions(openRuntime console.RuntimeOpener, reda
 	if s != nil {
 		s.consoleSessions = console.NewManager(s.database, openRuntime, redact)
 	}
+}
+
+func (s *State) ConfigureVaultSessionAuthorizer(leases *vaultsessions.Store, guard func(context.Context, func() error, func() error) error) {
+	if s == nil || s.consoleSessions == nil || leases == nil || guard == nil {
+		return
+	}
+	s.consoleSessions.SetAuthorizer(func(ctx context.Context, principal executionprincipal.Principal, session console.SessionAuthorization, operation console.SessionOperation, run func() error) error {
+		return guard(ctx, func() error { return leases.Authorize(ctx, principal, session, operation) }, run)
+	})
+}
+
+func (s *State) ConfigureSessionClosedHook(closed func(sessionID, runtimeID, generation int64)) {
+	if s == nil || s.consoleSessions == nil || closed == nil {
+		return
+	}
+	s.consoleSessions.SetSessionClosedHook(func(session console.SessionHandle) {
+		closed(session.ID, session.RuntimeID, session.Generation)
+	})
 }
 
 func (s *State) ConnectorScope(kind string, accessor connectorruntime.SecretAccessorFactory) *connectorruntime.Scope {

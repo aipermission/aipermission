@@ -1,12 +1,13 @@
 package api
 
 import (
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"testing"
 
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
-func requireTransferJobs(t testing.TB, server *Server, runtime databaseRuntime) transferapp.Jobs {
+func requireTransferJobs(t testing.TB, server *Server, runtime *gatewayinfra.WorkspaceHandle) transferapp.Jobs {
 	t.Helper()
 	if runtime == nil {
 		t.Fatal("file transfer test workspace is unavailable")

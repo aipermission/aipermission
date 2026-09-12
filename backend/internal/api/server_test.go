@@ -7,7 +7,6 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/config"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -25,9 +24,7 @@ func TestNewServerReturnsWorkspaceIdentityError(t *testing.T) {
 		t.Fatalf("new vault: %v", err)
 	}
 
-	server, err := NewServer(config.Config{DataPath: t.TempDir() + "/test.db"}, gatewayinfra.AdoptInput{
-		Database: database, Vault: secretVault, TokenStore: tokens.NewStore(database),
-	})
+	server, err := NewServer(config.Config{DataPath: t.TempDir() + "/test.db"}, testAdoptInput(database, secretVault, tokens.NewStore(database)))
 	if err == nil || server != nil {
 		t.Fatalf("closed database should prevent server construction: server=%v err=%v", server, err)
 	}
@@ -51,7 +48,7 @@ func TestNewServerReturnsRuntimeIdentityError(t *testing.T) {
 
 	server, err := NewServer(
 		config.Config{DataPath: t.TempDir() + "/test.db", GatewaySecret: "test-password"},
-		gatewayinfra.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokens.NewStore(database)},
+		testAdoptInput(database, secretVault, tokens.NewStore(database)),
 		failingGenerator,
 	)
 	if !errors.Is(err, wantErr) || server != nil {
@@ -76,16 +73,16 @@ func TestNewServerBootstrapsTheAdoptedWorkspaceRuntime(t *testing.T) {
 	}
 	server, err := NewServer(
 		config.Config{DataPath: path, GatewaySecret: "test-gateway-secret"},
-		gatewayinfra.AdoptInput{Database: database, Vault: secretVault, TokenStore: tokens.NewStore(database)},
+		testAdoptInput(database, secretVault, tokens.NewStore(database)),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := server.activeRuntime()
-	if runtime == nil || !runtime.Security.RuntimeControlState().MCPStarted() {
+	if runtime == nil || !testRuntimeControlState(t, server, runtime).MCPStarted() {
 		t.Fatal("adopted workspace did not apply its MCP startup setting")
 	}
-	if runtime.Connectors.ConsoleSessionManager() == nil {
+	if testRuntimeConsoleSessions(t, server, runtime) == nil {
 		t.Fatal("adopted workspace did not initialize its console manager")
 	}
 	if _, err := server.commandRuntime(runtime); err != nil {

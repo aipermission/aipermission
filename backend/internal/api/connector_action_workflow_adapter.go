@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -25,54 +26,45 @@ func (s *Server) newConnectorActionApplication() *gatewayactions.Component {
 	})
 }
 
-func (s *Server) connectorActionWorkspace(runtime databaseRuntime) gatewayactions.Workspace {
+func (s *Server) connectorActionWorkspace(runtime *gatewayinfra.WorkspaceHandle) gatewayactions.Workspace {
 	if runtime == nil {
 		return gatewayactions.Workspace{}
 	}
-	delivery := runtime.Security.VaultDeliveryCoordinator()
-	return gatewayactions.Workspace{
-		Storage: gatewayactions.ActionStorage{
-			Database: runtime.Storage.DatabaseHandle(), Tokens: runtime.Storage.TokenStore(),
-			Registry: runtime.Connectors.ConnectorRegistry(), SecretVault: runtime.Storage.SecretVault(),
-			WorkspaceID: runtime.Identity.WorkspaceID,
+	workspace, ok := s.infrastructure.ConnectorActionWorkspace(runtime, gatewayactions.WorkflowPorts{
+		RedactBasic: func(ctx context.Context, value string) string {
+			return s.redactForPersistence(ctx, runtime, value)
 		},
-		Identity: gatewayactions.ActionIdentity{
-			Tag: runtime.TagActionIdentity, RuntimeInstanceID: runtime.Identity.RuntimeID,
-			MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() }, Ensure: func() error { return ensureRuntimeIdentity(runtime) },
+		RedactCustom: func(ctx context.Context, value string) string {
+			return s.redactCustom(ctx, runtime, value)
 		},
-		Workflow: gatewayactions.WorkflowPorts{
-			AcquireSecret: delivery.AcquireDelivery,
-			RedactBasic: func(ctx context.Context, value string) string {
-				return s.redactForPersistence(ctx, runtime, value)
-			},
-			RedactCustom: func(ctx context.Context, value string) string {
-				return s.redactCustom(ctx, runtime, value)
-			},
-			Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
-				return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
-			},
-			Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
-				return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
-					return mutate(tx, gatewayactions.AuditAppender(appendAudit))
-				})
-			},
-			Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
-				s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
-			},
-			Capabilities: func(kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
-				return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
-			},
-			FinishRunning: func(ctx context.Context, id int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
-				s.finishActiveConnectorActionRequest(ctx, runtime, id, prepared, principal, handles)
-			},
+		Mutate: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload func() any, mutate func(*sql.Tx) error) error {
+			return s.withAuditedMutation(ctx, runtime, actor, tokenID, runtimeID, action, payload, mutate)
 		},
+		Transaction: func(ctx context.Context, mutate func(*sql.Tx, gatewayactions.AuditAppender) error) error {
+			return s.withAuditedTransaction(ctx, runtime, func(tx *sql.Tx, appendAudit auditAppender) error {
+				return mutate(tx, gatewayactions.AuditAppender(appendAudit))
+			})
+		},
+		Observe: func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
+			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
+		},
+		Capabilities: func(kind string, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+			return connectorRuntimeCapabilitiesForAction(kind, s, runtime, dependencies)
+		},
+		FinishRunning: func(ctx context.Context, id int64, prepared gatewayactions.PreparedRequest, principal gatewayaccess.Principal, handles connectors.ActionHandles) {
+			s.finishActiveConnectorActionRequest(ctx, runtime, id, prepared, principal, handles)
+		},
+	})
+	if !ok {
+		return gatewayactions.Workspace{}
 	}
+	return workspace
 }
 
-func (s *Server) connectorActionApprovalWorkflow(runtime databaseRuntime) (gatewayactions.ApprovalWorkflow, error) {
+func (s *Server) connectorActionApprovalWorkflow(runtime *gatewayinfra.WorkspaceHandle) (gatewayactions.ApprovalWorkflow, error) {
 	return s.connectorActionApplication().Approval(s.connectorActionWorkspace(runtime))
 }
 
-func (s *Server) connectorActionShutdownWorkflow(runtime databaseRuntime) (gatewayactions.ShutdownWorkflow, error) {
+func (s *Server) connectorActionShutdownWorkflow(runtime *gatewayinfra.WorkspaceHandle) (gatewayactions.ShutdownWorkflow, error) {
 	return s.connectorActionApplication().Shutdown(s.connectorActionWorkspace(runtime))
 }

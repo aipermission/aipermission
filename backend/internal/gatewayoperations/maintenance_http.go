@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/gorilla/websocket"
 )
 
 type MaintenanceHTTPScope struct {
-	Runtime          console.MaintenanceConsoleRuntime
+	Runtime          MaintenanceConsoleRuntime
 	Observe          func(context.Context, string, map[string]any)
 	UpgradeWebSocket func(http.ResponseWriter, *http.Request) (*websocket.Conn, error)
 }

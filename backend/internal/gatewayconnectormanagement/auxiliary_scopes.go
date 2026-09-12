@@ -18,15 +18,15 @@ func (component *Component) ProfileDeletionScope(w http.ResponseWriter) (connect
 		Database: workspace.Storage.Database, AcquireExclusive: workspace.Storage.AcquireExclusive,
 		Cleanup: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) (connectormanagement.ProfileCleanupOutcome, error) {
 			return connectormanagement.CleanupProvisionedCredentialProfileIfNeeded(ctx, connectormanagement.ManagedCredentialCleanupScope{
-				Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime,
+				Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
 			}, target, profile)
 		},
 		BeforeDelete: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return workspace.Credentials.BeforeDelete(ctx, target, profile)
 		},
-		WithTransaction: workspace.Storage.Transaction,
+		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		AfterLifecycleChange: func(ctx context.Context, change connectormanagement.TargetLifecycleChange) error {
-			return workspace.Lifecycle.AfterChange(ctx, change)
+			return workspace.Lifecycle.AfterChange(ctx, TargetLifecycleChange(change))
 		},
 	}, true
 }
@@ -37,12 +37,12 @@ func (component *Component) ProfileTestingScope(w http.ResponseWriter) (connecto
 		return connectormanagement.ProfileTestingScope{}, false
 	}
 	return connectormanagement.ProfileTestingScope{
-		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime,
+		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
 		SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
 			return workspace.Credentials.SpecialTest(w, r, target, profile)
 		},
 		RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormanagement.CredentialBoundary) (map[string]any, error) {
-			return workspace.Credentials.RedactDetails(ctx, details, boundary)
+			return workspace.Credentials.RedactDetails(ctx, details, wrapCredentialBoundary(boundary))
 		},
 	}, true
 }
@@ -53,7 +53,7 @@ func (component *Component) ProfileBackupScope(w http.ResponseWriter) (connector
 		return connectormanagement.ProfileBackupScope{}, false
 	}
 	return connectormanagement.ProfileBackupScope{
-		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime,
+		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			workspace.Observation.Observe(ctx, action, payload)
 		},

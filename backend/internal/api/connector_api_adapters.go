@@ -1,6 +1,7 @@
 package api
 
 import (
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strings"
 
@@ -22,7 +23,7 @@ func (s *Server) connectorAPIAdapterFor(kind string) connectorapi.Adapter {
 	return s.connectorAdapterRegistry().For(kind)
 }
 
-func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime databaseRuntime, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime *gatewayinfra.WorkspaceHandle, dependencies []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver {
 	resolver := connectorRuntimeCapabilitiesFor(kind, server, runtime)
 	capabilities, _ := resolver.(connectorRuntimeCapabilities)
 	if capabilities == nil {
@@ -32,10 +33,6 @@ func connectorRuntimeCapabilitiesForAction(kind string, server *Server, runtime 
 	capabilities[connectors.NetworkTransportCapabilityName] = connectorports.ApprovedNetworkTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
 	capabilities[connectors.CommandTransportCapabilityName] = connectorports.ApprovedCommandTransport(workspace, server.connectorAPIAdapterFor, server.connectorTrustStorePath, dependencies)
 	return capabilities
-}
-
-func runtimeConnectorAPIAdapterFor(runtime databaseRuntime, kind string) connectorapi.Adapter {
-	return runtimeConnectorAdapterRegistry(runtime).For(kind)
 }
 
 func (s *Server) connectorRuntimeAdapterFor(kind string) connectorapi.RuntimeAdapter {
@@ -49,7 +46,7 @@ func (c connectorRuntimeCapabilities) RuntimeCapability(name string) connectors.
 	return c[name]
 }
 
-func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime databaseRuntime) connectors.RuntimeCapabilityResolver {
+func connectorRuntimeCapabilitiesFor(kind string, server *Server, runtime *gatewayinfra.WorkspaceHandle) connectors.RuntimeCapabilityResolver {
 	capabilities := connectorRuntimeCapabilities{}
 	if server != nil && runtime != nil {
 		workspace := server.connectorWorkspace(runtime)

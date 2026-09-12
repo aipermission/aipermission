@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -53,7 +52,7 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 	}
 }
 
-func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request connectorapi.LiveConsoleOpenRequest) (*connectorapi.LiveConsoleSession, error) {
 	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, request.RuntimeID)
 	if err != nil {
 		return nil, err

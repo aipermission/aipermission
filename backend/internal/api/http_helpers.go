@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,7 +36,7 @@ func parsePathInt64(w http.ResponseWriter, r *http.Request, key string, label st
 	return id, true
 }
 
-func (s *Server) activeRuntimeOrLocked(w http.ResponseWriter) (databaseRuntime, bool) {
+func (s *Server) activeRuntimeOrLocked(w http.ResponseWriter) (*gatewayinfra.WorkspaceHandle, bool) {
 	runtime := s.activeRuntime()
 	if runtime == nil {
 		writeError(w, http.StatusLocked, "database is locked")

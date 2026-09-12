@@ -19,7 +19,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
-type Appender = observability.Appender
+type Appender func(*sql.Tx, string, *int64, int64, string, any) error
 type ActiveRuntime func(http.ResponseWriter) (Runtime, bool)
 type StartActions func()
 
@@ -123,7 +123,9 @@ func (component *Component) WithTransaction(
 	runtime Runtime,
 	mutate func(*sql.Tx, Appender) error,
 ) error {
-	return component.coordinator(ctx, runtime).WithTransaction(ctx, mutate)
+	return component.coordinator(ctx, runtime).WithTransaction(ctx, func(tx *sql.Tx, appendObservation observability.Appender) error {
+		return mutate(tx, Appender(appendObservation))
+	})
 }
 
 func (component *Component) WithMutation(

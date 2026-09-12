@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"time"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -12,7 +13,7 @@ import (
 
 type vaultActionConnectorPort struct {
 	server  *Server
-	runtime databaseRuntime
+	runtime *gatewayinfra.WorkspaceHandle
 }
 
 func (port vaultActionConnectorPort) SessionEnvironmentVersion(ctx context.Context, runtimeID int64) (string, error) {
@@ -48,6 +49,6 @@ func (port vaultActionConnectorPort) ExpectedPeerIdentities(ctx context.Context,
 	return gatewayvault.PeerIdentityExpectation{Items: items, Required: capability.SessionEnvironmentPeerIdentityRequired()}, nil
 }
 
-func (s *Server) vaultActionApplication(runtime databaseRuntime) (gatewayvault.VaultActionApplication, error) {
+func (s *Server) vaultActionApplication(runtime *gatewayinfra.WorkspaceHandle) (gatewayvault.VaultActionApplication, error) {
 	return s.vaultApplication().ActionRuntime(s.vaultRuntime(runtime))
 }

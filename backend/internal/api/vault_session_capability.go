@@ -3,17 +3,18 @@ package api
 import (
 	"context"
 	"errors"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
-func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) error {
+func requireSessionEnvironmentCapability(ctx context.Context, server *Server, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) error {
 	_, err := sessionEnvironmentCapabilityVersion(ctx, server, runtime, runtimeID)
 	return err
 }
 
-func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (string, error) {
+func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) (string, error) {
 	sessionCapability, err := sessionEnvironmentCapabilityFor(ctx, server, runtime, runtimeID)
 	if err != nil {
 		return "", err
@@ -25,7 +26,7 @@ func sessionEnvironmentCapabilityVersion(ctx context.Context, server *Server, ru
 	return version, nil
 }
 
-func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime databaseRuntime, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
+func sessionEnvironmentCapabilityFor(ctx context.Context, server *Server, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) (connectors.SessionEnvironmentCapability, error) {
 	surface, err := server.connectorCatalog(runtime).RuntimeSurface(ctx, runtimeID)
 	if err != nil {
 		return nil, err

@@ -87,19 +87,3 @@ func TestPrincipalConstructionRequiresReadyRuntime(t *testing.T) {
 		t.Fatalf("unready runtime error = %v", err)
 	}
 }
-
-func TestComponentOwnsCompleteHTTPHandlerSet(t *testing.T) {
-	component := NewComponent("3212")
-	handlers := component.HTTPHandlers(HTTPScopeProviders{})
-	if handlers.Security == nil || handlers.TokenAccess == nil || handlers.MCPRuntime == nil ||
-		handlers.MCPConnectorReads == nil || handlers.MCPConnectorActions == nil {
-		t.Fatal("access HTTP handler set is incomplete")
-	}
-
-	var unavailable *Component
-	zero := unavailable.HTTPHandlers(HTTPScopeProviders{})
-	if zero.Security != nil || zero.TokenAccess != nil || zero.MCPRuntime != nil ||
-		zero.MCPConnectorReads != nil || zero.MCPConnectorActions != nil {
-		t.Fatal("nil access component exposed HTTP handlers")
-	}
-}

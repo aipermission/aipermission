@@ -3,17 +3,18 @@ package api
 import (
 	"context"
 	"fmt"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 )
 
-func (s *Server) liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime databaseRuntime, runtimeID int64) (string, error) {
+func (s *Server) liveConsoleTargetRefForRuntimeID(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, runtimeID int64) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	for _, info := range runtimeConnectorRegistry(runtime).List() {
-		adapter, _ := runtimeConnectorAPIAdapterFor(runtime, info.Kind).(connectorapi.LiveConsoleTargetAdapter)
+	for _, info := range s.connectorRegistry().List() {
+		adapter, _ := s.connectorAPIAdapterFor(info.Kind).(connectorapi.LiveConsoleTargetAdapter)
 		if adapter == nil {
 			continue
 		}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgmt.ConnectorApprovalScope, bool) {
@@ -12,14 +13,12 @@ func (s *Server) connectorApprovalHTTPScope(w http.ResponseWriter) (connectormgm
 	if !ok {
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
-	return connectormgmt.ConnectorApprovalScope{
-		Database: runtime.Storage.DatabaseHandle(),
+	return s.infrastructure.ConnectorApprovalWorkspace(runtime, gatewayinfra.ConnectorApprovalPorts{
 		Workflow: func() (connectormgmt.ConnectorApprovalWorkflow, error) {
 			return s.connectorActionApprovalWorkflow(runtime)
 		},
-		MCPStarted: func() bool { return runtime.Security.RuntimeControlState().MCPStarted() },
 		Redact: func(ctx context.Context, value string) string {
 			return s.redactForPersistence(ctx, runtime, value)
 		},
-	}, true
+	})
 }

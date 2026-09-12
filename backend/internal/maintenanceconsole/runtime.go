@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/console"
+	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
@@ -65,12 +65,10 @@ func NewRuntime() *Runtime {
 	return &Runtime{}
 }
 
-type Snapshot = console.MaintenanceConsoleSnapshot
+var _ gatewayoperations.MaintenanceConsoleRuntime = (*Runtime)(nil)
 
-var _ console.MaintenanceConsoleRuntime = (*Runtime)(nil)
-
-func (m *Runtime) Descriptor() console.MaintenanceConsoleDescriptor {
-	return console.MaintenanceConsoleDescriptor{
+func (m *Runtime) Descriptor() gatewayoperations.MaintenanceConsoleDescriptor {
+	return gatewayoperations.MaintenanceConsoleDescriptor{
 		Supported:          Supported(),
 		Shell:              Shell(),
 		MaxInputBytes:      MaxInputBytes,
@@ -78,15 +76,15 @@ func (m *Runtime) Descriptor() console.MaintenanceConsoleDescriptor {
 	}
 }
 
-func (m *Runtime) Snapshot() (Snapshot, bool) {
+func (m *Runtime) Snapshot() (gatewayoperations.MaintenanceConsoleSnapshot, bool) {
 	if m == nil {
-		return Snapshot{}, false
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, false
 	}
 	m.mu.Lock()
 	session := m.session
 	m.mu.Unlock()
 	if session == nil {
-		return Snapshot{}, false
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, false
 	}
 	return session.Snapshot(), true
 }
@@ -103,9 +101,9 @@ func (m *Runtime) activeSession() *Session {
 	return m.session
 }
 
-func (m *Runtime) Open() (Snapshot, error) {
+func (m *Runtime) Open() (gatewayoperations.MaintenanceConsoleSnapshot, error) {
 	if m == nil {
-		return Snapshot{}, fmt.Errorf("maintenance console runtime is not initialized")
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, fmt.Errorf("maintenance console runtime is not initialized")
 	}
 	m.mu.Lock()
 	if m.session != nil && m.session.isLive() {
@@ -120,7 +118,7 @@ func (m *Runtime) Open() (Snapshot, error) {
 	session, err := startMaintenanceConsoleSession()
 	if err != nil {
 		m.mu.Unlock()
-		return Snapshot{}, err
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, err
 	}
 	m.session = session
 	m.mu.Unlock()
@@ -259,13 +257,13 @@ func Shell() string {
 	return "/bin/sh"
 }
 
-func (s *Session) Snapshot() Snapshot {
+func (s *Session) Snapshot() gatewayoperations.MaintenanceConsoleSnapshot {
 	if s == nil {
-		return Snapshot{Status: "closed", Shell: Shell()}
+		return gatewayoperations.MaintenanceConsoleSnapshot{Status: "closed", Shell: Shell()}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Snapshot{
+	return gatewayoperations.MaintenanceConsoleSnapshot{
 		Status:     s.status,
 		Shell:      s.shell,
 		Transcript: s.transcript,
@@ -368,14 +366,14 @@ func (s *Session) addClient(ws *websocket.Conn, writeMu *sync.Mutex) bool {
 	return true
 }
 
-func (s *Session) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (Snapshot, bool) {
+func (s *Session) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (gatewayoperations.MaintenanceConsoleSnapshot, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.status != "connected" || s.pty == nil {
-		return Snapshot{}, false
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, false
 	}
 	s.clients[ws] = writeMu
-	return Snapshot{Status: s.status, Shell: s.shell, Transcript: s.transcript}, true
+	return gatewayoperations.MaintenanceConsoleSnapshot{Status: s.status, Shell: s.shell, Transcript: s.transcript}, true
 }
 
 func (s *Session) removeClient(ws *websocket.Conn) {

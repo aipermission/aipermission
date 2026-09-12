@@ -7,12 +7,12 @@ func (h diagnosticsHandlers) download(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	report, err := h.observation.Diagnostics(r.Context(), observationRuntime(runtime))
+	report, err := h.infrastructure.ObservationDiagnostics(r.Context(), runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	formatVersion := h.observation.PrepareDiagnosticsDownload(w)
+	formatVersion := h.infrastructure.PrepareDiagnosticsDownload(w)
 	h.writeObservationAudit(r.Context(), runtime, "user", nil, 0, "settings.diagnostics.downloaded", map[string]any{
 		"report_format_version": formatVersion,
 	})

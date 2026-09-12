@@ -12,7 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
-	"github.com/aipermission/aipermission/backend/internal/console"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
@@ -141,7 +140,7 @@ func (component *PortsComponent) LiveConsoleGateway(workspace Workspace) LiveCon
 	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), workspace: workspace}
 }
 
-func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*console.RuntimeSession, error) {
+func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*connectorapi.LiveConsoleSession, error) {
 	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil ||
 		gateway.component.dependencies.LiveConsole.TransportAdapter == nil || gateway.component.dependencies.LiveConsole.TargetAdapter == nil {
 		return nil, ErrRuntimeUnavailable
@@ -163,7 +162,7 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), console.RuntimeOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
 }
 
 type RuntimeActionGateway struct {

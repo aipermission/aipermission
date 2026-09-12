@@ -1,6 +1,7 @@
 package api
 
 import (
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"time"
 )
 
@@ -12,5 +13,5 @@ const (
 type mcpAuthContext struct {
 	TokenID int64
 	Name    string
-	runtime databaseRuntime
+	runtime *gatewayinfra.WorkspaceHandle
 }

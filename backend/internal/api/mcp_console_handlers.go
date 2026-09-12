@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
@@ -12,13 +13,13 @@ type consoleRestartResult struct {
 	CanceledRunningRequests int64
 }
 
-func (s *Server) restartServerConsoleSession(ctx context.Context, runtime databaseRuntime, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
+func (s *Server) restartServerConsoleSession(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, principal gatewayaccess.Principal, runtimeID int64, runningRequestError string) (consoleRestartResult, error) {
 	requests, err := s.commandRuntime(runtime)
 	if err != nil {
 		return consoleRestartResult{}, gatewayoperations.ErrCommandRuntimeUnavailable
 	}
 	var canceledRequests int64
-	closedSessionIDs, err := runtime.Connectors.ConsoleSessionManager().RecoverRuntime(ctx, principal, runtimeID, func() error {
+	closedSessionIDs, err := s.infrastructure.RecoverConsoleRuntime(ctx, runtime, principal, runtimeID, func() error {
 		var err error
 		canceledRequests, err = requests.CancelRunningForRuntime(ctx, runtimeID, runningRequestError)
 		return err

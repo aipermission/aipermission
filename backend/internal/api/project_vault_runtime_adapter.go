@@ -1,6 +1,7 @@
 package api
 
 import (
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
@@ -34,7 +35,7 @@ func (s *Server) newVaultApplication() *gatewayvault.Component {
 	})
 }
 
-func (s *Server) projectVaultRuntime(runtime databaseRuntime) (gatewayvault.ProjectVaultApplication, error) {
+func (s *Server) projectVaultRuntime(runtime *gatewayinfra.WorkspaceHandle) (gatewayvault.ProjectVaultApplication, error) {
 	return s.vaultApplication().ProjectRuntime(s.vaultRuntime(runtime))
 }
 
@@ -49,7 +50,7 @@ func (s *Server) projectVaultHTTPScope(w http.ResponseWriter) (gatewayvault.Proj
 		return gatewayvault.ProjectVaultHTTPScope{}, false
 	}
 	return gatewayvault.ProjectVaultHTTPScope{
-		Runtime: owner, RuntimeID: runtime.Identity.DatabaseID,
+		Runtime: owner, RuntimeID: runtime.Identity().DatabaseID,
 		SessionCatalog: s.vaultApplication().SessionCatalog(s.vaultRuntime(runtime)),
 	}, true
 }

@@ -2,10 +2,13 @@
 package gatewayconnectormanagement
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"net/http"
 )
 
 func InvalidTargetRefError() error { return connectortargets.ErrInvalidTargetRef }
@@ -24,30 +27,91 @@ const (
 	ActionPermissionApprovalRequired = connectortargets.ActionPermissionApprovalRequired
 )
 
-type AuditAppender = connectormanagement.AuditAppender
-type ConnectionTestResponse = connectormanagement.ConnectionTestResponse
-type CreateTargetRequest = connectormanagement.CreateTargetRequest
-type CreateTargetWithProfileRequest = connectormanagement.CreateTargetWithProfileRequest
-type CredentialBoundary = connectormanagement.CredentialBoundary
-type CredentialCanonicalizer = connectormanagement.CredentialCanonicalizer
-type CredentialPreparationPorts = connectormanagement.CredentialPreparationPorts
-type CredentialStorage = connectormanagement.CredentialStorage
-type CredentialProfileInput = connectormanagement.CredentialProfileInput
-type CredentialRuntimePorts = connectormanagement.CredentialRuntimePorts
-type PreparedCredentialProfile = connectormanagement.PreparedCredentialProfile
-type ProfileSummary = connectormanagement.ProfileSummary
-type ProvisionRequest = connectormanagement.ProvisionRequest
-type TargetLifecycleChange = connectormanagement.TargetLifecycleChange
-type TargetResponse = connectormanagement.TargetResponse
-type UpdateTargetRequest = connectormanagement.UpdateTargetRequest
-type UpdateTargetWithProfileRequest = connectormanagement.UpdateTargetWithProfileRequest
+type AuditAppender connectormanagement.AuditAppender
+type ConnectionTestResponse connectormanagement.ConnectionTestResponse
+type CreateTargetRequest connectormanagement.CreateTargetRequest
+type CreateTargetWithProfileRequest struct {
+	Target  CreateTargetRequest    `json:"target"`
+	Profile CredentialProfileInput `json:"profile"`
+}
+type CredentialCanonicalizer connectormanagement.CredentialCanonicalizer
+type CredentialStorage connectormanagement.CredentialStorage
+type CredentialProfileInput connectormanagement.CredentialProfileInput
+type PreparedCredentialProfile connectormanagement.PreparedCredentialProfile
+type ProfileSummary connectormanagement.ProfileSummary
+type ProvisionRequest connectormanagement.ProvisionRequest
+type TargetLifecycleChange connectormanagement.TargetLifecycleChange
+type TargetResponse connectormanagement.TargetResponse
+type UpdateTargetRequest connectormanagement.UpdateTargetRequest
+type UpdateTargetWithProfileRequest struct {
+	Target  UpdateTargetRequest    `json:"target"`
+	Profile CredentialProfileInput `json:"profile"`
+}
 type ActionPermission = connectortargets.ActionPermission
 type ActionRequest = connectortargets.ActionRequest
 type CredentialProfile = connectortargets.CredentialProfile
 type RuntimeSurface = connectortargets.RuntimeSurface
 type Target = connectortargets.Target
 type ValidationError = connectortargets.ValidationError
-type ConnectorApprovalItem = connectorapproval.Item
-type ConnectorApprovalNoteRequest = connectorapproval.NoteRequest
-type ConnectorApprovalScope = connectorapproval.Scope
-type ConnectorApprovalWorkflow = connectorapproval.Workflow
+type ConnectorApprovalItem connectorapproval.Item
+type ConnectorApprovalNoteRequest connectorapproval.NoteRequest
+
+type ConnectorApprovalWorkflow interface {
+	ApprovalPreview(context.Context, connectortargets.ActionRequest) (map[string]any, error)
+	RunPending(context.Context, int64, string) (connectortargets.ActionRequest, error)
+	DeclinePending(context.Context, int64, string) (connectortargets.ActionRequest, error)
+}
+
+type ConnectorApprovalScope struct {
+	Database   *sql.DB
+	Workflow   func() (ConnectorApprovalWorkflow, error)
+	MCPStarted func() bool
+	Redact     func(context.Context, string) string
+}
+
+type ConnectorApprovalScopeProvider func(http.ResponseWriter) (ConnectorApprovalScope, bool)
+
+type CredentialBoundary struct {
+	value connectormanagement.CredentialBoundary
+}
+
+func wrapCredentialBoundary(value connectormanagement.CredentialBoundary) CredentialBoundary {
+	return CredentialBoundary{value: value}
+}
+
+func (boundary CredentialBoundary) domain() connectormanagement.CredentialBoundary {
+	return boundary.value
+}
+func (boundary CredentialBoundary) Add(values ...string)       { boundary.value.Add(values...) }
+func (boundary CredentialBoundary) AddStructured(value any)    { boundary.value.AddStructured(value) }
+func (boundary CredentialBoundary) Empty() bool                { return boundary.value.Empty() }
+func (boundary CredentialBoundary) Redact(value string) string { return boundary.value.Redact(value) }
+func (boundary CredentialBoundary) RedactKey(value string) string {
+	return boundary.value.RedactKey(value)
+}
+func (boundary CredentialBoundary) RedactStructured(value any) any {
+	return boundary.value.RedactStructured(value)
+}
+func (boundary CredentialBoundary) Valid() bool { return boundary.value.Valid() }
+
+type CredentialPreparationPorts struct {
+	value connectormanagement.CredentialPreparationPorts
+}
+
+func (ports CredentialPreparationPorts) domain() connectormanagement.CredentialPreparationPorts {
+	return ports.value
+}
+func (ports CredentialPreparationPorts) Encrypt(ctx context.Context, profileID int64, secret map[string]any) (string, error) {
+	if ports.value.Encrypt == nil {
+		return "", errors.New("credential secret encryption is unavailable")
+	}
+	return ports.value.Encrypt(ctx, profileID, secret)
+}
+
+type CredentialRuntimePorts struct {
+	value connectormanagement.CredentialRuntimePorts
+}
+
+func (ports CredentialRuntimePorts) domain() connectormanagement.CredentialRuntimePorts {
+	return ports.value
+}

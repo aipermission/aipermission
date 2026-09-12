@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -45,13 +44,13 @@ type ActionCallResult struct {
 }
 
 type ActionScope struct {
-	Database        *sql.DB
-	AdapterRegistry *connectorapi.Registry
-	TokenID         int64
-	Output          *OutputAuthorization
-	Call            func(context.Context, ActionCall) (ActionCallResult, error)
-	Observe         func(context.Context, string, any)
-	Redact          func(context.Context, string) string
+	Database    *sql.DB
+	TokenID     int64
+	Output      *OutputAuthorization
+	Call        func(context.Context, ActionCall) (ActionCallResult, error)
+	Observe     func(context.Context, string, any)
+	Redact      func(context.Context, string) string
+	RunningHint func(connectortargets.ActionRequest) string
 }
 
 type ActionScopeProvider func(http.ResponseWriter, *http.Request) (ActionScope, bool)
@@ -109,7 +108,7 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 		"connector_kind": result.Request.ConnectorKind, "action_name": request.ActionName,
 		"replayed": result.Replayed,
 	})
-	response := ResponseFromResult(scope.AdapterRegistry, result.Request, result.Result)
+	response := ResponseFromResult(scope.RunningHint, result.Request, result.Result)
 	response.Replayed = result.Replayed
 	scope.Output.Deliver(w, r, scope.TokenID, result.Request, response)
 }
@@ -136,7 +135,7 @@ func (h *ActionHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) 
 		httptransport.WriteError(w, http.StatusNotFound, "connector action request not found")
 		return
 	}
-	response := ResponseFromResult(scope.AdapterRegistry, request, connectors.ActionResult{
+	response := ResponseFromResult(scope.RunningHint, request, connectors.ActionResult{
 		Status: request.Status, Output: request.Output, DisplayText: request.DisplayText, Error: request.Error,
 	})
 	scope.Output.Deliver(w, r, scope.TokenID, request, response)
@@ -185,21 +184,20 @@ func writeCodedError(w http.ResponseWriter, status int, message, code string) {
 	httptransport.WriteJSON(w, status, httptransport.ErrorResponse{Error: message, Code: code})
 }
 
-func ResponseFromResult(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest, result connectors.ActionResult) actions.Response {
-	return actions.FromResult(request, result, responseRunningHint(adapterRegistry, request))
+func ResponseFromResult(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest, result connectors.ActionResult) actions.Response {
+	return actions.FromResult(request, result, responseRunningHint(resolveRunningHint, request))
 }
 
-func ResponseFromRequest(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) actions.Response {
-	return actions.FromRequest(request, responseRunningHint(adapterRegistry, request))
+func ResponseFromRequest(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest) actions.Response {
+	return actions.FromRequest(request, responseRunningHint(resolveRunningHint, request))
 }
 
-func responseRunningHint(adapterRegistry *connectorapi.Registry, request connectortargets.ActionRequest) string {
+func responseRunningHint(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest) string {
 	if request.Status != connectors.ResultRunning {
 		return ""
 	}
-	adapter, _ := adapterRegistry.For(request.ConnectorKind).(connectorapi.RuntimeAdapter)
-	if adapter != nil {
-		if hint := strings.TrimSpace(adapter.RunningHint(request)); hint != "" {
+	if resolveRunningHint != nil {
+		if hint := strings.TrimSpace(resolveRunningHint(request)); hint != "" {
 			return hint
 		}
 	}

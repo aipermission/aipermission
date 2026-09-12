@@ -1,6 +1,7 @@
 package securitypolicy
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -17,6 +18,12 @@ type HTTPScope struct {
 }
 
 type HTTPScopeProvider func(http.ResponseWriter) (HTTPScope, bool)
+
+// NewHTTPScope converts a composition-owned mutation callback without
+// exposing the audited mutation package through the gateway boundary.
+func NewHTTPScope(service *Service, mutate func(context.Context, string, func() any, func(*sql.Tx) error) error) HTTPScope {
+	return HTTPScope{Service: service, Mutate: auditedmutation.Runner(mutate)}
+}
 
 type HTTPHandlers struct{ scope HTTPScopeProvider }
 

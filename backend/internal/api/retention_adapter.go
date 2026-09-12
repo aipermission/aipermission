@@ -1,7 +1,9 @@
 package api
 
-func (s *Server) initializeRetention(runtime databaseRuntime) {
-	s.observation.InitializeRetention(observationRuntime(runtime), func() {
+import gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
+
+func (s *Server) initializeRetention(runtime *gatewayinfra.WorkspaceHandle) {
+	s.infrastructure.InitializeObservationRetention(runtime, func() {
 		s.startConnectorActionRecoveryWorker(runtime)
 	})
 }

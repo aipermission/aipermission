@@ -2,26 +2,23 @@ package api
 
 import (
 	"context"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 )
 
-func (s *Server) initializeCommandRequestRuntime(runtime databaseRuntime) error {
-	return s.commands.Initialize(runtime.Identity.RuntimeID, gatewayoperations.CommandRuntimeDependencies{
-		Database: runtime.Storage.DatabaseHandle(), Vault: runtime.Storage.SecretVault(), WorkspaceID: runtime.Identity.WorkspaceID,
-		Redact: func(ctx context.Context, value string) string {
-			return s.redactForPersistence(ctx, runtime, value)
-		},
-		Sessions: runtime.Connectors.ConsoleSessionManager(), BackgroundTimeout: mcpBackgroundCommandTimeout,
-	})
+func (s *Server) initializeCommandRequestRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
+	return s.infrastructure.InitializeCommandRuntime(runtime, &s.commands, func(ctx context.Context, value string) string {
+		return s.redactForPersistence(ctx, runtime, value)
+	}, mcpBackgroundCommandTimeout)
 }
 
-func (s *Server) commandRuntime(runtime databaseRuntime) (*gatewayoperations.CommandRuntime, error) {
+func (s *Server) commandRuntime(runtime *gatewayinfra.WorkspaceHandle) (*gatewayoperations.CommandRuntime, error) {
 	if runtime == nil {
 		return nil, gatewayoperations.ErrCommandRuntimeUnavailable
 	}
-	return s.commands.Runtime(runtime.Identity.RuntimeID)
+	return s.commands.Runtime(runtime.Identity().RuntimeID)
 }
 
 func (s *Server) commandRequestHTTPScope(w http.ResponseWriter) (*gatewayoperations.CommandRuntime, bool) {

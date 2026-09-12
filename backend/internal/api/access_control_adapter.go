@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.AccessScope, bool) {
@@ -14,18 +15,10 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.Access
 	if !ok {
 		return gatewayaccess.AccessScope{}, false
 	}
-	return gatewayaccess.AccessScope{
-		Database: runtime.Storage.DatabaseHandle(),
-		Tokens:   runtime.Storage.TokenStore(),
-		Registry: runtimeConnectorRegistry(runtime),
-		ReusableTokens: func(ctx context.Context) (bool, error) {
-			settings, err := runtime.Security.PolicyService().ReadSettings(ctx)
-			return settings.ReusableTokens, err
-		},
+	return s.infrastructure.AccessControlWorkspace(runtime, gatewayinfra.AccessControlPorts{
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return s.withAuditedMutation(ctx, runtime, "user", nil, 0, action, payload, mutate)
 		},
-		AcquireExclusive: runtime.Security.VaultDeliveryCoordinator().AcquireExclusive,
 		FinishTokenInvalidation: func(ctx context.Context, tokenID int64, sessionIDs []int64) {
 			lifecycle, err := s.vaultSessionLifecycle(runtime)
 			if err == nil {
@@ -35,5 +28,5 @@ func (s *Server) accessControlScope(w http.ResponseWriter) (gatewayaccess.Access
 				log.Printf("finish token Vault session invalidation failed token=%d sessions=%v error=%v", tokenID, sessionIDs, err)
 			}
 		},
-	}, true
+	})
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sessionenvprotocol"
-	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"golang.org/x/crypto/ssh"
@@ -23,7 +22,7 @@ import (
 
 type Transport struct{}
 
-func (Transport) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request console.RuntimeOpenRequest) (*console.RuntimeSession, error) {
+func (Transport) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request connectorapi.LiveConsoleOpenRequest) (*connectorapi.LiveConsoleSession, error) {
 	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return nil, err
@@ -54,7 +53,7 @@ func (Transport) ExpectedLiveConsolePeerIdentities(ctx context.Context, server c
 	)
 }
 
-func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target management.TargetMaterial, privateKey string, rows int, cols int, options LiveConsoleOptions) (*console.RuntimeSession, error) {
+func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerIdentityGateway, target management.TargetMaterial, privateKey string, rows int, cols int, options LiveConsoleOptions) (*connectorapi.LiveConsoleSession, error) {
 	if strings.TrimSpace(options.ForceShellCommand) != "" {
 		target.ForceShellCommand = strings.TrimSpace(options.ForceShellCommand)
 	}
@@ -135,7 +134,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		return nil, fmt.Errorf("request pty: %w", err)
 	}
 	runtimeStdout := io.Reader(stdout)
-	var runtimeSession *console.RuntimeSession
+	var runtimeSession *connectorapi.LiveConsoleSession
 	var applyEnvironment func(context.Context, *sessionenv.Envelope) error
 	if hasEnvironment {
 		bootstrap, err := newSessionEnvironmentBootstrap(options.Generation)
@@ -173,7 +172,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("start shell: %w", err)
 	}
-	runtimeSession = &console.RuntimeSession{
+	runtimeSession = &connectorapi.LiveConsoleSession{
 		Stdin:                    stdin,
 		Stdout:                   runtimeStdout,
 		Stderr:                   stderr,

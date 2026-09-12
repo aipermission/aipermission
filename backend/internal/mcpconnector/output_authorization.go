@@ -11,7 +11,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -33,12 +32,12 @@ type DeliveryGate interface {
 
 func (authorization *OutputAuthorization) ResponseForToken(
 	ctx context.Context,
-	adapterRegistry *connectorapi.Registry,
+	resolveRunningHint func(connectortargets.ActionRequest) string,
 	tokenID int64,
 	request connectortargets.ActionRequest,
 	result connectors.ActionResult,
 ) actions.Response {
-	response := ResponseFromResult(adapterRegistry, request, result)
+	response := ResponseFromResult(resolveRunningHint, request, result)
 	if !authorization.Authorized(ctx, tokenID, request) {
 		actions.Withhold(&response)
 	}

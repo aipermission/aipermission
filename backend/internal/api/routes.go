@@ -5,7 +5,7 @@ package api
 import (
 	"net/http"
 
-	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayaccesshttp "github.com/aipermission/aipermission/backend/internal/gatewayaccess/httpowner"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
@@ -16,10 +16,7 @@ type mcpHandlers struct{ *Server }
 type diagnosticsHandlers struct{ *Server }
 
 func (s *Server) routes() {
-	observation := s.observation.HTTPHandlers(func(w http.ResponseWriter) (gatewayoperations.ObservationRuntime, bool) {
-		runtime, ok := s.activeRuntimeOrLocked(w)
-		return observationRuntime(runtime), ok
-	})
+	observation := s.infrastructure.ObservationHTTPHandlers(s.activeRuntimeOrLocked)
 	backup := s.backupApplication().HTTPHandlers()
 	connectorManagement := s.connectorManagementApplication()
 	connectorHTTP := connectorManagement.HTTPHandlers()
@@ -27,7 +24,7 @@ func (s *Server) routes() {
 	commandHTTP := s.commands.HTTPHandlers(gatewayoperations.CommandScopeProviders{
 		Bulk: s.bulkCommandHTTPScope, Requests: s.commandRequestHTTPScope,
 	})
-	accessHTTP := s.access.HTTPHandlers(gatewayaccess.HTTPScopeProviders{
+	accessHTTP := gatewayaccesshttp.New(s.access, gatewayaccesshttp.ScopeProviders{
 		Security: s.securityPolicyHTTPScope, TokenAccess: s.accessControlScope,
 		MCPRuntime: s.mcpRuntimeHTTPScope, MCPConnectorReads: mcp.mcpConnectorReadScope,
 		MCPConnectorActions: mcp.mcpConnectorActionScope,
@@ -49,8 +46,8 @@ func (s *Server) routes() {
 		TargetOperation: connectorHTTP.TargetOperation.Run,
 
 		Backup: gatewayinfra.Backup{
-			Download: backup.Download, Import: backup.Import,
-			RestoreRemote: backup.RestoreRemote, RestoreProvider: backup.RestoreProvider,
+			Download: gatewayinfra.Handler(backup.Download), Import: gatewayinfra.Handler(backup.Import),
+			RestoreRemote: gatewayinfra.Handler(backup.RestoreRemote), RestoreProvider: gatewayinfra.Handler(backup.RestoreProvider),
 		},
 		TransientBackup: backup.Transient, BackupProviders: backup.Providers,
 
@@ -90,7 +87,7 @@ func (s *Server) routes() {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "aipermission", "status": "running",
-		"audit":  s.observation.HealthSnapshot(r.Context(), observationRuntime(s.activeRuntime())),
+		"audit":  s.infrastructure.ObservationHealthSnapshot(r.Context(), s.activeRuntime()),
 		"config": s.config.PublicStatusMinimal(),
 		"features": []string{
 			"local-docker-runtime", "react-dashboard", "sqlcipher-sqlite-storage", "database-unlock-screen",

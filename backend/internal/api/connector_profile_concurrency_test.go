@@ -42,7 +42,7 @@ func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
 	connector := &concurrentCredentialTestConnector{
 		firstEntered: make(chan struct{}), releaseFirst: make(chan struct{}),
 	}
-	if err := runtimeConnectorRegistry(fixture.server.activeRuntime()).Register(connector); err != nil {
+	if err := fixture.server.connectorRegistry().Register(connector); err != nil {
 		t.Fatalf("register concurrency connector: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
@@ -59,7 +59,7 @@ func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	encrypted, err := recordcrypto.EncryptJSON(
-		fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID,
+		testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID,
 		recordcrypto.ConnectorCredentialProfile, profile.ID,
 		map[string]any{"first_secret": "old-first", "second_secret": "old-second"},
 	)
@@ -108,7 +108,7 @@ func TestConcurrentPartialCredentialUpdatesPreserveBothChanges(t *testing.T) {
 	}
 	var secret map[string]any
 	if err := recordcrypto.DecryptJSON(
-		fixture.server.activeRuntime().Storage.SecretVault(), fixture.server.activeRuntime().Identity.WorkspaceID,
+		testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID,
 		recordcrypto.ConnectorCredentialProfile, profile.ID, stored.EncryptedSecretJSON, &secret,
 	); err != nil {
 		t.Fatal(err)
