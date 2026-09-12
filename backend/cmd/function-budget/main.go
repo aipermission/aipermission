@@ -10,13 +10,16 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/maintenancepolicy"
 )
 
-const (
-	defaultMaxLines          = 180
-	defaultMaxComplexity     = 35
-	defaultMaxTestLines      = 220
-	defaultMaxTestComplexity = 60
+var (
+	functionPolicy           = maintenancepolicy.MustLoad().GoFunction
+	defaultMaxLines          = functionPolicy.ProductionMaxLines
+	defaultMaxComplexity     = functionPolicy.ProductionMaxComplexity
+	defaultMaxTestLines      = functionPolicy.TestMaxLines
+	defaultMaxTestComplexity = functionPolicy.TestMaxComplexity
 )
 
 type finding struct {
@@ -66,7 +69,8 @@ func inspectTree(root string) ([]finding, error) {
 			if !ok || function.Body == nil {
 				continue
 			}
-			inspectFunction(fileSet, filepath.ToSlash(path), functionName(function), function, function.Body, maxLines, maxComplexity, &findings)
+			name := functionName(function)
+			inspectFunction(fileSet, filepath.ToSlash(path), name, function, function.Body, maxLines, maxComplexity, &findings)
 		}
 		return nil
 	})
@@ -79,6 +83,9 @@ func inspectTree(root string) ([]finding, error) {
 }
 
 func inspectFunction(fileSet *token.FileSet, path string, name string, node ast.Node, body *ast.BlockStmt, maxLines int, maxComplexity int, findings *[]finding) {
+	if configured, ok := functionPolicy.Overrides[path+":"+name]; ok {
+		maxLines, maxComplexity = configured.Lines, configured.Complexity
+	}
 	lines := fileSet.Position(node.End()).Line - fileSet.Position(node.Pos()).Line + 1
 	complexity := cyclomaticComplexity(body)
 	if lines > maxLines {

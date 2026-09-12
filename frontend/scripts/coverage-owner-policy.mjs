@@ -6,7 +6,7 @@ const excludedNames = new Set(coveragePolicy.excludedNames);
 const excludedDirectories = new Set(coveragePolicy.excludedDirectories);
 const separatelyCoveredDirectories = new Set(coveragePolicy.separatelyCoveredDirectories);
 const excludedPatterns = coveragePolicy.excludedPatterns.map((pattern) => new RegExp(pattern));
-const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
+const architecturePolicy = JSON.parse(readFileSync(new URL("../../maintenance-policy.json", import.meta.url), "utf8")).frontendArchitecture;
 const sourceExtensions = new Set(architecturePolicy.sourceExtensions);
 
 export function isBehaviorOwner(file) {

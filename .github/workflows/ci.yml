@@ -38,7 +38,7 @@ jobs:
         env:
           MAINTENANCE_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          node --test scripts/maintenance-budget-ratchet.test.js
+          node --test scripts/maintenance-source-kind.test.js scripts/maintenance-budget-ratchet.test.js
           node scripts/maintenance-budget-ratchet.js
       - name: Package lock ownership
         run: node scripts/package-lock-check.js

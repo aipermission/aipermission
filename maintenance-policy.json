@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "frontendArchitecture": {
+    "sourceExtensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
+    "testModuleMarkers": [".test.", ".spec."],
+    "maxDependencyFanout": 20,
+    "maxProductionModuleLines": 550
+  },
+  "sourceBudgets": [
+    {
+      "id": "backend",
+      "directory": "backend",
+      "extensions": [".go"],
+      "classifier": "go",
+      "productionMaxLines": 1400,
+      "testMaxLines": 1800,
+      "testPackageMaxLines": 15000
+    },
+    {
+      "id": "frontend",
+      "directory": "frontend/src",
+      "extensions": [".js", ".jsx", ".mjs", ".ts", ".tsx"],
+      "classifier": "markers",
+      "productionMaxLines": 550,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 3000
+    },
+    {
+      "id": "mcp-source",
+      "directory": "packages/mcp/src",
+      "extensions": [".js", ".ts"],
+      "classifier": "markers",
+      "productionMaxLines": 800,
+      "testMaxLines": 800,
+      "testPackageMaxLines": 1200
+    },
+    {
+      "id": "mcp-test",
+      "directory": "packages/mcp/test",
+      "extensions": [".js", ".ts"],
+      "classifier": "all",
+      "testMaxLines": 800,
+      "testPackageMaxLines": 1200
+    },
+    {
+      "id": "repository-tooling",
+      "directory": "scripts",
+      "extensions": [".js", ".mjs"],
+      "classifier": "markers",
+      "productionMaxLines": 550,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 1500
+    },
+    {
+      "id": "frontend-tooling",
+      "directory": "frontend/scripts",
+      "extensions": [".js", ".mjs"],
+      "classifier": "markers",
+      "productionMaxLines": 550,
+      "testMaxLines": 1000,
+      "testPackageMaxLines": 1000
+    },
+    {
+      "id": "mcp-tooling",
+      "directory": "packages/mcp/scripts",
+      "extensions": [".js", ".mjs"],
+      "classifier": "markers",
+      "productionMaxLines": 550,
+      "testMaxLines": 800,
+      "testPackageMaxLines": 1200
+    }
+  ],
+  "sourceOverrides": {},
+  "connectorSourceMaxLines": 850,
+  "backendPackage": {
+    "defaultMaxLines": 3500,
+    "overrides": {
+      "backend/internal/db": 2700,
+      "backend/internal/connectors/mail": 3200,
+      "backend/internal/console": 3300,
+      "backend/internal/connectors/s3": 3250
+    }
+  },
+  "frontendSuppressions": {
+    "maxCount": 0,
+    "forbiddenPaths": [
+      "src/components/console/connector-token-permission-panel.jsx",
+      "src/components/console/vault-session-dialog.jsx",
+      "src/pages/console.jsx",
+      "src/pages/vault.jsx"
+    ]
+  },
+  "goFunction": {
+    "productionMaxLines": 180,
+    "productionMaxComplexity": 35,
+    "testMaxLines": 220,
+    "testMaxComplexity": 60,
+    "overrides": {}
+  },
+  "backendFanout": {
+    "packageMax": 12,
+    "ownerMax": 8,
+    "testFileInternalImportsMax": 14,
+    "overrides": {}
+  }
+}

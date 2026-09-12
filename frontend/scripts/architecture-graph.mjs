@@ -3,7 +3,8 @@ import { dirname, extname, join, relative, resolve, sep } from "node:path";
 
 import { parse } from "espree";
 
-const architecturePolicy = JSON.parse(readFileSync(new URL("../architecture-policy.json", import.meta.url), "utf8"));
+const maintenancePolicy = JSON.parse(readFileSync(new URL("../../maintenance-policy.json", import.meta.url), "utf8"));
+const architecturePolicy = maintenancePolicy.frontendArchitecture;
 
 export const sourceExtensions = Object.freeze([...architecturePolicy.sourceExtensions]);
 export const testModuleMarkers = Object.freeze([...architecturePolicy.testModuleMarkers]);

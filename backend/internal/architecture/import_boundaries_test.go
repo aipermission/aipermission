@@ -14,11 +14,12 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
+	"github.com/aipermission/aipermission/backend/internal/maintenancepolicy"
 )
 
 const modulePath = "github.com/aipermission/aipermission/backend"
 
-const maxTestFileInternalImports = 14
+var architecturePolicy = maintenancepolicy.MustLoad().BackendFanout
 
 func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 	packages := []string{
@@ -986,10 +987,6 @@ func builtInConnectorOwner(pkg string, builtInPackages []string) string {
 
 func TestBackendPackageFanOutBudgets(t *testing.T) {
 	importsByPackage := allPackageImports(t)
-	// Composition packages may import multiple explicitly approved packages from
-	// one owner; the stricter owner budget below prevents boundary sprawl.
-	const packageBudget = 12
-	const ownerBudget = 8
 	for importer, imports := range importsByPackage {
 		if !strings.HasPrefix(importer, modulePath+"/internal/") && !strings.HasPrefix(importer, modulePath+"/cmd/") {
 			continue
@@ -1005,11 +1002,15 @@ func TestBackendPackageFanOutBudgets(t *testing.T) {
 				owners[internalDependencyOwner(imported)] = true
 			}
 		}
+		packageBudget := architecturePolicy.PackageMax
+		if override, ok := architecturePolicy.Overrides[importer]; ok {
+			packageBudget = override
+		}
 		if packageCount > packageBudget {
 			t.Errorf("%s has %d direct internal package dependencies; budget is %d", importer, packageCount, packageBudget)
 		}
-		if len(owners) > ownerBudget {
-			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, len(owners), ownerBudget)
+		if len(owners) > architecturePolicy.OwnerMax {
+			t.Errorf("%s depends on %d internal owners; ownership fan-out budget is %d", importer, len(owners), architecturePolicy.OwnerMax)
 		}
 	}
 }
@@ -1042,8 +1043,8 @@ func TestTestFilesRespectInternalImportBudget(t *testing.T) {
 				count++
 			}
 		}
-		if count > maxTestFileInternalImports {
-			t.Errorf("%s has %d direct internal imports; test-file budget is %d", path, count, maxTestFileInternalImports)
+		if count > architecturePolicy.TestFileInternalImportsMax {
+			t.Errorf("%s has %d direct internal imports; test-file budget is %d", path, count, architecturePolicy.TestFileInternalImportsMax)
 		}
 		return nil
 	})

@@ -1,14 +1,10 @@
-function isTestSource(directory, file, frontendTestModuleMarkers) {
-  if (directory === "backend") {
-    return file.endsWith("_test.go");
+function isTestSource(classifier, file, testModuleMarkers) {
+  if (classifier === "go") return file.endsWith("_test.go");
+  if (classifier === "markers") {
+    return testModuleMarkers.some((marker) => file.includes(marker));
   }
-  if (directory === "frontend/src") {
-    return frontendTestModuleMarkers.some((marker) => file.includes(marker));
-  }
-  if (directory === "packages/mcp/src" || directory === "packages/mcp/test") {
-    return /(?:\.test\.|\.spec\.)/.test(file);
-  }
-  throw new Error(`unknown maintenance source directory: ${directory}`);
+  if (classifier === "all") return true;
+  throw new Error(`unknown maintenance source classifier: ${classifier}`);
 }
 
 module.exports = { isTestSource };

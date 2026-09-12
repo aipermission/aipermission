@@ -5,7 +5,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 const require = createRequire(import.meta.url);
-const architecturePolicy = require("./architecture-policy.json");
+const architecturePolicy = require("../maintenance-policy.json").frontendArchitecture;
 const sourceExtensionGlob = architecturePolicy.sourceExtensions.map((extension) => extension.slice(1)).join(",");
 const sourceFiles = [`src/**/*.{${sourceExtensionGlob}}`];
 const nodeFiles = ["e2e/**/*.js", "scripts/**/*.mjs", "playwright.config.js", "vite.config.js", "vitest.config.js"];

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { analyzeSourceTree } from "./architecture-graph.mjs";
 
 const sourceRoot = resolve(process.cwd(), "src");
-const policy = JSON.parse(readFileSync(resolve(process.cwd(), "architecture-policy.json"), "utf8"));
+const policy = JSON.parse(readFileSync(resolve(process.cwd(), "../maintenance-policy.json"), "utf8")).frontendArchitecture;
 const result = analyzeSourceTree(sourceRoot, {
   importBudget: policy.maxDependencyFanout,
   lineBudget: policy.maxProductionModuleLines,
