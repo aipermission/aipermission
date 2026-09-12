@@ -17,6 +17,8 @@ const deferredShutdownWait = 2 * time.Minute
 const deferredRetryWait = 250 * time.Millisecond
 const deferredRetryMax = 30 * time.Second
 
+var ErrShutdownDeferred = errors.New("workspace shutdown is continuing in the background")
+
 // ActionWorkflow is the action lifecycle needed during workspace teardown.
 type ActionWorkflow interface {
 	BeginShutdown()
@@ -89,7 +91,7 @@ func closeWithTimeoutAndComplete(runtime *workspaceruntime.Runtime, resolveActio
 			onComplete()
 		}()
 	}
-	return errors.Join(drainErr, fmt.Errorf("workspace shutdown exceeded its bounded wait; runtime storage close deferred until every owner drains"))
+	return errors.Join(drainErr, ErrShutdownDeferred)
 }
 
 type teardownCoordinator struct {
@@ -326,8 +328,11 @@ func (coordinator *teardownCoordinator) drainTransfers(ctx context.Context) erro
 
 // Discard releases a partially opened runtime without running normal shutdown
 // recovery against state that was never published.
-func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflowResolver) error {
+func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflowResolver, onComplete func()) error {
 	if runtime == nil {
+		if onComplete != nil {
+			onComplete()
+		}
 		return nil
 	}
 	if resolveTransfers != nil {
@@ -335,8 +340,41 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 			transfer.Abort()
 		}
 	}
-	_, err := closeStorage(runtime)
-	return err
+	closed, err := closeStorage(runtime)
+	if closed {
+		if onComplete != nil {
+			onComplete()
+		}
+		return err
+	}
+	done := runtime.StartTeardown(func() { retryDiscardStorage(runtime) })
+	if onComplete != nil {
+		go func() {
+			<-done
+			onComplete()
+		}()
+	}
+	return errors.Join(err, ErrShutdownDeferred)
+}
+
+func retryDiscardStorage(runtime *workspaceruntime.Runtime) {
+	retryWait := deferredRetryWait
+	for {
+		if closed, err := closeStorage(runtime); closed {
+			if err != nil {
+				log.Printf("discarded runtime storage closed with cleanup errors workspace=%s error=%v", runtime.ID, err)
+			}
+			return
+		} else {
+			log.Printf("discarded runtime storage close remains pending workspace=%s error=%v", runtime.ID, err)
+		}
+		time.Sleep(retryWait)
+		if retryWait < deferredRetryMax/2 {
+			retryWait *= 2
+		} else {
+			retryWait = deferredRetryMax
+		}
+	}
 }
 
 func clearActionIdentity(runtime *workspaceruntime.Runtime) {

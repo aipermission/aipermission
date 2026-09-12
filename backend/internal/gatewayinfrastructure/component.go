@@ -187,7 +187,7 @@ func (component *WorkspaceOwner) OpenWorkspace(ctx context.Context, input OpenWo
 	return component.handleFor(owner), err
 }
 
-func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resolveTransfers func() TransferWorkflow) error {
+func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resolveTransfers func() TransferWorkflow, onComplete func()) error {
 	owner, ok := component.resolve(handle)
 	if !ok || component.owner.workspace == nil {
 		return InitializationError()
@@ -196,8 +196,12 @@ func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resol
 	if resolveTransfers != nil {
 		transfers = func() gatewayworkspace.TransferWorkflow { return resolveTransfers() }
 	}
-	err := component.owner.workspace.Discard(owner, transfers)
-	component.forgetHandle(handle)
+	err := component.owner.workspace.Discard(owner, transfers, func() {
+		component.forgetHandle(handle)
+		if onComplete != nil {
+			onComplete()
+		}
+	})
 	return err
 }
 

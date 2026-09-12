@@ -345,7 +345,7 @@ func (component *Component) Open(ctx context.Context, input OpenInput) (*Runtime
 	}
 	return composeRuntime(workspaceruntime.New(state))
 }
-func (component *Component) Discard(runtime *Runtime, resolveTransfers func() TransferWorkflow) error {
+func (component *Component) Discard(runtime *Runtime, resolveTransfers func() TransferWorkflow, onComplete func()) error {
 	if runtime == nil {
 		return nil
 	}
@@ -353,7 +353,7 @@ func (component *Component) Discard(runtime *Runtime, resolveTransfers func() Tr
 	if resolveTransfers != nil {
 		resolver = func() runtimeshutdown.TransferWorkflow { return resolveTransfers() }
 	}
-	err := runtimeshutdown.Discard(runtime.owner, resolver)
+	err := runtimeshutdown.Discard(runtime.owner, resolver, onComplete)
 	return err
 }
 func (component *Component) Close(runtime *Runtime, resolveActions func() (ActionWorkflow, error), resolveCommands func() (CommandWorkflow, error), resolveTransfers func() TransferWorkflow, onComplete func()) error {

@@ -101,7 +101,7 @@ func (*closeSignalConnection) Ping(context.Context) error { return nil }
 func TestDiscardAbortsRegisteredComponents(t *testing.T) {
 	runtime := &workspaceruntime.Runtime{ID: "opening", ActionIdentityKey: make([]byte, 32)}
 	transfer := &transferWorkflowSpy{}
-	if err := Discard(runtime, func() TransferWorkflow { return transfer }); err != nil {
+	if err := Discard(runtime, func() TransferWorkflow { return transfer }, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !transfer.aborted {
@@ -205,7 +205,7 @@ func TestCloseResolvesAndStopsConnectorActions(t *testing.T) {
 
 func TestDiscardDoesNotRunActionRecovery(t *testing.T) {
 	runtime := &workspaceruntime.Runtime{ID: "opening", ActionIdentityKey: make([]byte, 32)}
-	if err := Discard(runtime, nil); err != nil {
+	if err := Discard(runtime, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.HasActionIdentity() {
@@ -444,11 +444,17 @@ func TestCloseRetriesTransferBeginBeforeClosingStorage(t *testing.T) {
 	}
 }
 
-type ownershipRetrySpy struct{ calls atomic.Int32 }
+type ownershipRetrySpy struct {
+	calls        atomic.Int32
+	retryRelease <-chan struct{}
+}
 
 func (ownership *ownershipRetrySpy) Release() (bool, error) {
 	if ownership.calls.Add(1) == 1 {
 		return false, errors.New("transient unlock failure")
+	}
+	if ownership.retryRelease != nil {
+		<-ownership.retryRelease
 	}
 	return true, nil
 }
@@ -471,6 +477,39 @@ func TestCloseRetriesUnconfirmedOwnershipRelease(t *testing.T) {
 	}
 	if runtime.Storage.DatabaseOwnership() != nil || ownership.calls.Load() < 2 {
 		t.Fatalf("ownership was not retried: retained=%v calls=%d", runtime.Storage.DatabaseOwnership() != nil, ownership.calls.Load())
+	}
+}
+
+func TestDiscardRetriesUnconfirmedOwnershipReleaseBeforeCompletion(t *testing.T) {
+	retryRelease := make(chan struct{})
+	ownership := &ownershipRetrySpy{retryRelease: retryRelease}
+	runtime := &workspaceruntime.Runtime{
+		ID:      "opening-ownership-retry",
+		Storage: workspacestorage.New(nil, nil, nil, "opening-ownership-retry", ownership),
+	}
+	completed := make(chan struct{})
+	err := Discard(runtime, nil, func() { close(completed) })
+	if !errors.Is(err, ErrShutdownDeferred) {
+		t.Fatalf("Discard() error = %v, want deferred shutdown", err)
+	}
+	if runtime.Storage.DatabaseOwnership() == nil {
+		t.Fatal("discard dropped an unconfirmed ownership release")
+	}
+	deadline := time.Now().Add(time.Second)
+	for ownership.calls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if ownership.calls.Load() < 2 {
+		t.Fatal("discard retry did not start")
+	}
+	close(retryRelease)
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("discard retry did not complete")
+	}
+	if runtime.Storage.DatabaseOwnership() != nil || ownership.calls.Load() < 2 {
+		t.Fatalf("discard ownership retry retained=%v calls=%d", runtime.Storage.DatabaseOwnership() != nil, ownership.calls.Load())
 	}
 }
 

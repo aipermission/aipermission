@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
@@ -29,8 +30,7 @@ func NewServer(configuration RuntimeConfiguration, adopted gatewayworkspace.Adop
 		return nil, err
 	}
 	if err := server.initializeOpenedRuntime(context.Background(), runtime); err != nil {
-		server.discardOpeningRuntime(runtime)
-		return nil, err
+		return nil, errors.Join(err, server.discardOpeningRuntime(runtime))
 	}
 	server.workspaceOwner.ActivateWorkspace(runtime)
 	server.initializeRetention(runtime)

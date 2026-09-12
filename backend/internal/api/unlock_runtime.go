@@ -53,8 +53,7 @@ func (s *Server) openRuntime(path string, id string, password string) (*gatewayi
 		return nil, err
 	}
 	if err := s.initializeOpenedRuntime(context.Background(), runtime); err != nil {
-		s.discardOpeningRuntime(runtime)
-		return nil, err
+		return nil, errors.Join(err, s.discardOpeningRuntime(runtime))
 	}
 	return runtime, nil
 }
@@ -82,13 +81,14 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayin
 	return nil
 }
 
-func (s *Server) discardOpeningRuntime(runtime *gatewayinfra.WorkspaceHandle) {
-	if err := s.workspaceOwner.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
+func (s *Server) discardOpeningRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
+	err := s.workspaceOwner.DiscardWorkspace(runtime, func() gatewayinfra.TransferWorkflow {
 		return s.transfers.Lifecycle(fileTransferWorkspaceIdentity(runtime))
-	}); err != nil {
+	}, func() { s.releaseRuntimeApplications(runtime) })
+	if err != nil {
 		log.Printf("discard opening workspace runtime failed workspace=%s error=%v", runtime.Identity().DatabaseID, err)
 	}
-	s.releaseRuntimeApplications(runtime)
+	return err
 }
 
 func (s *Server) currentDataPath() string {
