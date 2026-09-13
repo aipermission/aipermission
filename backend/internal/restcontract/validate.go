@@ -3,7 +3,9 @@ package restcontract
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +19,12 @@ func ValidateTypedResponse(method string, path string, statusCode int, body []by
 	if !ok {
 		return fmt.Errorf("route %s %s has no typed response contract", route.Method, route.Path)
 	}
-	if strconv.Itoa(statusCode) != contract.StatusCode {
+	status := strconv.Itoa(statusCode)
+	schema := contract.ResponseSchema
+	if status != contract.StatusCode {
+		schema = contract.AdditionalResponses[status]
+	}
+	if schema == nil {
 		return fmt.Errorf("route %s %s returned status %d, want %s", route.Method, route.Path, statusCode, contract.StatusCode)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
@@ -26,7 +33,13 @@ func ValidateTypedResponse(method string, path string, statusCode int, body []by
 	if err := decoder.Decode(&value); err != nil {
 		return fmt.Errorf("decode response JSON: %w", err)
 	}
-	return validateSchemaValue("$", value, contract.ResponseSchema, sharedSchemas())
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("decode response JSON: multiple values are not allowed")
+		}
+		return fmt.Errorf("decode response JSON: %w", err)
+	}
+	return validateSchemaValue("$", value, schema, sharedSchemas())
 }
 
 func validateSchemaValue(path string, value any, schema map[string]any, schemas map[string]any) error {

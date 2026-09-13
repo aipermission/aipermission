@@ -2216,6 +2216,26 @@
             },
             "description": "Successful response"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionOutcomeUnknown"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {

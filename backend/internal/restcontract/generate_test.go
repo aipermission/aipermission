@@ -243,6 +243,26 @@ func Register() { mux.HandleFunc("POST /api/connector-actions/local-run", run) }
 	}
 }
 
+func TestGenerateTypesApprovalRunUncertainOutcome(t *testing.T) {
+	source := []byte(`package api
+func Register() { mux.HandleFunc("POST /api/connector-action-approvals/{id}/run", run) }`)
+	output, err := Generate(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	operation := document["paths"].(map[string]any)["/api/connector-action-approvals/{id}/run"].(map[string]any)["post"].(map[string]any)
+	responses := operation["responses"].(map[string]any)
+	for _, status := range []string{"200", "409", "503", "default"} {
+		if responses[status] == nil {
+			t.Fatalf("approval run response %s missing: %#v", status, responses)
+		}
+	}
+}
+
 func TestValidateTypedRoutesRejectsRemovedRoutes(t *testing.T) {
 	if err := ValidateTypedRoutes([]Route{{Method: "GET", Path: "/health"}}); err == nil || !strings.Contains(err.Error(), "unregistered route") {
 		t.Fatalf("expected stale typed route error, got %v", err)
@@ -272,6 +292,24 @@ func TestValidateTypedResponseRejectsShapeAndStatusDrift(t *testing.T) {
 	}
 	if err := ValidateTypedResponse("GET", "/api/targets", 201, valid); err == nil {
 		t.Fatal("wrong response status should violate the contract")
+	}
+	if err := ValidateTypedResponse("GET", "/api/targets", 200, []byte(`{"items":[]} {"items":[]}`)); err == nil {
+		t.Fatal("multiple JSON values should violate the contract")
+	}
+}
+
+func TestValidateTypedResponseAcceptsDocumentedApprovalFailures(t *testing.T) {
+	conflict := []byte(`{"error":"connector action request is no longer pending"}`)
+	if err := ValidateTypedResponse("POST", "/api/connector-action-approvals/{id}/run", 409, conflict); err != nil {
+		t.Fatalf("valid approval conflict: %v", err)
+	}
+	unknown := []byte(`{"status":"outcome_unknown","code":"connector_action_persistence_unknown","request_id":42,"error":"state unknown","assistant_hint":"inspect first"}`)
+	if err := ValidateTypedResponse("POST", "/api/connector-action-approvals/{id}/run", 503, unknown); err != nil {
+		t.Fatalf("valid approval uncertain outcome: %v", err)
+	}
+	invalid := []byte(`{"status":"failed","code":"connector_action_persistence_unknown","request_id":42,"error":"state unknown","assistant_hint":"inspect first"}`)
+	if err := ValidateTypedResponse("POST", "/api/connector-action-approvals/{id}/run", 503, invalid); err == nil {
+		t.Fatal("invalid approval uncertain outcome should violate the contract")
 	}
 }
 

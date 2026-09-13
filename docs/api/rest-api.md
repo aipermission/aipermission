@@ -1418,6 +1418,11 @@ a coarse `approval_context_drift` reason such as `token`, `permission`,
 `target`, `profile`, `action_definition`, or `payload`, and returns `409
 Conflict`. The AI should submit a fresh `call_connector_action` request.
 
+If execution finishes but terminal persistence cannot be proven, Run returns
+`503 Service Unavailable` with `status: outcome_unknown`, the durable
+`request_id`, and explicit no-automatic-retry guidance. Inspect that request
+and the external target before deciding whether another action is safe.
+
 Decline changes the connector action request to `declined`. The optional
 `user_note` is stored on the connector action request and returned to MCP as
 operator guidance.

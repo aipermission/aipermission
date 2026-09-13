@@ -10,16 +10,20 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
-type previewWorkflow struct{ preview map[string]any }
+type previewWorkflow struct {
+	preview  map[string]any
+	runError error
+}
 
 func (workflow previewWorkflow) ApprovalPreview(context.Context, connectortargets.ActionRequest) (map[string]any, error) {
 	return workflow.preview, nil
 }
 
-func (previewWorkflow) RunPending(context.Context, int64, string) (connectortargets.ActionRequest, error) {
-	return connectortargets.ActionRequest{}, nil
+func (workflow previewWorkflow) RunPending(context.Context, int64, string) (connectortargets.ActionRequest, error) {
+	return connectortargets.ActionRequest{}, workflow.runError
 }
 
 func (previewWorkflow) DeclinePending(context.Context, int64, string) (connectortargets.ActionRequest, error) {
@@ -92,13 +96,32 @@ func TestHandlersRejectIncompleteScope(t *testing.T) {
 	}
 }
 
-func TestWriteKnownErrorPreservesOutcomeUnknownContract(t *testing.T) {
+func TestRunPreservesOutcomeUnknownContract(t *testing.T) {
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (Scope, bool) {
+		return Scope{
+			Workflow: func() (Workflow, error) {
+				return previewWorkflow{runError: actions.NewTerminalPersistenceError(42, context.DeadlineExceeded)}, nil
+			},
+			MCPStarted: func() bool { return true },
+			Redact:     func(_ context.Context, value string) string { return value },
+		}, true
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-action-approvals/42/run", nil)
+	request.SetPathValue("id", "42")
 	response := httptest.NewRecorder()
-	if !writeKnownError(response, actions.NewTerminalPersistenceError(42, context.DeadlineExceeded)) {
-		t.Fatal("terminal persistence error was not recognized")
-	}
+
+	handlers.Run(response, request)
+
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := restcontract.ValidateTypedResponse(
+		http.MethodPost,
+		"/api/connector-action-approvals/{id}/run",
+		response.Code,
+		response.Body.Bytes(),
+	); err != nil {
+		t.Fatalf("outcome unknown contract: %v", err)
 	}
 	for _, expected := range []string{`"status":"outcome_unknown"`, `"request_id":42`, `"connector_action_persistence_unknown"`, `"Do not retry automatically`} {
 		if !strings.Contains(response.Body.String(), expected) {
