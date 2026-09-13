@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -57,10 +58,10 @@ func TestCheckCoverageRejectsMissingAndUnknownProductionMeasurements(t *testing.
 		defaultFloor:    10,
 		neutralPackages: map[string]bool{"internal/contracts": true},
 	}
-	packages := map[string]map[string]bool{
-		"internal/api":       {"api.go": true},
-		"internal/contracts": {"contracts.go": true},
-		"internal/newowner":  {"new.go": true},
+	packages := productionPackages{
+		"internal/api":       {"api.go": {hasStatements: true}},
+		"internal/contracts": {"contracts.go": {}},
+		"internal/newowner":  {"new.go": {hasStatements: true}},
 	}
 	counts := map[string]coverageCount{
 		"internal/api":       {statements: 10, covered: 5, files: map[string]bool{"api.go": true, "missing.go": true}},
@@ -85,6 +86,40 @@ func TestCheckCoverageRejectsMissingAndUnknownProductionMeasurements(t *testing.
 	}
 }
 
+func TestCheckCoverageRejectsUnmeasuredExecutableFilesAndBehavioralNeutralPackages(t *testing.T) {
+	policy := coveragePolicy{
+		floors:          map[string]float64{"internal/api": 50},
+		defaultFloor:    10,
+		neutralPackages: map[string]bool{"internal/contracts": true},
+	}
+	packages := productionPackages{
+		"internal/api": {
+			"measured.go": {hasStatements: true},
+			"missing.go":  {hasStatements: true},
+			"types.go":    {},
+		},
+		"internal/contracts": {
+			"contracts.go": {hasStatements: true},
+		},
+	}
+	counts := map[string]coverageCount{
+		"internal/api": {statements: 10, covered: 5, files: map[string]bool{"measured.go": true}},
+	}
+	var output bytes.Buffer
+	failures := strings.Join(checkCoverage(policy, counts, packages, &output), "\n")
+	for _, expected := range []string{
+		"internal/api/missing.go: executable production file has no coverage measurements",
+		"internal/contracts/contracts.go: configured neutral package contains executable statements",
+	} {
+		if !strings.Contains(failures, expected) {
+			t.Fatalf("missing failure %q in %q", expected, failures)
+		}
+	}
+	if strings.Contains(failures, "types.go") {
+		t.Fatalf("declaration-only source should not require profile measurements: %q", failures)
+	}
+}
+
 func TestReadProductionPackagesUsesActiveGoAndCgoSources(t *testing.T) {
 	input := strings.NewReader(`
 {"ImportPath":"github.com/aipermission/aipermission/backend/internal/api","GoFiles":["server.go"]}
@@ -94,8 +129,44 @@ func TestReadProductionPackagesUsesActiveGoAndCgoSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !packages["internal/api"]["server.go"] || !packages["internal/crypto"]["cipher.go"] || len(packages) != 2 {
+	if _, ok := packages["internal/api"]["server.go"]; !ok {
+		t.Fatalf("missing active Go source: %#v", packages)
+	}
+	if _, ok := packages["internal/crypto"]["cipher.go"]; !ok || len(packages) != 2 {
 		t.Fatalf("unexpected package inventory: %#v", packages)
+	}
+}
+
+func TestReadProductionPackagesClassifiesExecutableSources(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "types.go"), []byte("package sample\ntype Value string\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "runtime.go"), []byte("package sample\nfunc Run() { println(\"run\") }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "noop.go"), []byte("package sample\nfunc Noop() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "initializer.go"), []byte("package sample\nimport \"strings\"\nvar Value = strings.TrimSpace(\" value \" )\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := strings.NewReader(`{"ImportPath":"github.com/aipermission/aipermission/backend/internal/sample","Dir":` + strconv.Quote(directory) + `,"GoFiles":["types.go","runtime.go","noop.go","initializer.go"]}`)
+	packages, err := readProductionPackages(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packages["internal/sample"]["types.go"].hasStatements {
+		t.Fatal("declaration-only source classified as executable")
+	}
+	if !packages["internal/sample"]["runtime.go"].hasStatements {
+		t.Fatal("function body was not classified as executable")
+	}
+	if !packages["internal/sample"]["noop.go"].hasStatements {
+		t.Fatal("empty function body was not classified as executable")
+	}
+	if !packages["internal/sample"]["initializer.go"].hasStatements {
+		t.Fatal("package initializer call was not classified as executable")
 	}
 }
 

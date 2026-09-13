@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"math"
 	"os"
@@ -33,6 +36,12 @@ type coverageCount struct {
 	covered    int64
 	files      map[string]bool
 }
+
+type productionFile struct {
+	hasStatements bool
+}
+
+type productionPackages map[string]map[string]productionFile
 
 var coveragePositionPattern = regexp.MustCompile(`^(.+\.go):(\d+)\.(\d+),(\d+)\.(\d+)$`)
 
@@ -64,7 +73,7 @@ func main() {
 	}
 }
 
-func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packages map[string]map[string]bool, output io.Writer) []string {
+func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packages productionPackages, output io.Writer) []string {
 	failures := []string{}
 	for packagePath := range policy.floors {
 		if _, ok := packages[packagePath]; !ok {
@@ -72,8 +81,15 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 		}
 	}
 	for packagePath := range policy.neutralPackages {
-		if _, ok := packages[packagePath]; !ok {
+		files, ok := packages[packagePath]
+		if !ok {
 			failures = append(failures, fmt.Sprintf("%s: configured neutral package is not in the production build", packagePath))
+			continue
+		}
+		for file, metadata := range files {
+			if metadata.hasStatements {
+				failures = append(failures, fmt.Sprintf("%s/%s: configured neutral package contains executable statements", packagePath, file))
+			}
 		}
 	}
 	for packagePath, count := range counts {
@@ -86,7 +102,7 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 			continue
 		}
 		for file := range count.files {
-			if !productionFiles[file] {
+			if _, exists := productionFiles[file]; !exists {
 				failures = append(failures, fmt.Sprintf("%s/%s: coverage profile contains a file outside the production build", packagePath, file))
 			}
 		}
@@ -99,6 +115,11 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 		if !measured || count.statements <= 0 {
 			failures = append(failures, fmt.Sprintf("%s: no coverage statements found", packagePath))
 			continue
+		}
+		for file, metadata := range packages[packagePath] {
+			if metadata.hasStatements && !count.files[file] {
+				failures = append(failures, fmt.Sprintf("%s/%s: executable production file has no coverage measurements", packagePath, file))
+			}
 		}
 		floor := policy.defaultFloor
 		if explicit, ok := policy.floors[packagePath]; ok {
@@ -243,7 +264,7 @@ func coveragePackage(position string) (string, string, error) {
 	return packagePath, filepath.Base(file), nil
 }
 
-func listProductionPackages() (map[string]map[string]bool, error) {
+func listProductionPackages() (productionPackages, error) {
 	command := exec.Command("go", "list", "-json", "./internal/...")
 	output, err := command.Output()
 	if err != nil {
@@ -252,12 +273,13 @@ func listProductionPackages() (map[string]map[string]bool, error) {
 	return readProductionPackages(strings.NewReader(string(output)))
 }
 
-func readProductionPackages(input io.Reader) (map[string]map[string]bool, error) {
+func readProductionPackages(input io.Reader) (productionPackages, error) {
 	decoder := json.NewDecoder(input)
-	packages := map[string]map[string]bool{}
+	packages := productionPackages{}
 	for {
 		var item struct {
 			ImportPath string
+			Dir        string
 			GoFiles    []string
 			CgoFiles   []string
 		}
@@ -279,9 +301,17 @@ func readProductionPackages(input io.Reader) (map[string]map[string]bool, error)
 		if _, exists := packages[packagePath]; exists {
 			return nil, fmt.Errorf("duplicate production package inventory entry %q", item.ImportPath)
 		}
-		files := map[string]bool{}
+		files := map[string]productionFile{}
 		for _, file := range append(item.GoFiles, item.CgoFiles...) {
-			files[file] = true
+			hasStatements := true
+			if strings.TrimSpace(item.Dir) != "" {
+				var err error
+				hasStatements, err = productionFileHasStatements(filepath.Join(item.Dir, file))
+				if err != nil {
+					return nil, fmt.Errorf("inspect production source %s: %w", filepath.Join(item.Dir, file), err)
+				}
+			}
+			files[file] = productionFile{hasStatements: hasStatements}
 		}
 		packages[packagePath] = files
 	}
@@ -291,7 +321,55 @@ func readProductionPackages(input io.Reader) (map[string]map[string]bool, error)
 	return packages, nil
 }
 
-func sortedPackagePaths(packages map[string]map[string]bool) []string {
+func productionFileHasStatements(path string) (bool, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return false, err
+	}
+	hasStatements := false
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if hasStatements {
+			return false
+		}
+		switch typed := node.(type) {
+		case *ast.FuncDecl:
+			hasStatements = typed.Body != nil
+		case *ast.FuncLit:
+			hasStatements = typed.Body != nil
+		case *ast.GenDecl:
+			if typed.Tok == token.VAR {
+				hasStatements = declarationCallsFunction(typed)
+			}
+		}
+		return !hasStatements
+	})
+	return hasStatements, nil
+}
+
+func declarationCallsFunction(declaration *ast.GenDecl) bool {
+	called := false
+	for _, specification := range declaration.Specs {
+		value, ok := specification.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for _, expression := range value.Values {
+			ast.Inspect(expression, func(node ast.Node) bool {
+				if _, ok := node.(*ast.CallExpr); ok {
+					called = true
+					return false
+				}
+				return !called
+			})
+			if called {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func sortedPackagePaths(packages productionPackages) []string {
 	paths := make([]string, 0, len(packages))
 	for path := range packages {
 		paths = append(paths, path)
