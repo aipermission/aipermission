@@ -19,6 +19,56 @@ type testActiveSessions struct {
 	wait       func(context.Context) (console.ExecResult, error)
 }
 
+type transientCommandProjection struct {
+	failures int
+	ids      []int64
+}
+
+func (projection *transientCommandProjection) SyncCommandRequest(_ context.Context, _ Executor, id int64) error {
+	if projection.failures > 0 {
+		projection.failures--
+		return errors.New("temporary projection failure")
+	}
+	projection.ids = append(projection.ids, id)
+	return nil
+}
+
+func TestRuntimeRecoversUnpersistedTerminalResultAsOutcomeUnknown(t *testing.T) {
+	database, runtimeID := commandRequestFixture(t)
+	id, err := NewStore(database).Insert(t.Context(), testCommandCodec{}, &testCommandProjection{}, PreparedInsert{
+		insert: Insert{RuntimeID: runtimeID, Command: "remote mutation", Status: "running"}, storedCommand: "remote mutation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := &transientCommandProjection{failures: commandPersistenceAttempts * 2}
+	owner := newTestRuntime(t, database, &testActiveSessions{
+		result: console.ExecResult{SessionID: 44, ExitCode: 0, Output: "committed"},
+	}, projection)
+	principal, err := executionprincipal.LocalOperator("workspace", "runtime-instance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owner.RunWorker(func(ctx context.Context) {
+		owner.FinishActive(ctx, id, principal, console.SessionHandle{ID: 44, RuntimeID: runtimeID, Generation: 1})
+	}) {
+		t.Fatal("background command worker was not admitted")
+	}
+	if err := owner.StopWorkers(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.CancelRunning(t.Context(), "workspace closed"); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := NewStore(database).Get(t.Context(), id, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "outcome_unknown" || stored.Error != commandOutcomeUnknown {
+		t.Fatalf("uncertain remote result = %#v", stored)
+	}
+}
+
 func (s *testActiveSessions) WaitActive(
 	ctx context.Context,
 	_ executionprincipal.Principal,
@@ -98,6 +148,39 @@ func TestRuntimeFinishesBackgroundCommandsAndInterruptsTimeouts(t *testing.T) {
 	timedOut, err := NewStore(database).Get(t.Context(), timedOutID, 0, "")
 	if err != nil || timedOut.Status != "error" || !strings.Contains(timedOut.Error, "timed out") || sessions.interrupts != 1 {
 		t.Fatalf("timed-out background request = %#v interrupts=%d err=%v", timedOut, sessions.interrupts, err)
+	}
+}
+
+func TestRuntimeRetriesTerminalPersistenceBeforeWorkerDrain(t *testing.T) {
+	database, runtimeID := commandRequestFixture(t)
+	id, err := NewStore(database).Insert(t.Context(), testCommandCodec{}, &testCommandProjection{}, PreparedInsert{
+		insert: Insert{RuntimeID: runtimeID, Command: "echo done", Status: "running"}, storedCommand: "echo done",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := &transientCommandProjection{failures: 1}
+	owner := newTestRuntime(t, database, &testActiveSessions{
+		result: console.ExecResult{SessionID: 44, ExitCode: 0, Output: "done"},
+	}, projection)
+	principal, err := executionprincipal.LocalOperator("workspace", "runtime-instance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owner.RunWorker(func(ctx context.Context) {
+		owner.FinishActive(ctx, id, principal, console.SessionHandle{ID: 44, RuntimeID: runtimeID, Generation: 1})
+	}) {
+		t.Fatal("background command worker was not admitted")
+	}
+	if err := owner.WaitWorkers(t.Context()); err != nil {
+		t.Fatalf("worker finalization error = %v", err)
+	}
+	stored, err := NewStore(database).Get(t.Context(), id, 0, "")
+	if err != nil || stored.Status != "completed" || stored.Stdout != "done" {
+		t.Fatalf("retried completion = %#v, %v", stored, err)
+	}
+	if len(projection.ids) != 1 || projection.ids[0] != id {
+		t.Fatalf("terminal projection ids = %v", projection.ids)
 	}
 }
 

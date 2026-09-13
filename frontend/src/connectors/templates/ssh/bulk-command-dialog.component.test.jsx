@@ -67,3 +67,18 @@ it("does not restore an old run after the dialog closes and reopens", async () =
   await waitFor(() => expect(screen.queryByText("1/1 finished")).not.toBeInTheDocument());
   expect(screen.getByRole("textbox", { name: "Command" })).toHaveValue("");
 });
+
+it("treats uncertain command outcomes as terminal", async () => {
+  const user = userEvent.setup();
+  apiPost.mockResolvedValue({
+    parallelism: 3,
+    items: [{ request_id: 42, target_name: "Example host", status: "outcome_unknown", error: "Inspect before retrying" }],
+  });
+  render(<BulkCommandDialog open targets={[target]} selectedTarget={target} onClose={vi.fn()} onRefresh={vi.fn()} />);
+
+  await user.type(screen.getByRole("textbox", { name: "Command" }), "deploy");
+  await user.type(screen.getByPlaceholderText("RUN ON 1 TARGETS"), "RUN ON 1 TARGETS");
+  await user.click(screen.getByRole("button", { name: "Run selected" }));
+
+  expect(await screen.findByText("1/1 finished")).toBeVisible();
+});

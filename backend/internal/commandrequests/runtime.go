@@ -3,6 +3,7 @@ package commandrequests
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,12 @@ import (
 )
 
 var ErrRuntimeUnavailable = errors.New("command request runtime is unavailable")
+
+const (
+	commandPersistenceAttempts = 5
+	commandPersistenceDelay    = 100 * time.Millisecond
+	commandOutcomeUnknown      = "remote command finished, but AIPermission could not persist its exact terminal result"
+)
 
 type Redactor func(context.Context, string) string
 
@@ -43,6 +50,7 @@ type Runtime struct {
 	workerDone        chan struct{}
 	workerWait        sync.Once
 	workersClosed     bool
+	workerErrors      map[int64]error
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
@@ -174,7 +182,13 @@ func (r *Runtime) SetSession(ctx context.Context, id, sessionID int64) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	return r.store.SetSession(ctx, r.projection, id, sessionID)
+	err := r.retryPersistence(ctx, func(attempt context.Context) error {
+		return r.store.SetSession(attempt, r.projection, id, sessionID)
+	})
+	if err != nil {
+		r.recordWorkerError(id, fmt.Errorf("persist command session %d: %w", id, err))
+	}
+	return err
 }
 
 func (r *Runtime) Finish(ctx context.Context, completion Completion) error {
@@ -184,7 +198,13 @@ func (r *Runtime) Finish(ctx context.Context, completion Completion) error {
 	completion.Stdout = r.redact(ctx, console.PlainOutput(completion.Stdout))
 	completion.Stderr = r.redact(ctx, console.PlainOutput(completion.Stderr))
 	completion.Error = r.redact(ctx, completion.Error)
-	return r.store.Finish(ctx, r.projection, completion)
+	err := r.persistCompletion(ctx, completion)
+	if err != nil {
+		r.recordWorkerError(completion.ID, fmt.Errorf("persist command completion %d: %w", completion.ID, err))
+	} else {
+		r.clearWorkerError(completion.ID)
+	}
+	return err
 }
 
 func (r *Runtime) FinishActive(parent context.Context, requestID int64, principal executionprincipal.Principal, handle console.SessionHandle) {
@@ -225,11 +245,93 @@ func (r *Runtime) FinishActive(parent context.Context, requestID int64, principa
 	})
 }
 
+func (r *Runtime) persistCompletion(ctx context.Context, completion Completion) error {
+	err := r.retryPersistence(ctx, func(attempt context.Context) error {
+		err := r.store.Finish(attempt, r.projection, completion)
+		if !errors.Is(err, ErrNotRunning) {
+			return err
+		}
+		status, statusErr := r.store.Status(attempt, completion.ID)
+		if statusErr == nil && status == completion.Status {
+			return nil
+		}
+		return errors.Join(err, statusErr)
+	})
+	if err == nil {
+		return nil
+	}
+	unknown := Completion{
+		ID: completion.ID, Status: "outcome_unknown", SessionID: completion.SessionID,
+		Error: commandOutcomeUnknown,
+	}
+	unknownErr := r.retryPersistence(ctx, func(attempt context.Context) error {
+		err := r.store.Finish(attempt, r.projection, unknown)
+		if !errors.Is(err, ErrNotRunning) {
+			return err
+		}
+		status, statusErr := r.store.Status(attempt, completion.ID)
+		if statusErr == nil && (status == completion.Status || status == unknown.Status) {
+			return nil
+		}
+		return errors.Join(err, statusErr)
+	})
+	if unknownErr == nil {
+		return nil
+	}
+	return errors.Join(err, unknownErr)
+}
+
+func (r *Runtime) retryPersistence(parent context.Context, operation func(context.Context) error) error {
+	var lastErr error
+	for attempt := 0; attempt < commandPersistenceAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 2*time.Second)
+		err := operation(ctx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if attempt+1 < commandPersistenceAttempts {
+			time.Sleep(commandPersistenceDelay)
+		}
+	}
+	return lastErr
+}
+
+func (r *Runtime) recordWorkerError(requestID int64, err error) {
+	if err == nil {
+		return
+	}
+	r.workerMu.Lock()
+	if r.workerErrors == nil {
+		r.workerErrors = make(map[int64]error)
+	}
+	r.workerErrors[requestID] = err
+	r.workerMu.Unlock()
+}
+
+func (r *Runtime) clearWorkerError(requestID int64) {
+	r.workerMu.Lock()
+	delete(r.workerErrors, requestID)
+	r.workerMu.Unlock()
+}
+
+func (r *Runtime) hasWorkerErrors() bool {
+	r.workerMu.Lock()
+	defer r.workerMu.Unlock()
+	return len(r.workerErrors) > 0
+}
+
 func (r *Runtime) CancelRunning(ctx context.Context, errorText string) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	err := r.store.CancelRunning(ctx, r.projection, r.redact(ctx, errorText))
+	var err error
+	if r.hasWorkerErrors() {
+		err = r.store.MarkRunningOutcomeUnknown(ctx, r.projection, r.redact(ctx, commandOutcomeUnknown))
+	} else {
+		err = r.store.CancelRunning(ctx, r.projection, r.redact(ctx, errorText))
+	}
 	return ignoreClosedDatabase(err)
 }
 

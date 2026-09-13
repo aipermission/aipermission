@@ -8,7 +8,7 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { useRequestGuard } from "../../../lib/request-guard";
 
-const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "untracked"]);
+const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "canceled", "outcome_unknown", "untracked"]);
 
 export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRefresh }) {
   const [selected, setSelected] = useState({});

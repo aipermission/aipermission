@@ -10,7 +10,10 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
-var ErrStoreUnavailable = errors.New("command request store is unavailable")
+var (
+	ErrStoreUnavailable = errors.New("command request store is unavailable")
+	ErrNotRunning       = errors.New("command request is no longer running")
+)
 
 type CommandCodec interface {
 	Seal(int64, string) (string, error)
@@ -139,19 +142,42 @@ type Completion struct {
 
 func (s *Store) Finish(ctx context.Context, projection Projection, completion Completion) error {
 	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
-		_, err := executor.ExecContext(ctx, `
+		result, err := executor.ExecContext(ctx, `
 			UPDATE command_requests
 			SET status = ?, session_id = NULLIF(?, 0), stdout = ?, stderr = ?, exit_code = ?, error = ?, completed_at = ?
 			WHERE id = ? AND status = 'running'`,
 			completion.Status, completion.SessionID, completion.Stdout, completion.Stderr,
 			completion.ExitCode, completion.Error, time.Now().UTC().Format(time.RFC3339), completion.ID,
 		)
-		return []int64{completion.ID}, err
+		if err != nil {
+			return nil, err
+		}
+		affected, err := sqldb.RowsAffected(result, "finish command request")
+		if err != nil {
+			return nil, err
+		}
+		if affected == 0 {
+			return nil, ErrNotRunning
+		}
+		return []int64{completion.ID}, nil
 	})
+}
+
+func (s *Store) Status(ctx context.Context, id int64) (string, error) {
+	if s == nil || s.database == nil {
+		return "", ErrStoreUnavailable
+	}
+	var status string
+	err := s.database.QueryRowContext(ctx, `SELECT status FROM command_requests WHERE id = ?`, id).Scan(&status)
+	return status, err
 }
 
 func (s *Store) CancelRunning(ctx context.Context, projection Projection, errorText string) error {
 	return s.cancel(ctx, projection, "status = 'running'", nil, errorText)
+}
+
+func (s *Store) MarkRunningOutcomeUnknown(ctx context.Context, projection Projection, errorText string) error {
+	return s.finishRunning(ctx, projection, "outcome_unknown", errorText)
 }
 
 func (s *Store) CancelRunningForSession(
@@ -212,6 +238,22 @@ func (s *Store) cancel(
 			SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
 			WHERE ` + where
 		_, err = executor.ExecContext(ctx, query, append([]any{errorText, time.Now().UTC().Format(time.RFC3339)}, args...)...)
+		return ids, err
+	})
+}
+
+func (s *Store) finishRunning(ctx context.Context, projection Projection, status, errorText string) error {
+	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
+		ids, err := requestIDs(ctx, executor, "status = 'running'")
+		if err != nil {
+			return nil, err
+		}
+		_, err = executor.ExecContext(ctx, `
+			UPDATE command_requests
+			SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?)
+			WHERE status = 'running'`,
+			status, errorText, time.Now().UTC().Format(time.RFC3339),
+		)
 		return ids, err
 	})
 }
