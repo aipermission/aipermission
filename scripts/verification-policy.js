@@ -24,6 +24,7 @@ function loadPolicy() {
       throw new Error(`verification policy has duplicate ${key}`);
   }
   validateRequiredCheckMigrations(policy);
+  validateRequiredCommandMigrations(policy);
   return policy;
 }
 
@@ -59,6 +60,47 @@ function validateRequiredCheckMigrations(policy) {
     if (!gate || !sameGateLocation(gate, migration.to)) {
       throw new Error(
         `required check migration ${migration.name} does not match its current gate`,
+      );
+    }
+  }
+}
+
+function validateRequiredCommandMigrations(policy) {
+  const migrations = policy.required_command_migrations || [];
+  if (!Array.isArray(migrations)) {
+    throw new Error(
+      "verification policy required_command_migrations must be an array",
+    );
+  }
+  const names = new Set();
+  const gates = new Map(
+    (policy.required_checks || []).map((gate) => [gate.name, gate]),
+  );
+  for (const migration of migrations) {
+    if (
+      !migration?.name ||
+      !migration.reason?.trim() ||
+      !plainObject(migration.from) ||
+      !plainObject(migration.to) ||
+      !migration.from.check ||
+      !migration.from.command ||
+      !migration.to.check ||
+      !migration.to.command
+    ) {
+      throw new Error(
+        "verification policy has an incomplete required command migration",
+      );
+    }
+    if (names.has(migration.name)) {
+      throw new Error(
+        `verification policy has duplicate required command migration ${migration.name}`,
+      );
+    }
+    names.add(migration.name);
+    const target = gates.get(migration.to.check);
+    if (!target || !target.commands?.includes(migration.to.command)) {
+      throw new Error(
+        `required command migration ${migration.name} does not match its current target`,
       );
     }
   }
@@ -342,6 +384,11 @@ function verifyWorkflows(policy = loadPolicy()) {
         `${gate.workflow} required job ${gate.job} must not override the verification environment`,
       );
     }
+    if (contract.steps.some((step) => /\bgo\s+test\b[^\n]*-exec(?:=|\s+)true\b/.test(step.run))) {
+      throw new Error(
+        `${gate.workflow} required job ${gate.job} uses compile-only go test -exec=true instead of runtime evidence`,
+      );
+    }
     const directories = gate.command_working_directories || {};
     if (!plainObject(directories)) {
       throw new Error(
@@ -407,6 +454,14 @@ function allowsRequiredCheckMigration(previousGate, currentGate, policy) {
   );
 }
 
+function allowsRequiredCommandMigration(check, command, policy) {
+  return (policy.required_command_migrations || []).some(
+    (migration) =>
+      migration.from.check === check &&
+      migration.from.command === command,
+  );
+}
+
 function verifyNoRemovals(previous, policy) {
   const currentGates = new Map(
     (policy.required_checks || []).map((gate) => [gate.name, gate]),
@@ -427,7 +482,10 @@ function verifyNoRemovals(previous, policy) {
     }
     const commands = new Set(currentGate.commands || []);
     for (const command of previousGate.commands || []) {
-      if (!commands.has(command))
+      if (
+        !commands.has(command) &&
+        !allowsRequiredCommandMigration(previousGate.name, command, policy)
+      )
         throw new Error(
           `required_checks removed ${previousGate.name} command ${command}`,
         );
@@ -519,4 +577,5 @@ module.exports = {
   workflowJobContracts,
   workflowJobs,
   validateRequiredCheckMigrations,
+  validateRequiredCommandMigrations,
 };

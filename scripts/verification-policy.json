@@ -29,6 +29,32 @@
       "reason": "Replace a dynamic matrix check identity with a unique static protected check."
     }
   ],
+  "required_command_migrations": [
+    {
+      "name": "Backend Windows runtime proof",
+      "from": {
+        "check": "Backend",
+        "command": "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./..."
+      },
+      "to": {
+        "check": "Backend Windows Runtime",
+        "command": "node ../scripts/ci/windows-runtime-tests.js"
+      },
+      "reason": "Replace compile-only test binaries with native Windows ownership behavior execution."
+    },
+    {
+      "name": "Backend Windows exact runtime evidence",
+      "from": {
+        "check": "Backend Windows Runtime",
+        "command": "$env:CGO_ENABLED = \"0\"; go test -count=1 -v ./internal/db -run '^TestDatabaseOwnership'"
+      },
+      "to": {
+        "check": "Backend Windows Runtime",
+        "command": "node ../scripts/ci/windows-runtime-tests.js"
+      },
+      "reason": "Require exact pass evidence for every native Windows behavior instead of accepting an empty regex match."
+    }
+  ],
   "required_checks": [
     {
       "name": "Security Hygiene",
@@ -70,7 +96,6 @@
         "go test -race ./...",
         "go vet ./...",
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
-        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0",
         "\"$(go env GOPATH)/bin/govulncheck\" ./..."
       ],
@@ -81,9 +106,20 @@
         "go test -race ./...": "backend",
         "go vet ./...": "backend",
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
-        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...": "backend",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0": "backend",
         "\"$(go env GOPATH)/bin/govulncheck\" ./...": "backend"
+      }
+    },
+    {
+      "name": "Backend Windows Runtime",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "backend-windows-runtime",
+      "job_name": "Backend Windows Runtime",
+      "commands": [
+        "node ../scripts/ci/windows-runtime-tests.js"
+      ],
+      "command_working_directories": {
+        "node ../scripts/ci/windows-runtime-tests.js": "backend"
       }
     },
     {

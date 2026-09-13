@@ -5,6 +5,7 @@ const test = require("node:test");
 const {
   loadPolicy,
   validateRequiredCheckMigrations,
+  validateRequiredCommandMigrations,
   verifyActionPinsInSource,
   verifyNoRemovals,
   verifyWorkflows,
@@ -196,6 +197,16 @@ jobs:
   }
 });
 
+test("workflow verification rejects compile-only Go test evidence", (t) => {
+  const write = useFixture(t);
+  write(
+    workflow(
+      "      - run: go test -exec=true ./...\n      - run: node verify.js",
+    ),
+  );
+  assert.throws(() => verifyWorkflows(gatePolicy), /compile-only go test/);
+});
+
 test("external workflow actions require immutable pins", () => {
   const verify = (reference) =>
     verifyActionPinsInSource(`steps:\n  - uses: ${reference}\n`, "fixture.yml");
@@ -313,5 +324,56 @@ test("verification policy ratchets command working directories", () => {
   assert.throws(
     () => verifyNoRemovals(previous, current),
     /changed Gate command context/,
+  );
+});
+
+test("verification policy permits only an exact command migration", () => {
+  const policy = {
+    required_checks: [
+      {
+        name: "Gate",
+        workflow: "old.yml",
+        job: "compile",
+        job_name: "Gate",
+        commands: ["node retained.js"],
+      },
+      {
+        name: "Native Gate",
+        workflow: "new.yml",
+        job: "native",
+        job_name: "Native Gate",
+        commands: ["node native.js"],
+      },
+    ],
+    required_command_migrations: [
+      {
+        name: "Replace compile-only proof",
+        from: { check: "Gate", command: "node compile-only.js" },
+        to: { check: "Native Gate", command: "node native.js" },
+        reason: "Run the behavior on its native platform.",
+      },
+    ],
+    recovery_tests: ["recovery"],
+    connector_conformance_tests: ["conformance"],
+    fuzz_targets: ["fuzz"],
+  };
+  const previous = structuredClone(policy);
+  previous.required_checks = [
+    {
+      name: "Gate",
+      workflow: "old.yml",
+      job: "compile",
+      job_name: "Gate",
+      commands: ["node compile-only.js", "node retained.js"],
+    },
+  ];
+  assert.doesNotThrow(() => validateRequiredCommandMigrations(policy));
+  assert.doesNotThrow(() => verifyNoRemovals(previous, policy));
+
+  const invalid = structuredClone(policy);
+  invalid.required_command_migrations[0].to.command = "node missing.js";
+  assert.throws(
+    () => validateRequiredCommandMigrations(invalid),
+    /does not match its current target/,
   );
 });
