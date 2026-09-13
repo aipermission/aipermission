@@ -84,13 +84,13 @@ func TestRouteDefinitionsValidateSortAndRejectDuplicates(t *testing.T) {
 	const secondKind = "route_catalog_second_test"
 	registry := NewRegistry()
 	if err := registry.Register(firstKind, testRouteAdapter{
-		{Method: "post", Path: "/api/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
-		{Method: "GET", Path: "/api/a-first", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler},
+		{Method: "post", Path: "/api/connectors/route_catalog_first_test/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
+		{Method: "GET", Path: "/api/connectors/route_catalog_first_test/a-first", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(secondKind, testRouteAdapter{
-		{Method: "POST", Path: "/api/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
+		{Method: "POST", Path: "/api/connectors/route_catalog_second_test/z-last", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +99,23 @@ func TestRouteDefinitionsValidateSortAndRejectDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(routes) != 2 || routes[0].Pattern() != "GET /api/a-first" || routes[1].Pattern() != "POST /api/z-last" {
+	if len(routes) != 2 || routes[0].Pattern() != "GET /api/connectors/route_catalog_first_test/a-first" || routes[1].Pattern() != "POST /api/connectors/route_catalog_first_test/z-last" {
 		t.Fatalf("unexpected routes: %+v", routes)
 	}
-	if _, err := registry.RouteDefinitions([]string{firstKind, secondKind}); err == nil || !strings.Contains(err.Error(), "both register POST /api/z-last") {
+	if routes[0].Kind != firstKind || routes[1].Kind != firstKind {
+		t.Fatalf("route owner kind was not preserved: %+v", routes)
+	}
+	if _, err := registry.RouteDefinitions([]string{firstKind, secondKind}); err != nil {
+		t.Fatalf("connector namespaces should keep routes distinct: %v", err)
+	}
+	duplicate := NewRegistry()
+	if err := duplicate.Register("duplicate", testRouteAdapter{
+		{Method: "GET", Path: "/api/connectors/duplicate/item", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler},
+		{Method: "GET", Path: "/api/connectors/duplicate/item", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := duplicate.RouteDefinitions([]string{"duplicate"}); err == nil || !strings.Contains(err.Error(), "both register GET /api/connectors/duplicate/item") {
 		t.Fatalf("expected duplicate route error, got %v", err)
 	}
 }
@@ -115,6 +128,7 @@ func TestRouteDefinitionsRejectInvalidDefinitions(t *testing.T) {
 	}{
 		{name: "method", route: RouteDefinition{Path: "/api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "method is required"},
 		{name: "path", route: RouteDefinition{Method: "GET", Path: "api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "must start with /"},
+		{name: "reserved namespace", route: RouteDefinition{Method: "POST", Path: "/api/mcp/connector-fixture", Policy: RoutePolicyUIMutation, MutationHandler: testMutationRouteHandler}, want: "must use namespace"},
 		{name: "handler", route: RouteDefinition{Method: "GET", Path: "/api/test", Policy: RoutePolicyUIRead}, want: "has no read handler"},
 		{name: "policy", route: RouteDefinition{Method: "GET", Path: "/api/test", ReadHandler: testReadRouteHandler}, want: "route policy is required"},
 		{name: "read method", route: RouteDefinition{Method: "POST", Path: "/api/test", Policy: RoutePolicyUIRead, ReadHandler: testReadRouteHandler}, want: "ui_read policy requires GET or HEAD"},
@@ -124,13 +138,54 @@ func TestRouteDefinitionsRejectInvalidDefinitions(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			kind := "route_catalog_invalid_" + test.name
+			kind := "route_catalog_invalid_" + strings.ReplaceAll(test.name, " ", "_")
+			route := test.route
+			if route.Path == "/api/test" {
+				route.Path = "/api/connectors/" + kind + "/test"
+			}
 			registry := NewRegistry()
-			if err := registry.Register(kind, testRouteAdapter{test.route}); err != nil {
+			if err := registry.Register(kind, testRouteAdapter{route}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := registry.RouteDefinitions([]string{kind}); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q error, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestRouteDefinitionsRejectCoreRouteShadowing(t *testing.T) {
+	const kind = "route_catalog_shadow_test"
+	for _, suffix := range []string{"credentials", "credentials/import", "credentials/123"} {
+		registry := NewRegistry()
+		route := RouteDefinition{
+			Method:      "GET",
+			Path:        "/api/connectors/" + kind + "/" + suffix,
+			Policy:      RoutePolicyUIRead,
+			ReadHandler: testReadRouteHandler,
+		}
+		if err := registry.Register(kind, testRouteAdapter{route}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := registry.RouteDefinitions([]string{kind}); err == nil || !strings.Contains(err.Error(), "core-owned route segment") {
+			t.Fatalf("shadow route %q error = %v", route.Path, err)
+		}
+	}
+	for _, routePath := range []string{
+		"/api/connectors/ssh/%63redentials",
+		"/api/connectors/ssh/config/../credentials",
+		"/api/connectors/ssh/{resource}",
+	} {
+		t.Run(routePath, func(t *testing.T) {
+			registry := NewRegistry()
+			if err := registry.Register("ssh", testRouteAdapter{{
+				Method: http.MethodGet, Path: routePath, Policy: RoutePolicyUIRead,
+				ReadHandler: testReadRouteHandler,
+			}}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := registry.RouteDefinitions([]string{"ssh"}); err == nil || !strings.Contains(err.Error(), "canonical and static") {
+				t.Fatalf("expected non-canonical route rejection, got %v", err)
 			}
 		})
 	}

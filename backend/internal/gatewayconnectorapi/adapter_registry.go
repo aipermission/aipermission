@@ -17,6 +17,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 var (
@@ -135,13 +136,15 @@ type CredentialResourceRuntime interface {
 type RoutePolicy string
 
 const (
-	RoutePolicyUIRead     RoutePolicy = "ui_read"
-	RoutePolicyUIMutation RoutePolicy = "ui_mutation"
+	RoutePolicyUIRead      RoutePolicy = "ui_read"
+	RoutePolicyUIMutation  RoutePolicy = "ui_mutation"
+	CoreCredentialsSegment             = transportcontract.ConnectorCredentialsSegment
 )
 
 // RouteDefinition is the canonical runtime and documentation contract for a
 // connector-owned HTTP route.
 type RouteDefinition struct {
+	Kind            string
 	Method          string
 	Path            string
 	Policy          RoutePolicy
@@ -307,8 +310,8 @@ func NewRegistry() *Registry {
 // silently replace capabilities based on registration order.
 func (r *Registry) Register(kind string, adapter Adapter) error {
 	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return errors.New("connector adapter kind is required")
+	if !connectors.ValidIdentifier(kind) {
+		return fmt.Errorf("invalid connector adapter kind %q", kind)
 	}
 	if isNilAdapter(adapter) {
 		return fmt.Errorf("connector adapter %q is nil", kind)
@@ -374,6 +377,9 @@ func SnapshotCatalog(source Catalog) (Catalog, error) {
 	adapters := make(map[string]Adapter, len(kinds))
 	for _, rawKind := range kinds {
 		kind := strings.TrimSpace(rawKind)
+		if !connectors.ValidIdentifier(kind) {
+			return nil, fmt.Errorf("invalid connector adapter kind %q", kind)
+		}
 		if kind == "" || kind != rawKind {
 			return nil, fmt.Errorf("connector adapter catalog contains invalid kind %q", rawKind)
 		}
@@ -440,6 +446,7 @@ func routeDefinitions(adapterFor func(string) Adapter, kinds []string) ([]RouteD
 			continue
 		}
 		for _, route := range adapter.Routes() {
+			route.Kind = kind
 			route.Method = strings.ToUpper(strings.TrimSpace(route.Method))
 			route.Path = strings.TrimSpace(route.Path)
 			if route.Method == "" {
@@ -448,7 +455,7 @@ func routeDefinitions(adapterFor func(string) Adapter, kinds []string) ([]RouteD
 			if !strings.HasPrefix(route.Path, "/") {
 				return nil, fmt.Errorf("connector adapter %q route path %q must start with /", kind, route.Path)
 			}
-			if err := validateRoutePolicy(route); err != nil {
+			if err := validateRoutePolicy(kind, route); err != nil {
 				return nil, fmt.Errorf("connector adapter %q route %s %s: %w", kind, route.Method, route.Path, err)
 			}
 			key := route.Pattern()
@@ -468,7 +475,10 @@ func routeDefinitions(adapterFor func(string) Adapter, kinds []string) ([]RouteD
 	return routes, nil
 }
 
-func validateRoutePolicy(route RouteDefinition) error {
+func validateRoutePolicy(kind string, route RouteDefinition) error {
+	if err := ValidateConnectorOwnedRoutePath(kind, route.Path); err != nil {
+		return err
+	}
 	switch route.Policy {
 	case RoutePolicyUIRead:
 		if route.Method != http.MethodGet && route.Method != http.MethodHead {
@@ -496,6 +506,12 @@ func validateRoutePolicy(route RouteDefinition) error {
 		return fmt.Errorf("route policy is required")
 	}
 	return nil
+}
+
+// ValidateConnectorOwnedRoutePath rejects paths outside an adapter's static
+// namespace and paths reserved by the generic connector credential API.
+func ValidateConnectorOwnedRoutePath(kind string, routePath string) error {
+	return transportcontract.ValidateConnectorOwnedRoutePath(kind, routePath)
 }
 
 // RuntimeAdapter lets a connector provide gateway-owned async/runtime services.

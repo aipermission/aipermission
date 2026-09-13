@@ -47,13 +47,14 @@ func TestWorkspaceLifecycleDoesNotOwnBackupPolicy(t *testing.T) {
 
 func TestAPISubpackagesCannotSmuggleDomainDependencies(t *testing.T) {
 	apiRoot := modulePath + "/internal/api"
+	sharedTransport := modulePath + "/internal/httptransport"
 	for importer, imports := range allPackageImports(t) {
 		if !strings.HasPrefix(importer, apiRoot+"/") {
 			continue
 		}
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, modulePath+"/internal/") &&
-				imported != apiRoot && !strings.HasPrefix(imported, apiRoot+"/") {
+				imported != sharedTransport && imported != apiRoot && !strings.HasPrefix(imported, apiRoot+"/") {
 				t.Errorf("%s imports %s; API child packages must remain transport-only", importer, imported)
 			}
 		}

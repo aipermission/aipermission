@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	sharedtransport "github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
 
@@ -70,6 +71,26 @@ func TestGeneratedOpenAPIMatchesRegisteredRoutes(t *testing.T) {
 	}
 	if !bytes.Equal(current, expected) {
 		t.Fatal("generated OpenAPI route inventory is stale; run make rest-contract")
+	}
+}
+
+func TestCoreConnectorRoutesRemainReservedFromAdapters(t *testing.T) {
+	routesSource, err := os.ReadFile("httptransport/routes.go")
+	if err != nil {
+		t.Fatalf("read routes: %v", err)
+	}
+	routes, err := restcontract.ParseRoutes(routesSource)
+	if err != nil {
+		t.Fatalf("parse core routes: %v", err)
+	}
+	for _, route := range routes {
+		if !strings.HasPrefix(route.Path, "/api/connectors/{kind}/") {
+			continue
+		}
+		path := strings.Replace(route.Path, "{kind}", "fixture", 1)
+		if err := sharedtransport.ValidateConnectorOwnedRoutePath("fixture", path); err == nil {
+			t.Errorf("core route %s %s is not reserved from connector adapters", route.Method, route.Path)
+		}
 	}
 }
 

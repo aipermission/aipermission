@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"golang.org/x/crypto/ssh"
 )
 
 func decodeRouteResponse[T any](t *testing.T, responseBody []byte) T {
@@ -43,6 +45,22 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 	if err != nil {
 		t.Fatalf("get private key fixture: %v", err)
 	}
+	signer, err := ssh.ParsePrivateKey([]byte(privateKey.PrivateKey))
+	if err != nil {
+		t.Fatalf("parse generated private key: %v", err)
+	}
+	discoverResponse := performJSON(handler, http.MethodGet, "/api/connectors/ssh/config/discover", "", nil)
+	if discoverResponse.Code != http.StatusOK || !strings.Contains(discoverResponse.Body.String(), `"items"`) {
+		t.Fatalf("discover ssh config failed: %d %s", discoverResponse.Code, discoverResponse.Body.String())
+	}
+	hostKeyResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/host-keys/approve", "", map[string]any{
+		"host":       "127.0.0.1",
+		"port":       2222,
+		"public_key": base64.StdEncoding.EncodeToString(signer.PublicKey().Marshal()),
+	})
+	if hostKeyResponse.Code != http.StatusOK || !strings.Contains(hostKeyResponse.Body.String(), `"status":"approved"`) {
+		t.Fatalf("approve ssh host key failed: %d %s", hostKeyResponse.Code, hostKeyResponse.Body.String())
+	}
 
 	importResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/credentials/import", "", testSSHKeyImportRequest{Name: "imported", PrivateKey: privateKey.PrivateKey})
 	if importResponse.Code != http.StatusCreated {
@@ -65,7 +83,7 @@ func TestManagementRoutesCoverCredentialsTokensAndConnectorTargets(t *testing.T)
 	if keyUpdateResponse.Code != http.StatusOK || !strings.Contains(keyUpdateResponse.Body.String(), `"name":"main-renamed"`) || !strings.Contains(keyUpdateResponse.Body.String(), "aipermission-main-renamed") {
 		t.Fatalf("update key failed: %d %s", keyUpdateResponse.Code, keyUpdateResponse.Body.String())
 	}
-	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/ssh-config/parse", "", map[string]any{"content": `
+	sshConfigResponse := performJSON(handler, http.MethodPost, "/api/connectors/ssh/config/parse", "", map[string]any{"content": `
 Host worker-from-config
   HostName 10.0.0.42
   User ubuntu
@@ -180,5 +198,14 @@ func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodPost, "/api/tokens", "", map[string]any{"name": "x", "extra": true}); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown json field should fail, got %d", response.Code)
+	}
+	for _, retired := range []struct{ method, path string }{
+		{http.MethodGet, "/api/ssh-config/discover"},
+		{http.MethodPost, "/api/ssh-config/parse"},
+		{http.MethodPost, "/api/ssh-host-keys/approve"},
+	} {
+		if response := performJSON(handler, retired.method, retired.path, "", map[string]any{}); response.Code != http.StatusNotFound {
+			t.Fatalf("retired SSH route %s returned %d, want 404", retired.path, response.Code)
+		}
 	}
 }

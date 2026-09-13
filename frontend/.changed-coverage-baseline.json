@@ -1588,10 +1588,10 @@
       "lines": 2
     },
     "src/connectors/templates/ssh/bulk-command-dialog.jsx": {
-      "statements": 61.29,
-      "branches": 48.57,
-      "functions": 57.86,
-      "lines": 68.33
+      "statements": 62.58,
+      "branches": 51.42,
+      "functions": 58.82,
+      "lines": 70
     },
     "src/connectors/templates/ssh/console.jsx": {
       "statements": 69.23,
@@ -1630,10 +1630,10 @@
       "lines": 6.01
     },
     "src/connectors/templates/ssh/operations.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 43.95,
+      "branches": 38.5,
+      "functions": 39.28,
+      "lines": 50
     },
     "src/connectors/templates/target-profile-save.js": {
       "statements": 83.33,

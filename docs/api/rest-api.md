@@ -156,7 +156,7 @@ PUT /api/connector-targets/{id}/profiles/{profile_id}
 DELETE /api/connector-targets/{id}/profiles/{profile_id}
 POST /api/connector-targets/{id}/profiles/{profile_id}/test
 GET /api/connector-targets/{id}/profiles/{profile_id}/actions
-POST   /api/ssh-host-keys/approve
+POST   /api/connectors/ssh/host-keys/approve
 ```
 
 Connector catalog endpoints expose built-in connector metadata for the local
@@ -370,7 +370,7 @@ If a test or SSH-backed action reaches an unknown host key, the backend returns:
 }
 ```
 
-The UI asks the user to verify and approve the fingerprint. `POST /api/ssh-host-keys/approve` records the key in the local `known_hosts` file.
+The UI asks the user to verify and approve the fingerprint. `POST /api/connectors/ssh/host-keys/approve` records the key in the local `known_hosts` file.
 
 `DELETE /api/connector-targets/{id}` removes the connector from active local
 use by archiving the target and hiding its credential profiles from future
@@ -788,8 +788,8 @@ POST   /api/connectors/{kind}/credentials/import
 GET    /api/connectors/{kind}/credentials/{id}
 PUT    /api/connectors/{kind}/credentials/{id}
 DELETE /api/connectors/{kind}/credentials/{id}
-GET    /api/ssh-config/discover
-POST   /api/ssh-config/parse
+GET    /api/connectors/ssh/config/discover
+POST   /api/connectors/ssh/config/parse
 ```
 
 These endpoints manage connector-owned credential resources. In 0.2.x the
@@ -851,11 +851,11 @@ local vault. The original passphrase is not stored.
 
 Response may include public key, fingerprint, and install command. It must not include the private key.
 
-`GET /api/ssh-config/discover` reads SSH host metadata from the gateway process user's
+`GET /api/connectors/ssh/config/discover` reads SSH host metadata from the gateway process user's
 `~/.ssh/config` when that file is available. Docker installs may not expose the
 host user's SSH config unless the user mounted it deliberately.
 
-`POST /api/ssh-config/parse` parses explicit SSH host config content selected
+`POST /api/connectors/ssh/config/parse` parses explicit SSH host config content selected
 from a local file or pasted by the user:
 
 ```json

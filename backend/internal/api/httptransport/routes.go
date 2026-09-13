@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type Handler func(http.ResponseWriter, *http.Request)
 
 type AdapterRoute struct {
+	Kind    string
 	Method  string
 	Path    string
 	Policy  AdapterRoutePolicy
@@ -422,8 +425,11 @@ func registerAdapterRoutes(mux *http.ServeMux, routes []AdapterRoute) {
 	for _, route := range routes {
 		method := strings.ToUpper(strings.TrimSpace(route.Method))
 		path := strings.TrimSpace(route.Path)
-		if method == "" || !strings.HasPrefix(path, "/api/") || route.Handler == nil {
+		if method == "" || route.Handler == nil {
 			panic(fmt.Sprintf("invalid connector adapter route %q %q", method, path))
+		}
+		if err := transportcontract.ValidateConnectorOwnedRoutePath(route.Kind, path); err != nil {
+			panic(fmt.Sprintf("invalid connector adapter route %q %q: %v", method, path, err))
 		}
 		if err := validateAdapterRoutePolicy(method, route.Policy); err != nil {
 			panic(fmt.Sprintf("invalid connector adapter route %q %q: %v", method, path, err))

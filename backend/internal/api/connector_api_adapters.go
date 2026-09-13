@@ -35,6 +35,7 @@ func connectorAdapterRoutes(server *Server) []httptransport.AdapterRoute {
 
 func connectorAdapterRoute(server *Server, route connectorapi.RouteDefinition) httptransport.AdapterRoute {
 	registered := httptransport.AdapterRoute{
+		Kind:   route.Kind,
 		Method: route.Method,
 		Path:   route.Path,
 		Policy: connectorAdapterRoutePolicy(route.Policy),

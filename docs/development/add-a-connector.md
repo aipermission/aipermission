@@ -308,10 +308,12 @@ Connector-owned HTTP adapter routes are exceptional and declarative. A
 `gatewayconnectorapi.RouteDefinition` must declare `RoutePolicyUIRead` for a
 safe `GET` or `HEAD` route, or `RoutePolicyUIMutation` for a state-changing
 route. The connector registry and API transport both reject an empty, unknown,
-or method-incompatible policy. This policy selects the shared local UI/session
-and CSRF boundary; it does not replace action permission, approval, audit, or
-connector-side authorization. Prefer an existing generic action or capability
-over adding a custom route.
+or method-incompatible policy. Routes must live below
+`/api/connectors/<connector-kind>/`; registration rejects core, MCP, lifecycle,
+streaming, and another connector's namespace. This policy selects the shared
+local UI/session and CSRF boundary; it does not replace action permission,
+approval, audit, or connector-side authorization. Prefer an existing generic
+action or capability over adding a custom route.
 
 Every Over SSH prepared action must declare that selected transport through
 `NetworkTransportDependencies` or `CommandTransportDependencies`. The gateway

@@ -3013,6 +3013,69 @@
         "x-aipermission-contract-level": "route-inventory"
       }
     },
+    "/api/connectors/ssh/config/discover": {
+      "get": {
+        "operationId": "getApiConnectorsSshConfigDiscover",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/ssh/config/parse": {
+      "post": {
+        "operationId": "postApiConnectorsSshConfigParse",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/connectors/ssh/host-keys/approve": {
+      "post": {
+        "operationId": "postApiConnectorsSshHostKeysApprove",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "connectors"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
     "/api/connectors/{kind}": {
       "get": {
         "operationId": "getApiConnectorsByKind",
@@ -5127,69 +5190,6 @@
         },
         "tags": [
           "settings"
-        ],
-        "x-aipermission-contract-level": "route-inventory"
-      }
-    },
-    "/api/ssh-config/discover": {
-      "get": {
-        "operationId": "getApiSshConfigDiscover",
-        "responses": {
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Error response"
-          }
-        },
-        "tags": [
-          "ssh-config"
-        ],
-        "x-aipermission-contract-level": "route-inventory"
-      }
-    },
-    "/api/ssh-config/parse": {
-      "post": {
-        "operationId": "postApiSshConfigParse",
-        "responses": {
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Error response"
-          }
-        },
-        "tags": [
-          "ssh-config"
-        ],
-        "x-aipermission-contract-level": "route-inventory"
-      }
-    },
-    "/api/ssh-host-keys/approve": {
-      "post": {
-        "operationId": "postApiSshHostKeysApprove",
-        "responses": {
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Error response"
-          }
-        },
-        "tags": [
-          "ssh-host-keys"
         ],
         "x-aipermission-contract-level": "route-inventory"
       }

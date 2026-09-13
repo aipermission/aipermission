@@ -90,7 +90,7 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
     if (!hostKey || !action) return;
     onChange((current) => ({ ...current, state: "approving", error: null }));
     try {
-      await apiPost("/api/ssh-host-keys/approve", {
+      await apiPost("/api/connectors/ssh/host-keys/approve", {
         host: hostKey.host,
         port: hostKey.port,
         public_key: hostKey.public_key,
