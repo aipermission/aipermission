@@ -266,6 +266,11 @@ coverage ratchet. Async-state owners are registered beside their focused tests
 in `frontend/test-suite-manifests.mjs`; the release gate discovers guarded,
 abortable, timer-driven, and socket-driven production modules and rejects an
 owner without an explicit test mapping.
+Critical synchronous behaviors are registered separately in
+`frontend/protected-behavior-owner-tests.json`. That manifest is ratcheted
+against the trusted Git base, and every declared test must reach its owner in
+the frontend import graph. A test may be renamed or consolidated only when a
+real replacement preserves that relationship.
 
 ## Frontend Boundaries
 

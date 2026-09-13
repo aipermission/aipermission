@@ -64,6 +64,10 @@ This runs:
   requires each owner to map to a test that reaches it through the real import
   graph; this is a discovery/ownership gate, while cancellation and stale-result
   behavior remain explicit assertions in the mapped tests
+- a trusted-base-ratcheted manifest for critical synchronous frontend behavior,
+  including unlock, restore, transfer confirmation, Vault approval, maintenance,
+  and token-secret dismissal; removing a test requires a replacement that still
+  reaches the protected owner through the import graph
 - frontend duplicate-block comparison against the base Git revision
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
@@ -92,6 +96,13 @@ consumer; `maintenance-policy.json` is the single source of truth for numeric
 thresholds. The policy protects transport, gateway-owner, audit, connector,
 session, token, Vault, and storage packages. A new security-sensitive package
 must be added once its baseline coverage is established.
+
+Linux coverage inventory and floors are complemented by a native
+`windows-latest` backend job that executes the encrypted-database ownership
+tests rather than merely cross-compiling their binaries. The Linux job also
+cross-builds the complete Windows source graph. Keep both checks required:
+platform-tagged ownership behavior must not be represented as Linux coverage,
+and `go test -exec=true` is rejected as compile-only evidence.
 
 Coverage floors intentionally trail the measured baseline by a small margin so
 toolchain-only statement shifts do not create noise. Critical package floors
@@ -143,10 +154,11 @@ set `AIPERMISSION_FUZZ_TIME` to an integer execution count ending in `x`, or a
 millisecond/second duration capped at 30 seconds, for a different local pass.
 The bounded runner uses one fuzz worker so CI results remain reproducible.
 
-The scheduled/manual connector conformance workflow additionally exercises
-ClickHouse, Postgres, Valkey, RabbitMQ, and S3 against disposable pinned service
-containers. SSH, Docker, Kubernetes, Kafka, and Mail retain focused protocol
-tests until a bounded, deterministic real-service fixture is reviewed.
+The required connector conformance workflow exercises ClickHouse, Postgres,
+Valkey, RabbitMQ, and S3 against disposable pinned service containers on pull
+requests and pushes to `main` and `dev`, weekly, and on demand. SSH, Docker,
+Kubernetes, Kafka, and Mail retain focused protocol tests until a bounded,
+deterministic real-service fixture is reviewed.
 
 ## Manual Smoke
 

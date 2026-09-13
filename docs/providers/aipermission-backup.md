@@ -118,7 +118,7 @@ immutable upload. Both automatic and explicit cleanup preserve the final
 recovery version. Pending deletion bytes may continue to count toward provider
 storage until the remote blob worker finishes cleanup.
 
-Retention and quota controls require backup service protocol v2 and its
+Retention and quota controls require backup service protocol v3 and its
 `/v1/...` storage and retention routes. A 404 or protocol error from those
 controls means the separate backup service must be upgraded before the feature
 can be used.

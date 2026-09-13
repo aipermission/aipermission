@@ -296,11 +296,11 @@ pipeline suites. Run the disposable real-service matrix with:
 make connector-conformance
 ```
 
-The target starts digest-pinned Postgres, Valkey, RabbitMQ, and MinIO fixtures
-on automatically assigned loopback ports, exercises real connector actions,
-and removes the containers, network, and volumes afterward. The same suite runs
-weekly and on demand in the `Connector Conformance` GitHub workflow; it is not
-part of every pull request while its image and runtime costs are being measured.
+The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ, and
+MinIO (S3) fixtures on automatically assigned loopback ports, exercises real
+connector actions, and removes the containers, network, and volumes afterward.
+The required `Connector Conformance` GitHub workflow runs for pull requests and
+pushes to `main` and `dev`, as well as weekly and on demand.
 
 The shared harness verifies connection testing, the advertised action contract,
 prepared-payload credential isolation, bounded execution, and terminal results.
