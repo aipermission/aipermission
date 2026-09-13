@@ -4,12 +4,21 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { workflowJobContracts } = require("../workflow-contracts");
 
 const script = path.join(__dirname, "..", "gitleaks-history-scan.sh");
 
 test("history scan fails closed when the container cannot enumerate commits", () => {
   for (const fixture of [
     { mode: "error", message: "mounted Git history is unreadable" },
+    {
+      mode: "shallow",
+      message: "shallow repositories cannot prove full-history coverage",
+    },
+    {
+      mode: "invalid-depth",
+      message: "mounted repository depth is invalid",
+    },
     { mode: "zero", message: "mounted repository contains no commits" },
     { mode: "malformed", message: "mounted commit count is invalid" },
   ]) {
@@ -29,9 +38,25 @@ test("history scan runs detection only after a non-empty mounted history preflig
   const result = runWithFakeDocker("valid");
   assert.equal(result.status, 0, result.stderr);
   const calls = result.calls;
-  assert.equal(calls.length, 2);
-  assert.match(calls[0], /--entrypoint git .* rev-list --all --count/);
-  assert.match(calls[1], /:ro .* detect --source=\/repo/);
+  assert.equal(calls.length, 3);
+  assert.match(
+    calls[0],
+    /--entrypoint git .* rev-parse --is-shallow-repository/,
+  );
+  assert.match(calls[1], /--entrypoint git .* rev-list --all --count/);
+  assert.match(calls[2], /:ro .* detect --source=\/repo/);
+});
+
+test("security hygiene checkout fetches complete history", () => {
+  const workflowPath = path.join(__dirname, "../..", ".github/workflows/ci.yml");
+  const jobs = workflowJobContracts(
+    fs.readFileSync(workflowPath, "utf8"),
+    ".github/workflows/ci.yml",
+  );
+  const checkout = jobs
+    .get("security-hygiene")
+    .source.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+  assert.equal(checkout?.with?.["fetch-depth"], 0);
 });
 
 function runWithFakeDocker(mode) {
@@ -45,6 +70,14 @@ function runWithFakeDocker(mode) {
     `#!/bin/sh
 printf '%s\\n' "$*" >> "$AIPERMISSION_HISTORY_TEST_LOG"
 case "$*" in
+  *"rev-parse --is-shallow-repository"*)
+    case "$AIPERMISSION_HISTORY_TEST_MODE" in
+      error) echo "fatal: not a repository" >&2; exit 128 ;;
+      shallow) printf 'true\n' ;;
+      invalid-depth) printf 'unknown\n' ;;
+      *) printf 'false\n' ;;
+    esac
+    ;;
   *"rev-list --all --count"*)
     case "$AIPERMISSION_HISTORY_TEST_MODE" in
       error) echo "fatal: bad object refs/heads/dev" >&2; exit 128 ;;

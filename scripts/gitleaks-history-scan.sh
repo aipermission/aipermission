@@ -4,6 +4,29 @@ set -eu
 image="ghcr.io/gitleaks/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854"
 repo_root="$(git rev-parse --show-toplevel)"
 
+if ! shallow_repository="$(docker run --rm \
+  --network none \
+  -v "$repo_root:/repo:ro" \
+  --entrypoint git \
+  "$image" \
+  -c safe.directory=/repo \
+  -C /repo \
+  rev-parse --is-shallow-repository)"; then
+  echo "gitleaks history preflight failed: mounted Git history is unreadable" >&2
+  exit 1
+fi
+case "$shallow_repository" in
+  false) ;;
+  true)
+    echo "gitleaks history preflight failed: shallow repositories cannot prove full-history coverage" >&2
+    exit 1
+    ;;
+  *)
+    echo "gitleaks history preflight failed: mounted repository depth is invalid" >&2
+    exit 1
+    ;;
+esac
+
 if ! history_count="$(docker run --rm \
   --network none \
   -v "$repo_root:/repo:ro" \
