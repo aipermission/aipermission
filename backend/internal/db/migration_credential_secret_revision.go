@@ -2,10 +2,12 @@ package db
 
 import "database/sql"
 
-var credentialSecretRevisionMigration = migration{
-	version:     23,
-	description: "add credential secret revision compare-and-swap",
-	preflight:   ensureCredentialSecretRevision,
+func credentialSecretRevisionMigration() migration {
+	return migration{
+		version:     23,
+		description: "add credential secret revision compare-and-swap",
+		preflight:   ensureCredentialSecretRevision,
+	}
 }
 
 func ensureCredentialSecretRevision(tx *sql.Tx) error {

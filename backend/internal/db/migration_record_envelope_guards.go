@@ -10,11 +10,13 @@ import (
 
 const recordEnvelopeMarkerKey = "encrypted_record_envelope_version"
 
-var recordEnvelopeWriteGuardMigration = migration{
-	version:     21,
-	description: "enforce record-bound envelope writes",
-	preflight:   validateStoredRecordEnvelopeShapes,
-	statements:  recordEnvelopeGuardStatements(),
+func recordEnvelopeWriteGuardMigration() migration {
+	return migration{
+		version:     21,
+		description: "enforce record-bound envelope writes",
+		preflight:   validateStoredRecordEnvelopeShapes,
+		statements:  recordEnvelopeGuardStatements(),
+	}
 }
 
 func validateStoredRecordEnvelopeShapes(tx *sql.Tx) error {

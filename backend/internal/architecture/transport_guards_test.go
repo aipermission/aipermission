@@ -100,9 +100,13 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 	})
 }
 
-func packageVariableInitializers(file *ast.File) map[string][]ast.Expr {
+func packageFacadeBindings(file *ast.File) map[string][]ast.Expr {
 	bindings := map[string][]ast.Expr{}
 	for _, declaration := range file.Decls {
+		if function, ok := declaration.(*ast.FuncDecl); ok && function.Recv == nil {
+			bindings[function.Name.Name] = append(bindings[function.Name.Name], &ast.FuncLit{})
+			continue
+		}
 		general, ok := declaration.(*ast.GenDecl)
 		if !ok || general.Tok != token.VAR {
 			continue
@@ -148,7 +152,7 @@ func inspectProductionGoPackages(t *testing.T, root string, inspect func(string,
 	for _, files := range packages {
 		bindings := map[string][]ast.Expr{}
 		for _, parsed := range files {
-			for name, initializers := range packageVariableInitializers(parsed.file) {
+			for name, initializers := range packageFacadeBindings(parsed.file) {
 				bindings[name] = append(bindings[name], initializers...)
 			}
 		}
@@ -542,6 +546,30 @@ import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	}
 	if !mutableFacadeInitializerWithBindings(crossFileBindings["exported"][0], crossFileBindings, map[string]bool{}) {
 		t.Fatal("nested identifier-chain mutable facade escaped detection")
+	}
+	functionFile, err := parser.ParseFile(token.NewFileSet(), "factory_linux.go", `//go:build linux
+package fixture
+func NewLockedServer() {}
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	variableFile, err := parser.ParseFile(token.NewFileSet(), "facade.go", `package fixture
+var UnsafeFactory = NewLockedServer
+var ConstructedValue = NewLockedServer()
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	functionBindings := packageFacadeBindings(functionFile)
+	for name, initializers := range packageFacadeBindings(variableFile) {
+		functionBindings[name] = append(functionBindings[name], initializers...)
+	}
+	if !mutableFacadeInitializerWithBindings(functionBindings["UnsafeFactory"][0], functionBindings, map[string]bool{}) {
+		t.Fatal("package function reference escaped mutable facade detection")
+	}
+	if mutableFacadeInitializerWithBindings(functionBindings["ConstructedValue"][0], functionBindings, map[string]bool{}) {
+		t.Fatal("package function call result was mistaken for a mutable facade")
 	}
 }
 

@@ -5,14 +5,16 @@ import (
 	"fmt"
 )
 
-var connectorActionExecutionClaimMigration = migration{
-	version:     24,
-	description: "add durable connector action execution claims",
-	preflight:   ensureConnectorActionExecutionClaimColumns,
-	statements: []string{
-		`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_execution_lease
-		 ON connector_action_requests(status, execution_lease_expires_at)`,
-	},
+func connectorActionExecutionClaimMigration() migration {
+	return migration{
+		version:     24,
+		description: "add durable connector action execution claims",
+		preflight:   ensureConnectorActionExecutionClaimColumns,
+		statements: []string{
+			`CREATE INDEX IF NOT EXISTS idx_connector_action_requests_execution_lease
+			 ON connector_action_requests(status, execution_lease_expires_at)`,
+		},
+	}
 }
 
 func ensureConnectorActionExecutionClaimColumns(tx *sql.Tx) error {
