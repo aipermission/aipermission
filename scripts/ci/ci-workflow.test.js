@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "../..");
 const workflow = fs.readFileSync(
   path.join(root, ".github/workflows/ci.yml"),
   "utf8",

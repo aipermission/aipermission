@@ -9,7 +9,7 @@ const {
   checkMarkdownFiles,
   githubSlug,
   linkTargets,
-} = require("./markdown-link-check.js");
+} = require("../markdown-link-check.js");
 
 assert.equal(
   githubSlug("Approval & Delivery Safety"),

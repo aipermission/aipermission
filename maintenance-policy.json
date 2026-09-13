@@ -78,10 +78,10 @@
       "directory": "scripts",
       "extensions": [".js", ".mjs", ".cjs"],
       "classifier": "markers",
-      "testPackageDepth": 0,
+      "testPackageDepth": 1,
       "productionMaxLines": 550,
       "testMaxLines": 1000,
-      "testPackageMaxLines": 1500
+      "testPackageMaxLines": 900
     },
     {
       "id": "frontend-tooling",
@@ -102,6 +102,16 @@
       "productionMaxLines": 550,
       "testMaxLines": 800,
       "testPackageMaxLines": 1200
+    }
+  ],
+  "sourceBudgetMigrations": [
+    {
+      "budgetId": "repository-tooling",
+      "fromTestPackageDepth": 0,
+      "toTestPackageDepth": 1,
+      "fromTestPackageMaxLines": 1500,
+      "toTestPackageMaxLines": 900,
+      "reason": "Partition repository tooling tests into explicit maintenance, CI, and release owners."
     }
   ],
   "sourceOverrides": {},

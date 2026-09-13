@@ -3,7 +3,7 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "../..");
 
 function composeConfig(file) {
   const migrationPort = "43211";

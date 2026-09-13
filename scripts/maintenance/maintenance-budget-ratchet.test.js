@@ -1,13 +1,13 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const policy = require("../maintenance-policy.json");
+const policy = require("../../maintenance-policy.json");
 const {
   budgetIncreases,
   legacyBudgetSnapshot,
   policySnapshot,
   resolveBaseReference,
-} = require("./maintenance-budget-ratchet");
+} = require("../maintenance-budget-ratchet");
 
 function copyPolicy() {
   return JSON.parse(JSON.stringify(policy));
@@ -21,7 +21,7 @@ test("reads the exact machine policy consumed by enforcement", () => {
   assert.equal(snapshot["go.fanout.ownerFamily"], 25);
   assert.equal(snapshot["go.fanout.test.package"], 48);
   assert.equal(snapshot["go.fanout.test.ownerFamily"], 43);
-  assert.equal(snapshot.repositoryToolingTestPackageBudget, 1500);
+  assert.equal(snapshot.repositoryToolingTestPackageBudget, 900);
   assert.equal(snapshot["test.package.depth.frontend"], 3);
 });
 
@@ -63,6 +63,51 @@ test("rejects test package depth increases", () => {
     budgetIncreases(policySnapshot(policy), policySnapshot(current)),
     ["test.package.depth.frontend increased from 3 to 4"],
   );
+});
+
+test("permits only the declared repository tooling ownership split", () => {
+  const previous = copyPolicy();
+  const budget = previous.sourceBudgets.find(
+    (item) => item.id === "repository-tooling",
+  );
+  budget.testPackageDepth = 0;
+  budget.testPackageMaxLines = 1500;
+  previous.sourceBudgetMigrations = [];
+  const base = policySnapshot(previous);
+  const current = policySnapshot(policy);
+  assert.deepEqual(budgetIncreases(base, current), []);
+  delete current[
+    Object.keys(current).find((key) =>
+      key.startsWith("migration.test.package.repository-tooling."),
+    )
+  ];
+  assert.deepEqual(budgetIncreases(base, current), [
+    "test.package.depth.repository-tooling increased from 0 to 1",
+  ]);
+});
+
+test("permits the declared ownership split from a bootstrap ceiling", () => {
+  const current = {
+    "test.package.depth.repository-tooling": 1,
+    repositoryToolingTestPackageBudget: 900,
+    "migration.test.package.repository-tooling.0.1.1500.900": 0,
+  };
+  assert.deepEqual(budgetIncreases({}, current), []);
+  delete current["migration.test.package.repository-tooling.0.1.1500.900"];
+  assert.deepEqual(budgetIncreases({}, current), [
+    "test.package.depth.repository-tooling is a new unreviewed budget (1)",
+  ]);
+});
+
+test("permits removing a completed ownership migration marker", () => {
+  const base = policySnapshot(policy);
+  const current = { ...base };
+  delete current[
+    Object.keys(current).find((key) =>
+      key.startsWith("migration.test.package.repository-tooling."),
+    )
+  ];
+  assert.deepEqual(budgetIncreases(base, current), []);
 });
 
 test("rejects removed coverage roots, extensions, markers, and classifiers", () => {

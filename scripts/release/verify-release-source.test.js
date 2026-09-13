@@ -15,9 +15,9 @@ const {
   requiredCheckMaxAgeMS,
   selectRequiredWorkflowRuns,
   verifiedRequiredCheckRuns,
-} = require("./verify-release-source");
+} = require("../verify-release-source");
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "../..");
 
 function workflowSteps(relativePath, jobID) {
   const source = fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -44,7 +44,10 @@ test("publish workflows install locked verifier dependencies before verification
       step.run?.includes("node scripts/verify-release-source.js"),
     );
     assert.ok(install >= 0, `${workflow} must install verifier dependencies`);
-    assert.ok(verify > install, `${workflow} must install dependencies before verification`);
+    assert.ok(
+      verify > install,
+      `${workflow} must install dependencies before verification`,
+    );
   }
 });
 
@@ -134,65 +137,48 @@ test("evaluateRequiredChecks separates pending and failed checks", () => {
 
 test("release checks require exact push workflow provenance", () => {
   const now = Date.parse("2026-09-13T01:00:00Z");
-  const recent = "2026-09-13T00:30:00Z";
-  const check = (id, detailsURL) => ({
-    id,
-    name: "Backend",
-    status: "completed",
-    conclusion: "success",
-    app: { slug: "github-actions" },
-    details_url: detailsURL,
-    started_at: recent,
-    completed_at: recent,
-  });
-  const run = (id, overrides = {}) => ({
-    id,
-    path: ".github/workflows/ci.yml",
-    event: "push",
-    head_branch: "main",
-    head_sha: "release-sha",
-    run_number: id,
-    run_attempt: 1,
-    status: "completed",
-    conclusion: "success",
-    created_at: recent,
-    updated_at: recent,
-    ...overrides,
-  });
-  const checks = [
-    check(1, "https://github.com/org/repo/actions/runs/10/job/1"),
-    check(2, "https://github.com/org/repo/actions/runs/11/job/2"),
-    check(3, "https://github.com/org/repo/actions/runs/12/job/3"),
-    check(4, "https://github.com/org/repo/actions/runs/13/job/4"),
-    check(5, "https://github.com/org/repo/actions/runs/14/job/5"),
+  const fixtures = [
+    provenanceFixture({ runID: 10, checkID: 1, jobID: 1 }),
+    provenanceFixture({
+      runID: 11,
+      checkID: 2,
+      jobID: 2,
+      run: { event: "pull_request" },
+    }),
+    provenanceFixture({
+      runID: 12,
+      checkID: 3,
+      jobID: 3,
+      run: { head_branch: "dev" },
+    }),
+    provenanceFixture({
+      runID: 13,
+      checkID: 4,
+      jobID: 4,
+      run: { head_sha: "other-sha" },
+    }),
+    provenanceFixture({
+      runID: 14,
+      checkID: 5,
+      jobID: 5,
+      run: { path: ".github/workflows/untrusted.yml" },
+    }),
   ];
-  const runs = [
-    run(10),
-    run(11, { event: "pull_request" }),
-    run(12, { head_branch: "dev" }),
-    run(13, { head_sha: "other-sha" }),
-    run(14, { path: ".github/workflows/untrusted.yml" }),
-  ];
-  const jobs = checks.map((candidate, index) => ({
-    id: index + 1,
-    run_id: 10 + index,
-    name: "Backend",
-    run_attempt: 1,
-    status: "completed",
-    conclusion: "success",
-    started_at: recent,
-    completed_at: recent,
-    check_run_url: `https://api.github.com/repos/org/repo/check-runs/${candidate.id}`,
-  }));
-  assert.deepEqual(verifiedRequiredCheckRuns(checks, runs, jobs, "release-sha", { now }), [checks[0]]);
+  assert.deepEqual(verifiedFixtures(fixtures, { now }), [fixtures[0].check]);
   assert.deepEqual(
-    verifiedRequiredCheckRuns(checks, runs, [{ ...jobs[0], name: "Decoy" }], "release-sha", { now }),
+    verifiedFixtures(
+      [{ ...fixtures[0], job: { ...fixtures[0].job, name: "Decoy" } }],
+      { now },
+    ),
     [],
   );
 });
 
 function provenanceFixture(overrides = {}) {
-  const timestamp = overrides.timestamp === undefined ? "2026-09-13T00:30:00Z" : overrides.timestamp;
+  const timestamp =
+    overrides.timestamp === undefined
+      ? "2026-09-13T00:30:00Z"
+      : overrides.timestamp;
   const runID = overrides.runID || 10;
   const checkID = overrides.checkID || 20;
   const jobID = overrides.jobID || checkID + 10;
@@ -206,9 +192,11 @@ function provenanceFixture(overrides = {}) {
       run_number: overrides.runNumber || runID,
       run_attempt: overrides.runAttempt || 1,
       status: overrides.status || "completed",
-      conclusion: overrides.conclusion === undefined ? "success" : overrides.conclusion,
+      conclusion:
+        overrides.conclusion === undefined ? "success" : overrides.conclusion,
       created_at: timestamp,
       updated_at: timestamp,
+      ...overrides.run,
     },
     check: {
       id: checkID,
@@ -219,6 +207,7 @@ function provenanceFixture(overrides = {}) {
       details_url: `https://github.com/org/repo/actions/runs/${runID}/job/${jobID}`,
       started_at: timestamp,
       completed_at: timestamp,
+      ...overrides.check,
     },
     job: {
       id: jobID,
@@ -230,8 +219,19 @@ function provenanceFixture(overrides = {}) {
       check_run_url: `https://api.github.com/repos/org/repo/check-runs/${checkID}`,
       started_at: timestamp,
       completed_at: timestamp,
+      ...overrides.job,
     },
   };
+}
+
+function verifiedFixtures(fixtures, { extraRuns = [], ...options } = {}) {
+  return verifiedRequiredCheckRuns(
+    fixtures.map(({ check }) => check),
+    [...fixtures.map(({ run }) => run), ...extraRuns],
+    fixtures.map(({ job }) => job),
+    "release-sha",
+    options,
+  );
 }
 
 test("newest exact-SHA workflow run cannot fall back to an older success", () => {
@@ -243,38 +243,38 @@ test("newest exact-SHA workflow run cannot fall back to an older success", () =>
     checkID: 21,
     conclusion: "cancelled",
   });
-  const selected = selectRequiredWorkflowRuns([old.run, canceled.run], "release-sha");
+  const selected = selectRequiredWorkflowRuns(
+    [old.run, canceled.run],
+    "release-sha",
+  );
   assert.equal(selected.get(".github/workflows/ci.yml").id, 11);
   assert.deepEqual(
-    verifiedRequiredCheckRuns(
-      [old.check],
-      [old.run, canceled.run],
-      [old.job],
-      "release-sha",
-      { now },
-    ),
+    verifiedFixtures([old], { now, extraRuns: [canceled.run] }),
     [],
   );
   assert.deepEqual(
-    evaluateRequiredWorkflowRuns([old.run, canceled.run], "release-sha", { now }).failed,
+    evaluateRequiredWorkflowRuns([old.run, canceled.run], "release-sha", {
+      now,
+    }).failed,
     [{ workflow: ".github/workflows/ci.yml", conclusion: "cancelled" }],
   );
 });
 
 test("latest successful rerun is the only accepted attempt", () => {
   const now = Date.parse("2026-09-13T01:00:00Z");
-  const first = provenanceFixture({ runID: 10, runNumber: 10, runAttempt: 1, checkID: 20 });
-  const rerun = provenanceFixture({ runID: 10, runNumber: 10, runAttempt: 2, checkID: 21 });
-  assert.deepEqual(
-    verifiedRequiredCheckRuns(
-      [first.check, rerun.check],
-      [first.run, rerun.run],
-      [first.job, rerun.job],
-      "release-sha",
-      { now },
-    ),
-    [rerun.check],
-  );
+  const first = provenanceFixture({
+    runID: 10,
+    runNumber: 10,
+    runAttempt: 1,
+    checkID: 20,
+  });
+  const rerun = provenanceFixture({
+    runID: 10,
+    runNumber: 10,
+    runAttempt: 2,
+    checkID: 21,
+  });
+  assert.deepEqual(verifiedFixtures([first, rerun], { now }), [rerun.check]);
 });
 
 test("release evidence rejects stale, missing, and future timestamps", () => {
@@ -286,13 +286,7 @@ test("release evidence rejects stale, missing, and future timestamps", () => {
   ]) {
     const fixture = provenanceFixture({ timestamp });
     assert.deepEqual(
-      verifiedRequiredCheckRuns(
-        [fixture.check],
-        [fixture.run],
-        [fixture.job],
-        "release-sha",
-        { now },
-      ),
+      verifiedFixtures([fixture], { now }),
       [],
       `timestamp ${timestamp || "missing"} should be rejected`,
     );
@@ -303,14 +297,5 @@ test("release evidence binds jobs to the selected run attempt", () => {
   const now = Date.parse("2026-09-13T01:00:00Z");
   const fixture = provenanceFixture({ runAttempt: 2 });
   fixture.job.run_attempt = 1;
-  assert.deepEqual(
-    verifiedRequiredCheckRuns(
-      [fixture.check],
-      [fixture.run],
-      [fixture.job],
-      "release-sha",
-      { now },
-    ),
-    [],
-  );
+  assert.deepEqual(verifiedFixtures([fixture], { now }), []);
 });

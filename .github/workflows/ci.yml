@@ -30,8 +30,6 @@ jobs:
         run: sh scripts/gitleaks-history-scan.sh
       - name: Line ending check
         run: node scripts/line-ending-check.js
-      - name: Markdown link tests
-        run: node scripts/markdown-link-check.test.js
       - name: Markdown links
         run: node scripts/markdown-link-check.js
       - name: Go toolchain consistency
@@ -40,34 +38,22 @@ jobs:
         run: node scripts/verification-policy.js --verify-workflows
       - name: Verification policy ratchet
         run: node scripts/verification-policy.js --verify-ratchet
-      - name: Maintenance budget tests
-        run: node --test scripts/maintenance-budget-check.test.js
-      - name: CI workflow tests
-        run: node --test scripts/ci-workflow.test.js
-      - name: Bounded fuzz runner tests
-        run: node --test scripts/run-bounded-fuzz.test.js
-      - name: Trusted Git base tests
-        run: node --test scripts/trusted-git-base.test.js
+      - name: CI policy tests
+        run: node scripts/run-tooling-tests.js scripts/ci
+      - name: Maintenance policy tests
+        run: node scripts/run-tooling-tests.js scripts/maintenance
+      - name: Release policy tests
+        run: node scripts/run-tooling-tests.js scripts/release
       - name: Maintenance budgets
         run: node scripts/maintenance-budget-check.js
       - name: Generated MCP client catalog
         run: node scripts/mcp-client-catalog.mjs --check
       - name: Generated connector catalog
         run: node scripts/connector-catalog.js --check
-      - name: Maintenance budget ratchet tests
-        run: node --test scripts/maintenance-source-kind.test.js scripts/maintenance-budget-ratchet.test.js
       - name: Maintenance budget ratchet
         run: node scripts/maintenance-budget-ratchet.js
       - name: Package lock ownership
         run: node scripts/package-lock-check.js
-      - name: Compose topology tests
-        run: node --test scripts/compose-topology.test.js
-      - name: Image publishing workflow tests
-        run: node --test scripts/publish-images-workflow.test.js
-      - name: Release version tests
-        run: node --test scripts/release-version.test.js
-      - name: Release provenance tests
-        run: node --test scripts/verify-release-source.test.js
       - name: Release version consistency
         run: node scripts/release-version.js --check
       - name: Native dependency inventory
@@ -116,7 +102,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
       - name: Govulncheck
         working-directory: backend
-        run: "\"$(go env GOPATH)/bin/govulncheck\" ./..."
+        run: '"$(go env GOPATH)/bin/govulncheck" ./...'
 
   frontend:
     name: Frontend

@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const script = path.join(__dirname, "gitleaks-history-scan.sh");
+const script = path.join(__dirname, "..", "gitleaks-history-scan.sh");
 
 test("history scan fails closed when the container cannot enumerate commits", () => {
   for (const fixture of [
@@ -16,7 +16,12 @@ test("history scan fails closed when the container cannot enumerate commits", ()
     const result = runWithFakeDocker(fixture.mode);
     assert.notEqual(result.status, 0, fixture.mode);
     assert.match(result.stderr, new RegExp(fixture.message), fixture.mode);
-    assert.equal(result.calls.filter((call) => call.includes("detect --source=/repo")).length, 0, fixture.mode);
+    assert.equal(
+      result.calls.filter((call) => call.includes("detect --source=/repo"))
+        .length,
+      0,
+      fixture.mode,
+    );
   }
 });
 
@@ -30,7 +35,9 @@ test("history scan runs detection only after a non-empty mounted history preflig
 });
 
 function runWithFakeDocker(mode) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "aipermission-history-scan-"));
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "aipermission-history-scan-"),
+  );
   const fakeDocker = path.join(directory, "docker");
   const log = path.join(directory, "calls.log");
   fs.writeFileSync(
@@ -53,7 +60,7 @@ esac
     { mode: 0o700 },
   );
   const result = childProcess.spawnSync("sh", [script], {
-    cwd: path.join(__dirname, ".."),
+    cwd: path.join(__dirname, "../.."),
     encoding: "utf8",
     env: {
       ...process.env,

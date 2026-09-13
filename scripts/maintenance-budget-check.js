@@ -97,6 +97,32 @@ function validatePolicy(candidate = policy, target = failures) {
       target.push(`source budget ${budget.id}: ${error.message}`);
     }
   }
+  const budgetsByID = new Map(
+    (candidate.sourceBudgets || []).map((budget) => [budget.id, budget]),
+  );
+  const migrations = new Set();
+  for (const migration of candidate.sourceBudgetMigrations || []) {
+    const key = `${migration.budgetId}:${migration.fromTestPackageDepth}:${migration.toTestPackageDepth}`;
+    const budget = budgetsByID.get(migration.budgetId);
+    if (migrations.has(key))
+      target.push(`duplicate source budget migration ${key}`);
+    migrations.add(key);
+    if (
+      !budget ||
+      !Number.isInteger(migration.fromTestPackageDepth) ||
+      migration.fromTestPackageDepth < 0 ||
+      !Number.isInteger(migration.toTestPackageDepth) ||
+      migration.toTestPackageDepth <= migration.fromTestPackageDepth ||
+      !positiveInteger(migration.fromTestPackageMaxLines) ||
+      !positiveInteger(migration.toTestPackageMaxLines) ||
+      migration.toTestPackageMaxLines >= migration.fromTestPackageMaxLines ||
+      budget.testPackageDepth !== migration.toTestPackageDepth ||
+      budget.testPackageMaxLines !== migration.toTestPackageMaxLines ||
+      !String(migration.reason || "").trim()
+    ) {
+      target.push(`invalid source budget migration ${key}`);
+    }
+  }
   const positiveValues = {
     connectorSourceMaxLines: candidate.connectorSourceMaxLines,
     backendPackageDefaultMaxLines: candidate.backendPackage?.defaultMaxLines,

@@ -8,7 +8,7 @@ const {
   renderFrontend,
   validateSource,
   wrapBullet,
-} = require("./release-notes.js");
+} = require("../release-notes.js");
 
 const source = {
   inAppReleaseLimit: 1,
@@ -23,36 +23,26 @@ const source = {
   ],
 };
 
-validateSource(source, "1.2.3");
+const validate = (releases = source.releases, expected = "1.2.3") =>
+  validateSource({ ...source, releases }, expected);
+
+validate();
 assert.match(renderChangelog(source), /## \[1\.2\.3\] - 2026-08-26/);
 assert.match(renderFrontend(source, "1.2.3"), /"Stable notes"/);
 assert.equal(wrapBullet("short item"), "- short item");
 assert.ok(compareSemver("1.2.3", "1.2.3-rc.1") > 0);
 assert.ok(compareSemver("1.10.0", "1.9.0") > 0);
 assert.throws(
-  () =>
-    validateSource(
-      { ...source, releases: [...source.releases, source.releases[0]] },
-      "1.2.3",
-    ),
+  () => validate([...source.releases, source.releases[0]]),
   /duplicate release version/,
 );
 assert.throws(
   () =>
-    validateSource(
-      {
-        ...source,
-        releases: [
-          source.releases[0],
-          { ...source.releases[0], version: "1.2.4" },
-        ],
-      },
-      "1.2.3",
-    ),
+    validate([source.releases[0], { ...source.releases[0], version: "1.2.4" }]),
   /newest to oldest/,
 );
 assert.throws(
-  () => validateSource(source, "1.2.4"),
+  () => validate(undefined, "1.2.4"),
   /does not match release manifest/,
 );
 

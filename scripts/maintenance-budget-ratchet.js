@@ -53,6 +53,9 @@ function policySnapshot(input) {
     }
     setSourceBudget(snapshot, budget);
   }
+  for (const migration of policy.sourceBudgetMigrations || []) {
+    snapshot[sourceBudgetMigrationKey(migration)] = 0;
+  }
   for (const [file, value] of Object.entries(policy.sourceOverrides)) {
     snapshot[`source.override.${file}`] = value;
   }
@@ -80,9 +83,14 @@ function policySnapshot(input) {
 }
 
 function setSourceBudget(snapshot, budget) {
-  const key = budget.id.replace(/-([a-z])/g, (_, letter) =>
-    letter.toUpperCase(),
-  );
+  const names = sourceBudgetNames(budget.id);
+  setConsistent(snapshot, names[0], budget.productionMaxLines);
+  setConsistent(snapshot, names[1], budget.testMaxLines);
+  setConsistent(snapshot, names[2], budget.testPackageMaxLines);
+}
+
+function sourceBudgetNames(id) {
+  const key = id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
   const legacyNames = {
     backend: [
       "source.backend.maxLines",
@@ -101,14 +109,41 @@ function setSourceBudget(snapshot, budget) {
     ],
     "mcp-test": [null, "mcpTestSourceBudget", "mcpTestPackageBudget"],
   };
-  const names = legacyNames[budget.id] || [
-    `source.${budget.id}.maxLines`,
-    `${key}TestSourceBudget`,
-    `${key}TestPackageBudget`,
-  ];
-  setConsistent(snapshot, names[0], budget.productionMaxLines);
-  setConsistent(snapshot, names[1], budget.testMaxLines);
-  setConsistent(snapshot, names[2], budget.testPackageMaxLines);
+  return (
+    legacyNames[id] || [
+      `source.${id}.maxLines`,
+      `${key}TestSourceBudget`,
+      `${key}TestPackageBudget`,
+    ]
+  );
+}
+
+function sourceBudgetMigrationKey(migration) {
+  return [
+    "migration.test.package",
+    migration.budgetId,
+    migration.fromTestPackageDepth,
+    migration.toTestPackageDepth,
+    migration.fromTestPackageMaxLines,
+    migration.toTestPackageMaxLines,
+  ].join(".");
+}
+
+function approvedTestPackageMigration(base, current, name, fromDepth, toDepth) {
+  if (!name.startsWith("test.package.depth.")) return false;
+  const budgetID = name.slice("test.package.depth.".length);
+  const prefix = `migration.test.package.${budgetID}.${fromDepth}.${toDepth}.`;
+  const marker = Object.keys(current).find((key) => key.startsWith(prefix));
+  if (!marker) return false;
+  const [fromMax, toMax] = marker.slice(prefix.length).split(".").map(Number);
+  const packageBudgetName = sourceBudgetNames(budgetID)[2];
+  const baseMax =
+    base[packageBudgetName] ?? inheritedBudget(base, packageBudgetName);
+  return (
+    baseMax === fromMax &&
+    current[packageBudgetName] === toMax &&
+    toMax < fromMax
+  );
 }
 
 function setConsistent(snapshot, name, value) {
@@ -124,11 +159,13 @@ function budgetIncreases(base, current) {
     .filter(
       (name) =>
         !Object.hasOwn(current, name) &&
+        !name.startsWith("migration.test.package.") &&
         !removedExceptionRemainsProtected(base, current, name),
     )
     .map((name) => `${name} was removed from the current maintenance budget`);
   const increases = Object.entries(current).flatMap(([name, value]) => {
     if (!Object.hasOwn(base, name)) {
+      if (name.startsWith("migration.test.package.") && value === 0) return [];
       if (name === "coverage.backend.default" && value < 0) return [];
       if (
         name.startsWith("backend.coverage.neutral.") &&
@@ -147,7 +184,13 @@ function budgetIncreases(base, current) {
         return [];
       }
       const inherited = inheritedBudget(base, name);
-      if (inherited !== undefined && value <= inherited) return [];
+      if (
+        inherited !== undefined &&
+        (value <= inherited ||
+          approvedTestPackageMigration(base, current, name, inherited, value))
+      ) {
+        return [];
+      }
       return [`${name} is a new unreviewed budget (${value})`];
     }
     if (
@@ -157,7 +200,8 @@ function budgetIncreases(base, current) {
     ) {
       return [];
     }
-    return value > base[name]
+    return value > base[name] &&
+      !approvedTestPackageMigration(base, current, name, base[name], value)
       ? [`${name} increased from ${base[name]} to ${value}`]
       : [];
   });
