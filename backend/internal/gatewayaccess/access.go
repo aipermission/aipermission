@@ -118,6 +118,8 @@ type MCPActionScope struct {
 type MCPRuntimeState interface {
 	MCPStarted() bool
 	SetMCPStarted(bool)
+	MCPStopping() bool
+	SetMCPStopping(bool)
 }
 
 type MCPRuntimeScope struct {

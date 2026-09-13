@@ -70,8 +70,50 @@ func TestMCPHTTPHandlersFailClosedWhenStopGateOrEffectsFail(t *testing.T) {
 	})
 	response = httptest.NewRecorder()
 	handlers.Update(response, newMCPUpdateRequest(`{"enabled":false}`))
-	if response.Code != http.StatusInternalServerError || state.MCPStarted() {
-		t.Fatalf("effects failure response=%d %s started=%v", response.Code, response.Body.String(), state.MCPStarted())
+	if response.Code != http.StatusInternalServerError || state.MCPStarted() || !state.MCPStopping() {
+		t.Fatalf("effects failure response=%d %s started=%v stopping=%v", response.Code, response.Body.String(), state.MCPStarted(), state.MCPStopping())
+	}
+}
+
+func TestMCPHTTPHandlersFinishCanceledStopAndRetryIncompleteCleanupBeforeStart(t *testing.T) {
+	state := &State{}
+	state.SetMCPStarted(true)
+	cleanupCalls := 0
+	request := newMCPUpdateRequest(`{"enabled":false}`)
+	requestCtx, cancelRequest := context.WithCancel(request.Context())
+	request = request.WithContext(requestCtx)
+	handlers := NewMCPHTTPHandlers(func(http.ResponseWriter) (MCPRuntimeScope, bool) {
+		return MCPRuntimeScope{
+			State:        state,
+			StartEnabled: func(context.Context) (bool, error) { return true, nil },
+			AcquireStop: func(context.Context) (func(), error) {
+				cancelRequest()
+				return func() {}, nil
+			},
+			StopEffects: func(ctx context.Context) error {
+				cleanupCalls++
+				if err := ctx.Err(); err != nil {
+					t.Fatalf("cleanup inherited canceled request context: %v", err)
+				}
+				if cleanupCalls == 1 {
+					return errors.New("temporary cleanup failure")
+				}
+				return nil
+			},
+			Observe: func(context.Context, string, map[string]any) {},
+		}, true
+	})
+
+	stopped := httptest.NewRecorder()
+	handlers.Update(stopped, request)
+	if stopped.Code != http.StatusInternalServerError || !state.MCPStopping() || state.MCPStarted() {
+		t.Fatalf("incomplete stop response=%d started=%v stopping=%v", stopped.Code, state.MCPStarted(), state.MCPStopping())
+	}
+
+	started := httptest.NewRecorder()
+	handlers.Update(started, newMCPUpdateRequest(`{"enabled":true}`))
+	if started.Code != http.StatusOK || !state.MCPStarted() || state.MCPStopping() || cleanupCalls != 2 {
+		t.Fatalf("retried start response=%d started=%v stopping=%v cleanup_calls=%d", started.Code, state.MCPStarted(), state.MCPStopping(), cleanupCalls)
 	}
 }
 

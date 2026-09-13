@@ -11,6 +11,8 @@ import (
 type MCPRuntimeState interface {
 	MCPStarted() bool
 	SetMCPStarted(bool)
+	MCPStopping() bool
+	SetMCPStopping(bool)
 }
 
 type MCPRuntimeScope struct {
@@ -25,6 +27,8 @@ type MCPRuntimeScope struct {
 type MCPRuntimeScopeProvider func(http.ResponseWriter) (MCPRuntimeScope, bool)
 
 type MCPHTTPHandlers struct{ scope MCPRuntimeScopeProvider }
+
+const mcpStopCleanupTimeout = 30 * time.Second
 
 type mcpHTTPRequirement uint8
 
@@ -63,31 +67,34 @@ func (h *MCPHTTPHandlers) Update(w http.ResponseWriter, r *http.Request) {
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	if !request.Enabled && (scope.AcquireStop == nil || scope.StopEffects == nil) {
+	if scope.AcquireStop == nil || scope.StopEffects == nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	var release func()
-	if !request.Enabled {
-		var err error
-		release, err = scope.AcquireStop(r.Context())
+	release, err := scope.AcquireStop(r.Context())
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "MCP runtime transition was canceled")
+		return
+	}
+	if release == nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	defer release()
+
+	if !request.Enabled || scope.State.MCPStopping() {
+		scope.State.SetMCPStarted(false)
+		scope.State.SetMCPStopping(true)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(r.Context()), mcpStopCleanupTimeout)
+		err := scope.StopEffects(cleanupCtx)
+		cleanupCancel()
 		if err != nil {
-			httptransport.WriteError(w, http.StatusRequestTimeout, "MCP stop was canceled")
-			return
-		}
-		if release == nil {
 			httptransport.WriteInternalError(w)
 			return
 		}
-		defer release()
+		scope.State.SetMCPStopping(false)
 	}
 	scope.State.SetMCPStarted(request.Enabled)
-	if !request.Enabled {
-		if err := scope.StopEffects(r.Context()); err != nil {
-			httptransport.WriteInternalError(w)
-			return
-		}
-	}
 	action := "mcp.runtime.stopped"
 	if request.Enabled {
 		action = "mcp.runtime.started"

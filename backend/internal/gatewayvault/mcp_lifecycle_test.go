@@ -49,15 +49,15 @@ func TestStopMCPOwnsVaultCleanupOrder(t *testing.T) {
 	}
 }
 
-func TestStopMCPStopsAfterFirstFailure(t *testing.T) {
+func TestStopMCPAttemptsEveryCleanupAfterFailures(t *testing.T) {
 	for _, step := range []string{"invalidate", "stale", "fail"} {
 		t.Run(step, func(t *testing.T) {
 			recorder := &mcpStopRecorder{failAt: step}
 			if err := New(Dependencies{}).StopMCP(t.Context(), recorder, recorder); err == nil || err.Error() != step {
 				t.Fatalf("expected %s failure, got %v", step, err)
 			}
-			if got := recorder.calls[len(recorder.calls)-1]; got[:len(step)] != step {
-				t.Fatalf("cleanup continued after %s failure: %v", step, recorder.calls)
+			if len(recorder.calls) != 3 {
+				t.Fatalf("cleanup stopped after %s failure: %v", step, recorder.calls)
 			}
 		})
 	}

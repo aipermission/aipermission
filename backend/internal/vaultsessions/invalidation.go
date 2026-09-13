@@ -108,16 +108,16 @@ func (i *Invalidator) InvalidateRuntimes(ctx context.Context, runtimeIDs []int64
 	if len(runtimeIDs) == 0 {
 		return nil
 	}
-	references, err := i.persistence.ActiveEnvironmentSessionsForRuntimes(ctx, runtimeIDs)
-	if err != nil {
-		return err
+	references, referenceErr := i.persistence.ActiveEnvironmentSessionsForRuntimes(ctx, runtimeIDs)
+	var closeErr error
+	if referenceErr == nil {
+		closeErr = i.closeReferences(ctx, references)
 	}
-	closeErr := i.closeReferences(ctx, references)
 	requests, requestErr := i.requestInvalidator(ctx)
 	if requestErr != nil {
-		return errors.Join(closeErr, requestErr)
+		return errors.Join(referenceErr, closeErr, requestErr)
 	}
-	return errors.Join(closeErr, requests.StalePendingForRuntimes(ctx, runtimeIDs, reason))
+	return errors.Join(referenceErr, closeErr, requests.StalePendingForRuntimes(ctx, runtimeIDs, reason))
 }
 
 func (i *Invalidator) InvalidateTargetProfile(
@@ -140,15 +140,17 @@ func (i *Invalidator) InvalidateAll(ctx context.Context, reason string) error {
 	if err := i.validate(); err != nil {
 		return err
 	}
-	runtimeIDs, err := i.persistence.AllRuntimeIDs(ctx)
-	if err != nil {
-		return err
-	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), i.cleanupTimeout)
+	defer cancel()
+
 	i.leases.Clear()
-	if err := i.persistence.RevokeAll(ctx); err != nil {
-		return err
+	runtimeIDs, runtimeErr := i.persistence.AllRuntimeIDs(cleanupCtx)
+	var invalidateErr error
+	if runtimeErr == nil {
+		invalidateErr = i.InvalidateRuntimes(cleanupCtx, runtimeIDs, reason)
 	}
-	return i.InvalidateRuntimes(ctx, runtimeIDs, reason)
+	revokeErr := i.persistence.RevokeAll(cleanupCtx)
+	return errors.Join(runtimeErr, invalidateErr, revokeErr)
 }
 
 func (i *Invalidator) FinishTokenInvalidation(ctx context.Context, tokenID int64, sessionIDs []int64) error {

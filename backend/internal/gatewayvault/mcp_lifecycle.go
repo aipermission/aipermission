@@ -1,6 +1,9 @@
 package gatewayvault
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 const (
 	mcpStoppedRequestReason = "MCP execution stopped; send a fresh Vault request after it starts"
@@ -20,11 +23,8 @@ func (component *Component) StopMCP(ctx context.Context, lifecycle MCPStopLifecy
 	if component == nil || lifecycle == nil || requests == nil {
 		return InvalidatorUnavailableError()
 	}
-	if err := lifecycle.InvalidateAll(ctx, mcpStoppedRequestReason); err != nil {
-		return err
-	}
-	if err := requests.StalePendingForAction(ctx, ActionGenerateItem, mcpStoppedRequestReason); err != nil {
-		return err
-	}
-	return requests.FailRunning(ctx, mcpStoppedRunningReason)
+	invalidateErr := lifecycle.InvalidateAll(ctx, mcpStoppedRequestReason)
+	staleErr := requests.StalePendingForAction(ctx, ActionGenerateItem, mcpStoppedRequestReason)
+	failErr := requests.FailRunning(ctx, mcpStoppedRunningReason)
+	return errors.Join(invalidateErr, staleErr, failErr)
 }

@@ -140,6 +140,25 @@ func TestInvalidatorFinishesTokenCleanupAfterCallerCancellation(t *testing.T) {
 	}
 }
 
+func TestInvalidatorFinishesAllCleanupAfterCallerCancellation(t *testing.T) {
+	database, _, _, runtimeID, sessionID := invalidationFixture(t)
+	leases := &invalidationLeaseStore{}
+	sessions := &invalidationSessionCloser{}
+	requests := &invalidationRequests{}
+	owner := newTestInvalidator(t, database, leases, sessions, requests)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := owner.InvalidateAll(ctx, "MCP stopped"); err != nil {
+		t.Fatal(err)
+	}
+	if leases.clears != 1 || len(sessions.closed) != 1 || sessions.closed[0] != sessionID {
+		t.Fatalf("canceled cleanup: leases=%#v sessions=%v", leases, sessions.closed)
+	}
+	if len(requests.runtimeIDs) != 1 || requests.runtimeIDs[0] != runtimeID {
+		t.Fatalf("canceled cleanup requests = %#v", requests)
+	}
+}
+
 func TestInvalidatorFailsClosedAndJoinsCleanupErrors(t *testing.T) {
 	if _, err := NewInvalidator(InvalidatorDependencies{}); !errors.Is(err, ErrInvalidatorUnavailable) {
 		t.Fatalf("NewInvalidator() error = %v", err)
