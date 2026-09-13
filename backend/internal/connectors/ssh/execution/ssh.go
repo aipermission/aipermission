@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,64 @@ type Result struct {
 	DispatchStarted bool   `json:"-"`
 }
 
+type activeSSHResources struct {
+	mu       sync.Mutex
+	canceled bool
+	client   io.Closer
+	session  io.Closer
+}
+
+func (resources *activeSSHResources) publishClient(ctx context.Context, client io.Closer) error {
+	resources.mu.Lock()
+	if err := resources.cancellationErr(ctx); err != nil {
+		resources.mu.Unlock()
+		_ = client.Close()
+		return err
+	}
+	resources.client = client
+	resources.mu.Unlock()
+	return nil
+}
+
+func (resources *activeSSHResources) publishSession(ctx context.Context, session io.Closer) error {
+	resources.mu.Lock()
+	if err := resources.cancellationErr(ctx); err != nil {
+		resources.mu.Unlock()
+		_ = session.Close()
+		return err
+	}
+	resources.session = session
+	resources.mu.Unlock()
+	return nil
+}
+
+func (resources *activeSSHResources) cancellationErr(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if resources.canceled {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (resources *activeSSHResources) close() {
+	resources.mu.Lock()
+	resources.canceled = true
+	client := resources.client
+	session := resources.session
+	resources.client = nil
+	resources.session = nil
+	resources.mu.Unlock()
+
+	if client != nil {
+		_ = client.Close()
+	}
+	if session != nil {
+		_ = session.Close()
+	}
+}
+
 func RunCommand(ctx context.Context, target Target, command string) (Result, error) {
 	return StreamCommand(ctx, target, command, nil, nil)
 }
@@ -46,20 +105,8 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 		err    error
 	}
 	done := make(chan response, 1)
-	var mu sync.Mutex
 	var dispatchStarted atomic.Bool
-	var client *ssh.Client
-	var session *ssh.Session
-	closeActive := func() {
-		mu.Lock()
-		defer mu.Unlock()
-		if session != nil {
-			_ = session.Close()
-		}
-		if client != nil {
-			_ = client.Close()
-		}
-	}
+	resources := &activeSSHResources{}
 
 	go func() {
 		sshClient, err := DialSSH(ctx, target)
@@ -67,9 +114,10 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 			done <- response{err: err}
 			return
 		}
-		mu.Lock()
-		client = sshClient
-		mu.Unlock()
+		if err := resources.publishClient(ctx, sshClient); err != nil {
+			done <- response{err: err}
+			return
+		}
 		defer sshClient.Close()
 
 		sshSession, err := sshClient.NewSession()
@@ -77,14 +125,10 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 			done <- response{err: fmt.Errorf("new ssh session: %w", err)}
 			return
 		}
-		if err := ctx.Err(); err != nil {
-			_ = sshSession.Close()
+		if err := resources.publishSession(ctx, sshSession); err != nil {
 			done <- response{err: err}
 			return
 		}
-		mu.Lock()
-		session = sshSession
-		mu.Unlock()
 		defer sshSession.Close()
 
 		stdout := newLimitedBuffer(maxCapturedOutputBytes)
@@ -126,7 +170,7 @@ func StreamCommand(ctx context.Context, target Target, command string, onStdout 
 
 	select {
 	case <-ctx.Done():
-		closeActive()
+		resources.close()
 		return Result{DurationMS: time.Since(started).Milliseconds(), DispatchStarted: dispatchStarted.Load()}, ctx.Err()
 	case value := <-done:
 		return value.result, value.err
@@ -149,38 +193,68 @@ func DialSSH(ctx context.Context, target Target) (*ssh.Client, error) {
 		Timeout:         12 * time.Second,
 	}
 	address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
-
-	type response struct {
-		client *ssh.Client
-		err    error
+	client, err := DialClientContext(ctx, "tcp", address, config)
+	if err != nil {
+		return nil, fmt.Errorf("ssh dial: %w", err)
 	}
-	done := make(chan response, 1)
-	go func() {
-		client, err := ssh.Dial("tcp", address, config)
-		if err != nil {
-			done <- response{err: fmt.Errorf("ssh dial: %w", err)}
-			return
-		}
-		if err := ctx.Err(); err != nil {
-			_ = client.Close()
-			done <- response{err: err}
-			return
-		}
-		done <- response{client: client}
-	}()
+	return client, nil
+}
 
-	select {
-	case <-ctx.Done():
-		go func() {
-			value := <-done
-			if value.client != nil {
-				_ = value.client.Close()
-			}
-		}()
-		return nil, ctx.Err()
-	case value := <-done:
-		return value.client, value.err
+// DialClientContext keeps ownership of the raw connection until the SSH
+// handshake completes, so cancellation and handshake timeouts close the
+// socket instead of leaving an unobservable ssh.Dial goroutine behind.
+func DialClientContext(ctx context.Context, network, address string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	if config == nil {
+		return nil, errors.New("ssh client config is required")
+	}
+
+	timeout := config.Timeout
+	if timeout <= 0 {
+		timeout = 12 * time.Second
+	}
+	dialer := net.Dialer{Timeout: timeout}
+	raw, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+
+	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if deadline, ok := handshakeCtx.Deadline(); ok {
+		if err := raw.SetDeadline(deadline); err != nil {
+			_ = raw.Close()
+			return nil, fmt.Errorf("set ssh handshake deadline: %w", err)
+		}
+	}
+	stopCancellation := context.AfterFunc(handshakeCtx, func() { _ = raw.Close() })
+	connection, channels, requests, err := ssh.NewClientConn(raw, address, config)
+	stopped := stopCancellation()
+	if err != nil {
+		_ = raw.Close()
+		if contextErr := handshakeCtx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return nil, err
+	}
+	if !stopped {
+		_ = connection.Close()
+		if contextErr := handshakeCtx.Err(); contextErr != nil {
+			return nil, contextErr
+		}
+		return nil, context.Canceled
+	}
+	if err := raw.SetDeadline(time.Time{}); err != nil {
+		_ = connection.Close()
+		return nil, fmt.Errorf("clear ssh handshake deadline: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	return ssh.NewClient(connection, channels, requests), nil
 }
 
 type streamWriter struct {

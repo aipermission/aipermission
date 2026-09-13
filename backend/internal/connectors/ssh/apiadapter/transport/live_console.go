@@ -86,14 +86,21 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		Timeout:         12 * time.Second,
 	}
 	address := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
-	sshClient, err := ssh.Dial("tcp", address, config)
+	sshClient, err := execution.DialClientContext(ctx, "tcp", address, config)
 	if err != nil {
 		return nil, fmt.Errorf("ssh dial: %w", err)
 	}
+	stopOpeningCancellation := context.AfterFunc(ctx, func() { _ = sshClient.Close() })
+	defer stopOpeningCancellation()
+	openingFailed := true
+	defer func() {
+		if openingFailed {
+			_ = sshClient.Close()
+		}
+	}()
 	sshSession, err := sshClient.NewSession()
 	if err != nil {
-		_ = sshClient.Close()
-		return nil, fmt.Errorf("new ssh session: %w", err)
+		return nil, liveConsoleOpeningError(ctx, "new ssh session", err)
 	}
 	stdin, err := sshSession.StdinPipe()
 	if err != nil {
@@ -128,9 +135,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		modes[ssh.ECHO] = 0
 	}
 	if err := sshSession.RequestPty("xterm-256color", rows, cols, modes); err != nil {
-		_ = sshSession.Close()
-		_ = sshClient.Close()
-		return nil, fmt.Errorf("request pty: %w", err)
+		return nil, liveConsoleOpeningError(ctx, "request pty", err)
 	}
 	closeProducer := func() error { return closeLiveConsoleProducer(sshSession, sshClient) }
 	ownedOutput := newLiveConsoleOutput(sshSession.Wait, closeProducer)
@@ -143,9 +148,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 			return nil, err
 		}
 		if err := sshSession.Shell(); err != nil {
-			_ = sshSession.Close()
-			_ = sshClient.Close()
-			return nil, fmt.Errorf("start environment shell: %w", err)
+			return nil, liveConsoleOpeningError(ctx, "start environment shell", err)
 		}
 		if err := writeEnvironmentBootstrapCommand(stdin, target.StartupInputAfterConnect, bootstrap.Command()); err != nil {
 			_ = sshSession.Close()
@@ -164,18 +167,26 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		}
 	} else if target.ForceShellCommand != "" {
 		if err := sshSession.Start(target.ForceShellCommand); err != nil {
-			_ = sshSession.Close()
-			_ = sshClient.Close()
-			return nil, fmt.Errorf("start forced shell command: %w", err)
+			return nil, liveConsoleOpeningError(ctx, "start forced shell command", err)
 		}
 	} else if err := sshSession.Shell(); err != nil {
-		_ = sshSession.Close()
-		_ = sshClient.Close()
-		return nil, fmt.Errorf("start shell: %w", err)
+		return nil, liveConsoleOpeningError(ctx, "start shell", err)
 	}
 	if !hasEnvironment {
 		ownedOutput.Start(stdout, stderr)
 	}
+	if !stopOpeningCancellation() {
+		_ = ownedOutput.Close()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, context.Canceled
+	}
+	if err := ctx.Err(); err != nil {
+		_ = ownedOutput.Close()
+		return nil, err
+	}
+	openingFailed = false
 	return &connectorapi.LiveConsoleSession{
 		Stdin:                    stdin,
 		Output:                   ownedOutput.output,
@@ -186,6 +197,13 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		StartupInputAfterConnect: startupInputAfterConnect(target.StartupInputAfterConnect, hasEnvironment),
 		ApplyEnvironment:         applyEnvironment,
 	}, nil
+}
+
+func liveConsoleOpeningError(ctx context.Context, operation string, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func closeLiveConsoleProducer(session io.Closer, client io.Closer) error {

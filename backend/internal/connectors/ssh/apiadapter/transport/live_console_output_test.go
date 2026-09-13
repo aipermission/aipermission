@@ -91,6 +91,53 @@ func TestLiveConsoleOutputCloseUnblocksAndJoinsReader(t *testing.T) {
 	}
 }
 
+type saturatingReader struct {
+	reads   atomic.Int32
+	release chan struct{}
+}
+
+func (reader *saturatingReader) Read(buffer []byte) (int, error) {
+	select {
+	case <-reader.release:
+		return 0, io.EOF
+	default:
+		reader.reads.Add(1)
+		return copy(buffer, "output"), nil
+	}
+}
+
+func TestLiveConsoleOutputCloseCancelsBlockedDelivery(t *testing.T) {
+	reader := &saturatingReader{release: make(chan struct{})}
+	var releaseOnce sync.Once
+	output := newLiveConsoleOutput(func() error {
+		<-reader.release
+		return nil
+	}, func() error {
+		releaseOnce.Do(func() { close(reader.release) })
+		return nil
+	})
+	if !output.Start(reader, nil) {
+		t.Fatal("output owner refused its first reader")
+	}
+	deadline := time.Now().Add(time.Second)
+	for reader.reads.Load() <= int32(cap(output.output)) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if reader.reads.Load() <= int32(cap(output.output)) {
+		t.Fatal("output reader did not reach a blocked channel delivery")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- output.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not cancel and join a blocked channel delivery")
+	}
+}
+
 type bufferInspectionReader struct {
 	secret  []byte
 	reads   int
