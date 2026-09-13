@@ -20,8 +20,8 @@ func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
 	firstOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}}
 	secondOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "second"}}
 
-	first := component.handleFor(firstOwner)
-	second := component.handleFor(secondOwner)
+	first := component.registerHandle(firstOwner)
+	second := component.registerHandle(secondOwner)
 	if first == nil || second == nil || first == second {
 		t.Fatal("independent workspace owners did not receive distinct capabilities")
 	}
@@ -51,7 +51,7 @@ func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
 
 func TestFeatureCapabilityRegistriesAreHandleScopedAndReleased(t *testing.T) {
 	component := NewComponent(t.TempDir(), nil)
-	handle := component.handleFor(&gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}})
+	handle := component.registerHandle(&gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}})
 	foreign := NewComponent(t.TempDir(), nil)
 
 	checks := []struct {
@@ -108,8 +108,8 @@ func TestOwnedWorkspaceSnapshotRetainsHandlesOutsideLifecycleRegistry(t *testing
 	component := NewComponent(t.TempDir(), nil)
 	firstOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "first"}}
 	secondOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{DatabaseID: "second"}}
-	first := component.handleFor(firstOwner)
-	second := component.handleFor(secondOwner)
+	first := component.registerHandle(firstOwner)
+	second := component.registerHandle(secondOwner)
 
 	snapshot := component.WorkspaceOwner().OwnedWorkspaceSnapshot()
 	if len(snapshot) != 2 || !containsWorkspaceHandle(snapshot, first) || !containsWorkspaceHandle(snapshot, second) {
@@ -131,8 +131,8 @@ func TestWorkspaceOwnerProjectsOnlyOwnedLifecycleState(t *testing.T) {
 	secondOwner := &gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{
 		DatabaseID: "second", DatabasePath: "/data/second.aipdb", UIRetryID: "retry-second",
 	}}
-	first := component.handleFor(firstOwner)
-	second := component.handleFor(secondOwner)
+	first := component.registerHandle(firstOwner)
+	second := component.registerHandle(secondOwner)
 
 	workspace.ActivateWorkspace(first)
 	workspace.ActivateWorkspace(second)
@@ -159,8 +159,8 @@ func TestWorkspaceOwnerProjectsOnlyOwnedLifecycleState(t *testing.T) {
 	}
 	component.forgetHandle(first)
 	workspace.ActivateWorkspace(first)
-	if got, ok := workspace.LookupWorkspace("first"); !ok || got == first {
-		t.Fatalf("forgotten handle was reused by lifecycle projection: (%p, %t)", got, ok)
+	if got, ok := workspace.LookupWorkspace("first"); ok || got != nil {
+		t.Fatalf("forgotten runtime was projected through a new handle: (%p, %t)", got, ok)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.
 	}
 	t.Cleanup(func() { _ = workspace.Discard(owner, nil, nil) })
 	component := NewComponent(t.TempDir(), nil)
-	handle := component.handleFor(owner)
+	handle := component.registerHandle(owner)
 	factory := &metadataReaderFactory{allowed: true}
 
 	allowed, err := component.AccessOwner().CanReadVaultMetadata(t.Context(), handle, factory, 7, 11, time.Unix(123, 0))

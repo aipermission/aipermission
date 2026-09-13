@@ -52,7 +52,7 @@ func NewComponent(dataPath string, describe func(*WorkspaceHandle) Identity) *Co
 	return component
 }
 
-func (component *Component) handleFor(owner *gatewayworkspace.Runtime) *WorkspaceHandle {
+func (component *Component) registerHandle(owner *gatewayworkspace.Runtime) *WorkspaceHandle {
 	if component == nil || owner == nil {
 		return nil
 	}
@@ -64,6 +64,19 @@ func (component *Component) handleFor(owner *gatewayworkspace.Runtime) *Workspac
 	handle := newWorkspaceHandle(component.identity, owner)
 	component.bindHandleCapabilities(handle, gatewayworkspace.ProjectCapabilities(owner))
 	component.handlesByOwner[owner] = handle
+	return handle
+}
+
+func (component *Component) handleFor(owner *gatewayworkspace.Runtime) *WorkspaceHandle {
+	if component == nil || owner == nil {
+		return nil
+	}
+	component.runtimeMu.Lock()
+	defer component.runtimeMu.Unlock()
+	handle := component.handlesByOwner[owner]
+	if handle == nil || !handle.active.Load() {
+		return nil
+	}
 	return handle
 }
 
@@ -150,7 +163,7 @@ func (component *WorkspaceOwner) ConfigureWorkspaceLifecycle(dependencies Worksp
 		DataPath: dependencies.DataPath,
 		Open:     open, Close: closeRuntime, OnActivated: onActivated, OnOpened: onOpened,
 		WaitClosed: func(ctx context.Context, runtime *gatewayworkspace.Runtime) error {
-			return component.WaitWorkspaceClosed(ctx, component.handleFor(runtime))
+			return runtime.WaitTeardown(ctx)
 		},
 		IsOwned: component.ownsWorkspaceIdentity,
 		Move:    dependencies.Move, Delete: dependencies.Delete,
@@ -185,7 +198,8 @@ func (component *WorkspaceOwner) LookupWorkspace(id string) (*WorkspaceHandle, b
 		return nil, false
 	}
 	owner, ok := component.workspace.Lookup(id)
-	return component.handleFor(owner), ok
+	handle := component.handleFor(owner)
+	return handle, ok && handle != nil
 }
 
 func (component *WorkspaceOwner) ActivateWorkspace(handle *WorkspaceHandle) {
@@ -206,9 +220,11 @@ func (component *WorkspaceOwner) WorkspaceSnapshot() []*WorkspaceHandle {
 		return nil
 	}
 	items := component.workspace.Snapshot()
-	runtimes := make([]*WorkspaceHandle, len(items))
-	for index, runtime := range items {
-		runtimes[index] = component.handleFor(runtime)
+	runtimes := make([]*WorkspaceHandle, 0, len(items))
+	for _, runtime := range items {
+		if handle := component.handleFor(runtime); handle != nil {
+			runtimes = append(runtimes, handle)
+		}
 	}
 	return runtimes
 }
@@ -234,7 +250,10 @@ func (component *WorkspaceOwner) OpenWorkspace(ctx context.Context, input OpenWo
 		return nil, InitializationError()
 	}
 	owner, err := component.workspace.Open(ctx, input.input)
-	return component.handleFor(owner), err
+	if err != nil {
+		return nil, err
+	}
+	return component.registerHandle(owner), nil
 }
 
 func (component *WorkspaceOwner) DiscardWorkspace(handle *WorkspaceHandle, resolveTransfers func() TransferWorkflow, onComplete func()) error {

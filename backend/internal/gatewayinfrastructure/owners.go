@@ -87,11 +87,19 @@ type VaultOwner struct {
 }
 type WorkspaceOwner struct {
 	ownerBase
-	workspace           *gatewayworkspace.Component
-	handleForRuntime    func(*gatewayworkspace.Runtime) *WorkspaceHandle
-	forgetRuntimeHandle func(*WorkspaceHandle)
-	ownedHandles        func() []*WorkspaceHandle
-	validatePassword    func(context.Context, *gatewayworkspace.Runtime, string, string) error
+	workspace             *gatewayworkspace.Component
+	registerRuntimeHandle func(*gatewayworkspace.Runtime) *WorkspaceHandle
+	handleForRuntime      func(*gatewayworkspace.Runtime) *WorkspaceHandle
+	forgetRuntimeHandle   func(*WorkspaceHandle)
+	ownedHandles          func() []*WorkspaceHandle
+	validatePassword      func(context.Context, *gatewayworkspace.Runtime, string, string) error
+}
+
+func (component *WorkspaceOwner) registerHandle(runtime *gatewayworkspace.Runtime) *WorkspaceHandle {
+	if component == nil || component.registerRuntimeHandle == nil {
+		return nil
+	}
+	return component.registerRuntimeHandle(runtime)
 }
 
 func (component *WorkspaceOwner) handleFor(runtime *gatewayworkspace.Runtime) *WorkspaceHandle {
@@ -157,7 +165,8 @@ func (component *Component) bindWorkspaceOwner() {
 	handleFor := component.handleFor
 	component.workspaceOwner = &WorkspaceOwner{
 		ownerBase: base, workspace: component.workspace,
-		handleForRuntime: handleFor, forgetRuntimeHandle: component.forgetHandle,
+		registerRuntimeHandle: component.registerHandle,
+		handleForRuntime:      handleFor, forgetRuntimeHandle: component.forgetHandle,
 		ownedHandles: component.ownedHandlesSnapshot,
 		validatePassword: func(ctx context.Context, runtime *gatewayworkspace.Runtime, databaseName, password string) error {
 			handle := handleFor(runtime)
