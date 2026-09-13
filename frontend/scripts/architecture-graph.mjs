@@ -1,5 +1,5 @@
 import { globSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, extname, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { parse } from "espree";
 import sourceKind from "../../scripts/maintenance-source-kind.js";
@@ -45,6 +45,10 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     }
     const specifiers = moduleSpecifiers(parsed);
     const globSpecifiers = moduleGlobSpecifiers(parsed);
+    for (const specifier of [...specifiers, ...globSpecifiers]) {
+      const escaped = escapedSourceImport(sourceRoot, file, specifier);
+      if (escaped) failures.push(`${displayPath(sourceRoot, file)} imports executable code outside src: ${specifier}`);
+    }
     for (const unresolved of unresolvedModuleLoads(parsed)) {
       failures.push(`${displayPath(sourceRoot, file)} contains ${unresolved}`);
     }
@@ -356,6 +360,21 @@ export function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
     if (fileSet.has(candidate)) return candidate;
   }
   return null;
+}
+
+export function escapedSourceImport(sourceRoot, importer, specifier) {
+  if (!specifier.startsWith(".") && !specifier.startsWith("/")) return false;
+  const cleanSpecifier = specifier.split(/[?#]/, 1)[0];
+  let candidate;
+  if (cleanSpecifier === "/src" || cleanSpecifier.startsWith("/src/")) {
+    candidate = resolve(sourceRoot, cleanSpecifier.replace(/^\/src\/?/, ""));
+  } else if (cleanSpecifier.startsWith("/")) {
+    return true;
+  } else {
+    candidate = resolve(dirname(importer), cleanSpecifier);
+  }
+  const path = relative(resolve(sourceRoot), candidate);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 }
 
 function resolveSourceGlob(importer, specifier, fileSet) {

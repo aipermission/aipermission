@@ -1,9 +1,10 @@
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { productionSourceBoundary } from "./scripts/production-source-boundary.mjs";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [productionSourceBoundary(), react(), tailwindcss()],
   server: {
     port: 3210,
   },

@@ -11,6 +11,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY index.html vite.config.js ./
+COPY scripts/production-source-boundary.mjs ./scripts/production-source-boundary.mjs
 COPY public ./public
 COPY src ./src
 

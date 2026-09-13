@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
   analyzeSourceTree,
   dependencyCycles,
+  escapedSourceImport,
   hardCodedConnectorKinds,
   moduleGlobSpecifiers,
   moduleSpecifiers,
 } from "./architecture-graph.mjs";
+import { productionSourceBoundary, productionSourceViolation } from "./production-source-boundary.mjs";
 
 test("collects static imports, re-exports, and literal dynamic imports from the AST", () => {
   const source = `
@@ -22,6 +24,53 @@ test("collects static imports, re-exports, and literal dynamic imports from the 
     const ignored = import(variable);
   `;
   assert.deepEqual(moduleSpecifiers(source), ["./imported.js", "./named.js", "./all.js", "./lazy.js", "./template.js"]);
+});
+
+test("rejects executable production modules that escape frontend src", () => {
+  const frontendRoot = mkdtempSync(join(tmpdir(), "aipermission-production-source-"));
+  try {
+    const sourceRoot = join(frontendRoot, "src");
+    mkdirSync(join(sourceRoot, "lib"), { recursive: true });
+    mkdirSync(join(sourceRoot, "connectors", "templates"), { recursive: true });
+    const importer = join(sourceRoot, "lib", "api.js");
+    const escaped = join(frontendRoot, "escaped-runtime.js");
+    const fakeDependency = join(frontendRoot, "outside", "node_modules", "runtime.js");
+    const dependency = join(frontendRoot, "node_modules", "dependency", "index.js");
+    writeFileSync(importer, 'import "../../escaped-runtime.js";\n');
+    writeFileSync(escaped, `${"export const escaped = true;\n".repeat(600)}`);
+    mkdirSync(dirname(fakeDependency), { recursive: true });
+    mkdirSync(dirname(dependency), { recursive: true });
+    writeFileSync(fakeDependency, "export const fake = true;\n");
+    writeFileSync(dependency, "export const dependency = true;\n");
+
+    assert.equal(escapedSourceImport(sourceRoot, importer, "../../escaped-runtime.js"), true);
+    assert.equal(escapedSourceImport(sourceRoot, importer, "../inside.js"), false);
+    assert.equal(productionSourceViolation(escaped, { frontendRoot, sourceRoot }), escaped);
+    assert.equal(productionSourceViolation(fakeDependency, { frontendRoot, sourceRoot }), fakeDependency);
+    assert.equal(productionSourceViolation(dependency, { frontendRoot, sourceRoot }), "");
+    assert.equal(productionSourceViolation(importer, { frontendRoot, sourceRoot }), "");
+    const plugin = productionSourceBoundary({ frontendRoot, sourceRoot });
+    assert.throws(
+      () => plugin.transform.call({ error: (message) => assert.fail(message) }, "", escaped),
+      /Executable production module must live under frontend\/src/,
+    );
+
+    const result = analyzeSourceTree(sourceRoot);
+    assert.ok(result.failures.some((failure) => failure.includes("imports executable code outside src")));
+  } finally {
+    rmSync(frontendRoot, { recursive: true, force: true });
+  }
+});
+
+test("container builds include the production source boundary", () => {
+  const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+  const copy = "COPY scripts/production-source-boundary.mjs ./scripts/production-source-boundary.mjs";
+  const copyIndex = dockerfile.indexOf(copy);
+  const buildIndex = dockerfile.indexOf("RUN npm run build");
+
+  assert.ok(copyIndex >= 0, "Dockerfile must copy the production source boundary");
+  assert.ok(buildIndex >= 0, "Dockerfile must build the production bundle");
+  assert.ok(copyIndex < buildIndex, "the production source boundary must be copied before build");
 });
 
 test("collects literal import.meta.glob patterns from the AST", () => {
