@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadAndVerifyTestManifest } from "./test-manifest-policy.js";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifest = JSON.parse(fs.readFileSync(path.join(root, "test/test-manifest.json"), "utf8"));
+const manifest = loadAndVerifyTestManifest();
 const source = fs.readFileSync(path.join(root, "test/private-file.test.js"), "utf8");
 const declaredACLTests = [...source.matchAll(/test\("([^"]*ACL[^"]*)"/g)].map((match) => match[1]).sort();
 const expectedACLTests = [...manifest.windowsACLTests].sort();

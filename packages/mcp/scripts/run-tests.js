@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadAndVerifyTestManifest } from "./test-manifest-policy.js";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifest = JSON.parse(fs.readFileSync(path.join(root, "test/test-manifest.json"), "utf8"));
+const manifest = loadAndVerifyTestManifest();
 
 function discoverTests(directory) {
   return fs
