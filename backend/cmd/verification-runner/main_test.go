@@ -2,10 +2,62 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("AIPERMISSION_VERIFICATION_RUNNER_HELPER") == "1" {
+		mode := os.Args[len(os.Args)-1]
+		_, _ = os.Stdout.WriteString("structured-output\n")
+		_, _ = os.Stderr.WriteString("diagnostic-output\n")
+		if mode == "failure" {
+			os.Exit(7)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func TestRunCommandKeepsSuccessfulStderrOutOfStructuredOutput(t *testing.T) {
+	command := helperCommand(t, "success")
+	output, err := runCommand(command, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output != "structured-output\n" {
+		t.Fatalf("output = %q", output)
+	}
+}
+
+func TestRunCommandPreservesBothStreamsOnFailure(t *testing.T) {
+	command := helperCommand(t, "failure")
+	output, err := runCommand(command, "fixture")
+	if output != "structured-output\n" {
+		t.Fatalf("output = %q", output)
+	}
+	if err == nil {
+		t.Fatal("expected command failure")
+	}
+	for _, expected := range []string{
+		"fixture:",
+		"stdout:\nstructured-output",
+		"stderr:\ndiagnostic-output",
+	} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("error %q does not contain %q", err, expected)
+		}
+	}
+}
+
+func helperCommand(t *testing.T, mode string) *exec.Cmd {
+	t.Helper()
+	command := exec.Command(os.Args[0], "-test.run=^TestVerificationRunnerHelperProcess$", "--", mode)
+	command.Env = append(os.Environ(), "AIPERMISSION_VERIFICATION_RUNNER_HELPER=1")
+	return command
+}
 
 func TestVerifyEventsRequiresPassWithoutSkip(t *testing.T) {
 	const key = "example/package:TestOne"

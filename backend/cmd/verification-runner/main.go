@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -287,11 +288,28 @@ func runGo(arguments ...string) (string, error) {
 	} else {
 		return "", err
 	}
-	output, err := command.CombinedOutput()
+	return runCommand(command, "go "+strings.Join(arguments, " "))
+}
+
+func runCommand(command *exec.Cmd, display string) (string, error) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
 	if err != nil {
-		return string(output), fmt.Errorf("go %s: %w\n%s", strings.Join(arguments, " "), err, output)
+		return stdout.String(), fmt.Errorf(
+			"%s: %w\nstdout:\n%s\nstderr:\n%s",
+			display,
+			err,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
-	return string(output), nil
+	if stderr.Len() > 0 {
+		_, _ = os.Stderr.Write(stderr.Bytes())
+	}
+	return stdout.String(), nil
 }
 
 func moduleRoot() (string, error) {
