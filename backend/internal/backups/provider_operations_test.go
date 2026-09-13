@@ -1,6 +1,7 @@
 package backups
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -82,7 +83,8 @@ func TestQueuedUploadReloadsRotatedProviderCredential(t *testing.T) {
 		return DatabaseSnapshot{Path: snapshotPath}, nil
 	}
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, acquireOperation))
-	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", strings.NewReader(`{"idempotency_key":"queued-upload"}`))
+	request.Header.Set("Content-Type", "application/json")
 	request.SetPathValue("id", strconv.FormatInt(provider.ID, 10))
 	response := httptest.NewRecorder()
 	done := make(chan struct{})
@@ -109,6 +111,131 @@ func TestQueuedUploadReloadsRotatedProviderCredential(t *testing.T) {
 	}
 	if _, err := os.Stat(snapshotPath); !os.IsNotExist(err) {
 		t.Fatalf("snapshot was not removed after upload: %v", err)
+	}
+}
+
+func TestUploadRetryReconcilesOneRemoteVersionAfterUncertainResults(t *testing.T) {
+	for _, testCase := range []struct {
+		name              string
+		loseFirstResponse bool
+		failFirstMutation bool
+	}{
+		{name: "remote response loss", loseFirstResponse: true},
+		{name: "local commit failure", failFirstMutation: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			payload := []byte("first encrypted snapshot")
+			digest := sha256.Sum256(payload)
+			backup := ServiceBackup{
+				ID: "backup-stable", StreamID: "workspace-test", DatabaseName: "Test Database",
+				SourceInstallationID: backupSourceInstallationID(t.TempDir()), Filename: "database.aipdb",
+				SizeBytes: int64(len(payload)), SHA256: hex.EncodeToString(digest[:]), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+			var calls, committed atomic.Int64
+			service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if committed.CompareAndSwap(0, 1) {
+					body, err := io.ReadAll(r.Body)
+					if err != nil || !bytes.Equal(body, payload) {
+						t.Errorf("unexpected first upload: body=%q err=%v", body, err)
+						return
+					}
+					backup.SourceInstallationID = r.Header.Get("X-AIPermission-Source-Installation-ID")
+					if testCase.loseFirstResponse {
+						w.WriteHeader(http.StatusCreated)
+						_, _ = w.Write([]byte(`{"id":`))
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+				} else {
+					w.WriteHeader(http.StatusOK)
+				}
+				_ = json.NewEncoder(w).Encode(backup)
+			}))
+			t.Cleanup(service.Close)
+
+			database, databasePath := openProviderTestDatabase(t)
+			provider := createProviderTestRecord(t, database, service.URL, testOldServiceToken, "active")
+			scope := providerTestScope(database, databasePath)
+			var snapshots atomic.Int64
+			scope.CreateSnapshot = func(context.Context) (DatabaseSnapshot, error) {
+				contents := payload
+				if snapshots.Add(1) > 1 {
+					contents = []byte("newer local snapshot after response uncertainty")
+				}
+				path := filepath.Join(t.TempDir(), "snapshot.aipdb")
+				if err := os.WriteFile(path, contents, 0o600); err != nil {
+					return DatabaseSnapshot{}, err
+				}
+				return DatabaseSnapshot{Path: path}, nil
+			}
+			if testCase.failFirstMutation {
+				var mutations atomic.Int64
+				scope.Mutate = func(ctx context.Context, _ string, payload func() any, mutate func(*sql.Tx) error) error {
+					tx, err := database.BeginTx(ctx, nil)
+					if err != nil {
+						return err
+					}
+					defer tx.Rollback()
+					if err := mutate(tx); err != nil {
+						return err
+					}
+					_ = payload()
+					if mutations.Add(1) == 1 {
+						return errors.New("injected local commit failure")
+					}
+					return tx.Commit()
+				}
+			}
+			handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, nil))
+			invoke := func() *httptest.ResponseRecorder {
+				request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", strings.NewReader(`{"idempotency_key":"stable-upload"}`))
+				request.Header.Set("Content-Type", "application/json")
+				request.SetPathValue("id", strconv.FormatInt(provider.ID, 10))
+				response := httptest.NewRecorder()
+				handlers.UploadProviderBackup(response, request)
+				return response
+			}
+			if first := invoke(); first.Code < 400 {
+				t.Fatalf("first uncertain attempt unexpectedly succeeded: %d %s", first.Code, first.Body.String())
+			}
+			operation, err := NewStore(database).GetUploadOperation(context.Background(), "stable-upload")
+			if err != nil || operation.Status != "outcome_unknown" {
+				t.Fatalf("uncertain operation was not preserved: operation=%#v err=%v", operation, err)
+			}
+			if second := invoke(); second.Code != http.StatusCreated {
+				t.Fatalf("retry failed: %d %s", second.Code, second.Body.String())
+			}
+			operation, err = NewStore(database).GetUploadOperation(context.Background(), "stable-upload")
+			if err != nil || operation.Status != "completed" || operation.ProviderFileID != backup.ID {
+				t.Fatalf("operation was not reconciled: operation=%#v err=%v", operation, err)
+			}
+			if committed.Load() != 1 || calls.Load() != 2 {
+				t.Fatalf("remote versions=%d calls=%d, want one version across two calls", committed.Load(), calls.Load())
+			}
+		})
+	}
+}
+
+func TestUploadOperationCompletionIsIdempotentForTheSameRemoteBackup(t *testing.T) {
+	database, _ := openProviderTestDatabase(t)
+	provider := createProviderTestRecord(t, database, "http://127.0.0.1:1", testOldServiceToken, "active")
+	store := NewStore(database)
+	_, _, err := store.ClaimUploadOperation(context.Background(), ClaimUploadOperationRequest{
+		IdempotencyKey: "completion-race", ProviderID: provider.ID, DatabaseID: "db-test",
+		StreamID: "workspace-test", SourceInstallationID: "install-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-stable"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-stable"); err != nil {
+		t.Fatalf("same completion was not idempotent: %v", err)
+	}
+	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-different"); err == nil {
+		t.Fatal("different remote backup unexpectedly reused a completed operation")
 	}
 }
 

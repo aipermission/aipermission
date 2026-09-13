@@ -109,7 +109,21 @@ function idempotentPostPolicy(path) {
   if (path === "/api/console/bulk-exec") {
     return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };
   }
+  if (/^\/api\/backup\/providers\/\d+\/upload$/.test(path)) {
+    return { acknowledged: isAcknowledgedBackupUploadResponse, invalidResponseMessage: "Invalid backup upload response from gateway." };
+  }
   return null;
+}
+
+function isAcknowledgedBackupUploadResponse(data) {
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    Number.isSafeInteger(data.id) &&
+    data.id > 0 &&
+    typeof data.provider_file_id === "string" &&
+    data.provider_file_id.length > 0
+  );
 }
 
 function isAcknowledgedBulkCommandResponse(data) {

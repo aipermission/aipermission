@@ -94,6 +94,25 @@ test("local connector action retries retain idempotency after uncertain transpor
   }
 });
 
+test("backup upload retries retain one idempotency identity after response loss", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    if (bodies.length === 1) throw new TypeError("backup response lost");
+    return response({ id: 7, provider_file_id: "backup-stable" });
+  };
+  try {
+    await assert.rejects(() => apiPost("/api/backup/providers/3/upload", {}), /backup response lost/);
+    await apiPost("/api/backup/providers/3/upload", {});
+    await apiPost("/api/backup/providers/3/upload", {});
+    assert.equal(bodies[0].idempotency_key, bodies[1].idempotency_key);
+    assert.notEqual(bodies[1].idempotency_key, bodies[2].idempotency_key);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("bulk command retries retain idempotency across an uncertain response and reload", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-bulk-response-loss");

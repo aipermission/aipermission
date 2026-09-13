@@ -83,14 +83,14 @@ func TestServiceClientRejectsInvalidUploadMetadata(t *testing.T) {
 	if err := os.WriteFile(input, []byte("encrypted"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Upload(context.Background(), "stream-a", "bad\nname", "install-a", input); err == nil {
+	if _, _, err := client.Upload(context.Background(), "stream-a", "bad\nname", "install-a", "operation-a", input); err == nil {
 		t.Fatal("expected multiline database name rejection")
 	}
 	empty := filepath.Join(t.TempDir(), "empty.aipdb")
 	if err := os.WriteFile(empty, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", empty); err == nil {
+	if _, _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", "operation-a", empty); err == nil {
 		t.Fatal("expected empty snapshot rejection")
 	}
 }
@@ -283,7 +283,7 @@ func TestServiceClientLifecycleAndRedirectRejection(t *testing.T) {
 	if err := os.WriteFile(input, payload, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	created, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", input)
+	created, _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", "operation-a", input)
 	if err != nil || created.ID != "bkp_123" {
 		t.Fatalf("upload: item=%#v err=%v", created, err)
 	}
@@ -451,7 +451,7 @@ func TestServiceClientRejectsUploadChecksumMismatch(t *testing.T) {
 	if err := os.WriteFile(input, payload, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", input); err == nil || !strings.Contains(err.Error(), "checksum") {
+	if _, _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", "operation-a", input); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("expected upload checksum rejection, got %v", err)
 	}
 }

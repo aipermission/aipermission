@@ -25,12 +25,13 @@ import (
 
 const (
 	ServiceProviderType = "aipermission_backup"
-	ServiceProtocol     = "2"
+	ServiceProtocol     = "3"
 	maxServiceJSONBytes = 1 << 20
 )
 
 var requiredServiceCapabilities = []string{
 	"immutable_upload",
+	"idempotent_upload",
 	"list_streams",
 	"list_versions",
 	"download",
@@ -404,62 +405,71 @@ func listServicePages[T any](ctx context.Context, client *ServiceClient, endpoin
 	return nil, errors.New("backup service listing exceeded 100 pages")
 }
 
-func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sourceInstallationID, filePath string) (ServiceBackup, error) {
+func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sourceInstallationID, operationID, filePath string) (ServiceBackup, bool, error) {
 	if !validServiceIdentifier(streamID) || !validServiceIdentifier(sourceInstallationID) {
-		return ServiceBackup{}, ValidationError("backup stream or source installation id is invalid")
+		return ServiceBackup{}, false, ValidationError("backup stream or source installation id is invalid")
+	}
+	if !validServiceIdentifier(operationID) {
+		return ServiceBackup{}, false, ValidationError("backup upload operation id is invalid")
 	}
 	databaseName = strings.TrimSpace(databaseName)
 	if databaseName == "" || len(databaseName) > 128 || strings.ContainsAny(databaseName, "\r\n") {
-		return ServiceBackup{}, ValidationError("database name must contain 1 to 128 characters on one line")
+		return ServiceBackup{}, false, ValidationError("database name must contain 1 to 128 characters on one line")
 	}
 	file, err := os.Open(filePath)
 	if err != nil {
-		return ServiceBackup{}, fmt.Errorf("open encrypted backup snapshot: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("open encrypted backup snapshot: %w", err)
 	}
 	defer file.Close()
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return ServiceBackup{}, fmt.Errorf("inspect encrypted backup snapshot: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("inspect encrypted backup snapshot: %w", err)
 	}
 	if !fileInfo.Mode().IsRegular() || fileInfo.Size() < 1 {
-		return ServiceBackup{}, ValidationError("encrypted backup snapshot must be a non-empty regular file")
+		return ServiceBackup{}, false, ValidationError("encrypted backup snapshot must be a non-empty regular file")
 	}
 	expectedSHA256, err := hashAndRewind(file)
 	if err != nil {
-		return ServiceBackup{}, fmt.Errorf("hash encrypted backup snapshot: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("hash encrypted backup snapshot: %w", err)
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 	request, err := c.request(requestCtx, http.MethodPost, "/v1/streams/"+url.PathEscape(streamID)+"/backups", file, true)
 	if err != nil {
-		return ServiceBackup{}, err
+		return ServiceBackup{}, false, err
 	}
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.Header.Set("X-AIPermission-Database-Name", databaseName)
 	request.Header.Set("X-AIPermission-Source-Installation-ID", sourceInstallationID)
+	request.Header.Set("X-AIPermission-Operation-ID", operationID)
 	request.ContentLength = fileInfo.Size()
 	response, err := c.client.Do(request)
 	if err != nil {
-		return ServiceBackup{}, fmt.Errorf("backup service upload failed: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("backup service upload failed: %w", err)
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		return ServiceBackup{}, c.decodeServiceError(response)
+	replayed := response.StatusCode == http.StatusOK
+	if response.StatusCode != http.StatusCreated && !replayed {
+		return ServiceBackup{}, false, c.decodeServiceError(response)
 	}
 	var backup ServiceBackup
 	if err := decodeBoundedJSON(response.Body, &backup); err != nil {
-		return ServiceBackup{}, fmt.Errorf("parse backup service upload response: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("parse backup service upload response: %w", err)
 	}
 	if err := c.rejectReflectedToken(backup); err != nil {
-		return ServiceBackup{}, err
+		return ServiceBackup{}, false, err
 	}
-	if err := validateServiceBackup(backup, streamID, fileInfo.Size()); err != nil {
-		return ServiceBackup{}, err
+	expectedSize := fileInfo.Size()
+	if replayed {
+		expectedSize = 0
 	}
-	if !strings.EqualFold(backup.SHA256, expectedSHA256) {
-		return ServiceBackup{}, errors.New("backup service checksum does not match the uploaded snapshot")
+	if err := validateServiceBackup(backup, streamID, expectedSize); err != nil {
+		return ServiceBackup{}, false, err
 	}
-	return backup, nil
+	if !replayed && !strings.EqualFold(backup.SHA256, expectedSHA256) {
+		return ServiceBackup{}, false, errors.New("backup service checksum does not match the uploaded snapshot")
+	}
+	return backup, replayed, nil
 }
 
 func hashAndRewind(file *os.File) (string, error) {

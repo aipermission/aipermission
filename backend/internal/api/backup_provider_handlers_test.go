@@ -95,7 +95,7 @@ func TestBackupProviderLifecycleUsesEncryptedTokenAndImmutableVersions(t *testin
 		t.Fatalf("enable failed: %d %s", enable.Code, enable.Body.String())
 	}
 
-	upload := performJSON(handler, http.MethodPost, providerPath(created.ID, "/upload"), "", map[string]any{})
+	upload := performJSON(handler, http.MethodPost, providerPath(created.ID, "/upload"), "", map[string]any{"idempotency_key": "backup-upload-lifecycle"})
 	if upload.Code != http.StatusCreated {
 		t.Fatalf("upload failed: %d %s", upload.Code, upload.Body.String())
 	}
@@ -365,6 +365,7 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 				ProtocolVersion: backups.ServiceProtocol,
 				Capabilities: []string{
 					"immutable_upload",
+					"idempotent_upload",
 					"list_streams",
 					"list_versions",
 					"download",

@@ -71,6 +71,7 @@ func migrations() []migration {
 		historyKeysetPaginationMigration,
 		fileTransferStartIdempotencyMigration,
 		bulkCommandIdempotencyMigration,
+		backupUploadIdempotencyMigration,
 	)
 }
 
