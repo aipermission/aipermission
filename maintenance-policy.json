@@ -111,17 +111,102 @@
       "toTestPackageDepth": 1,
       "fromTestPackageMaxLines": 1500,
       "toTestPackageMaxLines": 900,
-      "reason": "Partition repository tooling tests into explicit maintenance, CI, and release owners."
+      "reason": "Separate repository tooling tests by top-level ownership while tightening the aggregate package cap."
+    }
+  ],
+  "toolingTestRoots": ["scripts/ci", "scripts/maintenance", "scripts/release"],
+  "toolingTestFiles": [
+    "scripts/ci/ci-workflow.test.js",
+    "scripts/ci/compose-topology.test.js",
+    "scripts/ci/documented-verification-contract.test.js",
+    "scripts/ci/gitleaks-history-scan.test.js",
+    "scripts/ci/markdown-link-check.test.js",
+    "scripts/ci/platform/windows-runtime-tests.test.js",
+    "scripts/ci/policy/verification-policy.test.js",
+    "scripts/ci/run-bounded-fuzz.test.js",
+    "scripts/maintenance/dependency-major-report.test.js",
+    "scripts/maintenance/maintenance-budget-check.test.js",
+    "scripts/maintenance/maintenance-budget-ratchet.test.js",
+    "scripts/maintenance/maintenance-source-kind.test.js",
+    "scripts/maintenance/run-tooling-tests.test.js",
+    "scripts/maintenance/trusted-git-base.test.js",
+    "scripts/release/images/publish-images-workflow.test.js",
+    "scripts/release/release-notes.test.js",
+    "scripts/release/release-version.test.js",
+    "scripts/release/source/verify-release-source.test.js"
+  ],
+  "windowsRuntimeTests": [
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/maintenanceconsole",
+      "name": "TestMaintenanceConsoleUnsupportedRuntimeFailsClosed"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/maintenanceconsole",
+      "name": "TestMaintenanceConsoleUnsupportedSupervisorFailsClosed"
     }
   ],
   "sourceOverrides": {},
   "backendCoverageDefaultFloor": 1.0,
+  "backendCoverageExceptionBaseline": 1,
   "backendCoverageNeutralPackages": [
     "internal/auditedmutation",
     "internal/buildinfo",
     "internal/gatewayworkspace/runtimeinput",
     "internal/runtimeoutcome"
   ],
+  "backendCoverageExcludedPackages": {
+    "cmd/e2e": {
+      "context": "linux-e2e",
+      "reason": "Browser E2E fixture executable is tested by the real-backend Playwright gate."
+    }
+  },
+  "backendCoveragePlatformFiles": {
+    "internal/db/ownership_windows.go": {
+      "platform": "windows",
+      "buildConstraint": "windows",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
+        }
+      ]
+    },
+    "internal/maintenanceconsole/maintenance_console_process_unsupported.go": {
+      "platform": "windows",
+      "buildConstraint": "!linux",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/maintenanceconsole",
+          "name": "TestMaintenanceConsoleUnsupportedRuntimeFailsClosed"
+        }
+      ]
+    },
+    "internal/maintenanceconsole/maintenance_console_supervisor_unsupported.go": {
+      "platform": "windows",
+      "buildConstraint": "!linux",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/maintenanceconsole",
+          "name": "TestMaintenanceConsoleUnsupportedSupervisorFailsClosed"
+        }
+      ]
+    }
+  },
   "backendCoverageFloors": {
     "internal/accesscontrol": 69.0,
     "internal/api": 57.0,

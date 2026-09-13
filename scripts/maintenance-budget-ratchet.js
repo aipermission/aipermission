@@ -32,6 +32,10 @@ function policySnapshot(input) {
     "go.testOwners.maxPerFile": policy.backendFanout.testFileInternalOwnersMax,
     "coverage.backend.default": -policy.backendCoverageDefaultFloor,
   };
+  if (policy.backendCoverageExceptionBaseline !== undefined) {
+    snapshot["backend.coverage.exceptionBaseline"] =
+      policy.backendCoverageExceptionBaseline;
+  }
   for (const extension of policy.frontendArchitecture.sourceExtensions) {
     snapshot[`coverage.frontend.extension.${extension}`] = 0;
   }
@@ -66,6 +70,33 @@ function policySnapshot(input) {
   }
   for (const packagePath of policy.backendCoverageNeutralPackages || []) {
     snapshot[`backend.coverage.neutral.${packagePath}`] = 0;
+  }
+  for (const [sourcePath, evidence] of Object.entries(
+    policy.backendCoveragePlatformFiles || {},
+  )) {
+    snapshot[`backend.coverage.platform.${sourcePath}`] = 0;
+    snapshot[
+      `backend.coverage.platform.${sourcePath}.constraint.${evidence.buildConstraint}`
+    ] = -evidence.minimumCoverage;
+    for (const test of evidence.tests || []) {
+      snapshot[
+        `backend.coverage.platform.${sourcePath}.evidence.${test.package}:${test.name}`
+      ] = 0;
+    }
+  }
+  for (const packagePath of Object.keys(
+    policy.backendCoverageExcludedPackages || {},
+  )) {
+    snapshot[`backend.coverage.excluded.${packagePath}`] = 0;
+  }
+  for (const testRoot of policy.toolingTestRoots || []) {
+    snapshot[`test.tooling.root.${testRoot}`] = 0;
+  }
+  for (const testPath of policy.toolingTestFiles || []) {
+    snapshot[`test.tooling.inventory.${testPath}`] = 0;
+  }
+  for (const test of policy.windowsRuntimeTests || []) {
+    snapshot[`test.windows.runtime.${test.package}:${test.name}`] = 0;
   }
   for (const [directory, value] of Object.entries(
     policy.backendPackage.stricterRatchets,
@@ -135,6 +166,12 @@ function approvedTestPackageMigration(base, current, name, fromDepth, toDepth) {
   const prefix = `migration.test.package.${budgetID}.${fromDepth}.${toDepth}.`;
   const marker = Object.keys(current).find((key) => key.startsWith(prefix));
   if (!marker) return false;
+  const bootstrap =
+    !Object.hasOwn(base, name) &&
+    budgetID === "repository-tooling" &&
+    fromDepth === 0 &&
+    toDepth === 1;
+  if (!bootstrap && !Object.hasOwn(base, marker)) return false;
   const [fromMax, toMax] = marker.slice(prefix.length).split(".").map(Number);
   const packageBudgetName = sourceBudgetNames(budgetID)[2];
   const baseMax =
@@ -142,7 +179,8 @@ function approvedTestPackageMigration(base, current, name, fromDepth, toDepth) {
   return (
     baseMax === fromMax &&
     current[packageBudgetName] === toMax &&
-    toMax < fromMax
+    toMax < fromMax &&
+    (!bootstrap || (fromMax === 1500 && toMax === 900))
   );
 }
 
@@ -160,12 +198,31 @@ function budgetIncreases(base, current) {
       (name) =>
         !Object.hasOwn(current, name) &&
         !name.startsWith("migration.test.package.") &&
+        !coverageExceptionRemovalAllowed(current, name) &&
         !removedExceptionRemainsProtected(base, current, name),
     )
     .map((name) => `${name} was removed from the current maintenance budget`);
   const increases = Object.entries(current).flatMap(([name, value]) => {
     if (!Object.hasOwn(base, name)) {
       if (name.startsWith("migration.test.package.") && value === 0) return [];
+      if (
+        name === "backend.coverage.exceptionBaseline" &&
+        value === 1 &&
+        !Object.hasOwn(base, name)
+      ) {
+        return [];
+      }
+      if (
+        value === 0 &&
+        (name.startsWith("test.tooling.inventory.") ||
+          name.startsWith("test.tooling.root.") ||
+          name.startsWith("test.windows.runtime."))
+      ) {
+        return [];
+      }
+      if (approvedCoverageExceptionBootstrap(base, name)) {
+        return [];
+      }
       if (name === "coverage.backend.default" && value < 0) return [];
       if (
         name.startsWith("backend.coverage.neutral.") &&
@@ -206,6 +263,36 @@ function budgetIncreases(base, current) {
       : [];
   });
   return [...removed, ...increases];
+}
+
+const initialCoverageExceptions = new Set([
+  "backend.coverage.platform.internal/db/ownership_windows.go",
+  "backend.coverage.platform.internal/db/ownership_windows.go.constraint.windows",
+  "backend.coverage.platform.internal/db/ownership_windows.go.evidence.github.com/aipermission/aipermission/backend/internal/db:TestDatabaseOwnershipIsExclusiveAndReleased",
+  "backend.coverage.platform.internal/db/ownership_windows.go.evidence.github.com/aipermission/aipermission/backend/internal/db:TestDatabaseOwnershipIsExclusiveAcrossProcesses",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_process_unsupported.go",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_process_unsupported.go.constraint.!linux",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_process_unsupported.go.evidence.github.com/aipermission/aipermission/backend/internal/maintenanceconsole:TestMaintenanceConsoleUnsupportedRuntimeFailsClosed",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_supervisor_unsupported.go",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_supervisor_unsupported.go.constraint.!linux",
+  "backend.coverage.platform.internal/maintenanceconsole/maintenance_console_supervisor_unsupported.go.evidence.github.com/aipermission/aipermission/backend/internal/maintenanceconsole:TestMaintenanceConsoleUnsupportedSupervisorFailsClosed",
+  "backend.coverage.excluded.cmd/e2e",
+]);
+
+function approvedCoverageExceptionBootstrap(base, name) {
+  return (
+    !Object.hasOwn(base, "backend.coverage.exceptionBaseline") &&
+    initialCoverageExceptions.has(name)
+  );
+}
+
+function coverageExceptionRemovalAllowed(current, name) {
+  if (name.startsWith("backend.coverage.excluded.")) return true;
+  if (!name.startsWith("backend.coverage.platform.")) return false;
+  const marker = ".evidence.";
+  const index = name.indexOf(marker);
+  if (index < 0) return true;
+  return !Object.hasOwn(current, name.slice(0, index));
 }
 
 function isRemovableException(name) {

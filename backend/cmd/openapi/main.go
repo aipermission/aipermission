@@ -20,29 +20,9 @@ func main() {
 	if err != nil {
 		fatalf("read routes: %v", err)
 	}
-	routes, err := restcontract.ParseRoutes(source)
+	output, err := generateContract(source)
 	if err != nil {
-		fatalf("parse core routes: %v", err)
-	}
-	catalog, err := builtin.NewCatalog()
-	if err != nil {
-		fatalf("load built-in connectors: %v", err)
-	}
-	connectorInfos := catalog.Connectors.List()
-	kinds := make([]string, 0, len(connectorInfos))
-	for _, info := range connectorInfos {
-		kinds = append(kinds, info.Kind)
-	}
-	adapterRoutes, err := catalog.Adapters.RouteDefinitions(kinds)
-	if err != nil {
-		fatalf("load connector adapter routes: %v", err)
-	}
-	for _, route := range adapterRoutes {
-		routes = append(routes, restcontract.Route{Method: route.Method, Path: route.Path})
-	}
-	output, err := restcontract.GenerateRoutes(routes)
-	if err != nil {
-		fatalf("generate contract: %v", err)
+		fatalf("%v", err)
 	}
 	if *check {
 		current, err := os.ReadFile(*outputPath)
@@ -57,6 +37,34 @@ func main() {
 	if err := os.WriteFile(*outputPath, output, 0o644); err != nil {
 		fatalf("write generated contract: %v", err)
 	}
+}
+
+func generateContract(source []byte) ([]byte, error) {
+	routes, err := restcontract.ParseRoutes(source)
+	if err != nil {
+		return nil, fmt.Errorf("parse core routes: %w", err)
+	}
+	catalog, err := builtin.NewCatalog()
+	if err != nil {
+		return nil, fmt.Errorf("load built-in connectors: %w", err)
+	}
+	connectorInfos := catalog.Connectors.List()
+	kinds := make([]string, 0, len(connectorInfos))
+	for _, info := range connectorInfos {
+		kinds = append(kinds, info.Kind)
+	}
+	adapterRoutes, err := catalog.Adapters.RouteDefinitions(kinds)
+	if err != nil {
+		return nil, fmt.Errorf("load connector adapter routes: %w", err)
+	}
+	for _, route := range adapterRoutes {
+		routes = append(routes, restcontract.Route{Method: route.Method, Path: route.Path})
+	}
+	output, err := restcontract.GenerateRoutes(routes)
+	if err != nil {
+		return nil, fmt.Errorf("generate contract: %w", err)
+	}
+	return output, nil
 }
 
 func fatalf(format string, arguments ...any) {

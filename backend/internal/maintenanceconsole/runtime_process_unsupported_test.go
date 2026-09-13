@@ -20,4 +20,14 @@ func TestMaintenanceConsoleUnsupportedRuntimeFailsClosed(t *testing.T) {
 		}
 		t.Fatalf("unsupported maintenance console error = %v", err)
 	}
+	terminateMaintenanceConsoleSupervisor(1)
+	if maintenanceConsoleProcessExists(1) {
+		t.Fatal("unsupported platform reported a maintenance console process")
+	}
+}
+
+func TestMaintenanceConsoleUnsupportedSupervisorFailsClosed(t *testing.T) {
+	if exitCode := runMaintenanceConsoleSupervisor("", nil); exitCode != 1 {
+		t.Fatalf("unsupported supervisor exit code = %d, want 1", exitCode)
+	}
 }

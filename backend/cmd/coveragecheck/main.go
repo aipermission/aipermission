@@ -6,12 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"io"
 	"math"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,15 +22,36 @@ import (
 )
 
 type maintenancePolicy struct {
-	BackendCoverageFloors          map[string]float64 `json:"backendCoverageFloors"`
-	BackendCoverageDefaultFloor    float64            `json:"backendCoverageDefaultFloor"`
-	BackendCoverageNeutralPackages []string           `json:"backendCoverageNeutralPackages"`
+	BackendCoverageFloors           map[string]float64                  `json:"backendCoverageFloors"`
+	BackendCoverageDefaultFloor     float64                             `json:"backendCoverageDefaultFloor"`
+	BackendCoverageNeutralPackages  []string                            `json:"backendCoverageNeutralPackages"`
+	BackendCoverageExcludedPackages map[string]coverageExclusion        `json:"backendCoverageExcludedPackages"`
+	BackendCoveragePlatformFiles    map[string]platformCoverageEvidence `json:"backendCoveragePlatformFiles"`
+}
+
+type platformCoverageEvidence struct {
+	Platform        string                `json:"platform"`
+	BuildConstraint string                `json:"buildConstraint"`
+	MinimumCoverage float64               `json:"minimumCoverage"`
+	Tests           []runtimeTestEvidence `json:"tests"`
+}
+
+type runtimeTestEvidence struct {
+	Package string `json:"package"`
+	Name    string `json:"name"`
+}
+
+type coverageExclusion struct {
+	Context string `json:"context"`
+	Reason  string `json:"reason"`
 }
 
 type coveragePolicy struct {
-	floors          map[string]float64
-	defaultFloor    float64
-	neutralPackages map[string]bool
+	floors           map[string]float64
+	defaultFloor     float64
+	neutralPackages  map[string]bool
+	excludedPackages map[string]coverageExclusion
+	platformFiles    map[string]platformCoverageEvidence
 }
 
 type coverageCount struct {
@@ -38,12 +61,21 @@ type coverageCount struct {
 }
 
 type productionFile struct {
-	hasStatements bool
+	hasStatements   bool
+	contexts        map[string]bool
+	buildConstraint string
 }
 
 type productionPackages map[string]map[string]productionFile
 
+type buildContext struct {
+	label, goos, goarch, cgo string
+	tags                     []string
+}
+
 var coveragePositionPattern = regexp.MustCompile(`^(.+\.go):(\d+)\.(\d+),(\d+)\.(\d+)$`)
+
+const backendModulePath = "github.com/aipermission/aipermission/backend"
 
 func main() {
 	profilePath := flag.String("profile", "coverage.out", "Go coverage profile to check")
@@ -92,8 +124,30 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 			}
 		}
 	}
+	for packagePath, exclusion := range policy.excludedPackages {
+		files, ok := packages[packagePath]
+		if !ok || !packageHasExecutableFiles(files) {
+			failures = append(failures, fmt.Sprintf("%s: configured coverage exclusion is not executable production code", packagePath))
+			continue
+		}
+		contexts := packageBuildContexts(files)
+		if len(contexts) != 1 || !contexts[exclusion.Context] {
+			failures = append(failures, fmt.Sprintf("%s: coverage exclusion must exist only in declared %s build context", packagePath, exclusion.Context))
+		}
+	}
+	for sourcePath, evidence := range policy.platformFiles {
+		packagePath := filepath.ToSlash(filepath.Dir(sourcePath))
+		file := filepath.Base(sourcePath)
+		productionFiles, packageExists := packages[packagePath]
+		metadata, fileExists := productionFiles[file]
+		if !packageExists || !fileExists || !metadata.hasStatements {
+			failures = append(failures, fmt.Sprintf("%s: configured platform source is not executable production code", sourcePath))
+		} else if metadata.buildConstraint != evidence.BuildConstraint {
+			failures = append(failures, fmt.Sprintf("%s: platform coverage exemption declares build constraint %q, source uses %q", sourcePath, evidence.BuildConstraint, metadata.buildConstraint))
+		}
+	}
 	for packagePath, count := range counts {
-		if !strings.HasPrefix(packagePath, "internal/") {
+		if !productionPackagePath(packagePath) {
 			continue
 		}
 		productionFiles, exists := packages[packagePath]
@@ -108,16 +162,22 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 		}
 	}
 	for _, packagePath := range sortedPackagePaths(packages) {
-		if policy.neutralPackages[packagePath] {
+		_, excluded := policy.excludedPackages[packagePath]
+		if policy.neutralPackages[packagePath] || excluded {
 			continue
 		}
 		count, measured := counts[packagePath]
 		if !measured || count.statements <= 0 {
+			if packageUsesOnlyPlatformCoverageEvidence(packagePath, packages[packagePath], policy.platformFiles) {
+				continue
+			}
 			failures = append(failures, fmt.Sprintf("%s: no coverage statements found", packagePath))
 			continue
 		}
 		for file, metadata := range packages[packagePath] {
-			if metadata.hasStatements && !count.files[file] {
+			sourcePath := packagePath + "/" + file
+			_, platformExempt := policy.platformFiles[sourcePath]
+			if metadata.hasStatements && !count.files[file] && !platformExempt {
 				failures = append(failures, fmt.Sprintf("%s/%s: executable production file has no coverage measurements", packagePath, file))
 			}
 		}
@@ -133,6 +193,39 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 	}
 	sort.Strings(failures)
 	return failures
+}
+
+func packageUsesOnlyPlatformCoverageEvidence(packagePath string, files map[string]productionFile, evidence map[string]platformCoverageEvidence) bool {
+	hasExecutableFile := false
+	for file, metadata := range files {
+		if !metadata.hasStatements {
+			continue
+		}
+		hasExecutableFile = true
+		if _, ok := evidence[packagePath+"/"+file]; !ok {
+			return false
+		}
+	}
+	return hasExecutableFile
+}
+
+func packageHasExecutableFiles(files map[string]productionFile) bool {
+	for _, metadata := range files {
+		if metadata.hasStatements {
+			return true
+		}
+	}
+	return false
+}
+
+func packageBuildContexts(files map[string]productionFile) map[string]bool {
+	contexts := map[string]bool{}
+	for _, metadata := range files {
+		for context := range metadata.contexts {
+			contexts[context] = true
+		}
+	}
+	return contexts
 }
 
 func readCoveragePolicy(path string) (coveragePolicy, error) {
@@ -151,13 +244,13 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 		return coveragePolicy{}, fmt.Errorf("invalid default backend coverage floor: %.1f", policy.BackendCoverageDefaultFloor)
 	}
 	for packagePath, floor := range policy.BackendCoverageFloors {
-		if !strings.HasPrefix(packagePath, "internal/") || floor < policy.BackendCoverageDefaultFloor || floor > 100 {
+		if !productionPackagePath(packagePath) || floor < policy.BackendCoverageDefaultFloor || floor > 100 {
 			return coveragePolicy{}, fmt.Errorf("invalid backend coverage floor %q: %.1f", packagePath, floor)
 		}
 	}
 	neutral := make(map[string]bool, len(policy.BackendCoverageNeutralPackages))
 	for _, packagePath := range policy.BackendCoverageNeutralPackages {
-		if !strings.HasPrefix(packagePath, "internal/") || neutral[packagePath] {
+		if !productionPackagePath(packagePath) || neutral[packagePath] {
 			return coveragePolicy{}, fmt.Errorf("invalid neutral backend coverage package %q", packagePath)
 		}
 		if _, ok := policy.BackendCoverageFloors[packagePath]; ok {
@@ -165,7 +258,39 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 		}
 		neutral[packagePath] = true
 	}
-	return coveragePolicy{floors: policy.BackendCoverageFloors, defaultFloor: policy.BackendCoverageDefaultFloor, neutralPackages: neutral}, nil
+	excluded := make(map[string]coverageExclusion, len(policy.BackendCoverageExcludedPackages))
+	for packagePath, exclusion := range policy.BackendCoverageExcludedPackages {
+		if !strings.HasPrefix(packagePath, "cmd/") || !productionPackagePath(packagePath) || neutral[packagePath] || exclusion.Context != "linux-e2e" || strings.TrimSpace(exclusion.Reason) == "" {
+			return coveragePolicy{}, fmt.Errorf("invalid excluded backend coverage package %q", packagePath)
+		}
+		if _, ok := policy.BackendCoverageFloors[packagePath]; ok {
+			return coveragePolicy{}, fmt.Errorf("backend coverage package %q is both floored and excluded", packagePath)
+		}
+		excluded[packagePath] = exclusion
+	}
+	platformFiles := make(map[string]platformCoverageEvidence, len(policy.BackendCoveragePlatformFiles))
+	for configuredPath, evidence := range policy.BackendCoveragePlatformFiles {
+		sourcePath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(configuredPath)))
+		expression, expressionErr := parseBuildConstraint(evidence.BuildConstraint)
+		if configuredPath != sourcePath || !productionPackagePath(filepath.ToSlash(filepath.Dir(sourcePath))) || filepath.Ext(sourcePath) != ".go" || evidence.Platform != "windows" || expressionErr != nil || !buildConstraintMatchesPlatform(expression, evidence.Platform) || evidence.MinimumCoverage <= 0 || evidence.MinimumCoverage > 100 || len(evidence.Tests) == 0 {
+			return coveragePolicy{}, fmt.Errorf("invalid backend coverage platform source %q", configuredPath)
+		}
+		for _, test := range evidence.Tests {
+			if strings.TrimSpace(test.Package) == "" || strings.TrimSpace(test.Name) == "" {
+				return coveragePolicy{}, fmt.Errorf("invalid backend coverage platform evidence %q", configuredPath)
+			}
+		}
+		platformFiles[sourcePath] = evidence
+	}
+	return coveragePolicy{
+		floors: policy.BackendCoverageFloors, defaultFloor: policy.BackendCoverageDefaultFloor,
+		neutralPackages: neutral, excludedPackages: excluded, platformFiles: platformFiles,
+	}, nil
+}
+
+func productionPackagePath(packagePath string) bool {
+	return packagePath == path.Clean(packagePath) &&
+		(strings.HasPrefix(packagePath, "internal/") || strings.HasPrefix(packagePath, "cmd/"))
 }
 
 func readCoverageProfile(path string) (map[string]coverageCount, error) {
@@ -265,15 +390,233 @@ func coveragePackage(position string) (string, string, error) {
 }
 
 func listProductionPackages() (productionPackages, error) {
-	command := exec.Command("go", "list", "-json", "./internal/...")
-	output, err := command.Output()
-	if err != nil {
-		return nil, fmt.Errorf("list production packages: %w", err)
+	contexts := productionBuildContexts()
+	inventories := make(map[string]productionPackages, len(contexts))
+	for _, context := range contexts {
+		inventory, err := listProductionPackagesFor(context)
+		if err != nil {
+			return nil, err
+		}
+		inventories[context.label] = inventory
 	}
-	return readProductionPackages(strings.NewReader(string(output)))
+	merged := mergeProductionPackages(inventories)
+	if err := requireCompleteProductionSourceInventory(".", merged); err != nil {
+		return nil, err
+	}
+	return merged, nil
+}
+
+func requireCompleteProductionSourceInventory(root string, inventory productionPackages) error {
+	unseen := []string{}
+	for _, packageRoot := range []string{"internal", "cmd"} {
+		err := filepath.WalkDir(filepath.Join(root, packageRoot), func(sourcePath string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return fmt.Errorf("production source tree contains symlink %q", sourcePath)
+			}
+			if entry.IsDir() {
+				if sourcePath != filepath.Join(root, packageRoot) && ignoredGoDirectory(entry.Name()) {
+					if !strings.HasPrefix(entry.Name(), "_") || !inventoryContainsDirectory(root, sourcePath, inventory) {
+						return filepath.SkipDir
+					}
+				}
+				return nil
+			}
+			name := entry.Name()
+			if filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+				return nil
+			}
+			if imported, err := importedTestdataPackage(sourcePath); err != nil {
+				return err
+			} else if imported != "" {
+				return fmt.Errorf("production source imports test-only package %q", imported)
+			}
+			relative, err := filepath.Rel(root, sourcePath)
+			if err != nil {
+				return err
+			}
+			relative = filepath.ToSlash(relative)
+			packagePath := filepath.ToSlash(filepath.Dir(relative))
+			metadata, represented := inventory[packagePath][name]
+			if !represented {
+				unseen = append(unseen, relative)
+				return nil
+			}
+			buildConstraint, err := productionFileBuildConstraint(sourcePath)
+			if err != nil {
+				return err
+			}
+			metadata.buildConstraint = buildConstraint
+			inventory[packagePath][name] = metadata
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("scan production sources: %w", err)
+		}
+	}
+	if len(unseen) > 0 {
+		sort.Strings(unseen)
+		return fmt.Errorf("production sources are absent from every supported build context: %s", strings.Join(unseen, ", "))
+	}
+	return nil
+}
+
+func inventoryContainsDirectory(root, sourcePath string, inventory productionPackages) bool {
+	relative, err := filepath.Rel(root, sourcePath)
+	if err != nil {
+		return false
+	}
+	directory := filepath.ToSlash(relative)
+	for packagePath := range inventory {
+		if packagePath == directory || strings.HasPrefix(packagePath, directory+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func productionFileBuildConstraint(sourcePath string) (string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), sourcePath, nil, parser.PackageClauseOnly|parser.ParseComments)
+	if err != nil {
+		return "", err
+	}
+
+	var found string
+	for _, group := range file.Comments {
+		if group.Pos() > file.Package {
+			break
+		}
+		for _, comment := range group.List {
+			line := strings.TrimSpace(comment.Text)
+			if !constraint.IsGoBuild(line) {
+				continue
+			}
+			if found != "" {
+				return "", fmt.Errorf("multiple //go:build constraints in %s", sourcePath)
+			}
+			expression, err := constraint.Parse(line)
+			if err != nil {
+				return "", fmt.Errorf("parse build constraint in %s: %w", sourcePath, err)
+			}
+			found = expression.String()
+		}
+	}
+	return found, nil
+}
+
+func parseBuildConstraint(value string) (constraint.Expr, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("empty build constraint")
+	}
+	return constraint.Parse("//go:build " + value)
+}
+
+func buildConstraintMatchesPlatform(expression constraint.Expr, platform string) bool {
+	if expression == nil {
+		return false
+	}
+	return expression.Eval(func(tag string) bool {
+		return tag == platform || tag == "amd64" || tag == "gc"
+	})
+}
+
+func importedTestdataPackage(sourcePath string) (string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), sourcePath, nil, parser.ImportsOnly)
+	if err != nil {
+		return "", err
+	}
+	for _, specification := range file.Imports {
+		packagePath, err := strconv.Unquote(specification.Path.Value)
+		if err != nil {
+			return "", err
+		}
+		if packagePath == "testdata" || strings.Contains(packagePath, "/testdata/") || strings.HasSuffix(packagePath, "/testdata") {
+			return packagePath, nil
+		}
+	}
+	return "", nil
+}
+
+func ignoredGoDirectory(name string) bool {
+	return name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
+}
+
+func productionBuildContexts() []buildContext {
+	return []buildContext{
+		{label: "host"},
+		{label: "windows", goos: "windows", goarch: "amd64", cgo: "0"},
+		{label: "linux-e2e", goos: "linux", goarch: "amd64", cgo: "1", tags: []string{"e2e"}},
+	}
+}
+
+func listProductionPackagesFor(context buildContext) (productionPackages, error) {
+	arguments := inventoryArguments(context)
+	command := exec.Command("go", arguments...)
+	if context.goos != "" {
+		command.Env = inventoryEnvironment(os.Environ(), context)
+	}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("list %s production packages: %w\n%s", context.label, err, output)
+	}
+	backendRoot, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("resolve backend root: %w", err)
+	}
+	return readProductionPackagesAt(strings.NewReader(string(output)), backendRoot)
+}
+
+func inventoryArguments(context buildContext) []string {
+	arguments := []string{"list", "-buildvcs=false", "-deps", "-json"}
+	if len(context.tags) > 0 {
+		arguments = append(arguments, "-tags="+strings.Join(context.tags, ","))
+	}
+	return append(arguments, "./internal/...", "./cmd/...")
+}
+
+func inventoryEnvironment(environment []string, context buildContext) []string {
+	filtered := make([]string, 0, len(environment)+3)
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, "GOOS=") || strings.HasPrefix(entry, "GOARCH=") || strings.HasPrefix(entry, "CGO_ENABLED=") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return append(filtered, "GOOS="+context.goos, "GOARCH="+context.goarch, "CGO_ENABLED="+context.cgo)
+}
+
+func mergeProductionPackages(inventories map[string]productionPackages) productionPackages {
+	merged := productionPackages{}
+	for context, inventory := range inventories {
+		for packagePath, files := range inventory {
+			if merged[packagePath] == nil {
+				merged[packagePath] = map[string]productionFile{}
+			}
+			for file, metadata := range files {
+				current := merged[packagePath][file]
+				current.hasStatements = current.hasStatements || metadata.hasStatements
+				if current.buildConstraint == "" {
+					current.buildConstraint = metadata.buildConstraint
+				}
+				if current.contexts == nil {
+					current.contexts = map[string]bool{}
+				}
+				current.contexts[context] = true
+				merged[packagePath][file] = current
+			}
+		}
+	}
+	return merged
 }
 
 func readProductionPackages(input io.Reader) (productionPackages, error) {
+	return readProductionPackagesAt(input, "")
+}
+
+func readProductionPackagesAt(input io.Reader, backendRoot string) (productionPackages, error) {
 	decoder := json.NewDecoder(input)
 	packages := productionPackages{}
 	for {
@@ -289,15 +632,38 @@ func readProductionPackages(input io.Reader) (productionPackages, error) {
 			}
 			return nil, fmt.Errorf("decode production package inventory: %w", err)
 		}
-		marker := "/backend/internal/"
-		index := strings.Index(item.ImportPath, marker)
-		if index < 0 {
-			return nil, fmt.Errorf("invalid production package inventory entry %q", item.ImportPath)
+		repositoryRoot := ""
+		if backendRoot != "" {
+			repositoryRoot = filepath.Dir(backendRoot)
+		}
+		repositoryLocal, err := directoryWithinRoot(item.Dir, repositoryRoot)
+		if err != nil {
+			return nil, fmt.Errorf("classify production package directory %q: %w", item.Dir, err)
+		}
+		backendLocal, err := directoryWithinRoot(item.Dir, backendRoot)
+		if err != nil {
+			return nil, fmt.Errorf("classify backend package directory %q: %w", item.Dir, err)
+		}
+		backendPackage := item.ImportPath == backendModulePath || strings.HasPrefix(item.ImportPath, backendModulePath+"/")
+		if !backendPackage {
+			if repositoryLocal {
+				return nil, fmt.Errorf("repository-local production dependency %q uses an external module path", item.ImportPath)
+			}
+			continue
+		}
+		if backendRoot != "" && strings.TrimSpace(item.Dir) != "" && !backendLocal {
+			return nil, fmt.Errorf("backend production package %q resolves outside the repository", item.ImportPath)
 		}
 		if len(item.GoFiles)+len(item.CgoFiles) == 0 {
 			continue
 		}
-		packagePath := "internal/" + item.ImportPath[index+len(marker):]
+		packagePath := strings.TrimPrefix(strings.TrimPrefix(item.ImportPath, backendModulePath), "/")
+		if !productionPackagePath(packagePath) {
+			return nil, fmt.Errorf("invalid production package inventory entry %q", item.ImportPath)
+		}
+		if packagePath == "testdata" || strings.Contains(packagePath, "/testdata/") || strings.HasSuffix(packagePath, "/testdata") {
+			return nil, fmt.Errorf("production inventory includes test-only package %q", item.ImportPath)
+		}
 		if _, exists := packages[packagePath]; exists {
 			return nil, fmt.Errorf("duplicate production package inventory entry %q", item.ImportPath)
 		}
@@ -311,7 +677,15 @@ func readProductionPackages(input io.Reader) (productionPackages, error) {
 					return nil, fmt.Errorf("inspect production source %s: %w", filepath.Join(item.Dir, file), err)
 				}
 			}
-			files[file] = productionFile{hasStatements: hasStatements}
+			metadata := productionFile{hasStatements: hasStatements}
+			if strings.TrimSpace(item.Dir) != "" {
+				buildConstraint, err := productionFileBuildConstraint(filepath.Join(item.Dir, file))
+				if err != nil {
+					return nil, fmt.Errorf("inspect production source %s: %w", filepath.Join(item.Dir, file), err)
+				}
+				metadata.buildConstraint = buildConstraint
+			}
+			files[file] = metadata
 		}
 		packages[packagePath] = files
 	}
@@ -319,6 +693,25 @@ func readProductionPackages(input io.Reader) (productionPackages, error) {
 		return nil, fmt.Errorf("production package inventory is empty")
 	}
 	return packages, nil
+}
+
+func directoryWithinRoot(directory, root string) (bool, error) {
+	if strings.TrimSpace(directory) == "" || strings.TrimSpace(root) == "" {
+		return false, nil
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false, err
+	}
+	canonicalDirectory, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		return false, err
+	}
+	relative, err := filepath.Rel(canonicalRoot, canonicalDirectory)
+	if err != nil {
+		return false, err
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))), nil
 }
 
 func productionFileHasStatements(path string) (bool, error) {

@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const repositoryRoot = path.join(__dirname, "../..");
+const repositoryRoot = path.join(__dirname, "../../..");
 const workflow = fs.readFileSync(
   path.join(repositoryRoot, ".github", "workflows", "publish-images.yml"),
   "utf8",
@@ -15,10 +15,12 @@ const workflow = fs.readFileSync(
 const promotionScript = path.join(
   __dirname,
   "..",
+  "..",
   "promote-container-images.sh",
 );
 const candidateScript = path.join(
   __dirname,
+  "..",
   "..",
   "build-container-candidate.sh",
 );

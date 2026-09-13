@@ -10,9 +10,9 @@ const {
   verifyNoRemovals,
   verifyWorkflows,
   workflowJobs,
-} = require("../verification-policy");
+} = require("../../verification-policy");
 
-const fixture = path.join(__dirname, "../..", "fixture.yml");
+const fixture = path.join(__dirname, "../../..", "fixture.yml");
 const gatePolicy = {
   required_checks: [
     {

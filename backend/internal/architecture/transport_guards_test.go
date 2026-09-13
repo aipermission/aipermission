@@ -1387,6 +1387,17 @@ func bindingContainsPackage(bindings []ast.Expr, expected string) bool {
 }
 
 func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
+	readFileDecoy, err := parser.ParseFile(token.NewFileSet(), "read.go", `package fixture
+import "os"
+func read(path string) { _, _ = os.ReadFile(path) }
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := dereferencedReadFileCalls(readFileDecoy, "routesPath"); calls != 0 {
+		t.Fatalf("non-dereferenced route reads = %d", calls)
+	}
+
 	tracked := map[string]map[string]bool{modulePath + "/internal/gatewayaccess": {"AccessScope": true}}
 	file, err := parser.ParseFile(token.NewFileSet(), "fixture.go", `package fixture
 import . "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -1553,8 +1564,11 @@ func dereferencedReadFileCalls(file *ast.File, binding string) int {
 			return true
 		}
 		dereference, ok := call.Args[0].(*ast.StarExpr)
+		if !ok {
+			return true
+		}
 		identifier, identifierOK := dereference.X.(*ast.Ident)
-		if ok && identifierOK && identifier.Name == binding {
+		if identifierOK && identifier.Name == binding {
 			count++
 		}
 		return true

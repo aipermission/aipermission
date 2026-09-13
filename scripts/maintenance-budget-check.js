@@ -42,6 +42,29 @@ function positiveInteger(value) {
   return Number.isInteger(value) && value > 0;
 }
 
+function validBackendPackagePath(value) {
+  return (
+    typeof value === "string" &&
+    value === value.trim() &&
+    value === path.posix.normalize(value) &&
+    /^(?:internal|cmd)\/[^/]/.test(value)
+  );
+}
+
+function validRelativePath(value, pattern) {
+  return (
+    typeof value === "string" &&
+    value === value.trim() &&
+    value === path.posix.normalize(value) &&
+    !path.posix.isAbsolute(value) &&
+    pattern.test(value)
+  );
+}
+
+function runtimeTestKey(entry) {
+  return `${entry?.package || ""}:${entry?.name || ""}`;
+}
+
 function isAPIExceptionPath(value) {
   return /(^|\/)internal\/api(?:\/|$)/.test(value);
 }
@@ -49,6 +72,9 @@ function isAPIExceptionPath(value) {
 function validatePolicy(candidate = policy, target = failures) {
   if (candidate.version !== 1)
     target.push("maintenance policy version must be 1");
+  if (candidate.backendCoverageExceptionBaseline !== 1) {
+    target.push("backend coverage exception baseline must be 1");
+  }
   const allowedMarkers = [".spec.", ".test."];
   const markers = [
     ...(candidate.frontendArchitecture?.testModuleMarkers || []),
@@ -116,8 +142,12 @@ function validatePolicy(candidate = policy, target = failures) {
       !positiveInteger(migration.fromTestPackageMaxLines) ||
       !positiveInteger(migration.toTestPackageMaxLines) ||
       migration.toTestPackageMaxLines >= migration.fromTestPackageMaxLines ||
-      budget.testPackageDepth !== migration.toTestPackageDepth ||
-      budget.testPackageMaxLines !== migration.toTestPackageMaxLines ||
+      !(
+        (budget.testPackageDepth === migration.fromTestPackageDepth &&
+          budget.testPackageMaxLines === migration.fromTestPackageMaxLines) ||
+        (budget.testPackageDepth === migration.toTestPackageDepth &&
+          budget.testPackageMaxLines === migration.toTestPackageMaxLines)
+      ) ||
       !String(migration.reason || "").trim()
     ) {
       target.push(`invalid source budget migration ${key}`);
@@ -151,7 +181,7 @@ function validatePolicy(candidate = policy, target = failures) {
     candidate.backendCoverageFloors || {},
   )) {
     if (
-      !packagePath.startsWith("internal/") ||
+      !validBackendPackagePath(packagePath) ||
       typeof floor !== "number" ||
       floor <= 0 ||
       floor < candidate.backendCoverageDefaultFloor ||
@@ -176,10 +206,125 @@ function validatePolicy(candidate = policy, target = failures) {
   }
   for (const packagePath of neutralCoverage) {
     if (
-      !packagePath.startsWith("internal/") ||
+      !validBackendPackagePath(packagePath) ||
       candidate.backendCoverageFloors?.[packagePath]
     ) {
       target.push(`invalid backend neutral coverage package ${packagePath}`);
+    }
+  }
+  const toolingTests = Array.isArray(candidate.toolingTestFiles)
+    ? candidate.toolingTestFiles
+    : [];
+  if (!Array.isArray(candidate.toolingTestFiles) || toolingTests.length === 0) {
+    target.push("tooling test inventory must not be empty");
+  } else if (new Set(toolingTests).size !== toolingTests.length) {
+    target.push("tooling test inventory must be unique");
+  }
+  const toolingRoots = Array.isArray(candidate.toolingTestRoots)
+    ? candidate.toolingTestRoots
+    : [];
+  if (!Array.isArray(candidate.toolingTestRoots) || toolingRoots.length === 0) {
+    target.push("tooling test roots must not be empty");
+  } else if (new Set(toolingRoots).size !== toolingRoots.length) {
+    target.push("tooling test roots must be unique");
+  }
+  for (const testRoot of toolingRoots) {
+    if (!validRelativePath(testRoot, /^scripts\/[^/]+$/)) {
+      target.push(`invalid tooling test root ${testRoot}`);
+    }
+  }
+  const repositoryTooling = budgetsByID.get("repository-tooling");
+  const toolingExtensions = new Set(repositoryTooling?.extensions || []);
+  const toolingMarkers =
+    candidate.frontendArchitecture?.testModuleMarkers || [];
+  for (const testPath of toolingTests) {
+    const extension = path.posix.extname(testPath);
+    const stem = path.posix.basename(testPath, extension);
+    if (
+      !validRelativePath(testPath, /^scripts\/[^/].+$/) ||
+      !toolingExtensions.has(extension) ||
+      !toolingMarkers.some((marker) => stem.endsWith(marker.slice(0, -1))) ||
+      !toolingRoots.some((testRoot) => testPath.startsWith(`${testRoot}/`))
+    ) {
+      target.push(`invalid tooling test inventory path ${testPath}`);
+    }
+  }
+  const runtimeTests = Array.isArray(candidate.windowsRuntimeTests)
+    ? candidate.windowsRuntimeTests
+    : [];
+  const runtimeTestKeys = runtimeTests.map(runtimeTestKey);
+  if (
+    !Array.isArray(candidate.windowsRuntimeTests) ||
+    runtimeTests.length === 0
+  ) {
+    target.push("Windows runtime test inventory must not be empty");
+  } else if (new Set(runtimeTestKeys).size !== runtimeTestKeys.length) {
+    target.push("Windows runtime test inventory must be unique");
+  }
+  for (const entry of runtimeTests) {
+    const modulePrefix = "github.com/aipermission/aipermission/backend/";
+    const packagePath = String(entry?.package || "").slice(modulePrefix.length);
+    if (
+      !String(entry?.package || "").startsWith(modulePrefix) ||
+      !validBackendPackagePath(packagePath) ||
+      !/^Test[A-Za-z0-9_]+$/.test(entry?.name || "")
+    ) {
+      target.push(`invalid Windows runtime test ${runtimeTestKey(entry)}`);
+    }
+  }
+  const runtimeEvidence = new Set(runtimeTestKeys);
+  const platformCoverage = candidate.backendCoveragePlatformFiles || {};
+  if (
+    !platformCoverage ||
+    Array.isArray(platformCoverage) ||
+    typeof platformCoverage !== "object"
+  ) {
+    target.push("backend platform coverage files must be an object");
+  } else {
+    for (const [sourcePath, evidence] of Object.entries(platformCoverage)) {
+      if (!validRelativePath(sourcePath, /^(?:internal|cmd)\/[^/].*\.go$/)) {
+        target.push(`invalid backend platform coverage source ${sourcePath}`);
+      }
+      if (
+        evidence?.platform !== "windows" ||
+        !String(evidence?.buildConstraint || "").trim() ||
+        typeof evidence?.minimumCoverage !== "number" ||
+        evidence.minimumCoverage <= 0 ||
+        evidence.minimumCoverage > 100 ||
+        !Array.isArray(evidence?.tests) ||
+        evidence.tests.length === 0
+      ) {
+        target.push(`invalid backend platform coverage evidence ${sourcePath}`);
+        continue;
+      }
+      for (const test of evidence.tests) {
+        if (!runtimeEvidence.has(runtimeTestKey(test))) {
+          target.push(
+            `backend platform coverage evidence ${sourcePath} references an unregistered Windows test ${runtimeTestKey(test)}`,
+          );
+        }
+      }
+    }
+  }
+  const excludedCoverage = candidate.backendCoverageExcludedPackages || {};
+  if (
+    !excludedCoverage ||
+    Array.isArray(excludedCoverage) ||
+    typeof excludedCoverage !== "object"
+  ) {
+    target.push("backend coverage excluded packages must be an object");
+  } else {
+    for (const [packagePath, exclusion] of Object.entries(excludedCoverage)) {
+      if (
+        !validBackendPackagePath(packagePath) ||
+        !packagePath.startsWith("cmd/") ||
+        exclusion?.context !== "linux-e2e" ||
+        !String(exclusion?.reason || "").trim() ||
+        candidate.backendCoverageFloors?.[packagePath] ||
+        neutralCoverage.includes(packagePath)
+      ) {
+        target.push(`invalid backend coverage excluded package ${packagePath}`);
+      }
     }
   }
   for (const [name, values] of [

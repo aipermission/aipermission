@@ -4,22 +4,27 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const workflow = fs.readFileSync(
-  path.join(root, ".github/workflows/ci.yml"),
-  "utf8",
-);
-const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
-
-test("CI verifies both generated connector catalogs", () => {
+const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+const workflow = read(".github/workflows/ci.yml");
+const makefile = read("Makefile");
+const policy = require("../../maintenance-policy.json");
+test("CI verifies generated catalogs and every tooling root", () => {
   assert.match(workflow, /node scripts\/connector-catalog\.js --check/);
   assert.match(workflow, /node scripts\/mcp-client-catalog\.mjs --check/);
+  for (const testRoot of policy.toolingTestRoots)
+    assert.match(workflow, new RegExp(`run-tooling-tests\\.js ${testRoot}`));
 });
-
 test("CI uses the fail-closed Windows ACL suite", () => {
   assert.match(workflow, /run: npm run test:windows-acl/);
   assert.doesNotMatch(
     workflow,
     /node --test --test-name-pattern=.*Windows ACL/,
+  );
+});
+test("native Windows runtime evidence stays on a Windows runner", () => {
+  assert.match(
+    workflow,
+    /backend-windows-runtime:[\s\S]*?runs-on: windows-latest[\s\S]*?node \.\.\/scripts\/ci\/windows-runtime-tests\.js/,
   );
 });
 

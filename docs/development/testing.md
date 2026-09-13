@@ -93,16 +93,47 @@ This runs:
 The reviewed backend coverage floors are enforced by
 `backend/cmd/coveragecheck` after the full package test run. That command is the
 consumer; `maintenance-policy.json` is the single source of truth for numeric
-thresholds. The policy protects transport, gateway-owner, audit, connector,
-session, token, Vault, and storage packages. A new security-sensitive package
-must be added once its baseline coverage is established.
+thresholds. Both `internal/*` and executable `cmd/*` packages are inventoried.
+The policy protects transport, gateway-owner, audit, connector, session, token,
+Vault, storage, and command packages. A new security-sensitive package must be
+added once its baseline coverage is established.
 
 Linux coverage inventory and floors are complemented by a native
 `windows-latest` backend job that executes the encrypted-database ownership
-tests rather than merely cross-compiling their binaries. The Linux job also
-cross-builds the complete Windows source graph. Keep both checks required:
-platform-tagged ownership behavior must not be represented as Linux coverage,
-and `go test -exec=true` is rejected as compile-only evidence.
+tests rather than merely cross-compiling their binaries. That job first compiles
+and starts the complete Windows `_test.go` graph with an empty test selection,
+then requires package-bound pass events for the named behavior tests and checks
+each mapped platform source against its own native coverage floor. The Linux
+job also cross-builds the complete Windows source graph. Active host and Windows
+source inventories are merged. The tagged `cmd/e2e` browser harness is also
+inventoried explicitly and excluded only while it belongs exclusively to the
+declared `linux-e2e` build context. If it enters the host production graph, the
+coverage gate fails even while its package remains listed as an exclusion.
+Executable Windows and non-Linux files must be mapped in
+`backendCoveragePlatformFiles` with their exact `//go:build` constraint, native
+required tests, and coverage floor instead of disappearing from coverage
+silently. Platform mappings and command exclusions
+are one-time ratcheted exceptions: adding another one requires a separately
+reviewed policy baseline.
+Keep all checks required: platform-tagged ownership behavior must not be
+represented as Linux coverage, and `go test -exec=true` alone is rejected as
+behavior evidence.
+
+Repository tooling tests are recursively discovered and must exactly match the
+ratcheted `toolingTestFiles` inventory beneath explicit `toolingTestRoots`.
+Discovery uses the same `.test`/`.spec` markers and JavaScript extensions as the
+source classifier, so changing a suffix cannot silently bypass execution.
+Native Windows behavior tests similarly
+come from `windowsRuntimeTests`; the Windows runner rejects execution on any
+other operating system and requires one package-bound pass event per entry.
+Deleting a test together with its manifest entry therefore fails the ratchet.
+Required-check and command moves use a two-change authorization flow: first add
+the exact migration while the old gate remains active, then move the gate only
+after that migration exists in the trusted base revision.
+Source-owner depth migrations use the same two-change rule after initial policy
+bootstrap: authorize the exact depth and cap transition first, then apply it
+from a later trusted base. Obsolete platform mappings and command exclusions
+may be removed without weakening the additions-only exception ratchet.
 
 Coverage floors intentionally trail the measured baseline by a small margin so
 toolchain-only statement shifts do not create noise. Critical package floors

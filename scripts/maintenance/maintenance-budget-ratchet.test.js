@@ -65,25 +65,10 @@ test("rejects test package depth increases", () => {
   );
 });
 
-test("permits only the declared repository tooling ownership split", () => {
-  const previous = copyPolicy();
-  const budget = previous.sourceBudgets.find(
-    (item) => item.id === "repository-tooling",
-  );
-  budget.testPackageDepth = 0;
-  budget.testPackageMaxLines = 1500;
-  previous.sourceBudgetMigrations = [];
-  const base = policySnapshot(previous);
-  const current = policySnapshot(policy);
-  assert.deepEqual(budgetIncreases(base, current), []);
-  delete current[
-    Object.keys(current).find((key) =>
-      key.startsWith("migration.test.package.repository-tooling."),
-    )
-  ];
-  assert.deepEqual(budgetIncreases(base, current), [
-    "test.package.depth.repository-tooling increased from 0 to 1",
-  ]);
+test("keeps repository tooling under one aggregate owner budget", () => {
+  const snapshot = policySnapshot(policy);
+  assert.equal(snapshot["test.package.depth.repository-tooling"], 1);
+  assert.equal(snapshot.repositoryToolingTestPackageBudget, 900);
 });
 
 test("permits the declared ownership split from a bootstrap ceiling", () => {
@@ -93,10 +78,40 @@ test("permits the declared ownership split from a bootstrap ceiling", () => {
     "migration.test.package.repository-tooling.0.1.1500.900": 0,
   };
   assert.deepEqual(budgetIncreases({}, current), []);
+  const arbitrary = {
+    "test.package.depth.repository-tooling": 2,
+    repositoryToolingTestPackageBudget: 800,
+    "migration.test.package.repository-tooling.0.2.1500.800": 0,
+  };
+  assert.ok(
+    budgetIncreases({}, arbitrary).some((failure) => failure.includes("depth")),
+  );
   delete current["migration.test.package.repository-tooling.0.1.1500.900"];
   assert.deepEqual(budgetIncreases({}, current), [
     "test.package.depth.repository-tooling is a new unreviewed budget (1)",
   ]);
+});
+
+test("requires ownership migrations to be pre-authorized by the trusted base", () => {
+  const marker = "migration.test.package.repository-tooling.1.2.900.800";
+  const before = {
+    "test.package.depth.repository-tooling": 1,
+    repositoryToolingTestPackageBudget: 900,
+  };
+  const selfAuthorized = {
+    ...before,
+    "test.package.depth.repository-tooling": 2,
+    repositoryToolingTestPackageBudget: 800,
+    [marker]: 0,
+  };
+  assert.ok(
+    budgetIncreases(before, selfAuthorized).some((failure) =>
+      failure.includes("depth"),
+    ),
+  );
+  const authorized = { ...before, [marker]: 0 };
+  assert.deepEqual(budgetIncreases(before, authorized), []);
+  assert.deepEqual(budgetIncreases(authorized, selfAuthorized), []);
 });
 
 test("permits removing a completed ownership migration marker", () => {
@@ -108,6 +123,91 @@ test("permits removing a completed ownership migration marker", () => {
     )
   ];
   assert.deepEqual(budgetIncreases(base, current), []);
+});
+
+test("ratchets tooling and Windows runtime test inventory", () => {
+  const base = policySnapshot(policy);
+  const added = copyPolicy();
+  added.toolingTestFiles.push("scripts/ci/future.test.js");
+  added.windowsRuntimeTests.push({
+    package: "github.com/aipermission/aipermission/backend/internal/future",
+    name: "TestFutureRuntime",
+  });
+  assert.deepEqual(budgetIncreases(base, policySnapshot(added)), []);
+
+  const removed = copyPolicy();
+  removed.toolingTestFiles.pop();
+  removed.windowsRuntimeTests.pop();
+  const failures = budgetIncreases(base, policySnapshot(removed));
+  assert.ok(
+    failures.some((failure) => failure.includes("test.tooling.inventory")),
+  );
+  assert.ok(
+    failures.some((failure) => failure.includes("test.windows.runtime")),
+  );
+});
+
+test("bootstraps platform exclusions once and rejects later expansion", () => {
+  const current = policySnapshot(policy);
+  const legacy = { ...current };
+  delete legacy["backend.coverage.exceptionBaseline"];
+  for (const key of Object.keys(legacy)) {
+    if (
+      key.startsWith("backend.coverage.platform.") ||
+      key.startsWith("backend.coverage.excluded.")
+    ) {
+      delete legacy[key];
+    }
+  }
+  assert.deepEqual(budgetIncreases(legacy, current), []);
+
+  const arbitraryBootstrap = {
+    ...current,
+    "backend.coverage.platform.internal/arbitrary_windows.go": 0,
+    "backend.coverage.platform.internal/arbitrary_windows.go.constraint.windows": -100,
+  };
+  assert.ok(
+    budgetIncreases(legacy, arbitraryBootstrap).some((failure) =>
+      failure.includes("arbitrary_windows"),
+    ),
+  );
+
+  const expanded = {
+    ...current,
+    "backend.coverage.platform.internal/future_windows.go": 0,
+    "backend.coverage.platform.internal/future_windows.go.constraint.windows": -100,
+    "backend.coverage.excluded.cmd/future": 0,
+  };
+  const expansionFailures = budgetIncreases(current, expanded);
+  assert.ok(
+    expansionFailures.some((failure) => failure.includes("future_windows")),
+  );
+  assert.ok(
+    expansionFailures.some((failure) => failure.includes("cmd/future")),
+  );
+
+  const reduced = { ...current };
+  delete reduced[
+    Object.keys(reduced).find((key) =>
+      key.startsWith("backend.coverage.platform."),
+    )
+  ];
+  delete reduced[
+    Object.keys(reduced).find((key) =>
+      key.startsWith("backend.coverage.excluded."),
+    )
+  ];
+  assert.deepEqual(budgetIncreases(current, reduced), []);
+
+  const replayed = {
+    ...reduced,
+    "backend.coverage.excluded.cmd/future": 0,
+  };
+  assert.ok(
+    budgetIncreases(reduced, replayed).some((failure) =>
+      failure.includes("cmd/future"),
+    ),
+  );
 });
 
 test("rejects removed coverage roots, extensions, markers, and classifiers", () => {

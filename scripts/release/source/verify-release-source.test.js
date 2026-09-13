@@ -15,9 +15,9 @@ const {
   requiredCheckMaxAgeMS,
   selectRequiredWorkflowRuns,
   verifiedRequiredCheckRuns,
-} = require("../verify-release-source");
+} = require("../../verify-release-source");
 
-const root = path.resolve(__dirname, "../..");
+const root = path.resolve(__dirname, "../../..");
 
 function workflowSteps(relativePath, jobID) {
   const source = fs.readFileSync(path.join(root, relativePath), "utf8");
