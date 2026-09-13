@@ -341,14 +341,13 @@ func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) 
 	dockerID := scenario.dockerID
 	store := connectortargets.NewStore(fixture.db)
 	sshConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             server.TargetID,
-		ProfileID:            server.ProfileID,
-		ConnectorKind:        "ssh",
-		ActionName:           "exec",
-		Input:                map[string]any{"command": "whoami"},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultRunning,
+		TokenID:       &token.ID,
+		TargetID:      server.TargetID,
+		ProfileID:     server.ProfileID,
+		ConnectorKind: "ssh",
+		ActionName:    "exec",
+		Input:         map[string]any{"command": "whoami"},
+		Status:        connectors.ResultRunning,
 	})
 	if err != nil {
 		t.Fatalf("insert ssh connector action request: %v", err)
@@ -382,14 +381,13 @@ func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) 
 	}
 	pgTarget, pgProfile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	connectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             pgTarget.ID,
-		ProfileID:            pgProfile.ID,
-		ConnectorKind:        "postgres",
-		ActionName:           "query_readonly",
-		Input:                map[string]any{"sql": "select customer from invoices where customer = 'needle_customer'"},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultRunning,
+		TokenID:       &token.ID,
+		TargetID:      pgTarget.ID,
+		ProfileID:     pgProfile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "query_readonly",
+		Input:         map[string]any{"sql": "select customer from invoices where customer = 'needle_customer'"},
+		Status:        connectors.ResultRunning,
 	})
 	if err != nil {
 		t.Fatalf("insert connector request: %v", err)
@@ -436,14 +434,13 @@ func assertConnectorHistoryRoutes(t *testing.T, scenario historyRoutesScenario) 
 		t.Fatalf("store second profile secret: %v", err)
 	}
 	secondConnectorRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             pgTarget.ID,
-		ProfileID:            secondPGProfile.ID,
-		ConnectorKind:        "postgres",
-		ActionName:           "get_tables",
-		Input:                map[string]any{"schema": "public"},
-		EncryptedPayloadJSON: "encrypted-payload-2",
-		Status:               connectors.ResultRunning,
+		TokenID:       &token.ID,
+		TargetID:      pgTarget.ID,
+		ProfileID:     secondPGProfile.ID,
+		ConnectorKind: "postgres",
+		ActionName:    "get_tables",
+		Input:         map[string]any{"schema": "public"},
+		Status:        connectors.ResultRunning,
 	})
 	if err != nil {
 		t.Fatalf("insert second connector request: %v", err)

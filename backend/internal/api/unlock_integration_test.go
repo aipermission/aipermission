@@ -181,7 +181,8 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	if err := server.initializeFileTransferRuntime(runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
-	transferStore := filetransfer.NewStore(testRuntimeDatabase(t, server, runtime))
+	runtimeDatabase := testRuntimeDatabase(t, server, runtime)
+	transferStore := filetransfer.NewStore(runtimeDatabase)
 	store := connectortargets.NewStore(database)
 	target, profile := createAPITestPostgresTargetProfile(t, store, secretVault)
 	surface, err := store.EnsureRuntimeSurface(t.Context(), connectortargets.EnsureRuntimeSurfaceInput{
@@ -232,7 +233,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	case <-time.After(time.Second):
 		t.Fatal("runtime close returned before transfer terminal write")
 	}
-	if err := database.PingContext(t.Context()); err == nil {
+	if err := runtimeDatabase.PingContext(t.Context()); err == nil {
 		t.Fatal("runtime database remained open after transfer drained")
 	}
 }

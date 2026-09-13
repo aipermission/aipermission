@@ -2,6 +2,8 @@ package api
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -12,7 +14,6 @@ import (
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -36,11 +37,34 @@ type runtimeTestOwner struct {
 
 var runtimeTestOwners sync.Map
 
-func testAdoptInput(database *sql.DB, secretVault *vault.Vault, tokenStore *tokens.Store) gatewayworkspace.AdoptInput {
-	return gatewayworkspace.AdoptInput{
-		Database: database, Vault: secretVault, TokenStore: tokenStore,
-		RuntimeInstanceID: gatewayaccess.NewRuntimeInstanceID,
+type testOpenInput struct {
+	Database *sql.DB
+	Password string
+}
+
+func testOpenWorkspaceInput(database *sql.DB) testOpenInput {
+	return testOpenInput{Database: database, Password: "test-password"}
+}
+
+func testDatabasePath(t testing.TB, database *sql.DB) string {
+	t.Helper()
+	path, err := databasePath(database)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return path
+}
+
+func databasePath(database *sql.DB) (string, error) {
+	var sequence int
+	var name, path string
+	if err := database.QueryRow(`SELECT seq, name, file FROM pragma_database_list WHERE name = 'main'`).Scan(&sequence, &name, &path); err != nil {
+		return "", fmt.Errorf("read test database path: %w", err)
+	}
+	if path == "" {
+		return "", errors.New("test database path is empty")
+	}
+	return path, nil
 }
 
 func registerRuntimeTestOwner(runtime *gatewayinfra.WorkspaceHandle, owner runtimeTestOwner) {

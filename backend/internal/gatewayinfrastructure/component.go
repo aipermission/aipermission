@@ -229,14 +229,6 @@ func (component *WorkspaceOwner) WorkspaceCount() int {
 	return component.workspace.Len()
 }
 
-func (component *WorkspaceOwner) AdoptWorkspace(ctx context.Context, input gatewayworkspace.AdoptInput) (*WorkspaceHandle, error) {
-	if component == nil || component.workspace == nil {
-		return nil, InitializationError()
-	}
-	owner, err := component.workspace.Adopt(ctx, input)
-	return component.handleFor(owner), err
-}
-
 func (component *WorkspaceOwner) OpenWorkspace(ctx context.Context, input OpenWorkspaceInput) (*WorkspaceHandle, error) {
 	if component == nil || component.workspace == nil {
 		return nil, InitializationError()

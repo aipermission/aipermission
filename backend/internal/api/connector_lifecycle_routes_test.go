@@ -42,19 +42,15 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 		t.Fatalf("insert running command request: %v", err)
 	}
 	store := connectortargets.NewStore(fixture.db)
-	actionRequest, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             server.TargetID,
-		ProfileID:            server.ProfileID,
-		ConnectorKind:        "ssh",
-		ActionName:           "exec",
-		Input:                map[string]any{"command": "sleep 100"},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultRunning,
-	})
-	if err != nil {
-		t.Fatalf("insert connector action request: %v", err)
-	}
+	actionRequest := insertSealedAPITestActionRequest(t, fixture, store, connectortargets.InsertActionRequestInput{
+		TokenID:       &token.ID,
+		TargetID:      server.TargetID,
+		ProfileID:     server.ProfileID,
+		ConnectorKind: "ssh",
+		ActionName:    "exec",
+		Input:         map[string]any{"command": "sleep 100"},
+		Status:        connectors.ResultRunning,
+	}, connectorActionExecutionEnvelope{Input: map[string]any{"command": "sleep 100"}, Payload: map[string]any{}})
 	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET dispatch_started_at = ? WHERE id = ?`, now, actionRequest.ID); err != nil {
 		t.Fatalf("mark connector action dispatched: %v", err)
 	}
@@ -126,7 +122,7 @@ func TestTargetsListHidesArchivedAndMismatchedProfiles(t *testing.T) {
 			target_id, connector_kind, kind, label, public_json, encrypted_secret_json,
 			status, created_at, updated_at
 		)
-		VALUES (?, 'ssh', 'private_key', 'wrong-kind', '{}', 'encrypted', 'active', ?, ?)`,
+		VALUES (?, 'ssh', 'private_key', 'wrong-kind', '{}', '', 'active', ?, ?)`,
 		mismatchTarget.ID,
 		now,
 		now,

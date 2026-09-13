@@ -13,8 +13,6 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func TestWorkspaceHandlesRemainDistinctAndComponentScoped(t *testing.T) {
@@ -177,9 +175,6 @@ func TestNilWorkspaceOwnerFailsClosed(t *testing.T) {
 	if handle, ok := workspace.LookupWorkspace("missing"); ok || handle != nil {
 		t.Fatalf("nil workspace lookup = (%p, %t), want (nil, false)", handle, ok)
 	}
-	if _, err := workspace.AdoptWorkspace(t.Context(), gatewayworkspace.AdoptInput{}); !errors.Is(err, gatewayworkspace.InitializationError()) {
-		t.Fatalf("nil workspace adoption error = %v, want initialization error", err)
-	}
 	if _, err := workspace.OpenWorkspace(t.Context(), OpenWorkspaceInput{}); !errors.Is(err, gatewayworkspace.InitializationError()) {
 		t.Fatalf("nil workspace open error = %v, want initialization error", err)
 	}
@@ -210,25 +205,23 @@ func (factory *metadataReaderFactory) CanRead(context.Context, int64, int64, tim
 }
 
 func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.T) {
-	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "workspace.aipdb"), "TestPassword123!")
+	path := filepath.Join(t.TempDir(), "workspace.aipdb")
+	database, err := dbpkg.OpenEncrypted(path, "TestPassword123!")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = database.Close() })
-	secretVault, err := vault.New("gateway-secret")
-	if err != nil {
+	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
 	workspace := gatewayworkspace.NewComponent(t.TempDir(), nil)
-	owner, err := workspace.Adopt(t.Context(), gatewayworkspace.AdoptInput{
-		ID: "workspace", Path: "workspace.aipdb", Database: database, Vault: secretVault,
-		TokenStore: tokens.NewStore(database), ConfiguredGatewaySecret: "gateway-secret",
+	owner, err := workspace.Open(t.Context(), gatewayworkspace.OpenInput{
+		ID: "workspace", Path: path, Password: "TestPassword123!", ConfiguredGatewaySecret: "gateway-secret",
 		Registry: connectors.NewRegistry(), AdapterRegistry: connectorapi.NewRegistry(),
-		RuntimeInstanceID: func() (string, error) { return "runtime-one", nil },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = workspace.Discard(owner, nil, nil) })
 	component := NewComponent(t.TempDir(), nil)
 	handle := component.handleFor(owner)
 	factory := &metadataReaderFactory{allowed: true}
@@ -237,7 +230,7 @@ func TestVaultMetadataReadKeepsWorkspaceDatabaseInsideInfrastructure(t *testing.
 	if err != nil || !allowed {
 		t.Fatalf("allowed=%t err=%v", allowed, err)
 	}
-	if factory.database != database {
+	if factory.database != owner.WorkspaceDatabase() {
 		t.Fatal("metadata reader did not receive the resolved workspace database")
 	}
 

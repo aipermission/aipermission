@@ -37,7 +37,6 @@ type Runtime struct {
 	owner    *workspaceruntime.Runtime
 }
 
-type AdoptInput runtimeinput.Adopt
 type OpenInput runtimeinput.Open
 type Identity struct {
 	ID            string
@@ -360,17 +359,6 @@ func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
 	return component.lifecycle.HTTP(converted)
 }
 
-func (component *Component) Adopt(ctx context.Context, input AdoptInput) (*Runtime, error) {
-	state, err := foundation.Adopt(ctx, foundation.AdoptInput{
-		ID: input.ID, Path: input.Path, Database: input.Database, Vault: input.Vault,
-		TokenStore: input.TokenStore, ConfiguredGatewaySecret: input.ConfiguredGatewaySecret,
-		Registry: input.Registry, AdapterRegistry: input.AdapterRegistry, RuntimeInstanceID: input.RuntimeInstanceID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return composeRuntime(workspaceruntime.New(state))
-}
 func (component *Component) Open(ctx context.Context, input OpenInput) (*Runtime, error) {
 	state, err := foundation.Open(ctx, foundation.OpenInput{
 		ID: input.ID, Path: input.Path, Password: input.Password,

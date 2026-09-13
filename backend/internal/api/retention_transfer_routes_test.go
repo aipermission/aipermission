@@ -39,16 +39,15 @@ func TestRetentionSettingsSaveAndPurgeOldRecords(t *testing.T) {
 	}
 	connectorStore := connectortargets.NewStore(fixture.db)
 	connectorRequest, err := connectorStore.InsertActionRequest(context.Background(), connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             server.TargetID,
-		ProfileID:            server.ProfileID,
-		ConnectorKind:        "ssh",
-		ActionName:           "read_console",
-		Source:               "mcp",
-		Input:                map[string]any{"tail_bytes": 100},
-		EncryptedPayloadJSON: "encrypted",
-		Reason:               "old connector action",
-		Status:               connectors.ResultCompleted,
+		TokenID:       &token.ID,
+		TargetID:      server.TargetID,
+		ProfileID:     server.ProfileID,
+		ConnectorKind: "ssh",
+		ActionName:    "read_console",
+		Source:        "mcp",
+		Input:         map[string]any{"tail_bytes": 100},
+		Reason:        "old connector action",
+		Status:        connectors.ResultCompleted,
 	})
 	if err != nil {
 		t.Fatalf("insert old connector request: %v", err)

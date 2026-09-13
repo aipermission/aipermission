@@ -892,7 +892,8 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if !strings.Contains(decryptedPayload.Reason, "raw-reason-token") || !strings.Contains(decryptedPayload.Reason, "reason-secret") {
 		t.Fatalf("encrypted execution payload should preserve raw reason: %#v", decryptedPayload)
 	}
-	if _, err := database.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = 'tampered' WHERE id = ?`, request.ID); err != nil {
+	tamperedPayload := sealAPITestActionPayloadWithVault(t, openAPITestVault(t), runtime.Identity().WorkspaceID, request.ID+1, map[string]any{"tampered": true})
+	if _, err := database.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = ? WHERE id = ?`, tamperedPayload, request.ID); err != nil {
 		t.Fatalf("tamper execution payload: %v", err)
 	}
 	if _, err := connectorCredentialBoundaryForActionRequest(t.Context(), server, runtime, request.ID); err == nil {

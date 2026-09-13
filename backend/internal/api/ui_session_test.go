@@ -10,8 +10,6 @@ import (
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *Server {
@@ -24,22 +22,18 @@ func uiSessionTestServer(t *testing.T, port, databaseID, retryIdentity string) *
 	server.bindInfrastructure(infrastructure)
 	if retryIdentity != "" {
 		database := openAPITestDB(t)
-		secretVault, err := vault.New("test-password")
-		if err != nil {
+		if _, err := database.Exec(`UPDATE settings SET value = ? WHERE key = 'workspace_uuid'`, databaseID); err != nil {
 			t.Fatal(err)
 		}
-		adopted := testAdoptInput(database, secretVault, tokens.NewStore(database))
-		adopted.ID = databaseID
-		adopted.Path = configuration.DataPath
-		adopted.ConfiguredGatewaySecret = "test-password"
-		adopted.Registry = testConnectorRegistry(t)
-		adopted.AdapterRegistry = connectorapi.NewRegistry()
-		adopted.RuntimeInstanceID = func() (string, error) { return "ui-session-runtime-" + port, nil }
-		runtime, err := server.workspaceOwner.AdoptWorkspace(t.Context(), adopted)
+		path := testDatabasePath(t, database)
+		runtime, err := server.workspaceOwner.OpenWorkspace(t.Context(), gatewayinfra.NewOpenWorkspaceInput(
+			databaseID, path, "test-password", "test-password", testConnectorRegistry(t), connectorapi.NewRegistry(),
+		))
 		if err != nil {
 			t.Fatal(err)
 		}
 		server.workspaceOwner.ActivateWorkspace(runtime)
+		t.Cleanup(func() { _ = server.workspaceOwner.DiscardWorkspace(runtime, nil, nil) })
 	}
 	return server
 }

@@ -39,7 +39,7 @@ func testConnectorApprovalContext(prepared actions.PreparedRequest, token tokens
 
 func TestRuntimePrepareConnectorActionUsesSSHConnectorProfile(t *testing.T) {
 	database := openAPITestDB(t)
-	resources := connectorresources.NewStore(database, openAPITestVault(t), "connector-actions-test-workspace").Scope(testSSHConnectorKind, "private_key")
+	resources := connectorresources.NewStore(database, openAPITestVault(t), connectorActionTestWorkspaceID).Scope(testSSHConnectorKind, "private_key")
 	profile := createTestSSHConnectorProfile(t, database, newTestSSHKeyStore(resources), "core-1")
 	targetRef := profile.TargetRef
 	runtime := newTestDatabaseRuntime(t, database)
@@ -153,7 +153,7 @@ func TestConnectorTransportRejectsUndeclaredApprovalDependency(t *testing.T) {
 func TestConnectorTransportRejectsDependencyDriftBeforeUse(t *testing.T) {
 	database := openAPITestDB(t)
 	vault := openAPITestVault(t)
-	resources := connectorresources.NewStore(database, vault, "transport-drift-workspace").Scope(testSSHConnectorKind, "private_key")
+	resources := connectorresources.NewStore(database, vault, connectorActionTestWorkspaceID).Scope(testSSHConnectorKind, "private_key")
 	profile := createTestSSHConnectorProfile(t, database, newTestSSHKeyStore(resources), "transport")
 	store := connectortargets.NewStore(database)
 	targetView, profileView, err := store.ResolveConnectorActionTarget(t.Context(), profile.TargetRef)

@@ -719,29 +719,47 @@ func TestAPIResolvesGatewayOwnersOnlyAtCompositionRoot(t *testing.T) {
 	}
 }
 
-func TestProductionAPIDoesNotExposeWorkspaceAdoption(t *testing.T) {
-	root := filepath.Join("..", "api")
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			return err
-		}
-		for _, declaration := range file.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if ok && function.Recv == nil && function.Name.Name == "NewServer" {
-				t.Errorf("%s exposes test-only workspace adoption in production; use NewLockedServer", path)
+func TestProductionWorkspaceGraphDoesNotExposeRuntimeAdoption(t *testing.T) {
+	forbidden := map[string]map[string]bool{
+		filepath.Join("..", "api"):                                        {"NewServer": true},
+		filepath.Join("..", "gatewayinfrastructure"):                      {"AdoptWorkspace": true},
+		filepath.Join("..", "gatewayworkspace"):                           {"Adopt": true, "AdoptInput": true},
+		filepath.Join("..", "gatewayworkspace", "runtimeinput"):           {"Adopt": true},
+		filepath.Join("..", "workspaceruntime", "foundation"):             {"Adopt": true, "AdoptInput": true},
+		filepath.Join("..", "workspaceruntime", "foundation", "identity"): {"Adopt": true},
+	}
+	for root, names := range forbidden {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				return err
+			}
+			for _, declaration := range file.Decls {
+				switch value := declaration.(type) {
+				case *ast.FuncDecl:
+					if names[value.Name.Name] {
+						t.Errorf("%s exposes forbidden workspace adoption function %s", path, value.Name.Name)
+					}
+				case *ast.GenDecl:
+					for _, specification := range value.Specs {
+						typeSpec, ok := specification.(*ast.TypeSpec)
+						if ok && names[typeSpec.Name.Name] {
+							t.Errorf("%s exposes forbidden workspace adoption type %s", path, typeSpec.Name.Name)
+						}
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("inspect production workspace graph under %s: %v", root, err)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("inspect API server constructors: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join("..", "gatewayinfrastructure", "bootstrap")); !os.IsNotExist(err) {
 		t.Error("gateway infrastructure bootstrap dependency bag must remain retired")

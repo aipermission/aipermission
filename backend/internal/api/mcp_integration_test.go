@@ -61,7 +61,7 @@ func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTes
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	secretVault, err := vault.New("gateway-secret")
+	secretVault, err := vault.New("test-password")
 	if err != nil {
 		t.Fatalf("new vault: %v", err)
 	}
@@ -78,7 +78,7 @@ func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTes
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, testAdoptInput(database, secretVault, tokenStore),
+	}, testOpenWorkspaceInput(database),
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 		WithMaintenanceConsole(maintenanceconsole.NewRuntime()),

@@ -61,31 +61,6 @@ func Initialize(ctx context.Context, database *sql.DB, configuredGatewaySecret s
 	}, nil
 }
 
-func Adopt(ctx context.Context, database *sql.DB, secretVault *vault.Vault, gatewaySecret string, runtimeID func() (string, error)) (State, error) {
-	workspaceUUID, err := projectvault.EnsureWorkspaceUUID(ctx, database)
-	if err != nil {
-		return State{}, fmt.Errorf("initialize workspace identity: %w", err)
-	}
-	uiRetryIdentity, err := projectvault.EnsureUIRetryIdentity(ctx, database)
-	if err != nil {
-		return State{}, fmt.Errorf("initialize UI retry identity: %w", err)
-	}
-	actionIdentityKey, err := actions.DeriveIdentityKey(gatewaySecret, workspaceUUID)
-	if err != nil {
-		return State{}, fmt.Errorf("initialize connector action identity: %w", err)
-	}
-	runtimeInstanceID, err := runtimeID()
-	if err != nil {
-		actions.ClearIdentityKey(actionIdentityKey)
-		return State{}, fmt.Errorf("initialize runtime identity: %w", err)
-	}
-	return State{
-		GatewaySecret: gatewaySecret, WorkspaceUUID: workspaceUUID,
-		UIRetryIdentity: uiRetryIdentity, RuntimeInstanceID: runtimeInstanceID,
-		ActionIdentityKey: actionIdentityKey, Vault: secretVault,
-	}, nil
-}
-
 func workspaceUUID(ctx context.Context, database *sql.DB, bindingRequired bool) (string, error) {
 	if bindingRequired {
 		return projectvault.ReadWorkspaceUUID(ctx, database)

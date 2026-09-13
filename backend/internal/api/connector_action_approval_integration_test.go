@@ -76,7 +76,8 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if err := fixture.db.QueryRow(`SELECT encrypted_payload_json FROM connector_action_requests WHERE id = ?`, result.Request.ID).Scan(&encryptedPayload); err != nil {
 		t.Fatalf("read encrypted approval payload: %v", err)
 	}
-	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = 'invalid' WHERE id = ?`, result.Request.ID); err != nil {
+	invalidPayload := sealAPITestActionPayloadWithPassword(t, fixture, result.Request.ID, "different-test-password", map[string]any{"invalid": true})
+	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = ? WHERE id = ?`, invalidPayload, result.Request.ID); err != nil {
 		t.Fatalf("corrupt encrypted approval payload: %v", err)
 	}
 	redactedListResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?status=approval_pending", "", nil)
@@ -394,34 +395,26 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		t.Fatalf("create token: %v", err)
 	}
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
-	pendingTarget, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             target.ID,
-		ProfileID:            profile.ID,
-		ConnectorKind:        testPostgresConnectorKind,
-		ActionName:           testPostgresReadonlySQLAction,
-		Input:                map[string]any{"sql": "select 1"},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultApprovalPending,
-		ApprovalContext:      `{}`,
-		ApprovalContextHash:  "approval-hash",
-	})
-	if err != nil {
-		t.Fatalf("insert pending target request: %v", err)
-	}
-	running, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             target.ID,
-		ProfileID:            profile.ID,
-		ConnectorKind:        testPostgresConnectorKind,
-		ActionName:           testPostgresReadonlySQLAction,
-		Input:                map[string]any{"sql": "select pg_sleep(10)"},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultRunning,
-	})
-	if err != nil {
-		t.Fatalf("insert running request: %v", err)
-	}
+	pendingTarget := insertSealedAPITestActionRequest(t, fixture, store, connectortargets.InsertActionRequestInput{
+		TokenID:             &token.ID,
+		TargetID:            target.ID,
+		ProfileID:           profile.ID,
+		ConnectorKind:       testPostgresConnectorKind,
+		ActionName:          testPostgresReadonlySQLAction,
+		Input:               map[string]any{"sql": "select 1"},
+		Status:              connectors.ResultApprovalPending,
+		ApprovalContext:     `{}`,
+		ApprovalContextHash: "approval-hash",
+	}, connectorActionExecutionEnvelope{Input: map[string]any{"sql": "select 1"}, Payload: map[string]any{}})
+	running := insertSealedAPITestActionRequest(t, fixture, store, connectortargets.InsertActionRequestInput{
+		TokenID:       &token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ConnectorKind: testPostgresConnectorKind,
+		ActionName:    testPostgresReadonlySQLAction,
+		Input:         map[string]any{"sql": "select pg_sleep(10)"},
+		Status:        connectors.ResultRunning,
+	}, connectorActionExecutionEnvelope{Input: map[string]any{"sql": "select pg_sleep(10)"}, Payload: map[string]any{}})
 	updateTarget := performJSON(fixture.server.Handler(), http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10), "", updateConnectorTargetRequest{
 		Name: "main-db-renamed",
 		Config: map[string]any{
@@ -450,21 +443,17 @@ func TestConnectorTargetAndProfileUpdatesStalePendingApprovals(t *testing.T) {
 		t.Fatalf("running request should not be stale from target update: %#v", gotRunning)
 	}
 
-	pendingProfile, err := store.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
-		TokenID:              &token.ID,
-		TargetID:             target.ID,
-		ProfileID:            profile.ID,
-		ConnectorKind:        testPostgresConnectorKind,
-		ActionName:           testPostgresGetSchemasAction,
-		Input:                map[string]any{},
-		EncryptedPayloadJSON: "encrypted-payload",
-		Status:               connectors.ResultApprovalPending,
-		ApprovalContext:      `{}`,
-		ApprovalContextHash:  "approval-hash",
-	})
-	if err != nil {
-		t.Fatalf("insert pending profile request: %v", err)
-	}
+	pendingProfile := insertSealedAPITestActionRequest(t, fixture, store, connectortargets.InsertActionRequestInput{
+		TokenID:             &token.ID,
+		TargetID:            target.ID,
+		ProfileID:           profile.ID,
+		ConnectorKind:       testPostgresConnectorKind,
+		ActionName:          testPostgresGetSchemasAction,
+		Input:               map[string]any{},
+		Status:              connectors.ResultApprovalPending,
+		ApprovalContext:     `{}`,
+		ApprovalContextHash: "approval-hash",
+	}, connectorActionExecutionEnvelope{Input: map[string]any{}, Payload: map[string]any{}})
 	updateProfile := performJSON(fixture.server.Handler(), http.MethodPut, "/api/connector-targets/"+strconv.FormatInt(target.ID, 10)+"/profiles/"+strconv.FormatInt(profile.ID, 10), "", updateConnectorCredentialProfileRequest{
 		Kind:  "username_password",
 		Label: "readonly-renamed",

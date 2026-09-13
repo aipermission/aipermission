@@ -12,7 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/db"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 	"github.com/aipermission/aipermission/backend/internal/workspaceruntime/foundation/identity"
 )
@@ -35,35 +34,6 @@ type OpenInput struct {
 	ConfiguredGatewaySecret string
 	Registry                connectors.Catalog
 	AdapterRegistry         connectorapi.Catalog
-}
-
-type AdoptInput struct {
-	ID                      string
-	Path                    string
-	Database                *sql.DB
-	Vault                   *vault.Vault
-	TokenStore              *tokens.Store
-	ConfiguredGatewaySecret string
-	Registry                connectors.Catalog
-	AdapterRegistry         connectorapi.Catalog
-	RuntimeInstanceID       func() (string, error)
-}
-
-func Adopt(ctx context.Context, input AdoptInput) (State, error) {
-	if input.Database == nil || input.Vault == nil || input.Registry == nil || input.AdapterRegistry == nil || input.RuntimeInstanceID == nil {
-		return State{}, fmt.Errorf("adopt workspace runtime: required composition dependency is unavailable")
-	}
-	identityState, err := identity.Adopt(
-		ctx, input.Database, input.Vault, input.ConfiguredGatewaySecret, input.RuntimeInstanceID,
-	)
-	if err != nil {
-		return State{}, err
-	}
-	return State{
-		ID: input.ID, Path: input.Path, Database: input.Database,
-		Registry: input.Registry, AdapterRegistry: input.AdapterRegistry,
-		TokenStore: input.TokenStore, Identity: identityState,
-	}, nil
 }
 
 func Open(ctx context.Context, input OpenInput) (_ State, resultErr error) {

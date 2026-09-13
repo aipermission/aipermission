@@ -6,13 +6,20 @@ import (
 	"fmt"
 
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
-	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace"
 )
 
-// NewServer adopts an already opened workspace for package-level integration
-// tests. Production always starts locked and opens storage through lifecycle.
-func NewServer(configuration RuntimeConfiguration, adopted gatewayworkspace.AdoptInput, options ...ServerOption) (*Server, error) {
+// NewServer opens an encrypted fixture through the same owned workspace path
+// used by production. It exists only in package-level integration tests.
+func NewServer(configuration RuntimeConfiguration, fixture testOpenInput, options ...ServerOption) (*Server, error) {
+	if fixture.Database == nil || fixture.Password == "" {
+		return nil, errors.New("test workspace fixture is incomplete")
+	}
 	cfg := snapshotRuntimeConfiguration(configuration)
+	path, err := databasePath(fixture.Database)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DataPath = path
 	resolved := resolveServerOptions(options)
 	if resolved.err != nil {
 		return nil, fmt.Errorf("snapshot connector catalog: %w", resolved.err)
@@ -23,12 +30,10 @@ func NewServer(configuration RuntimeConfiguration, adopted gatewayworkspace.Adop
 	if err := server.initializeWorkspaceLifecycle(); err != nil {
 		return nil, err
 	}
-	adopted.ID = workspaceOwner.WorkspaceSelection().ID
-	adopted.Path = cfg.DataPath
-	adopted.ConfiguredGatewaySecret = cfg.GatewaySecret
-	adopted.Registry = resolved.registry
-	adopted.AdapterRegistry = resolved.adapterRegistry
-	runtime, err := workspaceOwner.AdoptWorkspace(context.Background(), adopted)
+	runtime, err := workspaceOwner.OpenWorkspace(context.Background(), gatewayinfra.NewOpenWorkspaceInput(
+		workspaceOwner.WorkspaceSelection().ID, cfg.DataPath, fixture.Password, cfg.GatewaySecret,
+		resolved.registry, resolved.adapterRegistry,
+	))
 	if err != nil {
 		return nil, err
 	}

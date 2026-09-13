@@ -230,19 +230,17 @@ func newConnectorActionTestRuntime(
 	actionIdentityKey []byte,
 ) *gatewayinfra.WorkspaceHandle {
 	t.Helper()
-	infrastructure := gatewayinfra.NewComponent(filepath.Join(t.TempDir(), "workspace.aipdb"), nil)
+	path := testDatabasePath(t, database)
+	infrastructure := gatewayinfra.NewComponent(path, nil)
 	workspaceOwner := infrastructure.WorkspaceOwner()
 	adapters := connectorapi.NewRegistry()
-	adopted := testAdoptInput(database, secretVault, tokenStore)
-	adopted.ID = workspaceUUID
-	adopted.ConfiguredGatewaySecret = "test-password"
-	adopted.Registry = registry
-	adopted.AdapterRegistry = adapters
-	adopted.RuntimeInstanceID = func() (string, error) { return "test-runtime", nil }
-	runtime, err := workspaceOwner.AdoptWorkspace(t.Context(), adopted)
+	runtime, err := workspaceOwner.OpenWorkspace(t.Context(), gatewayinfra.NewOpenWorkspaceInput(
+		workspaceUUID, path, "test-password", "test-password", registry, adapters,
+	))
 	if err != nil {
-		t.Fatalf("adopt test runtime: %v", err)
+		t.Fatalf("open test runtime: %v", err)
 	}
+	t.Cleanup(func() { _ = workspaceOwner.DiscardWorkspace(runtime, nil, nil) })
 	registerRuntimeTestOwner(runtime, runtimeTestOwner{
 		workspaceOwner: workspaceOwner, accessOwner: infrastructure.AccessOwner(),
 		connectorActionOwner: infrastructure.ConnectorActionOwner(), connectorManagementOwner: infrastructure.ConnectorManagementOwner(),
@@ -290,11 +288,47 @@ func connectorActionTestIdentityKey(t *testing.T) []byte {
 
 func openAPITestVault(t *testing.T) *vault.Vault {
 	t.Helper()
-	secretVault, err := vault.New("test-gateway-secret")
+	secretVault, err := vault.New("test-password")
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
 	return secretVault
+}
+
+func sealAPITestActionPayload(t *testing.T, fixture apiTestFixture, requestID int64, payload any) string {
+	t.Helper()
+	runtime := fixture.server.activeRuntime()
+	return sealAPITestActionPayloadWithVault(t, testRuntimeVault(t, fixture.server, runtime), runtime.Identity().WorkspaceID, requestID, payload)
+}
+
+func sealAPITestActionPayloadWithVault(t *testing.T, secretVault *vault.Vault, workspaceID string, requestID int64, payload any) string {
+	t.Helper()
+	encrypted, err := recordcrypto.EncryptJSON(secretVault, workspaceID, recordcrypto.ConnectorActionRequest, requestID, payload)
+	if err != nil {
+		t.Fatalf("encrypt connector action fixture: %v", err)
+	}
+	return encrypted
+}
+
+func sealAPITestActionPayloadWithPassword(t *testing.T, fixture apiTestFixture, requestID int64, password string, payload any) string {
+	t.Helper()
+	secretVault, err := vault.New(password)
+	if err != nil {
+		t.Fatalf("create connector action fixture vault: %v", err)
+	}
+	return sealAPITestActionPayloadWithVault(t, secretVault, fixture.server.activeRuntime().Identity().WorkspaceID, requestID, payload)
+}
+
+func insertSealedAPITestActionRequest(t *testing.T, fixture apiTestFixture, store *connectortargets.Store, input connectortargets.InsertActionRequestInput, payload any) connectortargets.ActionRequest {
+	t.Helper()
+	input.EncryptedPayloadJSON = ""
+	request, _, err := store.InsertSealedActionRequestIdempotent(t.Context(), input, func(requestID int64) (string, error) {
+		return sealAPITestActionPayload(t, fixture, requestID, payload), nil
+	})
+	if err != nil {
+		t.Fatalf("insert sealed connector action fixture: %v", err)
+	}
+	return request
 }
 
 func createAPITestPostgresTargetProfile(t *testing.T, store *connectortargets.Store, secretVault *vault.Vault, workspaceIDs ...string) (connectortargets.Target, connectortargets.CredentialProfile) {

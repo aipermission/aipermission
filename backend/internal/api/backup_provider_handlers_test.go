@@ -20,8 +20,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/backups"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
-	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 const backupAPITestPassword = "M7!river-Quartz_92fox"
@@ -241,12 +239,18 @@ func TestBackupProviderRoutesRejectUnsupportedAndLockedRequests(t *testing.T) {
 
 func TestDatabasePasswordChangeRequiresRemoteBackupStrengthWhileProviderActive(t *testing.T) {
 	fixture := newBackupAPITestFixture(t, backupAPITestPassword)
-	store := backups.NewStore(fixture.db)
-	if _, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
-		ProviderType: backups.ServiceProviderType, Name: "Active", Status: "active",
-		Public: map[string]any{"base_url": "https://backup.example.com"}, Encrypted: "ciphertext",
-	}); err != nil {
-		t.Fatal(err)
+	create := performJSON(fixture.server.Handler(), http.MethodPost, "/api/backup/providers", "", map[string]any{
+		"provider_type": backups.ServiceProviderType,
+		"name":          "Active",
+		"public":        map[string]any{"base_url": "https://backup.example.com"},
+		"secret":        map[string]any{"token": backupAPITestToken},
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create backup provider: %d %s", create.Code, create.Body.String())
+	}
+	created := decodeRouteResponse[backups.ProviderResponse](t, create.Body.Bytes())
+	if _, err := fixture.db.Exec(`UPDATE backup_providers SET status = 'active' WHERE id = ?`, created.ID); err != nil {
+		t.Fatalf("activate backup provider fixture: %v", err)
 	}
 	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/databases/change-password", "", changeDatabasePasswordRequest{
 		CurrentPassword: backupAPITestPassword,
@@ -327,14 +331,10 @@ func newBackupAPITestFixture(t *testing.T, password string) backupAPITestFixture
 	if err != nil {
 		t.Fatal(err)
 	}
-	secretVault, err := vault.New("backup-api-test-gateway-secret")
-	if err != nil {
-		t.Fatal(err)
-	}
 	srv, err := NewServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: path,
 		GatewaySecret: "backup-api-test-gateway-secret", AllowedOrigins: []string{"http://localhost:3001"},
-	}, testAdoptInput(database, secretVault, tokens.NewStore(database)))
+	}, testOpenInput{Database: database, Password: password})
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
