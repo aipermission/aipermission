@@ -1,9 +1,9 @@
-package backups
+package passwordpolicy
 
 import "testing"
 
-func TestValidateRemoteBackupPassword(t *testing.T) {
-	if err := ValidateRemoteBackupPassword("M7!river-Quartz_92fox", "My Database"); err != nil {
+func TestValidate(t *testing.T) {
+	if err := Validate("M7!river-Quartz_92fox", "My Database"); err != nil {
 		t.Fatalf("expected strong password: %v", err)
 	}
 	tests := []struct {
@@ -20,7 +20,7 @@ func TestValidateRemoteBackupPassword(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := ValidateRemoteBackupPassword(test.password, test.database); err == nil {
+			if err := Validate(test.password, test.database); err == nil {
 				t.Fatal("expected password rejection")
 			}
 		})
