@@ -3,8 +3,11 @@ package gatewaytransfer
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +23,56 @@ type revisionGateTransferAdapter struct {
 	started     chan struct{}
 	proceed     chan struct{}
 	remoteCalls atomic.Int32
+}
+
+type cancelCommitTransferAdapter struct {
+	rejectingTransferAdapter
+	started chan struct{}
+}
+
+func (adapter *cancelCommitTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, _ connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+	close(adapter.started)
+	<-ctx.Done()
+	return connectorapi.TransferResult{Bytes: 7, ChecksumSHA256: "remote-commit"}, nil
+}
+
+func TestCancelWaitsForRemoteUploadOutcomeBeforePersistingStatus(t *testing.T) {
+	adapter := &cancelCommitTransferAdapter{started: make(chan struct{})}
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	fixture.handlers.scope = func(http.ResponseWriter) (*transferapp.Runtime, bool) { return fixture.runtime, true }
+	tempPath := filepath.Join(t.TempDir(), "upload")
+	if err := os.WriteFile(tempPath, []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload", TempPath: tempPath, SizeBytes: 7,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.handlers.runner.LaunchUpload(t.Context(), fixture.runtime, item.ID, false, fixture.execution(t).runnerExecution()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-adapter.started:
+	case <-time.After(time.Second):
+		t.Fatal("upload did not start")
+	}
+	request := httptest.NewRequest(http.MethodPost, "/transfers/cancel", nil)
+	request.SetPathValue("id", strconv.FormatInt(item.ID, 10))
+	response := httptest.NewRecorder()
+	fixture.handlers.CancelFileTransfer(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("cancel response=%d %s", response.Code, response.Body.String())
+	}
+	stored, err := fixture.store.Get(t.Context(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != filetransfer.StatusCompleted || stored.TransferredBytes != 7 {
+		t.Fatalf("remote commit hidden by cancel: %#v", stored)
+	}
 }
 
 func (adapter *revisionGateTransferAdapter) DownloadFile(ctx context.Context, _ connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, _ string, _ string, _ connectorapi.TransferOptions) (connectorapi.TransferResult, error) {

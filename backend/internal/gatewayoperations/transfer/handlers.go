@@ -9,6 +9,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
 const (
@@ -19,6 +20,9 @@ const (
 	fileTransferTimeout              = 2 * time.Hour
 	fileTransferBatchTimeout         = 6 * time.Hour
 	fileTransferTempTTL              = 30 * time.Minute
+	fileTransferCancelTimeout        = 30 * time.Second
+	fileTransferCanceledMessage      = "canceled by local user"
+	fileTransferCancelUnknownMessage = "file transfer cancellation timed out after dispatch; inspect the destination before retrying"
 )
 
 type startDownloadRequest struct {
@@ -303,14 +307,23 @@ func (s FileTransferHTTPHandlers) CancelFileTransfer(w http.ResponseWriter, r *h
 		writeError(w, http.StatusConflict, "file transfer is not running")
 		return
 	}
-	changed, err := runtime.Storage().Cancel(context.Background(), id, "canceled by local user")
-	if err != nil {
-		writeInternalError(w)
-		return
-	}
-	if changed {
-		runtime.CancelFileJob(id)
-		s.runner.RemoveTransferTemp(runtime, id)
+	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), fileTransferCancelTimeout)
+	active, drained := runtime.CancelFileJob(cancelCtx, id)
+	cancel()
+	if active {
+		if err := reconcileCanceledFileTransfer(runtime.Storage(), id, drained); err != nil {
+			writeInternalError(w)
+			return
+		}
+	} else {
+		changed, err := terminalizeInactiveFileTransfer(runtime.Storage(), item)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		if changed {
+			s.runner.RemoveTransferTemp(runtime, id)
+		}
 	}
 	updated, err := runtime.Storage().Get(r.Context(), id)
 	if err != nil {
@@ -318,4 +331,29 @@ func (s FileTransferHTTPHandlers) CancelFileTransfer(w http.ResponseWriter, r *h
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+func reconcileCanceledFileTransfer(storage transferapp.Storage, id int64, drained bool) error {
+	if drained {
+		item, err := storage.Get(context.Background(), id)
+		if err != nil {
+			return err
+		}
+		if validFileTransferTerminalStatus(item.Status) {
+			return nil
+		}
+	}
+	_, err := storage.FailWithKind(context.Background(), id, fileTransferCancelUnknownMessage, filetransfer.FailureKindOutcomeUnknown)
+	return err
+}
+
+func terminalizeInactiveFileTransfer(storage transferapp.Storage, item filetransfer.Record) (bool, error) {
+	if item.Status == filetransfer.StatusPending {
+		return storage.Cancel(context.Background(), item.ID, fileTransferCanceledMessage)
+	}
+	return storage.FailWithKind(context.Background(), item.ID, fileTransferCancelUnknownMessage, filetransfer.FailureKindOutcomeUnknown)
+}
+
+func validFileTransferTerminalStatus(status string) bool {
+	return status == filetransfer.StatusCompleted || status == filetransfer.StatusFailed || status == filetransfer.StatusCanceled
 }

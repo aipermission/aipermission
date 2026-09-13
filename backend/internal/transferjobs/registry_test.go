@@ -222,6 +222,85 @@ func TestTryLaunchDistinguishesDuplicateFromClosedRegistry(t *testing.T) {
 	}
 }
 
+func TestCancelAndWaitObservesAcceptedAndRegisteredWorkers(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		register func(*Group, int64, context.CancelFunc, func())
+	}{
+		{name: "accepted", register: func(group *Group, id int64, cancel context.CancelFunc, run func()) {
+			if got := group.TryLaunch(id, cancel, run); got != LaunchAccepted {
+				t.Fatalf("launch result = %v", got)
+			}
+		}},
+		{name: "registered", register: func(group *Group, id int64, cancel context.CancelFunc, run func()) {
+			group.RegisterCancel(id, cancel)
+			go func() {
+				run()
+				group.UnregisterCancel(id)
+			}()
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			group := &Group{}
+			workerCtx, cancel := context.WithCancel(t.Context())
+			returned := make(chan struct{})
+			testCase.register(group, 41, cancel, func() {
+				<-workerCtx.Done()
+				close(returned)
+			})
+			active, drained := group.CancelAndWait(t.Context(), 41)
+			if !active || !drained {
+				t.Fatalf("cancel result active=%t drained=%t", active, drained)
+			}
+			select {
+			case <-returned:
+			default:
+				t.Fatal("cancel returned before worker")
+			}
+		})
+	}
+}
+
+func TestCancelAndWaitReportsUncertainDrain(t *testing.T) {
+	group := &Group{}
+	workerCtx, cancel := context.WithCancel(t.Context())
+	release := make(chan struct{})
+	if got := group.TryLaunch(42, cancel, func() {
+		<-workerCtx.Done()
+		<-release
+	}); got != LaunchAccepted {
+		t.Fatalf("launch result = %v", got)
+	}
+	waitCtx, stopWaiting := context.WithCancel(t.Context())
+	stopWaiting()
+	active, drained := group.CancelAndWait(waitCtx, 42)
+	if !active || drained {
+		t.Fatalf("cancel result active=%t drained=%t", active, drained)
+	}
+	close(release)
+	if !group.wait(t.Context()) {
+		t.Fatal("worker did not drain after release")
+	}
+}
+
+func TestTryLaunchRejectsDuplicateRegisteredWorker(t *testing.T) {
+	group := &Group{}
+	registeredCtx, registeredCancel := context.WithCancel(t.Context())
+	group.RegisterCancel(43, registeredCancel)
+	duplicateCanceled := false
+	if got := group.TryLaunch(43, func() { duplicateCanceled = true }, func() {
+		t.Fatal("duplicate worker ran")
+	}); got != LaunchAlreadyRunning {
+		t.Fatalf("duplicate launch result = %v", got)
+	}
+	if !duplicateCanceled {
+		t.Fatal("duplicate launch context was not canceled")
+	}
+	registeredCancel()
+	<-registeredCtx.Done()
+	group.UnregisterCancel(43)
+}
+
 func TestShutdownDeadlineKeepsRunnerVisibleToWait(t *testing.T) {
 	var registry Registry
 	ctx, cancel := context.WithCancel(t.Context())

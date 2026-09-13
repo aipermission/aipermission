@@ -303,7 +303,7 @@ func TestFileTransferRoutes(t *testing.T) {
 		t.Fatalf("mark cancel transfer running: ok=%v err=%v", ok, err)
 	}
 	cancelResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/file-transfers/"+strconv.FormatInt(cancelRecord.ID, 10)+"/cancel", "", map[string]any{})
-	if cancelResponse.Code != http.StatusOK || !strings.Contains(cancelResponse.Body.String(), `"status":"canceled"`) {
+	if cancelResponse.Code != http.StatusOK || !strings.Contains(cancelResponse.Body.String(), `"status":"failed"`) || !strings.Contains(cancelResponse.Body.String(), `"failure_kind":"outcome_unknown"`) {
 		t.Fatalf("cancel file transfer failed: %d %s", cancelResponse.Code, cancelResponse.Body.String())
 	}
 

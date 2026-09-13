@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
 func (s FileTransferHTTPHandlers) ListFileTransferBatches(w http.ResponseWriter, r *http.Request) {
@@ -159,17 +160,39 @@ func (s FileTransferHTTPHandlers) CancelFileTransferBatch(w http.ResponseWriter,
 	if !ok {
 		return
 	}
-	changed, err := runtime.Storage().CancelBatch(context.Background(), id, "canceled by local user")
+	batch, err := runtime.Storage().GetBatch(r.Context(), id)
+	if errors.Is(err, filetransfer.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file transfer batch not found")
+		return
+	}
 	if err != nil {
 		writeInternalError(w)
 		return
 	}
-	if changed {
-		runtime.CancelBatchJob(id)
-		if control := runtime.BatchControl(id); control != nil {
-			control.Resume()
+	if batch.Status != filetransfer.StatusPending && batch.Status != filetransfer.StatusRunning && batch.Status != filetransfer.StatusPaused {
+		writeError(w, http.StatusConflict, "file transfer batch is not running")
+		return
+	}
+	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), fileTransferCancelTimeout)
+	active, drained := runtime.CancelBatchJob(cancelCtx, id)
+	cancel()
+	if control := runtime.BatchControl(id); control != nil {
+		control.Resume()
+	}
+	if active {
+		if err := reconcileCanceledFileTransferBatch(runtime.Storage(), id, drained); err != nil {
+			writeInternalError(w)
+			return
 		}
-		s.runner.CleanupBatchTemps(runtime, id)
+	} else {
+		changed, err := terminalizeInactiveFileTransferBatch(runtime.Storage(), batch)
+		if err != nil {
+			writeInternalError(w)
+			return
+		}
+		if changed {
+			s.runner.CleanupBatchTemps(runtime, id)
+		}
 	}
 	item, err := runtime.Storage().GetBatch(r.Context(), id)
 	if err != nil {
@@ -177,6 +200,27 @@ func (s FileTransferHTTPHandlers) CancelFileTransferBatch(w http.ResponseWriter,
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func reconcileCanceledFileTransferBatch(storage transferapp.Storage, id int64, drained bool) error {
+	if drained {
+		item, err := storage.GetBatch(context.Background(), id)
+		if err != nil {
+			return err
+		}
+		if validFileTransferTerminalStatus(item.Status) {
+			return nil
+		}
+	}
+	_, err := storage.FailBatchWithKind(context.Background(), id, fileTransferCancelUnknownMessage, filetransfer.FailureKindOutcomeUnknown)
+	return err
+}
+
+func terminalizeInactiveFileTransferBatch(storage transferapp.Storage, batch filetransfer.BatchRecord) (bool, error) {
+	if batch.Status == filetransfer.StatusPending {
+		return storage.CancelBatch(context.Background(), batch.ID, fileTransferCanceledMessage)
+	}
+	return storage.FailBatchWithKind(context.Background(), batch.ID, fileTransferCancelUnknownMessage, filetransfer.FailureKindOutcomeUnknown)
 }
 
 func (s FileTransferHTTPHandlers) UpdateFileTransferBatchQueue(w http.ResponseWriter, r *http.Request) {

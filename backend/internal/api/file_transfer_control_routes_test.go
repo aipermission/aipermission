@@ -31,6 +31,11 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	defer cancel()
 	requireTransferJobs(t, fixture.server, runtime).RegisterBatchControl(batch.ID, control)
 	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
+	go func() {
+		<-ctx.Done()
+		_, _ = filetransfer.NewStore(fixture.db).CancelBatch(context.Background(), batch.ID, "canceled by test worker")
+		requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
+	}()
 	request := func(action string, wantCode int, wantStatus string) {
 		t.Helper()
 		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
@@ -78,7 +83,7 @@ func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
 	}
 }
 
-func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testing.T) {
+func TestFileTransferCancelSignalsWorkerBeforeReconcilingTerminalState(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
@@ -94,7 +99,13 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	requireTransferJobs(t, fixture.server, runtime).RegisterFileCancel(item.ID, cancel)
-	defer requireTransferJobs(t, fixture.server, runtime).UnregisterFileCancel(item.ID)
+	workerDone := make(chan struct{})
+	go func() {
+		<-workerCtx.Done()
+		_, _ = filetransfer.NewStore(fixture.db).Cancel(context.Background(), item.ID, "canceled by test worker")
+		requireTransferJobs(t, fixture.server, runtime).UnregisterFileCancel(item.ID)
+		close(workerDone)
+	}()
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -104,8 +115,8 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("failed persistence response=%d body=%s", response.Code, response.Body.String())
 	}
-	if workerCtx.Err() != nil {
-		t.Fatal("worker was canceled before terminal state became durable")
+	if workerCtx.Err() == nil {
+		t.Fatal("worker was not signaled before terminal-state reconciliation")
 	}
 	stored, err := filetransfer.NewStore(fixture.db).Get(t.Context(), item.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
@@ -116,14 +127,16 @@ func TestFileTransferCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testi
 	}
 	response = performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfers/%d/cancel", item.ID), "", map[string]any{})
 	if response.Code != http.StatusOK {
-		t.Fatalf("durable cancel response=%d body=%s", response.Code, response.Body.String())
+		t.Fatalf("reconciled cancel response=%d body=%s", response.Code, response.Body.String())
 	}
-	if workerCtx.Err() == nil {
-		t.Fatal("durably canceled transfer did not signal its worker")
+	stored, err = filetransfer.NewStore(fixture.db).Get(t.Context(), item.ID)
+	if err != nil || stored.Status != filetransfer.StatusFailed || stored.FailureKind != filetransfer.FailureKindOutcomeUnknown {
+		t.Fatalf("uncertain transfer outcome=%#v err=%v", stored, err)
 	}
+	<-workerDone
 }
 
-func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *testing.T) {
+func TestFileTransferBatchCancelSignalsWorkerBeforeReconcilingTerminalState(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
 	runtime := fixture.server.activeRuntime()
@@ -140,7 +153,13 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	workerCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
-	defer requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
+	workerDone := make(chan struct{})
+	go func() {
+		<-workerCtx.Done()
+		_, _ = filetransfer.NewStore(fixture.db).CancelBatch(context.Background(), batch.ID, "canceled by test worker")
+		requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
+		close(workerDone)
+	}()
 
 	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
 		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
@@ -150,8 +169,8 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("failed persistence response=%d body=%s", response.Code, response.Body.String())
 	}
-	if workerCtx.Err() != nil {
-		t.Fatal("batch worker was canceled before terminal state became durable")
+	if workerCtx.Err() == nil {
+		t.Fatal("batch worker was not signaled before terminal-state reconciliation")
 	}
 	stored, err := filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
 	if err != nil || stored.Status != filetransfer.StatusRunning {
@@ -162,9 +181,11 @@ func TestFileTransferBatchCancelSignalsWorkerOnlyAfterTerminalStateIsDurable(t *
 	}
 	response = performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/cancel", batch.ID), "", map[string]any{})
 	if response.Code != http.StatusOK {
-		t.Fatalf("durable cancel response=%d body=%s", response.Code, response.Body.String())
+		t.Fatalf("reconciled cancel response=%d body=%s", response.Code, response.Body.String())
 	}
-	if workerCtx.Err() == nil {
-		t.Fatal("durably canceled batch did not signal its worker")
+	stored, err = filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
+	if err != nil || stored.Status != filetransfer.StatusFailed || stored.FailureKind != filetransfer.FailureKindOutcomeUnknown {
+		t.Fatalf("uncertain batch outcome=%#v err=%v", stored, err)
 	}
+	<-workerDone
 }

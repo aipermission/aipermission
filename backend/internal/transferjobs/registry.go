@@ -23,6 +23,7 @@ type job struct {
 	cancel  context.CancelFunc
 	control *Control
 	running bool
+	done    chan struct{}
 }
 
 type Group struct {
@@ -64,13 +65,14 @@ func (g *Group) TryLaunch(id int64, cancel context.CancelFunc, run func()) Launc
 		return LaunchRejectedClosed
 	}
 	entry := g.jobs[id]
-	if entry.running {
+	if entry.running || entry.cancel != nil {
 		g.mu.Unlock()
 		cancel()
 		return LaunchAlreadyRunning
 	}
 	entry.cancel = cancel
 	entry.running = true
+	entry.done = make(chan struct{})
 	if g.running == 0 {
 		g.drain = make(chan struct{})
 	}
@@ -94,10 +96,17 @@ func (g *Group) RegisterCancel(id int64, cancel context.CancelFunc) {
 		}
 		return
 	}
-	defer g.mu.Unlock()
 	entry := g.jobs[id]
+	if cancel != nil && entry.cancel == nil && entry.done == nil {
+		entry.done = make(chan struct{})
+	}
+	if cancel == nil && entry.cancel != nil && !entry.running && entry.done != nil {
+		close(entry.done)
+		entry.done = nil
+	}
 	entry.cancel = cancel
 	g.set(id, entry)
+	g.mu.Unlock()
 }
 
 func (g *Group) UnregisterCancel(id int64) { g.RegisterCancel(id, nil) }
@@ -133,6 +142,10 @@ func (g *Group) finish(id int64) {
 	if entry.running {
 		entry.running = false
 		entry.cancel = nil
+		if entry.done != nil {
+			close(entry.done)
+			entry.done = nil
+		}
 		g.running--
 		g.set(id, entry)
 	}
@@ -160,6 +173,28 @@ func (g *Group) Cancel(id int64) bool {
 	}
 	cancel()
 	return true
+}
+
+// CancelAndWait signals one accepted or registered job and reports whether it
+// was active and whether its worker returned before the context expired.
+func (g *Group) CancelAndWait(ctx context.Context, id int64) (bool, bool) {
+	g.mu.Lock()
+	entry := g.jobs[id]
+	cancel, done := entry.cancel, entry.done
+	g.mu.Unlock()
+	if cancel == nil {
+		return false, true
+	}
+	cancel()
+	if done == nil {
+		return true, true
+	}
+	select {
+	case <-done:
+		return true, true
+	case <-ctx.Done():
+		return true, false
+	}
 }
 
 func (g *Group) clear() {

@@ -30,6 +30,8 @@ type Storage interface {
 	ApproveBatch(context.Context, int64, filetransfer.BatchApprovalRequest) (filetransfer.BatchRecord, []filetransfer.Record, error)
 	Cancel(context.Context, int64, string) (bool, error)
 	CancelBatch(context.Context, int64, string) (bool, error)
+	FailWithKind(context.Context, int64, string, string) (bool, error)
+	FailBatchWithKind(context.Context, int64, string, string) (bool, error)
 	CreateBatch(context.Context, filetransfer.CreateBatchRequest) (filetransfer.BatchRecord, error)
 	CreateBatchIdempotent(context.Context, filetransfer.CreateBatchRequest, filetransfer.IdempotencyClaim) (filetransfer.BatchRecord, bool, error)
 	CreateIdempotent(context.Context, filetransfer.CreateRequest, filetransfer.IdempotencyClaim) (filetransfer.Record, bool, error)
@@ -131,10 +133,11 @@ func (runtime *Runtime) Storage() Storage {
 	return runtime.store
 }
 
-func (runtime *Runtime) CancelFileJob(id int64) {
-	if runtime != nil {
-		runtime.jobs.Files.Cancel(id)
+func (runtime *Runtime) CancelFileJob(ctx context.Context, id int64) (bool, bool) {
+	if runtime == nil {
+		return false, true
 	}
+	return runtime.jobs.Files.CancelAndWait(ctx, id)
 }
 
 func (runtime *Runtime) BatchControl(id int64) BatchControl {
@@ -148,10 +151,11 @@ func (runtime *Runtime) BatchControl(id int64) BatchControl {
 	return control
 }
 
-func (runtime *Runtime) CancelBatchJob(id int64) {
-	if runtime != nil {
-		runtime.jobs.Batches.Cancel(id)
+func (runtime *Runtime) CancelBatchJob(ctx context.Context, id int64) (bool, bool) {
+	if runtime == nil {
+		return false, true
 	}
+	return runtime.jobs.Batches.CancelAndWait(ctx, id)
 }
 
 func (runtime *Runtime) Observe(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
