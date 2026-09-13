@@ -1,10 +1,17 @@
 package architecture
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"go/ast"
+	"go/build"
+	"go/constant"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -102,29 +109,319 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 }
 
 func TestCompositionPackagesDoNotDeclareMutableRegistries(t *testing.T) {
+	assertCompositionStaticTypesDoNotExposeMutableRegistries(t)
 	roots := []string{
 		filepath.Join("..", "api"),
 		filepath.Join("..", "gatewayinfrastructure"),
 		filepath.Join("..", "gatewayworkspace"),
 		filepath.Join("..", "..", "cmd", "aipermission"),
 	}
-	for _, root := range roots {
-		inspectProductionGoPackages(t, root, func(path string, file *ast.File, bindings map[string][]ast.Expr) {
-			for _, declaration := range file.Decls {
-				general, ok := declaration.(*ast.GenDecl)
-				if !ok || general.Tok != token.VAR {
-					continue
-				}
-				for _, specification := range general.Specs {
-					value := specification.(*ast.ValueSpec)
-					for index, identifier := range value.Names {
-						if mutableRegistryType(value.Type, bindings, map[string]bool{}) || expressionConstructsMutableRegistry(valueInitializer(value, index), bindings, map[string]bool{}) {
-							t.Errorf("%s declares mutable composition registry %s; keep owned state inside a component", path, identifier.Name)
-						}
+	inspectProductionGoPackageRoots(t, roots, func(path string, file *ast.File, bindings map[string][]ast.Expr) {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.VAR {
+				continue
+			}
+			for _, specification := range general.Specs {
+				value := specification.(*ast.ValueSpec)
+				for index, identifier := range value.Names {
+					if identifier.Name == "_" {
+						continue
+					}
+					if mutableRegistryType(value.Type, bindings, map[string]bool{}) || expressionConstructsMutableRegistry(valueInitializer(value, index), bindings, map[string]bool{}) {
+						t.Errorf("%s declares mutable composition registry %s; keep owned state inside a component", path, identifier.Name)
 					}
 				}
 			}
-		})
+		}
+	})
+}
+
+type typecheckPackage struct {
+	ImportPath string
+	Dir        string
+	Export     string
+	GoFiles    []string
+	CgoFiles   []string
+}
+
+func assertCompositionStaticTypesDoNotExposeMutableRegistries(t *testing.T) {
+	t.Helper()
+	patterns := []string{"./internal/api/...", "./internal/gatewayinfrastructure/...", "./internal/gatewayworkspace/...", "./cmd/aipermission"}
+	for _, buildContext := range supportedBackendBuildContexts {
+		output := runGoList(t, buildContext, append([]string{"-deps", "-export", "-json"}, patterns...)...)
+		packages, exports := decodeTypecheckPackages(t, output)
+		for _, candidate := range packages {
+			if !compositionPackagePath(candidate.ImportPath) {
+				continue
+			}
+			for _, name := range mutablePackageVariables(t, candidate, exports) {
+				t.Errorf("%s declares mutable composition registry %s; keep owned state inside a component", candidate.ImportPath, name)
+			}
+		}
+	}
+}
+
+func decodeTypecheckPackages(t *testing.T, input []byte) ([]typecheckPackage, map[string]string) {
+	t.Helper()
+	decoder := json.NewDecoder(strings.NewReader(string(input)))
+	packages := []typecheckPackage{}
+	exports := map[string]string{}
+	for {
+		var candidate typecheckPackage
+		if err := decoder.Decode(&candidate); err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("decode typecheck package inventory: %v", err)
+		}
+		packages = append(packages, candidate)
+		if candidate.Export != "" {
+			exports[candidate.ImportPath] = candidate.Export
+		}
+	}
+	return packages, exports
+}
+
+func mutablePackageVariables(t *testing.T, candidate typecheckPackage, exports map[string]string) []string {
+	t.Helper()
+	fileSet := token.NewFileSet()
+	sourceFiles, err := compositionTypecheckFiles(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make([]*ast.File, 0, len(sourceFiles))
+	for _, name := range sourceFiles {
+		file, err := parser.ParseFile(fileSet, filepath.Join(candidate.Dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s for static registry analysis: %v", name, err)
+		}
+		files = append(files, file)
+	}
+	lookup := func(importPath string) (io.ReadCloser, error) {
+		exportPath := exports[importPath]
+		if exportPath == "" {
+			return nil, fmt.Errorf("missing export data for %s", importPath)
+		}
+		return os.Open(exportPath)
+	}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	config := types.Config{Importer: importer.ForCompiler(fileSet, "gc", lookup)}
+	if _, err := config.Check(candidate.ImportPath, fileSet, files, info); err != nil {
+		t.Fatalf("type-check %s for static registry analysis: %v", candidate.ImportPath, err)
+	}
+	return mutableVariableNames(files, info)
+}
+
+func compositionTypecheckFiles(candidate typecheckPackage) ([]string, error) {
+	if len(candidate.CgoFiles) > 0 {
+		return nil, fmt.Errorf("composition package %s contains cgo sources that cannot be statically verified", candidate.ImportPath)
+	}
+	return candidate.GoFiles, nil
+}
+
+func mutableVariableNames(files []*ast.File, info *types.Info) []string {
+	names := []string{}
+	for _, file := range files {
+		for _, declaration := range file.Decls {
+			general, ok := declaration.(*ast.GenDecl)
+			if !ok || general.Tok != token.VAR {
+				continue
+			}
+			for _, specification := range general.Specs {
+				value := specification.(*ast.ValueSpec)
+				for index, identifier := range value.Names {
+					object, ok := info.Defs[identifier].(*types.Var)
+					if identifier.Name != "_" && ok && mutableStaticRegistryType(object.Type(), map[types.Type]bool{}) &&
+						!verifiedErrorSentinel(object, valueInitializer(value, index), info) {
+						names = append(names, identifier.Name)
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func verifiedErrorSentinel(variable *types.Var, initializer ast.Expr, info *types.Info) bool {
+	if !types.Identical(types.Unalias(variable.Type()), types.Universe.Lookup("error").Type()) {
+		return false
+	}
+	call, ok := initializer.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	function, ok := info.Uses[selector.Sel].(*types.Func)
+	return ok && function.Pkg() != nil && function.Pkg().Path() == "errors" && function.Name() == "New"
+}
+
+func mutableStaticRegistryType(candidate types.Type, visiting map[types.Type]bool) bool {
+	candidate = types.Unalias(candidate)
+	if visiting[candidate] {
+		return false
+	}
+	visiting[candidate] = true
+	defer delete(visiting, candidate)
+	switch typed := candidate.(type) {
+	case *types.Basic:
+		return typed.Kind() == types.UnsafePointer
+	case *types.Map, *types.Slice, *types.Chan:
+		return true
+	case *types.Array:
+		return typed.Len() > 0
+	case *types.Interface:
+		return true
+	case *types.Signature:
+		return true
+	case *types.Pointer:
+		return mutableStaticRegistryType(typed.Elem(), visiting)
+	case *types.Struct:
+		for index := 0; index < typed.NumFields(); index++ {
+			if mutableStaticRegistryType(typed.Field(index).Type(), visiting) {
+				return true
+			}
+		}
+	case *types.Named:
+		underlying := typed.Underlying()
+		switch storage := underlying.(type) {
+		case *types.Map, *types.Slice, *types.Chan:
+			return true
+		case *types.Array:
+			return storage.Len() > 0
+		}
+		owner := typed.Obj().Pkg()
+		if owner != nil && owner.Path() == "sync/atomic" && typed.Obj().Name() == "Pointer" && typed.TypeArgs().Len() == 1 {
+			return mutableStaticRegistryType(typed.TypeArgs().At(0), visiting)
+		}
+		return mutableStaticRegistryType(underlying, visiting)
+	}
+	return false
+}
+
+func compositionPackagePath(packagePath string) bool {
+	for _, root := range []string{modulePath + "/internal/api", modulePath + "/internal/gatewayinfrastructure", modulePath + "/internal/gatewayworkspace", modulePath + "/cmd/aipermission"} {
+		if packagePath == root || strings.HasPrefix(packagePath, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestStaticRegistryTypesResolveFactoriesAndTuplePositions(t *testing.T) {
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, "fixture.go", `package fixture
+import "maps"
+import "sync/atomic"
+import "errors"
+import "reflect"
+import "unsafe"
+type factory struct{}
+type Marker[T any] struct{}
+type ArrayMarker[T any] [0]T
+type mapError map[string]int
+func (mapError) Error() string { return "" }
+func (factory) NewMap() map[string]int { return nil }
+func pair() (map[string]int, error) { return nil, nil }
+func interfaceFactory() any { return map[string]int(nil) }
+func errorFactory() error { return mapError(nil) }
+var FromMethod = factory{}.NewMap()
+var FromGeneric = maps.Clone(map[string]int{})
+var FromIIFE = func() map[string]int { return nil }()
+var FromAtomic atomic.Pointer[map[string]int]
+var FromUnsafe unsafe.Pointer
+var FromReflect reflect.Value
+var FromFunction func()
+var InnocentMarker Marker[map[string]int]
+var InnocentArrayMarker ArrayMarker[map[string]int]
+var FromInterface any = map[string]int(nil)
+var FromInterfaceFactory = interfaceFactory()
+var FromErrorFactory = errorFactory()
+var InnocentError = errors.New("sentinel")
+var FromFirst, _ = pair()
+var _, FromPairError = pair()
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	config := types.Config{Importer: importer.Default()}
+	if _, err := config.Check("example.invalid/fixture", fileSet, []*ast.File{file}, info); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(mutableVariableNames([]*ast.File{file}, info), ",")
+	if got != "FromAtomic,FromErrorFactory,FromFirst,FromFunction,FromGeneric,FromIIFE,FromInterface,FromInterfaceFactory,FromMethod,FromPairError,FromReflect,FromUnsafe" {
+		t.Fatalf("mutable variables = %q", got)
+	}
+}
+
+func TestMutableStaticRegistryTypeInspectsExternalGenericStorage(t *testing.T) {
+	external := types.NewPackage("example.invalid/external", "external")
+	mapType := types.NewMap(types.Typ[types.String], types.Typ[types.Int])
+	registry := types.NewNamed(
+		types.NewTypeName(token.NoPos, external, "Registry", nil),
+		types.NewStruct(
+			[]*types.Var{types.NewField(token.NoPos, external, "entries", mapType, false)},
+			[]string{""},
+		),
+		nil,
+	)
+	if !mutableStaticRegistryType(registry, map[types.Type]bool{}) {
+		t.Fatal("external named struct containing a map was not classified as mutable")
+	}
+	empty := types.NewNamed(
+		types.NewTypeName(token.NoPos, external, "Empty", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	if mutableStaticRegistryType(empty, map[types.Type]bool{}) {
+		t.Fatal("empty external named struct was classified as mutable")
+	}
+
+	holder := externalGenericType(external, "Holder", true)
+	instantiatedHolder, err := types.Instantiate(nil, holder, []types.Type{mapType}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mutableStaticRegistryType(instantiatedHolder, map[types.Type]bool{}) {
+		t.Fatal("external generic storage containing a map was not classified as mutable")
+	}
+
+	marker := externalGenericType(external, "Marker", false)
+	instantiatedMarker, err := types.Instantiate(nil, marker, []types.Type{mapType}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutableStaticRegistryType(instantiatedMarker, map[types.Type]bool{}) {
+		t.Fatal("unused external generic type argument was classified as mutable storage")
+	}
+}
+
+func externalGenericType(pkg *types.Package, name string, storesTypeParameter bool) *types.Named {
+	typeParameter := types.NewTypeParam(
+		types.NewTypeName(token.NoPos, pkg, "T", nil),
+		types.Universe.Lookup("any").Type(),
+	)
+	underlying := types.Type(types.NewStruct(nil, nil))
+	if storesTypeParameter {
+		underlying = types.NewStruct(
+			[]*types.Var{types.NewField(token.NoPos, pkg, "Value", typeParameter, false)},
+			[]string{""},
+		)
+	}
+	named := types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), underlying, nil)
+	named.SetTypeParams([]*types.TypeParam{typeParameter})
+	return named
+}
+
+func TestCompositionStaticTypesFailClosedForCgoSources(t *testing.T) {
+	_, err := compositionTypecheckFiles(typecheckPackage{ImportPath: "example.invalid/composition", CgoFiles: []string{"registry.go"}})
+	if err == nil || !strings.Contains(err.Error(), "cannot be statically verified") {
+		t.Fatalf("cgo composition source error = %v", err)
 	}
 }
 
@@ -136,19 +433,64 @@ func packageFacadeBindings(file *ast.File) map[string][]ast.Expr {
 			continue
 		}
 		general, ok := declaration.(*ast.GenDecl)
-		if !ok || general.Tok != token.VAR {
+		if !ok || (general.Tok != token.VAR && general.Tok != token.CONST) {
 			continue
 		}
-		for _, specification := range general.Specs {
+		var previousValues []ast.Expr
+		var previousType ast.Expr
+		for specificationIndex, specification := range general.Specs {
 			value := specification.(*ast.ValueSpec)
+			if len(value.Values) > 0 {
+				previousValues = value.Values
+				previousType = value.Type
+			}
+			effectiveType := value.Type
+			if len(value.Values) == 0 {
+				effectiveType = previousType
+			}
 			for index, identifier := range value.Names {
-				if initializer := valueInitializer(value, index); initializer != nil {
-					bindings[identifier.Name] = append(bindings[identifier.Name], initializer)
+				initializer := valueInitializer(value, index)
+				if initializer == nil && general.Tok == token.CONST {
+					initializer = expressionAt(previousValues, index)
+				}
+				if initializer != nil {
+					prefix := ""
+					if general.Tok == token.CONST {
+						prefix = "const:"
+						bindings["const-iota:"+identifier.Name] = []ast.Expr{&ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(specificationIndex)}}
+						if effectiveType != nil {
+							initializer = &ast.CallExpr{Fun: effectiveType, Args: []ast.Expr{initializer}}
+						}
+					}
+					bindings[prefix+identifier.Name] = append(bindings[prefix+identifier.Name], initializer)
 				}
 			}
 		}
 	}
 	return bindings
+}
+
+func expressionAt(expressions []ast.Expr, index int) ast.Expr {
+	if index < len(expressions) {
+		return expressions[index]
+	}
+	if len(expressions) == 1 {
+		return expressions[0]
+	}
+	return nil
+}
+
+func bindingsWithIota(bindings map[string][]ast.Expr, constantName string) map[string][]ast.Expr {
+	iotaValue := bindings["const-iota:"+constantName]
+	if len(iotaValue) == 0 {
+		return bindings
+	}
+	result := make(map[string][]ast.Expr, len(bindings)+1)
+	for name, expressions := range bindings {
+		result[name] = expressions
+	}
+	result["const:iota"] = iotaValue
+	return result
 }
 
 func packageTypeBindings(file *ast.File) map[string][]ast.Expr {
@@ -166,44 +508,457 @@ func packageTypeBindings(file *ast.File) map[string][]ast.Expr {
 	return bindings
 }
 
+func packageImportBindings(file *ast.File, importedTypes map[string]bool) map[string][]ast.Expr {
+	bindings := map[string][]ast.Expr{}
+	for _, specification := range file.Imports {
+		packagePath, err := strconv.Unquote(specification.Path.Value)
+		if err != nil {
+			continue
+		}
+		alias := importedPackageName(packagePath, importedTypes)
+		if specification.Name != nil {
+			alias = specification.Name.Name
+		}
+		if alias == "_" {
+			continue
+		}
+		key := "import:" + alias
+		if alias == "." {
+			key = "dot-import"
+		}
+		bindings[key] = append(bindings[key], &ast.BasicLit{
+			Kind:  token.STRING,
+			Value: strconv.Quote(packagePath),
+		})
+	}
+	return bindings
+}
+
+func importedPackageName(packagePath string, importedTypes map[string]bool) string {
+	for key := range importedTypes {
+		parts := strings.SplitN(key, "\x00", 3)
+		if len(parts) == 3 && parts[0] == packagePath {
+			return parts[1]
+		}
+	}
+	base := filepath.Base(packagePath)
+	if token.IsIdentifier(base) && !versionedImportBase(base) {
+		return base
+	}
+	if imported, err := importer.Default().Import(packagePath); err == nil {
+		return imported.Name()
+	}
+	return base
+}
+
+func versionedImportBase(name string) bool {
+	if len(name) < 2 || name[0] != 'v' {
+		return false
+	}
+	for _, character := range name[1:] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 type parsedProductionGoFile struct {
 	path string
 	file *ast.File
 }
 
+type scopedTypeDeclaration struct {
+	name    string
+	typeRef ast.Expr
+	file    *ast.File
+}
+
+type scopedConstantDeclaration struct {
+	packageKey string
+	name       string
+	value      ast.Expr
+	file       *ast.File
+}
+
+const (
+	constantExpressionInventoryPrefix = "const-expr:"
+	constantTypeInventoryPrefix       = "constant-type:"
+)
+
+func productionPackageBindings(files []parsedProductionGoFile, importedMutableTypes map[string]bool) map[string][]ast.Expr {
+	bindings := map[string][]ast.Expr{}
+	declarations := []scopedTypeDeclaration{}
+	constants := []scopedConstantDeclaration{}
+	for _, parsed := range files {
+		for name, initializers := range packageFacadeBindings(parsed.file) {
+			bindings[name] = append(bindings[name], initializers...)
+			if strings.HasPrefix(name, "const:") {
+				for _, initializer := range initializers {
+					constants = append(constants, scopedConstantDeclaration{
+						name:  strings.TrimPrefix(name, "const:"),
+						value: initializer,
+						file:  parsed.file,
+					})
+				}
+			}
+		}
+		for name, typeRefs := range packageTypeBindings(parsed.file) {
+			for _, typeRef := range typeRefs {
+				bindings["const-type:"+name] = append(bindings["const-type:"+name], typeRef)
+				declarations = append(declarations, scopedTypeDeclaration{name: name, typeRef: typeRef, file: parsed.file})
+			}
+		}
+	}
+	resolvedConstants := map[int]bool{}
+	for changed := true; changed; {
+		changed = false
+		for index, declaration := range constants {
+			if resolvedConstants[index] {
+				continue
+			}
+			scope := bindingsForFile(bindings, declaration.file, importedMutableTypes)
+			scope = bindingsWithIota(scope, declaration.name)
+			expanded, ok := expandConstantExpression(declaration.value, scope, map[string]bool{})
+			if !ok {
+				continue
+			}
+			if _, ok := standaloneConstantValue(expanded, scope); !ok {
+				continue
+			}
+			bindings["const:"+declaration.name] = append(bindings["const:"+declaration.name], expanded)
+			resolvedConstants[index] = true
+			changed = true
+		}
+	}
+	resolved := map[int]bool{}
+	for changed := true; changed; {
+		changed = false
+		for index, declaration := range declarations {
+			if resolved[index] {
+				continue
+			}
+			scope := bindingsForFile(bindings, declaration.file, importedMutableTypes)
+			if mutableRegistryType(declaration.typeRef, scope, map[string]bool{}) {
+				bindings["type:"+declaration.name] = append(bindings["type:"+declaration.name], &ast.MapType{})
+				resolved[index] = true
+				changed = true
+			}
+		}
+	}
+	return bindings
+}
+
+func bindingsForFile(bindings map[string][]ast.Expr, file *ast.File, importedMutableTypes map[string]bool) map[string][]ast.Expr {
+	imports := packageImportBindings(file, importedMutableTypes)
+	result := make(map[string][]ast.Expr, len(bindings)+len(imports))
+	for name, expressions := range bindings {
+		result[name] = expressions
+	}
+	for name, expressions := range imports {
+		result[name] = expressions
+	}
+	for _, specification := range file.Imports {
+		packagePath, err := strconv.Unquote(specification.Path.Value)
+		if err != nil {
+			continue
+		}
+		for key := range importedMutableTypes {
+			parts := strings.SplitN(key, "\x00", 3)
+			if len(parts) != 3 || parts[0] != packagePath {
+				continue
+			}
+			alias := parts[1]
+			if specification.Name != nil {
+				alias = specification.Name.Name
+			}
+			if strings.HasPrefix(parts[2], constantExpressionInventoryPrefix) {
+				constantSpec := strings.TrimPrefix(parts[2], constantExpressionInventoryPrefix)
+				constantName, encodedExpression, ok := strings.Cut(constantSpec, "=")
+				if !ok {
+					continue
+				}
+				source, err := base64.RawURLEncoding.DecodeString(encodedExpression)
+				if err != nil {
+					continue
+				}
+				constantExpression, err := parser.ParseExpr(string(source))
+				if err != nil {
+					continue
+				}
+				binding := "const:" + alias + "." + constantName
+				if alias == "." {
+					binding = "const:" + constantName
+				}
+				result[binding] = []ast.Expr{constantExpression}
+				continue
+			}
+			if strings.HasPrefix(parts[2], constantTypeInventoryPrefix) {
+				typeSpec := strings.TrimPrefix(parts[2], constantTypeInventoryPrefix)
+				typeName, encodedExpression, ok := strings.Cut(typeSpec, "=")
+				if !ok {
+					continue
+				}
+				source, err := base64.RawURLEncoding.DecodeString(encodedExpression)
+				if err != nil {
+					continue
+				}
+				typeExpression, err := parser.ParseExpr(string(source))
+				if err != nil {
+					continue
+				}
+				binding := "const-type:" + alias + "." + typeName
+				if alias == "." {
+					binding = "const-type:" + typeName
+				}
+				result[binding] = []ast.Expr{typeExpression}
+				continue
+			}
+			binding := "import-type:" + alias + "." + parts[2]
+			if alias == "." {
+				binding = "type:" + parts[2]
+			}
+			result[binding] = []ast.Expr{&ast.MapType{}}
+		}
+	}
+	return result
+}
+
+func localMutableTypeInventory(t *testing.T, buildContext backendBuildContext) map[string]bool {
+	t.Helper()
+	return mutableTypeInventoryAt(t, filepath.Join("..", ".."), modulePath, buildContext)
+}
+
+func mutableTypeInventoryAt(t *testing.T, backendRoot, modulePrefix string, buildContext backendBuildContext) map[string]bool {
+	t.Helper()
+	type declaration struct {
+		packagePath string
+		packageName string
+		name        string
+		typeRef     ast.Expr
+		file        *ast.File
+	}
+	declarations := []declaration{}
+	constants := []scopedConstantDeclaration{}
+	packageConstants := map[string]map[string][]ast.Expr{}
+	for _, sourceRoot := range []string{"internal", "cmd"} {
+		err := filepath.WalkDir(filepath.Join(backendRoot, sourceRoot), func(sourcePath string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if entry.Name() == "testdata" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(sourcePath, ".go") || strings.HasSuffix(sourcePath, "_test.go") {
+				return nil
+			}
+			matches, err := sourceMatchesBuildContext(sourcePath, buildContext)
+			if err != nil {
+				return err
+			}
+			if !matches {
+				return nil
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), sourcePath, nil, 0)
+			if err != nil {
+				return err
+			}
+			relative, err := filepath.Rel(backendRoot, filepath.Dir(sourcePath))
+			if err != nil {
+				return err
+			}
+			packagePath := modulePrefix + "/" + filepath.ToSlash(relative)
+			packageKey := packagePath + "\x00" + file.Name.Name
+			if packageConstants[packageKey] == nil {
+				packageConstants[packageKey] = map[string][]ast.Expr{}
+			}
+			for name, expressions := range packageFacadeBindings(file) {
+				if strings.HasPrefix(name, "const:") || strings.HasPrefix(name, "const-iota:") {
+					packageConstants[packageKey][name] = append(packageConstants[packageKey][name], expressions...)
+				}
+				if strings.HasPrefix(name, "const:") {
+					constantName := strings.TrimPrefix(name, "const:")
+					if !ast.IsExported(constantName) {
+						continue
+					}
+					for _, expression := range expressions {
+						constants = append(constants, scopedConstantDeclaration{
+							packageKey: packageKey,
+							name:       constantName,
+							value:      expression,
+							file:       file,
+						})
+					}
+				}
+			}
+			for name, typeRefs := range packageTypeBindings(file) {
+				for _, typeRef := range typeRefs {
+					declarations = append(declarations, declaration{packagePath: packagePath, packageName: file.Name.Name, name: name, typeRef: typeRef, file: file})
+					packageConstants[packageKey]["const-type:"+name] = append(packageConstants[packageKey]["const-type:"+name], typeRef)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("inventory local mutable types: %v", err)
+		}
+	}
+	resolved := map[string]bool{}
+	resolvedTypes := map[string]bool{}
+	resolvedConstants := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, declaration := range declarations {
+			if !ast.IsExported(declaration.name) {
+				continue
+			}
+			typeKey := declaration.packagePath + "\x00" + declaration.packageName + "\x00" + declaration.name
+			if resolvedTypes[typeKey] {
+				continue
+			}
+			packageKey := declaration.packagePath + "\x00" + declaration.packageName
+			bindings := bindingsForFile(packageConstants[packageKey], declaration.file, resolved)
+			expanded, ok := expandConstantTypeExpression(declaration.typeRef, bindings, map[string]bool{})
+			if !ok {
+				continue
+			}
+			source, ok := formatConstantExpression(expanded)
+			if !ok {
+				continue
+			}
+			encoded := base64.RawURLEncoding.EncodeToString([]byte(source))
+			resolved[packageKey+"\x00"+constantTypeInventoryPrefix+declaration.name+"="+encoded] = true
+			resolvedTypes[typeKey] = true
+			changed = true
+		}
+		for _, declaration := range constants {
+			constantKey := declaration.packageKey + "\x00" + declaration.name
+			if resolvedConstants[constantKey] {
+				continue
+			}
+			bindings := bindingsForFile(packageConstants[declaration.packageKey], declaration.file, resolved)
+			bindings = bindingsWithIota(bindings, declaration.name)
+			expanded, ok := expandConstantExpression(
+				declaration.value,
+				bindings,
+				map[string]bool{},
+			)
+			if !ok {
+				continue
+			}
+			if _, ok := standaloneConstantValue(expanded, bindings); !ok {
+				continue
+			}
+			source, ok := formatConstantExpression(expanded)
+			if !ok {
+				continue
+			}
+			encoded := base64.RawURLEncoding.EncodeToString([]byte(source))
+			resolved[declaration.packageKey+"\x00"+constantExpressionInventoryPrefix+declaration.name+"="+encoded] = true
+			resolvedConstants[constantKey] = true
+			changed = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, declaration := range declarations {
+			key := declaration.packagePath + "\x00" + declaration.packageName + "\x00" + declaration.name
+			if resolved[key] {
+				continue
+			}
+			packageKey := declaration.packagePath + "\x00" + declaration.packageName
+			local := make(map[string][]ast.Expr, len(packageConstants[packageKey]))
+			for name, expressions := range packageConstants[packageKey] {
+				local[name] = expressions
+			}
+			for candidate := range resolved {
+				parts := strings.SplitN(candidate, "\x00", 3)
+				if len(parts) == 3 && parts[0] == declaration.packagePath && parts[1] == declaration.packageName &&
+					!strings.HasPrefix(parts[2], constantExpressionInventoryPrefix) &&
+					!strings.HasPrefix(parts[2], constantTypeInventoryPrefix) {
+					local["type:"+parts[2]] = []ast.Expr{&ast.MapType{}}
+				}
+			}
+			if mutableRegistryType(declaration.typeRef, bindingsForFile(local, declaration.file, resolved), map[string]bool{}) {
+				resolved[key] = true
+				changed = true
+			}
+		}
+	}
+	return resolved
+}
+
+func sourceMatchesBuildContext(sourcePath string, candidate backendBuildContext) (bool, error) {
+	context := build.Default
+	context.GOOS = candidate.goos
+	context.GOARCH = candidate.goarch
+	context.CgoEnabled = candidate.cgo == "1"
+	context.BuildTags = append([]string(nil), candidate.tags...)
+	matches, err := context.MatchFile(filepath.Dir(sourcePath), filepath.Base(sourcePath))
+	if err != nil || !matches || context.CgoEnabled {
+		return matches, err
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), sourcePath, nil, parser.ImportsOnly)
+	if err != nil {
+		return false, err
+	}
+	for _, specification := range file.Imports {
+		packagePath, err := strconv.Unquote(specification.Path.Value)
+		if err != nil {
+			return false, err
+		}
+		if packagePath == "C" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func inspectProductionGoPackages(t *testing.T, root string, inspect func(string, *ast.File, map[string][]ast.Expr)) {
 	t.Helper()
-	packages := map[string][]parsedProductionGoFile{}
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			return err
-		}
-		key := filepath.Dir(path) + "\x00" + file.Name.Name
-		packages[key] = append(packages[key], parsedProductionGoFile{path: path, file: file})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("inspect production Go packages in %s: %v", root, err)
-	}
-	for _, files := range packages {
-		bindings := map[string][]ast.Expr{}
-		for _, parsed := range files {
-			for name, initializers := range packageFacadeBindings(parsed.file) {
-				bindings[name] = append(bindings[name], initializers...)
+	inspectProductionGoPackageRoots(t, []string{root}, inspect)
+}
+
+func inspectProductionGoPackageRoots(t *testing.T, roots []string, inspect func(string, *ast.File, map[string][]ast.Expr)) {
+	t.Helper()
+	for _, buildContext := range supportedBackendBuildContexts {
+		importedMutableTypes := localMutableTypeInventory(t, buildContext)
+		for _, root := range roots {
+			packages := map[string][]parsedProductionGoFile{}
+			err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+					return nil
+				}
+				matches, err := sourceMatchesBuildContext(path, buildContext)
+				if err != nil {
+					return err
+				}
+				if !matches {
+					return nil
+				}
+				file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+				if err != nil {
+					return err
+				}
+				key := filepath.Dir(path) + "\x00" + file.Name.Name
+				packages[key] = append(packages[key], parsedProductionGoFile{path: path, file: file})
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("inspect production Go packages in %s for %s: %v", root, buildContext.name, err)
 			}
-			for name, declarations := range packageTypeBindings(parsed.file) {
-				bindings["type:"+name] = append(bindings["type:"+name], declarations...)
+			for _, files := range packages {
+				bindings := productionPackageBindings(files, importedMutableTypes)
+				for _, parsed := range files {
+					inspect(parsed.path, parsed.file, bindingsForFile(bindings, parsed.file, importedMutableTypes))
+				}
 			}
-		}
-		for _, parsed := range files {
-			inspect(parsed.path, parsed.file, bindings)
 		}
 	}
 }
@@ -551,8 +1306,10 @@ func expressionConstructsMutableRegistry(expression ast.Expr, bindings map[strin
 	case *ast.CompositeLit:
 		return mutableRegistryType(value.Type, bindings, visiting)
 	case *ast.CallExpr:
-		identifier, ok := value.Fun.(*ast.Ident)
-		return ok && (identifier.Name == "make" || identifier.Name == "new") && len(value.Args) > 0 && mutableRegistryType(value.Args[0], bindings, visiting)
+		if identifier, ok := value.Fun.(*ast.Ident); ok && (identifier.Name == "make" || identifier.Name == "new") {
+			return len(value.Args) > 0 && mutableRegistryType(value.Args[0], bindings, visiting)
+		}
+		return mutableRegistryType(value.Fun, bindings, visiting)
 	case *ast.UnaryExpr:
 		return value.Op == token.AND && expressionConstructsMutableRegistry(value.X, bindings, visiting)
 	default:
@@ -562,9 +1319,14 @@ func expressionConstructsMutableRegistry(expression ast.Expr, bindings map[strin
 
 func mutableRegistryType(expression ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
 	switch value := expression.(type) {
-	case *ast.MapType, *ast.ArrayType, *ast.ChanType:
+	case *ast.MapType, *ast.ChanType:
 		return true
+	case *ast.ArrayType:
+		return arrayTypeHasStorage(value, bindings, visiting)
 	case *ast.Ident:
+		if value.Name == "Map" && bindingContainsPackage(bindings["dot-import"], "sync") {
+			return true
+		}
 		key := "type:" + value.Name
 		if visiting[key] {
 			return false
@@ -581,12 +1343,47 @@ func mutableRegistryType(expression ast.Expr, bindings map[string][]ast.Expr, vi
 		return mutableRegistryType(value.X, bindings, visiting)
 	case *ast.StarExpr:
 		return mutableRegistryType(value.X, bindings, visiting)
+	case *ast.IndexExpr:
+		return mutableRegistryType(value.X, bindings, visiting)
+	case *ast.IndexListExpr:
+		return mutableRegistryType(value.X, bindings, visiting)
+	case *ast.StructType:
+		for _, field := range value.Fields.List {
+			if mutableRegistryType(field.Type, bindings, visiting) {
+				return true
+			}
+		}
+		return false
 	case *ast.SelectorExpr:
 		owner, ok := value.X.(*ast.Ident)
-		return ok && owner.Name == "sync" && value.Sel.Name == "Map"
+		return ok && ((value.Sel.Name == "Map" &&
+			(owner.Name == "sync" || bindingContainsPackage(bindings["import:"+owner.Name], "sync"))) ||
+			len(bindings["import-type:"+owner.Name+"."+value.Sel.Name]) > 0)
 	default:
 		return false
 	}
+}
+
+func arrayTypeHasStorage(candidate *ast.ArrayType, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
+	if candidate.Len == nil {
+		return true
+	}
+	length, ok := integerConstantValue(candidate.Len, bindings, visiting)
+	return !ok || constant.Sign(length) != 0
+}
+
+func bindingContainsPackage(bindings []ast.Expr, expected string) bool {
+	for _, binding := range bindings {
+		literal, ok := binding.(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			continue
+		}
+		value, err := strconv.Unquote(literal.Value)
+		if err == nil && value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
@@ -701,6 +1498,21 @@ var ConstructedValue = NewLockedServer()
 	if !expressionConstructsMutableRegistry(mustParseExpression(t, "registry{}"), registryBindings, map[string]bool{}) {
 		t.Fatal("named mutable registry type escaped detection")
 	}
+	if !expressionConstructsMutableRegistry(mustParseExpression(t, "registry(nil)"), registryBindings, map[string]bool{}) {
+		t.Fatal("mutable registry type conversion escaped detection")
+	}
+	assertAliasedMutableRegistriesDetected(t)
+}
+
+func supportedBuildContext(t *testing.T, name string) backendBuildContext {
+	t.Helper()
+	for _, candidate := range supportedBackendBuildContexts {
+		if candidate.name == name {
+			return candidate
+		}
+	}
+	t.Fatalf("supported build context %q not found", name)
+	return backendBuildContext{}
 }
 
 func mustParseExpression(t *testing.T, source string) ast.Expr {
