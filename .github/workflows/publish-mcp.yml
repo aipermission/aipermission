@@ -48,7 +48,7 @@ jobs:
         run: npm ci --workspaces=false
       - name: Test
         working-directory: packages/mcp
-        run: npm test
+        run: MCP_TEST_MANIFEST_BASE="$(git rev-parse HEAD^)" npm test
       - name: Build
         working-directory: packages/mcp
         run: npm run build

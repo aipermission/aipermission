@@ -70,6 +70,36 @@ test("GitHub ratchets reject a zero push predecessor", (t) => {
   );
 });
 
+test("workflow dispatch accepts only an explicit immutable base commit", (t) => {
+  const base = "a".repeat(40),
+    head = "b".repeat(40);
+  withGitHubEvent(t, "workflow_dispatch", {});
+  const gitCommand = fakeGit({
+    [`rev-parse ${base}^{commit}`]: base,
+    "rev-parse HEAD^{commit}": head,
+    [`merge-base --is-ancestor ${base} ${head}`]: "",
+  });
+  assert.equal(
+    resolveTrustedBase({
+      configured: base,
+      variable: "POLICY_BASE",
+      root: ".",
+      gitCommand,
+    }),
+    base,
+  );
+  assert.throws(
+    () =>
+      resolveTrustedBase({
+        configured: "",
+        variable: "POLICY_BASE",
+        root: ".",
+        gitCommand,
+      }),
+    /immutable workflow_dispatch base commit/,
+  );
+});
+
 test("local ratchets use HEAD parent when merge base is HEAD", () => {
   const head = "b".repeat(40),
     parent = "a".repeat(40);

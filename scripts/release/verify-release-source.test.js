@@ -51,6 +51,15 @@ test("publish workflows install locked verifier dependencies before verification
   }
 });
 
+test("MCP publish derives its manifest ratchet from the verified tag parent", () => {
+  const steps = workflowSteps(".github/workflows/publish-mcp.yml", "publish");
+  const testStep = steps.find((step) => step.name === "Test");
+  assert.equal(
+    testStep?.run,
+    'MCP_TEST_MANIFEST_BASE="$(git rev-parse HEAD^)" npm test',
+  );
+});
+
 test("release source requires the Windows private-config security check", () => {
   assert.ok(requiredChecks.includes("MCP Windows Private Config"));
 });

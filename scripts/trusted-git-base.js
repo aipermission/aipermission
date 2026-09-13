@@ -19,6 +19,9 @@ function eventBase() {
   if (process.env.GITHUB_EVENT_NAME === "push") {
     return String(event.before || "").trim();
   }
+  if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+    return "";
+  }
   throw new Error(
     `unsupported GitHub event for policy ratchet: ${process.env.GITHUB_EVENT_NAME || "missing"}`,
   );
@@ -32,7 +35,16 @@ function resolveTrustedBase({
 }) {
   const inGitHub = process.env.GITHUB_ACTIONS === "true";
   const configuredReference = String(configured || "").trim();
-  let reference = inGitHub ? eventBase() : configuredReference;
+  const eventName = String(process.env.GITHUB_EVENT_NAME || "").trim();
+  if (inGitHub && eventName === "workflow_dispatch" && !configuredReference) {
+    throw new Error(
+      `${variable} must identify the immutable workflow_dispatch base commit`,
+    );
+  }
+  let reference =
+    inGitHub && eventName !== "workflow_dispatch"
+      ? eventBase()
+      : configuredReference;
   if (!reference) reference = gitCommand("merge-base", "HEAD", "origin/main");
   if (!reference || /^0+$/.test(reference)) {
     throw new Error(`${variable} must identify a non-zero base commit`);
