@@ -35,6 +35,7 @@ test("frontend ratchets derive trusted bases from the GitHub event", () => {
   for (const variable of [
     "FRONTEND_COVERAGE_BASE",
     "FRONTEND_DUPLICATION_BASE",
+    "FRONTEND_TEST_OWNER_BASE",
     "PLAYWRIGHT_GATE_BASE",
   ]) {
     assert.doesNotMatch(workflow, new RegExp(`${variable}:`));

@@ -121,6 +121,59 @@ it("retains a bulk retry identity when the gateway acknowledgement is malformed"
   expect(keys[0]).toBe(keys[1]);
 });
 
+it("rotates the browser retry identity after an acknowledged backup upload", async () => {
+  const keys = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      return jsonResponse({ id: keys.length, provider_file_id: `backup-${keys.length}` });
+    }),
+  );
+  const body = { database_id: "fixture", reason: "coverage" };
+
+  await apiPost("/api/backup/providers/7/upload", body);
+  await apiPost("/api/backup/providers/7/upload", body);
+
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).not.toBe(keys[1]);
+});
+
+it("retains a backup retry identity when the gateway acknowledgement is malformed", async () => {
+  const keys = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      return jsonResponse({ id: 1, provider_file_id: "" });
+    }),
+  );
+  const body = { database_id: "fixture", reason: "coverage" };
+
+  await expect(apiPost("/api/backup/providers/7/upload", body)).rejects.toThrow(/Invalid backup upload response/);
+  await expect(apiPost("/api/backup/providers/7/upload", body)).rejects.toThrow(/Invalid backup upload response/);
+
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+});
+
+it("preserves a caller-provided idempotency key without opening a browser retry entry", async () => {
+  const fetch = vi.fn(async (_url, options) => jsonResponse({ echoed: JSON.parse(options.body).idempotency_key }));
+  vi.stubGlobal("fetch", fetch);
+
+  await expect(
+    apiPost("/api/connector-actions/local-run", {
+      target_ref: "fixture:provided:1",
+      action_name: "inspect",
+      input: {},
+      reason: "coverage",
+      idempotency_key: "caller-owned-key",
+    }),
+  ).resolves.toEqual({ echoed: "caller-owned-key" });
+
+  expect(await listLocalActionRetryEntries()).toEqual([]);
+});
+
 it("retires a reconciled fresh identity after a definitive client rejection", async () => {
   const keys = [];
   let calls = 0;

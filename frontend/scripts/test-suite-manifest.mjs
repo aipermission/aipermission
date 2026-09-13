@@ -5,12 +5,22 @@ import { fileURLToPath } from "node:url";
 import { analyzeSourceTree } from "./architecture-graph.mjs";
 import { testReachesOwner } from "./async-owner-manifest.mjs";
 import { isAsyncStateOwner } from "./async-owner-policy.mjs";
+import {
+  behaviorOwnerManifestWeakening,
+  readBehaviorOwnerManifest,
+  readBehaviorOwnerManifestAt,
+  validateBehaviorOwnerManifest,
+} from "./behavior-owner-manifest.mjs";
+import { resolveFrontendBase } from "./coverage-git-state.mjs";
 import { asyncStateOwnerTests, asyncStateTestIncludes, riskCoverageTestIncludes } from "../test-suite-manifests.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = resolve(frontendRoot, "..");
+const behaviorOwnerManifest = readBehaviorOwnerManifest(resolve(frontendRoot, "protected-behavior-owner-tests.json"));
 const suites = {
   "async-state": asyncStateTestIncludes,
   "async-state-owner-tests": [...new Set(Object.values(asyncStateOwnerTests).flat())],
+  "protected-behavior-owner-tests": [...new Set(Object.values(behaviorOwnerManifest.owners).flat())],
   "risk-coverage": riskCoverageTestIncludes,
 };
 const missing = Object.entries(suites).flatMap(([suite, patterns]) =>
@@ -24,6 +34,24 @@ if (missing.length > 0) {
 const sourceRoot = resolve(frontendRoot, "src");
 const sourceAnalysis = analyzeSourceTree(sourceRoot);
 const sourceFiles = new Set(sourceAnalysis.files);
+const behaviorOwnerFailures = validateBehaviorOwnerManifest(behaviorOwnerManifest, {
+  frontendRoot,
+  graph: sourceAnalysis.graph,
+  sourceFiles,
+});
+const behaviorOwnerBase = resolveFrontendBase(repositoryRoot, {
+  configured: process.env.FRONTEND_TEST_OWNER_BASE,
+  variable: "FRONTEND_TEST_OWNER_BASE",
+});
+const baseBehaviorOwnerManifest = readBehaviorOwnerManifestAt(repositoryRoot, behaviorOwnerBase);
+if (baseBehaviorOwnerManifest) {
+  behaviorOwnerFailures.push(...behaviorOwnerManifestWeakening(baseBehaviorOwnerManifest, behaviorOwnerManifest));
+}
+if (behaviorOwnerFailures.length > 0) {
+  console.error("Frontend protected behavior owner manifest failed:");
+  behaviorOwnerFailures.forEach((failure) => console.error(`- ${failure}`));
+  process.exit(1);
+}
 const detectedAsyncOwners = sourceAnalysis.files
   .map((file) => `src/${file.slice(sourceRoot.length + 1).replaceAll("\\", "/")}`)
   .filter((file) => isAsyncStateOwner(readFileSync(resolve(frontendRoot, file), "utf8")))

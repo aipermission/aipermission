@@ -82,3 +82,14 @@ it("treats uncertain command outcomes as terminal", async () => {
 
   expect(await screen.findByText("1/1 finished")).toBeVisible();
 });
+
+it("copies the exact confirmation phrase", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.fn();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  render(<BulkCommandDialog open targets={[target]} selectedTarget={target} onClose={vi.fn()} onRefresh={vi.fn()} />);
+
+  await user.click(screen.getByTitle("Copy confirmation phrase"));
+
+  expect(writeText).toHaveBeenCalledWith("RUN ON 1 TARGETS");
+});

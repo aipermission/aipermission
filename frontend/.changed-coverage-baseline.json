@@ -1588,10 +1588,10 @@
       "lines": 2
     },
     "src/connectors/templates/ssh/bulk-command-dialog.jsx": {
-      "statements": 59.35,
-      "branches": 39.04,
-      "functions": 56.86,
-      "lines": 65.83
+      "statements": 61.29,
+      "branches": 48.57,
+      "functions": 57.86,
+      "lines": 68.33
     },
     "src/connectors/templates/ssh/console.jsx": {
       "statements": 69.23,
@@ -1642,10 +1642,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 56.42,
-      "branches": 63.82,
-      "functions": 79.16,
-      "lines": 58.77
+      "statements": 58.04,
+      "branches": 66.44,
+      "functions": 80,
+      "lines": 59.7
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,
