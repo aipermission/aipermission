@@ -3,6 +3,7 @@ package foundation
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -65,7 +66,7 @@ func Adopt(ctx context.Context, input AdoptInput) (State, error) {
 	}, nil
 }
 
-func Open(ctx context.Context, input OpenInput) (State, error) {
+func Open(ctx context.Context, input OpenInput) (_ State, resultErr error) {
 	if input.Registry == nil || input.AdapterRegistry == nil {
 		return State{}, fmt.Errorf("open workspace runtime: connector registries are required")
 	}
@@ -73,10 +74,11 @@ func Open(ctx context.Context, input OpenInput) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	resources := failedOpenResources{ownership: ownership}
 	owned := true
 	defer func() {
 		if owned {
-			_ = ownership.Close()
+			resultErr = errors.Join(resultErr, resources.Close())
 		}
 	}()
 	existingDatabase := db.Exists(input.Path)
@@ -93,9 +95,9 @@ func Open(ctx context.Context, input OpenInput) (State, error) {
 		}
 		return State{}, err
 	}
+	resources.database = database
 	identityState, err := identity.Initialize(ctx, database, input.ConfiguredGatewaySecret)
 	if err != nil {
-		_ = database.Close()
 		if existingDatabase {
 			return State{}, initializationError(input.Path, err, snapshotsBeforeOpen)
 		}
