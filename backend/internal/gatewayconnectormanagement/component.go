@@ -145,7 +145,7 @@ func (component *Component) approvalScope(w http.ResponseWriter) (connectorappro
 		}
 	}
 	return connectorapproval.Scope{
-		Database: scope.Database, Workflow: workflow, MCPStarted: scope.MCPStarted, Redact: scope.Redact,
+		Requests: scope.Requests, Workflow: workflow, MCPStarted: scope.MCPStarted, Redact: scope.Redact,
 	}, ok
 }
 

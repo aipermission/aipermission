@@ -51,8 +51,27 @@ type ConnectorApprovalWorkflow interface {
 	DeclinePending(context.Context, int64, string) (ActionRequest, error)
 }
 
+type ConnectorApprovalRequestStore interface {
+	ListActionRequests(context.Context, connectortargets.ActionRequestFilter) ([]connectortargets.ActionRequest, error)
+	GetActionRequest(context.Context, int64) (connectortargets.ActionRequest, error)
+}
+
+type connectorApprovalRequestReader struct{ store *connectortargets.Store }
+
+func NewConnectorApprovalRequestStore(database *sql.DB) ConnectorApprovalRequestStore {
+	return connectorApprovalRequestReader{store: connectortargets.NewStore(database)}
+}
+
+func (reader connectorApprovalRequestReader) ListActionRequests(ctx context.Context, filter connectortargets.ActionRequestFilter) ([]connectortargets.ActionRequest, error) {
+	return reader.store.ListActionRequests(ctx, filter)
+}
+
+func (reader connectorApprovalRequestReader) GetActionRequest(ctx context.Context, id int64) (connectortargets.ActionRequest, error) {
+	return reader.store.GetActionRequest(ctx, id)
+}
+
 type ConnectorApprovalScope struct {
-	Database   *sql.DB
+	Requests   ConnectorApprovalRequestStore
 	Workflow   func() (ConnectorApprovalWorkflow, error)
 	MCPStarted func() bool
 	Redact     func(context.Context, string) string

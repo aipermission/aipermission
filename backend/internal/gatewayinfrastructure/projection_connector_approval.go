@@ -18,11 +18,11 @@ func (component *ConnectorActionOwner) ConnectorApprovalWorkspace(handle *Worksp
 	}
 	projected := capabilities.Approval
 	capability, ok := projected.Current()
-	if !ok || capability.Control == nil {
+	if !ok || capability.Database == nil || capability.Control == nil {
 		return connectormgmt.ConnectorApprovalScope{}, false
 	}
 	return connectormgmt.ConnectorApprovalScope{
-		Database: capability.Database, Workflow: ports.Workflow,
+		Requests: connectormgmt.NewConnectorApprovalRequestStore(capability.Database), Workflow: ports.Workflow,
 		MCPStarted: capability.Control.MCPStarted, Redact: ports.Redact,
 	}, true
 }

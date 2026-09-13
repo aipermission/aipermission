@@ -4,7 +4,6 @@ package connectorapproval
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -18,10 +17,15 @@ import (
 const noAutomaticRetryHint = "Do not retry automatically. Inspect the recorded request and external target state first."
 
 type Scope struct {
-	Database   *sql.DB
+	Requests   RequestStore
 	Workflow   func() (Workflow, error)
 	MCPStarted func() bool
 	Redact     func(context.Context, string) string
+}
+
+type RequestStore interface {
+	ListActionRequests(context.Context, connectortargets.ActionRequestFilter) ([]connectortargets.ActionRequest, error)
+	GetActionRequest(context.Context, int64) (connectortargets.ActionRequest, error)
 }
 
 type Workflow interface {
@@ -69,7 +73,7 @@ type Item struct {
 type scopeRequirement uint8
 
 const (
-	requireDatabase scopeRequirement = 1 << iota
+	requireRequests scopeRequirement = 1 << iota
 	requireWorkflow
 	requireMCPState
 	requireRedactor
@@ -78,7 +82,7 @@ const (
 func NewHTTPHandlers(scope ScopeProvider) *HTTPHandlers { return &HTTPHandlers{scope: scope} }
 
 func (h *HTTPHandlers) List(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.resolve(w, requireDatabase)
+	scope, ok := h.resolve(w, requireRequests)
 	if !ok {
 		return
 	}
@@ -88,7 +92,7 @@ func (h *HTTPHandlers) List(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	items, err := connectortargets.NewStore(scope.Database).ListActionRequests(r.Context(), filter)
+	items, err := scope.Requests.ListActionRequests(r.Context(), filter)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
@@ -105,11 +109,11 @@ func (h *HTTPHandlers) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scope, ok := h.resolve(w, requireDatabase|requireWorkflow)
+	scope, ok := h.resolve(w, requireRequests|requireWorkflow)
 	if !ok {
 		return
 	}
-	item, err := connectortargets.NewStore(scope.Database).GetActionRequest(r.Context(), id)
+	item, err := scope.Requests.GetActionRequest(r.Context(), id)
 	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
 		httptransport.WriteError(w, http.StatusNotFound, "connector action request not found")
 		return
@@ -244,7 +248,7 @@ func (h *HTTPHandlers) resolve(w http.ResponseWriter, requirements scopeRequirem
 	if !ok {
 		return Scope{}, false
 	}
-	valid := requirements&requireDatabase == 0 || scope.Database != nil
+	valid := requirements&requireRequests == 0 || scope.Requests != nil
 	valid = valid && (requirements&requireWorkflow == 0 || scope.Workflow != nil)
 	valid = valid && (requirements&requireMCPState == 0 || scope.MCPStarted != nil)
 	valid = valid && (requirements&requireRedactor == 0 || scope.Redact != nil)
