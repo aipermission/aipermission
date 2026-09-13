@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { isDeepStrictEqual } = require("node:util");
 const { resolveTrustedBase } = require("./trusted-git-base");
 const {
   plainObject,
@@ -66,7 +67,11 @@ function validateRequiredCheckMigrations(policy) {
     }
     names.add(migration.name);
     const gate = gates.get(migration.name);
-    if (!gate || !sameGateLocation(gate, migration.to)) {
+    if (
+      !gate ||
+      (!sameGateLocation(gate, migration.from) &&
+        !sameGateLocation(gate, migration.to))
+    ) {
       throw new Error(
         `required check migration ${migration.name} does not match its current gate`,
       );
@@ -106,8 +111,11 @@ function validateRequiredCommandMigrations(policy) {
       );
     }
     names.add(migration.name);
+    const source = gates.get(migration.from.check);
     const target = gates.get(migration.to.check);
-    if (!target || !target.commands?.includes(migration.to.command)) {
+    const sourceIsCurrent = source?.commands?.includes(migration.from.command);
+    const targetIsCurrent = target?.commands?.includes(migration.to.command);
+    if (!sourceIsCurrent && !targetIsCurrent) {
       throw new Error(
         `required command migration ${migration.name} does not match its current target`,
       );
@@ -148,19 +156,37 @@ function sameGateLocation(left, right) {
   );
 }
 
-function allowsRequiredCheckMigration(previousGate, currentGate, policy) {
+function sameMigration(left, right) {
+  return isDeepStrictEqual(left, right);
+}
+
+function trustedMigration(migration, previousMigrations) {
+  return (previousMigrations || []).some((previous) =>
+    sameMigration(previous, migration),
+  );
+}
+
+function allowsRequiredCheckMigration(
+  previousGate,
+  currentGate,
+  previous,
+  policy,
+) {
   return (policy.required_check_migrations || []).some(
     (migration) =>
       migration.name === previousGate.name &&
       sameGateLocation(previousGate, migration.from) &&
-      sameGateLocation(currentGate, migration.to),
+      sameGateLocation(currentGate, migration.to) &&
+      trustedMigration(migration, previous.required_check_migrations),
   );
 }
 
-function allowsRequiredCommandMigration(check, command, policy) {
+function allowsRequiredCommandMigration(check, command, previous, policy) {
   return (policy.required_command_migrations || []).some(
     (migration) =>
-      migration.from.check === check && migration.from.command === command,
+      migration.from.check === check &&
+      migration.from.command === command &&
+      trustedMigration(migration, previous.required_command_migrations),
   );
 }
 
@@ -177,7 +203,7 @@ function verifyNoRemovals(previous, policy) {
     }
     if (
       !sameGateLocation(currentGate, previousGate) &&
-      !allowsRequiredCheckMigration(previousGate, currentGate, policy)
+      !allowsRequiredCheckMigration(previousGate, currentGate, previous, policy)
     ) {
       throw new Error(
         `required_checks moved ${previousGate.name} away from ${previousGate.workflow}:${previousGate.job}`,
@@ -187,7 +213,12 @@ function verifyNoRemovals(previous, policy) {
     for (const command of previousGate.commands || []) {
       if (
         !commands.has(command) &&
-        !allowsRequiredCommandMigration(previousGate.name, command, policy)
+        !allowsRequiredCommandMigration(
+          previousGate.name,
+          command,
+          previous,
+          policy,
+        )
       ) {
         throw new Error(
           `required_checks removed ${previousGate.name} command ${command}`,
