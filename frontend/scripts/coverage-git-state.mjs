@@ -1,5 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
+import trustedGitBase from "../../scripts/trusted-git-base.js";
+
+const { resolveTrustedBase } = trustedGitBase;
+
+export function resolveFrontendBase(repositoryRoot, { configured, variable }) {
+  return resolveTrustedBase({ configured, variable, root: repositoryRoot });
+}
+
 export function findChangedOwnerEntries(repositoryRoot, ref, isBehaviorOwner) {
   verifyCommit(repositoryRoot, ref);
   const tracked = execFileSync("git", ["diff", "--name-status", "--diff-filter=ACMR", ref, "--", "frontend/src"], {

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { isBehaviorOwner, listBehaviorOwners } from "./coverage-owner-policy.mjs";
 import { coveragePolicy, coveragePolicyWeakening, legacyCoveragePolicy, readCoveragePolicy } from "./coverage-policy.mjs";
-import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision } from "./coverage-git-state.mjs";
+import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision, resolveFrontendBase } from "./coverage-git-state.mjs";
 import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
 import {
   coverageFloors as floors,
@@ -19,7 +19,10 @@ const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(frontendRoot, "..");
 const baselinePath = join(frontendRoot, ".changed-coverage-baseline.json");
 const updateBaseline = process.argv.includes("--update-baseline");
-const base = coverageBase();
+const base = resolveFrontendBase(repositoryRoot, {
+  configured: process.env.FRONTEND_COVERAGE_BASE,
+  variable: "FRONTEND_COVERAGE_BASE",
+});
 const allOwners = listBehaviorOwners(frontendRoot);
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
 validateCoverageBaselineForRun(baseline, allOwners, updateBaseline);
@@ -140,16 +143,6 @@ function baselineChanged() {
   if (result.status === 0) return false;
   if (result.status === 1) return true;
   throw result.error || new Error("Cannot compare the changed coverage baseline with its base revision");
-}
-
-function coverageBase() {
-  const requested = process.env.FRONTEND_COVERAGE_BASE;
-  if (requested && !/^0+$/.test(requested)) return requested;
-  for (const candidate of ["origin/main", "HEAD^"]) {
-    const result = spawnSync("git", ["rev-parse", "--verify", candidate], { cwd: repositoryRoot, stdio: "ignore" });
-    if (result.status === 0) return candidate;
-  }
-  throw new Error("Cannot determine a base commit for changed frontend coverage");
 }
 
 function readPolicyAt(ref) {

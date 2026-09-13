@@ -122,8 +122,6 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      PLAYWRIGHT_GATE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -155,8 +153,6 @@ jobs:
         run: npm run test:architecture
       - name: Duplication budget
         working-directory: frontend
-        env:
-          FRONTEND_DUPLICATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run test:duplication
       - name: Test
         working-directory: frontend
@@ -169,8 +165,6 @@ jobs:
         run: npm run test:coverage
       - name: Changed behavior-owner coverage
         working-directory: frontend
-        env:
-          FRONTEND_COVERAGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: npm run test:coverage:changed
       - name: Browser smoke
         working-directory: frontend

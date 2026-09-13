@@ -10,6 +10,7 @@ import {
   requiredRealBackendTitles,
   requiredSmokeTitles,
 } from "./playwright-gate-manifest.mjs";
+import { resolveFrontendBase } from "./coverage-git-state.mjs";
 import { assertPlaywrightListing, assertPlaywrightManifestRatchet, forbiddenPlaywrightAnnotations } from "./playwright-gate-policy.mjs";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,10 +55,11 @@ function specFiles(directory) {
 }
 
 async function assertBaseManifestRatchet() {
-  const baseRef = resolveBaseRef();
-  if (!baseRef || baseRef === git(["rev-parse", "HEAD"])) return;
-  const source = git(["show", `${baseRef}:frontend/scripts/playwright-gate-manifest.mjs`], true);
-  if (!source) return;
+  const baseRef = resolveFrontendBase(resolve(frontendRoot, ".."), {
+    configured: process.env.PLAYWRIGHT_GATE_BASE,
+    variable: "PLAYWRIGHT_GATE_BASE",
+  });
+  const source = git(["show", `${baseRef}:frontend/scripts/playwright-gate-manifest.mjs`]);
   const encoded = Buffer.from(source).toString("base64");
   const baseModule = await import(`data:text/javascript;base64,${encoded}#${baseRef}`);
   assertPlaywrightManifestRatchet(manifestSnapshot(baseModule), manifestSnapshot(currentManifestModule));
@@ -72,15 +74,8 @@ function manifestSnapshot(module) {
   };
 }
 
-function resolveBaseRef() {
-  const configured = String(process.env.PLAYWRIGHT_GATE_BASE || "").trim();
-  if (configured && !/^0+$/.test(configured)) return configured;
-  return git(["merge-base", "HEAD", "origin/main"], true);
-}
-
-function git(args, optional = false) {
+function git(args) {
   const result = spawnSync("git", args, { cwd: resolve(frontendRoot, ".."), encoding: "utf8" });
   if (result.status === 0) return result.stdout.trim();
-  if (optional) return "";
   throw new Error(result.stderr.trim() || `git ${args.join(" ")} failed`);
 }

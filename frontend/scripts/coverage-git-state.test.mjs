@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision } from "./coverage-git-state.mjs";
+import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision, resolveFrontendBase } from "./coverage-git-state.mjs";
 
 function git(root, ...args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -78,6 +78,28 @@ test("resolves the accepted bootstrap by tree after a rebase rewrites its commit
     assert.equal(git(root, "rev-parse", "HEAD^{tree}"), tree);
     assert.equal(resolveBootstrapRevision(root, { revision, tree }), rewritten);
     assert.throws(() => resolveBootstrapRevision(root, { revision, tree: "0".repeat(40) }), /bootstrap tree .* is not reachable/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("frontend ratchets reject HEAD and non-ancestor configured bases", () => {
+  const root = repositoryFixture();
+  try {
+    const base = git(root, "rev-parse", "HEAD");
+    writeFileSync(join(root, "frontend/src/existing.js"), "export const existing = false;\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "candidate");
+    assert.equal(resolveFrontendBase(root, { configured: base, variable: "FRONTEND_TEST_BASE" }), base);
+    assert.throws(() => resolveFrontendBase(root, { configured: "HEAD", variable: "FRONTEND_TEST_BASE" }), /must not resolve to HEAD/);
+
+    git(root, "switch", "-qc", "unrelated", base);
+    writeFileSync(join(root, "unrelated.txt"), "unrelated\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "unrelated");
+    const unrelated = git(root, "rev-parse", "HEAD");
+    git(root, "switch", "-q", "master");
+    assert.throws(() => resolveFrontendBase(root, { configured: unrelated, variable: "FRONTEND_TEST_BASE" }), /is not an ancestor of HEAD/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
