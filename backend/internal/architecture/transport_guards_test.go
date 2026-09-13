@@ -100,6 +100,33 @@ func TestProductionPackagesDoNotExposeMutableFacades(t *testing.T) {
 	})
 }
 
+func TestCompositionPackagesDoNotDeclareMutableRegistries(t *testing.T) {
+	roots := []string{
+		filepath.Join("..", "api"),
+		filepath.Join("..", "gatewayinfrastructure"),
+		filepath.Join("..", "gatewayworkspace"),
+		filepath.Join("..", "..", "cmd", "aipermission"),
+	}
+	for _, root := range roots {
+		inspectProductionGoPackages(t, root, func(path string, file *ast.File, bindings map[string][]ast.Expr) {
+			for _, declaration := range file.Decls {
+				general, ok := declaration.(*ast.GenDecl)
+				if !ok || general.Tok != token.VAR {
+					continue
+				}
+				for _, specification := range general.Specs {
+					value := specification.(*ast.ValueSpec)
+					for index, identifier := range value.Names {
+						if mutableRegistryType(value.Type, bindings, map[string]bool{}) || expressionConstructsMutableRegistry(valueInitializer(value, index), bindings, map[string]bool{}) {
+							t.Errorf("%s declares mutable composition registry %s; keep owned state inside a component", path, identifier.Name)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 func packageFacadeBindings(file *ast.File) map[string][]ast.Expr {
 	bindings := map[string][]ast.Expr{}
 	for _, declaration := range file.Decls {
@@ -118,6 +145,21 @@ func packageFacadeBindings(file *ast.File) map[string][]ast.Expr {
 					bindings[identifier.Name] = append(bindings[identifier.Name], initializer)
 				}
 			}
+		}
+	}
+	return bindings
+}
+
+func packageTypeBindings(file *ast.File) map[string][]ast.Expr {
+	bindings := map[string][]ast.Expr{}
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec := specification.(*ast.TypeSpec)
+			bindings[typeSpec.Name.Name] = append(bindings[typeSpec.Name.Name], typeSpec.Type)
 		}
 	}
 	return bindings
@@ -154,6 +196,9 @@ func inspectProductionGoPackages(t *testing.T, root string, inspect func(string,
 		for _, parsed := range files {
 			for name, initializers := range packageFacadeBindings(parsed.file) {
 				bindings[name] = append(bindings[name], initializers...)
+			}
+			for name, declarations := range packageTypeBindings(parsed.file) {
+				bindings["type:"+name] = append(bindings["type:"+name], declarations...)
 			}
 		}
 		for _, parsed := range files {
@@ -482,6 +527,67 @@ func expressionsContainMutableFacade(expressions []ast.Expr, bindings map[string
 	return false
 }
 
+func expressionConstructsMutableRegistry(expression ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
+	if expression == nil {
+		return false
+	}
+	switch value := expression.(type) {
+	case *ast.Ident:
+		if visiting[value.Name] {
+			return false
+		}
+		initializers := bindings[value.Name]
+		visiting[value.Name] = true
+		defer delete(visiting, value.Name)
+		for _, initializer := range initializers {
+			if expressionConstructsMutableRegistry(initializer, bindings, visiting) {
+				return true
+			}
+		}
+		return false
+	case *ast.ParenExpr:
+		return expressionConstructsMutableRegistry(value.X, bindings, visiting)
+	case *ast.CompositeLit:
+		return mutableRegistryType(value.Type, bindings, visiting)
+	case *ast.CallExpr:
+		identifier, ok := value.Fun.(*ast.Ident)
+		return ok && (identifier.Name == "make" || identifier.Name == "new") && len(value.Args) > 0 && mutableRegistryType(value.Args[0], bindings, visiting)
+	case *ast.UnaryExpr:
+		return value.Op == token.AND && expressionConstructsMutableRegistry(value.X, bindings, visiting)
+	default:
+		return false
+	}
+}
+
+func mutableRegistryType(expression ast.Expr, bindings map[string][]ast.Expr, visiting map[string]bool) bool {
+	switch value := expression.(type) {
+	case *ast.MapType, *ast.ArrayType, *ast.ChanType:
+		return true
+	case *ast.Ident:
+		key := "type:" + value.Name
+		if visiting[key] {
+			return false
+		}
+		visiting[key] = true
+		defer delete(visiting, key)
+		for _, declaration := range bindings[key] {
+			if mutableRegistryType(declaration, bindings, visiting) {
+				return true
+			}
+		}
+		return false
+	case *ast.ParenExpr:
+		return mutableRegistryType(value.X, bindings, visiting)
+	case *ast.StarExpr:
+		return mutableRegistryType(value.X, bindings, visiting)
+	case *ast.SelectorExpr:
+		owner, ok := value.X.(*ast.Ident)
+		return ok && owner.Name == "sync" && value.Sel.Name == "Map"
+	default:
+		return false
+	}
+}
+
 func TestTransportGuardHelpersRejectDisguisedEscapeHatches(t *testing.T) {
 	tracked := map[string]map[string]bool{modulePath + "/internal/gatewayaccess": {"AccessScope": true}}
 	file, err := parser.ParseFile(token.NewFileSet(), "fixture.go", `package fixture
@@ -570,6 +676,29 @@ var ConstructedValue = NewLockedServer()
 	}
 	if mutableFacadeInitializerWithBindings(functionBindings["ConstructedValue"][0], functionBindings, map[string]bool{}) {
 		t.Fatal("package function call result was mistaken for a mutable facade")
+	}
+	for _, source := range []string{
+		`map[string]any{}`,
+		`make(map[string]any)`,
+		`[]any{}`,
+		`make(chan any)`,
+		`sync.Map{}`,
+		`new(sync.Map)`,
+	} {
+		if !expressionConstructsMutableRegistry(mustParseExpression(t, source), nil, map[string]bool{}) {
+			t.Errorf("mutable registry %q escaped detection", source)
+		}
+	}
+	registryBindings := map[string][]ast.Expr{
+		"privateRegistry": {mustParseExpression(t, `map[string]any{}`)},
+		"PublicRegistry":  {mustParseExpression(t, "privateRegistry")},
+		"type:registry":   {mustParseExpression(t, `map[string]any`)},
+	}
+	if !expressionConstructsMutableRegistry(registryBindings["PublicRegistry"][0], registryBindings, map[string]bool{}) {
+		t.Fatal("identifier-chain mutable registry escaped detection")
+	}
+	if !expressionConstructsMutableRegistry(mustParseExpression(t, "registry{}"), registryBindings, map[string]bool{}) {
+		t.Fatal("named mutable registry type escaped detection")
 	}
 }
 
