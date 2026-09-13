@@ -110,6 +110,74 @@ jobs:
   assert.throws(() => verifyWorkflows(gatePolicy), /missing required command/);
 });
 
+test("workflow verification locks environment and working directory", (t) => {
+  const write = useFixture(t);
+  const contextualPolicy = structuredClone(gatePolicy);
+  contextualPolicy.required_checks[0].command_working_directories = {
+    "node verify.js": "scripts",
+  };
+
+  write(
+    workflow(
+      "      - run: node verify.js\n        working-directory: scripts",
+    ),
+  );
+  assert.doesNotThrow(() => verifyWorkflows(contextualPolicy));
+
+  for (const source of [
+    workflow("      - run: node verify.js\n        working-directory: other"),
+    `name: Fixture
+defaults:
+  run:
+    working-directory: other
+jobs:
+  gate:
+    name: Gate
+    steps:
+      - run: node verify.js
+`,
+    `name: Fixture
+jobs:
+  gate:
+    name: Gate
+    defaults:
+      run:
+        working-directory: other
+    steps:
+      - run: node verify.js
+`,
+    `name: Fixture
+env:
+  GOFLAGS: -run=^$
+jobs:
+  gate:
+    name: Gate
+    steps:
+      - run: node verify.js
+        working-directory: scripts
+`,
+    `name: Fixture
+jobs:
+  gate:
+    name: Gate
+    env:
+      GOFLAGS: -run=^$
+    steps:
+      - run: node verify.js
+        working-directory: scripts
+`,
+    workflow(
+      "      - run: node verify.js\n        working-directory: scripts\n        env:\n          GOFLAGS: -run=^$",
+    ),
+    workflow(
+      "      - run: echo 'GOFLAGS=-run=^$' >> $GITHUB_ENV\n      - run: node verify.js\n        working-directory: scripts",
+    ),
+  ]) {
+    write(source);
+    assert.throws(() => verifyWorkflows(contextualPolicy));
+  }
+});
+
 test("workflow verification rejects conditional required jobs", (t) => {
   const write = useFixture(t);
   for (const setting of ["if: ${{ true }}", "continue-on-error: true"]) {
@@ -229,4 +297,21 @@ test("verification policy permits only an exact declared check migration", () =>
     /does not match its current gate/,
   );
   assert.throws(() => verifyNoRemovals(previous, redirected), /moved Gate/);
+});
+
+test("verification policy ratchets command working directories", () => {
+  const previous = structuredClone(gatePolicy);
+  previous.recovery_tests = ["recovery"];
+  previous.connector_conformance_tests = ["conformance"];
+  previous.fuzz_targets = ["fuzz"];
+  previous.required_checks[0].command_working_directories = {
+    "node verify.js": "scripts",
+  };
+  const current = structuredClone(previous);
+  current.required_checks[0].command_working_directories["node verify.js"] =
+    "other";
+  assert.throws(
+    () => verifyNoRemovals(previous, current),
+    /changed Gate command context/,
+  );
 });

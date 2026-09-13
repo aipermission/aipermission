@@ -73,7 +73,18 @@
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0",
         "\"$(go env GOPATH)/bin/govulncheck\" ./..."
-      ]
+      ],
+      "command_working_directories": {
+        "go test -coverprofile=coverage.out ./...": "backend",
+        "go run ./cmd/coveragecheck -profile coverage.out": "backend",
+        "go run ./cmd/function-budget": "backend",
+        "go test -race ./...": "backend",
+        "go vet ./...": "backend",
+        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
+        "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -exec=true ./...": "backend",
+        "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0": "backend",
+        "\"$(go env GOPATH)/bin/govulncheck\" ./...": "backend"
+      }
     },
     {
       "name": "Frontend",
@@ -98,7 +109,26 @@
         "npm run build",
         "npm audit --omit=dev --audit-level=moderate",
         "npm audit --audit-level=high"
-      ]
+      ],
+      "command_working_directories": {
+        "npm ci --workspaces=false": "frontend",
+        "npx playwright install chromium": "frontend",
+        "npm run lint": "frontend",
+        "npm run format:check": "frontend",
+        "npm run test:architecture": "frontend",
+        "npm run test:duplication": "frontend",
+        "npm test": "frontend",
+        "npm run test:async-race": "frontend",
+        "npm run test:coverage": "frontend",
+        "npm run test:coverage:changed": "frontend",
+        "npm run test:e2e:smoke": "frontend",
+        "npm run test:e2e:accessibility": "frontend",
+        "npm run test:e2e:high-risk": "frontend",
+        "npm run test:e2e:real": "frontend",
+        "npm run build": "frontend",
+        "npm audit --omit=dev --audit-level=moderate": "frontend",
+        "npm audit --audit-level=high": "frontend"
+      }
     },
     {
       "name": "MCP Package",
@@ -114,14 +144,28 @@
         "npm audit --omit=dev --audit-level=moderate",
         "npm audit --audit-level=high",
         "npm pack --dry-run"
-      ]
+      ],
+      "command_working_directories": {
+        "npm ci --workspaces=false": "packages/mcp",
+        "npm run lint": "packages/mcp",
+        "npm run format:check": "packages/mcp",
+        "npm test": "packages/mcp",
+        "npm run build": "packages/mcp",
+        "npm audit --omit=dev --audit-level=moderate": "packages/mcp",
+        "npm audit --audit-level=high": "packages/mcp",
+        "npm pack --dry-run": "packages/mcp"
+      }
     },
     {
       "name": "MCP Windows Private Config",
       "workflow": ".github/workflows/ci.yml",
       "job": "mcp-windows-private-config",
       "job_name": "MCP Windows Private Config",
-      "commands": ["npm ci --workspaces=false", "npm run test:windows-acl"]
+      "commands": ["npm ci --workspaces=false", "npm run test:windows-acl"],
+      "command_working_directories": {
+        "npm ci --workspaces=false": "packages/mcp",
+        "npm run test:windows-acl": "packages/mcp"
+      }
     },
     {
       "name": "Docs Hygiene",
@@ -135,7 +179,10 @@
       "workflow": ".github/workflows/ci.yml",
       "job": "npm-placeholder",
       "job_name": "NPM Placeholder Package",
-      "commands": ["npm pack --dry-run"]
+      "commands": ["npm pack --dry-run"],
+      "command_working_directories": {
+        "npm pack --dry-run": "packages/npm-placeholder"
+      }
     },
     {
       "name": "Container Scan",
@@ -153,7 +200,10 @@
       "workflow": ".github/workflows/codeql.yml",
       "job": "analyze-go",
       "job_name": "Analyze (go)",
-      "commands": ["go build ./...", "uses:github/codeql-action/analyze"]
+      "commands": ["go build ./...", "uses:github/codeql-action/analyze"],
+      "command_working_directories": {
+        "go build ./...": "backend"
+      }
     },
     {
       "name": "Analyze (javascript-typescript)",

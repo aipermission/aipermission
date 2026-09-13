@@ -91,6 +91,12 @@ function workflowJobContracts(source, sourcePath = "workflow") {
   if (!plainObject(workflow.jobs))
     throw new Error(`${sourcePath} must define jobs`);
   const workflowShell = inheritedRunShell(workflow, sourcePath, "workflow");
+  const workflowWorkingDirectory = inheritedRunWorkingDirectory(
+    workflow,
+    sourcePath,
+    "workflow",
+  );
+  const workflowHasEnvironment = Object.hasOwn(workflow, "env");
   const jobs = new Map();
   for (const [jobID, job] of Object.entries(workflow.jobs)) {
     if (!plainObject(job))
@@ -99,6 +105,11 @@ function workflowJobContracts(source, sourcePath = "workflow") {
       throw new Error(`${sourcePath} job ${jobID} steps must be a sequence`);
     }
     const jobShell = inheritedRunShell(job, sourcePath, `job ${jobID}`);
+    const jobWorkingDirectory = inheritedRunWorkingDirectory(
+      job,
+      sourcePath,
+      `job ${jobID}`,
+    );
     const steps = (job.steps || []).map((step, index) => {
       if (!plainObject(step)) {
         throw new Error(
@@ -109,6 +120,15 @@ function workflowJobContracts(source, sourcePath = "workflow") {
         run: typeof step.run === "string" ? step.run : "",
         uses: typeof step.uses === "string" ? step.uses : "",
         shell: effectiveRunShell(step.shell, jobShell, workflowShell),
+        workingDirectory: effectiveWorkingDirectory(
+          step["working-directory"],
+          jobWorkingDirectory,
+          workflowWorkingDirectory,
+        ),
+        hasEnvironment: Object.hasOwn(step, "env"),
+        writesPersistentEnvironment:
+          typeof step.run === "string" &&
+          /GITHUB_(?:ENV|PATH)/.test(step.run),
         hasCondition: Object.hasOwn(step, "if"),
         hasContinueOnError: Object.hasOwn(step, "continue-on-error"),
       };
@@ -119,9 +139,30 @@ function workflowJobContracts(source, sourcePath = "workflow") {
       steps,
       hasCondition: Object.hasOwn(job, "if"),
       hasContinueOnError: Object.hasOwn(job, "continue-on-error"),
+      hasEnvironment:
+        workflowHasEnvironment || Object.hasOwn(job, "env"),
     });
   }
   return jobs;
+}
+
+function inheritedRunWorkingDirectory(mapping, sourcePath, owner) {
+  if (!Object.hasOwn(mapping, "defaults")) return "";
+  if (!plainObject(mapping.defaults)) {
+    throw new Error(`${sourcePath} ${owner} defaults must be a mapping`);
+  }
+  if (!Object.hasOwn(mapping.defaults, "run")) return "";
+  if (!plainObject(mapping.defaults.run)) {
+    throw new Error(`${sourcePath} ${owner} defaults.run must be a mapping`);
+  }
+  const directory = mapping.defaults.run["working-directory"];
+  if (directory == null) return "";
+  if (typeof directory !== "string") {
+    throw new Error(
+      `${sourcePath} ${owner} defaults.run.working-directory must be a string`,
+    );
+  }
+  return directory;
 }
 
 function inheritedRunShell(mapping, sourcePath, owner) {
@@ -146,6 +187,12 @@ function effectiveRunShell(stepShell, jobShell, workflowShell) {
   return stepShell || jobShell || workflowShell || "";
 }
 
+function effectiveWorkingDirectory(stepDirectory, jobDirectory, workflowDirectory) {
+  if (stepDirectory != null && typeof stepDirectory !== "string")
+    return "invalid";
+  return stepDirectory || jobDirectory || workflowDirectory || ".";
+}
+
 function workflowJobs(source) {
   return new Map(
     [...workflowJobContracts(source)].map(([name, contract]) => [
@@ -155,16 +202,19 @@ function workflowJobs(source) {
   );
 }
 
-function unconditionalStep(step) {
+function unconditionalStep(step, workingDirectory) {
   return (
     !step.hasCondition &&
     !step.hasContinueOnError &&
+    !step.hasEnvironment &&
+    !step.writesPersistentEnvironment &&
+    step.workingDirectory === workingDirectory &&
     (!step.shell || step.shell === "bash")
   );
 }
 
-function stepProvidesCommand(step, command) {
-  if (!unconditionalStep(step)) return false;
+function stepProvidesCommand(step, command, workingDirectory) {
+  if (!unconditionalStep(step, workingDirectory)) return false;
   if (command.startsWith("uses:")) {
     const expected = command.slice(5);
     return step.uses === expected || step.uses.startsWith(`${expected}@`);
@@ -282,10 +332,38 @@ function verifyWorkflows(policy = loadPolicy()) {
         `${gate.workflow} required job ${gate.job} must be unconditional and fail closed`,
       );
     }
-    for (const command of gate.commands) {
-      if (!contract.steps.some((step) => stepProvidesCommand(step, command))) {
+    if (
+      contract.hasEnvironment ||
+      contract.steps.some(
+        (step) => step.hasEnvironment || step.writesPersistentEnvironment,
+      )
+    ) {
+      throw new Error(
+        `${gate.workflow} required job ${gate.job} must not override the verification environment`,
+      );
+    }
+    const directories = gate.command_working_directories || {};
+    if (!plainObject(directories)) {
+      throw new Error(
+        `${gate.workflow} required job ${gate.job} has invalid command working directories`,
+      );
+    }
+    for (const command of Object.keys(directories)) {
+      if (!gate.commands.includes(command)) {
         throw new Error(
-          `${gate.workflow} job ${gate.job} is missing required command ${command}`,
+          `${gate.workflow} required job ${gate.job} configures an unknown command working directory`,
+        );
+      }
+    }
+    for (const command of gate.commands) {
+      const workingDirectory = directories[command] || ".";
+      if (
+        !contract.steps.some((step) =>
+          stepProvidesCommand(step, command, workingDirectory),
+        )
+      ) {
+        throw new Error(
+          `${gate.workflow} job ${gate.job} is missing required command ${command} in ${workingDirectory}`,
         );
       }
     }
@@ -353,6 +431,18 @@ function verifyNoRemovals(previous, policy) {
         throw new Error(
           `required_checks removed ${previousGate.name} command ${command}`,
         );
+      const previousDirectories =
+        previousGate.command_working_directories || {};
+      const currentDirectory =
+        currentGate.command_working_directories?.[command] || ".";
+      if (
+        Object.hasOwn(previousDirectories, command) &&
+        currentDirectory !== previousDirectories[command]
+      ) {
+        throw new Error(
+          `required_checks changed ${previousGate.name} command context for ${command}`,
+        );
+      }
     }
   }
   for (const key of [
