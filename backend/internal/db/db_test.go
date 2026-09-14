@@ -30,6 +30,26 @@ func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
 	}
 }
 
+func TestOpenEncryptedRejectsSymlinkDatabasePath(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "target.db")
+	database, err := OpenEncrypted(target, "correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "linked.db")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := OpenEncrypted(link, "correct-password"); err == nil {
+		_ = opened.Close()
+		t.Fatal("symlinked database path was opened")
+	}
+}
+
 func assertMigrationMetadata(t *testing.T, database *sql.DB) {
 	t.Helper()
 	var count int

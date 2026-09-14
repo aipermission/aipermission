@@ -230,7 +230,7 @@ func recoverDatabaseMoveJournals(root string) error {
 			continue
 		}
 		manifestPath := filepath.Join(journalDir, databaseMoveManifestFile)
-		manifestJSON, err := os.ReadFile(manifestPath)
+		manifestJSON, err := readRegularDatabaseMoveFile(manifestPath, "manifest")
 		if err != nil {
 			if os.IsNotExist(err) && moveJournalIsUnpublished(journalDir) {
 				if cleanupErr := removeIncompleteMoveJournal(root, journalDir); cleanupErr != nil {
@@ -271,8 +271,20 @@ func recoverDatabaseMoveJournals(root string) error {
 	return nil
 }
 
+func readRegularDatabaseMoveFile(path, label string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("database move %s is not a regular file", label)
+	}
+	return os.ReadFile(path)
+}
+
 func databaseMoveJournalComplete(journalDir string) (bool, error) {
-	marker, err := os.ReadFile(filepath.Join(journalDir, databaseMoveCompleteFile))
+	markerPath := filepath.Join(journalDir, databaseMoveCompleteFile)
+	marker, err := readRegularDatabaseMoveFile(markerPath, "completion marker")
 	if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -321,7 +333,11 @@ func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publis
 	restore := make([]databaseMove, 0, len(manifest.Moves))
 	for index := len(manifest.Moves) - 1; index >= 0; index-- {
 		item := manifest.Moves[index]
-		sourceExists, targetExists := db.Exists(item.Source), db.Exists(item.Target)
+		sourceExists, sourceErr := databaseMoveRegularFileExists(item.Source)
+		targetExists, targetErr := databaseMoveRegularFileExists(item.Target)
+		if sourceErr != nil || targetErr != nil {
+			return errors.Join(sourceErr, targetErr)
+		}
 		switch {
 		case sourceExists && !targetExists:
 			continue
@@ -374,6 +390,15 @@ func validateDatabaseMoveManifest(root string, manifest databaseMoveManifest) er
 	if !databaseMovePathWithin(root, sourceBase) || !databaseMovePathWithin(root, targetBase) || len(manifest.Moves) == 0 || len(manifest.Moves) > 64 {
 		return fmt.Errorf("database move journal is outside its recovery root")
 	}
+	if !validDatabaseMoveBaseDirectory(root, filepath.Dir(sourceBase)) || !validDatabaseMoveBaseDirectory(root, filepath.Dir(targetBase)) {
+		return fmt.Errorf("database move journal uses an invalid catalog directory")
+	}
+	if _, err := checkedDatabasePath(sourceBase); err != nil {
+		return fmt.Errorf("database move journal source path: %w", err)
+	}
+	if _, err := checkedDatabasePath(targetBase); err != nil {
+		return fmt.Errorf("database move journal target path: %w", err)
+	}
 	for _, item := range manifest.Moves {
 		source, sourceErr := filepath.Abs(filepath.Clean(item.Source))
 		target, targetErr := filepath.Abs(filepath.Clean(item.Target))
@@ -381,8 +406,32 @@ func validateDatabaseMoveManifest(root string, manifest databaseMoveManifest) er
 		if sourceErr != nil || targetErr != nil || !validDatabaseMoveSuffix(suffix) || target != targetBase+suffix {
 			return fmt.Errorf("database move journal has an invalid artifact path")
 		}
+		if _, err := checkedDatabasePath(source); err != nil {
+			return fmt.Errorf("database move journal source artifact: %w", err)
+		}
+		if _, err := checkedDatabasePath(target); err != nil {
+			return fmt.Errorf("database move journal target artifact: %w", err)
+		}
 	}
 	return nil
+}
+
+func validDatabaseMoveBaseDirectory(root, directory string) bool {
+	return directory == root || directory == filepath.Join(root, "databases")
+}
+
+func databaseMoveRegularFileExists(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect database move artifact %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("database move artifact %q is not a regular file", path)
+	}
+	return true, nil
 }
 
 func databaseMovePathWithin(root, path string) bool {

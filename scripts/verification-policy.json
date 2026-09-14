@@ -116,9 +116,7 @@
       "workflow": ".github/workflows/ci.yml",
       "job": "backend-windows-runtime",
       "job_name": "Backend Windows Runtime",
-      "commands": [
-        "node ../scripts/ci/windows-runtime-tests.js"
-      ],
+      "commands": ["node ../scripts/ci/windows-runtime-tests.js"],
       "command_working_directories": {
         "node ../scripts/ci/windows-runtime-tests.js": "backend"
       }
@@ -292,6 +290,10 @@
     {
       "package": "./internal/filetransfer",
       "name": "FuzzTransferPathNormalization"
+    },
+    {
+      "package": "./internal/databasecatalog",
+      "name": "FuzzDatabaseIDRoundTrip"
     },
     {
       "package": "./internal/connectors/sqlsafe",
