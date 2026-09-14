@@ -9,6 +9,62 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.48] - 2026-09-14
+
+### Changed
+
+- Backend application behavior now lives behind explicit workspace, connector, action,
+  Vault, backup, transfer, access-control, and observability owners, leaving the API
+  package as a bounded composition and HTTP transport layer.
+- Workspace startup, mutation, shutdown, and failed-open cleanup now use typed lifecycle
+  capabilities with one authoritative runtime identity and deterministic teardown
+  ordering.
+- Connector management and execution now use immutable catalogs, typed route authority,
+  and owner-provided runtime ports without mutable service locators or
+  connector-specific shared-code branches.
+
+### Fixed
+
+- Console, command, transfer, backup, audit, and workspace shutdown paths now preserve
+  remote outcome ownership, drain bounded work, and retain cleanup capabilities until
+  finalization completes.
+- Bulk dispatch retries, generated Vault items, remote backup uploads, and approval
+  completion now reconcile idempotently instead of duplicating work or reporting an
+  unsafe completed state.
+- SSH handshakes now honor cancellation, locked workspaces revoke active UI sessions,
+  compact continuation prompts stay clean, and history and audit rows again open from
+  the full row surface.
+
+### Security
+
+- Connector route namespaces, read and mutation authority, capability registration, and
+  approval outcome contracts now fail closed on collisions, stale state, unclassified
+  results, and uncertain remote completion.
+- Release verification now proves workflow provenance, trusted history depth, effective
+  required-job commands, bounded fuzz execution, complete coverage profiles, and exact
+  source-commit status before publication.
+- MCP cleanup remains cancellation-safe, Windows private-file ACL behavior is exercised
+  natively, and the frontend runtime includes the patched operating-system package
+  baseline.
+- Host reachability probes now enforce a constant attempt bound at the execution
+  boundary, while UI authorization remains isolated in an HttpOnly cookie from
+  explicitly client-readable CSRF and retry-scope identifiers.
+
+### Maintenance
+
+- Exception-free architecture and maintenance budgets now guard owner boundaries,
+  package fan-out, mutable registries, test classification, platform suites, recovery
+  checks, and changed behavior coverage.
+- CodeQL, ESLint, pgx, React, Playwright, Lucide, and frontend duplication tooling use
+  their reviewed maintainer-authored updates.
+- Architecture, testing, connector, REST, MCP, and verification documentation now
+  describes the enforced ownership and release contracts.
+
+### Notes
+
+- Upgrade the separate AIPermission Backup service to v0.3.0 before upgrading the
+  gateway to v0.2.48; older backup service protocols are incompatible with this release.
+
 ## [0.2.47] - 2026-09-09
 
 ### Changed
