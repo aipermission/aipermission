@@ -59,6 +59,8 @@ and this project uses semantic versioning for public releases.
   their reviewed maintainer-authored updates.
 - Architecture, testing, connector, REST, MCP, and verification documentation now
   describes the enforced ownership and release contracts.
+- Accessibility browser validation now recognizes connector selection state consistently
+  across pull-request and main-branch workflows.
 
 ### Notes
 
