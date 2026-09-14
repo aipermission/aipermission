@@ -85,13 +85,17 @@ test("resolves the accepted bootstrap by tree after a rebase rewrites its commit
 
 test("frontend ratchets reject HEAD and non-ancestor configured bases", () => {
   const root = repositoryFixture();
+  const localEnvironment = {};
   try {
     const base = git(root, "rev-parse", "HEAD");
     writeFileSync(join(root, "frontend/src/existing.js"), "export const existing = false;\n");
     git(root, "add", ".");
     git(root, "commit", "-qm", "candidate");
-    assert.equal(resolveFrontendBase(root, { configured: base, variable: "FRONTEND_TEST_BASE" }), base);
-    assert.throws(() => resolveFrontendBase(root, { configured: "HEAD", variable: "FRONTEND_TEST_BASE" }), /must not resolve to HEAD/);
+    assert.equal(resolveFrontendBase(root, { configured: base, variable: "FRONTEND_TEST_BASE", environment: localEnvironment }), base);
+    assert.throws(
+      () => resolveFrontendBase(root, { configured: "HEAD", variable: "FRONTEND_TEST_BASE", environment: localEnvironment }),
+      /must not resolve to HEAD/,
+    );
 
     git(root, "switch", "-qc", "unrelated", base);
     writeFileSync(join(root, "unrelated.txt"), "unrelated\n");
@@ -99,7 +103,10 @@ test("frontend ratchets reject HEAD and non-ancestor configured bases", () => {
     git(root, "commit", "-qm", "unrelated");
     const unrelated = git(root, "rev-parse", "HEAD");
     git(root, "switch", "-q", "master");
-    assert.throws(() => resolveFrontendBase(root, { configured: unrelated, variable: "FRONTEND_TEST_BASE" }), /is not an ancestor of HEAD/);
+    assert.throws(
+      () => resolveFrontendBase(root, { configured: unrelated, variable: "FRONTEND_TEST_BASE", environment: localEnvironment }),
+      /is not an ancestor of HEAD/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

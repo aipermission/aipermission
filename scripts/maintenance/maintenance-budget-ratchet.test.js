@@ -345,13 +345,13 @@ test("maintenance budget base fails closed instead of comparing HEAD to itself",
       resolveBaseReference("HEAD", (...args) => {
         if (args[0] === "rev-parse") return "same-sha";
         return "";
-      }),
+      }, {}),
     /must not resolve to HEAD/,
   );
   assert.throws(
-    () => resolveBaseReference("000000", () => ""),
+    () => resolveBaseReference("000000", () => "", {}),
     /must identify a non-zero base commit/,
   );
-  assert.equal(resolveBaseReference("", fakeGit), "base-sha");
-  assert.equal(resolveBaseReference("configured", fakeGit), "base-sha");
+  assert.equal(resolveBaseReference("", fakeGit, {}), "base-sha");
+  assert.equal(resolveBaseReference("configured", fakeGit, {}), "base-sha");
 });

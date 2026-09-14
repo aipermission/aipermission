@@ -4,8 +4,8 @@ import trustedGitBase from "../../scripts/trusted-git-base.js";
 
 const { resolveTrustedBase } = trustedGitBase;
 
-export function resolveFrontendBase(repositoryRoot, { configured, variable }) {
-  return resolveTrustedBase({ configured, variable, root: repositoryRoot });
+export function resolveFrontendBase(repositoryRoot, { configured, variable, environment = process.env }) {
+  return resolveTrustedBase({ configured, variable, root: repositoryRoot, environment });
 }
 
 export function findChangedOwnerEntries(repositoryRoot, ref, isBehaviorOwner) {

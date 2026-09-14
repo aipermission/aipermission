@@ -471,12 +471,17 @@ function snapshotAt(ref) {
   );
 }
 
-function resolveBaseReference(configured, gitCommand = git) {
+function resolveBaseReference(
+  configured,
+  gitCommand = git,
+  environment = process.env,
+) {
   return resolveTrustedBase({
     configured,
     variable: "MAINTENANCE_BUDGET_BASE",
     root,
     gitCommand,
+    environment,
   });
 }
 

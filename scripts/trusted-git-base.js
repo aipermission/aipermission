@@ -9,21 +9,21 @@ function git(root, ...args) {
   }).trim();
 }
 
-function eventBase() {
-  const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (process.env.GITHUB_ACTIONS !== "true" || !eventPath) return "";
+function eventBase(environment = process.env) {
+  const eventPath = environment.GITHUB_EVENT_PATH;
+  if (environment.GITHUB_ACTIONS !== "true" || !eventPath) return "";
   const event = JSON.parse(fs.readFileSync(eventPath, "utf8"));
-  if (process.env.GITHUB_EVENT_NAME === "pull_request") {
+  if (environment.GITHUB_EVENT_NAME === "pull_request") {
     return String(event.pull_request?.base?.sha || "").trim();
   }
-  if (process.env.GITHUB_EVENT_NAME === "push") {
+  if (environment.GITHUB_EVENT_NAME === "push") {
     return String(event.before || "").trim();
   }
-  if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+  if (environment.GITHUB_EVENT_NAME === "workflow_dispatch") {
     return "";
   }
   throw new Error(
-    `unsupported GitHub event for policy ratchet: ${process.env.GITHUB_EVENT_NAME || "missing"}`,
+    `unsupported GitHub event for policy ratchet: ${environment.GITHUB_EVENT_NAME || "missing"}`,
   );
 }
 
@@ -32,10 +32,11 @@ function resolveTrustedBase({
   variable,
   root,
   gitCommand = (...args) => git(root, ...args),
+  environment = process.env,
 }) {
-  const inGitHub = process.env.GITHUB_ACTIONS === "true";
+  const inGitHub = environment.GITHUB_ACTIONS === "true";
   const configuredReference = String(configured || "").trim();
-  const eventName = String(process.env.GITHUB_EVENT_NAME || "").trim();
+  const eventName = String(environment.GITHUB_EVENT_NAME || "").trim();
   if (inGitHub && eventName === "workflow_dispatch" && !configuredReference) {
     throw new Error(
       `${variable} must identify the immutable workflow_dispatch base commit`,
@@ -43,7 +44,7 @@ function resolveTrustedBase({
   }
   let reference =
     inGitHub && eventName !== "workflow_dispatch"
-      ? eventBase()
+      ? eventBase(environment)
       : configuredReference;
   if (!reference) reference = gitCommand("merge-base", "HEAD", "origin/main");
   if (!reference || /^0+$/.test(reference)) {

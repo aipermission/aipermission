@@ -100,7 +100,7 @@ test("workflow dispatch accepts only an explicit immutable base commit", (t) => 
   );
 });
 
-test("local ratchets use HEAD parent when merge base is HEAD", () => {
+test("local ratchets ignore inherited GitHub Actions context", () => {
   const head = "b".repeat(40),
     parent = "a".repeat(40);
   const gitCommand = fakeGit({
@@ -116,6 +116,7 @@ test("local ratchets use HEAD parent when merge base is HEAD", () => {
       variable: "POLICY_BASE",
       root: ".",
       gitCommand,
+      environment: {},
     }),
     parent,
   );
