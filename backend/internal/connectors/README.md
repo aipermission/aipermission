@@ -183,10 +183,12 @@ not model secrets such as `password`, `token`, `api_key`, or `private_key`.
 Secrets belong in credential profiles and are available only during approved
 execution through runtime secret access.
 
-Actions that return `running` need a runtime adapter owned by the gateway API
-layer. The adapter is responsible for polling/finalizing the action, redacting
-intermediate responses, syncing history, and providing MCP assistant hints.
-Connector packages should not add their own request lifecycle tables.
+Actions that return `running` need a connector-owned runtime adapter that
+implements the narrow contracts in `internal/gatewayconnectorapi`. The generic
+gateway composition layer resolves that adapter and retains responsibility for
+polling/finalizing the action, redacting intermediate responses, syncing
+history, and providing MCP assistant hints. Connector packages should not add
+their own request lifecycle tables.
 
 Connector-specific gateway capabilities use the canonical adapter contracts in
 `internal/gatewayconnectorapi`. Connector-owned adapter implementations are
@@ -321,10 +323,13 @@ For a new connector:
 
 1. Add `internal/connectors/<kind>` with a small implementation of the connector
    contract.
-2. Register it explicitly in `internal/connectors/builtin/registry.go`.
-   Runtime-backed connectors expose an adapter constructor from their own
-   package and add that constructor to `RegisterAdapters`; package `init()`
-   registration and blank side-effect imports are not allowed.
+2. Register it explicitly in the appropriate
+   `internal/connectors/builtin/catalogdata/register.go` or
+   `catalogruntime/register.go` owner. Runtime-backed connectors expose an
+   adapter constructor from their own package and register it in the applicable
+   `adaptercontainers/register.go` or `adapterresources/register.go` owner.
+   `builtin/registry.go` only aggregates those registration groups; package
+   `init()` registration and blank side-effect imports are not allowed.
 3. Store target/profile data through `internal/connectortargets`; do not create
    connector-specific permission tables.
 4. Add frontend templates under `frontend/src/connectors/templates/<kind>`.

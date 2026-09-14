@@ -62,6 +62,11 @@ cat secrets/backup-token
 4. Enter the service base URL and service token.
 5. Save the provider. New providers remain disabled.
 6. Select **Test** to verify authentication and protocol compatibility.
+
+AIPermission v0.2.48 requires AIPermission Backup v0.3.0 and service protocol
+v3 for every backup operation. Upgrade the separate backup service first, then
+upgrade the gateway. Older backup service versions are intentionally rejected
+instead of silently falling back to weaker upload semantics.
 7. Select **Enable**, then enter the current database password.
 
 Enabling remote backup applies a stronger password policy than normal local
@@ -118,10 +123,11 @@ immutable upload. Both automatic and explicit cleanup preserve the final
 recovery version. Pending deletion bytes may continue to count toward provider
 storage until the remote blob worker finishes cleanup.
 
-Retention and quota controls require backup service protocol v3 and its
-`/v1/...` storage and retention routes. A 404 or protocol error from those
-controls means the separate backup service must be upgraded before the feature
-can be used.
+All provider operations require backup service protocol v3, including its
+idempotent upload contract. Retention and quota controls additionally use the
+protocol's `/v1/...` storage and retention routes. A protocol error means the
+separate backup service must be upgraded to v0.3.0 before this AIPermission
+release can use it.
 
 ## Operational Notes
 

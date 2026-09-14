@@ -463,22 +463,38 @@ connector.
 Register the connector backend and add frontend template files:
 
 ```txt
-backend/internal/connectors/builtin/registry.go
+backend/internal/connectors/builtin/catalogdata/register.go
+backend/internal/connectors/builtin/catalogruntime/register.go
+backend/internal/connectors/builtin/adaptercontainers/register.go
+backend/internal/connectors/builtin/adapterresources/register.go
 frontend/src/connectors/templates/<kind>/metadata.json
 frontend/src/connectors/templates/<kind>/index.jsx
 ```
 
-Backend registration is explicit in the Go binary. Runtime-backed built-ins
-expose an adapter constructor from their connector-owned package and register
-it in `RegisterAdapters` beside the structured connector catalog. The gateway
-receives both registries through `builtin.NewCatalog`; package `init()`
-registration and blank side-effect imports are not allowed. Frontend
-registration is folder-based and auto-discovered. Architecture tests require
-the backend registry, frontend template kinds, and generated connector catalog
-to remain identical. Adding a connector should
-require connector files, tests, and docs, but it should not require new generic
-route handlers, permission tables, history tables, audit tables, or MCP tool
-families.
+Backend registration is explicit in the Go binary and split by ownership:
+
+- `catalogdata/register.go` registers structured protocol connectors that use
+  the shared synchronous action runner.
+- `catalogruntime/register.go` registers connectors that expose an approved
+  runtime-backed capability surface.
+- `adaptercontainers/register.go` registers runtime adapters for container
+  resource surfaces.
+- `adapterresources/register.go` registers runtime adapters for resource and
+  file-transfer surfaces.
+- `registry.go` only aggregates those registration groups into immutable
+  connector and adapter catalogs. It must not gain connector-specific
+  construction branches.
+
+Only add an adapter registration when the connector implements a reviewed
+optional contract from `internal/gatewayconnectorapi`. The gateway receives
+both catalogs through `builtin.NewCatalog`; package `init()` registration and
+blank side-effect imports are not allowed. Frontend registration is
+folder-based and auto-discovered. Architecture tests require the backend
+catalog, frontend template kinds, and generated connector catalog to remain
+identical. Adding a connector should require connector files, the appropriate
+owned registration entry, tests, and docs, but it should not require new
+generic route handlers, permission tables, history tables, audit tables, or
+MCP tool families.
 
 Connector versions are part of approval-context drift checks. Bump the backend
 connector `Version()` and the frontend `metadata.json` version whenever you add
@@ -498,7 +514,8 @@ tests, and docs needed to ship the built-in:
 Expected for a normal connector:
 
 - `backend/internal/connectors/<kind>/`
-- backend registration in `backend/internal/connectors/builtin/registry.go`
+- backend registration in the appropriate
+  `backend/internal/connectors/builtin/catalog*/register.go` owner
 - backend registry/contract tests for the shipped connector set
 - `frontend/src/connectors/templates/<kind>/`
 - frontend template registry/smoke tests
@@ -571,7 +588,12 @@ Redis / Valkey checklist:
 - `backend/internal/connectors/redis/redis.go`
 - `backend/internal/connectors/redis/client.go`
 - `backend/internal/connectors/redis/redis_test.go`
-- backend registry entry and registry test
+- connector catalog registration in either
+  `backend/internal/connectors/builtin/catalogdata/register.go` or
+  `catalogruntime/register.go`, plus its focused registration test
+- adapter registration in `adaptercontainers/register.go` or
+  `adapterresources/register.go` only when the connector implements one of the
+  optional runtime adapter contracts, plus its focused registration test
 - backend route tests if the built-in connector list or inventory expectations
   are exact
 - `frontend/src/connectors/templates/redis/metadata.json`
@@ -584,11 +606,15 @@ Redis / Valkey checklist:
 - frontend smoke/runtime tests that assert the shipped connector folders
 - README, REST/MCP docs, and connector-specific safety notes
 
+`backend/internal/connectors/builtin/registry.go` is only the composition
+aggregator for those owned registration groups. Adding a normal connector must
+not add connector-specific construction logic there.
+
 Valkey compatibility remains inside this connector because both products use
 the same bounded action catalog and RESP2 transport. The user-selected
 `server_family` affects product labels and approval context, while the technical
 connector kind and target refs remain `redis`. Do not add a duplicate `valkey`
-connector folder, backend registry entry, generic route branch, permission
+connector folder, catalog registration, generic route branch, permission
 table, or MCP wrapper merely to change the product identity.
 
 ## Built-In Example: RabbitMQ
@@ -701,12 +727,14 @@ Exact checklist for built-in connector registration:
 
 - backend implementation and focused tests under
   `backend/internal/connectors/<kind>/`
-- backend registration in `backend/internal/connectors/builtin/registry.go`
-- runtime-backed adapter constructor and explicit `RegisterAdapters` entry in
-  `backend/internal/connectors/builtin/registry.go` when a reviewed
-  `connectorapi` adapter is required
-- backend registry coverage in
-  `backend/internal/connectors/builtin/registry_test.go`
+- connector registration in the appropriate
+  `backend/internal/connectors/builtin/catalogdata/register.go` or
+  `catalogruntime/register.go` owner
+- runtime-backed adapter constructor and registration in the appropriate
+  `adaptercontainers/register.go` or `adapterresources/register.go` owner only
+  when a reviewed `connectorapi` adapter is required
+- focused registration tests beside every changed registration owner, plus
+  aggregate catalog coverage in `backend/internal/connectors/builtin/`
 - frontend templates under `frontend/src/connectors/templates/<kind>/`
 - frontend `metadata.json` and `index.jsx` auto-discovery through the template
   registry and catalog loaders
