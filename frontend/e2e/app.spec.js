@@ -270,7 +270,7 @@ test("@accessibility keeps primary unlocked pages accessible", async ({ page }) 
   await unlock(page);
   for (const path of ["/console", "/tokens", "/history", "/settings"]) {
     await page.locator(`aside a[href="${path}"]`).click();
-    await expect(page).toHaveURL(new RegExp(`${path.replace("/", "\\/")}$`));
+    await expect.poll(() => new URL(page.url()).pathname).toBe(path);
     await expectNoModerateAccessibilityViolations(page, "main");
   }
 });
