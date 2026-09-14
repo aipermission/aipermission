@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,6 +44,45 @@ func TestPostgresRealService(t *testing.T) {
 	assertResultContains(t, result, "postgres-conformance")
 	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
 	assertImplicitCastResolutionRejected(t, connector, runtime)
+	assertRestoreProcessBoundary(t, connector, runtime)
+}
+
+func assertRestoreProcessBoundary(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext) {
+	t.Helper()
+	restorer, ok := connector.(connectors.BackupRestorer)
+	if !ok {
+		t.Fatal("Postgres connector does not implement restore")
+	}
+	psqlrc := filepath.Join(t.TempDir(), "psqlrc")
+	if err := os.WriteFile(psqlrc, []byte("\\quit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PSQLRC", psqlrc)
+	script := "CREATE TABLE public.aipermission_restore_fixture (id integer);\nDROP TABLE public.aipermission_restore_fixture;\n"
+	result, err := restorer.Restore(t.Context(), runtime, connectors.RestoreRequest{
+		Filename: "conformance.sql", Content: strings.NewReader(script), Size: int64(len(script)),
+	})
+	if err != nil || result.Status != connectors.ResultCompleted {
+		t.Fatalf("real Postgres restore result=%#v err=%v", result, err)
+	}
+	uncertainScript := "CREATE TABLE public.aipermission_restore_uncertain (id integer);\nCOMMIT;\nSELECT * FROM public.table_that_does_not_exist;\n"
+	_, err = restorer.Restore(t.Context(), runtime, connectors.RestoreRequest{
+		Filename: "uncertain.sql", Content: strings.NewReader(uncertainScript), Size: int64(len(uncertainScript)),
+	})
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("post-commit restore error status=%q err=%v", connectors.ErrorStatus(err), err)
+	}
+	address := net.JoinHostPort(
+		fixtureHost("AIPERMISSION_POSTGRES_HOST", "127.0.0.1"),
+		fmt.Sprintf("%d", fixturePort(t, "AIPERMISSION_POSTGRES_PORT", 5432)),
+	)
+	config, parseErr := pgx.ParseConfig(fmt.Sprintf("postgres://aipermission:conformance-only@%s/aipermission?sslmode=disable", address))
+	if parseErr == nil {
+		if conn, connectErr := pgx.ConnectConfig(t.Context(), config); connectErr == nil {
+			defer conn.Close(context.Background())
+			_, _ = conn.Exec(context.Background(), `DROP TABLE IF EXISTS public.aipermission_restore_uncertain`)
+		}
+	}
 }
 
 func assertImplicitCastResolutionRejected(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext) {

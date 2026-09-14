@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
@@ -522,25 +524,258 @@ func TestRestoreRejectsInvalidStreamsBeforeConnecting(t *testing.T) {
 	}
 }
 
-func TestRestoreTreatsTransactionalPSQLFailureAsDefinite(t *testing.T) {
+func TestRestoreTreatsEveryPostDispatchPSQLFailureAsOutcomeUnknown(t *testing.T) {
+	err := restoreWithFakePSQL(t, "echo 'ERROR: relation missing' >&2\nexit 3", context.Background())
+	if err == nil || !strings.Contains(err.Error(), "relation missing") {
+		t.Fatalf("restore error = %v", err)
+	}
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("post-dispatch SQL failure status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
+	}
+}
+
+func TestRestoreTreatsProcessStartFailureAsDefinite(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := New().Restore(context.Background(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
+		Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: 9,
+	})
+	if err == nil || connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
+		t.Fatalf("process start failure must remain definite: %v", err)
+	}
+}
+
+func TestRestoreTreatsPostStartAuthenticationFailureAsOutcomeUnknown(t *testing.T) {
+	err := restoreWithFakePSQL(t, "echo 'FATAL: password authentication failed for user app' >&2\nexit 2", context.Background())
+	if err == nil || connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("post-start authentication status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
+	}
+}
+
+func TestRestoreTreatsPostDispatchConnectionLossAsOutcomeUnknown(t *testing.T) {
+	err := restoreWithFakePSQL(t, "echo 'server closed the connection unexpectedly' >&2\nexit 2", context.Background())
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("connection loss status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
+	}
+	details := connectors.ErrorDetails(err)
+	if details["retry_safe"] != false || details["dispatch_stage"] != "process_observation" {
+		t.Fatalf("unexpected restore outcome details: %#v", details)
+	}
+}
+
+func TestRestoreTreatsPostStartCancellationAsOutcomeUnknown(t *testing.T) {
 	directory := t.TempDir()
-	psql := filepath.Join(directory, "psql")
-	if err := os.WriteFile(psql, []byte("#!/bin/sh\necho 'ERROR: relation missing' >&2\nexit 1\n"), 0o700); err != nil {
+	started := filepath.Join(directory, "started")
+	installFakePSQL(t, directory, "printf started > "+started+"\nexec sleep 5")
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { result <- restoreWithInstalledFakePSQL(t, ctx) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !fileExists(started) && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !fileExists(started) {
+		cancel()
+		t.Fatal("fake psql did not start")
+	}
+	cancel()
+	err := <-result
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("canceled restore status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
+	}
+}
+
+func TestRestoreRequiresFullInputAcknowledgement(t *testing.T) {
+	err := restoreWithFakePSQL(t, "exit 0", context.Background())
+	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
+		t.Fatalf("early psql exit status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
+	}
+}
+
+func TestRestoreDisablesPSQLRCAndConsumesCompletionMarker(t *testing.T) {
+	script := `
+case " $* " in
+  *" --no-psqlrc "*) ;;
+  *) echo "missing --no-psqlrc" >&2; exit 2 ;;
+esac
+while IFS= read -r line; do
+  case "$line" in
+    "\\echo "*) printf '%s\n' "${line#\\echo }" ;;
+  esac
+done`
+	directory := t.TempDir()
+	installFakePSQL(t, directory, script)
+	result, err := New().Restore(context.Background(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
+		Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: 9,
+	})
+	if err != nil || result.Status != connectors.ResultCompleted {
+		t.Fatalf("Restore() result=%#v err=%v", result, err)
+	}
+	output, _ := result.Output.(map[string]any)
+	if stdout, _ := output["stdout"].(string); strings.Contains(stdout, "aipermission_restore_complete_") {
+		t.Fatalf("internal completion marker leaked in output: %q", stdout)
+	}
+}
+
+func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
+	for _, command := range []string{
+		`\set ON_ERROR_STOP off`, `\quit`, `\include secrets.sql`,
+		`select 1 \gexec`, `select 1; \! id`,
+		"\\restrict `touch /tmp/aipermission-restore-rce; printf token`",
+		`\restrict token extra`, "\\restrict\ttoken", `\unrestrict token`,
+		"\\restrict token\n\\unrestrict other",
+		"\\restrict token\n\\unrestrict token\n\\restrict token",
+	} {
+		t.Run(command, func(t *testing.T) {
+			directory := t.TempDir()
+			started := filepath.Join(directory, "started")
+			installFakePSQL(t, directory, "printf started > "+started)
+			content := "select 1;\n" + command + "\n"
+			_, err := New().Restore(t.Context(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
+				Filename: "restore.sql", Content: strings.NewReader(content), Size: int64(len(content)),
+			})
+			if err == nil || fileExists(started) {
+				t.Fatalf("unsafe command error=%v dispatched=%v", err, fileExists(started))
+			}
+		})
+	}
+}
+
+func TestRestoreReportsExplicitTransactionControlAsOutcomeUnknown(t *testing.T) {
+	script := `
+while IFS= read -r line; do
+  case "$line" in
+    "\\echo "*) printf '%s\n' "${line#\\echo }" ;;
+  esac
+done`
+	directory := t.TempDir()
+	installFakePSQL(t, directory, script)
+	for _, statement := range []string{
+		"BEGIN; SELECT 1; COMMIT;",
+		"START TRANSACTION; SELECT 1;",
+		"SELECT 1; ROLLBACK;",
+		"CREATE TABLE prepared_restore (id integer); PREPARE TRANSACTION 'restore-test';",
+		"/* outer /* inner */ still outer */ ROLLBACK;",
+	} {
+		result, err := New().Restore(t.Context(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
+			Filename: "restore.sql", Content: strings.NewReader(statement), Size: int64(len(statement)),
+		})
+		if err != nil || result.Status != connectors.ResultOutcomeUnknown || result.Metadata["reason"] != "restore_artifact_controls_transaction" {
+			t.Fatalf("statement=%q result=%#v err=%v", statement, result, err)
+		}
+	}
+}
+
+func TestRestoreIgnoresTransactionWordsInsideDataAndComments(t *testing.T) {
+	content := "SELECT 'ROLLBACK', $$COMMIT$$, \"BEGIN\"; -- ABORT\n/* outer /* START TRANSACTION */ PREPARE TRANSACTION */ PREPARE query_plan AS SELECT 1;"
+	_, cleanup, controlsTransaction, err := validatedPostgresRestoreContent(t.Context(), connectors.RestoreRequest{
+		Content: strings.NewReader(content), Size: int64(len(content)),
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", directory)
-	_, err := New().Restore(context.Background(), connectors.RuntimeContext{
+	defer cleanup()
+	if controlsTransaction {
+		t.Fatal("transaction words inside strings, identifiers, or comments must not affect restore outcome")
+	}
+}
+
+func TestRestoreValidatesExactArtifactSizeBeforeDispatch(t *testing.T) {
+	for _, size := range []int64{8, 10} {
+		directory := t.TempDir()
+		started := filepath.Join(directory, "started")
+		installFakePSQL(t, directory, "printf started > "+started)
+		_, err := New().Restore(t.Context(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
+			Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: size,
+		})
+		if err == nil || fileExists(started) {
+			t.Fatalf("size=%d error=%v dispatched=%v", size, err, fileExists(started))
+		}
+	}
+}
+
+func TestRestoreAllowsPgDumpRestrictAndCopyDataMarkers(t *testing.T) {
+	content := "\\restrict token\n" +
+		"SELECT E'C:\\\\data', '\\\\literal'; -- \\ignored comment\n" +
+		"SELECT $$\\dollar quote$$; /* \\block comment */\n" +
+		"COPY public.items (value) FROM stdin;\n\\N\n\\.\n\\unrestrict token\n"
+	_, cleanup, _, err := validatedPostgresRestoreContent(t.Context(), connectors.RestoreRequest{
+		Content: strings.NewReader(content), Size: int64(len(content)),
+	})
+	if err != nil {
+		t.Fatalf("valid pg_dump content rejected: %v", err)
+	}
+	cleanup()
+}
+
+func TestRestoreStagesAndRemovesNonSeekableContent(t *testing.T) {
+	content := "select 1;\n"
+	reader, cleanup, _, err := validatedPostgresRestoreContent(t.Context(), connectors.RestoreRequest{
+		Content: io.LimitReader(strings.NewReader(content), int64(len(content))), Size: int64(len(content)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged, ok := reader.(*os.File)
+	if !ok {
+		t.Fatalf("non-seekable restore reader = %T, want staged file", reader)
+	}
+	name := staged.Name()
+	cleanup()
+	if _, err := os.Stat(name); !os.IsNotExist(err) {
+		t.Fatalf("staged restore artifact still exists after cleanup: %v", err)
+	}
+}
+
+func TestRestoreValidationHonorsCancellationBeforeDispatch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, cleanup, _, err := validatedPostgresRestoreContent(ctx, connectors.RestoreRequest{
+		Content: strings.NewReader("select 1;\n"), Size: int64(len("select 1;\n")),
+	})
+	if cleanup != nil {
+		cleanup()
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled validation error = %v", err)
+	}
+}
+
+func restoreWithFakePSQL(t *testing.T, script string, ctx context.Context) error {
+	t.Helper()
+	directory := t.TempDir()
+	installFakePSQL(t, directory, script)
+	return restoreWithInstalledFakePSQL(t, ctx)
+}
+
+func installFakePSQL(t *testing.T, directory, script string) {
+	t.Helper()
+	psql := filepath.Join(directory, "psql")
+	if err := os.WriteFile(psql, []byte("#!/bin/sh\n"+script+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func restoreWithInstalledFakePSQL(t *testing.T, ctx context.Context) error {
+	t.Helper()
+	_, err := New().Restore(ctx, postgresRestoreTestRuntime(), connectors.RestoreRequest{
+		Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: 9,
+	})
+	return err
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func postgresRestoreTestRuntime() connectors.RuntimeContext {
+	return connectors.RuntimeContext{
 		Target: connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{
 			"connection_mode": "direct", "host": "127.0.0.1", "port": 5432, "database": "app",
 		}},
 		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
 		Secrets: fakeSecrets{"password": "secret"},
-	}, connectors.RestoreRequest{Filename: "restore.sql", Content: strings.NewReader("select 1;"), Size: 9})
-	if err == nil || !strings.Contains(err.Error(), "relation missing") {
-		t.Fatalf("restore error = %v", err)
-	}
-	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
-		t.Fatalf("single-transaction psql failure was marked uncertain: %v", err)
 	}
 }
 
