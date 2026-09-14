@@ -36,9 +36,7 @@ func OpenEncryptedForMigration(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, openOptions{})
 }
 
-// OpenEncryptedImportCandidate upgrades a disposable import copy without
-// creating a sibling pre-migration snapshot. The caller must not use this for
-// an installed database: failed imports are discarded instead of recovered.
+// OpenEncryptedImportCandidate upgrades a disposable import copy; installed databases must use the recoverable path.
 func OpenEncryptedImportCandidate(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, openOptions{runMigrations: true})
 }
@@ -65,6 +63,11 @@ type openOptions struct {
 func openEncrypted(path string, password string, options openOptions) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
+	}
+	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("database path must be a regular file")
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect database path: %w", err)
 	}
 
 	values := url.Values{}
@@ -160,17 +163,12 @@ func replacePreMigrationSnapshot(database *sql.DB, targetPath string) error {
 	return nil
 }
 
-// PublishFile durably replaces targetPath with sourcePath on the same
-// filesystem. The source contents and containing directory are synchronized
-// so a successful return survives a power loss at the publication boundary.
+// PublishFile durably replaces targetPath and syncs the source and parent directory.
 func PublishFile(sourcePath string, targetPath string) error {
 	return publishFile(sourcePath, targetPath, true)
 }
 
-// PublishFileNoReplace durably publishes sourcePath only when targetPath does
-// not exist. The hard-link boundary is atomic across processes on the same
-// filesystem and prevents a stale preflight check from replacing another
-// database.
+// PublishFileNoReplace uses an atomic hard-link boundary and never replaces an existing target.
 func PublishFileNoReplace(sourcePath string, targetPath string) error {
 	return publishFile(sourcePath, targetPath, false)
 }

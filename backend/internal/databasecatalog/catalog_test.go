@@ -3,6 +3,7 @@ package databasecatalog
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -45,6 +46,206 @@ func TestDatabasePathValidationAndDefaultAliases(t *testing.T) {
 	}
 }
 
+func TestCatalogRejectsSymlinkedDatabaseEntries(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	outside := filepath.Join(root, "outside.db")
+	if err := os.WriteFile(outside, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory := DatabasesDir(defaultPath)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyID := strings.Repeat("a", 64)
+	link := filepath.Join(directory, legacyID+".db")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("symlinked database was listed: %#v", items)
+	}
+	if _, err := DatabasePath(defaultPath, databaseReference(legacyID)); err == nil {
+		t.Fatal("symlinked legacy database reference was resolved")
+	}
+	if _, err := DatabasePath(defaultPath, legacyID); err == nil {
+		t.Fatal("symlinked legacy database id was resolved")
+	}
+}
+
+func TestCatalogMutationsRejectSymlinkedDatabaseDirectory(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, DatabasesDir(defaultPath)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := NewDatabasePath(defaultPath, "Project"); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("NewDatabasePath followed a symlinked database directory: %v", err)
+	}
+	if _, _, err := NewDatabasePathExact(defaultPath, "Project"); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("NewDatabasePathExact followed a symlinked database directory: %v", err)
+	}
+	if _, _, err := RenameDatabaseTarget(defaultPath, defaultPath, "Project"); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("RenameDatabaseTarget followed a symlinked database directory: %v", err)
+	}
+	targetPath := filepath.Join(DatabasesDir(defaultPath), "project.db")
+	if err := MoveDatabase(defaultPath, targetPath); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("MoveDatabase followed a symlinked database directory: %v", err)
+	}
+	if err := DeleteDatabase(targetPath); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("DeleteDatabase followed a symlinked database directory: %v", err)
+	}
+}
+
+func TestNewDatabasePathTreatsUnexpectedArtifactsAsOccupied(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	dir := DatabasesDir(defaultPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside.db")
+	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "project.db")); err != nil {
+		t.Fatal(err)
+	}
+
+	id, path, err := NewDatabasePath(defaultPath, "Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "project-2" || filepath.Base(path) != "project-2.db" {
+		t.Fatalf("unexpected artifact must reserve its identifier: id=%q path=%q", id, path)
+	}
+	if _, _, err := NewDatabasePathExact(defaultPath, "Project"); !errors.Is(err, ErrDatabaseExists) {
+		t.Fatalf("exact allocation should reject an occupied symlink path: %v", err)
+	}
+}
+
+func TestDatabaseIDsRoundTripAtBoundaryAndKeepCollisionSuffixBounded(t *testing.T) {
+	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
+	name := strings.Repeat("a", maxDatabaseIDLength)
+	id, path, err := NewDatabasePath(defaultPath, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := DatabasePath(defaultPath, id); err != nil || resolved != path {
+		t.Fatalf("created database must resolve to its path: id=%q path=%q resolved=%q err=%v", id, path, resolved, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nextID, nextPath, err := NewDatabasePath(defaultPath, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nextID) != maxDatabaseIDLength || !strings.HasSuffix(nextID, "-2") {
+		t.Fatalf("collision suffix must stay within the identifier limit: %q", nextID)
+	}
+	if resolved, err := DatabasePath(defaultPath, nextID); err != nil || resolved != nextPath {
+		t.Fatalf("suffixed database must resolve to its path: id=%q path=%q resolved=%q err=%v", nextID, nextPath, resolved, err)
+	}
+}
+
+func TestDatabaseNameValidationRejectsReservedAndOverlongIDs(t *testing.T) {
+	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
+	currentPath := filepath.Join(DatabasesDir(defaultPath), "current.db")
+	for _, name := range []string{"Local Default", strings.Repeat("a", maxDatabaseIDLength+1), "世界"} {
+		if _, _, err := NewDatabasePath(defaultPath, name); err == nil {
+			t.Fatalf("NewDatabasePath accepted invalid name %q", name)
+		}
+		if _, _, err := NewDatabasePathExact(defaultPath, name); err == nil {
+			t.Fatalf("NewDatabasePathExact accepted invalid name %q", name)
+		}
+		if _, _, err := RenameDatabaseTarget(defaultPath, currentPath, name); err == nil {
+			t.Fatalf("RenameDatabaseTarget accepted invalid name %q", name)
+		}
+	}
+}
+
+func TestDatabaseCatalogRecoversLegacyReservedAndOverlongIDsWithoutMovingData(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("root default"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := DatabasesDir(defaultPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyIDs := []string{"local-default", strings.Repeat("b", maxDatabaseIDLength+1)}
+	for _, id := range legacyIDs {
+		if err := os.WriteFile(filepath.Join(dir, id+".db"), []byte("legacy "+id), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPaths := map[string]bool{}
+	for _, item := range items {
+		if !strings.HasPrefix(item.ID, "_legacy-") {
+			continue
+		}
+		resolved, err := DatabasePath(defaultPath, item.ID)
+		if err != nil {
+			t.Fatalf("resolve recovery reference %q: %v", item.ID, err)
+		}
+		legacyPaths[resolved] = true
+	}
+	for _, id := range legacyIDs {
+		path := filepath.Join(dir, id+".db")
+		if !legacyPaths[path] || !db.Exists(path) {
+			t.Fatalf("legacy database was not recoverable in place: id=%q items=%#v", id, items)
+		}
+	}
+	if resolved, err := DatabasePath(defaultPath, "local-default"); err != nil || resolved != defaultPath {
+		t.Fatalf("reserved root alias changed: resolved=%q err=%v", resolved, err)
+	}
+	if resolved, err := DatabasePath(defaultPath, legacyIDs[1]); err != nil || resolved != filepath.Join(dir, legacyIDs[1]+".db") {
+		t.Fatalf("legacy raw overlong id should remain recoverable: resolved=%q err=%v", resolved, err)
+	}
+}
+
+func FuzzDatabaseIDRoundTrip(f *testing.F) {
+	for _, name := range []string{"Project One", "default", strings.Repeat("z", maxDatabaseIDLength), "Local Default", "世界"} {
+		f.Add(name)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
+		id, path, err := NewDatabasePath(defaultPath, name)
+		if err != nil {
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("created"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		resolved, err := DatabasePath(defaultPath, id)
+		if err != nil || resolved != path {
+			t.Fatalf("accepted name did not round-trip: name=%q id=%q path=%q resolved=%q err=%v", name, id, path, resolved, err)
+		}
+	})
+}
+
 func TestDefaultDatabaseNameSwitchesWhenNamedDefaultExists(t *testing.T) {
 	defaultPath := filepath.Join(t.TempDir(), "aipermission.db")
 	if DefaultDatabaseID(defaultPath) != "default" || DefaultDatabaseName(defaultPath) != "Default" {
@@ -57,8 +258,65 @@ func TestDefaultDatabaseNameSwitchesWhenNamedDefaultExists(t *testing.T) {
 	if err := os.WriteFile(defaultNamedPath, []byte("db"), 0o600); err != nil {
 		t.Fatalf("write named default: %v", err)
 	}
+	if DefaultDatabaseID(defaultPath) != "default" || DefaultDatabaseName(defaultPath) != "Default" {
+		t.Fatalf("named Default must remain directly addressable when the root database is absent")
+	}
+	if resolved, err := DatabasePath(defaultPath, DefaultDatabaseID(defaultPath)); err != nil || resolved != defaultNamedPath {
+		t.Fatalf("named Default did not reopen after restart: path=%q err=%v", resolved, err)
+	}
+	if err := os.WriteFile(defaultPath, []byte("root db"), 0o600); err != nil {
+		t.Fatalf("write root default: %v", err)
+	}
 	if DefaultDatabaseID(defaultPath) != "local-default" || DefaultDatabaseName(defaultPath) != "Local Default" {
-		t.Fatalf("expected local default metadata when databases/default.db exists")
+		t.Fatalf("expected local default metadata when both default databases exist")
+	}
+}
+
+func TestZeroByteNamedDefaultRoundTripsWithoutAliasingRootDatabase(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(defaultPath, []byte("root database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	namedPath := filepath.Join(DatabasesDir(defaultPath), "default.db")
+	if err := os.MkdirAll(filepath.Dir(namedPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(namedPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := ListDatabases(defaultPath, "")
+	if err != nil || len(items) != 2 || items[0].ID != "local-default" || items[1].ID != "default" {
+		t.Fatalf("catalog items=%#v err=%v", items, err)
+	}
+	resolved, err := DatabasePath(defaultPath, "default")
+	if err != nil || resolved != namedPath {
+		t.Fatalf("named default resolved=%q err=%v", resolved, err)
+	}
+	if err := DeleteDatabase(resolved); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(defaultPath); err != nil || string(content) != "root database" {
+		t.Fatalf("root database changed: content=%q err=%v", content, err)
+	}
+}
+
+func TestDatabaseCatalogRejectsSymlinkedDatabaseDirectory(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	if err := os.WriteFile(filepath.Join(outside, "escaped.db"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, DatabasesDir(defaultPath)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListDatabases(defaultPath, ""); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("symlinked database directory list error=%v", err)
+	}
+	if _, err := DatabasePath(defaultPath, "escaped"); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("symlinked database directory resolve error=%v", err)
 	}
 }
 
@@ -264,6 +522,45 @@ func TestMoveRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.T)
 	}
 	if db.Exists(source+"-wal") || !db.Exists(target+"-wal") {
 		t.Fatal("conflicting move recovery partially restored the WAL")
+	}
+}
+
+func TestMoveRecoveryRestoresZeroByteArtifacts(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "target.db")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := databaseMoveManifest{
+		SourceBase: source, TargetBase: target,
+		Moves: []databaseMove{{Source: source, Target: target}},
+	}
+	if err := recoverDatabaseMoveJournal(manifest); err != nil {
+		t.Fatalf("recover zero-byte move artifact: %v", err)
+	}
+	if info, err := os.Lstat(source); err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
+		t.Fatalf("zero-byte source was not restored: info=%v err=%v", info, err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("zero-byte target remains after recovery: %v", err)
+	}
+}
+
+func TestMoveManifestRejectsSymlinkedCatalogDirectory(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "databases")); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "databases", "target.db")
+	manifest := databaseMoveManifest{
+		SourceBase: source, TargetBase: target,
+		Moves: []databaseMove{{Source: source, Target: target}},
+	}
+	if err := validateDatabaseMoveManifest(root, manifest); err == nil || !strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("symlinked catalog directory validation = %v", err)
 	}
 }
 
@@ -484,6 +781,43 @@ func TestDatabaseCatalogRejectsInvalidMoveCompletionMarker(t *testing.T) {
 	}
 }
 
+func TestDatabaseCatalogRejectsSymlinkedMoveJournalFiles(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		journalFile string
+		content     string
+	}{
+		{name: "completion marker", journalFile: databaseMoveCompleteFile, content: "complete\n"},
+		{name: "manifest", journalFile: databaseMoveManifestFile, content: `{}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := t.TempDir()
+			defaultPath := filepath.Join(root, "aipermission.db")
+			if err := os.WriteFile(defaultPath, []byte("database"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			journalDir := filepath.Join(root, databaseMoveJournalPrefix+"symlink")
+			if err := os.Mkdir(journalDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(root, "outside")
+			if err := os.WriteFile(outside, []byte(testCase.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(journalDir, testCase.journalFile)); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := ListDatabases(defaultPath, defaultPath); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Fatalf("symlinked %s did not fail closed: %v", testCase.name, err)
+			}
+			if !databaseCatalogFileExists(defaultPath) {
+				t.Fatal("failed recovery removed the database")
+			}
+		})
+	}
+}
+
 func writeDatabaseMoveManifestFixture(t *testing.T, journalDir string, manifest databaseMoveManifest) {
 	t.Helper()
 	encoded, err := json.Marshal(manifest)
@@ -576,6 +910,27 @@ func TestDeleteDatabaseRemovesMigrationRecoveryArtifacts(t *testing.T) {
 		if db.Exists(candidate) {
 			t.Fatalf("database delete retained recovery artifact %q", candidate)
 		}
+	}
+}
+
+func TestDeleteDatabaseRejectsSymlinkedArtifacts(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "catalog.db")
+	target := filepath.Join(root, "outside.db")
+	if err := os.WriteFile(target, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+
+	err := deleteDatabaseWithOps(path, defaultDatabaseDeleteOps())
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("expected symlinked database rejection, got %v", err)
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || string(content) != "preserved" {
+		t.Fatalf("symlink target changed: content=%q err=%v", content, readErr)
 	}
 }
 
@@ -701,6 +1056,36 @@ func TestDeleteDatabasePreservesQuarantineWhenRollbackRenameFails(t *testing.T) 
 	}
 }
 
+func TestDeleteDatabaseRejectsUnresolvedQuarantineForSamePath(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "conflicted.db")
+	if err := os.WriteFile(path, []byte("later database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"conflict")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Base(path)
+	if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte("original database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 2, Primary: name, Files: []string{name}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteDatabase(path); err == nil || !strings.Contains(err.Error(), "recovery is still pending") {
+		t.Fatalf("conflicted quarantine delete = %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "later database" {
+		t.Fatalf("delete changed conflicting destination: content=%q err=%v", content, err)
+	}
+}
+
 func TestDeleteRecoveryRollsBackPartialPublishFailure(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "partial-recovery.db")
@@ -728,6 +1113,115 @@ func TestDeleteRecoveryRollsBackPartialPublishFailure(t *testing.T) {
 		if db.Exists(candidate) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(candidate))) {
 			t.Fatalf("failed recovery left a partially restored artifact set for %q", candidate)
 		}
+	}
+}
+
+func TestDeleteRecoveryResumesManifestedPartialPublish(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "manifest-recovery.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"manifested")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{filepath.Base(path), filepath.Base(path) + "-wal"}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 1, Files: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	published := 0
+	publish := func(currentPath, nextPath string) error {
+		published++
+		if published == 2 {
+			return errors.New("injected recovery publish failure")
+		}
+		return os.Rename(currentPath, nextPath)
+	}
+	if err := recoverDatabaseDeleteQuarantinesWithPublish(directory, publish); err == nil || !strings.Contains(err.Error(), "injected recovery publish failure") {
+		t.Fatalf("first recovery error = %v", err)
+	}
+	if !db.Exists(path) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(path)+"-wal")) {
+		t.Fatal("manifested recovery did not preserve its mixed durable state")
+	}
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("resume manifested recovery: %v", err)
+	}
+	for _, candidate := range []string{path, path + "-wal"} {
+		if !db.Exists(candidate) {
+			t.Fatalf("resumed recovery did not restore %q", candidate)
+		}
+	}
+	if db.Exists(quarantineDir) {
+		t.Fatal("resumed recovery retained completed quarantine")
+	}
+}
+
+func TestDeleteRecoveryRejectsSymlinkedCompletionMarker(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "marker-symlink.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"marker-symlink")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Base(path)
+	if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte("recoverable"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 2, Primary: name, Files: []string{name}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outsideMarker := filepath.Join(directory, "outside-marker")
+	if err := os.WriteFile(outsideMarker, []byte("complete\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideMarker, filepath.Join(quarantineDir, databaseDeleteCompleteMarker)); err != nil {
+		t.Fatal(err)
+	}
+
+	err = recoverDatabaseDeleteQuarantines(directory)
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("symlinked completion marker error=%v", err)
+	}
+	if !databaseCatalogFileExists(filepath.Join(quarantineDir, name)) {
+		t.Fatal("malicious completion marker removed recoverable data")
+	}
+}
+
+func TestDeleteRecoveryRestoresImportPrimaryFromManifest(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "pending.db.import")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"import")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Base(path)
+	if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte("recoverable import"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 2, Primary: name, Files: []string{name}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover import quarantine: %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "recoverable import" {
+		t.Fatalf("import recovery content=%q err=%v", content, err)
 	}
 }
 
@@ -791,6 +1285,60 @@ func TestDatabaseCatalogRecoversInterruptedDeleteQuarantine(t *testing.T) {
 	}
 	if db.Exists(quarantineDir) {
 		t.Fatalf("recovered quarantine directory should be removed")
+	}
+}
+
+func TestDatabaseCatalogRemovesEmptyInterruptedDeleteQuarantines(t *testing.T) {
+	for _, marker := range []string{"", "invalid"} {
+		t.Run(marker, func(t *testing.T) {
+			directory := t.TempDir()
+			quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+marker)
+			if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if marker != "" {
+				if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteCompleteMarker), []byte("incomplete"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+				t.Fatalf("recover empty quarantine: %v", err)
+			}
+			if db.Exists(quarantineDir) {
+				t.Fatal("empty interrupted quarantine should be removed")
+			}
+		})
+	}
+}
+
+func TestDatabaseCatalogRecoversDeleteQuarantineWithInvalidCompletionMarker(t *testing.T) {
+	for _, marker := range []string{"", "complete"} {
+		t.Run(fmt.Sprintf("marker_%q", marker), func(t *testing.T) {
+			directory := t.TempDir()
+			databasePath := filepath.Join(directory, "recoverable.db")
+			quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"invalid-marker")
+			if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(quarantineDir, filepath.Base(databasePath)), []byte("preserved"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteCompleteMarker), []byte(marker), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+				t.Fatalf("recover invalid completion marker: %v", err)
+			}
+			contents, err := os.ReadFile(databasePath)
+			if err != nil || string(contents) != "preserved" {
+				t.Fatalf("recoverable database contents=%q err=%v", contents, err)
+			}
+			if db.Exists(quarantineDir) {
+				t.Fatal("recovered quarantine directory should be removed")
+			}
+		})
 	}
 }
 
