@@ -43,6 +43,7 @@ func (Store) PurgeHistory(ctx context.Context, executor sqldb.Executor, cutoff s
 	for _, statement := range []string{
 		`DELETE FROM command_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM connector_action_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM profile_restore_operations WHERE completed_at IS NOT NULL AND audit_pending = 0 AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM history_entries WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 	} {
@@ -66,7 +67,9 @@ func (Store) PurgeHistory(ctx context.Context, executor sqldb.Executor, cutoff s
 	if err != nil {
 		return 0, err
 	}
-	return total + deleted, nil
+	total += deleted
+	deleted, err = purgeExpiredProfileRestoreIdempotency(ctx, executor)
+	return total + deleted, err
 }
 
 func (Store) PurgeAudit(ctx context.Context, executor sqldb.Executor, cutoff string) (int64, error) {
@@ -95,7 +98,11 @@ func (Store) PurgeExpiredIdempotency(ctx context.Context, executor sqldb.Executo
 		return 0, err
 	}
 	fileTransfers, err := purgeExpiredFileTransferIdempotency(ctx, executor)
-	return connectorActions + fileTransfers, err
+	if err != nil {
+		return 0, err
+	}
+	profileRestores, err := purgeExpiredProfileRestoreIdempotency(ctx, executor)
+	return connectorActions + fileTransfers + profileRestores, err
 }
 
 func purgeExpiredConnectorActionIdempotency(ctx context.Context, executor sqldb.Executor) (int64, error) {
@@ -104,6 +111,10 @@ func purgeExpiredConnectorActionIdempotency(ctx context.Context, executor sqldb.
 
 func purgeExpiredFileTransferIdempotency(ctx context.Context, executor sqldb.Executor) (int64, error) {
 	return deleteWithCutoff(ctx, executor, `DELETE FROM file_transfer_start_idempotency WHERE julianday(expires_at) <= julianday('now')`)
+}
+
+func purgeExpiredProfileRestoreIdempotency(ctx context.Context, executor sqldb.Executor) (int64, error) {
+	return deleteWithCutoff(ctx, executor, `DELETE FROM profile_restore_idempotency_tombstones WHERE julianday(expires_at) <= julianday('now')`)
 }
 
 // Retention emits one audited summary for the purge transaction. The normal

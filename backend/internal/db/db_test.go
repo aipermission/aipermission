@@ -1275,6 +1275,38 @@ func TestOpenEncryptedMarksRunningConnectorActionsAfterRestart(t *testing.T) {
 	}
 }
 
+func TestOpenEncryptedDefersRunningProfileRestoreToAuditedRuntimeRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "restore-restart.db")
+	database, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID, profileID := insertConnectorTargetAndProfile(t, database)
+	if _, err := database.Exec(`
+		INSERT INTO profile_restore_operations (
+			idempotency_key, identity_hash, target_id, profile_id, connector_kind,
+			filename, artifact_sha256, size_bytes, status, created_at, updated_at
+		) VALUES ('restore-restart', 'identity', ?, ?, 'postgres', 'restore.sql', 'sha256', 9, 'running', datetime('now'), datetime('now'))`,
+		targetID, profileID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenEncrypted(path, "correct-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var status, errorCode string
+	if err := reopened.QueryRow(`SELECT status, error_code FROM profile_restore_operations WHERE idempotency_key = 'restore-restart'`).Scan(&status, &errorCode); err != nil {
+		t.Fatal(err)
+	}
+	if status != "running" || errorCode != "" {
+		t.Fatalf("restore after restart status=%q error_code=%q", status, errorCode)
+	}
+}
+
 func TestOpenEncryptedClosesVaultRuntimeStateAfterRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secure.db")
 	database, err := OpenEncrypted(path, "correct-password")

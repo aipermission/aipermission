@@ -13,8 +13,9 @@ import {
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
 } from "./local-action-retry.js";
-import { legacyStoragePrefix } from "./local-action-retry/constants.js";
+import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.js";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.js";
+import { requestReconciliation } from "./local-action-retry/runtime.js";
 import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.js";
 
 const fakeRetryIndexedDB = new IDBFactory();
@@ -27,6 +28,39 @@ test("retry helpers ignore absent prepared identities and expose stable errors",
   assert.match(ledgerFullError().message, /ledger is full/i);
   assert.match(storageError().message, /storage is unavailable/i);
   assert.match(retryIdentityChangedError().message, /identity changed/i);
+});
+
+test("browser reconciliation only continues after an explicit event decision", async () => {
+  const originalWindow = globalThis.window;
+  const originalCustomEvent = globalThis.CustomEvent;
+  globalThis.CustomEvent = class {
+    constructor(type, options) {
+      this.type = type;
+      this.detail = options.detail;
+      this.cancelable = options.cancelable;
+    }
+  };
+  const entry = { request_id: 42, operation_ref: "restore:42", assistant_hint: "Inspect the target", created_at: "2026-09-15" };
+  try {
+    globalThis.window = {
+      dispatchEvent(event) {
+        assert.equal(event.type, localActionReconciliationEvent);
+        assert.equal(event.cancelable, true);
+        assert.equal(event.detail.requestID, entry.request_id);
+        assert.equal(event.detail.operationRef, entry.operation_ref);
+        event.detail.resolve(true);
+        event.detail.resolve(false);
+        return false;
+      },
+    };
+    assert.equal(await requestReconciliation(entry), true);
+    globalThis.window.dispatchEvent = () => true;
+    assert.equal(await requestReconciliation(entry), false);
+  } finally {
+    restoreWindow(originalWindow);
+    if (originalCustomEvent === undefined) delete globalThis.CustomEvent;
+    else globalThis.CustomEvent = originalCustomEvent;
+  }
 });
 
 test("legacy retry entries remain visible until explicit reconciliation", async () => {

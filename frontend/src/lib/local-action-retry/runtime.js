@@ -68,6 +68,7 @@ export function requestReconciliation(entry) {
       cancelable: true,
       detail: {
         requestID: entry.request_id || null,
+        operationRef: entry.operation_ref || "",
         assistantHint: entry.assistant_hint || "",
         createdAt: entry.created_at,
         resolve: finish,

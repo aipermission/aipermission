@@ -60,6 +60,9 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayin
 		return fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
 	s.configureAuditDispatcher(runtime)
+	if err := s.connectorManagementApplication().RecoverProfileRestores(ctx, runtime); err != nil {
+		return fmt.Errorf("recover profile restore operations: %w", err)
+	}
 	return nil
 }
 

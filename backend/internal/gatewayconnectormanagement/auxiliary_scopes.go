@@ -54,9 +54,11 @@ func (component *Component) ProfileBackupScope(w http.ResponseWriter) (connector
 	}
 	return connectormanagement.ProfileBackupScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
+		AcquireExclusive: workspace.Storage.AcquireExclusive,
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			workspace.Observation.Observe(ctx, action, payload)
 		},
+		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 	}, true
 }
 

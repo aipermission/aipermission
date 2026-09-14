@@ -59,6 +59,7 @@ export function validRetryEntry(entry, scope, signature = "") {
     (entry.state === "pending" || entry.state === "outcome_unknown") &&
     Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
+    (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
     typeof entry.updated_at === "string"
   );

@@ -54,6 +54,16 @@ test("API failures retain structured status and classification", async () => {
   }
 });
 
+test("multipart callers can require a JSON response", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("<html>gateway fallback</html>", { status: 200 });
+  try {
+    await assert.rejects(() => apiPostForm("/api/test", new FormData(), { requireJSON: true }), /HTML instead of JSON/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("picker downloads stream the response directly to the selected file", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;

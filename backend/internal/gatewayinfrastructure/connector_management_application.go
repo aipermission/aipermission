@@ -71,6 +71,14 @@ func (application *ConnectorManagementApplication) HTTPHandlers() connectormgmt.
 	return application.core.HTTPHandlers()
 }
 
+func (application *ConnectorManagementApplication) RecoverProfileRestores(ctx context.Context, handle *WorkspaceHandle) error {
+	workspace, ok := application.workspace(handle)
+	if !ok {
+		return errors.New("connector management workspace is unavailable")
+	}
+	return application.core.RecoverProfileRestores(ctx, workspace)
+}
+
 func (application *ConnectorManagementApplication) CredentialResources() connectormgmt.CredentialResourceHandlers {
 	return application.core.CredentialResources(connectormgmt.CredentialResourceDependencies{
 		Adapter: func(kind string) connectormgmt.CredentialResourceAdapter {

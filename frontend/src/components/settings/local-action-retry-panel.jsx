@@ -84,7 +84,7 @@ export function LocalActionRetryPanel() {
                     {entry.state === "outcome_unknown" ? "Outcome unknown" : "Request acknowledgement pending"}
                   </div>
                   <p className="mt-1 text-xs text-stone-500">
-                    {entry.request_id ? `Request ${entry.request_id} · ` : ""}
+                    {retryReference(entry)}
                     {formatRetryTime(entry.updated_at)}
                   </p>
                 </div>
@@ -133,6 +133,13 @@ export function LocalActionRetryPanel() {
       </Dialog>
     </>
   );
+}
+
+function retryReference(entry) {
+  if (entry.request_id) return `Request ${entry.request_id} · `;
+  if (entry.operation_ref?.startsWith("operation:")) return `Operation ${entry.operation_ref.slice("operation:".length)} · `;
+  if (entry.operation_ref) return `${entry.operation_ref} · `;
+  return "";
 }
 
 function formatRetryTime(value) {

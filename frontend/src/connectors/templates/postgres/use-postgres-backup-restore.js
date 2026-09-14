@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { apiDownload, apiPostForm } from "../../../lib/api";
-import { errorMessage } from "../../../lib/errors";
+import { APIError, errorMessage } from "../../../lib/errors";
+import {
+  completeLocalActionRetry,
+  markLocalActionRetryOutcome,
+  prepareLocalActionRetry,
+  preserveLocalActionRetryAttempt,
+} from "../../../lib/local-action-retry";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { safeBackupFilename } from "./provisioning";
 
@@ -55,18 +61,42 @@ export function usePostgresBackupRestore(value) {
     const request = requestGuard.begin("restore");
     const capturedFile = file;
     const capturedConfirmation = confirmTarget;
+    let retry = null;
     setRestoreState({ state: "running", error: "", message: "" });
     try {
       const formData = new FormData();
+      retry = await prepareLocalActionRetry({
+        path: `${endpoint}/restore`,
+        body: {
+          confirm_target: capturedConfirmation,
+          filename: capturedFile.name,
+          size: capturedFile.size,
+          last_modified: capturedFile.lastModified || 0,
+        },
+      });
       formData.append("dump", capturedFile);
       formData.append("confirm_target", capturedConfirmation);
-      await apiPostForm(`${endpoint}/restore`, formData, { signal: request.signal });
+      formData.append("idempotency_key", retry.idempotencyKey);
+      const response = await apiPostForm(`${endpoint}/restore`, formData, { signal: request.signal, requireJSON: true });
+      requireCompletedRestoreResponse(response);
+      await completeLocalActionRetry(retry);
       if (!request.isCurrent()) return;
       setRestoreState({ state: "ready", error: "", message: "Restore completed." });
       setFile(null);
       setConfirmTarget("");
     } catch (error) {
-      if (request.isCurrent()) setRestoreState({ state: "error", error: errorMessage(error, "Could not restore backup."), message: "" });
+      let presentedError = error;
+      if (retry) {
+        try {
+          await settleRestoreRetryFailure(retry, error);
+        } catch (ledgerError) {
+          presentedError = new Error(
+            `The restore result could not be recorded locally. Inspect the database before retrying. ${errorMessage(ledgerError, "")}`.trim(),
+          );
+        }
+      }
+      if (request.isCurrent())
+        setRestoreState({ state: "error", error: errorMessage(presentedError, "Could not restore backup."), message: "" });
     } finally {
       request.complete();
     }
@@ -88,4 +118,37 @@ export function usePostgresBackupRestore(value) {
     downloadBackup,
     restoreBackup,
   };
+}
+
+const uncertainRestoreCodes = new Set(["audit_persistence_failed", "result_projection_failed"]);
+
+export function requireCompletedRestoreResponse(response) {
+  const acknowledged =
+    response !== null &&
+    typeof response === "object" &&
+    Number.isSafeInteger(response.operation_id) &&
+    response.operation_id > 0 &&
+    response.status === "completed" &&
+    (response.replayed === true || Object.hasOwn(response, "result"));
+  if (acknowledged) return response;
+  throw new APIError("Invalid restore completion response from gateway.", {
+    code: "invalid_restore_response",
+    data: { status: "outcome_unknown" },
+  });
+}
+
+export async function settleRestoreRetryFailure(retry, error) {
+  if (error instanceof APIError && (error.data?.status === "outcome_unknown" || uncertainRestoreCodes.has(error.code))) {
+    await markLocalActionRetryOutcome(retry, error.data || { status: "outcome_unknown", code: error.code });
+    return;
+  }
+  if (error instanceof APIError && ["failed", "canceled"].includes(error.data?.status)) {
+    await completeLocalActionRetry(retry);
+    return;
+  }
+  if (error instanceof APIError && error.status >= 400 && error.status < 500 && error.code !== "restore_in_progress") {
+    await completeLocalActionRetry(retry);
+    return;
+  }
+  await preserveLocalActionRetryAttempt(retry);
 }
