@@ -677,8 +677,43 @@ resulting credential profile encrypted in AIPermission. Those controls are not a
 substitute for database-level least privilege. Use dedicated read-only roles for
 AI profiles and prefer `approval_required` for exploratory SQL. Postgres
 backup/restore is also a local UI operator flow: backup uses `pg_dump`, restore
-uses `psql` with `ON_ERROR_STOP` and a single transaction, and restore requires
-typed target-name confirmation.
+uses `psql` with `ON_ERROR_STOP` and requests single-transaction mode, and
+restore requires typed target-name confirmation. Explicit transaction control
+inside arbitrary SQL can escape that wrapper, so connector code must not claim
+the restore is fully atomic. The restore disables `psqlrc` files, accepts only
+one canonical matching `\\restrict TOKEN` / `\\unrestrict TOKEN` pair, and
+requires a one-time end-of-stream marker before reporting success. A restore
+artifact with top-level transaction control remains `outcome_unknown` even when
+the marker is observed. Core hashes the full
+artifact and persists an idempotency claim before calling the connector. The
+Postgres adapter rejects psql meta-commands before dispatch; SQL transaction
+control can still make every post-start failure or missing marker terminal
+`outcome_unknown`. Callers inspect database state instead of retrying blindly.
+The generic profile restore handler owns the durable operation claim and
+required terminal audit event for success, failure, cancellation, and uncertain
+outcomes. If the transaction response is lost, replay uses the durable operation
+identity instead of dispatching again. An audit write failure leaves a durable
+pending-audit marker that workspace recovery finishes atomically. Core holds an
+exclusive target/profile mutation gate for the full restore and retains a
+non-secret replay tombstone for 30 days after history retention removes the
+detailed terminal operation. Connector implementations must not add a parallel
+locking or idempotency path.
+
+File-transfer connectors that create remote staging artifacts implement
+`RemoteStagingRecoveryAdapter`. The connector first creates an exclusively owned
+empty staging namespace, core then records the opaque file reference, and only
+after that durable record exists may plaintext be created inside the namespace.
+Core owns restart discovery, per-candidate deadlines, and bounded periodic
+retries, and asks only the owning connector to validate and remove its artifact.
+Connector-specific paths or cleanup commands must not leak into the generic
+transfer runtime. Recovery runs asynchronously under the workspace lifecycle,
+while retention and target or profile mutation preserve the cleanup identity
+until reconciliation finishes.
+Local staging is namespaced by the durable local database-copy identity, which
+rotates when a backup is imported. Connector code must request paths through
+the generic transfer runtime and must not share or scavenge process-wide
+staging directories, even when two local database copies retain the same
+backup workspace UUID.
 
 ## ClickHouse Safety Boundary
 

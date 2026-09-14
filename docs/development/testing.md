@@ -218,7 +218,21 @@ Then verify:
 10. Postgres connector operations can create a managed scoped database role with
     a random password saved as an encrypted credential profile.
 11. Postgres connector operations can download a SQL dump and restore a SQL
-    dump only after typing the connector target name exactly.
+    dump only after typing the connector target name exactly. Restore ignores
+    `psqlrc`, validates the exact artifact size, rejects psql meta-commands,
+    requires proof that the complete input stream was consumed, and records
+    every post-start failure or missing completion marker as
+    `outcome_unknown` without automatic retry. Success, failure, cancellation,
+    and uncertain outcomes all produce a required terminal audit record. A
+    durable artifact-bound key prevents response loss from dispatching twice.
+    Explicit transaction-control SQL is tested as an uncertain-outcome boundary,
+    not advertised as an atomic restore guarantee. Malformed, repeated, mismatched,
+    or shell-active `\\restrict` markers must fail before `psql` starts. A lost
+    transaction response and pending terminal audit must replay the original
+    operation identity without redispatch. `PREPARE TRANSACTION` is uncertain,
+    while ordinary prepared statements remain accepted. Concurrent target or
+    profile mutation is blocked for the full restore. History purge retains a
+    non-secret replay tombstone, and tombstone expiry is independently tested.
 12. A ClickHouse connector can connect directly and Over SSH through the native
     protocol with a dedicated read-only credential profile.
 13. ClickHouse Console can browse visible databases, tables, and ordered
@@ -235,7 +249,22 @@ Then verify:
 18. An `always_run` SSH command streams to the persistent console, while Postgres and ClickHouse actions appear in the structured activity surface and History.
 19. History and Audit Logs show and filter the project snapshot together with connector kind, target/profile context, input, output, status, and redacted errors.
 20. Console can upload a queued set of local files to a remote folder, including
-    overwrite confirmation when a remote file already exists.
+    overwrite confirmation when a remote file already exists. SSH overwrite
+    succeeds only with atomic POSIX rename support; unsupported servers fail
+    closed without removing the existing destination.
+    A new destination, including `overwrite=false`, is published with the
+    OpenSSH hardlink extension so a target created after the preflight check
+    cannot be replaced. Servers without that atomic no-replace primitive fail
+    closed instead of falling back to a racy rename.
+    Restart recovery removes durably recorded remote staging artifacts through
+    the owning connector, while completed download archives retain their
+    persisted private-temp expiry across restart. Unresolved cleanup evidence is
+    retention-safe and blocks target/profile mutations. Startup temp scavenging
+    removes only old, unreferenced, regular files with owned filename patterns;
+    symlinks and unknown files remain untouched. Its namespace is derived from
+    the durable local database-copy identity, which rotates on import; copied
+    databases that retain the same backup workspace UUID therefore cannot
+    scavenge each other's staging files.
 21. Console can download one or more remote files, pause/resume or cancel an
     active queue, and History can show completed transfer metadata through the
     unified connector activity stream. Multi-file downloads should save as a zip.
