@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -9,6 +9,7 @@ help:
 		'  make hygiene         Run repository security and maintenance checks' \
 		'  make secret-history-check  Scan current files and Git history for secrets' \
 		'  make rest-contract   Regenerate the incremental typed OpenAPI contract' \
+		'  make backend-format-check  Verify that all Go source uses gofmt' \
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
 		'  make frontend-architecture  Enforce frontend dependency boundaries and budgets' \
@@ -33,6 +34,9 @@ rest-contract:
 
 rest-contract-check:
 	cd backend && go run ./cmd/openapi -routes internal/api/httptransport/routes.go -output ../docs/api/openapi.json -check
+
+backend-format-check:
+	sh scripts/go-format-check.sh
 
 backend-test:
 	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1 && go run ./cmd/coveragecheck -profile "$$coverage"
@@ -140,7 +144,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
 
 docker-up:
 	docker compose up -d --build

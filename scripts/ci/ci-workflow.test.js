@@ -28,6 +28,11 @@ test("native Windows runtime evidence stays on a Windows runner", () => {
   );
 });
 
+test("backend CI rejects Go source that is not gofmt formatted", () => {
+  assert.match(workflow, /backend:[\s\S]*?- name: Go format\s+run: make backend-format-check/);
+  assert.match(makefile, /backend-format-check:\n\tsh scripts\/go-format-check\.sh/);
+});
+
 test("the recovery drill uses its exact manifest runner", () => {
   assert.match(
     makefile,

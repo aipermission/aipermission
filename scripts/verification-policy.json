@@ -88,6 +88,7 @@
       "job": "backend",
       "job_name": "Backend",
       "commands": [
+        "make backend-format-check",
         "go test -coverprofile=coverage.out ./...",
         "go run ./cmd/coveragecheck -profile coverage.out",
         "go run ./cmd/function-budget",

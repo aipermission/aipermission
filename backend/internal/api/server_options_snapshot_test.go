@@ -28,7 +28,9 @@ func TestServerOptionsDetachConnectorCatalogsFromBootstrapBuilders(t *testing.T)
 	if adapter := resolved.adapterRegistry.For(localActionTestConnectorKind); adapter != nil {
 		t.Fatalf("post-composition adapter registration changed the server catalog: %T", adapter)
 	}
-	if _, mutable := resolved.registry.(interface{ Register(connectors.Connector) error }); mutable {
+	if _, mutable := resolved.registry.(interface {
+		Register(connectors.Connector) error
+	}); mutable {
 		t.Fatal("server connector catalog exposes a mutable facade")
 	}
 	if _, mutable := resolved.adapterRegistry.(interface {
