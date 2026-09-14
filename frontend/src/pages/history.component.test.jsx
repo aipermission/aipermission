@@ -232,6 +232,23 @@ describe("HistoryPage request ownership", () => {
     expect(await screen.findByRole("dialog")).toBeVisible();
   });
 
+  it("opens history details from the whole row", async () => {
+    installHistoryMock();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      if (path === "/api/history/initial") return Promise.resolve(historyResponse("initial").items[0]);
+      if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
+      return Promise.resolve({});
+    });
+    render(<HistoryPage />);
+
+    const row = (await screen.findByText("initial")).closest("tr");
+    fireEvent.click(row.cells[0]);
+
+    expect(await screen.findByRole("dialog")).toBeVisible();
+  });
+
   it("serializes slow polling and eventually commits its response", { timeout: 10000 }, async () => {
     const poll = deferred();
     let historyCalls = 0;

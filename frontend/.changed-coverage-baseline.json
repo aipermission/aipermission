@@ -1804,10 +1804,10 @@
       "lines": 0
     },
     "src/pages/audit-logs.jsx": {
-      "statements": 69.87,
-      "branches": 56.88,
-      "functions": 70.9,
-      "lines": 80.46
+      "statements": 70.87,
+      "branches": 57.88,
+      "functions": 71.42,
+      "lines": 80.62
     },
     "src/pages/connectors.jsx": {
       "statements": 0,
@@ -1834,10 +1834,10 @@
       "lines": 0
     },
     "src/pages/history.jsx": {
-      "statements": 64.88,
-      "branches": 73.07,
-      "functions": 56.17,
-      "lines": 64.63
+      "statements": 100,
+      "branches": 80.76,
+      "functions": 100,
+      "lines": 100
     },
     "src/pages/mcp-setup.jsx": {
       "statements": 0,

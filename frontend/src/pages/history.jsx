@@ -233,7 +233,7 @@ function EmptyHistoryRow({ children }) {
 
 function HistoryRow({ item, onOpen }) {
   return (
-    <tr className="transition hover:bg-stone-50">
+    <tr className="cursor-pointer transition hover:bg-stone-50" onClick={() => onOpen(item)}>
       <td className="px-4 py-3">
         <StatusBadge status={item.status} />
       </td>
@@ -245,7 +245,10 @@ function HistoryRow({ item, onOpen }) {
           type="button"
           className="grid max-w-full text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
           aria-label={`Open history details for ${item.target_name || "unknown target"}`}
-          onClick={() => onOpen(item)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(item);
+          }}
         >
           <span className="truncate font-medium text-stone-900 underline-offset-2 hover:underline">{item.target_name || "-"}</span>
           <span className="truncate text-xs text-stone-500">{[item.project_name, item.profile_label].filter(Boolean).join(" / ")}</span>

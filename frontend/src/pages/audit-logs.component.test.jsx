@@ -81,6 +81,66 @@ it("names every filter and keeps the audit table horizontally recoverable", asyn
   expect(screen.getByTestId("audit-table-scroll")).toHaveClass("overflow-x-auto");
 });
 
+it("opens audit details from the whole row", async () => {
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [] });
+    if (path === "/api/audit-logs/opened") return Promise.resolve(auditResponse("opened").items[0]);
+    return Promise.resolve(auditResponse("opened"));
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  const row = screen.getByText("opened").closest("tr");
+  fireEvent.click(row.cells[0]);
+
+  expect(screen.getByRole("dialog", { name: "Audit #opened" })).toBeVisible();
+});
+
+it("serializes project, actor, connector type, and runtime target filters", async () => {
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 7, name: "My Project" }] });
+    return Promise.resolve({
+      ...auditResponse("connector.run"),
+      items: [
+        {
+          id: "runtime-event",
+          actor_type: "mcp",
+          action: "connector.run",
+          project_id: 7,
+          connector_kind: "postgres",
+          runtime_id: 11,
+          target_name: "Main DB",
+          created_at: "2026-09-08T00:00:00Z",
+        },
+      ],
+    });
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter audit logs by project" }), { target: { value: "7" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter audit logs by actor" }), { target: { value: "mcp" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter audit logs by connector type" }), {
+    target: { value: "postgres" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter audit logs by connector" }), {
+    target: { value: "runtime:11" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Search audit logs" }), { target: { value: "  connector  " } });
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  const listCalls = apiGet.mock.calls.map(([path]) => path).filter((path) => path.startsWith("/api/audit-logs?"));
+  const params = new URL(listCalls.at(-1), "http://localhost").searchParams;
+  expect(Object.fromEntries(params)).toMatchObject({
+    q: "connector",
+    project_id: "7",
+    actor: "mcp",
+    connector_kind: "postgres",
+    runtime_id: "11",
+  });
+  expect(params.has("target_id")).toBe(false);
+});
+
 it("uses target_ref once when a target name is unavailable", async () => {
   apiGet.mockImplementation((path) => {
     if (path === "/api/projects") return Promise.resolve({ items: [] });
