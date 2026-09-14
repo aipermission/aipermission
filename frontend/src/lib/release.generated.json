@@ -35,7 +35,8 @@
           "items": [
             "Exception-free architecture and maintenance budgets now guard owner boundaries, package fan-out, mutable registries, test classification, platform suites, recovery checks, and changed behavior coverage.",
             "CodeQL, ESLint, pgx, React, Playwright, Lucide, and frontend duplication tooling use their reviewed maintainer-authored updates.",
-            "Architecture, testing, connector, REST, MCP, and verification documentation now describes the enforced ownership and release contracts."
+            "Architecture, testing, connector, REST, MCP, and verification documentation now describes the enforced ownership and release contracts.",
+            "Accessibility browser validation now recognizes connector selection state consistently across pull-request and main-branch workflows."
           ]
         },
         {
