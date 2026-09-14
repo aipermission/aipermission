@@ -1,6 +1,7 @@
 package filetransfer
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -62,6 +63,13 @@ func normalizeCreateRequest(request CreateRequest) (CreateRequest, error) {
 	}
 	if request.TransferredBytes < 0 {
 		return request, fmt.Errorf("transferred_bytes cannot be negative")
+	}
+	request.ChecksumSHA256 = strings.ToLower(strings.TrimSpace(request.ChecksumSHA256))
+	if request.ChecksumSHA256 != "" {
+		decoded, err := hex.DecodeString(request.ChecksumSHA256)
+		if err != nil || len(decoded) != 32 {
+			return request, fmt.Errorf("checksum_sha256 must be a 64-character hexadecimal SHA-256 digest")
+		}
 	}
 	return request, nil
 }

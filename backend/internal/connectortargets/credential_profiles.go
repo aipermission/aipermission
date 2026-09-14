@@ -181,7 +181,7 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 		result, err = s.db.ExecContext(ctx, `
 			UPDATE connector_credential_profiles
 			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, risk_label = ?, updated_at = ?
-			WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'`,
+			WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'`+profileMutationRemoteCleanupGuard,
 			input.ConnectorKind,
 			input.Kind,
 			label,
@@ -201,7 +201,7 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 			SET connector_kind = ?, kind = ?, label = ?, public_json = ?, encrypted_secret_json = ?,
 				secret_revision = secret_revision + 1, risk_label = ?, updated_at = ?
 			WHERE id = ? AND target_id = ? AND connector_kind = ? AND status = 'active'
-				AND secret_revision = ?`,
+				AND secret_revision = ?`+profileMutationRemoteCleanupGuard,
 			input.ConnectorKind,
 			input.Kind,
 			label,
@@ -226,6 +226,9 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 		return CredentialProfile{}, err
 	}
 	if affected == 0 {
+		if cleanupErr := s.requireNoRemoteCleanup(ctx, input.TargetID, input.ProfileID); cleanupErr != nil {
+			return CredentialProfile{}, cleanupErr
+		}
 		if input.EncryptedSecretJSON != nil {
 			var exists int
 			if lookupErr := s.db.QueryRowContext(ctx, `
@@ -254,7 +257,7 @@ func (s *Store) SetCredentialProfileEncryptedSecret(ctx context.Context, targetI
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE connector_credential_profiles
 		SET encrypted_secret_json = ?, secret_revision = secret_revision + 1
-		WHERE id = ? AND target_id = ? AND status = ?`,
+		WHERE id = ? AND target_id = ? AND status = ?`+profileMutationRemoteCleanupGuard,
 		encrypted,
 		profileID,
 		targetID,
@@ -268,6 +271,9 @@ func (s *Store) SetCredentialProfileEncryptedSecret(ctx context.Context, targetI
 		return fmt.Errorf("read connector credential profile secret rows affected: %w", err)
 	}
 	if affected != 1 {
+		if cleanupErr := s.requireNoRemoteCleanup(ctx, targetID, profileID); cleanupErr != nil {
+			return cleanupErr
+		}
 		return ErrTargetProfileNotFound
 	}
 	return nil
@@ -288,7 +294,7 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_credential_profiles
 		SET status = ?, updated_at = ?
-		WHERE id = ? AND target_id = ? AND status = ?`,
+		WHERE id = ? AND target_id = ? AND status = ?`+profileMutationRemoteCleanupGuard,
 		TargetStatusArchived,
 		nowString(),
 		profileID,
@@ -303,6 +309,9 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 		return err
 	}
 	if affected == 0 {
+		if cleanupErr := (&Store{db: tx}).requireNoRemoteCleanup(ctx, targetID, profileID); cleanupErr != nil {
+			return cleanupErr
+		}
 		return ErrTargetProfileNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `

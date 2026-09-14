@@ -153,6 +153,47 @@ func TestEnsureRuntimeSurfacePreservesRevisionWhenUnchanged(t *testing.T) {
 	}
 }
 
+func TestTargetAndCredentialMutationsWaitForTransferRecovery(t *testing.T) {
+	database := openTargetTestDB(t)
+	ctx := t.Context()
+	store := NewStore(database)
+	keyID := insertTargetTestSSHKey(t, database, "recovery")
+	target, profile := createTargetTestSSHProfile(t, ctx, store, keyID, "recovery-host", "admin", "10.0.0.10", 22)
+	surface, err := store.EnsureRuntimeSurface(ctx, EnsureRuntimeSurfaceInput{
+		ConnectorKind: sshconnector.Kind, TargetID: target.ID, ProfileID: profile.ID,
+		CapabilityKind: RuntimeCapabilityFileTransfer, Label: profile.Label,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO file_transfers (
+			runtime_id, direction, source, status, remote_path, remote_staging_ref, created_at, updated_at
+		) VALUES (?, 'upload', 'ui', 'failed', '/remote', 'opaque-recovery-ref', datetime('now'), datetime('now'))`, surface.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateTarget(ctx, UpdateTargetInput{
+		ID: target.ID, ProjectID: target.ProjectID, Name: target.Name, Config: target.Config,
+	}); !errors.Is(err, ErrRemoteCleanupPending) {
+		t.Fatalf("target update error = %v", err)
+	}
+	if _, err := store.UpdateCredentialProfile(ctx, UpdateCredentialProfileInput{
+		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: profile.ConnectorKind,
+		Kind: profile.Kind, Label: profile.Label, Public: profile.Public, RiskLabel: profile.RiskLabel,
+	}); !errors.Is(err, ErrRemoteCleanupPending) {
+		t.Fatalf("credential update error = %v", err)
+	}
+	if err := store.SetCredentialProfileEncryptedSecret(ctx, target.ID, profile.ID, "changed"); !errors.Is(err, ErrRemoteCleanupPending) {
+		t.Fatalf("secret update error = %v", err)
+	}
+	if err := store.DeleteCredentialProfile(ctx, target.ID, profile.ID); !errors.Is(err, ErrRemoteCleanupPending) {
+		t.Fatalf("credential delete error = %v", err)
+	}
+	if err := store.DeleteTarget(ctx, target.ID); !errors.Is(err, ErrRemoteCleanupPending) {
+		t.Fatalf("target delete error = %v", err)
+	}
+}
+
 func TestStoreTargetProfileByRuntimeIDRejectsArchivedProfile(t *testing.T) {
 	database := openTargetTestDB(t)
 	ctx := context.Background()

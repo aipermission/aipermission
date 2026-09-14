@@ -14,6 +14,7 @@ type testWorkspace struct{ id string }
 func newTestWorkspace() *testWorkspace { return &testWorkspace{id: "runtime-1"} }
 
 func (workspace *testWorkspace) RuntimeIdentifier() string { return workspace.id }
+func (workspace *testWorkspace) StorageIdentifier() string { return "workspace-1" }
 
 func TestWorkspaceRuntimeOwnsOneTransferRuntime(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "transfer.aipdb"), "TransferPassword123")

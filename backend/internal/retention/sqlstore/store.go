@@ -114,7 +114,10 @@ func purgeFileTransfersWithoutPerRowAudit(ctx context.Context, executor sqldb.Ex
 		return 0, fmt.Errorf("read audit outbox watermark: %w", err)
 	}
 	deleted, err := deleteWithCutoff(ctx, executor,
-		`DELETE FROM file_transfers WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`, cutoff)
+		`DELETE FROM file_transfers
+		 WHERE completed_at IS NOT NULL
+		   AND remote_staging_ref = ''
+		   AND julianday(completed_at) < julianday('now', ?)`, cutoff)
 	if err != nil {
 		return 0, err
 	}

@@ -13,6 +13,7 @@ import (
 
 type Workspace interface {
 	RuntimeIdentifier() string
+	StorageIdentifier() string
 }
 
 type workspaceRuntimeHandle struct {
@@ -31,7 +32,7 @@ func (manager *Manager) InitializeWorkspace(workspace Workspace, database *sql.D
 	}
 	_, err = manager.runtimes.LoadOrCreate(id, func() (*workspaceRuntimeHandle, error) {
 		lifecycle := NewLifecycle()
-		runtime, err := lifecycle.NewRuntime(database, observe, resolve)
+		runtime, err := lifecycle.NewRuntime(strings.TrimSpace(workspace.StorageIdentifier()), database, observe, resolve)
 		if err != nil {
 			lifecycle.Stop()
 			return nil, err

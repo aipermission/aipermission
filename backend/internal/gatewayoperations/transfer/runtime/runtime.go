@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ type Storage interface {
 	Cancel(context.Context, int64, string) (bool, error)
 	CancelBatch(context.Context, int64, string) (bool, error)
 	FailWithKind(context.Context, int64, string, string) (bool, error)
+	FailWithDetails(context.Context, int64, string, string, map[string]any) (bool, error)
 	FailBatchWithKind(context.Context, int64, string, string) (bool, error)
 	CreateBatch(context.Context, filetransfer.CreateBatchRequest) (filetransfer.BatchRecord, error)
 	CreateBatchIdempotent(context.Context, filetransfer.CreateBatchRequest, filetransfer.IdempotencyClaim) (filetransfer.BatchRecord, bool, error)
@@ -43,9 +45,18 @@ type Storage interface {
 	List(context.Context, filetransfer.ListFilter) ([]filetransfer.Record, int, error)
 	ListBatchItems(context.Context, int64) ([]filetransfer.Record, error)
 	ListBatches(context.Context, filetransfer.BatchListFilter) ([]filetransfer.BatchRecord, int, error)
+	ListTempCleanupCandidates(context.Context) ([]filetransfer.Record, error)
+	ListRemoteStagingCandidates(context.Context) ([]filetransfer.Record, error)
+	ListBatchArchiveCleanupCandidates(context.Context) ([]filetransfer.BatchRecord, error)
+	ListManagedTempPaths(context.Context) (map[string]struct{}, error)
 	PauseBatch(context.Context, int64) (bool, error)
 	ResumeBatch(context.Context, int64) (bool, error)
 	UpdatePausedBatchQueue(context.Context, int64, []int64) ([]filetransfer.Record, error)
+	SetTempExpiry(context.Context, int64, string, time.Time) error
+	ClearTempPath(context.Context, int64, string) error
+	SetRemoteStagingRef(context.Context, int64, string) error
+	ClearRemoteStagingRef(context.Context, int64, string) error
+	ClearBatchArchive(context.Context, int64, string) error
 }
 
 type BatchControl interface {
@@ -54,6 +65,7 @@ type BatchControl interface {
 }
 
 type Runtime struct {
+	storageID      string
 	store          *filetransfer.Store
 	jobs           *transferjobs.Registry
 	finalization   transferjobs.FinalizationLifetime
@@ -94,6 +106,7 @@ func (runtime *Runtime) RecoverShutdown(ctx context.Context, runningMessage stri
 }
 
 type RuntimeDependencies struct {
+	StorageID      string
 	Database       *sql.DB
 	Jobs           *transferjobs.Registry
 	Finalization   transferjobs.FinalizationLifetime
@@ -104,6 +117,9 @@ type RuntimeDependencies struct {
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	if dependencies.Database == nil {
 		return nil, fmt.Errorf("file transfer database is required")
+	}
+	if strings.TrimSpace(dependencies.StorageID) == "" {
+		return nil, fmt.Errorf("file transfer storage identity is required")
 	}
 	if dependencies.Jobs == nil {
 		return nil, fmt.Errorf("file transfer job registry is required")
@@ -118,6 +134,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 		return nil, fmt.Errorf("file transfer connector resolver is required")
 	}
 	return &Runtime{
+		storageID:      strings.TrimSpace(dependencies.StorageID),
 		store:          filetransfer.NewStore(dependencies.Database),
 		jobs:           dependencies.Jobs,
 		finalization:   dependencies.Finalization,

@@ -7,11 +7,11 @@ import (
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
-func (s *Server) initializeFileTransferRuntime(runtime *gatewayinfra.WorkspaceHandle) error {
+func (s *Server) initializeFileTransferRuntime(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle) error {
 	if runtime == nil {
 		return fmt.Errorf("file transfer workspace runtime is unavailable")
 	}
-	return s.operationsOwner.InitializeTransferWorkspace(runtime,
+	return s.operationsOwner.InitializeTransferWorkspace(ctx, runtime,
 		func(ctx context.Context, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 			s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 		},

@@ -77,9 +77,9 @@ func insertTransfer(ctx context.Context, tx *sql.Tx, request CreateRequest, stat
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO file_transfers (
 			batch_id, queue_index, runtime_id, direction, source, status, local_path, remote_path, file_name,
-			size_bytes, transferred_bytes, temp_path, created_at, updated_at
+			size_bytes, transferred_bytes, checksum_sha256, temp_path, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableBatchID(request.BatchID),
 		request.QueueIndex,
 		request.RuntimeID,
@@ -91,6 +91,7 @@ func insertTransfer(ctx context.Context, tx *sql.Tx, request CreateRequest, stat
 		request.FileName,
 		request.SizeBytes,
 		request.TransferredBytes,
+		request.ChecksumSHA256,
 		request.TempPath,
 		now,
 		now,
@@ -111,10 +112,11 @@ func (s *Store) createdTransfer(ctx context.Context, id int64) (Record, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 	var item Record
-	err := s.db.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, `
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
+			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -122,7 +124,9 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
 		WHERE ft.id = ?`,
 		id,
-	).Scan(
+	)
+	var failureDetails failureDetailsValue
+	err := row.Scan(
 		&item.ID,
 		&item.BatchID,
 		&item.QueueIndex,
@@ -142,6 +146,9 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 		&item.TempPath,
 		&item.Error,
 		&item.FailureKind,
+		&failureDetails,
+		&item.TempExpiresAt,
+		&item.RemoteStagingRef,
 		&item.CreatedAt,
 		&item.StartedAt,
 		&item.CompletedAt,
@@ -153,6 +160,7 @@ func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
 	if err != nil {
 		return Record{}, fmt.Errorf("get file transfer: %w", err)
 	}
+	item.FailureDetails = failureDetails.value
 	return item, nil
 }
 
@@ -168,7 +176,8 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 	query := `
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
 			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
+			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -188,6 +197,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 		var item Record
 		var batchID int64
 		var queueIndex int
+		var failureDetails failureDetailsValue
 		if err := rows.Scan(
 			&item.ID,
 			&batchID,
@@ -208,6 +218,9 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 			&item.TempPath,
 			&item.Error,
 			&item.FailureKind,
+			&failureDetails,
+			&item.TempExpiresAt,
+			&item.RemoteStagingRef,
 			&item.CreatedAt,
 			&item.StartedAt,
 			&item.CompletedAt,
@@ -217,6 +230,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 		}
 		item.BatchID = batchID
 		item.QueueIndex = queueIndex
+		item.FailureDetails = failureDetails.value
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {

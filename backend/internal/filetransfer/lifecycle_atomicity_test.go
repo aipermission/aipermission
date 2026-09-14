@@ -3,9 +3,11 @@ package filetransfer
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 )
@@ -80,6 +82,60 @@ func TestTransferProgressRollsBackWithHistoryProjection(t *testing.T) {
 		t.Fatalf("retry progress: %v", err)
 	}
 	assertAtomicTransferProgress(t, database, item.ID, 50)
+}
+
+func TestRemoteStagingRecoveryReferenceLifecycle(t *testing.T) {
+	_, store, runtimeID := newAtomicTransferStore(t)
+	item, err := store.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Direction: DirectionUpload, Source: SourceUI,
+		RemotePath: "/fixture", FileName: "fixture", TempPath: "/tmp/fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "/tmp/.aipermission-upload-fixture-1-2-0.tmp"
+	if err := store.SetRemoteStagingRef(t.Context(), item.ID, ref); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("pending transfer accepted staging ref: %v", err)
+	}
+	markAtomicTransferRunning(t, store, item.ID)
+	if err := store.SetRemoteStagingRef(t.Context(), item.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := store.ListRemoteStagingCandidates(t.Context())
+	if err != nil || len(candidates) != 1 || candidates[0].RemoteStagingRef != ref {
+		t.Fatalf("remote staging candidates = %#v err=%v", candidates, err)
+	}
+	if err := store.ClearRemoteStagingRef(t.Context(), item.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = store.ListRemoteStagingCandidates(t.Context())
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("cleared remote staging candidates = %#v err=%v", candidates, err)
+	}
+}
+
+func TestBatchArchiveRecoveryMetadataLifecycle(t *testing.T) {
+	_, store, runtimeID := newAtomicTransferStore(t)
+	batch := createAtomicBatch(t, store, runtimeID, 1)
+	expiresAt := time.Now().UTC().Add(time.Hour).Truncate(time.Nanosecond)
+	if err := store.SetBatchArchive(t.Context(), batch.ID, "/tmp/archive.zip", expiresAt); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.GetBatch(t.Context(), batch.ID)
+	if err != nil || stored.ArchivePath != "/tmp/archive.zip" || stored.ArchiveExpiresAt != expiresAt.Format(time.RFC3339Nano) {
+		t.Fatalf("stored archive metadata = %#v err=%v", stored, err)
+	}
+	candidates, err := store.ListBatchArchiveCleanupCandidates(t.Context())
+	if err != nil || len(candidates) != 1 || candidates[0].ArchiveExpiresAt != stored.ArchiveExpiresAt {
+		t.Fatalf("archive cleanup candidates = %#v err=%v", candidates, err)
+	}
+	if err := store.ClearBatchArchive(t.Context(), batch.ID, stored.ArchivePath); err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.GetBatch(t.Context(), batch.ID)
+	if err != nil || stored.ArchivePath != "" || stored.ArchiveExpiresAt != "" {
+		t.Fatalf("cleared archive metadata = %#v err=%v", stored, err)
+	}
 }
 
 func TestBatchLifecycleRollsBackWithHistoryProjection(t *testing.T) {
@@ -173,12 +229,12 @@ func TestBatchLifecycleRollsBackWithHistoryProjection(t *testing.T) {
 		database, store, runtimeID := newAtomicTransferStore(t)
 		batch := createAtomicBatch(t, store, runtimeID, 1)
 		installHistoryProjectionFailure(t, database, "INSERT")
-		if err := store.SetBatchArchive(context.Background(), batch.ID, "/tmp/archive.zip"); err == nil {
+		if err := store.SetBatchArchive(context.Background(), batch.ID, "/tmp/archive.zip", time.Now().Add(time.Hour)); err == nil {
 			t.Fatal("expected injected history projection failure")
 		}
 		assertAtomicBatchArchive(t, database, batch.ID, "")
 		dropHistoryProjectionFailure(t, database)
-		if err := store.SetBatchArchive(context.Background(), batch.ID, "/tmp/archive.zip"); err != nil {
+		if err := store.SetBatchArchive(context.Background(), batch.ID, "/tmp/archive.zip", time.Now().Add(time.Hour)); err != nil {
 			t.Fatalf("retry archive: %v", err)
 		}
 		assertAtomicBatchArchive(t, database, batch.ID, "/tmp/archive.zip")

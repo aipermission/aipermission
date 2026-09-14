@@ -2,7 +2,10 @@ package filetransfer
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 const (
@@ -30,35 +33,40 @@ const (
 
 const maxPathRunes = 4096
 
+const MaxFailureDetailsJSONBytes = 24 * 1024
+
 var ErrNotFound = errors.New("file transfer not found")
 var ErrInvalidState = errors.New("file transfer invalid state")
 var ErrInvalidArgument = errors.New("file transfer invalid argument")
 
 type Record struct {
-	ID               int64  `json:"id"`
-	BatchID          int64  `json:"batch_id"`
-	QueueIndex       int    `json:"queue_index"`
-	RuntimeID        int64  `json:"runtime_id"`
-	TargetName       string `json:"target_name"`
-	Direction        string `json:"direction"`
-	Source           string `json:"source"`
-	Status           string `json:"status"`
-	LocalPath        string `json:"local_path"`
-	RemotePath       string `json:"remote_path"`
-	FileName         string `json:"file_name"`
-	SizeBytes        int64  `json:"size_bytes"`
-	TransferredBytes int64  `json:"transferred_bytes"`
-	BytesPerSecond   int64  `json:"bytes_per_second"`
-	ETASeconds       int64  `json:"eta_seconds"`
-	ChecksumSHA256   string `json:"checksum_sha256"`
-	Error            string `json:"error"`
-	FailureKind      string `json:"failure_kind,omitempty"`
-	CreatedAt        string `json:"created_at"`
-	StartedAt        string `json:"started_at,omitempty"`
-	CompletedAt      string `json:"completed_at,omitempty"`
-	UpdatedAt        string `json:"updated_at"`
+	ID               int64          `json:"id"`
+	BatchID          int64          `json:"batch_id"`
+	QueueIndex       int            `json:"queue_index"`
+	RuntimeID        int64          `json:"runtime_id"`
+	TargetName       string         `json:"target_name"`
+	Direction        string         `json:"direction"`
+	Source           string         `json:"source"`
+	Status           string         `json:"status"`
+	LocalPath        string         `json:"local_path"`
+	RemotePath       string         `json:"remote_path"`
+	FileName         string         `json:"file_name"`
+	SizeBytes        int64          `json:"size_bytes"`
+	TransferredBytes int64          `json:"transferred_bytes"`
+	BytesPerSecond   int64          `json:"bytes_per_second"`
+	ETASeconds       int64          `json:"eta_seconds"`
+	ChecksumSHA256   string         `json:"checksum_sha256"`
+	Error            string         `json:"error"`
+	FailureKind      string         `json:"failure_kind,omitempty"`
+	FailureDetails   map[string]any `json:"failure_details,omitempty"`
+	TempExpiresAt    string         `json:"temp_expires_at,omitempty"`
+	CreatedAt        string         `json:"created_at"`
+	StartedAt        string         `json:"started_at,omitempty"`
+	CompletedAt      string         `json:"completed_at,omitempty"`
+	UpdatedAt        string         `json:"updated_at"`
 
-	TempPath string `json:"-"`
+	TempPath         string `json:"-"`
+	RemoteStagingRef string `json:"-"`
 }
 
 type CreateRequest struct {
@@ -72,6 +80,7 @@ type CreateRequest struct {
 	FileName         string
 	SizeBytes        int64
 	TransferredBytes int64
+	ChecksumSHA256   string
 	TempPath         string
 }
 
@@ -101,7 +110,8 @@ type BatchRecord struct {
 	UpdatedAt        string   `json:"updated_at"`
 	Items            []Record `json:"items,omitempty"`
 
-	ArchivePath string `json:"-"`
+	ArchivePath      string `json:"-"`
+	ArchiveExpiresAt string `json:"-"`
 }
 
 type CreateBatchRequest struct {
@@ -142,6 +152,34 @@ type BatchListFilter struct {
 
 type Store struct {
 	db *sql.DB
+}
+
+type failureDetailsValue struct {
+	value map[string]any
+}
+
+func (details *failureDetailsValue) Scan(source any) error {
+	text := ""
+	switch value := source.(type) {
+	case string:
+		text = value
+	case []byte:
+		text = string(value)
+	case nil:
+		text = "{}"
+	default:
+		return fmt.Errorf("unsupported file transfer failure details type %T", source)
+	}
+	if strings.TrimSpace(text) == "" {
+		text = "{}"
+	}
+	if err := json.Unmarshal([]byte(text), &details.value); err != nil {
+		return fmt.Errorf("decode file transfer failure details: %w", err)
+	}
+	if details.value == nil {
+		details.value = map[string]any{}
+	}
+	return nil
 }
 
 func NewStore(db *sql.DB) *Store {

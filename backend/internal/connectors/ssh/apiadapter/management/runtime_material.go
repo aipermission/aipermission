@@ -163,8 +163,10 @@ func ExecutionTransferOptions(options connectorapi.TransferOptions) execution.Tr
 				options.Progress(transferred, total)
 			}
 		},
-		Wait:     options.Wait,
-		MaxBytes: options.MaxBytes,
+		Wait:          options.Wait,
+		MaxBytes:      options.MaxBytes,
+		RecordStaging: options.RecordStaging,
+		ClearStaging:  options.ClearStaging,
 	}
 }
 

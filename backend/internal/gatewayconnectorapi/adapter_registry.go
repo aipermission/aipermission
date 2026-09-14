@@ -601,9 +601,11 @@ type CommandTransportAdapter interface {
 type TransferProgress func(transferred int64, total int64)
 
 type TransferOptions struct {
-	Progress TransferProgress
-	Wait     func(context.Context) error
-	MaxBytes int64
+	Progress      TransferProgress
+	Wait          func(context.Context) error
+	MaxBytes      int64
+	RecordStaging func(context.Context, string) error
+	ClearStaging  func(context.Context, string) error
 }
 
 type TransferResult struct {
@@ -638,6 +640,12 @@ type FileTransferAdapter interface {
 	StatRemotePath(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
 	UploadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error)
 	DownloadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, localPath string, options TransferOptions) (TransferResult, error)
+}
+
+// RemoteStagingRecoveryAdapter removes connector-owned upload staging after a
+// gateway restart. Core persists only the opaque staging reference.
+type RemoteStagingRecoveryAdapter interface {
+	CleanupRemoteStaging(context.Context, FileTransferGateway, TransferRuntime, int64, string) error
 }
 
 type RecursiveFileTransferAdapter interface {

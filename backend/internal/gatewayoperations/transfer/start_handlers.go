@@ -57,7 +57,7 @@ func (s FileTransferHTTPHandlers) StartUpload(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	tempPath, size, checksum, err := s.runner.StageUploadFile(file)
+	tempPath, size, checksum, err := s.runner.StageUploadFile(runtime, file)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -103,14 +103,15 @@ func (s FileTransferHTTPHandlers) StartUpload(w http.ResponseWriter, r *http.Req
 		return
 	}
 	record, created, err := runtime.Storage().CreateIdempotent(r.Context(), filetransfer.CreateRequest{
-		RuntimeID:  runtimeID,
-		Direction:  filetransfer.DirectionUpload,
-		Source:     filetransfer.SourceUI,
-		LocalPath:  fileName,
-		RemotePath: remotePath,
-		FileName:   fileName,
-		SizeBytes:  size,
-		TempPath:   tempPath,
+		RuntimeID:      runtimeID,
+		Direction:      filetransfer.DirectionUpload,
+		Source:         filetransfer.SourceUI,
+		LocalPath:      fileName,
+		RemotePath:     remotePath,
+		FileName:       fileName,
+		SizeBytes:      size,
+		ChecksumSHA256: checksum,
+		TempPath:       tempPath,
 	}, claim)
 	if err != nil {
 		_ = os.Remove(tempPath)
@@ -206,7 +207,7 @@ func (s FileTransferHTTPHandlers) createUploadBatchFromMultipart(w http.Response
 			writeError(w, http.StatusBadRequest, "file is required")
 			return uploadBatchCreation{}, false
 		}
-		tempPath, size, checksum, err := s.runner.StageUploadFile(file)
+		tempPath, size, checksum, err := s.runner.StageUploadFile(runtime, file)
 		_ = file.Close()
 		if err != nil {
 			cleanupTempPaths(tempPaths)
@@ -222,11 +223,12 @@ func (s FileTransferHTTPHandlers) createUploadBatchFromMultipart(w http.Response
 		}
 		tempPaths = append(tempPaths, tempPath)
 		requests = append(requests, filetransfer.CreateRequest{
-			LocalPath:  fileNames[i],
-			RemotePath: remotePaths[i],
-			FileName:   fileNames[i],
-			SizeBytes:  size,
-			TempPath:   tempPath,
+			LocalPath:      fileNames[i],
+			RemotePath:     remotePaths[i],
+			FileName:       fileNames[i],
+			SizeBytes:      size,
+			ChecksumSHA256: checksum,
+			TempPath:       tempPath,
 		})
 		identityItems = append(identityItems, fileTransferUploadIdentityItem{
 			RemotePath: remotePaths[i], FileName: fileNames[i], SizeBytes: size, Checksum: checksum,
@@ -462,7 +464,7 @@ func (s FileTransferHTTPHandlers) StartDownload(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 		return
 	}
-	tempPath, err := s.runner.ReserveDownloadTempFile()
+	tempPath, err := s.runner.ReserveDownloadTempFile(runtime)
 	if err != nil {
 		writeInternalError(w)
 		return
@@ -573,7 +575,7 @@ func (s FileTransferHTTPHandlers) createDownloadBatch(ctx context.Context, runti
 		return filetransfer.BatchRecord{}, false, err
 	}
 	plan.assignDefaultArchiveName()
-	items, tempPaths, err := s.prepareDownloadBatchItems(ctx, execution, runtimeID, plan, status != filetransfer.StatusPendingApproval)
+	items, tempPaths, err := s.prepareDownloadBatchItems(ctx, runtime, execution, runtimeID, plan, status != filetransfer.StatusPendingApproval)
 	if err != nil {
 		return filetransfer.BatchRecord{}, false, err
 	}
@@ -670,7 +672,7 @@ func (s FileTransferHTTPHandlers) DownloadTransferredFile(w http.ResponseWriter,
 		writeError(w, http.StatusConflict, "file transfer is not completed")
 		return
 	}
-	if item.TempPath == "" || !s.runner.TempPathAllowed(item.TempPath) {
+	if item.TempPath == "" || !s.runner.TempPathAllowed(runtime, item.TempPath) {
 		writeError(w, http.StatusGone, "download file is no longer available")
 		return
 	}

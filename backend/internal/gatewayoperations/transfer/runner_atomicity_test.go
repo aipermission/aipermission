@@ -3,6 +3,7 @@ package gatewaytransfer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
@@ -28,6 +30,327 @@ type revisionGateTransferAdapter struct {
 type cancelCommitTransferAdapter struct {
 	rejectingTransferAdapter
 	started chan struct{}
+}
+
+type uncertainUploadTransferAdapter struct{ rejectingTransferAdapter }
+
+type recoverableStagingTransferAdapter struct {
+	rejectingTransferAdapter
+	recovered []string
+}
+
+type blockingStagingRecoveryAdapter struct {
+	rejectingTransferAdapter
+	calls     atomic.Int32
+	recovered atomic.Int32
+}
+
+type retryingStagingRecoveryAdapter struct {
+	rejectingTransferAdapter
+	calls     atomic.Int32
+	recovered chan struct{}
+}
+
+func (adapter *blockingStagingRecoveryAdapter) CleanupRemoteStaging(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, ref string) error {
+	adapter.calls.Add(1)
+	if ref == "opaque-0" {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	adapter.recovered.Add(1)
+	return nil
+}
+
+func (adapter *retryingStagingRecoveryAdapter) CleanupRemoteStaging(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) error {
+	if adapter.calls.Add(1) == 1 {
+		return errors.New("temporary cleanup failure")
+	}
+	close(adapter.recovered)
+	return nil
+}
+
+func (adapter *recoverableStagingTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+	if err := options.RecordStaging(ctx, "/tmp/.aipermission-upload-0123456789abcdef0123456789abcdef-0.tmp"); err != nil {
+		return connectorapi.TransferResult{}, err
+	}
+	return connectorapi.TransferResult{}, errors.New("simulated process interruption")
+}
+
+func (adapter *recoverableStagingTransferAdapter) CleanupRemoteStaging(_ context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, ref string) error {
+	adapter.recovered = append(adapter.recovered, ref)
+	return nil
+}
+
+const uncertainUploadChecksum = "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5"
+
+func (uncertainUploadTransferAdapter) UploadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, bool, connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+	return connectorapi.TransferResult{Bytes: 7, Size: 7, ChecksumSHA256: uncertainUploadChecksum}, connectors.ClassifyOutcomeUnknown(
+		"atomic_replace", map[string]any{
+			"recovery_hint":       "inspect destination",
+			"remote_staging_path": "/tmp/.aipermission-upload-stage.tmp",
+		}, errors.New("rename reply lost"),
+	)
+}
+
+func TestUncertainUploadRetainsStagingAndTransferEvidence(t *testing.T) {
+	fixture := newTransferTestFixtureWithAdapter(t, uncertainUploadTransferAdapter{})
+	fixture.handlers.runner = transferapp.NewRunner(transferapp.RunnerConfig{DataPath: fixture.dataPath, TempTTL: time.Hour})
+	tempPath, size, checksum, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload", TempPath: tempPath, SizeBytes: size, ChecksumSHA256: checksum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.handlers.runner.RunUpload(t.Context(), fixture.runtime, item.ID, true, fixture.execution(t).runnerExecution())
+	stored, err := fixture.store.Get(t.Context(), item.ID)
+	if err != nil || stored.FailureKind != filetransfer.FailureKindOutcomeUnknown || stored.TransferredBytes != 7 || stored.ChecksumSHA256 != uncertainUploadChecksum || stored.TempExpiresAt == "" {
+		t.Fatalf("uncertain transfer=%#v err=%v", stored, err)
+	}
+	if stored.FailureDetails["remote_staging_path"] != "/tmp/.aipermission-upload-stage.tmp" || stored.FailureDetails["recovery_hint"] != "inspect destination" {
+		t.Fatalf("uncertain transfer recovery details=%#v", stored.FailureDetails)
+	}
+	var preview string
+	if err := fixture.database.QueryRowContext(t.Context(), `
+		SELECT preview_json FROM history_entries WHERE source_ref_type = 'file_transfer' AND source_ref_id = ?`, item.ID).Scan(&preview); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, `"remote_staging_path":"/tmp/.aipermission-upload-stage.tmp"`) {
+		t.Fatalf("history preview lost recovery details: %s", preview)
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("uncertain upload staging was not retained: %v", err)
+	}
+}
+
+func TestTransferTempRecoverySurvivesRuntimeRestart(t *testing.T) {
+	fixture := newTransferTestFixtureWithAdapter(t, uncertainUploadTransferAdapter{})
+	fixture.handlers.runner = transferapp.NewRunner(transferapp.RunnerConfig{DataPath: fixture.dataPath, TempTTL: time.Hour})
+	tempPath, size, checksum, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload", TempPath: tempPath, SizeBytes: size, ChecksumSHA256: checksum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.handlers.runner.RunUpload(t.Context(), fixture.runtime, item.ID, true, fixture.execution(t).runnerExecution())
+	if _, err := fixture.database.ExecContext(t.Context(), `UPDATE file_transfers SET temp_expires_at = ? WHERE id = ?`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano), item.ID); err != nil {
+		t.Fatal(err)
+	}
+	restarted := transferapp.NewRunner(transferapp.RunnerConfig{DataPath: fixture.dataPath, TempTTL: time.Hour})
+	if err := restarted.RecoverTempCleanup(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		stored, getErr := fixture.store.Get(t.Context(), item.ID)
+		_, statErr := os.Stat(tempPath)
+		if getErr == nil && stored.TempPath == "" && os.IsNotExist(statErr) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("restart cleanup did not remove staging: record=%#v get_err=%v stat_err=%v", stored, getErr, statErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestRemoteUploadStagingRecoverySurvivesRuntimeRestart(t *testing.T) {
+	adapter := &recoverableStagingTransferAdapter{}
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	tempPath, size, checksum, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload", TempPath: tempPath, SizeBytes: size, ChecksumSHA256: checksum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.handlers.runner.RunUpload(t.Context(), fixture.runtime, item.ID, true, fixture.execution(t).runnerExecution())
+	stored, err := fixture.store.Get(t.Context(), item.ID)
+	if err != nil || stored.RemoteStagingRef == "" {
+		t.Fatalf("persisted remote staging = %#v err=%v", stored, err)
+	}
+	restarted := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour,
+		AdapterFor: func(string) connectorapi.FileTransferAdapter { return adapter },
+	})
+	if err := restarted.RecoverRemoteStaging(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	stored, err = fixture.store.Get(t.Context(), item.ID)
+	if err != nil || stored.RemoteStagingRef != "" || len(adapter.recovered) != 1 {
+		t.Fatalf("recovered remote staging = %#v refs=%#v err=%v", stored, adapter.recovered, err)
+	}
+}
+
+func TestRemoteStagingRecoveryBoundsEachCandidateIndependently(t *testing.T) {
+	adapter := &blockingStagingRecoveryAdapter{}
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	for index := 0; index < 2; index++ {
+		item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+			RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+			RemotePath: fmt.Sprintf("/remote-%d", index), FileName: "upload",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := fixture.store.MarkRunning(t.Context(), item.ID); err != nil || !changed {
+			t.Fatalf("mark running: changed=%v err=%v", changed, err)
+		}
+		if err := fixture.store.SetRemoteStagingRef(t.Context(), item.ID, fmt.Sprintf("opaque-%d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour, RemoteRecoveryTimeout: 20 * time.Millisecond,
+		AdapterFor: func(string) connectorapi.FileTransferAdapter { return adapter },
+	})
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if err := runner.RecoverRemoteStaging(ctx, fixture.runtime); err != nil {
+		t.Fatalf("recovery error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 20*time.Millisecond || elapsed > 150*time.Millisecond {
+		t.Fatalf("per-candidate recovery deadline took %s", elapsed)
+	}
+	items, err := fixture.store.ListRemoteStagingCandidates(t.Context())
+	if err != nil || len(items) != 1 || items[0].RemoteStagingRef != "opaque-0" {
+		t.Fatalf("candidate recovery result: items=%#v err=%v", items, err)
+	}
+	if adapter.calls.Load() != 2 || adapter.recovered.Load() != 1 {
+		t.Fatalf("candidate calls=%d recovered=%d", adapter.calls.Load(), adapter.recovered.Load())
+	}
+}
+
+func TestRemoteStagingRecoveryRetriesWhileWorkspaceRemainsOpen(t *testing.T) {
+	adapter := &retryingStagingRecoveryAdapter{recovered: make(chan struct{})}
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := fixture.store.MarkRunning(t.Context(), item.ID); err != nil || !changed {
+		t.Fatalf("mark running: changed=%v err=%v", changed, err)
+	}
+	if err := fixture.store.SetRemoteStagingRef(t.Context(), item.ID, "opaque-retry"); err != nil {
+		t.Fatal(err)
+	}
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour, RemoteRecoveryTimeout: 20 * time.Millisecond,
+		RemoteRecoveryRetry: 5 * time.Millisecond,
+		AdapterFor:          func(string) connectorapi.FileTransferAdapter { return adapter },
+	})
+	if !runner.StartRemoteStagingRecovery(fixture.runtime) {
+		t.Fatal("remote staging recovery did not start")
+	}
+	select {
+	case <-adapter.recovered:
+	case <-time.After(time.Second):
+		t.Fatal("remote staging cleanup was not retried")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		stored, err := fixture.store.Get(t.Context(), item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.RemoteStagingRef == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("recovered staging reference was not cleared")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestBatchArchiveRecoverySurvivesRuntimeRestart(t *testing.T) {
+	fixture := newTransferTestFixture(t)
+	root, err := fixture.handlers.runner.EnsureTempRoot(fixture.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(root, "download.zip")
+	if err := os.WriteFile(archivePath, []byte("archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := fixture.store.CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		Status: filetransfer.StatusPending, Items: []filetransfer.CreateRequest{{RemotePath: "/remote", FileName: "remote"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.store.SetBatchArchive(t.Context(), batch.ID, archivePath, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.handlers.runner.RecoverTempCleanup(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		stored, getErr := fixture.store.GetBatch(t.Context(), batch.ID)
+		_, statErr := os.Stat(archivePath)
+		if getErr == nil && stored.ArchivePath == "" && os.IsNotExist(statErr) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("restart cleanup did not remove archive: batch=%#v get_err=%v stat_err=%v", stored, getErr, statErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestBatchCleanupPreservesUncertainUploadStaging(t *testing.T) {
+	fixture := newTransferTestFixture(t)
+	first, _, _, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("uncertain"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, _, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("failed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := fixture.store.CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		Items: []filetransfer.CreateRequest{
+			{RemotePath: "/uncertain", FileName: "uncertain", TempPath: first},
+			{RemotePath: "/failed", FileName: "failed", TempPath: second},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := fixture.store.FailWithKind(t.Context(), batch.Items[0].ID, "unknown", filetransfer.FailureKindOutcomeUnknown); err != nil || !ok {
+		t.Fatalf("mark uncertain item: ok=%v err=%v", ok, err)
+	}
+	if ok, err := fixture.store.FailWithKind(t.Context(), batch.Items[1].ID, "failed", filetransfer.FailureKindTimeout); err != nil || !ok {
+		t.Fatalf("mark failed item: ok=%v err=%v", ok, err)
+	}
+
+	fixture.handlers.runner.CleanupBatchTemps(fixture.runtime, batch.ID)
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("uncertain batch staging was removed: %v", err)
+	}
+	if _, err := os.Stat(second); !os.IsNotExist(err) {
+		t.Fatalf("definitive batch staging was retained: %v", err)
+	}
 }
 
 func (adapter *cancelCommitTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, _ connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
@@ -292,7 +615,7 @@ func TestUploadRunnerKeepsStagingWhenClaimFails(t *testing.T) {
 	store := fixture.store
 	handlers := fixture.handlers
 	runtimeID := fixture.runtimeID
-	staged, _, _, err := handlers.runner.StageUploadFile(strings.NewReader("owned staging"))
+	staged, _, _, err := handlers.runner.StageUploadFile(runtime, strings.NewReader("owned staging"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +641,7 @@ func TestUploadRunnerWithoutClaimDoesNotDeleteOwnedStaging(t *testing.T) {
 	store := fixture.store
 	handlers := fixture.handlers
 	runtimeID := fixture.runtimeID
-	staged, _, _, err := handlers.runner.StageUploadFile(strings.NewReader("owned staging"))
+	staged, _, _, err := handlers.runner.StageUploadFile(runtime, strings.NewReader("owned staging"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +666,7 @@ func TestDownloadRunnerKeepsReservationWhenClaimFails(t *testing.T) {
 	store := fixture.store
 	handlers := fixture.handlers
 	runtimeID := fixture.runtimeID
-	reserved, err := handlers.runner.ReserveDownloadTempFile()
+	reserved, err := handlers.runner.ReserveDownloadTempFile(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,6 +686,63 @@ func TestDownloadRunnerKeepsReservationWhenClaimFails(t *testing.T) {
 	assertRunnerTransferAndStaging(t, store, item.ID, reserved, filetransfer.StatusPending)
 }
 
+func TestTempRecoveryScavengesOnlyOldUnreferencedOwnedFiles(t *testing.T) {
+	fixture := newTransferTestFixture(t)
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{DataPath: fixture.dataPath, TempTTL: time.Hour})
+	root, err := runner.EnsureTempRoot(fixture.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]string{
+		"old":        filepath.Join(root, "upload-old"),
+		"fresh":      filepath.Join(root, "download-fresh"),
+		"referenced": filepath.Join(root, "archive-referenced.zip"),
+		"unknown":    filepath.Join(root, "notes.txt"),
+	}
+	for _, path := range paths {
+		if err := os.WriteFile(path, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	for _, key := range []string{"old", "referenced", "unknown"} {
+		if err := os.Chtimes(paths[key], old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		RemotePath: "/referenced", FileName: "referenced", TempPath: paths["referenced"],
+	}); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(root, "upload-link")
+	if err := os.Symlink(outside, symlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RecoverTempCleanup(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(paths["old"]); !os.IsNotExist(err) {
+		t.Fatalf("old orphan was not removed: %v", err)
+	}
+	for _, key := range []string{"fresh", "referenced", "unknown"} {
+		if _, err := os.Stat(paths[key]); err != nil {
+			t.Fatalf("%s temp was removed: %v", key, err)
+		}
+	}
+	if _, err := os.Lstat(symlink); err != nil {
+		t.Fatalf("symlink was removed: %v", err)
+	}
+	if contents, err := os.ReadFile(outside); err != nil || string(contents) != "preserved" {
+		t.Fatalf("symlink target changed: contents=%q err=%v", contents, err)
+	}
+}
+
 func TestTransferRunnerRetainsTempUntilFailureIsDurable(t *testing.T) {
 	for _, direction := range []string{filetransfer.DirectionUpload, filetransfer.DirectionDownload} {
 		t.Run(direction, func(t *testing.T) {
@@ -370,9 +750,9 @@ func TestTransferRunnerRetainsTempUntilFailureIsDurable(t *testing.T) {
 			var tempPath string
 			var err error
 			if direction == filetransfer.DirectionUpload {
-				tempPath, _, _, err = fixture.handlers.runner.StageUploadFile(strings.NewReader("recoverable transfer data"))
+				tempPath, _, _, err = fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("recoverable transfer data"))
 			} else {
-				tempPath, err = fixture.handlers.runner.ReserveDownloadTempFile()
+				tempPath, err = fixture.handlers.runner.ReserveDownloadTempFile(fixture.runtime)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -472,7 +852,7 @@ func TestBatchArchivePersistenceFailureCannotFinalizeAsCompleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if handlers.runner.PersistDownloadBatchArchive(t.Context(), runtime, batch, archivePath, nil) {
+	if handlers.runner.PersistDownloadBatchArchive(t.Context(), runtime, &batch, archivePath, nil) {
 		t.Fatal("archive persistence failure reported success")
 	}
 	stored, err := store.GetBatch(context.Background(), batch.ID)
@@ -484,6 +864,25 @@ func TestBatchArchivePersistenceFailureCannotFinalizeAsCompleted(t *testing.T) {
 	}
 	if _, err := os.Stat(archivePath); err != nil {
 		t.Fatalf("archive was removed before delayed cleanup: %v", err)
+	}
+}
+
+func TestBatchArchivePersistenceKeepsRunnerAndStoreExpiryAligned(t *testing.T) {
+	fixture := newTransferTestFixture(t)
+	batch, err := fixture.store.CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		Items: []filetransfer.CreateRequest{{RemotePath: "/one", FileName: "one"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "download.zip")
+	if !fixture.handlers.runner.PersistDownloadBatchArchive(t.Context(), fixture.runtime, &batch, archivePath, nil) {
+		t.Fatal("archive persistence reported failure")
+	}
+	stored, err := fixture.store.GetBatch(t.Context(), batch.ID)
+	if err != nil || batch.ArchiveExpiresAt == "" || batch.ArchiveExpiresAt != stored.ArchiveExpiresAt {
+		t.Fatalf("runner archive=%#v stored=%#v err=%v", batch, stored, err)
 	}
 }
 
@@ -515,7 +914,7 @@ func TestBatchArchiveRetainedWhenFailureStateCannotPersist(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	result := make(chan bool, 1)
-	go func() { result <- handlers.runner.PersistDownloadBatchArchive(ctx, runtime, batch, archivePath, nil) }()
+	go func() { result <- handlers.runner.PersistDownloadBatchArchive(ctx, runtime, &batch, archivePath, nil) }()
 	time.Sleep(300 * time.Millisecond)
 	select {
 	case <-result:

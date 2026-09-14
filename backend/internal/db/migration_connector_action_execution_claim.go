@@ -35,8 +35,7 @@ func ensureConnectorActionExecutionClaimColumns(tx *sql.Tx) error {
 		}
 	}
 	if dispatchColumnCount == 0 {
-		// A pre-v24 running row may already have crossed the external dispatch
-		// boundary. Mark it conservatively so recovery never invites a retry.
+		// Treat pre-v24 running rows as dispatched so recovery never invites a retry.
 		if _, err := tx.Exec(`
 			UPDATE connector_action_requests
 			SET dispatch_started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

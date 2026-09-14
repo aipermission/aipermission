@@ -164,6 +164,25 @@ func TestWorkspaceOwnerProjectsOnlyOwnedLifecycleState(t *testing.T) {
 	}
 }
 
+func TestTransferWorkspaceUsesLocalDatabaseCopyIdentity(t *testing.T) {
+	component := NewComponent(t.TempDir(), nil)
+	first := component.registerHandle(&gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{
+		WorkspaceID: "shared-backup-workspace", RuntimeID: "runtime-first", UIRetryID: "copy-first",
+	}})
+	second := component.registerHandle(&gatewayworkspace.Runtime{Identity: gatewayworkspace.RuntimeIdentity{
+		WorkspaceID: "shared-backup-workspace", RuntimeID: "runtime-second", UIRetryID: "copy-second",
+	}})
+
+	firstTransfer := component.OperationsOwner().TransferWorkspace(first)
+	secondTransfer := component.OperationsOwner().TransferWorkspace(second)
+	if firstTransfer.StorageID != "copy-first" || secondTransfer.StorageID != "copy-second" {
+		t.Fatalf("transfer storage identities = (%q, %q), want database-copy identities", firstTransfer.StorageID, secondTransfer.StorageID)
+	}
+	if firstTransfer.StorageID == secondTransfer.StorageID {
+		t.Fatal("database copies sharing a backup workspace UUID also shared transfer staging")
+	}
+}
+
 func TestNilWorkspaceOwnerFailsClosed(t *testing.T) {
 	var workspace *WorkspaceOwner
 	if workspace.WorkspaceLifecycle() != nil || workspace.WorkspaceIsUnlocked() || workspace.WorkspaceCount() != 0 {

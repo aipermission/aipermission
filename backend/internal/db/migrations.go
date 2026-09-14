@@ -72,6 +72,7 @@ func migrations() []migration {
 		fileTransferStartIdempotencyMigration,
 		bulkCommandIdempotencyMigration,
 		backupUploadIdempotencyMigration,
+		fileTransferRecoveryMigration(),
 	)
 }
 
@@ -269,9 +270,7 @@ func migrationBatch5To8() []migration {
 		{
 			version:     8,
 			description: "globally unique active Vault item names",
-			// Fresh databases already receive the global index from the baseline.
-			// This upgrades unpublished development databases that applied the
-			// earlier owner-scoped index before the branch changed.
+			// Upgrade development databases that predate the baseline's global index.
 			preflight: requireGloballyUniqueVaultItemNames,
 			statements: []string{
 				`DROP INDEX IF EXISTS idx_vault_items_active_owner_name;`,

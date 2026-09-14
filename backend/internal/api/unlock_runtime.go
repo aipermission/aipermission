@@ -53,7 +53,7 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayin
 	if err := s.initializeCommandRequestRuntime(runtime); err != nil {
 		return fmt.Errorf("initialize command request runtime: %w", err)
 	}
-	if err := s.initializeFileTransferRuntime(runtime); err != nil {
+	if err := s.initializeFileTransferRuntime(ctx, runtime); err != nil {
 		return fmt.Errorf("initialize file transfer runtime: %w", err)
 	}
 	if err := s.configureVaultSessionRuntime(runtime); err != nil {

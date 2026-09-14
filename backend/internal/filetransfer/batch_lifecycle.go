@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/history"
 )
@@ -324,7 +325,13 @@ func (s *Store) FailActive(ctx context.Context, transferError string, batchError
 	}
 	if _, err := tx.ExecContext(ctx, `
 			UPDATE file_transfers
-			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
+			SET status = ?, error = ?, failure_kind = ?,
+				failure_details_json = CASE WHEN remote_staging_ref != ''
+					THEN json_patch(failure_details_json, json_object(
+						'remote_cleanup_pending', json('true'),
+						'recovery_hint', 'Connector-owned staging cleanup will be retried when this workspace opens.'))
+					ELSE failure_details_json END,
+				completed_at = COALESCE(completed_at, ?), updated_at = ?
 			WHERE status IN (?, ?)`,
 		StatusFailed,
 		strings.TrimSpace(transferError),
@@ -500,7 +507,10 @@ func (s *Store) CompleteBatch(ctx context.Context, id int64) (bool, error) {
 	return true, nil
 }
 
-func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath string) error {
+func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath string, expiresAt time.Time) error {
+	if id < 1 || strings.TrimSpace(archivePath) == "" || expiresAt.IsZero() {
+		return ErrInvalidArgument
+	}
 	now := nowString()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -509,9 +519,10 @@ func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath strin
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `
 		UPDATE file_transfer_batches
-		SET archive_path = ?, updated_at = ?
+		SET archive_path = ?, archive_expires_at = ?, updated_at = ?
 		WHERE id = ?`,
 		strings.TrimSpace(archivePath),
+		expiresAt.UTC().Format(time.RFC3339Nano),
 		now,
 		id,
 	)
@@ -525,4 +536,38 @@ func (s *Store) SetBatchArchive(ctx context.Context, id int64, archivePath strin
 		return fmt.Errorf("commit file transfer batch archive update: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) ClearBatchArchive(ctx context.Context, id int64, archivePath string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE file_transfer_batches SET archive_path = '', archive_expires_at = NULL
+		WHERE id = ? AND archive_path = ?`, id, archivePath)
+	if err != nil {
+		return fmt.Errorf("clear file transfer batch archive: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListBatchArchiveCleanupCandidates(ctx context.Context) ([]BatchRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, archive_path, COALESCE(archive_expires_at, ''), updated_at
+		FROM file_transfer_batches
+		WHERE archive_path != ''
+		ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list file transfer archive cleanup candidates: %w", err)
+	}
+	defer rows.Close()
+	items := []BatchRecord{}
+	for rows.Next() {
+		var item BatchRecord
+		if err := rows.Scan(&item.ID, &item.ArchivePath, &item.ArchiveExpiresAt, &item.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan file transfer archive cleanup candidate: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate file transfer archive cleanup candidates: %w", err)
+	}
+	return items, nil
 }
