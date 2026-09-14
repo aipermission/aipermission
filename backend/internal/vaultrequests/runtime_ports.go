@@ -11,8 +11,10 @@ const (
 	maxIdempotencyKeyBytes = 128
 	maxReasonBytes         = 2 << 10
 	maxUserNoteBytes       = 8 << 10
-	defaultExecutionTTL    = 2 * time.Minute
 )
+
+// DefaultExecutionTimeout bounds detached request finalization and repair work.
+const DefaultExecutionTimeout = 2 * time.Minute
 
 var (
 	ErrRuntimeUnavailable  = errors.New("Vault action request runtime is unavailable")
@@ -66,6 +68,7 @@ type MutationPort interface {
 type RequestStore interface {
 	Get(context.Context, int64) (Request, error)
 	GetByIdempotencyKey(context.Context, int64, string) (Request, error)
+	Complete(context.Context, int64, string, any, string, string) (Request, error)
 	List(context.Context, string, int) ([]Request, error)
 	StalePending(context.Context, int64, string) (Request, error)
 	StalePendingForContext(context.Context, int64, int64, string) error
@@ -119,7 +122,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	}
 	timeout := dependencies.ExecutionTimeout
 	if timeout <= 0 {
-		timeout = defaultExecutionTTL
+		timeout = DefaultExecutionTimeout
 	}
 	return &Runtime{
 		store: dependencies.Store, mutations: dependencies.Mutations,

@@ -3,6 +3,7 @@ package gatewayvault
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
@@ -61,6 +62,7 @@ type RequestRuntimePorts struct {
 	Observe            func(context.Context, string, *int64, int64, string, any)
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
+	ExecutionTimeout   time.Duration
 }
 
 type RequestObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error

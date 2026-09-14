@@ -74,6 +74,7 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 			RepairProjection: func(ctx context.Context, id int64) error {
 				if err := observation.syncVaultActionRequest(ctx, handle, id); err != nil {
 					log.Printf("Vault request history projection repair failed request=%d error=%v", id, err)
+					return err
 				}
 				return nil
 			},
