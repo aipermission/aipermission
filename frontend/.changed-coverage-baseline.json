@@ -382,10 +382,10 @@
       "lines": 68.96
     },
     "src/components/settings/local-action-retry-panel.jsx": {
-      "statements": 69.76,
-      "branches": 58.33,
-      "functions": 72.72,
-      "lines": 75.67
+      "statements": 74,
+      "branches": 70,
+      "functions": 75,
+      "lines": 78.04
     },
     "src/components/settings/maintenance-console-panel.jsx": {
       "statements": 76.07,
@@ -1300,10 +1300,10 @@
       "lines": 42.04
     },
     "src/connectors/templates/postgres/use-postgres-backup-restore.js": {
-      "statements": 90.74,
-      "branches": 80.55,
+      "statements": 96.05,
+      "branches": 85.48,
       "functions": 100,
-      "lines": 95.74
+      "lines": 98.55
     },
     "src/connectors/templates/postgres/use-postgres-provisioning.js": {
       "statements": 87.3,
@@ -1642,10 +1642,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 58.04,
-      "branches": 66.44,
-      "functions": 80,
-      "lines": 59.7
+      "statements": 60.83,
+      "branches": 68.45,
+      "functions": 84,
+      "lines": 61.94
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,
@@ -1696,10 +1696,10 @@
       "lines": 85.71
     },
     "src/lib/local-action-retry.js": {
-      "statements": 75.67,
-      "branches": 69.09,
-      "functions": 92.3,
-      "lines": 82.53
+      "statements": 78.48,
+      "branches": 73.77,
+      "functions": 100,
+      "lines": 83.33
     },
     "src/lib/mcp-package.js": {
       "statements": 100,

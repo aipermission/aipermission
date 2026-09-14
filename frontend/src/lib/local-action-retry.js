@@ -64,6 +64,7 @@ export async function markLocalActionRetryOutcome(prepared, data) {
     state: "outcome_unknown",
     revision: entry.revision + 1,
     request_id: Number.isSafeInteger(data?.request_id) ? data.request_id : null,
+    operation_ref: localActionOperationRef(data),
     assistant_hint: String(data?.assistant_hint || "").slice(0, 1024),
     updated_at: new Date().toISOString(),
   }));
@@ -78,6 +79,12 @@ export async function markLocalActionRetryOutcome(prepared, data) {
     return;
   }
   throw retryIdentityChangedError();
+}
+
+function localActionOperationRef(data) {
+  if (typeof data?.operation_ref === "string") return data.operation_ref.trim().slice(0, 128);
+  if (Number.isSafeInteger(data?.operation_id) && data.operation_id > 0) return `operation:${data.operation_id}`;
+  return "";
 }
 
 export async function completeLocalActionRetry(prepared) {

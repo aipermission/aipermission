@@ -100,3 +100,68 @@ func TestFileTransferRetentionPreservesPendingRemoteCleanup(t *testing.T) {
 		t.Fatal("retention kept an ordinary expired transfer")
 	}
 }
+
+func TestProfileRestoreRetentionLeavesBoundedIdempotencyTombstone(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "retention.db"), "RetentionPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	targetStore := connectortargets.NewStore(database)
+	target, err := targetStore.CreateTarget(ctx, connectortargets.CreateTargetInput{ConnectorKind: "test", Name: "Restore target", Config: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := targetStore.CreateCredentialProfile(ctx, connectortargets.CreateCredentialProfileInput{
+		TargetID: target.ID, ConnectorKind: "test", Kind: "test", Label: "default",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO profile_restore_operations (
+			idempotency_key, identity_hash, target_id, profile_id, connector_kind,
+			filename, artifact_sha256, size_bytes, status, created_at, updated_at, completed_at
+		) VALUES ('restore-key', 'identity', ?, ?, 'test', 'restore.sql', 'hash', 10,
+			'completed', datetime('now', '-10 days'), datetime('now', '-10 days'), datetime('now', '-10 days'))`, target.ID, profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO profile_restore_operations (
+			idempotency_key, identity_hash, target_id, profile_id, connector_kind,
+			filename, artifact_sha256, size_bytes, status, error_code, audit_pending,
+			created_at, updated_at, completed_at
+		) VALUES ('pending-audit-key', 'pending-identity', ?, ?, 'test', 'pending.sql', 'pending-hash', 10,
+			'outcome_unknown', 'audit_persistence_failed', 1,
+			datetime('now', '-10 days'), datetime('now', '-10 days'), datetime('now', '-10 days'))`, target.ID, profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{}
+	if _, err := store.PurgeHistory(ctx, database, "-7 days"); err != nil {
+		t.Fatal(err)
+	}
+	var operations, tombstones int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM profile_restore_operations`).Scan(&operations); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM profile_restore_idempotency_tombstones WHERE idempotency_key = 'restore-key'`).Scan(&tombstones); err != nil {
+		t.Fatal(err)
+	}
+	if operations != 1 || tombstones != 1 {
+		t.Fatalf("restore retention operations=%d tombstones=%d", operations, tombstones)
+	}
+	var pendingAudit bool
+	if err := database.QueryRowContext(ctx, `SELECT audit_pending FROM profile_restore_operations WHERE idempotency_key = 'pending-audit-key'`).Scan(&pendingAudit); err != nil || !pendingAudit {
+		t.Fatalf("pending restore audit was not retained: pending=%v err=%v", pendingAudit, err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE profile_restore_idempotency_tombstones SET expires_at = datetime('now', '-1 minute')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PurgeExpiredIdempotency(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM profile_restore_idempotency_tombstones`).Scan(&tombstones); err != nil || tombstones != 0 {
+		t.Fatalf("expired restore tombstones=%d err=%v", tombstones, err)
+	}
+}

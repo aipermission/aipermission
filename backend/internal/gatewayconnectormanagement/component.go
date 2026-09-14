@@ -129,6 +129,10 @@ func (component *Component) HTTPHandlers() HTTPHandlers {
 	}
 }
 
+func (component *Component) RecoverProfileRestores(ctx context.Context, workspace Workspace) error {
+	return connectormanagement.RecoverProfileRestores(ctx, adaptTransaction(workspace.Storage.Transaction))
+}
+
 func (component *Component) approvalScope(w http.ResponseWriter) (connectorapproval.Scope, bool) {
 	if component == nil || component.dependencies.Approvals == nil {
 		return connectorapproval.Scope{}, false

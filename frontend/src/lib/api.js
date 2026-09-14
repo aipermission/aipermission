@@ -146,7 +146,7 @@ export async function apiPostForm(path, formData, options = {}) {
     signal: options.signal,
     credentials: "include",
   });
-  return readResponse(response);
+  return readResponse(response, { requireJSON: Boolean(options.requireJSON) });
 }
 
 export async function apiPut(path, body, options = {}) {

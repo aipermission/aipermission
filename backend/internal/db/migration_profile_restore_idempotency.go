@@ -1,0 +1,13 @@
+package db
+
+func profileRestoreIdempotencyMigration() migration {
+	return migration{version: 32, description: "profile restore idempotency", statements: []string{
+		`CREATE TABLE IF NOT EXISTS profile_restore_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, idempotency_key TEXT NOT NULL UNIQUE, identity_hash TEXT NOT NULL, target_id INTEGER NOT NULL, profile_id INTEGER NOT NULL, connector_kind TEXT NOT NULL, filename TEXT NOT NULL, artifact_sha256 TEXT NOT NULL, size_bytes INTEGER NOT NULL, status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'canceled', 'outcome_unknown')), error_code TEXT NOT NULL DEFAULT '', audit_pending INTEGER NOT NULL DEFAULT 0 CHECK (audit_pending IN (0, 1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT, FOREIGN KEY(target_id) REFERENCES connector_targets(id) ON DELETE RESTRICT, FOREIGN KEY(profile_id, target_id) REFERENCES connector_credential_profiles(id, target_id) ON DELETE RESTRICT);`,
+		`CREATE INDEX IF NOT EXISTS idx_profile_restore_operations_target_status ON profile_restore_operations(target_id, profile_id, status, updated_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_profile_restore_operations_audit_pending ON profile_restore_operations(id) WHERE audit_pending = 1;`,
+		`CREATE INDEX IF NOT EXISTS idx_profile_restore_operations_retention ON profile_restore_operations(completed_at, id) WHERE completed_at IS NOT NULL;`,
+		`CREATE TABLE IF NOT EXISTS profile_restore_idempotency_tombstones (idempotency_key TEXT PRIMARY KEY, identity_hash TEXT NOT NULL, operation_id INTEGER NOT NULL, status TEXT NOT NULL, error_code TEXT NOT NULL DEFAULT '', completed_at TEXT NOT NULL, retained_at TEXT NOT NULL, expires_at TEXT NOT NULL) WITHOUT ROWID;`,
+		`CREATE INDEX IF NOT EXISTS idx_profile_restore_tombstones_expiry ON profile_restore_idempotency_tombstones(expires_at);`,
+		`CREATE TRIGGER IF NOT EXISTS retain_profile_restore_idempotency_tombstone BEFORE DELETE ON profile_restore_operations WHEN OLD.completed_at IS NOT NULL BEGIN INSERT INTO profile_restore_idempotency_tombstones (idempotency_key, identity_hash, operation_id, status, error_code, completed_at, retained_at, expires_at) VALUES (OLD.idempotency_key, OLD.identity_hash, OLD.id, OLD.status, OLD.error_code, OLD.completed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+30 days')) ON CONFLICT(idempotency_key) DO UPDATE SET identity_hash = excluded.identity_hash, operation_id = excluded.operation_id, status = excluded.status, error_code = excluded.error_code, completed_at = excluded.completed_at, retained_at = excluded.retained_at, expires_at = excluded.expires_at; END;`,
+	}}
+}

@@ -95,4 +95,29 @@ describe("local connector action reconciliation", () => {
       else globalThis.indexedDB = originalIndexedDB;
     }
   });
+
+  it("renders durable operation references without requiring request ids", async () => {
+    const originalIndexedDB = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory();
+    document.cookie = `${scopedUICookieName("aipermission_workspace")}=retry-operation-refs; Path=/`;
+    try {
+      await resetLocalActionRetryLedger();
+      const numeric = await prepareLocalActionRetry({ path: "/numeric", body: {} });
+      const opaque = await prepareLocalActionRetry({ path: "/opaque", body: {} });
+      const absent = await prepareLocalActionRetry({ path: "/absent", body: {} });
+      await markLocalActionRetryOutcome(numeric, { operation_id: 42 });
+      await markLocalActionRetryOutcome(opaque, { operation_ref: "restore:manual" });
+      await markLocalActionRetryOutcome(absent, {});
+
+      render(<LocalActionRetryPanel />);
+
+      expect(await screen.findByText(/Operation 42/)).toBeVisible();
+      expect(screen.getByText(/restore:manual/)).toBeVisible();
+      expect(screen.getAllByText("Outcome unknown")).toHaveLength(3);
+    } finally {
+      await resetLocalActionRetryLedger();
+      if (originalIndexedDB === undefined) delete globalThis.indexedDB;
+      else globalThis.indexedDB = originalIndexedDB;
+    }
+  });
 });

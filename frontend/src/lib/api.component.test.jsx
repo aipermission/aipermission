@@ -1,7 +1,7 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { apiDownload, apiGet, apiPost } from "./api";
+import { apiDownload, apiGet, apiPost, apiPostForm } from "./api";
 import {
   localActionReconciliationEvent,
   completeLocalActionRetry,
@@ -258,6 +258,15 @@ it("announces an expired UI session while retaining structured API error data", 
   await expect(apiGet("/api/private")).rejects.toMatchObject({ status: 401, code: "session_required" });
 
   expect(listener).toHaveBeenCalledOnce();
+});
+
+it("requires JSON from multipart endpoints when requested", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("<html>gateway fallback</html>", { status: 200 })),
+  );
+
+  await expect(apiPostForm("/api/restore", new FormData(), { requireJSON: true })).rejects.toThrow(/HTML instead of JSON/);
 });
 
 it("keeps an unresolved retry entry visible until explicit reconciliation", async () => {
