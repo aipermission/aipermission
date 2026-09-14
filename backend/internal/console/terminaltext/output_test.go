@@ -29,6 +29,26 @@ func TestPlainConsoleOutputRemovesMarkersAndANSI(t *testing.T) {
 	}
 }
 
+func TestConsoleOutputRemovesBusyBoxInlineContinuationPrompts(t *testing.T) {
+	input := "8c1e63c30070:~$ > > > > > > > useful output\r\n"
+
+	for name, clean := range map[string]func(string) string{
+		"plain":          PlainOutput,
+		"display":        func(value string) string { return CleanDisplayOutput(value, false) },
+		"command result": CleanCommandResultOutput,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := strings.TrimSpace(clean(input)); got != "useful output" {
+				t.Fatalf("cleaned output = %q, want useful output", got)
+			}
+		})
+	}
+
+	if got := CleanDisplayOutput(input, true); !strings.Contains(got, "8c1e63c30070:~$") {
+		t.Fatalf("manual display output should preserve the remote prompt: %q", got)
+	}
+}
+
 func TestTailStringByBytesKeepsUTF8Boundary(t *testing.T) {
 	value := "abcé🙂def"
 	got := TailStringByBytes(value, 7)

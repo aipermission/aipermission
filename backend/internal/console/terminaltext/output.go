@@ -11,6 +11,7 @@ var ansiSequencePattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^
 var aptNoisePattern = regexp.MustCompile(`^\d+% \[|^Reading package lists\.\.\. \d+%$|^Building dependency tree\.\.\. \d+%$|^Reading state information\.\.\. \d+%$|^Scanning (processes|candidates|linux images)\.\.\. \[|^Scanning (processes|candidates|linux images)\.\.\.$`)
 var shellPromptPattern = regexp.MustCompile(`^(?:[^@\s]+@[^:\s]+:.*|\[[^\]\r\n]{1,128}\]\s*|(?:~|/)[^#$\r\n]{0,128}\s*)[#$]\s*.*$`)
 var bareShellPromptPattern = regexp.MustCompile(`^(?:[^@\s]+@[^:\s]+:.*|\[[^\]\r\n]{1,128}\]\s*|(?:~|/)[^#$\r\n]{0,128}\s*)[#$]\s*$`)
+var compactContinuationPromptPattern = regexp.MustCompile(`^(?:[^@\s]+@)?[^:\s]+:[^#$\r\n]{0,128}[#$]\s+(?:>\s*)+`)
 
 func StripANSI(value string) string {
 	return ansiSequencePattern.ReplaceAllString(value, "")
@@ -34,6 +35,7 @@ func PlainOutput(value string) string {
 	lines := strings.Split(value, "\n")
 	cleaned := make([]string, 0, len(lines))
 	for _, line := range lines {
+		line = stripCompactContinuationPrompts(line)
 		line = strings.TrimRight(line, " \t")
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -128,6 +130,9 @@ func CleanDisplayOutput(data string, keepShellPrompt bool) string {
 
 	cleaned := make([]string, 0, len(lines))
 	for _, line := range lines {
+		if !keepShellPrompt {
+			line = stripCompactContinuationPrompts(line)
+		}
 		line = strings.TrimRight(line, " \t")
 		trimmed := strings.TrimSpace(line)
 		if isDisplayNoise(trimmed, keepShellPrompt) || trimmed == "" {
@@ -156,6 +161,7 @@ func CleanCommandResultOutput(data string) string {
 	endedWithNewline := strings.HasSuffix(data, "\n")
 	cleaned := make([]string, 0, len(lines))
 	for _, line := range lines {
+		line = stripCompactContinuationPrompts(line)
 		line = strings.TrimRight(line, " \t")
 		if isInternalNoise(strings.TrimSpace(line)) {
 			continue
@@ -170,6 +176,10 @@ func CleanCommandResultOutput(data string) string {
 		output += "\n"
 	}
 	return output
+}
+
+func stripCompactContinuationPrompts(line string) string {
+	return compactContinuationPromptPattern.ReplaceAllString(line, "")
 }
 
 func isDisplayNoise(line string, keepShellPrompt bool) bool {
