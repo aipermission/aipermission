@@ -2,8 +2,12 @@ package transferruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
@@ -19,8 +23,104 @@ func (s Runner) failFileTransfer(runtime *Runtime, transferID int64, execution *
 		message = execution.Boundary.Redact(fileTransferFailureMessage(err))
 	}
 	return s.persistFileTransferTerminal(runtime, transferID, func(ctx context.Context) (bool, error) {
-		return runtime.store.FailWithKind(ctx, transferID, message, failureKind)
+		return runtime.store.FailWithDetails(ctx, transferID, message, failureKind, safeTransferFailureDetails(execution, err))
 	})
+}
+
+func safeTransferFailureDetails(execution *Execution, err error) map[string]any {
+	if execution == nil {
+		return nil
+	}
+	source := connectors.ErrorDetails(err)
+	if len(source) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(source))
+	for key := range source {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		left, right := transferFailureDetailPriority(keys[i]), transferFailureDetailPriority(keys[j])
+		if left != right {
+			return left < right
+		}
+		return keys[i] < keys[j]
+	})
+	if len(keys) > 8 {
+		keys = keys[:8]
+	}
+	result := make(map[string]any, len(keys))
+	for _, key := range keys {
+		cleanKey := strings.TrimSpace(key)
+		if cleanKey == "" || cleanKey == "failure_kind" || len(cleanKey) > 64 {
+			continue
+		}
+		switch value := source[key].(type) {
+		case string:
+			value = execution.Boundary.Redact(value)
+			appendBoundedTransferFailureText(result, cleanKey, boundTransferFailureText(value, 18*1024))
+		case bool, float64, int, int64:
+			result[cleanKey] = value
+			if !transferFailureDetailsFit(result) {
+				delete(result, cleanKey)
+			}
+		}
+	}
+	return result
+}
+
+func transferFailureDetailPriority(key string) int {
+	switch strings.TrimSpace(key) {
+	case "dispatch_stage":
+		return 0
+	case "retry_safe":
+		return 1
+	case "recovery_hint":
+		return 2
+	default:
+		return 3
+	}
+}
+
+func appendBoundedTransferFailureText(result map[string]any, key string, value string) {
+	result[key] = value
+	if transferFailureDetailsFit(result) {
+		return
+	}
+	delete(result, key)
+	low, high := 0, len(value)
+	best := ""
+	for low <= high {
+		middle := low + (high-low)/2
+		candidate := boundTransferFailureText(value, middle)
+		result[key] = candidate
+		if transferFailureDetailsFit(result) {
+			best = candidate
+			low = middle + 1
+		} else {
+			high = middle - 1
+		}
+	}
+	result[key] = best
+	if !transferFailureDetailsFit(result) {
+		delete(result, key)
+	}
+}
+
+func transferFailureDetailsFit(details map[string]any) bool {
+	encoded, err := json.Marshal(details)
+	return err == nil && len(encoded) <= filetransfer.MaxFailureDetailsJSONBytes
+}
+
+func boundTransferFailureText(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	value = value[:limit]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func (s Runner) finishFileTransferError(runtime *Runtime, transferID int64, ctx context.Context, execution *Execution, err error) bool {

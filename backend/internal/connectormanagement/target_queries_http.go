@@ -186,7 +186,8 @@ func writeTargetError(w http.ResponseWriter, err error) {
 	var validation connectortargets.ValidationError
 	switch {
 	case errors.Is(err, connectortargets.ErrTargetUpdateConflict),
-		errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict):
+		errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict),
+		errors.Is(err, connectortargets.ErrRemoteCleanupPending):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, connectortargets.ErrTargetNotFound),
 		errors.Is(err, connectortargets.ErrTargetProfileNotFound):

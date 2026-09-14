@@ -26,6 +26,7 @@ type transferTestFixture struct {
 	resolver  *testConnectorPortsResolver
 	jobs      *transferjobs.Registry
 	store     *filetransfer.Store
+	dataPath  string
 }
 
 type testConnectorPortsResolver struct {
@@ -108,13 +109,15 @@ func newTransferTestFixtureWithAdapter(t *testing.T, transferAdapter connectorap
 		}, nil
 	}
 	runtime, err := transferapp.NewRuntime(transferapp.RuntimeDependencies{
-		Database: database, Jobs: jobs, Finalization: finalization,
+		StorageID: "workspace-test",
+		Database:  database, Jobs: jobs, Finalization: finalization,
 		Observe:        func(context.Context, string, *int64, int64, string, any) {},
 		ConnectorPorts: resolver.Resolve,
 	})
 	if err != nil {
 		t.Fatalf("create transfer runtime: %v", err)
 	}
+	dataPath := filepath.Join(t.TempDir(), "data", "test.aipdb")
 	handlers := newFileTransferHTTPHandlers(fileTransferHandlerDependencies{
 		AdapterFor: func(kind string) connectorapi.FileTransferAdapter {
 			if kind == target.ConnectorKind {
@@ -122,7 +125,7 @@ func newTransferTestFixtureWithAdapter(t *testing.T, transferAdapter connectorap
 			}
 			return nil
 		},
-		DataPath: filepath.Join(t.TempDir(), "data", "test.aipdb"),
+		DataPath: dataPath,
 	})
 	t.Cleanup(func() {
 		jobs.Close()
@@ -130,7 +133,7 @@ func newTransferTestFixtureWithAdapter(t *testing.T, transferAdapter connectorap
 	})
 	return transferTestFixture{
 		database: database, runtime: runtime, handlers: handlers, runtimeID: surface.ID,
-		resolver: resolver, jobs: jobs, store: filetransfer.NewStore(database),
+		resolver: resolver, jobs: jobs, store: filetransfer.NewStore(database), dataPath: dataPath,
 	}
 }
 

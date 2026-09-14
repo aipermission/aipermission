@@ -96,8 +96,9 @@ func TestValidateStagedUploadSizeEnforcesObjectAndBatchLimits(t *testing.T) {
 }
 
 func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
-	handlers := newFileTransferHTTPHandlers(fileTransferHandlerDependencies{DataPath: filepath.Join(t.TempDir(), "data", "test.aipdb")})
-	root, err := handlers.runner.EnsureTempRoot()
+	fixture := newTransferTestFixture(t)
+	handlers := fixture.handlers
+	root, err := handlers.runner.EnsureTempRoot(fixture.runtime)
 	if err != nil {
 		t.Fatalf("create transfer temp root: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 		t.Fatalf("write text: %v", err)
 	}
 
-	archivePath, err := handlers.runner.CreateDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
+	archivePath, err := handlers.runner.CreateDownloadArchive(fixture.runtime, filetransfer.BatchRecord{Items: []filetransfer.Record{
 		{Status: filetransfer.StatusCompleted, TempPath: innerZipPath, FileName: "inner.zip", RemotePath: "/tmp/inner.zip"},
 		{Status: filetransfer.StatusCompleted, TempPath: textPath, FileName: "readme.txt", RemotePath: "/tmp/readme.txt"},
 	}})
@@ -151,8 +152,9 @@ func TestDownloadArchivePreservesNestedZipBytes(t *testing.T) {
 }
 
 func TestDownloadArchivePreservesRelativeRemoteHierarchy(t *testing.T) {
-	handlers := newFileTransferHTTPHandlers(fileTransferHandlerDependencies{DataPath: filepath.Join(t.TempDir(), "data", "test.aipdb")})
-	root, err := handlers.runner.EnsureTempRoot()
+	fixture := newTransferTestFixture(t)
+	handlers := fixture.handlers
+	root, err := handlers.runner.EnsureTempRoot(fixture.runtime)
 	if err != nil {
 		t.Fatalf("create transfer temp root: %v", err)
 	}
@@ -165,7 +167,7 @@ func TestDownloadArchivePreservesRelativeRemoteHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archivePath, err := handlers.runner.CreateDownloadArchive(filetransfer.BatchRecord{Items: []filetransfer.Record{
+	archivePath, err := handlers.runner.CreateDownloadArchive(fixture.runtime, filetransfer.BatchRecord{Items: []filetransfer.Record{
 		{Status: filetransfer.StatusCompleted, TempPath: firstPath, FileName: "a.txt", RemotePath: "/daily/a.txt"},
 		{Status: filetransfer.StatusCompleted, TempPath: secondPath, FileName: "b.txt", RemotePath: "/daily/nested/b.txt"},
 	}})

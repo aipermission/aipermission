@@ -254,7 +254,7 @@ func (s FileTransferHTTPHandlers) UpdateFileTransferBatchQueue(w http.ResponseWr
 		return
 	}
 	for _, item := range removed {
-		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(runtime, item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
@@ -300,7 +300,7 @@ func (s FileTransferHTTPHandlers) ApproveFileTransferBatch(w http.ResponseWriter
 		return
 	}
 	for _, item := range rejected {
-		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(runtime, item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
@@ -353,7 +353,7 @@ func (s FileTransferHTTPHandlers) DeclineFileTransferBatch(w http.ResponseWriter
 		return
 	}
 	for _, item := range rejected {
-		if item.TempPath != "" && s.runner.TempPathAllowed(item.TempPath) {
+		if item.TempPath != "" && s.runner.TempPathAllowed(runtime, item.TempPath) {
 			_ = os.Remove(item.TempPath)
 		}
 	}
@@ -383,10 +383,10 @@ func (s FileTransferHTTPHandlers) DownloadFileTransferBatch(w http.ResponseWrite
 		writeInternalError(w)
 		return
 	}
-	s.serveDownloadBatch(w, r, batch)
+	s.serveDownloadBatch(w, r, runtime, batch)
 }
 
-func (s FileTransferHTTPHandlers) serveDownloadBatch(w http.ResponseWriter, r *http.Request, batch filetransfer.BatchRecord) {
+func (s FileTransferHTTPHandlers) serveDownloadBatch(w http.ResponseWriter, r *http.Request, runtime *transferapp.Runtime, batch filetransfer.BatchRecord) {
 	if batch.Direction != filetransfer.DirectionDownload {
 		writeError(w, http.StatusBadRequest, "file transfer batch is not a download")
 		return
@@ -409,7 +409,7 @@ func (s FileTransferHTTPHandlers) serveDownloadBatch(w http.ResponseWriter, r *h
 	if fileName == "" {
 		fileName = "aipermission-download"
 	}
-	if servePath == "" || !s.runner.TempPathAllowed(servePath) {
+	if servePath == "" || !s.runner.TempPathAllowed(runtime, servePath) {
 		writeError(w, http.StatusGone, "download file is no longer available")
 		return
 	}

@@ -16,7 +16,8 @@ func TestNewRuntimeRejectsMissingRequiredDependencies(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	valid := RuntimeDependencies{
-		Database: database, Jobs: &transferjobs.Registry{},
+		StorageID: "workspace",
+		Database:  database, Jobs: &transferjobs.Registry{},
 		Finalization: transferjobs.NewFinalizationLifetime(),
 		Observe:      func(context.Context, string, *int64, int64, string, any) {},
 		ConnectorPorts: func(context.Context, int64) (ConnectorPorts, error) {
@@ -27,6 +28,7 @@ func TestNewRuntimeRejectsMissingRequiredDependencies(t *testing.T) {
 		name   string
 		mutate func(*RuntimeDependencies)
 	}{
+		{name: "storage identity", mutate: func(value *RuntimeDependencies) { value.StorageID = "" }},
 		{name: "database", mutate: func(value *RuntimeDependencies) { value.Database = nil }},
 		{name: "jobs", mutate: func(value *RuntimeDependencies) { value.Jobs = nil }},
 		{name: "finalization", mutate: func(value *RuntimeDependencies) { value.Finalization = transferjobs.FinalizationLifetime{} }},

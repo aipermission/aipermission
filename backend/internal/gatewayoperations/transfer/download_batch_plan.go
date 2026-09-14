@@ -119,7 +119,7 @@ func downloadBatchIdempotency(ctx context.Context, runtime *transferapp.Runtime,
 	return claim, nil, nil
 }
 
-func (s FileTransferHTTPHandlers) prepareDownloadBatchItems(ctx context.Context, execution transferExecution, runtimeID int64, plan downloadBatchPlan, validateRemote bool) (_ []filetransfer.CreateRequest, tempPaths []string, resultErr error) {
+func (s FileTransferHTTPHandlers) prepareDownloadBatchItems(ctx context.Context, runtime *transferapp.Runtime, execution transferExecution, runtimeID int64, plan downloadBatchPlan, validateRemote bool) (_ []filetransfer.CreateRequest, tempPaths []string, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			cleanupTempPaths(tempPaths)
@@ -136,7 +136,7 @@ func (s FileTransferHTTPHandlers) prepareDownloadBatchItems(ctx context.Context,
 			return nil, tempPaths, newFileTransferStartError(http.StatusRequestEntityTooLarge, "download batch cannot exceed "+filetransfer.FormatByteLimit(maxFileTransferBatchBytes)+" total size")
 		}
 		totalSize += size
-		tempPath, err := s.runner.ReserveDownloadTempFile()
+		tempPath, err := s.runner.ReserveDownloadTempFile(runtime)
 		if err != nil {
 			return nil, tempPaths, err
 		}

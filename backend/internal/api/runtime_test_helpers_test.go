@@ -94,7 +94,9 @@ func testServerForRuntime(t testing.TB, runtime *gatewayinfra.WorkspaceHandle) *
 		connectorRegistryOwner: owner.registry, connectorAdaptersOwner: owner.adapters,
 	}
 	server.connectorRuntime = server.newConnectorRuntimeApplication()
-	if err := server.operationsOwner.ConfigureFileTransfers(server.activeRuntimeOrLocked, server.connectorRuntime.FileTransferAdapter, server.config.DataPath); err != nil {
+	dataPath := testDatabasePath(t, owner.database)
+	server.config.DataPath = dataPath
+	if err := server.operationsOwner.ConfigureFileTransfers(server.activeRuntimeOrLocked, server.connectorRuntime.FileTransferAdapter, dataPath); err != nil {
 		t.Fatal(err)
 	}
 	server.connectorManagement = server.newConnectorManagementApplication()

@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -234,7 +236,9 @@ func TestHistoryRetentionSummarizesFileTransferDeletionWithoutPerRowAudit(t *tes
 func TestFileTransferRoutes(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	server := fixture.createKeyAndServer(t, "worker-1")
-	tempRoot := filepath.Join(filepath.Dir(fixture.server.config.DataPath), "file-transfers")
+	workspace := fixture.server.operationsOwner.TransferWorkspace(fixture.server.activeRuntime())
+	storageDigest := sha256.Sum256([]byte(workspace.StorageID))
+	tempRoot := filepath.Join(filepath.Dir(fixture.server.config.DataPath), "file-transfers", hex.EncodeToString(storageDigest[:16]))
 	if err := os.MkdirAll(tempRoot, 0o700); err != nil {
 		t.Fatalf("create temp root: %v", err)
 	}

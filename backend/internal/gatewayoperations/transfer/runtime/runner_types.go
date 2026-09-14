@@ -28,27 +28,42 @@ func (execution Execution) ValidFor(runtimeID int64) bool {
 }
 
 type RunnerConfig struct {
-	DataPath        string
-	MaxObjectBytes  int64
-	MaxBatchBytes   int64
-	TransferTimeout time.Duration
-	BatchTimeout    time.Duration
-	TempTTL         time.Duration
+	DataPath              string
+	MaxObjectBytes        int64
+	MaxBatchBytes         int64
+	TransferTimeout       time.Duration
+	BatchTimeout          time.Duration
+	TempTTL               time.Duration
+	RemoteRecoveryTimeout time.Duration
+	RemoteRecoveryRetry   time.Duration
+	AdapterFor            func(string) connectorapi.FileTransferAdapter
 }
 
 type Runner struct {
-	dataPath        string
-	maxObjectBytes  int64
-	maxBatchBytes   int64
-	transferTimeout time.Duration
-	batchTimeout    time.Duration
-	tempTTL         time.Duration
+	dataPath              string
+	maxObjectBytes        int64
+	maxBatchBytes         int64
+	transferTimeout       time.Duration
+	batchTimeout          time.Duration
+	tempTTL               time.Duration
+	remoteRecoveryTimeout time.Duration
+	remoteRecoveryRetry   time.Duration
+	adapterFor            func(string) connectorapi.FileTransferAdapter
 }
 
 func NewRunner(config RunnerConfig) *Runner {
+	remoteRecoveryTimeout := config.RemoteRecoveryTimeout
+	if remoteRecoveryTimeout <= 0 {
+		remoteRecoveryTimeout = 10 * time.Second
+	}
+	remoteRecoveryRetry := config.RemoteRecoveryRetry
+	if remoteRecoveryRetry <= 0 {
+		remoteRecoveryRetry = 30 * time.Second
+	}
 	return &Runner{
 		dataPath: strings.TrimSpace(config.DataPath), maxObjectBytes: config.MaxObjectBytes, maxBatchBytes: config.MaxBatchBytes,
 		transferTimeout: config.TransferTimeout, batchTimeout: config.BatchTimeout,
-		tempTTL: config.TempTTL,
+		tempTTL: config.TempTTL, remoteRecoveryTimeout: remoteRecoveryTimeout, remoteRecoveryRetry: remoteRecoveryRetry,
+		adapterFor: config.AdapterFor,
 	}
 }

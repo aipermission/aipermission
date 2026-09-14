@@ -19,6 +19,7 @@ func NewLifecycle() *Lifecycle {
 }
 
 func (l *Lifecycle) NewRuntime(
+	storageID string,
 	database *sql.DB,
 	observe ObservationAudit,
 	connectorPorts ConnectorPortsResolver,
@@ -27,7 +28,7 @@ func (l *Lifecycle) NewRuntime(
 		return NewRuntime(RuntimeDependencies{})
 	}
 	return NewRuntime(RuntimeDependencies{
-		Database: database, Jobs: &l.jobs, Finalization: l.finalization,
+		StorageID: storageID, Database: database, Jobs: &l.jobs, Finalization: l.finalization,
 		Observe: observe, ConnectorPorts: connectorPorts,
 	})
 }

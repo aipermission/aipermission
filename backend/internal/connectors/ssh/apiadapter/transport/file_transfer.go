@@ -51,7 +51,7 @@ func (Transport) UploadFile(ctx context.Context, server connectorapi.FileTransfe
 	}
 	result, err := execution.UploadFileWithOptions(ctx, management.ExecutionTarget(gateway, target, privateKey), localPath, remotePath, overwrite, management.ExecutionTransferOptions(options))
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return management.ConnectorTransferResult(result), err
 	}
 	return management.ConnectorTransferResult(result), nil
 }
@@ -71,3 +71,17 @@ func (Transport) DownloadFile(ctx context.Context, server connectorapi.FileTrans
 	}
 	return management.ConnectorTransferResult(result), nil
 }
+
+func (Transport) CleanupRemoteStaging(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, stagingRef string) error {
+	gateway, err := management.PeerIdentityFrom(server)
+	if err != nil {
+		return err
+	}
+	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
+	if err != nil {
+		return err
+	}
+	return execution.CleanupRemoteUploadStaging(ctx, management.ExecutionTarget(gateway, target, privateKey), stagingRef)
+}
+
+var _ connectorapi.RemoteStagingRecoveryAdapter = Transport{}

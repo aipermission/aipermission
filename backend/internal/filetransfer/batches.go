@@ -18,7 +18,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 
 	query := `
 		SELECT b.id, b.runtime_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
-			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
+			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, COALESCE(b.archive_expires_at, ''), b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.failure_kind, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
@@ -50,6 +50,7 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 			&item.ApprovalNote,
 			&overwrite,
 			&item.ArchivePath,
+			&item.ArchiveExpiresAt,
 			&item.TotalItems,
 			&item.CompletedItems,
 			&item.FailedItems,
@@ -193,7 +194,7 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 	var overwrite int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT b.id, b.runtime_id, COALESCE(ct.name, ''), b.direction, b.source, b.status,
-			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, b.total_items, b.completed_items, b.failed_items,
+			b.archive_name, COALESCE(b.approval_note, ''), COALESCE(b.overwrite, 0), b.archive_path, COALESCE(b.archive_expires_at, ''), b.total_items, b.completed_items, b.failed_items,
 			b.canceled_items, b.size_bytes, b.transferred_bytes, b.bytes_per_second,
 			b.eta_seconds, b.error, b.failure_kind, b.created_at, COALESCE(b.started_at, ''),
 			COALESCE(b.completed_at, ''), b.updated_at
@@ -214,6 +215,7 @@ func (s *Store) GetBatch(ctx context.Context, id int64) (BatchRecord, error) {
 		&item.ApprovalNote,
 		&overwrite,
 		&item.ArchivePath,
+		&item.ArchiveExpiresAt,
 		&item.TotalItems,
 		&item.CompletedItems,
 		&item.FailedItems,
@@ -249,7 +251,8 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
-			ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
+			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -266,6 +269,7 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 	var items []Record
 	for rows.Next() {
 		var item Record
+		var failureDetails failureDetailsValue
 		if err := rows.Scan(
 			&item.ID,
 			&item.BatchID,
@@ -286,6 +290,9 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 			&item.TempPath,
 			&item.Error,
 			&item.FailureKind,
+			&failureDetails,
+			&item.TempExpiresAt,
+			&item.RemoteStagingRef,
 			&item.CreatedAt,
 			&item.StartedAt,
 			&item.CompletedAt,
@@ -293,6 +300,7 @@ func (s *Store) ListBatchItems(ctx context.Context, batchID int64) ([]Record, er
 		); err != nil {
 			return nil, fmt.Errorf("scan file transfer batch item: %w", err)
 		}
+		item.FailureDetails = failureDetails.value
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -306,7 +314,8 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''),
 			ft.direction, ft.source, ft.status, ft.local_path, ft.remote_path, ft.file_name,
 			ft.size_bytes, ft.transferred_bytes, ft.bytes_per_second, ft.eta_seconds,
-			ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind, ft.created_at, COALESCE(ft.started_at, ''),
+			ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
+			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
 			COALESCE(ft.completed_at, ''), ft.updated_at
 		FROM file_transfers ft
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
@@ -319,6 +328,7 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 		StatusPending,
 	)
 	var item Record
+	var failureDetails failureDetailsValue
 	if err := row.Scan(
 		&item.ID,
 		&item.BatchID,
@@ -339,6 +349,9 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 		&item.TempPath,
 		&item.Error,
 		&item.FailureKind,
+		&failureDetails,
+		&item.TempExpiresAt,
+		&item.RemoteStagingRef,
 		&item.CreatedAt,
 		&item.StartedAt,
 		&item.CompletedAt,
@@ -348,6 +361,7 @@ func (s *Store) NextBatchPendingItem(ctx context.Context, batchID int64) (Record
 	} else if err != nil {
 		return Record{}, fmt.Errorf("get next pending file transfer batch item: %w", err)
 	}
+	item.FailureDetails = failureDetails.value
 	return item, nil
 }
 

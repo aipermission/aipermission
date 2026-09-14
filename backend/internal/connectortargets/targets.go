@@ -117,7 +117,7 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 	query := `
 		UPDATE connector_targets
 		SET project_id = ?, name = ?, config_json = ?, updated_at = ?
-		WHERE id = ? AND status = 'active'`
+		WHERE id = ? AND status = 'active'` + targetMutationRemoteCleanupGuard
 	args := []any{
 		projectID,
 		name,
@@ -141,6 +141,9 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 		return Target{}, err
 	}
 	if affected == 0 {
+		if cleanupErr := s.requireNoRemoteCleanup(ctx, input.ID, 0); cleanupErr != nil {
+			return Target{}, cleanupErr
+		}
 		if strings.TrimSpace(input.ExpectedUpdatedAt) != "" {
 			return Target{}, ErrTargetUpdateConflict
 		}
@@ -165,7 +168,7 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_targets
 		SET status = ?, updated_at = ?
-		WHERE id = ? AND status = ?`,
+		WHERE id = ? AND status = ?`+targetMutationRemoteCleanupGuard,
 		TargetStatusArchived,
 		now,
 		id,
@@ -179,6 +182,9 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 		return err
 	}
 	if affected == 0 {
+		if cleanupErr := (&Store{db: tx}).requireNoRemoteCleanup(ctx, id, 0); cleanupErr != nil {
+			return cleanupErr
+		}
 		return ErrTargetNotFound
 	}
 	if _, err := tx.ExecContext(ctx, `

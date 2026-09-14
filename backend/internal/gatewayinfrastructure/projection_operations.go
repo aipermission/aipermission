@@ -147,6 +147,7 @@ func (component *OperationsOwner) backupWorkspace(handle *WorkspaceHandle, runti
 }
 
 func (component *OperationsOwner) InitializeTransferWorkspace(
+	ctx context.Context,
 	handle *WorkspaceHandle,
 	observe func(context.Context, string, *int64, int64, string, any),
 	resolve FileTransferConnectorPortsResolver,
@@ -161,7 +162,8 @@ func (component *OperationsOwner) InitializeTransferWorkspace(
 		return ErrWorkspaceHandleUnavailable
 	}
 	return component.transfers.InitializeWorkspace(
-		gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID},
+		ctx,
+		gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID, StorageID: handle.Identity().UIRetryID},
 		capability.Database, observe,
 		func(ctx context.Context, runtimeID int64) (gatewaytransfer.FileTransferConnectorPorts, error) {
 			ports, err := resolve(ctx, runtimeID)
@@ -177,7 +179,7 @@ func (component *OperationsOwner) TransferWorkspace(handle *WorkspaceHandle) gat
 	if component == nil || !component.valid(handle) {
 		return gatewaytransfer.Workspace{}
 	}
-	return gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID}
+	return gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID, StorageID: handle.Identity().UIRetryID}
 }
 
 func (component *OperationsOwner) StopTransferWorkspace(handle *WorkspaceHandle) {

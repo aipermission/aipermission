@@ -35,7 +35,7 @@ func newFileTransferHTTPHandlers(dependencies fileTransferHandlerDependencies) *
 		runner: transferapp.NewRunner(transferapp.RunnerConfig{
 			DataPath: dependencies.DataPath, MaxObjectBytes: maxFileTransferObjectBytes, MaxBatchBytes: maxFileTransferBatchBytes,
 			TransferTimeout: fileTransferTimeout, BatchTimeout: fileTransferBatchTimeout,
-			TempTTL: fileTransferTempTTL,
+			TempTTL: fileTransferTempTTL, AdapterFor: dependencies.AdapterFor,
 		}),
 	}
 }

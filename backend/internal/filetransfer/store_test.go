@@ -773,6 +773,9 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 	if ok, err := store.MarkRunning(ctx, standalone.ID); err != nil || !ok {
 		t.Fatalf("mark standalone running: ok=%v err=%v", ok, err)
 	}
+	if err := store.SetRemoteStagingRef(ctx, standalone.ID, "/tmp/.aipermission-upload-private"); err != nil {
+		t.Fatalf("record standalone staging reference: %v", err)
+	}
 	pending, err := store.Create(ctx, CreateRequest{
 		RuntimeID:  runtimeID,
 		Direction:  DirectionUpload,
@@ -813,6 +816,21 @@ func TestStoreFailsActiveTransfers(t *testing.T) {
 	}
 	if updated.Status != StatusFailed || updated.Error != "transfer stopped" || updated.FailureKind != FailureKindOutcomeUnknown || updated.CompletedAt == "" {
 		t.Fatalf("unexpected failed standalone transfer: %#v", updated)
+	}
+	if updated.FailureDetails["remote_cleanup_pending"] != true || strings.Contains(fmt.Sprint(updated.FailureDetails), ".aipermission-upload-private") {
+		t.Fatalf("shutdown recovery details must be generic and credential-safe: %#v", updated.FailureDetails)
+	}
+	if updated.RemoteStagingRef == "" {
+		t.Fatal("shutdown discarded the private remote staging recovery reference")
+	}
+	var historyPreview string
+	if err := database.QueryRowContext(ctx, `
+		SELECT preview_json FROM history_entries
+		WHERE source_ref_type = 'file_transfer' AND source_ref_id = ?`, standalone.ID).Scan(&historyPreview); err != nil {
+		t.Fatalf("read synchronized transfer history: %v", err)
+	}
+	if !strings.Contains(historyPreview, `"remote_cleanup_pending":true`) || strings.Contains(historyPreview, ".aipermission-upload-private") {
+		t.Fatalf("shutdown history did not preserve generic recovery evidence: %s", historyPreview)
 	}
 	pending, err = store.Get(ctx, pending.ID)
 	if err != nil {

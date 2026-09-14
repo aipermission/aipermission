@@ -178,7 +178,7 @@ func TestRuntimeCloseWaitsForTransferTerminalWriteBeforeClosingDatabase(t *testi
 	secretVault := openAPITestVault(t)
 	runtime := connectorActionTestRuntime(t, database, secretVault)
 	server := testServerForRuntime(t, runtime)
-	if err := server.initializeFileTransferRuntime(runtime); err != nil {
+	if err := server.initializeFileTransferRuntime(t.Context(), runtime); err != nil {
 		t.Fatalf("initialize transfer runtime: %v", err)
 	}
 	runtimeDatabase := testRuntimeDatabase(t, server, runtime)

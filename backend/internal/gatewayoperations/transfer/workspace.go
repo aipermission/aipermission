@@ -16,11 +16,13 @@ import (
 // Workspace is the transfer-owned identity of an unlocked workspace.
 type Workspace struct {
 	RuntimeID string
+	StorageID string
 }
 
 type Jobs = transferapp.Jobs
 
 func (workspace Workspace) RuntimeIdentifier() string { return workspace.RuntimeID }
+func (workspace Workspace) StorageIdentifier() string { return workspace.StorageID }
 
 type FileTransferWorkspaceScope func(http.ResponseWriter) (Workspace, bool)
 
@@ -59,11 +61,13 @@ type FileTransferHTTPDependencies struct {
 // process. Workspace identity is only used as an opaque index key.
 type Component struct {
 	runtimes transferapp.Manager
+	runner   *transferapp.Runner
 }
 
 func NewComponent() *Component { return &Component{} }
 
 func (component *Component) InitializeWorkspace(
+	ctx context.Context,
 	workspace Workspace,
 	database *sql.DB,
 	observe transferapp.ObservationAudit,
@@ -78,7 +82,7 @@ func (component *Component) InitializeWorkspace(
 	if resolve == nil {
 		return fmt.Errorf("file transfer connector resolver is unavailable")
 	}
-	return component.runtimes.InitializeWorkspace(workspace, database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
+	if err := component.runtimes.InitializeWorkspace(workspace, database, observe, func(ctx context.Context, runtimeID int64) (transferapp.ConnectorPorts, error) {
 		ports, err := resolve(ctx, runtimeID)
 		if err != nil {
 			return transferapp.ConnectorPorts{}, err
@@ -87,11 +91,25 @@ func (component *Component) InitializeWorkspace(
 			ConnectorKind: ports.ConnectorKind, Gateway: ports.Gateway, Runtime: ports.Runtime,
 			CredentialBoundary: ports.CredentialBoundary.value,
 		}, nil
-	})
+	}); err != nil {
+		return err
+	}
+	runtime, err := component.runtimes.RuntimeForWorkspace(workspace)
+	if err != nil {
+		return err
+	}
+	if component.runner == nil {
+		return fmt.Errorf("file transfer runner is unavailable")
+	}
+	if err := component.runner.RecoverTempCleanup(ctx, runtime); err != nil {
+		return err
+	}
+	component.runner.StartRemoteStagingRecovery(runtime)
+	return nil
 }
 
 func (component *Component) NewHTTPHandlers(dependencies FileTransferHTTPDependencies) *FileTransferHTTPHandlers {
-	return newFileTransferHTTPHandlers(fileTransferHandlerDependencies{
+	handlers := newFileTransferHTTPHandlers(fileTransferHandlerDependencies{
 		Scope: func(w http.ResponseWriter) (*transferapp.Runtime, bool) {
 			if dependencies.Scope == nil {
 				writeInternalError(w)
@@ -118,6 +136,10 @@ func (component *Component) NewHTTPHandlers(dependencies FileTransferHTTPDepende
 		},
 		AdapterFor: dependencies.AdapterFor, DataPath: dependencies.DataPath,
 	})
+	if component != nil {
+		component.runner = handlers.runner
+	}
+	return handlers
 }
 
 func (component *Component) CreateAndLaunchDownloadBatch(

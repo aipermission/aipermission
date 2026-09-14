@@ -8,8 +8,9 @@ import (
 // Registry keeps file and batch IDs in separate namespaces within one runtime.
 // All zero values are usable; registry values must not be copied after use.
 type Registry struct {
-	Files   Group
-	Batches Group
+	Files       Group
+	Batches     Group
+	Maintenance Group
 }
 
 // Close also cancels jobs that try to register after shutdown has started.
@@ -17,6 +18,7 @@ func (r *Registry) Close() {
 	r.Shutdown(context.Background())
 	r.Files.clear()
 	r.Batches.clear()
+	r.Maintenance.clear()
 }
 
 type job struct {
@@ -245,6 +247,7 @@ func (g *Group) wait(ctx context.Context) bool {
 // waiting for runners to return.
 func (r *Registry) BeginShutdown() {
 	cancels := append(r.Files.beginClose(), r.Batches.beginClose()...)
+	cancels = append(cancels, r.Maintenance.beginClose()...)
 	for _, cancel := range cancels {
 		cancel()
 	}
@@ -256,12 +259,14 @@ func (r *Registry) Shutdown(ctx context.Context) bool {
 	r.BeginShutdown()
 	filesDone := r.Files.wait(ctx)
 	batchesDone := r.Batches.wait(ctx)
-	return filesDone && batchesDone
+	maintenanceDone := r.Maintenance.wait(ctx)
+	return filesDone && batchesDone && maintenanceDone
 }
 
 // Wait blocks until all runners accepted by Launch have returned.
 func (r *Registry) Wait(ctx context.Context) bool {
 	filesDone := r.Files.wait(ctx)
 	batchesDone := r.Batches.wait(ctx)
-	return filesDone && batchesDone
+	maintenanceDone := r.Maintenance.wait(ctx)
+	return filesDone && batchesDone && maintenanceDone
 }

@@ -326,7 +326,7 @@ func SyncFileTransferWithExecutor(ctx context.Context, executor CommandProjectio
 			COALESCE(ct.name, ''), COALESCE(cp.label, ''), ft.source, ft.status, ft.direction,
 			ft.direction || ': ' || ft.file_name,
 			ft.remote_path,
-			json_object('failure_kind', ft.failure_kind),
+			json_patch(json_object('failure_kind', ft.failure_kind), ft.failure_details_json),
 			ft.direction || ' ' || ft.remote_path,
 			'{}',
 			CASE

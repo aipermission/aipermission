@@ -76,12 +76,14 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 		log.Printf("read file upload failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	result, err := execution.Adapter.UploadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, connectorapi.TransferOptions{
-		Progress: s.transferProgress(runtime, transferID),
-	})
+	result, err := execution.Adapter.UploadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite,
+		s.transferOptions(runtime, transferID, nil, 0))
 	if err != nil {
+		if result.Bytes > 0 || result.ChecksumSHA256 != "" {
+			_ = runtime.store.UpdateEvidence(runtime.finalization.Context(), transferID, result.Bytes, result.ChecksumSHA256)
+		}
 		if s.finishFileTransferError(runtime, transferID, ctx, &execution, err) {
-			s.RemoveTempPath(item.TempPath)
+			s.cleanupTransferTempAfterError(runtime, transferID, item.TempPath, err)
 		}
 		return
 	}
@@ -90,7 +92,7 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 		log.Printf("complete file upload failed transfer=%d error=%v", transferID, err)
 	}
 	if completed || s.transferTerminalDurable(runtime, transferID) {
-		s.RemoveTempPath(item.TempPath)
+		s.removeTransferTemp(runtime, transferID, item.TempPath)
 	}
 	if !completed {
 		return
@@ -141,7 +143,7 @@ func (s Runner) RunDownload(ctx context.Context, runtime *Runtime, transferID in
 	})
 	if err != nil {
 		if s.finishFileTransferError(runtime, transferID, ctx, &execution, err) {
-			s.RemoveTempPath(item.TempPath)
+			s.RemoveTempPath(runtime, item.TempPath)
 		}
 		return
 	}
@@ -150,7 +152,7 @@ func (s Runner) RunDownload(ctx context.Context, runtime *Runtime, transferID in
 		log.Printf("complete file download failed transfer=%d error=%v", transferID, err)
 	}
 	if completed || s.transferTerminalDurable(runtime, transferID) {
-		s.scheduleTransferTempCleanup(item.TempPath)
+		s.scheduleTransferRecordTempCleanup(runtime, transferID, item.TempPath, time.Now().Add(s.tempTTL))
 	}
 	if !completed {
 		return
@@ -251,7 +253,7 @@ func (s Runner) runBatch(ctx context.Context, runtime *Runtime, batchID int64, o
 	}
 	if batch.Direction == filetransfer.DirectionDownload && batch.FailedItems == 0 && batch.CompletedItems > 0 {
 		if len(batch.Items) > 1 {
-			archivePath, err := s.CreateDownloadArchive(batch)
+			archivePath, err := s.CreateDownloadArchive(runtime, batch)
 			if err != nil {
 				log.Printf("create file transfer archive failed batch=%d error=%v", batchID, err)
 				message := credentialSafeErrorMessage(&execution, "create file transfer archive failed", err)
@@ -261,7 +263,7 @@ func (s Runner) runBatch(ctx context.Context, runtime *Runtime, batchID int64, o
 				s.cleanupBatchTempsIfDurable(runtime, batchID, durable)
 				return
 			}
-			if !s.PersistDownloadBatchArchive(runtime.finalization.Context(), runtime, batch, archivePath, &execution) {
+			if !s.PersistDownloadBatchArchive(runtime.finalization.Context(), runtime, &batch, archivePath, &execution) {
 				return
 			}
 			batch.ArchivePath = archivePath
@@ -272,23 +274,28 @@ func (s Runner) runBatch(ctx context.Context, runtime *Runtime, batchID int64, o
 		return
 	}
 	if batch.Direction == filetransfer.DirectionDownload && batch.FailedItems == 0 && batch.CompletedItems > 0 {
-		s.scheduleBatchTempCleanup(batch)
+		s.scheduleBatchTempCleanup(runtime, batch)
 	}
 }
 
-func (s Runner) PersistDownloadBatchArchive(ctx context.Context, runtime *Runtime, batch filetransfer.BatchRecord, archivePath string, execution *Execution) bool {
+func (s Runner) PersistDownloadBatchArchive(ctx context.Context, runtime *Runtime, batch *filetransfer.BatchRecord, archivePath string, execution *Execution) bool {
+	if batch == nil {
+		return false
+	}
 	attemptCtx, cancel := context.WithTimeout(ctx, fileTransferPersistenceAttemptTimeout)
-	err := runtime.store.SetBatchArchive(attemptCtx, batch.ID, archivePath)
+	expiresAt := time.Now().Add(s.tempTTL)
+	err := runtime.store.SetBatchArchive(attemptCtx, batch.ID, archivePath, expiresAt)
 	cancel()
 	if err != nil {
 		log.Printf("set file transfer archive failed batch=%d error=%v", batch.ID, err)
 		message := credentialSafeErrorMessage(execution, "persist file transfer archive failed", err)
 		if s.persistDownloadBatchArchiveFailure(ctx, runtime, batch.ID, message) {
 			batch.ArchivePath = archivePath
-			s.scheduleBatchTempCleanup(batch)
+			s.scheduleEphemeralBatchTempCleanup(runtime, *batch)
 		}
 		return false
 	}
+	batch.ArchiveExpiresAt = expiresAt.UTC().Format(time.RFC3339Nano)
 	return true
 }
 
@@ -397,11 +404,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		log.Printf("read file transfer failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	options := connectorapi.TransferOptions{
-		Progress: s.transferProgress(runtime, transferID),
-		Wait:     control.Wait,
-		MaxBytes: s.maxObjectBytes,
-	}
+	options := s.transferOptions(runtime, transferID, control.Wait, s.maxObjectBytes)
 	var result connectorapi.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
 		result, err = execution.Adapter.UploadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
@@ -409,8 +412,11 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		result, err = execution.Adapter.DownloadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
 	}
 	if err != nil {
+		if result.Bytes > 0 || result.ChecksumSHA256 != "" {
+			_ = runtime.store.UpdateEvidence(runtime.finalization.Context(), transferID, result.Bytes, result.ChecksumSHA256)
+		}
 		if s.finishFileTransferError(runtime, transferID, itemCtx, &execution, err) {
-			s.RemoveTempPath(item.TempPath)
+			s.cleanupTransferTempAfterError(runtime, transferID, item.TempPath, err)
 		}
 		return
 	}
@@ -419,13 +425,13 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		log.Printf("complete file transfer failed transfer=%d error=%v", transferID, err)
 	}
 	if item.Direction == filetransfer.DirectionUpload && (completed || s.transferTerminalDurable(runtime, transferID)) {
-		s.RemoveTempPath(item.TempPath)
+		s.removeTransferTemp(runtime, transferID, item.TempPath)
 	}
 	if !completed {
 		return
 	}
 	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
-		s.scheduleTransferTempCleanup(item.TempPath)
+		s.scheduleTransferRecordTempCleanup(runtime, transferID, item.TempPath, time.Now().Add(s.tempTTL))
 	}
 }
 
@@ -448,5 +454,21 @@ func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectorap
 				log.Printf("recalculate file transfer batch progress failed batch=%d error=%v", item.BatchID, err)
 			}
 		}
+	}
+}
+
+func (s Runner) transferOptions(runtime *Runtime, transferID int64, wait func(context.Context) error, maxBytes int64) connectorapi.TransferOptions {
+	return connectorapi.TransferOptions{
+		Progress: s.transferProgress(runtime, transferID), Wait: wait, MaxBytes: maxBytes,
+		RecordStaging: func(_ context.Context, ref string) error {
+			ctx, cancel := context.WithTimeout(runtime.finalization.Context(), fileTransferPersistenceAttemptTimeout)
+			defer cancel()
+			return runtime.store.SetRemoteStagingRef(ctx, transferID, ref)
+		},
+		ClearStaging: func(_ context.Context, ref string) error {
+			ctx, cancel := context.WithTimeout(runtime.finalization.Context(), fileTransferPersistenceAttemptTimeout)
+			defer cancel()
+			return runtime.store.ClearRemoteStagingRef(ctx, transferID, ref)
+		},
 	}
 }
