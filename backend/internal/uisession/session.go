@@ -111,14 +111,9 @@ func (m *Manager) Clear(w http.ResponseWriter) {
 	m.sessions = map[string]sessionRecord{}
 	m.mu.Unlock()
 	expires := time.Unix(0, 0).UTC()
-	for _, cookie := range []struct {
-		name     string
-		httpOnly bool
-	}{{m.sessionCookie, true}, {m.csrfCookie, false}, {m.workspaceCookie, false}} {
-		http.SetCookie(w, &http.Cookie{
-			Name: cookie.name, Path: "/", HttpOnly: cookie.httpOnly, Secure: true,
-			SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: expires,
-		})
+	http.SetCookie(w, expiredSessionCookie(m.sessionCookie, expires))
+	for _, name := range []string{m.csrfCookie, m.workspaceCookie} {
+		setScriptReadableCookie(w, expiredScriptReadableCookie(name, expires))
 	}
 }
 
@@ -180,7 +175,7 @@ func (m *Manager) EnsureWorkspaceCookie(w http.ResponseWriter, r *http.Request, 
 	if cookie, err := r.Cookie(m.workspaceCookie); err == nil && strings.TrimSpace(cookie.Value) == retryIdentity {
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	setScriptReadableCookie(w, &http.Cookie{
 		Name: m.workspaceCookie, Value: retryIdentity, Path: "/", Secure: true,
 		SameSite: http.SameSiteStrictMode, MaxAge: int(SessionMaxAge.Seconds()),
 		Expires: m.currentTime().Add(SessionMaxAge),
@@ -213,14 +208,35 @@ func (m *Manager) setCookies(w http.ResponseWriter, prepared Prepared, retryIden
 		Name: m.sessionCookie, Value: prepared.token, Path: "/", HttpOnly: true,
 		Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: maxAge, Expires: prepared.expires,
 	})
-	http.SetCookie(w, &http.Cookie{
+	setScriptReadableCookie(w, &http.Cookie{
 		Name: m.csrfCookie, Value: prepared.csrf, Path: "/", Secure: true,
 		SameSite: http.SameSiteStrictMode, MaxAge: maxAge, Expires: prepared.expires,
 	})
-	http.SetCookie(w, &http.Cookie{
+	setScriptReadableCookie(w, &http.Cookie{
 		Name: m.workspaceCookie, Value: retryIdentity, Path: "/", Secure: true,
 		SameSite: http.SameSiteStrictMode, MaxAge: maxAge, Expires: prepared.expires,
 	})
+}
+
+func expiredSessionCookie(name string, expires time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name: name, Path: "/", HttpOnly: true, Secure: true,
+		SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: expires,
+	}
+}
+
+func expiredScriptReadableCookie(name string, expires time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name: name, Path: "/", Secure: true,
+		SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: expires,
+	}
+}
+
+func setScriptReadableCookie(w http.ResponseWriter, cookie *http.Cookie) {
+	// CSRF double-submit and retry-scope identifiers must be readable by the local UI.
+	// Neither cookie authorizes a request; the separate session cookie remains HttpOnly.
+	// codeql[go/cookie-httponly-not-set]
+	http.SetCookie(w, cookie)
 }
 
 func (m *Manager) pruneLocked(now time.Time) {

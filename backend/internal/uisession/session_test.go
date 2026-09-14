@@ -77,10 +77,14 @@ func TestManagerExpiresAndClearsSessions(t *testing.T) {
 	}
 	clearResponse := httptest.NewRecorder()
 	manager.Clear(clearResponse)
-	for _, cookie := range clearResponse.Result().Cookies() {
+	cleared := cookieMap(clearResponse.Result().Cookies())
+	for _, cookie := range cleared {
 		if !cookie.Secure || cookie.MaxAge >= 0 {
 			t.Fatalf("invalid clearing cookie = %#v", cookie)
 		}
+	}
+	if !cleared[SessionCookieBase].HttpOnly || cleared[CSRFCookieBase].HttpOnly || cleared[WorkspaceCookieBase].HttpOnly {
+		t.Fatalf("cleared cookie boundaries = %#v", cleared)
 	}
 }
 

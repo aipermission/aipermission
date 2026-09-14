@@ -174,6 +174,20 @@ func TestHostPingHTTPHandlerRejectsCanceledSeriesWithoutObservation(t *testing.T
 	}
 }
 
+func TestHostPingAttemptCountIsBoundedAtTheExecutionBoundary(t *testing.T) {
+	for input, expected := range map[int]int{
+		-1: hostPingDefaultAttempts,
+		0:  hostPingDefaultAttempts,
+		1:  1,
+		4:  hostPingDefaultAttempts,
+		5:  hostPingDefaultAttempts,
+	} {
+		if actual := boundedHostPingAttempts(input); actual != expected {
+			t.Fatalf("boundedHostPingAttempts(%d) = %d, want %d", input, actual, expected)
+		}
+	}
+}
+
 func validHostPingHandler() *HostPingHTTPHandler {
 	return NewHostPingHTTPHandler(func(http.ResponseWriter) (HostPingScope, bool) {
 		return HostPingScope{

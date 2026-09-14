@@ -83,10 +83,7 @@ func (h *HostPingHTTPHandler) Ping(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	attemptCount := request.Attempts
-	if attemptCount <= 0 || attemptCount > hostPingDefaultAttempts {
-		attemptCount = hostPingDefaultAttempts
-	}
+	attemptCount := boundedHostPingAttempts(request.Attempts)
 	response, completed := runHostPingAttempts(r.Context(), scope, request, attemptCount)
 	if !completed {
 		httptransport.WriteError(w, http.StatusRequestTimeout, "ping canceled")
@@ -144,7 +141,8 @@ func validateHostPingRequest(request HostPingRequest) error {
 }
 
 func runHostPingAttempts(ctx context.Context, scope HostPingScope, request HostPingRequest, count int) (HostPingResponse, bool) {
-	attempts := make([]HostPingAttempt, 0, count)
+	count = boundedHostPingAttempts(count)
+	attempts := make([]HostPingAttempt, 0, hostPingDefaultAttempts)
 	started := time.Now()
 	received := 0
 	for attemptNumber := 1; attemptNumber <= count; attemptNumber++ {
@@ -177,6 +175,13 @@ func runHostPingAttempts(ctx context.Context, scope HostPingScope, request HostP
 		TransportTargetRef: request.TransportTargetRef, Attempts: attempts, Sent: count, Received: received,
 		DurationMS: time.Since(started).Milliseconds(), Message: hostPingMessage(received, count),
 	}, true
+}
+
+func boundedHostPingAttempts(count int) int {
+	if count <= 0 || count > hostPingDefaultAttempts {
+		return hostPingDefaultAttempts
+	}
+	return count
 }
 
 func normalizeHostPingError(err error) string {
