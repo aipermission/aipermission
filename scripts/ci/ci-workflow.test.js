@@ -16,10 +16,7 @@ test("CI verifies generated catalogs and every tooling root", () => {
 });
 test("CI uses the fail-closed Windows ACL suite", () => {
   assert.match(workflow, /run: npm run test:windows-acl/);
-  assert.doesNotMatch(
-    workflow,
-    /node --test --test-name-pattern=.*Windows ACL/,
-  );
+  assert.doesNotMatch(workflow, /node --test.+Windows ACL/);
 });
 test("native Windows runtime evidence stays on a Windows runner", () => {
   assert.match(
@@ -27,20 +24,25 @@ test("native Windows runtime evidence stays on a Windows runner", () => {
     /backend-windows-runtime:[\s\S]*?runs-on: windows-latest[\s\S]*?node \.\.\/scripts\/ci\/windows-runtime-tests\.js/,
   );
 });
-
-test("backend CI rejects Go source that is not gofmt formatted", () => {
-  assert.match(workflow, /backend:[\s\S]*?- name: Go format\s+run: make backend-format-check/);
-  assert.match(makefile, /backend-format-check:\n\tsh scripts\/go-format-check\.sh/);
-});
-
-test("the recovery drill uses its exact manifest runner", () => {
+test("backend CI enforces formatting and bounded fuzz dependencies", () => {
+  const backendJob =
+    /\n  backend:\n([\s\S]*?)\n  backend-windows-runtime:/.exec(
+      workflow,
+    )?.[1] || "";
+  assert.match(backendJob, /name: Go format\s+run: make backend-format-check/);
   assert.match(
     makefile,
-    /recovery-drill:\n\tsh scripts\/run-recovery-drill\.sh/,
+    /backend-format-check:\n\tsh scripts\/go-format-check/,
   );
+  assert.match(
+    backendJob,
+    /setup-node@[a-f0-9]+[\s\S]*?npm ci --prefix scripts --workspaces=false[\s\S]*?make bounded-fuzz/,
+  );
+});
+test("the recovery drill uses its exact manifest runner", () => {
+  assert.match(makefile, /recovery-drill:\n\tsh scripts\/run-recovery-drill/);
   assert.doesNotMatch(makefile, /internal\/migration -run RecoveryDrill/);
 });
-
 test("frontend ratchets derive trusted bases from the GitHub event", () => {
   for (const variable of [
     "FRONTEND_COVERAGE_BASE",
