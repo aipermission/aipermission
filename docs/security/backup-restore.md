@@ -45,7 +45,10 @@ Import never overwrites an existing database file. Publication uses an atomic
 same-filesystem no-clobber boundary, so another process or tab winning the same
 name race produces a conflict instead of replacing data. If a requested name
 collides with an existing database, the backend creates a unique database id
-or rejects the write rather than replacing data.
+or rejects the write rather than replacing data. New normalized identifiers are
+limited to 63 characters and cannot use internal aliases. Older overlong or
+reserved filenames are exposed through stable recovery references without
+renaming or deleting their encrypted data.
 
 Import is available while the backend is locked.
 
@@ -157,6 +160,37 @@ Treat service unavailability, protocol mismatch, size mismatch, and checksum
 mismatch as hard failures. Correct the provider or network state and retry; do
 not bypass verification. Review the local audit trail after a restore attempt
 when diagnosing an unexpected result.
+
+Connector-profile restore attempts write a required terminal audit event after
+dispatch even when the request is canceled or its remote outcome is uncertain.
+The gateway first takes the workspace's exclusive target/profile mutation gate
+and persists an artifact-bound idempotency claim, so credentials cannot change
+mid-restore and a lost reply or gateway restart cannot silently dispatch the
+same restore again. Running claims recovered after restart become
+`outcome_unknown`.
+Postgres requests `psql` single-transaction mode, but arbitrary SQL can contain
+explicit transaction control that ends the wrapper. Treat the idempotency claim
+as duplicate-dispatch protection, not proof that every restore is atomic. The
+connector reports top-level transaction-control artifacts as `outcome_unknown`
+even when its end-of-stream marker is observed. This includes prepared
+transaction control such as `PREPARE TRANSACTION`. The connector rejects unsafe
+or mismatched `\\restrict` markers before starting `psql`.
+If that audit record cannot be persisted, the API reports
+`audit_persistence_failed`; inspect the target before retrying because the
+external restore may already have changed it. The operation retains a durable
+pending-audit marker so workspace recovery can append the original terminal
+audit without dispatching the restore again.
+
+Configured history retention removes terminal restore details. A non-secret
+idempotency tombstone remains for 30 days so the same key still replays the
+recorded terminal status instead of dispatching again; the tombstone contains
+no filename, artifact digest, reason, credential, input, or output.
+
+Database catalog operations reject symlinked database files, parent paths,
+journal markers, and manifests. Delete recovery uses a durable manifest with an
+explicit primary artifact and resumes only regular catalog artifacts,
+preventing an interrupted quarantine publish from silently deleting or
+replacing an unrelated path.
 
 Release recovery drills cover local encrypted snapshot/import/restart,
 self-hosted download/checksum/import/restart, and legacy migration retry after a
