@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadAndVerifyTestManifest } from "./test-manifest-policy.js";
+import { nodeTestSummaryCount } from "./node-test-summary.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = loadAndVerifyTestManifest();
@@ -20,12 +21,6 @@ function discoverTests(directory) {
     .sort();
 }
 
-function summaryCount(output, label) {
-  const match = new RegExp(`^# ${label} (\\d+)$`, "m").exec(output);
-  if (!match) throw new Error(`Node test output did not report ${label}`);
-  return Number(match[1]);
-}
-
 const discovered = discoverTests(path.join(root, "test"));
 const expected = [...manifest.files].sort();
 if (JSON.stringify(discovered) !== JSON.stringify(expected)) {
@@ -40,8 +35,8 @@ process.stdout.write(result.stdout || "");
 process.stderr.write(result.stderr || "");
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status || 1);
-const tests = summaryCount(result.stdout, "tests");
-const skipped = summaryCount(result.stdout, "skipped");
+const tests = nodeTestSummaryCount(result.stdout, "tests");
+const skipped = nodeTestSummaryCount(result.stdout, "skipped");
 if (tests < manifest.minimumTests) {
   throw new Error(`MCP suite executed ${tests} tests; expected at least ${manifest.minimumTests}`);
 }

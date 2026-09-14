@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadAndVerifyTestManifest } from "./test-manifest-policy.js";
+import { nodeTestSummaryCount } from "./node-test-summary.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = loadAndVerifyTestManifest();
@@ -28,8 +29,7 @@ process.stdout.write(result.stdout || "");
 process.stderr.write(result.stderr || "");
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status || 1);
-const passMatch = /^# pass (\d+)$/m.exec(result.stdout);
-const passed = passMatch ? Number(passMatch[1]) : 0;
+const passed = nodeTestSummaryCount(result.stdout, "pass");
 if (passed !== manifest.windowsACLTests.length) {
   throw new Error(`Windows ACL suite passed ${passed} tests; expected ${manifest.windowsACLTests.length}`);
 }

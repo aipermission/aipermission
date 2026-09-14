@@ -8,6 +8,7 @@ import {
   verifyRequiredWindowsACLSource,
   verifyTestManifestRatchet,
 } from "../scripts/test-manifest-policy.js";
+import { nodeTestSummaryCount } from "../scripts/node-test-summary.js";
 
 function manifest(overrides = {}) {
   return {
@@ -61,4 +62,10 @@ test("MCP test manifest parser rejects malformed shapes", () => {
   ]) {
     assert.throws(() => readTestManifest(source));
   }
+});
+
+test("Node test summary parser accepts classic TAP and Node 24 output", () => {
+  assert.equal(nodeTestSummaryCount("# tests 116\n# skipped 1\n", "tests"), 116);
+  assert.equal(nodeTestSummaryCount("ℹ tests 116\nℹ skipped 1\n", "skipped"), 1);
+  assert.throws(() => nodeTestSummaryCount("ok 1 - complete\n", "tests"), /did not report tests/);
 });
