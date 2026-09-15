@@ -104,7 +104,7 @@ describe("runGuardedConnectorAction", () => {
 
   it("safely reports a non-Error approval refresh failure", async () => {
     const { setState, options } = runnerOptions({
-      post: async () => ({ status: "approval_pending", display_text: "Waiting for approval" }),
+      post: async () => ({ request_id: 44, status: "approval_pending", display_text: "Waiting for approval" }),
       onRefreshActivity: async () => Promise.reject(null),
     });
 

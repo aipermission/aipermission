@@ -83,6 +83,49 @@ describe("ConnectorPermissionDialog", () => {
     expect(await screen.findByText("connector permissions changed; reload before saving")).toBeInTheDocument();
     expect(screen.queryByText("Connector permissions saved.")).not.toBeInTheDocument();
   });
+
+  it("rejects malformed permission data and keeps saving disabled", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connector-targets/inventory") return inventory;
+      if (path === "/api/tokens/2/connector-permissions") return { items: "invalid", revision: "permissions-r2" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+
+    render(<ConnectorPermissionDialog token={{ id: 2, name: "second" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(await screen.findByText("Invalid token permissions response from gateway.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save connector permissions" })).toBeDisabled();
+    expect(apiPut).not.toHaveBeenCalled();
+  });
+
+  it("selects a profile, grants Prompt, and saves only its action", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connector-targets/inventory") return inventory;
+      if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+
+    render(<ConnectorPermissionDialog token={{ id: 2, name: "second" }} onClose={vi.fn()} onSaved={onSaved} />);
+    await user.click(await screen.findByRole("button", { name: /My Server/ }));
+    await user.click(screen.getByRole("button", { name: "Prompt" }));
+    expect(screen.getByText("1 connector action grant selected.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Save connector permissions" }));
+
+    await waitFor(() =>
+      expect(apiPut).toHaveBeenCalledWith(
+        "/api/tokens/2/connector-permissions",
+        {
+          permissions: [{ target_id: 3, profile_id: 5, action_name: "exec", execution_rule: "approval_required" }],
+          expected_revision: "permissions-r2",
+        },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
 });
 
 function deferred() {
