@@ -102,6 +102,9 @@ func (s *Scope) resolveTarget(ctx context.Context, targetRef string) (connectors
 }
 
 func (s *Scope) ensureSurface(ctx context.Context, input connectortargets.EnsureRuntimeSurfaceInput) (connectortargets.RuntimeSurface, error) {
+	if s == nil {
+		return connectortargets.RuntimeSurface{}, ErrInvalidRuntime
+	}
 	if input.ConnectorKind != "" && input.ConnectorKind != s.kind {
 		return connectortargets.RuntimeSurface{}, connectortargets.ErrRuntimeSurfaceNotFound
 	}
