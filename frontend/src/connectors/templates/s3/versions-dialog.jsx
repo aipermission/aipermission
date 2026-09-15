@@ -13,6 +13,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [confirmation, setConfirmation] = useState(null);
+  const [confirmFeedback, setConfirmFeedback] = useState({ error: "", status: "" });
   const loadForEffect = useEffectEvent(() => loadVersions({ reset: true }));
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     setNextCursor("");
     setError("");
     setConfirmation(null);
+    setConfirmFeedback({ error: "", status: "" });
     void loadForEffect();
   }, [open, objectKey]);
 
@@ -29,6 +31,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
   async function loadVersions({ reset, cursor = "" }) {
     setPending(true);
     setError("");
+    setConfirmFeedback({ error: "", status: "" });
     try {
       const item = await onRun({
         actionName: "list_object_versions",
@@ -51,6 +54,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     if (!confirmation || pending) return;
     setPending(true);
     setError("");
+    setConfirmFeedback({ error: "", status: "" });
     try {
       const input = { key: objectKey, version_id: confirmation.version.version_id };
       if (confirmation.action === "restore_object_version") {
@@ -72,12 +76,15 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         reason: `manual S3 object version ${confirmation.action === "restore_object_version" ? "restore" : "delete"}`,
         busy: confirmation.action === "restore_object_version" ? "restoring version" : "deleting version",
       });
-      if (!item) return;
+      if (!item) {
+        setConfirmFeedback({ error: "", status: "Approval or completion is pending. Review activity before trying again." });
+        return;
+      }
       setConfirmation(null);
       await loadVersions({ reset: true });
       await onChanged?.();
     } catch (actionError) {
-      setError(actionError.message || "Object version action failed.");
+      setConfirmFeedback({ error: actionError.message || "Object version action failed.", status: "" });
     } finally {
       setPending(false);
     }
@@ -125,7 +132,10 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
                         className="h-8 w-8 px-0"
                         title="Restore this version"
                         disabled={pending || version.delete_marker}
-                        onClick={() => setConfirmation({ action: "restore_object_version", version })}
+                        onClick={() => {
+                          setConfirmFeedback({ error: "", status: "" });
+                          setConfirmation({ action: "restore_object_version", version });
+                        }}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                       </Button>
@@ -135,7 +145,10 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
                         className="h-8 w-8 px-0"
                         title="Delete this version"
                         disabled={pending}
-                        onClick={() => setConfirmation({ action: "delete_object_version", version })}
+                        onClick={() => {
+                          setConfirmFeedback({ error: "", status: "" });
+                          setConfirmation({ action: "delete_object_version", version });
+                        }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -175,6 +188,8 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         }
         size="md"
         closeDisabled={pending}
+        closeOnOverlay={false}
+        closeOnEscape={false}
       >
         <div className="grid gap-4">
           <div className={`grid gap-2 rounded-md border p-3 ${detailClass}`}>
@@ -190,6 +205,16 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
               ? "Permanent deletion requires explicit confirmation."
               : "The existing current version remains in version history."}
           </Notice>
+          {confirmFeedback.status ? (
+            <div role="status">
+              <Notice tone="warn">{confirmFeedback.status}</Notice>
+            </div>
+          ) : null}
+          {confirmFeedback.error ? (
+            <div role="alert">
+              <Notice tone="bad">{confirmFeedback.error}</Notice>
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setConfirmation(null)} disabled={pending}>
               Cancel
@@ -198,7 +223,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
               type="button"
               variant={confirmation?.action === "delete_object_version" ? "danger" : "default"}
               onClick={confirmAction}
-              disabled={pending}
+              disabled={pending || Boolean(confirmFeedback.status)}
             >
               {pending ? "Working..." : confirmation?.action === "delete_object_version" ? "Delete version" : "Restore version"}
             </Button>
