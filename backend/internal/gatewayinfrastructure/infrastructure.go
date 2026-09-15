@@ -91,7 +91,7 @@ type TransferWorkflow interface {
 	BeginShutdown() (bool, error)
 	Wait(context.Context) bool
 	Recover(context.Context, string, string) error
-	Abort()
+	Abort(context.Context) bool
 }
 
 type WorkspaceDependencies struct {

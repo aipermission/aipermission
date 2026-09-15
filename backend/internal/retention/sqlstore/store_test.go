@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -86,7 +87,20 @@ func TestFileTransferRetentionPreservesPendingRemoteCleanup(t *testing.T) {
 	if changed, err := transfers.FailWithKind(ctx, purgeable.ID, "failed", filetransfer.FailureKindUnknown); err != nil || !changed {
 		t.Fatalf("fail purgeable transfer: changed=%v err=%v", changed, err)
 	}
-	if _, err := database.ExecContext(ctx, `UPDATE file_transfers SET completed_at = datetime('now', '-10 days') WHERE id IN (?, ?)`, pendingCleanup.ID, purgeable.ID); err != nil {
+	localCleanup, err := transfers.Create(ctx, filetransfer.CreateRequest{
+		RuntimeID: surface.ID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		RemotePath: "/pending-local-cleanup", FileName: "fixture", TempPath: "/managed/download-fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := transfers.MarkRunning(ctx, localCleanup.ID); err != nil || !changed {
+		t.Fatalf("mark local cleanup transfer running: changed=%v err=%v", changed, err)
+	}
+	if changed, err := transfers.FailWithKind(ctx, localCleanup.ID, "failed", filetransfer.FailureKindUnknown); err != nil || !changed {
+		t.Fatalf("fail local cleanup transfer: changed=%v err=%v", changed, err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE file_transfers SET completed_at = datetime('now', '-10 days') WHERE id IN (?, ?, ?)`, pendingCleanup.ID, purgeable.ID, localCleanup.ID); err != nil {
 		t.Fatal(err)
 	}
 	deleted, err := purgeFileTransfersWithoutPerRowAudit(ctx, database, "-7 days")
@@ -96,8 +110,30 @@ func TestFileTransferRetentionPreservesPendingRemoteCleanup(t *testing.T) {
 	if _, err := transfers.Get(ctx, pendingCleanup.ID); err != nil {
 		t.Fatalf("retention discarded pending cleanup evidence: %v", err)
 	}
+	if _, err := transfers.Get(ctx, localCleanup.ID); err != nil {
+		t.Fatalf("retention discarded local cleanup evidence: %v", err)
+	}
 	if _, err := transfers.Get(ctx, purgeable.ID); err == nil {
 		t.Fatal("retention kept an ordinary expired transfer")
+	}
+	batch, err := transfers.CreateBatch(ctx, filetransfer.CreateBatchRequest{
+		RuntimeID: surface.ID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		Items: []filetransfer.CreateRequest{{RemotePath: "/archive", FileName: "archive"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := transfers.SetBatchArchive(ctx, batch.ID, "/managed/archive.zip", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE file_transfer_batches SET status = 'completed', completed_at = datetime('now', '-10 days') WHERE id = ?`, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Store{}).PurgeHistory(ctx, database, "-7 days"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transfers.GetBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("retention discarded pending archive cleanup evidence: %v", err)
 	}
 }
 

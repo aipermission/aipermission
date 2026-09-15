@@ -743,6 +743,60 @@ func TestTempRecoveryScavengesOnlyOldUnreferencedOwnedFiles(t *testing.T) {
 	}
 }
 
+func TestPeriodicTempRecoveryRetriesFailedDeletion(t *testing.T) {
+	fixture := newTransferTestFixture(t)
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour, TempCleanupRetry: 10 * time.Millisecond,
+	})
+	root, err := runner.EnsureTempRoot(fixture.runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(root, "download-retry")
+	if err := os.Mkdir(staged, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(staged, "still-open")
+	if err := os.WriteFile(blocker, []byte("block first cleanup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		RemotePath: "/retry", FileName: "retry", TempPath: staged,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := fixture.store.MarkRunning(t.Context(), item.ID); err != nil || !changed {
+		t.Fatalf("mark running: changed=%v err=%v", changed, err)
+	}
+	if changed, err := fixture.store.FailWithKind(t.Context(), item.ID, "failed", filetransfer.FailureKindUnknown); err != nil || !changed {
+		t.Fatalf("fail transfer: changed=%v err=%v", changed, err)
+	}
+	if err := fixture.store.SetTempExpiry(t.Context(), item.ID, staged, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.StartTempCleanupRecovery(fixture.runtime) {
+		t.Fatal("periodic temp cleanup did not start")
+	}
+	time.Sleep(30 * time.Millisecond)
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		stored, getErr := fixture.store.Get(t.Context(), item.ID)
+		_, statErr := os.Stat(staged)
+		if getErr == nil && stored.TempPath == "" && os.IsNotExist(statErr) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	stored, _ := fixture.store.Get(t.Context(), item.ID)
+	_, statErr := os.Stat(staged)
+	t.Fatalf("periodic cleanup did not reconcile staging: record=%#v stat=%v", stored, statErr)
+}
+
 func TestTransferRunnerRetainsTempUntilFailureIsDurable(t *testing.T) {
 	for _, direction := range []string{filetransfer.DirectionUpload, filetransfer.DirectionDownload} {
 		t.Run(direction, func(t *testing.T) {

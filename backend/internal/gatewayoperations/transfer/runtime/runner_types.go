@@ -34,6 +34,7 @@ type RunnerConfig struct {
 	TransferTimeout       time.Duration
 	BatchTimeout          time.Duration
 	TempTTL               time.Duration
+	TempCleanupRetry      time.Duration
 	RemoteRecoveryTimeout time.Duration
 	RemoteRecoveryRetry   time.Duration
 	AdapterFor            func(string) connectorapi.FileTransferAdapter
@@ -46,6 +47,7 @@ type Runner struct {
 	transferTimeout       time.Duration
 	batchTimeout          time.Duration
 	tempTTL               time.Duration
+	tempCleanupRetry      time.Duration
 	remoteRecoveryTimeout time.Duration
 	remoteRecoveryRetry   time.Duration
 	adapterFor            func(string) connectorapi.FileTransferAdapter
@@ -60,10 +62,15 @@ func NewRunner(config RunnerConfig) *Runner {
 	if remoteRecoveryRetry <= 0 {
 		remoteRecoveryRetry = 30 * time.Second
 	}
+	tempCleanupRetry := config.TempCleanupRetry
+	if tempCleanupRetry <= 0 {
+		tempCleanupRetry = 30 * time.Second
+	}
 	return &Runner{
 		dataPath: strings.TrimSpace(config.DataPath), maxObjectBytes: config.MaxObjectBytes, maxBatchBytes: config.MaxBatchBytes,
 		transferTimeout: config.TransferTimeout, batchTimeout: config.BatchTimeout,
-		tempTTL: config.TempTTL, remoteRecoveryTimeout: remoteRecoveryTimeout, remoteRecoveryRetry: remoteRecoveryRetry,
+		tempTTL: config.TempTTL, tempCleanupRetry: tempCleanupRetry,
+		remoteRecoveryTimeout: remoteRecoveryTimeout, remoteRecoveryRetry: remoteRecoveryRetry,
 		adapterFor: config.AdapterFor,
 	}
 }

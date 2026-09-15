@@ -44,7 +44,7 @@ func (Store) PurgeHistory(ctx context.Context, executor sqldb.Executor, cutoff s
 		`DELETE FROM command_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM connector_action_requests WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM profile_restore_operations WHERE completed_at IS NOT NULL AND audit_pending = 0 AND julianday(completed_at) < julianday('now', ?)`,
-		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
+		`DELETE FROM file_transfer_batches WHERE completed_at IS NOT NULL AND archive_path = '' AND julianday(completed_at) < julianday('now', ?)`,
 		`DELETE FROM history_entries WHERE completed_at IS NOT NULL AND julianday(completed_at) < julianday('now', ?)`,
 	} {
 		deleted, err := deleteWithCutoff(ctx, executor, statement, cutoff)
@@ -128,6 +128,7 @@ func purgeFileTransfersWithoutPerRowAudit(ctx context.Context, executor sqldb.Ex
 		`DELETE FROM file_transfers
 		 WHERE completed_at IS NOT NULL
 		   AND remote_staging_ref = ''
+		   AND temp_path = ''
 		   AND julianday(completed_at) < julianday('now', ?)`, cutoff)
 	if err != nil {
 		return 0, err

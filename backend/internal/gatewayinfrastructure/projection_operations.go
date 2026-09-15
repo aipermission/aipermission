@@ -187,7 +187,7 @@ func (component *OperationsOwner) StopTransferWorkspace(handle *WorkspaceHandle)
 		return
 	}
 	if lifecycle := component.transfers.Lifecycle(component.TransferWorkspace(handle)); lifecycle != nil {
-		lifecycle.Abort()
+		lifecycle.Abort(context.Background())
 	}
 }
 

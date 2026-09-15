@@ -109,8 +109,48 @@ func TestDiscardAbortsRegisteredComponents(t *testing.T) {
 	}
 }
 
+func TestDiscardDefersStorageCloseUntilAbortDrains(t *testing.T) {
+	storageClosed := make(chan struct{})
+	database := sql.OpenDB(closeSignalConnector{closed: storageClosed})
+	if err := database.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &workspaceruntime.Runtime{
+		ID:      "opening-with-maintenance",
+		Storage: workspacestorage.New(database, nil, nil, "opening-with-maintenance", nil),
+	}
+	release := make(chan struct{})
+	var calls atomic.Int32
+	transfer := &transferWorkflowSpy{abort: func(ctx context.Context) bool {
+		if calls.Add(1) == 1 {
+			return false
+		}
+		select {
+		case <-release:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}}
+	if err := Discard(runtime, func() TransferWorkflow { return transfer }, nil); !errors.Is(err, ErrShutdownDeferred) {
+		t.Fatalf("Discard() error = %v", err)
+	}
+	select {
+	case <-storageClosed:
+		t.Fatal("storage closed before transfer abort drained")
+	default:
+	}
+	close(release)
+	select {
+	case <-storageClosed:
+	case <-time.After(time.Second):
+		t.Fatal("storage did not close after transfer abort drained")
+	}
+}
+
 type transferWorkflowSpy struct {
 	aborted     bool
+	abort       func(context.Context) bool
 	begin       func()
 	beginResult func() (bool, error)
 	wait        func(context.Context) bool
@@ -138,7 +178,13 @@ func (workflow *transferWorkflowSpy) Recover(ctx context.Context, _, _ string) e
 	}
 	return nil
 }
-func (workflow *transferWorkflowSpy) Abort() { workflow.aborted = true }
+func (workflow *transferWorkflowSpy) Abort(ctx context.Context) bool {
+	workflow.aborted = true
+	if workflow.abort != nil {
+		return workflow.abort(ctx)
+	}
+	return true
+}
 
 type commandWorkflowSpy struct {
 	message string

@@ -104,6 +104,7 @@ func (component *Component) InitializeWorkspace(
 	if err := component.runner.RecoverTempCleanup(ctx, runtime); err != nil {
 		return err
 	}
+	component.runner.StartTempCleanupRecovery(runtime)
 	component.runner.StartRemoteStagingRecovery(runtime)
 	return nil
 }
@@ -181,7 +182,7 @@ type WorkspaceLifecycle interface {
 	Shutdown(time.Duration, string, string) (bool, bool, error)
 	Wait(context.Context) bool
 	Recover(context.Context, string, string) error
-	Abort()
+	Abort(context.Context) bool
 }
 
 type workspaceLifecycle struct {
@@ -212,6 +213,6 @@ func (lifecycle workspaceLifecycle) Recover(ctx context.Context, runningMessage,
 	return lifecycle.manager.RecoverWorkspace(ctx, lifecycle.workspace, runningMessage, batchMessage)
 }
 
-func (lifecycle workspaceLifecycle) Abort() {
-	lifecycle.manager.RemoveWorkspace(lifecycle.workspace)
+func (lifecycle workspaceLifecycle) Abort(ctx context.Context) bool {
+	return lifecycle.manager.AbortWorkspace(ctx, lifecycle.workspace)
 }

@@ -322,6 +322,37 @@ func TestShutdownDeadlineKeepsRunnerVisibleToWait(t *testing.T) {
 	}
 }
 
+func TestWaitOperationsIgnoresWorkspaceMaintenance(t *testing.T) {
+	var registry Registry
+	maintenanceCtx, cancelMaintenance := context.WithCancel(t.Context())
+	if !registry.Maintenance.Launch(1, cancelMaintenance, func() { <-maintenanceCtx.Done() }) {
+		t.Fatal("maintenance runner was not accepted")
+	}
+	fileRelease := make(chan struct{})
+	_, cancelFile := context.WithCancel(t.Context())
+	if !registry.Files.Launch(1, cancelFile, func() { <-fileRelease }) {
+		t.Fatal("file runner was not accepted")
+	}
+	waitCtx, stopWaiting := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer stopWaiting()
+	if registry.WaitOperations(waitCtx) {
+		t.Fatal("active file runner was ignored")
+	}
+	close(fileRelease)
+	if !registry.WaitOperations(t.Context()) {
+		t.Fatal("maintenance runner blocked operational drain")
+	}
+	blockedCtx, stopBlockedWait := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer stopBlockedWait()
+	if registry.Wait(blockedCtx) {
+		t.Fatal("lifecycle drain ignored maintenance runner")
+	}
+	cancelMaintenance()
+	if !registry.Wait(t.Context()) {
+		t.Fatal("registry did not drain after maintenance stopped")
+	}
+}
+
 func TestRepeatedTimedWaitsReuseOneDrainSignal(t *testing.T) {
 	var registry Registry
 	release := make(chan struct{})
