@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { errorMessage } from "../../../lib/errors";
 import { defaultS3ConfirmDialog } from "./dialogs";
 
 export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelection, refreshObjects }) {
@@ -16,6 +17,8 @@ export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelec
       details: [{ label: "Object", value: JSON.stringify(objectKey) }],
       danger: true,
       pending: false,
+      error: "",
+      status: "",
       action: async () => {
         const deleted = await runAction({
           actionName: "delete_object",
@@ -32,17 +35,21 @@ export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelec
   }
 
   async function confirmPendingAction() {
-    if (!confirmDialog.action) return;
-    setConfirmDialog((current) => ({ ...current, pending: true }));
+    if (!confirmDialog.action || confirmDialog.pending) return;
+    setConfirmDialog((current) => ({ ...current, pending: true, error: "", status: "" }));
     try {
       const completed = await confirmDialog.action();
       if (completed === false) {
-        setConfirmDialog((current) => ({ ...current, pending: false }));
+        setConfirmDialog((current) => ({
+          ...current,
+          pending: false,
+          status: "Approval or completion is pending. Review the activity before retrying.",
+        }));
         return;
       }
       setConfirmDialog(defaultS3ConfirmDialog);
-    } catch {
-      setConfirmDialog((current) => ({ ...current, pending: false }));
+    } catch (error) {
+      setConfirmDialog((current) => ({ ...current, pending: false, error: errorMessage(error, "S3 object deletion failed.") }));
     }
   }
 
@@ -50,6 +57,6 @@ export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelec
     confirmDialog,
     requestDelete,
     confirmPendingAction,
-    closeConfirmDialog: () => setConfirmDialog(defaultS3ConfirmDialog),
+    closeConfirmDialog: () => setConfirmDialog((current) => (current.pending ? current : defaultS3ConfirmDialog)),
   };
 }
