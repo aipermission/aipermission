@@ -17,7 +17,13 @@ import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
 const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const apiUrl = normalizeLocalAPIURL(process.env.AIPERMISSION_API_URL);
+let apiUrl = "";
+let apiURLConfigurationError = null;
+try {
+  apiUrl = normalizeLocalAPIURL(process.env.AIPERMISSION_API_URL);
+} catch (error) {
+  apiURLConfigurationError = new Error("Invalid local gateway URL configuration; update AIPERMISSION_API_URL.", { cause: error });
+}
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS || "60000", 10);
 
@@ -177,6 +183,9 @@ async function apiPost(path, body) {
 }
 
 async function apiRequest(path, options, idempotencyKey) {
+  if (apiURLConfigurationError) {
+    throw apiURLConfigurationError;
+  }
   if (!apiToken) {
     throw new Error("AIPERMISSION_API_TOKEN is required.");
   }

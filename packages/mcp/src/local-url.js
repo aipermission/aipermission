@@ -13,6 +13,9 @@ export function normalizeLocalAPIURL(value = DEFAULT_API_URL) {
   if (parsed.protocol !== "http:") {
     throw new Error("AIPERMISSION_API_URL must use http:// for the local gateway.");
   }
+  if (parsed.username || parsed.password) {
+    throw new Error("AIPERMISSION_API_URL must not contain URL credentials.");
+  }
   let hostname = parsed.hostname.toLowerCase();
   if (hostname === "[::1]") {
     hostname = "::1";

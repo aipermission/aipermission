@@ -118,6 +118,14 @@ test("normalizeLocalAPIURL only accepts local gateway origins", () => {
   assert.throws(() => normalizeLocalAPIURL("https://localhost:3210"), /http/);
   assert.throws(() => normalizeLocalAPIURL("http://example.com:3210"), /localhost/);
   assert.throws(() => normalizeLocalAPIURL("http://localhost:3210/api"), /origin only/);
+  const credentialURL = "http://private-user:private-password@localhost:3210";
+  assert.throws(
+    () => normalizeLocalAPIURL(credentialURL),
+    (error) =>
+      /must not contain URL credentials/.test(error.message) &&
+      !error.message.includes("private-user") &&
+      !error.message.includes("private-password"),
+  );
 });
 
 test("toml helpers quote unsafe names and strings", () => {
