@@ -59,7 +59,8 @@ func StatRemotePath(ctx context.Context, target Target, remotePath string) (Remo
 	}
 	defer sshClient.Close()
 	defer client.Close()
-	closeOnContext(ctx, sshClient)
+	stopContextClose := closeOnContext(ctx, sshClient)
+	defer stopContextClose()
 
 	info, err := client.Stat(remotePath)
 	if err != nil {
@@ -84,7 +85,8 @@ func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) 
 	}
 	defer sshClient.Close()
 	defer client.Close()
-	closeOnContext(ctx, sshClient)
+	stopContextClose := closeOnContext(ctx, sshClient)
+	defer stopContextClose()
 
 	entries, err := client.ReadDir(remotePath)
 	if err != nil {
@@ -154,7 +156,8 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 	}
 	defer sshClient.Close()
 	defer client.Close()
-	closeOnContext(ctx, sshClient)
+	stopContextClose := closeOnContext(ctx, sshClient)
+	defer stopContextClose()
 
 	if dir := path.Dir(remotePath); dir != "" && dir != "." && dir != "/" {
 		if err := client.MkdirAll(dir); err != nil {
@@ -439,7 +442,8 @@ func CleanupRemoteUploadStaging(ctx context.Context, target Target, tempPath str
 	}
 	defer sshClient.Close()
 	defer client.Close()
-	closeOnContext(ctx, sshClient)
+	stopContextClose := closeOnContext(ctx, sshClient)
+	defer stopContextClose()
 	if err := removeRemoteUploadTemp(client, tempPath); err != nil {
 		return fmt.Errorf("remove remote staging after reconnect: %w", err)
 	}
@@ -509,7 +513,8 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 	}
 	defer sshClient.Close()
 	defer client.Close()
-	closeOnContext(ctx, sshClient)
+	stopContextClose := closeOnContext(ctx, sshClient)
+	defer stopContextClose()
 
 	remote, err := client.Open(remotePath)
 	if err != nil {
@@ -597,7 +602,9 @@ func sftpClient(ctx context.Context, target Target) (*sftp.Client, interface{ Cl
 	if err != nil {
 		return nil, nil, err
 	}
-	client, err := sftp.NewClient(sshClient)
+	client, err := setupWithContext(ctx, sshClient, func() (*sftp.Client, error) {
+		return sftp.NewClient(sshClient)
+	})
 	if err != nil {
 		_ = sshClient.Close()
 		return nil, nil, fmt.Errorf("start sftp client: %w", err)
@@ -605,14 +612,35 @@ func sftpClient(ctx context.Context, target Target) (*sftp.Client, interface{ Cl
 	return client, sshClient, nil
 }
 
-func closeOnContext(ctx context.Context, closer interface{ Close() error }) {
-	if ctx.Done() == nil {
-		return
+func setupWithContext[T any](ctx context.Context, connection interface{ Close() error }, setup func() (T, error)) (T, error) {
+	var zero T
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	go func() {
-		<-ctx.Done()
-		_ = closer.Close()
-	}()
+	stopContextClose := closeOnContext(ctx, connection)
+	value, err := setup()
+	stopped := stopContextClose()
+	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return zero, contextErr
+		}
+		return zero, err
+	}
+	if !stopped || ctx.Err() != nil {
+		_ = connection.Close()
+		if contextErr := ctx.Err(); contextErr != nil {
+			return zero, contextErr
+		}
+		return zero, context.Canceled
+	}
+	return value, nil
+}
+
+func closeOnContext(ctx context.Context, closer interface{ Close() error }) func() bool {
+	if ctx == nil || ctx.Done() == nil {
+		return func() bool { return true }
+	}
+	return context.AfterFunc(ctx, func() { _ = closer.Close() })
 }
 
 type progressReader struct {
