@@ -1075,6 +1075,10 @@ metadata such as target name, profile label, connector kind, and target ref; it
 never includes credential secrets. `GET` and successful `PUT` responses include
 the current authorization `revision`; every `PUT` must carry that value as
 `expected_revision` so stale forms cannot erase a newer permission change.
+The corresponding audit event stores the previous and new revisions, row counts,
+and a bounded compact permission snapshot. If that snapshot exceeds the audit
+budget, `permissions_truncated` is true; the revision still identifies the full
+permission set. A mutation that cannot be audited rolls back.
 
 `expires_at` is optional and must be an RFC3339 timestamp in the future when
 present. It creates a temporary token action permission grant. Expired grants
