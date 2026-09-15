@@ -47,8 +47,8 @@ describe("useDatabaseLifecycle", () => {
     await act(async () => result.current.requestLock());
 
     expect(apiPost).toHaveBeenCalledWith("/api/lock", { scope: "current" });
-    expect(disconnectAllConsoleSessions).toHaveBeenCalledOnce();
-    expect(result.current.lockDialog).toMatchObject({ open: false, state: "error", error: "lock failed" });
+    expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
+    expect(result.current.lockDialog).toMatchObject({ open: true, state: "error", error: "lock failed" });
   });
 
   it("closes without switching when the current database is selected", async () => {
@@ -81,7 +81,26 @@ describe("useDatabaseLifecycle", () => {
     await act(async () => result.current.switchDatabase());
 
     expect(apiPost).toHaveBeenCalledWith("/api/databases/switch", { database_id: "two", password: "wrong" });
-    expect(disconnectAllConsoleSessions).toHaveBeenCalledOnce();
+    expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
     expect(result.current.switchDialog).toMatchObject({ open: true, state: "error", error: "invalid password" });
+  });
+
+  it("shows status failures and resets abandoned switch and lock dialogs", async () => {
+    apiGet.mockRejectedValue(new Error("status unavailable"));
+    apiPost.mockRejectedValue(new Error("lock unavailable"));
+    const { result } = renderLifecycle();
+
+    await act(async () => result.current.loadStatus());
+    expect(result.current.status).toEqual({ state: "error", data: null, error: "status unavailable" });
+
+    act(() => result.current.openSwitch());
+    expect(result.current.switchDialog).toMatchObject({ open: true, database_id: "" });
+    act(() => result.current.closeSwitch());
+    expect(result.current.switchDialog.open).toBe(false);
+
+    await act(async () => result.current.requestLock());
+    expect(result.current.lockDialog).toMatchObject({ open: true, state: "error", error: "lock unavailable" });
+    act(() => result.current.closeLock());
+    expect(result.current.lockDialog).toMatchObject({ open: false, state: "idle", error: null });
   });
 });

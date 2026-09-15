@@ -4,13 +4,7 @@ import { Notice } from "./ui/notice";
 
 export function DatabaseLockDialog({ state, onClose, onLock }) {
   return (
-    <Dialog
-      open={state.open}
-      title="Lock database"
-      description="More than one database is currently unlocked. Choose what should be locked."
-      onClose={onClose}
-      size="md"
-    >
+    <Dialog open={state.open} title="Lock database" description="Choose what should be locked." onClose={onClose} size="md">
       <div className="grid gap-4">
         <Notice>
           Lock current closes only the active database and switches to another unlocked database if one is available. Lock all closes every
