@@ -1,5 +1,5 @@
 import { Edit3, FolderKanban, Plus, RefreshCcw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -7,6 +7,7 @@ import { Drawer } from "../components/ui/drawer";
 import { Field, Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
+import { useRequestGuard } from "../lib/request-guard";
 
 const emptyEditor = { open: false, mode: "create", project: null, name: "" };
 
@@ -15,63 +16,94 @@ export function ProjectsPage() {
   const [editor, setEditor] = useState(emptyEditor);
   const [remove, setRemove] = useState({ open: false, project: null });
   const [action, setAction] = useState({ state: "idle", message: "", error: null });
-
-  useEffect(() => {
-    void loadProjects();
-  }, []);
+  const requests = useRequestGuard("projects");
 
   const totalTargets = useMemo(
     () => projects.data.reduce((total, project) => total + Number(project.target_count || 0), 0),
     [projects.data],
   );
 
-  async function loadProjects() {
+  const loadProjects = useCallback(async () => {
+    const request = requests.begin("list");
     setProjects((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet("/api/projects");
+      const data = await apiGet("/api/projects", { signal: request.signal });
+      if (!request.isCurrent()) return;
       setProjects({ state: "ready", data: data.items || [], error: null });
     } catch (error) {
-      setProjects({ state: "error", data: [], error: error.message });
+      if (request.isCurrent()) setProjects({ state: "error", data: [], error: error.message });
+    } finally {
+      request.complete();
     }
-  }
+  }, [requests]);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   function openCreate() {
+    requests.invalidate("editor");
     setAction({ state: "idle", message: "", error: null });
     setEditor({ open: true, mode: "create", project: null, name: "" });
   }
 
   function openEdit(project) {
+    requests.invalidate("editor");
     setAction({ state: "idle", message: "", error: null });
     setEditor({ open: true, mode: "edit", project, name: project.name });
   }
 
+  function closeEditor() {
+    requests.invalidate("editor");
+    setEditor(emptyEditor);
+    setAction({ state: "idle", message: "", error: null });
+  }
+
+  function closeArchive() {
+    requests.invalidate("archive");
+    setRemove({ open: false, project: null });
+    setAction({ state: "idle", message: "", error: null });
+  }
+
   async function saveProject(event) {
     event.preventDefault();
+    const draft = editor;
+    const request = requests.begin("editor");
     setAction({ state: "saving", message: "", error: null });
     try {
-      if (editor.mode === "edit") {
-        await apiPut(`/api/projects/${editor.project.id}`, { name: editor.name });
+      if (draft.mode === "edit") {
+        await apiPut(`/api/projects/${draft.project.id}`, { name: draft.name }, { signal: request.signal });
       } else {
-        await apiPost("/api/projects", { name: editor.name });
+        await apiPost("/api/projects", { name: draft.name }, { signal: request.signal });
       }
-      setEditor(emptyEditor);
-      setAction({ state: "ready", message: editor.mode === "edit" ? "Project renamed." : "Project created.", error: null });
+      if (request.isCurrent()) {
+        setEditor(emptyEditor);
+        setAction({ state: "ready", message: draft.mode === "edit" ? "Project renamed." : "Project created.", error: null });
+      }
       await loadProjects();
     } catch (error) {
-      setAction({ state: "error", message: "", error: error.message });
+      if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
   async function archiveProject() {
     if (!remove.project) return;
+    const project = remove.project;
+    const request = requests.begin("archive");
     setAction({ state: "deleting", message: "", error: null });
     try {
-      await apiDelete(`/api/projects/${remove.project.id}`);
-      setRemove({ open: false, project: null });
-      setAction({ state: "ready", message: "Project archived.", error: null });
+      await apiDelete(`/api/projects/${project.id}`, { signal: request.signal });
+      if (request.isCurrent()) {
+        setRemove({ open: false, project: null });
+        setAction({ state: "ready", message: "Project archived.", error: null });
+      }
       await loadProjects();
     } catch (error) {
-      setAction({ state: "error", message: "", error: error.message });
+      if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
+    } finally {
+      request.complete();
     }
   }
 
@@ -104,8 +136,8 @@ export function ProjectsPage() {
       {action.message ? <Notice tone="good">{action.message}</Notice> : null}
       {action.error && !editor.open && !remove.open ? <Notice tone="bad">{action.error}</Notice> : null}
 
-      <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
+      <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+        <table className="w-full min-w-[650px] table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-500">
             <tr>
               <th className="w-[42%] px-4 py-3 font-semibold">Project</th>
@@ -145,7 +177,10 @@ export function ProjectsPage() {
                       className="h-9 w-9 px-0"
                       title="Archive project"
                       disabled={project.slug === "ungrouped" || project.target_count > 0}
-                      onClick={() => setRemove({ open: true, project })}
+                      onClick={() => {
+                        requests.invalidate("archive");
+                        setRemove({ open: true, project });
+                      }}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -166,7 +201,7 @@ export function ProjectsPage() {
         open={editor.open}
         title={editor.mode === "edit" ? "Rename project" : "Add project"}
         description="Project names organize one developer's local connector workspace."
-        onClose={() => setEditor(emptyEditor)}
+        onClose={closeEditor}
       >
         <form className="grid gap-4" onSubmit={saveProject}>
           <Field>
@@ -174,13 +209,17 @@ export function ProjectsPage() {
             <Input
               value={editor.name}
               maxLength={80}
-              onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}
+              onChange={(event) => {
+                requests.invalidate("editor");
+                setEditor((current) => ({ ...current, name: event.target.value }));
+                setAction({ state: "idle", message: "", error: null });
+              }}
               placeholder="My Project"
             />
           </Field>
           {action.error && editor.open ? <Notice tone="bad">{action.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setEditor(emptyEditor)}>
+            <Button type="button" variant="outline" onClick={closeEditor}>
               Cancel
             </Button>
             <Button type="submit" disabled={!editor.name.trim() || action.state === "saving"}>
@@ -194,7 +233,7 @@ export function ProjectsPage() {
         open={remove.open}
         title="Archive project"
         description="Only empty projects can be archived."
-        onClose={() => setRemove({ open: false, project: null })}
+        onClose={closeArchive}
         size="md"
       >
         <div className="grid gap-4">
@@ -203,7 +242,7 @@ export function ProjectsPage() {
           </Notice>
           {action.error && remove.open ? <Notice tone="bad">{action.error}</Notice> : null}
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={() => setRemove({ open: false, project: null })}>
+            <Button type="button" variant="outline" onClick={closeArchive}>
               Cancel
             </Button>
             <Button type="button" onClick={archiveProject} disabled={action.state === "deleting"}>

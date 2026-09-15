@@ -66,6 +66,7 @@ export const asyncStateOwnerTests = {
   "src/lib/load-project-options.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
   "src/lib/use-connector-permissions.js": ["src/lib/use-connector-permissions.component.test.jsx"],
   "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
+  "src/pages/projects.jsx": ["src/pages/projects.component.test.jsx"],
   "src/pages/tokens.jsx": ["src/pages/tokens.component.test.jsx"],
   "src/pages/use-security-page-state.js": ["src/pages/security.component.test.jsx"],
   "src/pages/audit-logs.jsx": ["src/pages/audit-logs.component.test.jsx"],
