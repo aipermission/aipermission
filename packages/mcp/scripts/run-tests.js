@@ -3,11 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadAndVerifyTestManifest } from "./test-manifest-policy.js";
+import { assertSourceArchiveMode, loadAndVerifyTestManifest, loadCurrentTestManifest } from "./test-manifest-policy.js";
 import { nodeTestSummaryCount } from "./node-test-summary.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifest = loadAndVerifyTestManifest();
+const currentOnly = process.argv.slice(2).includes("--current-only");
+if (process.argv.slice(2).some((argument) => argument !== "--current-only")) {
+  throw new Error("Unsupported MCP test argument.");
+}
+if (currentOnly) assertSourceArchiveMode(path.resolve(root, "../.."));
+const manifest = currentOnly ? loadCurrentTestManifest() : loadAndVerifyTestManifest();
 
 function discoverTests(directory) {
   return fs

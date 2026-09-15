@@ -25,4 +25,4 @@ jobs:
           cache-dependency-path: backend/go.sum
       - uses: ./.github/actions/setup-backend-native
       - name: Run real-service connector conformance
-        run: make connector-conformance
+        run: 'test -z "${MAKEFILES:-}" && make -f Makefile connector-conformance'

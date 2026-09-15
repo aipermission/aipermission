@@ -27,10 +27,11 @@ Homebrew and expose its include/library paths to CGO. Windows contributors can
 use the repository Docker build, which owns these native dependencies. The
 published runtime image includes `libssl3` explicitly.
 
-Install the frontend and MCP packages from their canonical package-local
-lockfiles:
+Install the repository verification, frontend, and MCP packages from their
+canonical package-local lockfiles:
 
 ```bash
+npm ci --prefix scripts --workspaces=false
 npm ci --prefix frontend --workspaces=false
 npm ci --prefix packages/mcp --workspaces=false
 ```
@@ -38,6 +39,12 @@ npm ci --prefix packages/mcp --workspaces=false
 The package-local lockfiles are canonical. Do not create a root
 `package-lock.json`; repository hygiene rejects one to prevent local/CI
 dependency drift.
+
+Use a full Git clone for contribution work because history-based security and
+test-manifest ratchets are part of `make -f Makefile release-check`. GitHub source archives
+can run the current MCP behavior suite with
+`npm --prefix packages/mcp run test:source-archive`, but cannot prove that a
+manifest was not weakened relative to trusted history.
 
 Run backend tests:
 

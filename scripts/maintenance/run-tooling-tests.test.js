@@ -98,18 +98,21 @@ test("tooling runner discovers tests outside configured roots and fails closed",
     /tooling test symlink is not allowed/,
   );
 });
-
-test("tooling runner expands every registered subset to the full inventory", (t) => {
+test("tooling runner validates the full inventory and executes only the requested roots", (t) => {
   const root = temporaryRoot(t);
   const configured = ["ci", "maintenance", "release"].map((owner) =>
     path.join(root, "scripts", owner),
   );
   for (const owner of configured) fs.mkdirSync(owner, { recursive: true });
-
-  assert.deepEqual(
-    resolveTestRoots([configured[0]], root, configured),
-    configured,
-  );
+  const files = configured.map((owner) => path.join(owner, "owner.test.js"));
+  for (const file of files) fs.writeFileSync(file, "");
+  let invocation;
+  const status = run([configured[0]], {
+    repositoryRoot: root, configured, expected: files.map((file) => path.relative(root, file).replaceAll(path.sep, "/")),
+    spawnSync: (command, args) => ((invocation = { command, args }), { status: 0 }),
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(invocation, { command: process.execPath, args: ["--test", files[0]] });
   assert.throws(
     () =>
       resolveTestRoots(

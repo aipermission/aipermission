@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [rules.allowlist]
+  description = "Generated SHA-256 release recipe digests are integrity metadata, not credentials."
+  regexTarget = "secret"
+  regexes = ['''^[a-f0-9]{64}$''']
+  paths = ['''^scripts/verification-policy\.json$''']

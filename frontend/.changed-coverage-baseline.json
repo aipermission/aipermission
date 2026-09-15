@@ -154,10 +154,10 @@
       "lines": 100
     },
     "src/components/console/use-connector-approval-dialog.js": {
-      "statements": 67.32,
-      "branches": 53.7,
+      "statements": 71.15,
+      "branches": 57.4,
       "functions": 75,
-      "lines": 71.95
+      "lines": 75.29
     },
     "src/components/console/use-connector-token-permission-state.js": {
       "statements": 94.03,
@@ -412,10 +412,10 @@
       "lines": 25
     },
     "src/components/tokens/connector-permission-dialog.jsx": {
-      "statements": 75.22,
-      "branches": 52.48,
-      "functions": 63.16,
-      "lines": 79.77
+      "statements": 88.99,
+      "branches": 72.72,
+      "functions": 83.78,
+      "lines": 92.13
     },
     "src/components/tokens/created-token-notice.jsx": {
       "statements": 100,
@@ -538,10 +538,10 @@
       "lines": 90.24
     },
     "src/components/use-gateway-activity-resources.js": {
-      "statements": 34.33,
-      "branches": 12.53,
-      "functions": 29.57,
-      "lines": 38.5
+      "statements": 72.22,
+      "branches": 46.15,
+      "functions": 85.71,
+      "lines": 81.25
     },
     "src/components/use-gateway-core-resources.js": {
       "statements": 57.3,
@@ -562,10 +562,10 @@
       "lines": 0
     },
     "src/components/vault/use-vault-action-approvals.js": {
-      "statements": 80,
-      "branches": 49.27,
+      "statements": 82.85,
+      "branches": 58.62,
       "functions": 92.85,
-      "lines": 88.67
+      "lines": 92.45
     },
     "src/components/vault/use-vault-bindings.js": {
       "statements": 64.28,
@@ -1642,10 +1642,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 65,
+      "statements": 66,
       "branches": 73.52,
-      "functions": 84,
-      "lines": 65.41
+      "functions": 84.61,
+      "lines": 66.41
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,
@@ -1683,9 +1683,21 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/generated-connector-contract.ts": {
+    "src/lib/gateway-contracts/connector-action-contract.js": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/generated-connector-contract.js": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/security-contracts.ts": {
+      "statements": 97.22,
+      "branches": 98.48,
       "functions": 100,
       "lines": 100
     },
@@ -1746,12 +1758,6 @@
     "src/lib/request-guard.js": {
       "statements": 100,
       "branches": 95,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/lib/security-contracts.ts": {
-      "statements": 100,
-      "branches": 100,
       "functions": 100,
       "lines": 100
     },

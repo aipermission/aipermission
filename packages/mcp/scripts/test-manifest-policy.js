@@ -67,9 +67,20 @@ export function verifyRequiredWindowsACLSource(source) {
   }
 }
 
-export function loadAndVerifyTestManifest() {
+export function loadCurrentTestManifest() {
   const current = readTestManifest(fs.readFileSync(manifestPath, "utf8"));
   verifyRequiredWindowsACLSource(fs.readFileSync(privateFileTestPath, "utf8"));
+  return current;
+}
+
+export function assertSourceArchiveMode(root = repositoryRoot) {
+  if (fs.existsSync(path.join(root, ".git"))) {
+    throw new Error("MCP source-archive tests cannot bypass the historical manifest ratchet inside a Git checkout");
+  }
+}
+
+export function loadAndVerifyTestManifest() {
+  const current = loadCurrentTestManifest();
   const base = resolveTrustedBase({
     configured: process.env.MCP_TEST_MANIFEST_BASE,
     variable: "MCP_TEST_MANIFEST_BASE",

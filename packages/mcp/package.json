@@ -33,6 +33,7 @@
     "lint": "eslint src test scripts",
     "prepack": "npm run build",
     "test": "npm run build && node scripts/run-tests.js",
+    "test:source-archive": "npm run build && node scripts/run-tests.js --current-only",
     "test:windows-acl": "node scripts/run-windows-acl-tests.js",
     "start": "node dist/cli.js",
     "dev": "node src/cli.js"

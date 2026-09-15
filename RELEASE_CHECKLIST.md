@@ -5,7 +5,7 @@ Run this before publishing a public release candidate.
 Shortcut:
 
 ```bash
-make release-check
+make -f Makefile release-check
 ```
 
 Set a new release version through the canonical manifest before writing the
@@ -27,7 +27,7 @@ govulncheck ./...
 ```
 
 From the repository root, also run the deterministic recovery and bounded fuzz
-gates (both are included in `make release-check`):
+gates (both are included in `make -f Makefile release-check`):
 
 ```bash
 make recovery-drill

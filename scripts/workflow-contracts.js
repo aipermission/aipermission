@@ -8,7 +8,7 @@ function plainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseWorkflow(source, sourcePath = "workflow") {
+function parseYAMLMapping(source, sourcePath) {
   const document = parseDocument(source, {
     maxAliasCount: 0,
     prettyErrors: true,
@@ -25,6 +25,10 @@ function parseWorkflow(source, sourcePath = "workflow") {
     throw new Error(`${sourcePath} must contain a YAML mapping`);
   }
   return value;
+}
+
+function parseWorkflow(source, sourcePath = "workflow") {
+  return parseYAMLMapping(source, sourcePath);
 }
 
 function inheritedRunWorkingDirectory(mapping, sourcePath, owner) {
@@ -232,7 +236,119 @@ function verifyExternalActionPins() {
   }
 }
 
+function verifyCanonicalMakeEntrypoint() {
+  for (const filename of ["GNUmakefile", "makefile"]) {
+    if (fs.existsSync(path.join(root, filename))) {
+      throw new Error(
+        `repository must not contain alternate root make entrypoint ${filename}`,
+      );
+    }
+  }
+}
+
+function verifyRequiredJobLocalActions(contract, sourcePath, jobID) {
+  for (const step of contract.steps) {
+    if (!step.uses.startsWith("./")) continue;
+    verifyLocalCompositeAction(step.uses, sourcePath, jobID, []);
+  }
+}
+
+function verifyLocalCompositeAction(reference, sourcePath, jobID, stack) {
+  const actionPath = resolveLocalActionPath(reference, sourcePath);
+  const relativePath = path.relative(root, actionPath);
+  if (stack.includes(relativePath)) {
+    throw new Error(
+      `${sourcePath} job ${jobID} local action cycle: ${[...stack, relativePath].join(" -> ")}`,
+    );
+  }
+  const source = fs.readFileSync(actionPath, "utf8");
+  verifyActionPinsInSource(source, relativePath);
+  const action = parseYAMLMapping(source, relativePath);
+  if (
+    !plainObject(action.runs) ||
+    action.runs.using !== "composite" ||
+    !Array.isArray(action.runs.steps)
+  ) {
+    throw new Error(
+      `${relativePath} used by required job ${jobID} must be a composite action with steps`,
+    );
+  }
+  const nextStack = [...stack, relativePath];
+  action.runs.steps.forEach((step, index) => {
+    if (!plainObject(step))
+      throw new Error(`${relativePath} step ${index + 1} must be a mapping`);
+    if (
+      Object.hasOwn(step, "env") ||
+      Object.hasOwn(step, "if") ||
+      Object.hasOwn(step, "continue-on-error")
+    ) {
+      throw new Error(
+        `${relativePath} step ${index + 1} must be unconditional and must not override the verification environment`,
+      );
+    }
+    if (typeof step.run === "string") {
+      if (step.shell !== "bash") {
+        throw new Error(
+          `${relativePath} step ${index + 1} must use bash in required jobs`,
+        );
+      }
+      if (/GITHUB_(?:ENV|PATH)/.test(step.run)) {
+        throw new Error(
+          `${relativePath} step ${index + 1} must not write persistent environment state`,
+        );
+      }
+    }
+    if (typeof step.uses === "string" && step.uses.startsWith("./")) {
+      verifyLocalCompositeAction(step.uses, sourcePath, jobID, nextStack);
+    }
+  });
+}
+
+function resolveLocalActionPath(reference, sourcePath) {
+  if (!/^\.\/[A-Za-z0-9._/-]+$/.test(reference)) {
+    throw new Error(
+      `${sourcePath} has an invalid local action reference ${reference}`,
+    );
+  }
+  const candidate = path.resolve(root, reference.slice(2));
+  assertContainedPath(candidate, sourcePath, reference);
+  let actionPath = candidate;
+  if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+    const manifests = ["action.yml", "action.yaml"]
+      .map((name) => path.join(candidate, name))
+      .filter((name) => fs.existsSync(name));
+    if (manifests.length !== 1) {
+      throw new Error(
+        `${sourcePath} local action ${reference} must contain exactly one action.yml or action.yaml`,
+      );
+    }
+    [actionPath] = manifests;
+  }
+  if (!fs.existsSync(actionPath) || !fs.statSync(actionPath).isFile()) {
+    throw new Error(
+      `${sourcePath} local action ${reference} has no readable manifest`,
+    );
+  }
+  const realPath = fs.realpathSync(actionPath);
+  assertContainedPath(realPath, sourcePath, reference);
+  return realPath;
+}
+
+function assertContainedPath(candidate, sourcePath, reference) {
+  const relative = path.relative(fs.realpathSync(root), candidate);
+  if (
+    relative === "" ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(
+      `${sourcePath} local action ${reference} escapes the repository`,
+    );
+  }
+}
+
 function verifyRequiredWorkflows(policy) {
+  verifyCanonicalMakeEntrypoint();
   verifyExternalActionPins();
   const parsed = new Map();
   for (const gate of policy.required_checks) {
@@ -281,6 +397,7 @@ function verifyRequiredWorkflows(policy) {
         `${gate.workflow} required job ${gate.job} must be unconditional and fail closed`,
       );
     }
+    verifyRequiredJobLocalActions(contract, gate.workflow, gate.job);
     if (
       contract.hasEnvironment ||
       contract.steps.some(

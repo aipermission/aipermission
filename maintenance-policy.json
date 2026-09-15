@@ -114,7 +114,12 @@
       "reason": "Separate repository tooling tests by top-level ownership while tightening the aggregate package cap."
     }
   ],
-  "toolingTestRoots": ["scripts/ci", "scripts/maintenance", "scripts/release"],
+  "toolingTestRoots": [
+    "scripts/ci",
+    "scripts/maintenance",
+    "scripts/release",
+    "scripts/verification"
+  ],
   "toolingTestFiles": [
     "scripts/ci/ci-workflow.test.js",
     "scripts/ci/compose-topology.test.js",
@@ -133,7 +138,8 @@
     "scripts/release/images/publish-images-workflow.test.js",
     "scripts/release/release-notes.test.js",
     "scripts/release/release-version.test.js",
-    "scripts/release/source/verify-release-source.test.js"
+    "scripts/release/source/verify-release-source.test.js",
+    "scripts/verification/verification-policy.test.js"
   ],
   "windowsRuntimeTests": [
     {

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
+  assertSourceArchiveMode,
   readTestManifest,
   requiredMinimumTests,
   requiredWindowsACLTest,
@@ -68,4 +72,14 @@ test("Node test summary parser accepts classic TAP and Node 24 output", () => {
   assert.equal(nodeTestSummaryCount("# tests 116\n# skipped 1\n", "tests"), 116);
   assert.equal(nodeTestSummaryCount("ℹ tests 116\nℹ skipped 1\n", "skipped"), 1);
   assert.throws(() => nodeTestSummaryCount("ok 1 - complete\n", "tests"), /did not report tests/);
+});
+
+test("source-archive mode cannot weaken tests inside a Git checkout", (t) => {
+  const archive = fs.mkdtempSync(path.join(os.tmpdir(), "aipermission-mcp-archive-"));
+  t.after(() => fs.rmSync(archive, { force: true, recursive: true }));
+  assert.doesNotThrow(() => assertSourceArchiveMode(archive));
+  fs.writeFileSync(path.join(archive, ".git"), "gitdir: elsewhere");
+  assert.throws(() => assertSourceArchiveMode(archive), /cannot bypass the historical manifest ratchet/);
+  const packageMetadata = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(packageMetadata.scripts.test, "npm run build && node scripts/run-tests.js");
 });

@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-types frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-initial-bundle frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack docs-hygiene test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -13,6 +13,8 @@ help:
 		'  make frontend-lint   Lint frontend source and React hooks' \
 		'  make frontend-format-check  Check frontend formatting' \
 		'  make frontend-architecture  Enforce frontend dependency boundaries and budgets' \
+		'  make frontend-types  Check typed frontend security contracts' \
+		'  make frontend-initial-bundle  Enforce the initial JavaScript budget' \
 		'  make frontend-async-race  Exercise async state ownership regressions' \
 		'  make frontend-coverage  Enforce critical frontend per-file coverage floors' \
 		'  make frontend-changed-coverage  Ratchet coverage for changed behavior owners' \
@@ -46,6 +48,9 @@ backend-race:
 
 backend-vet:
 	cd backend && go vet ./...
+
+backend-windows-build:
+	cd backend && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 
 backend-vuln:
 	cd backend && govulncheck ./...
@@ -97,6 +102,12 @@ frontend-architecture:
 frontend-duplication:
 	cd frontend && npm run test:duplication
 
+frontend-shared-duplication:
+	cd frontend && npm run test:duplication:shared
+
+frontend-types:
+	cd frontend && npm run test:types
+
 frontend-coverage:
 	cd frontend && npm run test:coverage
 
@@ -111,6 +122,9 @@ frontend-e2e-real:
 
 frontend-build:
 	cd frontend && npm run build
+
+frontend-initial-bundle: frontend-build
+	cd frontend && npm run test:bundle:initial
 
 frontend-audit:
 	cd frontend && npm audit --omit=dev --audit-level=moderate
@@ -138,13 +152,16 @@ mcp-pack:
 placeholder-pack:
 	cd packages/npm-placeholder && npm pack --dry-run
 
+docs-hygiene:
+	test -z "$$(git ls-files docs/.obsidian)"
+
 test: backend-test frontend-test mcp-test
 
 build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-test frontend-coverage frontend-changed-coverage frontend-build frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack
+release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-test frontend-types frontend-coverage frontend-changed-coverage frontend-build frontend-initial-bundle frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-audit mcp-pack placeholder-pack docs-hygiene
 
 docker-up:
 	docker compose up -d --build

@@ -105,6 +105,12 @@ and `Retry-After`. Respect that delay; immediate retry loops cannot bypass the
 gateway's per-workspace/token rate, persisted-running concurrency, input, or
 atomic projected-storage limits.
 
+The normal `npm test` command requires a full Git clone so its test-manifest
+ratchet can compare against trusted history. A GitHub source archive has no
+history; use `npm run test:source-archive` there to run the complete current
+behavior suite and current-manifest checks. That archive command intentionally
+does not claim to verify the historical anti-regression ratchet.
+
 - `list_connector_targets`
 - `get_connector_help`
 - `get_connector_actions`

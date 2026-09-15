@@ -12,6 +12,13 @@ const toolingBudget = policy.sourceBudgets.find(
 const toolingExtensions = new Set(toolingBudget.extensions);
 const toolingMarkers = policy.frontendArchitecture.testModuleMarkers;
 
+function ownedBy(file, owners) {
+  return owners.filter((directory) => {
+    const relative = path.relative(directory, file);
+    return relative !== "" && !relative.startsWith(`..${path.sep}`);
+  });
+}
+
 function discoverTestFiles(directories) {
   const files = directories.flatMap(walkTestFiles);
   if (files.length === 0) throw new Error("no tooling tests discovered");
@@ -50,11 +57,6 @@ function verifyTestInventory(
   const configuredRoots = configured.map((directory) =>
     path.resolve(directory),
   );
-  const ownedBy = (file, owners) =>
-    owners.filter((directory) => {
-      const relative = path.relative(directory, file);
-      return relative !== "" && !relative.startsWith(`..${path.sep}`);
-    });
   for (const directory of roots) {
     if (!configuredRoots.includes(directory)) {
       throw new Error(`unregistered tooling test root: ${directory}`);
@@ -101,13 +103,16 @@ function resolveTestRoots(
   const configuredRoots = configured.map((directory) =>
     path.resolve(directory),
   );
-  for (const directory of requested) {
-    const resolved = path.resolve(directory);
+  if (requested.length === 0) {
+    throw new Error("at least one tooling test root is required");
+  }
+  const requestedRoots = requested.map((directory) => path.resolve(directory));
+  for (const resolved of requestedRoots) {
     if (!configuredRoots.includes(resolved)) {
       throw new Error(`unregistered tooling test root: ${resolved}`);
     }
   }
-  return configuredRoots;
+  return requestedRoots;
 }
 
 function run(requested, options = {}) {
@@ -121,9 +126,11 @@ function run(requested, options = {}) {
   const directories = resolveTestRoots(requested, repositoryRoot, configured);
   const inventoryRoot = path.join(repositoryRoot, toolingBudget.directory);
   const files = discoverTestFiles([inventoryRoot]);
-  verifyTestInventory(files, directories, expected, repositoryRoot, configured);
+  verifyTestInventory(files, configured, expected, repositoryRoot, configured);
+  const selected = files.filter((file) => ownedBy(file, directories).length === 1);
+  if (selected.length === 0) throw new Error("no tooling tests selected");
   const execute = options.spawnSync || spawnSync;
-  const result = execute(process.execPath, ["--test", ...files], {
+  const result = execute(process.execPath, ["--test", ...selected], {
     stdio: "inherit",
   });
   if (result.error) throw result.error;

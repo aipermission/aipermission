@@ -11,22 +11,23 @@ same native dependency itself. CI uses the shared
 ## Quick Checks
 
 ```bash
-make test
-make build
-make audit
+make -f Makefile test
+make -f Makefile build
+make -f Makefile audit
 ```
 
 ## Release Candidate Checks
 
 ```bash
-make release-check
+make -f Makefile release-check
 ```
 
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
 - pinned Gitleaks scanning across current files and complete Git history, with
-  exact synthetic-fixture fingerprints allowlisted in `.gitleaksignore`
+  exact synthetic-fixture fingerprints in `.gitleaksignore` and a narrow
+  semantic allowlist for generated SHA-256 recipe digests in `.gitleaks.toml`
 - a fast tracked-file pattern scan; test sources with synthetic secret-shaped
   fixtures are intentionally skipped there and remain covered by the
   full-history Gitleaks scan
@@ -182,11 +183,11 @@ so it can assert lifecycle behavior without network flakiness.
 Run recovery and fuzz gates independently while developing:
 
 ```bash
-make recovery-drill
-make bounded-fuzz
+make -f Makefile recovery-drill
+make -f Makefile bounded-fuzz
 ```
 
-Normal `go test` runs the committed fuzz seed corpus. `make bounded-fuzz` also
+Normal `go test` runs the committed fuzz seed corpus. `make -f Makefile bounded-fuzz` also
 mutates each security boundary for 1,000 executions by default. Maintainers may
 set `AIPERMISSION_FUZZ_TIME` to an integer execution count ending in `x`, or a
 millisecond/second duration capped at 30 seconds, for a different local pass.
