@@ -110,6 +110,40 @@ func TestNativeIntValueRejectsInexactAndOutOfRangeValues(t *testing.T) {
 	}
 }
 
+func TestExactInt64ValuePreservesSealedJSONNumbers(t *testing.T) {
+	const boundary = int64(9007199254740993)
+	parsed, ok := ExactInt64Value(json.Number("9007199254740993"))
+	if !ok || parsed != boundary {
+		t.Fatalf("ExactInt64Value() = %d, %t", parsed, ok)
+	}
+}
+
+func TestConnectorMapValueHelpersShareExactSemantics(t *testing.T) {
+	values := map[string]any{
+		"label":   json.Number("42"),
+		"limit":   json.Number("250"),
+		"enabled": " TRUE ",
+	}
+	if got := StringMapValue(values, "label"); got != "42" {
+		t.Fatalf("label = %q", got)
+	}
+	if got := IntMapValue(values, "limit", 10); got != 250 {
+		t.Fatalf("integer limit = %d", got)
+	}
+	if got := BoundedIntMapValue(values, "limit", 10, 1, 100); got != 100 {
+		t.Fatalf("limit = %d", got)
+	}
+	if got := BoundedIntMapValue(map[string]any{"limit": json.Number("1.5")}, "limit", 10, 1, 100); got != 10 {
+		t.Fatalf("inexact limit = %d", got)
+	}
+	if !BoolMapValue(values, "enabled", false) {
+		t.Fatal("enabled = false")
+	}
+	if !BoolMapValue(map[string]any{"enabled": "invalid"}, "enabled", true) {
+		t.Fatal("invalid boolean did not use fallback")
+	}
+}
+
 func TestValidateSchemaDefinitionRejectsInvalidIntegerDefault(t *testing.T) {
 	err := ValidateNonSecretSchema(Schema{Fields: []Field{
 		{Name: "limit", Type: FieldInteger, Default: 1.5},

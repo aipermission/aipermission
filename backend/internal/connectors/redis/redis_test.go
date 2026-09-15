@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -636,7 +637,7 @@ func TestValkeyCompatibleKeyActions(t *testing.T) {
 		})
 		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
 			ActionName: ActionSetString,
-			Payload:    map[string]any{"key": "app:status", "value": "ready", "ttl_seconds": 60},
+			Payload:    map[string]any{"key": "app:status", "value": "ready", "ttl_seconds": json.Number("60")},
 		})
 		if err != nil {
 			t.Fatalf("set string: %v", err)
@@ -656,7 +657,7 @@ func TestValkeyCompatibleKeyActions(t *testing.T) {
 		})
 		result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
 			ActionName: ActionExpireKey,
-			Payload:    map[string]any{"key": "app:status", "ttl_seconds": 60},
+			Payload:    map[string]any{"key": "app:status", "ttl_seconds": json.Number("60")},
 		})
 		if err != nil {
 			t.Fatalf("expire key: %v", err)

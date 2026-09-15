@@ -2,8 +2,11 @@ package vault
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 )
@@ -158,6 +161,94 @@ func TestVaultRecordEnvelopeRoundTrip(t *testing.T) {
 	if decoded.Value != "private" {
 		t.Fatalf("unexpected value: %q", decoded.Value)
 	}
+}
+
+func TestVaultPreservesDynamicRecordNumbers(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{WorkspaceID: "workspace-1", Domain: "action", RecordID: "42", Field: "execution_envelope"}
+	values := []string{"9007199254740991", "9007199254740992", "9007199254740993", "9223372036854775807", "-9223372036854775808", "1.5"}
+	input := map[string]any{"values": []any{}, "null": nil}
+	for _, value := range values {
+		input["values"] = append(input["values"].([]any), map[string]any{"number": json.Number(value)})
+	}
+	encrypted, err := v.EncryptRecordJSON(input, context)
+	if err != nil {
+		t.Fatalf("encrypt record: %v", err)
+	}
+	var decoded map[string]any
+	if err := v.DecryptRecordJSON(encrypted, &decoded, context); err != nil {
+		t.Fatalf("decrypt record: %v", err)
+	}
+	for index, value := range values {
+		got := decoded["values"].([]any)[index].(map[string]any)["number"]
+		if got != json.Number(value) {
+			t.Fatalf("number %d: got %v (%T), want %s", index, got, got, value)
+		}
+	}
+	if decoded["null"] != nil {
+		t.Fatalf("null changed: %v", decoded["null"])
+	}
+	if err := v.DecryptRecordJSON(encrypted, &struct {
+		Values []map[string]int64 `json:"values"`
+	}{}, context); err == nil {
+		t.Fatal("expected decimal to be rejected by typed integer decode")
+	}
+}
+
+func TestVaultRejectsTrailingJSONAcrossRecordFormats(t *testing.T) {
+	v, err := New("secret-one")
+	if err != nil {
+		t.Fatalf("new vault: %v", err)
+	}
+	context := RecordContext{WorkspaceID: "workspace-1", Domain: "action", RecordID: "42", Field: "execution_envelope"}
+	associatedData, err := recordAssociatedData(context)
+	if err != nil {
+		t.Fatalf("record aad: %v", err)
+	}
+	for _, test := range []struct {
+		name           string
+		record         bool
+		associatedData []byte
+	}{
+		{name: "versioned", record: true, associatedData: associatedData},
+		{name: "legacy", associatedData: nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encrypted := encryptRawVaultJSON(t, v, []byte(`{"value":1}{"ignored":2}`), test.associatedData, test.record)
+			var decoded map[string]any
+			if test.record {
+				err = v.DecryptRecordJSON(encrypted, &decoded, context)
+			} else {
+				_, err = v.DecryptRecordJSONWithLegacy(encrypted, &decoded, context, nil)
+			}
+			if err == nil || !strings.Contains(err.Error(), "multiple JSON values") {
+				t.Fatalf("trailing JSON error = %v", err)
+			}
+		})
+	}
+}
+
+func encryptRawVaultJSON(t *testing.T, v *Vault, plain, associatedData []byte, record bool) string {
+	t.Helper()
+	nonce := make([]byte, v.aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		t.Fatalf("create nonce: %v", err)
+	}
+	ciphertext := v.aead.Seal(nil, nonce, plain, associatedData)
+	if !record {
+		return base64.StdEncoding.EncodeToString(append(nonce, ciphertext...))
+	}
+	envelope, err := json.Marshal(recordEnvelope{
+		Version: recordEnvelopeVersion, Algorithm: recordEnvelopeAlgorithm,
+		Nonce: base64.StdEncoding.EncodeToString(nonce), Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+	})
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	return string(envelope)
 }
 
 func TestVaultRecordEnvelopeRejectsContextSwap(t *testing.T) {

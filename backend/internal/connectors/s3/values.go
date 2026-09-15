@@ -130,30 +130,7 @@ func stringValue(values map[string]any, name string) string {
 }
 
 func clampedInt(values map[string]any, name string, fallback int, minValue int, maxValue int) int {
-	value, ok := values[name]
-	if !ok || value == nil || value == "" {
-		return fallback
-	}
-	parsed := fallback
-	switch typed := value.(type) {
-	case int:
-		parsed = typed
-	case int64:
-		parsed = int(typed)
-	case float64:
-		parsed = int(typed)
-	case string:
-		if candidate, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
-			parsed = candidate
-		}
-	}
-	if parsed < minValue {
-		return minValue
-	}
-	if parsed > maxValue {
-		return maxValue
-	}
-	return parsed
+	return connectors.BoundedIntMapValue(values, name, fallback, minValue, maxValue)
 }
 
 func boolValue(values map[string]any, name string) bool {
