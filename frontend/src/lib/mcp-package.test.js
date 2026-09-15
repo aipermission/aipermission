@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { mcpPackageName, mcpPackageSpecifier } from "./mcp-package.js";
+import { buildMCPSetupCommand } from "./mcp-setup-command.js";
 
 const releaseManifest = JSON.parse(readFileSync(new URL("../../../release-manifest.json", import.meta.url), "utf8"));
 const setupSource = readFileSync(new URL("../pages/mcp-setup.jsx", import.meta.url), "utf8");
@@ -18,8 +19,11 @@ test("manual MCP runtime configs use the release-pinned package specifier", () =
 });
 
 test("recommended MCP install commands use setup so config and skill stay aligned", () => {
-  assert.match(setupSource, /mcpPackageName} setup/);
-  assert.match(tokenInstallSource, /mcpPackageName} setup/);
+  const command = buildMCPSetupCommand({ provider: "codex", name: "aipermission-default", apiUrl: "http://localhost:3211" });
+  assert.match(command, /@aipermission\/mcp setup/);
+  assert.match(command, /--api-url 'http:\/\/localhost:3211'/);
+  assert.match(setupSource, /buildMCPSetupCommand/);
+  assert.match(tokenInstallSource, /buildMCPSetupCommand/);
   assert.doesNotMatch(setupSource, /mcpPackageName} init/);
   assert.doesNotMatch(tokenInstallSource, /mcpPackageName} init/);
 });

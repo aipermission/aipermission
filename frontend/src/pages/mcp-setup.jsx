@@ -2,15 +2,18 @@ import { PlugZap } from "lucide-react";
 import { mcpApiUrl } from "../lib/api";
 import { mcpClientCatalog } from "../lib/mcp-client-catalog";
 import { mcpPackageName, mcpPackageSpecifier } from "../lib/mcp-package";
+import { buildMCPSetupCommand } from "../lib/mcp-setup-command";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CopyButton } from "../components/ui/copy-button";
 import { Notice } from "../components/ui/notice";
 import { TerminalBlock } from "../components/ui/terminal-block";
 
-const setupCommand = `npx -y ${mcpPackageName} setup \\
-  --provider codex \\
-  --name aipermission-default`;
+const setupCommand = buildMCPSetupCommand({
+  provider: "codex",
+  name: "aipermission-default",
+  apiUrl: mcpApiUrl,
+});
 const skillInstallCommand = mcpClientCatalog
   .filter((client) => client.supportsSkill)
   .map((client) => `npx -y ${mcpPackageName} install-skill --client ${client.id}`)
