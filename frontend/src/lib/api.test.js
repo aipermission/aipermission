@@ -565,6 +565,26 @@ test("local connector action retains idempotency after malformed or incomplete s
   }
 });
 
+test("caller-provided connector idempotency keys still require a valid action acknowledgement", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => response({ status: "completed" });
+  try {
+    await assert.rejects(
+      () =>
+        apiPost("/api/connector-actions/local-run", {
+          target_ref: "fixture:caller-key",
+          action_name: "inspect",
+          input: {},
+          reason: "test",
+          idempotency_key: "caller-provided-key",
+        }),
+      /Invalid connector action response/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("local connector action requires explicit reconciliation after an unknown outcome", async () => {
   const originalFetch = globalThis.fetch;
   const keys = [];

@@ -1,7 +1,7 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { apiDownload, apiGet, apiPost, apiPostForm } from "./api";
+import { apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./api";
 import {
   localActionReconciliationEvent,
   completeLocalActionRetry,
@@ -158,7 +158,9 @@ it("retains a backup retry identity when the gateway acknowledgement is malforme
 });
 
 it("preserves a caller-provided idempotency key without opening a browser retry entry", async () => {
-  const fetch = vi.fn(async (_url, options) => jsonResponse({ echoed: JSON.parse(options.body).idempotency_key }));
+  const fetch = vi.fn(async (_url, options) =>
+    jsonResponse({ request_id: 17, status: "completed", echoed: JSON.parse(options.body).idempotency_key }),
+  );
   vi.stubGlobal("fetch", fetch);
 
   await expect(
@@ -169,7 +171,7 @@ it("preserves a caller-provided idempotency key without opening a browser retry 
       reason: "coverage",
       idempotency_key: "caller-owned-key",
     }),
-  ).resolves.toEqual({ echoed: "caller-owned-key" });
+  ).resolves.toEqual({ request_id: 17, status: "completed", echoed: "caller-owned-key" });
 
   expect(await listLocalActionRetryEntries()).toEqual([]);
 });
@@ -260,13 +262,34 @@ it("announces an expired UI session while retaining structured API error data", 
   expect(listener).toHaveBeenCalledOnce();
 });
 
-it("requires JSON from multipart endpoints when requested", async () => {
+it("requires JSON from multipart endpoints by default", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response("<html>gateway fallback</html>", { status: 200 })),
   );
 
-  await expect(apiPostForm("/api/restore", new FormData(), { requireJSON: true })).rejects.toThrow(/HTML instead of JSON/);
+  await expect(apiPostForm("/api/restore", new FormData())).rejects.toThrow(/HTML instead of JSON/);
+});
+
+it("rejects plain text and empty success bodies on ordinary JSON endpoints", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response("upstream accepted", { status: 200 }))
+    .mockResolvedValueOnce(new Response(null, { status: 204 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await expect(apiGet("/api/metadata")).rejects.toThrow(/Invalid JSON response/);
+  await expect(apiPut("/api/metadata", {})).rejects.toThrow(/Empty JSON response/);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it("retains HTTP failure status when its response is not JSON", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("upstream unavailable", { status: 502 })),
+  );
+
+  await expect(apiGet("/api/metadata")).rejects.toMatchObject({ status: 502, message: "Invalid JSON response from gateway." });
 });
 
 it("keeps an unresolved retry entry visible until explicit reconciliation", async () => {
