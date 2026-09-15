@@ -29,7 +29,7 @@ func BuildEvent(ctx context.Context, executor sqldb.Executor, input BuildInput) 
 		payloadJSON = input.Redact(payloadJSON)
 	}
 	connectorKind, projectID, targetID, profileID, actionRequestID := connectorMetadata(input.Payload)
-	projectID = resolveProjectID(ctx, executor, projectID, targetID, input.RuntimeID)
+	projectID = resolveProjectID(ctx, executor, projectID, connectorKind, actionRequestID, targetID, input.RuntimeID)
 	return Event{
 		ActorType:       input.ActorType,
 		TokenID:         input.TokenID,
@@ -93,9 +93,18 @@ func stringFromAny(value any) string {
 	return strings.TrimSpace(fmt.Sprint(value))
 }
 
-func resolveProjectID(ctx context.Context, executor sqldb.Executor, projectID int64, targetID int64, runtimeID int64) int64 {
+func resolveProjectID(ctx context.Context, executor sqldb.Executor, projectID int64, connectorKind string, actionRequestID int64, targetID int64, runtimeID int64) int64 {
 	if projectID > 0 || executor == nil {
 		return projectID
+	}
+	if actionRequestID > 0 && targetID > 0 && connectorKind != "" {
+		_ = executor.QueryRowContext(ctx, `
+			SELECT project_id FROM history_entries
+			WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?
+				AND connector_kind = ? AND target_id = ?`, actionRequestID, connectorKind, targetID).Scan(&projectID)
+		if projectID > 0 {
+			return projectID
+		}
 	}
 	if targetID > 0 {
 		_ = executor.QueryRowContext(ctx, `SELECT project_id FROM connector_targets WHERE id = ?`, targetID).Scan(&projectID)

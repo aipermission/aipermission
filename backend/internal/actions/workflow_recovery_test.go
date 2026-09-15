@@ -10,6 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projects"
 )
 
 type recoveryTestMutations struct {
@@ -71,6 +72,13 @@ func TestMarkRunningOutcomeUnknownDoesNotParseUntrustedActionPayload(t *testing.
 		t.Fatal(err)
 	}
 	if _, err := database.ExecContext(t.Context(), `UPDATE connector_action_requests SET encrypted_payload_json = '{' WHERE id = ?`, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	newProject, err := projects.NewStore(database).Create(t.Context(), "Moved recovery target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(t.Context(), `UPDATE connector_targets SET project_id = ? WHERE id = ?`, newProject.ID, target.ID); err != nil {
 		t.Fatal(err)
 	}
 

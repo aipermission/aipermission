@@ -6,7 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	gatewaydb "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/projects"
 )
 
 func TestBuildEventExtractsConnectorMetadataAndRedactsPayload(t *testing.T) {
@@ -87,5 +90,56 @@ func TestBuildEventPrefersExplicitMetadataAndResolvesProjectFallbacks(t *testing
 func TestBuildEventRejectsPayloadsThatCannotBeMarshaled(t *testing.T) {
 	if _, err := BuildEvent(context.Background(), nil, BuildInput{Payload: make(chan int)}); err == nil {
 		t.Fatal("expected payload marshal failure")
+	}
+}
+
+func TestBuildEventKeepsActionProjectAfterTargetMove(t *testing.T) {
+	database, err := gatewaydb.OpenEncrypted(filepath.Join(t.TempDir(), "audit-project.db"), "test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	projectA := queryInt64(t, database, `SELECT id FROM projects WHERE slug = 'ungrouped'`)
+	projectB, err := projects.NewStore(database).Create(t.Context(), "Moved target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID := insertQueryFixture(t, database, `
+		INSERT INTO connector_targets (connector_kind, name, project_id, created_at, updated_at)
+		VALUES ('redis', 'cache', ?, datetime('now'), datetime('now'))`, projectA)
+	profileID := insertQueryFixture(t, database, `
+		INSERT INTO connector_credential_profiles (target_id, connector_kind, kind, label, created_at, updated_at)
+		VALUES (?, 'redis', 'password', 'default', datetime('now'), datetime('now'))`, targetID)
+	request, err := connectortargets.NewStore(database).InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TargetID: targetID, ProfileID: profileID, ConnectorKind: "redis", ActionName: "scan_keys", Status: connectors.ResultRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE connector_targets SET project_id = ? WHERE id = ?`, projectB.ID, targetID); err != nil {
+		t.Fatal(err)
+	}
+	var historyProject int64
+	if err := database.QueryRow(`SELECT project_id FROM history_entries WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, request.ID).Scan(&historyProject); err != nil {
+		t.Fatal(err)
+	}
+	event, err := BuildEvent(t.Context(), database, BuildInput{Action: "connector_action.completed", Payload: map[string]any{
+		"request_id": request.ID, "target_id": targetID, "profile_id": profileID, "connector_kind": "redis",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if historyProject != projectA || event.ProjectID != projectA {
+		t.Fatalf("moved action project: history=%d audit=%d want=%d", historyProject, event.ProjectID, projectA)
+	}
+	newEvent, err := BuildEvent(t.Context(), database, BuildInput{Action: "connector.checked", Payload: map[string]any{"target_id": targetID}})
+	if err != nil || newEvent.ProjectID != projectB.ID {
+		t.Fatalf("new target event project = %d, want %d: %v", newEvent.ProjectID, projectB.ID, err)
+	}
+	unrelatedEvent, err := BuildEvent(t.Context(), database, BuildInput{Action: "vault.item.observed", Payload: map[string]any{
+		"request_id": request.ID, "target_id": targetID,
+	}})
+	if err != nil || unrelatedEvent.ProjectID != projectB.ID {
+		t.Fatalf("unrelated request inherited connector project: project=%d err=%v", unrelatedEvent.ProjectID, err)
 	}
 }
