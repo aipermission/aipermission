@@ -13,6 +13,8 @@ import { z } from "zod";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "./vault-tools.js";
 import { MCP_SERVER_INSTRUCTIONS } from "./instructions.js";
 import { gatewayAPIError } from "./api-error.js";
+import { parseHTTPTimeout } from "./config.js";
+import { idempotencyKeySchema } from "./idempotency-key.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { jsonToolResult } from "./results.js";
 
@@ -25,7 +27,7 @@ try {
   apiURLConfigurationError = new Error("Invalid local gateway URL configuration; update AIPERMISSION_API_URL.", { cause: error });
 }
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
-const apiTimeoutMs = Number.parseInt(process.env.AIPERMISSION_HTTP_TIMEOUT_MS || "60000", 10);
+const apiTimeoutMs = parseHTTPTimeout(process.env.AIPERMISSION_HTTP_TIMEOUT_MS);
 
 const server = new McpServer(
   {
@@ -80,11 +82,7 @@ server.tool(
     action_name: z.string().min(1).describe("Action name from get_connector_actions."),
     input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
     reason: z.string().optional().describe("Why this connector action is needed."),
-    idempotency_key: z
-      .string()
-      .min(1)
-      .max(128)
-      .describe("Caller-stable key that makes retries return the original request without running twice."),
+    idempotency_key: idempotencyKeySchema,
   },
   async ({ target_ref, action_name, input, reason, idempotency_key }) => {
     return jsonToolResult(() =>
@@ -155,7 +153,7 @@ server.tool(
   "Cancel one approval_pending Vault action request owned by this token. Running or terminal requests cannot be canceled.",
   vaultActionRequestSchema,
   async ({ request_id }) => {
-    return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}));
+    return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}, { requestID: request_id }));
   },
 );
 
@@ -168,7 +166,7 @@ async function apiGet(path) {
   });
 }
 
-async function apiPost(path, body) {
+async function apiPost(path, body, context = {}) {
   return apiRequest(
     path,
     {
@@ -179,10 +177,11 @@ async function apiPost(path, body) {
       body: JSON.stringify(body),
     },
     body?.idempotency_key,
+    context,
   );
 }
 
-async function apiRequest(path, options, idempotencyKey) {
+async function apiRequest(path, options, idempotencyKey, context = {}) {
   if (apiURLConfigurationError) {
     throw apiURLConfigurationError;
   }
@@ -198,7 +197,7 @@ async function apiRequest(path, options, idempotencyKey) {
   } catch {
     throw new Error("Invalid local gateway request configuration; check the API URL and token.");
   }
-  const timeout = Number.isFinite(apiTimeoutMs) && apiTimeoutMs > 0 ? apiTimeoutMs : 60000;
+  const timeout = apiTimeoutMs;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   let bodyReceived = false;
@@ -208,7 +207,7 @@ async function apiRequest(path, options, idempotencyKey) {
     const data = response.status === 204 ? null : parseResponseBody(text);
     bodyReceived = true;
     if (!response.ok) {
-      throw gatewayAPIError(data, response.status);
+      throw gatewayAPIError(data, response.status, response.headers.get("Retry-After"));
     }
     return data;
   } catch (error) {
@@ -225,6 +224,7 @@ async function apiRequest(path, options, idempotencyKey) {
       uncertain.resultStatus = "outcome_unknown";
       uncertain.code = "gateway_transport_outcome_unknown";
       uncertain.idempotencyKey = idempotencyKey;
+      if (Number.isSafeInteger(context.requestID) && context.requestID > 0) uncertain.requestID = context.requestID;
       uncertain.assistantHint = idempotencyKey
         ? "The gateway response was lost; execution may have occurred. Reconcile the original request using the same idempotency key and unchanged input. Never retry with a new key blindly."
         : "The gateway response was lost; execution may have occurred. Inspect the original request status before repeating the operation.";

@@ -56,6 +56,14 @@ test("gateway outcome_unknown errors preserve only safe retry metadata", () => {
   assert.equal(result.content[0].text.includes("must-not-escape"), false);
 });
 
+test("gateway errors accept bounded Retry-After headers without overriding valid body metadata", () => {
+  assert.equal(gatewayAPIError({ error: "busy" }, 429, "60").retryAfterSeconds, 60);
+  assert.equal(gatewayAPIError({ error: "busy", retry_after_seconds: 3 }, 429, "60").retryAfterSeconds, 3);
+  for (const value of ["-1", "1.5", "soon", "3601", "99999"]) {
+    assert.equal(gatewayAPIError({ error: "busy" }, 429, value).retryAfterSeconds, undefined);
+  }
+});
+
 test("jsonToolResult converts thrown errors to error envelopes", async () => {
   const result = await jsonToolResult(async () => {
     throw new Error("invalid or revoked API token");
