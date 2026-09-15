@@ -151,27 +151,7 @@ func normalizeListFilter(filter ListFilter) ListFilter {
 }
 
 func normalizeBatchListFilter(filter BatchListFilter) BatchListFilter {
-	filter.Direction = strings.TrimSpace(filter.Direction)
-	filter.Status = strings.TrimSpace(filter.Status)
-	filter.Query = strings.TrimSpace(filter.Query)
-	filter.TargetIDs = normalizeTargetIDs(filter.TargetIDs)
-	if filter.Limit < 1 || filter.Limit > 100 {
-		filter.Limit = 50
-	}
-	if filter.Offset < 0 {
-		filter.Offset = 0
-	}
-	switch filter.Direction {
-	case DirectionUpload, DirectionDownload:
-	default:
-		filter.Direction = ""
-	}
-	switch filter.Status {
-	case StatusPending, StatusPendingApproval, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled:
-	default:
-		filter.Status = ""
-	}
-	return filter
+	return BatchListFilter(normalizeListFilter(ListFilter(filter)))
 }
 
 func normalizeTargetIDs(values []int64) []int64 {

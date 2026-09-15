@@ -140,15 +140,7 @@ type ListFilter struct {
 	Offset    int
 }
 
-type BatchListFilter struct {
-	Direction string
-	Status    string
-	RuntimeID int64
-	TargetIDs []int64
-	Query     string
-	Limit     int
-	Offset    int
-}
+type BatchListFilter ListFilter
 
 type Store struct {
 	db *sql.DB
