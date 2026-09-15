@@ -87,6 +87,46 @@ func assertRestoreProcessBoundary(t *testing.T, connector connectors.Connector, 
 
 func assertImplicitCastResolutionRejected(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext) {
 	t.Helper()
+	t.Run("function cast", func(t *testing.T) {
+		conn := connectPostgresPolicyFixture(t)
+		defer conn.Close(context.Background())
+		statements := []string{
+			`CREATE TYPE public.aipermission_custom_text AS (value text)`,
+			`CREATE FUNCTION public.aipermission_custom_text_to_text(public.aipermission_custom_text) RETURNS text LANGUAGE SQL IMMUTABLE AS 'SELECT $1.value'`,
+			`CREATE CAST (public.aipermission_custom_text AS text) WITH FUNCTION public.aipermission_custom_text_to_text(public.aipermission_custom_text) AS IMPLICIT`,
+			`CREATE TABLE public.aipermission_cast_fixture (value public.aipermission_custom_text)`,
+			`INSERT INTO public.aipermission_cast_fixture VALUES (ROW('fixture'))`,
+		}
+		execPostgresPolicyFixture(t, conn, statements)
+		defer func() {
+			_, _ = conn.Exec(context.Background(), `DROP TABLE IF EXISTS public.aipermission_cast_fixture`)
+			_, _ = conn.Exec(context.Background(), `DROP CAST IF EXISTS (public.aipermission_custom_text AS text)`)
+			_, _ = conn.Exec(context.Background(), `DROP FUNCTION IF EXISTS public.aipermission_custom_text_to_text(public.aipermission_custom_text)`)
+			_, _ = conn.Exec(context.Background(), `DROP TYPE IF EXISTS public.aipermission_custom_text`)
+		}()
+		assertPostgresPolicyQueryRejected(t, connector, runtime, "select lower(value) from public.aipermission_cast_fixture")
+	})
+	t.Run("inout cast", func(t *testing.T) {
+		conn := connectPostgresPolicyFixture(t)
+		defer conn.Close(context.Background())
+		statements := []string{
+			`CREATE TYPE public.aipermission_inout_text AS ENUM ('fixture')`,
+			`CREATE CAST (public.aipermission_inout_text AS text) WITH INOUT AS IMPLICIT`,
+			`CREATE TABLE public.aipermission_inout_fixture (value public.aipermission_inout_text)`,
+			`INSERT INTO public.aipermission_inout_fixture VALUES ('fixture')`,
+		}
+		execPostgresPolicyFixture(t, conn, statements)
+		defer func() {
+			_, _ = conn.Exec(context.Background(), `DROP TABLE IF EXISTS public.aipermission_inout_fixture`)
+			_, _ = conn.Exec(context.Background(), `DROP CAST IF EXISTS (public.aipermission_inout_text AS text)`)
+			_, _ = conn.Exec(context.Background(), `DROP TYPE IF EXISTS public.aipermission_inout_text`)
+		}()
+		assertPostgresPolicyQueryRejected(t, connector, runtime, "select lower(value) from public.aipermission_inout_fixture")
+	})
+}
+
+func connectPostgresPolicyFixture(t *testing.T) *pgx.Conn {
+	t.Helper()
 	address := net.JoinHostPort(
 		fixtureHost("AIPERMISSION_POSTGRES_HOST", "127.0.0.1"),
 		fmt.Sprintf("%d", fixturePort(t, "AIPERMISSION_POSTGRES_PORT", 5432)),
@@ -99,29 +139,24 @@ func assertImplicitCastResolutionRejected(t *testing.T, connector connectors.Con
 	if err != nil {
 		t.Fatalf("connect postgres implicit-cast fixture: %v", err)
 	}
-	defer conn.Close(context.Background())
-	statements := []string{
-		`CREATE TYPE public.aipermission_custom_text AS (value text)`,
-		`CREATE FUNCTION public.aipermission_custom_text_to_text(public.aipermission_custom_text) RETURNS text LANGUAGE SQL IMMUTABLE AS 'SELECT $1.value'`,
-		`CREATE CAST (public.aipermission_custom_text AS text) WITH FUNCTION public.aipermission_custom_text_to_text(public.aipermission_custom_text) AS IMPLICIT`,
-		`CREATE TABLE public.aipermission_cast_fixture (value public.aipermission_custom_text)`,
-		`INSERT INTO public.aipermission_cast_fixture VALUES (ROW('fixture'))`,
-	}
+	return conn
+}
+
+func execPostgresPolicyFixture(t *testing.T, conn *pgx.Conn, statements []string) {
+	t.Helper()
 	for _, statement := range statements {
 		if _, err := conn.Exec(t.Context(), statement); err != nil {
 			t.Fatalf("create postgres implicit-cast fixture: %v", err)
 		}
 	}
-	defer func() {
-		_, _ = conn.Exec(context.Background(), `DROP TABLE IF EXISTS public.aipermission_cast_fixture`)
-		_, _ = conn.Exec(context.Background(), `DROP CAST IF EXISTS (public.aipermission_custom_text AS text)`)
-		_, _ = conn.Exec(context.Background(), `DROP FUNCTION IF EXISTS public.aipermission_custom_text_to_text(public.aipermission_custom_text)`)
-		_, _ = conn.Exec(context.Background(), `DROP TYPE IF EXISTS public.aipermission_custom_text`)
-	}()
+}
+
+func assertPostgresPolicyQueryRejected(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext, sql string) {
+	t.Helper()
 	prepared, err := connector.PrepareAction(t.Context(), connectors.ActionRequest{
 		Source: "conformance", Target: runtime.Target, Profile: runtime.Profile,
 		ActionName: postgresconnector.ActionQueryReadonly,
-		Input:      map[string]any{"sql": "select lower(value) from public.aipermission_cast_fixture", "max_rows": 5},
+		Input:      map[string]any{"sql": sql, "max_rows": 5},
 		Reason:     "verify custom implicit casts are rejected",
 	})
 	if err != nil {
