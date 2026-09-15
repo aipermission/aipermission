@@ -270,3 +270,11 @@ func (r *Registry) Wait(ctx context.Context) bool {
 	maintenanceDone := r.Maintenance.wait(ctx)
 	return filesDone && batchesDone && maintenanceDone
 }
+
+// WaitOperations waits for user-visible file and batch work without treating
+// workspace-lifetime maintenance loops as active transfers.
+func (r *Registry) WaitOperations(ctx context.Context) bool {
+	filesDone := r.Files.wait(ctx)
+	batchesDone := r.Batches.wait(ctx)
+	return filesDone && batchesDone
+}

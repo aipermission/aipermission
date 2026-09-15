@@ -246,44 +246,55 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 	if runtime == nil {
 		return fmt.Errorf("file transfer runtime is unavailable")
 	}
+	var cleanupErrors []error
 	if err := s.scavengeOrphanedTempFiles(ctx, runtime); err != nil {
-		return err
+		cleanupErrors = append(cleanupErrors, err)
 	}
 	items, err := runtime.store.ListTempCleanupCandidates(ctx)
 	if err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, err)...)
 	}
 	for _, item := range items {
 		if !s.TempPathAllowed(runtime, item.TempPath) {
-			return fmt.Errorf("file transfer %d has an unsafe temp path", item.ID)
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("file transfer %d has an unsafe temp path", item.ID))
+			continue
 		}
 		expiresAt, parseErr := time.Parse(time.RFC3339Nano, item.TempExpiresAt)
 		if parseErr != nil {
 			info, statErr := os.Stat(item.TempPath)
 			if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-				return fmt.Errorf("inspect file transfer temp %d: %w", item.ID, statErr)
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("inspect file transfer temp %d: %w", item.ID, statErr))
+				continue
 			}
 			if errors.Is(statErr, os.ErrNotExist) {
 				s.removeExpiredTransferTemp(runtime, item.ID, item.TempPath)
 				continue
 			}
 			expiresAt = info.ModTime().Add(s.tempTTL)
+			if err := runtime.store.SetTempExpiry(ctx, item.ID, item.TempPath, expiresAt); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("repair file transfer temp expiry %d: %w", item.ID, err))
+				continue
+			}
 		}
-		s.scheduleTransferRecordTempCleanup(runtime, item.ID, item.TempPath, expiresAt)
+		if !expiresAt.After(time.Now()) {
+			s.removeExpiredTransferTemp(runtime, item.ID, item.TempPath)
+		}
 	}
 	archives, err := runtime.store.ListBatchArchiveCleanupCandidates(ctx)
 	if err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, err)...)
 	}
 	for _, batch := range archives {
 		if !s.TempPathAllowed(runtime, batch.ArchivePath) {
-			return fmt.Errorf("file transfer batch %d has an unsafe archive path", batch.ID)
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("file transfer batch %d has an unsafe archive path", batch.ID))
+			continue
 		}
 		expiresAt, parseErr := time.Parse(time.RFC3339Nano, batch.ArchiveExpiresAt)
 		if parseErr != nil {
 			info, statErr := os.Stat(batch.ArchivePath)
 			if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-				return fmt.Errorf("inspect file transfer archive %d: %w", batch.ID, statErr)
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("inspect file transfer archive %d: %w", batch.ID, statErr))
+				continue
 			}
 			if errors.Is(statErr, os.ErrNotExist) {
 				s.removeExpiredBatchArchive(runtime, batch.ID, batch.ArchivePath)
@@ -291,9 +302,32 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 			}
 			expiresAt = info.ModTime().Add(s.tempTTL)
 		}
-		s.scheduleBatchArchiveCleanup(runtime, batch.ID, batch.ArchivePath, expiresAt)
+		if !expiresAt.After(time.Now()) {
+			s.removeExpiredBatchArchive(runtime, batch.ID, batch.ArchivePath)
+		}
 	}
-	return nil
+	return errors.Join(cleanupErrors...)
+}
+
+func (s Runner) StartTempCleanupRecovery(runtime *Runtime) bool {
+	if runtime == nil || runtime.jobs == nil || !runtime.finalization.Valid() || s.tempTTL <= 0 {
+		return false
+	}
+	ctx, cancel := context.WithCancel(runtime.finalization.Context())
+	return runtime.jobs.Maintenance.Launch(2, cancel, func() {
+		ticker := time.NewTicker(s.tempCleanupRetry)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.RecoverTempCleanup(ctx, runtime); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("recover local file transfer staging delayed: %v", err)
+				}
+			}
+		}
+	})
 }
 
 func (s Runner) StartRemoteStagingRecovery(runtime *Runtime) bool {

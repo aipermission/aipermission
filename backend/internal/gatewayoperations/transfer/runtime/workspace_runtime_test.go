@@ -143,3 +143,46 @@ func TestUninitializedWorkspaceTransferLifecycleIsInert(t *testing.T) {
 		t.Fatal("empty workspace did not report drained")
 	}
 }
+
+func TestAbortWorkspaceDrainsMaintenanceBeforeRemovingRuntime(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "transfer.aipdb"), "TransferPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	workspace := newTestWorkspace()
+	manager := &Manager{}
+	if err := manager.InitializeWorkspace(
+		workspace,
+		database,
+		func(context.Context, string, *int64, int64, string, any) {},
+		func(context.Context, int64) (ConnectorPorts, error) { return ConnectorPorts{}, nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	handle, ok, err := manager.loadWorkspaceHandle(workspace)
+	if err != nil || !ok {
+		t.Fatalf("load workspace handle: ok=%v err=%v", ok, err)
+	}
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	jobCtx, cancel := context.WithCancel(context.Background())
+	if !handle.lifecycle.jobs.Maintenance.Launch(1, cancel, func() {
+		close(started)
+		<-jobCtx.Done()
+		close(stopped)
+	}) {
+		t.Fatal("maintenance job was not launched")
+	}
+	<-started
+
+	abortCtx, abortCancel := context.WithTimeout(context.Background(), time.Second)
+	defer abortCancel()
+	if !manager.AbortWorkspace(abortCtx, workspace) {
+		t.Fatal("workspace abort did not drain maintenance")
+	}
+	<-stopped
+	if manager.WorkspaceReady(workspace) {
+		t.Fatal("drained workspace runtime was retained")
+	}
+}

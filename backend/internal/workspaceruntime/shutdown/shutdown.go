@@ -47,7 +47,7 @@ type TransferWorkflow interface {
 	BeginShutdown() (bool, error)
 	Wait(context.Context) bool
 	Recover(context.Context, string, string) error
-	Abort()
+	Abort(context.Context) bool
 }
 
 type TransferWorkflowResolver func() TransferWorkflow
@@ -342,12 +342,23 @@ func Discard(runtime *workspaceruntime.Runtime, resolveTransfers TransferWorkflo
 		}
 		return nil
 	}
-	if resolveTransfers != nil {
-		if transfer := resolveTransfers(); transfer != nil {
-			transfer.Abort()
-		}
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownWait)
+	var transfer TransferWorkflow
+	if resolveTransfers != nil {
+		transfer = resolveTransfers()
+	}
+	drained := transfer == nil || transfer.Abort(ctx)
+	if !drained {
+		cancel()
+		runtime.StartTeardown(func() {
+			transfer.Abort(context.Background())
+			retryDiscardStorage(runtime)
+			if onComplete != nil {
+				onComplete()
+			}
+		})
+		return ErrShutdownDeferred
+	}
 	closed, err := closeStorage(ctx, runtime)
 	cancel()
 	if closed {

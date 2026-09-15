@@ -49,3 +49,12 @@ func (l *Lifecycle) Registry() *transferjobs.Registry {
 func (l *Lifecycle) Wait(ctx context.Context) bool {
 	return l == nil || l.jobs.Wait(ctx)
 }
+
+func (l *Lifecycle) Abort(ctx context.Context) bool {
+	if l == nil {
+		return true
+	}
+	l.Stop()
+	l.jobs.BeginShutdown()
+	return l.jobs.Wait(ctx)
+}

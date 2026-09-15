@@ -104,6 +104,22 @@ func (manager *Manager) RemoveWorkspace(workspace Workspace) {
 	}
 }
 
+func (manager *Manager) AbortWorkspace(ctx context.Context, workspace Workspace) bool {
+	id, err := workspaceID(workspace)
+	if err != nil {
+		return true
+	}
+	handle, ok := manager.runtimes.Load(id)
+	if !ok || handle == nil || handle.lifecycle == nil {
+		return true
+	}
+	if !handle.lifecycle.Abort(ctx) {
+		return false
+	}
+	manager.runtimes.Delete(id)
+	return true
+}
+
 func (manager *Manager) WaitWorkspace(ctx context.Context, workspace Workspace) bool {
 	id, err := workspaceID(workspace)
 	if err != nil {
@@ -155,7 +171,7 @@ func (manager *Manager) WorkspaceJobs(workspace Workspace) (Jobs, error) {
 	return workspaceJobs{registry: handle.lifecycle.Registry()}, nil
 }
 
-func (jobs workspaceJobs) Wait(ctx context.Context) bool { return jobs.registry.Wait(ctx) }
+func (jobs workspaceJobs) Wait(ctx context.Context) bool { return jobs.registry.WaitOperations(ctx) }
 func (jobs workspaceJobs) LaunchFile(id int64, cancel context.CancelFunc, run func()) bool {
 	return jobs.registry.Files.Launch(id, cancel, run)
 }
