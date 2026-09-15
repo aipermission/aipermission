@@ -11,9 +11,8 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   const onChangeRef = useRef(onChange);
   const tablesRef = useRef(tables);
   const keywordsRef = useRef(keywords);
-  const initialValueRef = useRef(value);
-  const initialThemeRef = useRef(theme);
-  const initialDisabledRef = useRef(disabled);
+  const latestOptionsRef = useRef({ value, theme, disabled });
+  latestOptionsRef.current = { value, theme, disabled };
   const [monaco, setMonaco] = useState(null);
   const [loadError, setLoadError] = useState("");
 
@@ -45,7 +44,7 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
         });
         const editor = instance.editor.create(
           containerRef.current,
-          editorOptions(instance, initialValueRef.current, initialThemeRef.current, initialDisabledRef.current),
+          editorOptions(instance, latestOptionsRef.current.value, latestOptionsRef.current.theme, latestOptionsRef.current.disabled),
         );
         editorRef.current = editor;
         editor.addCommand(instance.KeyMod.CtrlCmd | instance.KeyCode.Enter, () => submitRef.current?.());
