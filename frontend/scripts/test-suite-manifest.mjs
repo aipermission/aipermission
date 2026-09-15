@@ -54,7 +54,7 @@ if (behaviorOwnerFailures.length > 0) {
 }
 const detectedAsyncOwners = sourceAnalysis.files
   .map((file) => `src/${file.slice(sourceRoot.length + 1).replaceAll("\\", "/")}`)
-  .filter((file) => isAsyncStateOwner(readFileSync(resolve(frontendRoot, file), "utf8")))
+  .filter((file) => isAsyncStateOwner(readFileSync(resolve(frontendRoot, file), "utf8"), file))
   .sort();
 const declaredAsyncOwners = Object.keys(asyncStateOwnerTests).sort();
 const unowned = detectedAsyncOwners.filter((file) => !Object.hasOwn(asyncStateOwnerTests, file));

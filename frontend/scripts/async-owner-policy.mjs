@@ -3,8 +3,8 @@ import { parseModule } from "./architecture-graph.mjs";
 const asyncCalls = new Set(["createPollGenerationGuard", "createRequestGuard", "setInterval", "useAsyncAction", "useRequestGuard"]);
 const asyncConstructors = new Set(["AbortController", "WebSocket"]);
 
-export function isAsyncStateOwner(sourceOrProgram) {
-  const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram) : sourceOrProgram;
+export function isAsyncStateOwner(sourceOrProgram, filename = "source.js") {
+  const program = typeof sourceOrProgram === "string" ? parseModule(sourceOrProgram, filename) : sourceOrProgram;
   let found = false;
   const asyncAliases = importedAsyncAliases(program);
   walk(program, (node) => {

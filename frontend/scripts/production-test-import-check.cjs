@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { parse } = require("espree");
+const ts = require("typescript");
 
 const { isTestSource } = require("../../scripts/maintenance-source-kind");
 
@@ -40,8 +41,14 @@ function dynamicNonLocalSpecifier(node) {
   return /^(?:data:|https?:|node:)/.test(prefix);
 }
 
-function staticModuleSpecifiers(source) {
-  const program = parse(source, {
+function staticModuleSpecifiers(source, filename = "source.js") {
+  const jsSource = /\.(?:ts|tsx|mts|cts)$/.test(filename)
+    ? ts.transpileModule(source, {
+        fileName: filename,
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.Preserve },
+      }).outputText
+    : source;
+  const program = parse(jsSource, {
     ecmaVersion: "latest",
     sourceType: "module",
     ecmaFeatures: { jsx: true },
@@ -108,7 +115,7 @@ function analyzeProductionTestImports(root, policy) {
     if (metadata.test) continue;
     let specifiers;
     try {
-      specifiers = staticModuleSpecifiers(fs.readFileSync(file, "utf8"));
+      specifiers = staticModuleSpecifiers(fs.readFileSync(file, "utf8"), file);
     } catch (error) {
       failures.push(`${path.relative(root, file)} cannot be parsed for import ownership: ${error.message}`);
       continue;

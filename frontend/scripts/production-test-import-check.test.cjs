@@ -4,7 +4,17 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { analyzeProductionTestImports } = require("./production-test-import-check.cjs");
+const { analyzeProductionTestImports, staticModuleSpecifiers } = require("./production-test-import-check.cjs");
+
+test("tracks runtime imports through typed frontend modules", () => {
+  assert.deepEqual(
+    staticModuleSpecifiers(
+      'type Item = { id: number };\nimport { helper } from "./helper.test.js";\nexport const item: Item = { id: helper };',
+      "owner.ts",
+    ),
+    ["./helper.test.js"],
+  );
+});
 
 const policy = {
   frontendArchitecture: { testModuleMarkers: [".test.", ".spec."] },

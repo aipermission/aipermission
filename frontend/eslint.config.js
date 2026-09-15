@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import { createRequire } from "node:module";
 import jsxA11y from "eslint-plugin-jsx-a11y-x";
+import tsParser from "@typescript-eslint/parser";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
@@ -50,6 +51,11 @@ export default [
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
     },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    languageOptions: { parser: tsParser },
+    rules: { "no-undef": "off" },
   },
   {
     ...eslint.configs.recommended,
