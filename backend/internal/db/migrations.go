@@ -12,8 +12,11 @@ const (
 	connectorNativeBaselineVersion     = 1
 	connectorNativeBaselineDescription = "0.2 connector-native baseline"
 )
+
 var ErrUnsupportedSchema = errors.New("unsupported database schema")
+
 const unsupportedPre02DatabaseMessage = "database uses an unsupported pre-0.2 or non-baseline schema; create a fresh 0.2 database or migrate with the one-time import tool. To migrate a 0.1.x database, run `docker compose --profile migrate up -d --build migration`, then open http://localhost:3211."
+
 func UnsupportedSchemaMessage(err error) string {
 	if !errors.Is(err, ErrUnsupportedSchema) {
 		return ""

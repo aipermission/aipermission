@@ -9,6 +9,41 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.49] - 2026-09-15
+
+### Changed
+
+- Database catalog creation, import, rename, and reopen now share canonical identifier
+  rules; older reserved or overlong encrypted filenames remain accessible through stable
+  recovery references.
+- Connector-profile restore attempts now hold a target/profile mutation gate and an
+  artifact-bound idempotency claim before dispatch.
+
+### Fixed
+
+- Failed Project Vault actions roll back item and relation changes while retaining a
+  separate terminal request and audit record.
+- SFTP overwrite no longer deletes the destination before a replacement is durable;
+  uncertain commits retain bounded local reconciliation evidence.
+- Postgres restore and gateway recovery preserve uncertain remote outcomes and required
+  terminal audit state instead of reporting false success or silently redispatching.
+
+### Security
+
+- Catalog recovery rejects symlinked or unrelated artifacts, and remote transfer
+  failures fail closed when the final destination state cannot be proven.
+
+### Maintenance
+
+- Regression tests cover transactional Vault failures, catalog recovery, SFTP disconnect
+  and cancellation, and restore idempotency and audit persistence.
+
+### Notes
+
+- A Postgres restore reported as outcome_unknown requires target inspection before
+  retry; an idempotency claim prevents duplicate dispatch but does not prove arbitrary
+  SQL ran in one transaction.
+
 ## [0.2.48] - 2026-09-14
 
 ### Changed
