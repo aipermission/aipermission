@@ -26,12 +26,12 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
   const lock = useCallback(
     async (scope) => {
       setLockDialog((current) => ({ ...current, state: "locking", error: null }));
-      disconnectAllConsoleSessions();
       try {
         await apiPost("/api/lock", { scope });
+        disconnectAllConsoleSessions();
         window.location.reload();
       } catch (error) {
-        setLockDialog((current) => ({ ...current, state: "error", error: error.message }));
+        setLockDialog((current) => ({ ...current, open: true, state: "error", error: error.message }));
       }
     },
     [disconnectAllConsoleSessions],
@@ -65,11 +65,11 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
       }
       setSwitchDialog((current) => ({ ...current, state: "switching", error: null }));
       try {
-        disconnectAllConsoleSessions();
         await apiPost("/api/databases/switch", {
           database_id: switchDialog.database_id,
           password: switchDialog.password,
         });
+        disconnectAllConsoleSessions();
         window.location.reload();
       } catch (error) {
         setSwitchDialog((current) => ({ ...current, state: "error", error: error.message }));
