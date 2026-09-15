@@ -275,6 +275,33 @@ test("@accessibility keeps primary unlocked pages accessible", async ({ page }) 
   }
 });
 
+for (const width of [320, 360]) {
+  test(`@accessibility keeps project tables and connector/Vault dialogs usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await page.getByRole("textbox").fill("local-password");
+    await page.getByRole("button", { name: "Unlock", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+    await page.goto("/projects");
+    const tableViewport = page.locator("main .overflow-x-auto").filter({ has: page.getByRole("table") });
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    await expect(page.getByRole("table")).toBeVisible();
+    expect(await tableViewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    await tableViewport.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    await expect(page.getByTitle("Archive project").last()).toBeInViewport();
+    await expectNoModerateAccessibilityViolations(page, "main");
+
+    await page.goto("/tokens");
+    await page.getByRole("button", { name: "Connectors" }).click();
+    await expectNoModerateAccessibilityViolations(page, "[role=dialog]");
+    await page.getByRole("dialog").getByRole("button", { name: "Close dialog" }).click();
+    await page.getByRole("button", { name: "Vault", exact: true }).click();
+    await expectNoModerateAccessibilityViolations(page, "[role=dialog]");
+  });
+}
+
 test("@high-risk updates token connector permission from the Tokens page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("textbox").fill("local-password");
