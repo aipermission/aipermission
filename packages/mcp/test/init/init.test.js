@@ -254,6 +254,23 @@ test("writeTOMLMCPConfig handles quoted headers, comments, and unrelated multili
   assert.doesNotMatch(content, /command = "old"/);
 });
 
+test("writeTOMLMCPConfig preserves array-of-table sections after the selected server", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-array-tables-"));
+  const filePath = path.join(dir, "config.toml");
+  await fs.writeFile(
+    filePath,
+    '[mcp_servers.aipermission]\ncommand = "old"\n\n[[profiles]]\nname = "first"\n\n[[profiles]]\nname = "second"\n',
+  );
+
+  await writeTOMLMCPConfig(filePath, "aipermission", { command: "npx", args: [], env: {} });
+
+  const content = await fs.readFile(filePath, "utf8");
+  const parsed = parseTOML(content);
+  assert.deepEqual(parsed.profiles, [{ name: "first" }, { name: "second" }]);
+  assert.equal(parsed.mcp_servers.aipermission.command, "npx");
+  assert.doesNotMatch(content, /command = "old"/);
+});
+
 test("writeTOMLMCPConfig rejects malformed TOML without exposing parser context", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-malformed-"));
   const filePath = path.join(dir, "config.toml");
