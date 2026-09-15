@@ -1,5 +1,5 @@
 import { ArchiveRestore, RotateCcw, Save, ShieldCheck } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Button } from "../ui/button";
@@ -16,7 +16,12 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
   const [action, setAction] = useState({ status: "idle", error: "", message: "" });
   const [formDirty, setFormDirty] = useState(false);
   const loadRequestRef = useRef(0);
+  const providerIDRef = useRef(provider.id);
   const loadForEffect = useEffectEvent(() => loadRemoteState({ syncForm: true }));
+
+  useLayoutEffect(() => {
+    providerIDRef.current = provider.id;
+  }, [provider.id]);
 
   useEffect(() => {
     setPreview(null);
@@ -35,6 +40,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
   }, [busy, onBusyChange]);
 
   function updateForm(patch) {
+    if (busy) return;
     setForm((current) => ({ ...current, ...patch }));
     setPreview(null);
     setAction({ status: "idle", error: "", message: "" });
@@ -62,24 +68,29 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
   }
 
   async function refresh() {
+    if (busy) return;
     await loadRemoteState({ syncForm: !formDirty });
   }
 
   async function requestPreview() {
-    if (keepLatest === null) return;
+    if (keepLatest === null || busy) return;
+    const requestedProviderID = provider.id;
     setAction({ status: "previewing", error: "", message: "" });
     try {
       const result = await apiPost(`/api/backup/providers/${provider.id}/retention/preview`, { keep_latest: keepLatest });
+      if (providerIDRef.current !== requestedProviderID) return;
       setPreview(result);
       setAction({ status: "idle", error: "", message: "" });
     } catch (error) {
+      if (providerIDRef.current !== requestedProviderID) return;
       setPreview(null);
       setAction({ status: "error", error: error.message, message: "" });
     }
   }
 
   async function savePolicy() {
-    if (form.enabled && (keepLatest === null || !previewMatches)) return;
+    if (busy || (form.enabled && (keepLatest === null || !previewMatches))) return;
+    const requestedProviderID = provider.id;
     setAction({ status: "saving", error: "", message: "" });
     try {
       const result = await apiPut(`/api/backup/providers/${provider.id}/retention`, {
@@ -87,9 +98,13 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
         keep_latest: form.enabled ? keepLatest : 0,
         apply_now: form.enabled && form.applyNow,
       });
+      if (providerIDRef.current !== requestedProviderID) return;
       const deletedCount = Number(result.deleted_count || 0);
       setState((current) => ({ ...current, policy: result.policy }));
       setPreview(result.preview || null);
+      await loadRemoteState({ syncForm: true });
+      if (deletedCount > 0) await onRecordsChanged?.();
+      if (providerIDRef.current !== requestedProviderID) return;
       setAction({
         status: "idle",
         error: "",
@@ -97,10 +112,8 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
           ? `Automatic retention enabled. ${deletedCount} existing backup${deletedCount === 1 ? "" : "s"} removed.`
           : "Automatic retention disabled.",
       });
-      setFormDirty(false);
-      await loadRemoteState({ syncForm: true });
-      if (deletedCount > 0) await onRecordsChanged?.();
     } catch (error) {
+      if (providerIDRef.current !== requestedProviderID) return;
       setAction({ status: "error", error: error.message, message: "" });
     }
   }
@@ -118,7 +131,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
           className="h-8 w-8 px-0"
           title="Refresh storage and retention"
           onClick={refresh}
-          disabled={state.status === "loading"}
+          disabled={state.status === "loading" || busy}
         >
           <RotateCcw className={`h-4 w-4 ${state.status === "loading" ? "animate-spin" : ""}`} />
         </Button>
@@ -134,7 +147,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
           <div className="grid gap-3 border-t border-stone-200 pt-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="grid gap-3 sm:grid-cols-[auto_minmax(120px,180px)_auto] sm:items-end">
               <label className="flex h-10 items-center gap-2 text-sm font-medium text-stone-800">
-                <Checkbox checked={form.enabled} onChange={(event) => updateForm({ enabled: event.target.checked })} />
+                <Checkbox checked={form.enabled} disabled={busy} onChange={(event) => updateForm({ enabled: event.target.checked })} />
                 Automatic retention
               </label>
               <Field>
@@ -144,14 +157,14 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
                   min="1"
                   max="1000"
                   value={form.keepLatest}
-                  disabled={!form.enabled}
+                  disabled={!form.enabled || busy}
                   onChange={(event) => updateForm({ keepLatest: event.target.value })}
                 />
               </Field>
               <label className="flex h-10 items-center gap-2 text-sm text-stone-700">
                 <Checkbox
                   checked={form.applyNow}
-                  disabled={!form.enabled}
+                  disabled={!form.enabled || busy}
                   onChange={(event) => updateForm({ applyNow: event.target.checked })}
                 />
                 Apply now
