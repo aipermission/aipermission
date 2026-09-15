@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
-import { consoleSessions } from "../../lib/security-contracts";
+import { consoleSessions } from "../../lib/gateway-contracts/security-contracts";
 import { mergeConsoleSessionData } from "../app-shell-runtime";
 import { isLiveConsoleSession, latestSessionForRuntime } from "./helpers";
 import { useConsoleConnections } from "./use-console-connections";

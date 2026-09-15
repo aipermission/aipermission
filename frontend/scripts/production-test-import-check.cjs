@@ -42,6 +42,7 @@ function dynamicNonLocalSpecifier(node) {
 }
 
 function staticModuleSpecifiers(source, filename = "source.js") {
+  if (/\.d\.(?:ts|mts|cts)$/.test(filename)) return [];
   const jsSource = /\.(?:ts|tsx|mts|cts)$/.test(filename)
     ? ts.transpileModule(source, {
         fileName: filename,

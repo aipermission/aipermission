@@ -90,7 +90,7 @@ it("discards resource lists that arrive after the connector target changes", asy
     pending.get("kubernetes:1:1")(completed("list_workloads", { workloads: [{ kind: "Deployment", namespace: "old", name: "stale" }] })),
   );
   expect(result.current.activeResources).toEqual([]);
-  await act(async () => pending.get("kubernetes:2:2")(completed("list_workloads", { workloads: [] })));
+  await act(async () => pending.get("kubernetes:2:2")(completed("list_workloads", { workloads: [] }, "kubernetes:2:2")));
   expect(result.current.activeResources).toEqual([]);
 });
 
@@ -162,8 +162,17 @@ it("restarts the workload captured by the confirmation dialog", async () => {
   expect(refreshResource).toHaveBeenCalledWith("workloads");
 });
 
-function completed(actionName, output) {
-  return { id: 1, status: "completed", action_name: actionName, output };
+function completed(actionName, output, targetRef = "kubernetes:1:1") {
+  return {
+    id: 1,
+    request_id: 1,
+    status: "completed",
+    target_ref: targetRef,
+    connector_kind: "kubernetes",
+    action_name: actionName,
+    retry_policy: { class: "read_only", guidance: "Safe to retry." },
+    output,
+  };
 }
 
 function responseFor(actionName, input) {

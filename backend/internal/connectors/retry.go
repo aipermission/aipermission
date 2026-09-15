@@ -18,6 +18,12 @@ const (
 	RetryNonIdempotent RetryClass = "non_idempotent"
 )
 
+// RetryClasses returns the closed retry contract shared by API generators and
+// connector validation.
+func RetryClasses() []RetryClass {
+	return []RetryClass{RetryReadOnly, RetryIdempotent, RetryConditional, RetryNonIdempotent}
+}
+
 const (
 	DefaultMaxActionInputBytes = 1 << 20
 	MaximumActionInputBytes    = 24 << 20

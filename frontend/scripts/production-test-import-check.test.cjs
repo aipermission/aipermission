@@ -16,6 +16,10 @@ test("tracks runtime imports through typed frontend modules", () => {
   );
 });
 
+test("ignores declaration-only modules with no runtime ownership", () => {
+  assert.deepEqual(staticModuleSpecifiers('import type { Fixture } from "./helper.test.js";', "owner.d.ts"), []);
+});
+
 const policy = {
   frontendArchitecture: { testModuleMarkers: [".test.", ".spec."] },
   sourceBudgets: [

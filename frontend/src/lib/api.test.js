@@ -112,7 +112,7 @@ test("local connector action retries retain idempotency after uncertain transpor
     bodies.push(JSON.parse(options.body));
     calls += 1;
     if (calls === 1) throw new TypeError("network disconnected");
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const first = { target_ref: "fixture:1:1", action_name: "inspect", input: { b: 2, a: 1 }, reason: "test" };
@@ -187,7 +187,7 @@ test("local connector action retries retain idempotency after server failures", 
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
     calls += 1;
-    return calls === 1 ? response({ error: "gateway failed" }, 502) : response(localActionResponse());
+    return calls === 1 ? response({ error: "gateway failed" }, 502) : response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "test" };
@@ -257,9 +257,9 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
     if (calls === 2) {
       signalSecondStarted();
       await secondGate;
-      return response(localActionResponse());
+      return response(localActionResponse(options));
     }
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:concurrent-rejection", action_name: "mutate", input: {}, reason: "test" };
@@ -312,7 +312,7 @@ test("a completed uncertain attempt keeps its retry identity after another attem
       return response({ error: "invalid request" }, 400);
     }
     if (calls === 2) throw new TypeError("network disconnected after dispatch");
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:completed-uncertain", action_name: "mutate", input: {}, reason: "test" };
@@ -530,7 +530,7 @@ test("local connector action retains idempotency when a successful body cannot b
         },
       };
     }
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:body-read", action_name: "inspect", input: {}, reason: "test" };
@@ -551,7 +551,7 @@ test("local connector action retains idempotency after malformed or incomplete s
     calls += 1;
     if (calls === 1) return rawResponse('{"status":"completed"');
     if (calls === 2) return response({ status: "completed" });
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:body-contract", action_name: "inspect", input: {}, reason: "test" };
@@ -592,7 +592,7 @@ test("local connector action requires explicit reconciliation after an unknown o
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
     calls += 1;
-    return response(calls === 1 ? localActionResponse("outcome_unknown") : localActionResponse());
+    return response(calls === 1 ? localActionResponse(options, "outcome_unknown") : localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:unknown", action_name: "mutate", input: {}, reason: "test" };
@@ -626,7 +626,7 @@ test("local connector action retry keys survive browser reload until acknowledge
     keys.push(JSON.parse(options.body).idempotency_key);
     calls += 1;
     if (calls === 1) throw new TypeError("network disconnected");
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   const body = { target_ref: "fixture:reload", action_name: "inspect", input: { secret: "not-persisted" }, reason: "test" };
   try {
@@ -663,7 +663,7 @@ test("browser retry keys are isolated by persistent workspace identity", async (
   globalThis.fetch = async (_url, options) => {
     keys.push(JSON.parse(options.body).idempotency_key);
     if (keys.length < 3) throw new TypeError("network disconnected");
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   const body = { target_ref: "fixture:1:1", action_name: "mutate", input: {}, reason: "test" };
   try {
@@ -693,9 +693,9 @@ test("local connector action fails closed when browser retry storage is unavaila
       throw new Error("denied");
     },
   };
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (_url, options) => {
     fetched = true;
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const browserModule = await import("./api.js?retry-storage-denied");
@@ -723,9 +723,9 @@ test("browser connector mutations fail closed when IndexedDB is absent", async (
   };
   globalThis.document = { cookie: "aipermission_workspace_3210=workspace-no-indexeddb" };
   delete globalThis.indexedDB;
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (_url, options) => {
     fetched = true;
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     await assert.rejects(
@@ -751,7 +751,7 @@ test("a carried browser retry key survives pre-handler authorization errors", as
     calls += 1;
     if (calls === 1) throw new TypeError("response lost");
     if (calls === 2) return response({ error: "ui session required" }, 401);
-    return response(localActionResponse());
+    return response(localActionResponse(options));
   };
   try {
     const body = { target_ref: "fixture:auth-retry", action_name: "mutate", input: {}, reason: "test" };
@@ -770,9 +770,9 @@ test("stale browser reconciliation cannot delete a newer retry identity", async 
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-stale-reconcile");
   let calls = 0;
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (_url, options) => {
     calls += 1;
-    if (calls === 1) return response(localActionResponse("outcome_unknown"));
+    if (calls === 1) return response(localActionResponse(options, "outcome_unknown"));
     throw new TypeError("response lost");
   };
   try {
@@ -806,7 +806,7 @@ test("missing browser signing key with unresolved entries fails closed", async (
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /retry storage is unavailable/i);
     assert.equal(calls, 1);
     await resetLocalActionRetryLedger();
-    globalThis.fetch = async () => response(localActionResponse());
+    globalThis.fetch = async (_url, options) => response(localActionResponse(options));
     await apiPost("/api/connector-actions/local-run", body);
   } finally {
     globalThis.fetch = originalFetch;
@@ -951,8 +951,16 @@ function installFakeBrowserRetryStorage(workspaceID) {
   };
 }
 
-function localActionResponse(status = "completed") {
-  return { request_id: 41, status };
+function localActionResponse(options, status = "completed") {
+  const body = JSON.parse(options.body);
+  return {
+    request_id: 41,
+    status,
+    target_ref: body.target_ref,
+    connector_kind: "fixture",
+    action_name: body.action_name,
+    retry_policy: { class: "non_idempotent", guidance: "Inspect state before retrying." },
+  };
 }
 
 function restoreWindow(value) {

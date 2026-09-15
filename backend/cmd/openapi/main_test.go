@@ -29,3 +29,36 @@ func TestGenerateContractRejectsInvalidRoutes(t *testing.T) {
 		t.Fatalf("invalid route error = %v", err)
 	}
 }
+
+func TestGenerateFrontendContractUsesCanonicalEnums(t *testing.T) {
+	output := string(generateFrontendContract())
+	for _, expected := range []string{`"approval_pending"`, `"outcome_unknown"`, `"non_idempotent"`, `"target_ref"`, "DO NOT EDIT"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("generated frontend contract does not contain %s", expected)
+		}
+	}
+	declaration := string(generateFrontendContractDeclaration())
+	for _, expected := range []string{`readonly [`, `"completed"`, `"non_idempotent"`, `"target_ref"`} {
+		if !strings.Contains(declaration, expected) {
+			t.Fatalf("generated frontend declaration does not contain %s", expected)
+		}
+	}
+}
+
+func TestCommittedFrontendContractIsCurrent(t *testing.T) {
+	contractPath := filepath.Join("..", "..", "..", "frontend", "src", "lib", "gateway-contracts", "generated-connector-contract.js")
+	declarationPath := frontendDeclarationPath(contractPath)
+	assertGeneratedFile(t, contractPath, generateFrontendContract())
+	assertGeneratedFile(t, declarationPath, generateFrontendContractDeclaration())
+}
+
+func assertGeneratedFile(t *testing.T, path string, expected []byte) {
+	t.Helper()
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(actual) != string(expected) {
+		t.Fatalf("%s is stale; run make rest-contract", path)
+	}
+}

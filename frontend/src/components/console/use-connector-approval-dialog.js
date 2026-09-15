@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { connectorApproval } from "../../lib/gateway-contracts/security-contracts";
 
 const idleAction = { state: "idle", error: null };
 
@@ -11,6 +12,8 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
   const [note, setNote] = useState("");
   const [action, setAction] = useState(idleAction);
   const requests = useRequestGuard(`console-approval:${selectedTargetRef || "none"}`);
+  const selectedTargetRefRef = useRef(selectedTargetRef);
+  selectedTargetRefRef.current = selectedTargetRef;
 
   const pendingApprovals = useMemo(() => (approvals || []).filter((approval) => approval.status === "approval_pending"), [approvals]);
   const selectedPendingApprovals = useMemo(
@@ -36,7 +39,11 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       setNote("");
       setAction({ state: "loading", error: null });
       try {
-        const exact = await apiGet(`/api/connector-action-approvals/${approval.id}`, { signal: request.signal });
+        const exact = connectorApproval(await apiGet(`/api/connector-action-approvals/${approval.id}`, { signal: request.signal }), {
+          id: approval.id,
+          targetRef: selectedTargetRefRef.current,
+          actionName: approval.action_name,
+        });
         if (!request.isCurrent()) return;
         setSnapshot(exact);
         setAction(
@@ -46,6 +53,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
         );
       } catch (error) {
         if (!request.isCurrent()) return;
+        setSnapshot(null);
         setAction({ state: "load_error", error: error.message });
       } finally {
         request.complete();

@@ -14,7 +14,21 @@ function deferred() {
 }
 
 function approval(id, targetRef = "ssh:1:1") {
-  return { id, target_ref: targetRef, status: "approval_pending", preview: {}, input: {} };
+  return {
+    id,
+    target_id: 1,
+    target_name: "fixture",
+    target_ref: targetRef,
+    profile_id: 1,
+    profile_label: "default",
+    connector_kind: "ssh",
+    action_name: "exec",
+    status: "approval_pending",
+    retry_policy: { class: "non_idempotent", guidance: "Inspect before retrying." },
+    created_at: "2026-09-16T00:00:00Z",
+    preview: {},
+    input: {},
+  };
 }
 
 function renderDialog(options = {}) {
@@ -52,6 +66,19 @@ describe("useConnectorApprovalDialog", () => {
 
     expect(result.current.activeApproval).toBeNull();
     expect(result.current.action.state).toBe("idle");
+  });
+
+  it("rejects approval details that do not match the selected target and action", async () => {
+    apiGet.mockResolvedValue({ ...approval(7, "ssh:2:2"), action_name: "upload" });
+    const runApproval = vi.fn();
+    const { result } = renderDialog({ approvals: [approval(7)], runApproval });
+
+    await act(async () => {});
+    await act(async () => result.current.approve());
+
+    expect(result.current.activeApproval).toBeNull();
+    expect(result.current.action).toMatchObject({ state: "load_error", error: expect.stringContaining("Invalid connector approval") });
+    expect(runApproval).not.toHaveBeenCalled();
   });
 
   it("does not apply a mutation completion after the selected target changes", async () => {

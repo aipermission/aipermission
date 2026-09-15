@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/restcontract"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -59,6 +60,9 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
 		t.Fatalf("list connector approvals failed: %d %s", listResponse.Code, listResponse.Body.String())
 	}
+	if err := restcontract.ValidateTypedResponse(http.MethodGet, "/api/connector-action-approvals", listResponse.Code, listResponse.Body.Bytes()); err != nil {
+		t.Fatalf("populated connector approval list violates its REST contract: %v", err)
+	}
 	targetRef := connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID)
 	activeResponse := performJSON(fixture.server.Handler(), http.MethodGet, "/api/connector-action-approvals?target_ref="+targetRef+"&action_name=query_readonly&active=true", "", nil)
 	if activeResponse.Code != http.StatusOK || !strings.Contains(activeResponse.Body.String(), strconv.FormatInt(result.Request.ID, 10)) {
@@ -71,6 +75,9 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	detailResponse := performJSON(fixture.server.Handler(), http.MethodGet, approvalPath, "", nil)
 	if detailResponse.Code != http.StatusOK || !strings.Contains(detailResponse.Body.String(), "select 1") {
 		t.Fatalf("approval detail must expose exact pending preview: %d %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	if err := restcontract.ValidateTypedResponse(http.MethodGet, "/api/connector-action-approvals/{id}", detailResponse.Code, detailResponse.Body.Bytes()); err != nil {
+		t.Fatalf("populated connector approval detail violates its REST contract: %v", err)
 	}
 	var encryptedPayload string
 	if err := fixture.db.QueryRow(`SELECT encrypted_payload_json FROM connector_action_requests WHERE id = ?`, result.Request.ID).Scan(&encryptedPayload); err != nil {

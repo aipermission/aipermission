@@ -7,7 +7,7 @@ import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { useRequestGuard } from "../../lib/request-guard";
-import { tokenActionPermissions } from "../../lib/security-contracts";
+import { tokenActionPermissions } from "../../lib/gateway-contracts/security-contracts";
 
 const emptyLoad = {
   state: "idle",

@@ -21,6 +21,25 @@ test("keeps import edges when typed security contracts are analyzed", () => {
   );
   assert.deepEqual(moduleSpecifiers(parsed), ["./security-contracts"]);
 });
+
+test("excludes declaration-only files from the runtime architecture graph", () => {
+  const root = mkdtempSync(join(tmpdir(), "aipermission-architecture-declarations-"));
+  try {
+    mkdirSync(join(root, "lib"), { recursive: true });
+    mkdirSync(join(root, "connectors", "templates"), { recursive: true });
+    writeFileSync(join(root, "lib", "runtime.js"), "export const runtime = true;\n");
+    writeFileSync(join(root, "lib", "runtime.d.ts"), 'import type { Fixture } from "../test/helper.test.js";\n');
+
+    const result = analyzeSourceTree(root);
+    assert.deepEqual(result.failures, []);
+    assert.equal(
+      result.files.some((file) => file.endsWith("runtime.d.ts")),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 import { productionSourceBoundary, productionSourceViolation } from "./production-source-boundary.mjs";
 
 test("collects static imports, re-exports, and literal dynamic imports from the AST", () => {

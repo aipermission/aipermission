@@ -204,16 +204,11 @@
               "canceled",
               "running",
               "approval_pending",
-              "pending_approval",
               "blocked",
               "stale",
               "declined",
-              "expired",
               "error",
-              "outcome_unknown",
-              "pending",
-              "paused",
-              "untracked"
+              "outcome_unknown"
             ],
             "type": "string"
           },
@@ -350,16 +345,11 @@
               "canceled",
               "running",
               "approval_pending",
-              "pending_approval",
               "blocked",
               "stale",
               "declined",
-              "expired",
               "error",
-              "outcome_unknown",
-              "pending",
-              "paused",
-              "untracked"
+              "outcome_unknown"
             ],
             "type": "string"
           },
@@ -592,16 +582,11 @@
               "canceled",
               "running",
               "approval_pending",
-              "pending_approval",
               "blocked",
               "stale",
               "declined",
-              "expired",
               "error",
-              "outcome_unknown",
-              "pending",
-              "paused",
-              "untracked"
+              "outcome_unknown"
             ],
             "type": "string"
           },
