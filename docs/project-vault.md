@@ -165,6 +165,15 @@ is strictly normalized to the selected action schema before persistence;
 `item_id`, `source_project_id`, and optional `replace_existing`. Undeclared
 fields are rejected rather than echoed into the approval lifecycle.
 
+Before persistence, active custom redaction rules are applied to the public
+request input, reason, approval projection, History, Audit, and MCP projection.
+The exact normalized input and reason required for execution are stored in a
+record-bound encrypted envelope and are never used as a public display value.
+This preserves exact idempotency and execution semantics even when two inputs
+redact to the same text. A failed envelope write rolls back request creation;
+older unsealed pending requests are made stale during migration rather than
+executed from incomplete metadata.
+
 Local reveal and generated-preview endpoints are separately rate limited to
 eight and ten requests per minute. Generated previews are encrypted,
 single-current-preview tokens that expire after five minutes; the local dialog

@@ -1585,6 +1585,12 @@ through the same context-drift, history, audit, and redaction path. List,
 request, history, and audit payloads contain metadata only; secret values are
 never returned through MCP.
 
+Public Vault request metadata is processed by the active custom-redaction
+policy before it reaches request rows, History, Audit, approval projections, or
+MCP responses. Exact normalized execution metadata is kept separately in a
+record-bound encrypted envelope. It is decrypted only inside the authorized
+execution path and is not a fallback display source.
+
 Vault action input is decoded against an action-specific strict schema before
 request persistence. Unknown keys are rejected, so an accidental raw `value`,
 `token`, or other undeclared field is not written to the request/history

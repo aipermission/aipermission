@@ -98,6 +98,10 @@ Local input-validation failures do not imply that execution occurred.
 Malformed or incomplete JSON responses are not treated as success. Invalid
 local headers are rejected before dispatch without echoing the API token;
 transport errors never echo raw response fragments or header values.
+Connector-action capacity errors retain HTTP `429`, the gateway error code,
+and `Retry-After`. Respect that delay; immediate retry loops cannot bypass the
+gateway's per-workspace/token rate, persisted-running concurrency, input, or
+atomic projected-storage limits.
 
 - `list_connector_targets`
 - `get_connector_help`
