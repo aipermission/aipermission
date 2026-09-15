@@ -82,6 +82,7 @@ func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
 	if err != nil {
 		return nil, err
 	}
+	cteSyntaxParens := postgreSQLCTESyntaxParens(normalized)
 	calls := make([]FunctionCall, 0)
 	for offset := 0; offset < len(normalized); {
 		if !postgresIdentifierStart(normalized[offset]) || (offset > 0 && postgresIdentifierContinue(normalized[offset-1])) {
@@ -105,6 +106,14 @@ func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
 			offset = end
 			continue
 		}
+		if schema == "" && strings.EqualFold(name, "explain") && strings.TrimSpace(normalized[:offset]) == "" {
+			offset = cursor + 1
+			continue
+		}
+		if isPostgreSQLDeclarationList(normalized, offset, cursor, schema, cteSyntaxParens) {
+			offset = cursor + 1
+			continue
+		}
 		if schema == "" && isFunctionSyntaxKeyword(name) {
 			offset = end
 			continue
@@ -114,6 +123,200 @@ func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
 		offset = cursor + 1
 	}
 	return calls, nil
+}
+
+func isPostgreSQLDeclarationList(sql string, identifierStart int, openParen int, schema string, cteSyntaxParens map[int]struct{}) bool {
+	if schema != "" {
+		return false
+	}
+	previous, _ := previousSQLIdentifierAt(sql, identifierStart)
+	if previous == "as" {
+		// A named record-function alias owns its following column definition
+		// list. The function itself was encountered before this alias.
+		return true
+	}
+	if _, ok := cteSyntaxParens[openParen]; ok {
+		return true
+	}
+	return isPostgreSQLDerivedTableColumnList(sql, identifierStart, openParen)
+}
+
+func postgreSQLCTESyntaxParens(sql string) map[int]struct{} {
+	parens := make(map[int]struct{})
+	for offset := 0; offset < len(sql); {
+		if !postgresIdentifierStart(sql[offset]) || (offset > 0 && postgresIdentifierContinue(sql[offset-1])) {
+			offset++
+			continue
+		}
+		word, end := postgresIdentifierAt(sql, offset)
+		if strings.EqualFold(word, "with") {
+			collectPostgreSQLCTESyntaxParens(sql, end, parens)
+		}
+		offset = end
+	}
+	return parens
+}
+
+func collectPostgreSQLCTESyntaxParens(sql string, cursor int, parens map[int]struct{}) {
+	cursor = skipSQLSpace(sql, cursor)
+	word, end := sqlIdentifierAtCursor(sql, cursor)
+	if word == "recursive" {
+		cursor = skipSQLSpace(sql, end)
+	}
+	for {
+		_, end = sqlIdentifierAtCursor(sql, cursor)
+		if end == cursor {
+			return
+		}
+		cursor = skipSQLSpace(sql, end)
+		columnListParen := -1
+		if cursor < len(sql) && sql[cursor] == '(' {
+			closeParen, ok := matchingSQLParen(sql, cursor)
+			if !ok {
+				return
+			}
+			columnListParen = cursor
+			cursor = skipSQLSpace(sql, closeParen+1)
+		}
+		word, end = sqlIdentifierAtCursor(sql, cursor)
+		if word != "as" {
+			return
+		}
+		cursor = skipSQLSpace(sql, end)
+		word, end = sqlIdentifierAtCursor(sql, cursor)
+		if word == "not" {
+			cursor = skipSQLSpace(sql, end)
+			word, end = sqlIdentifierAtCursor(sql, cursor)
+			if word != "materialized" {
+				return
+			}
+			cursor = skipSQLSpace(sql, end)
+		} else if word == "materialized" {
+			cursor = skipSQLSpace(sql, end)
+		}
+		if cursor >= len(sql) || sql[cursor] != '(' {
+			return
+		}
+		closeParen, ok := matchingSQLParen(sql, cursor)
+		if !ok {
+			return
+		}
+		if columnListParen >= 0 {
+			parens[columnListParen] = struct{}{}
+		}
+		parens[cursor] = struct{}{}
+		cursor = skipSQLSpace(sql, closeParen+1)
+		if cursor >= len(sql) || sql[cursor] != ',' {
+			return
+		}
+		cursor = skipSQLSpace(sql, cursor+1)
+	}
+}
+
+func isPostgreSQLDerivedTableColumnList(sql string, identifierStart int, openParen int) bool {
+	closeParen, ok := matchingSQLParen(sql, openParen)
+	if !ok || closeParen == openParen+1 {
+		return false
+	}
+	prefixEnd := identifierStart
+	previous, previousStart := previousSQLIdentifierAt(sql, identifierStart)
+	if previous == "as" {
+		prefixEnd = previousStart
+	}
+	previousClose := previousSQLNonSpace(sql, prefixEnd)
+	if previousClose < 0 || sql[previousClose] != ')' {
+		return false
+	}
+	previousOpen, ok := matchingSQLParenBackward(sql, previousClose)
+	if !ok {
+		return false
+	}
+	word, _ := sqlIdentifierAtCursor(sql, skipSQLSpace(sql, previousOpen+1))
+	switch word {
+	case "select", "table", "values", "with":
+		return true
+	default:
+		return false
+	}
+}
+
+func previousSQLNonSpace(sql string, before int) int {
+	for before > 0 {
+		before--
+		if !sqlSpace(sql[before]) {
+			return before
+		}
+	}
+	return -1
+}
+
+func matchingSQLParenBackward(sql string, close int) (int, bool) {
+	depth := 0
+	for index := close; index >= 0; index-- {
+		switch sql[index] {
+		case ')':
+			depth++
+		case '(':
+			depth--
+			if depth == 0 {
+				return index, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func previousSQLIdentifier(sql string, before int) string {
+	identifier, _ := previousSQLIdentifierAt(sql, before)
+	return identifier
+}
+
+func previousSQLIdentifierAt(sql string, before int) (string, int) {
+	end := before
+	for end > 0 && sqlSpace(sql[end-1]) {
+		end--
+	}
+	start := end
+	for start > 0 && postgresIdentifierContinue(sql[start-1]) {
+		start--
+	}
+	if start == end {
+		return "", start
+	}
+	return strings.ToLower(sql[start:end]), start
+}
+
+func matchingSQLParen(sql string, open int) (int, bool) {
+	depth := 0
+	for index := open; index < len(sql); index++ {
+		switch sql[index] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return index, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func sqlIdentifierAtCursor(sql string, cursor int) (string, int) {
+	if cursor >= len(sql) || !postgresIdentifierStart(sql[cursor]) {
+		return "", cursor
+	}
+	identifier, end := postgresIdentifierAt(sql, cursor)
+	return strings.ToLower(identifier), end
+}
+
+func sqlSpace(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\r', '\n', '\f':
+		return true
+	default:
+		return false
+	}
 }
 
 func postgresIdentifierAt(sql string, start int) (string, int) {

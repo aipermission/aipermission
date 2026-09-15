@@ -103,6 +103,93 @@ func TestPostgreSQLFunctionCallsIgnoreValuesCommentsAndGrouping(t *testing.T) {
 	}
 }
 
+func TestPostgreSQLFunctionCallsIgnoreDeclarationColumnLists(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`
+		WITH first_cte(identifier) AS (SELECT lower(name) FROM users),
+			 second_cte(value) AS NOT MATERIALIZED (SELECT value FROM first_cte)
+		SELECT rows.identifier
+		FROM (VALUES (1)) AS rows(identifier)
+	`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "lower"}}
+	if len(calls) != len(want) || calls[0] != want[0] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsIgnoreDerivedTableColumnListsWithoutAs(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`SELECT row_data.id FROM (VALUES (1)) row_data(id)`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("calls = %#v, want none", calls)
+	}
+}
+
+func TestPostgreSQLFunctionCallsDoNotMistakeRecordFunctionsForCTEs(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`
+		SELECT * FROM json_to_record('{"a":1}') AS (a int),
+		             dblink('connection', 'SELECT 1') AS remote(value int)
+	`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "json_to_record"}, {Name: "dblink"}}
+	if len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsDoNotHideRecordFunctionsWithCTEKeywordColumns(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`
+		SELECT * FROM json_to_record('{"values":"probe"}')
+		AS (values public.review_domain)
+	`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "json_to_record"}}
+	if len(calls) != len(want) || calls[0] != want[0] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsIgnoreExplainOptions(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`EXPLAIN (FORMAT JSON, COSTS OFF) SELECT count(*) FROM users`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "count"}}
+	if len(calls) != len(want) || calls[0] != want[0] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsDoNotGloballyIgnoreExplain(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`SELECT explain(), public.explain()`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "explain"}, {Schema: "public", Name: "explain"}}
+	if len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestPostgreSQLFunctionCallsDoNotGloballyIgnoreMaterialized(t *testing.T) {
+	calls, err := PostgreSQLFunctionCalls(`SELECT materialized(), public.materialized()`)
+	if err != nil {
+		t.Fatalf("function calls: %v", err)
+	}
+	want := []FunctionCall{{Name: "materialized"}, {Schema: "public", Name: "materialized"}}
+	if len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
 func TestPostgreSQLFunctionCallsExposeQuotedIdentifiers(t *testing.T) {
 	calls, err := PostgreSQLFunctionCalls(`SELECT public."side effect"(), "other"()`)
 	if err != nil {

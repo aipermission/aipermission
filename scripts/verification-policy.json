@@ -363,6 +363,10 @@
       "package": "./internal/connectors/sqlsafe",
       "name": "FuzzValidateReadOnly"
     },
+    {
+      "package": "./internal/connectors/sqlsafe",
+      "name": "FuzzPostgreSQLRecordFunctionExtraction"
+    },
     { "package": "./internal/connectors/redis", "name": "FuzzReadRESPValue" },
     { "package": "./internal/backups", "name": "FuzzValidateServiceMetadata" },
     { "package": "./internal/connectors", "name": "FuzzNormalizeSchemaValues" },

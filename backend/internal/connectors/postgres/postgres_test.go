@@ -270,6 +270,9 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		"execute prepared_query",
 		"select pg_notify('events', 'changed')",
 		"select count(pg_notify('events', 'changed'))",
+		"with active_users(id) as (select pg_notify('events', 'changed')) select id from active_users",
+		"select row_data.id from (select pg_notify('events', 'changed')) as row_data(id)",
+		"explain (format json, costs off) select pg_notify('events', 'changed')",
 		"select lower(pg_read_file('/etc/passwd'))",
 		"select a\u0301()",
 		"select dblink_exec('dbname=other', 'delete from users')",
@@ -278,6 +281,7 @@ func TestPrepareReadonlyQueryRejectsUnsafeSQL(t *testing.T) {
 		"select public.select()",
 		"select audit.where()",
 		`select "pg_notify"('events', 'changed')`,
+		`select * from json_to_record('{"values":"probe"}') as (values public.review_domain)`,
 	} {
 		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},
@@ -295,6 +299,10 @@ func TestPrepareReadonlyQueryAcceptsApprovedPostgresFunctions(t *testing.T) {
 		"select count(*), max(created_at) from users",
 		"select pg_catalog.lower(email) from users",
 		"select jsonb_build_object('id', id) from users",
+		"with active_users(id) as (select id from users) select id from active_users",
+		"explain (format json, costs off) select id from users",
+		"select row_data.id from (values (1)) as row_data(id)",
+		"select row_data.id from (values (1)) row_data(id)",
 	} {
 		_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 			Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},

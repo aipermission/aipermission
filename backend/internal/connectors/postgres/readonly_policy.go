@@ -46,12 +46,20 @@ func protectReadonlyFunctionResolution(ctx context.Context, tx pgx.Tx) error {
 		SELECT EXISTS (
 			SELECT 1
 			FROM pg_catalog.pg_cast AS cast_rule
-			JOIN pg_catalog.pg_proc AS cast_function ON cast_function.oid = cast_rule.castfunc
 			WHERE cast_rule.castcontext = 'i'
-				AND cast_rule.castfunc >= 16384
-				AND pg_catalog.has_function_privilege(current_user, cast_rule.castfunc, 'EXECUTE')
 				AND pg_catalog.has_type_privilege(current_user, cast_rule.castsource, 'USAGE')
 				AND pg_catalog.has_type_privilege(current_user, cast_rule.casttarget, 'USAGE')
+				AND (
+					(
+						cast_rule.castmethod = 'f'
+						AND cast_rule.castfunc >= 16384
+						AND pg_catalog.has_function_privilege(current_user, cast_rule.castfunc, 'EXECUTE')
+					)
+					OR (
+						cast_rule.castmethod = 'i'
+						AND (cast_rule.castsource >= 16384 OR cast_rule.casttarget >= 16384)
+					)
+				)
 		)`).Scan(&exposesCustomImplicitCast); err != nil {
 		return fmt.Errorf("inspect postgres implicit cast policy: %w", err)
 	}
