@@ -614,7 +614,7 @@ function scanTOMLHeader(line, state) {
     return null;
   }
   const trimmed = line.trimStart();
-  if (trimmed.startsWith("[") && !trimmed.startsWith("[[")) {
+  if (trimmed.startsWith("[")) {
     try {
       return findMarkerPath(parseTOML(`${line}\n__aipermission_header_marker = true\n`));
     } catch {
