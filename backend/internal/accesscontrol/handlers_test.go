@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
@@ -22,7 +24,7 @@ const (
 	testActionName    = "inspect"
 )
 
-type accessTestConnector struct{}
+type accessTestConnector struct{ actionCount int }
 
 func (accessTestConnector) Kind() string                    { return testConnectorKind }
 func (accessTestConnector) Label() string                   { return "Access test" }
@@ -34,10 +36,15 @@ func (accessTestConnector) CredentialSchemas() []connectors.CredentialSchema {
 func (accessTestConnector) GetHelp(context.Context, connectors.TargetView) (connectors.ConnectorHelp, error) {
 	return connectors.ConnectorHelp{Connector: testConnectorKind, ConnectorID: testConnectorKind}, nil
 }
-func (accessTestConnector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
-	return []connectors.ActionDefinition{{
-		Name: testActionName, Label: "Inspect", Description: "Inspect test state.", Risk: connectors.RiskRead,
-	}}, nil
+func (c accessTestConnector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
+	if c.actionCount < 2 {
+		return []connectors.ActionDefinition{{Name: testActionName, Label: "Inspect", Description: "Inspect test state.", Risk: connectors.RiskRead}}, nil
+	}
+	actions := make([]connectors.ActionDefinition, 0, c.actionCount)
+	for index := range c.actionCount {
+		actions = append(actions, connectors.ActionDefinition{Name: fmt.Sprintf("inspect_%02d", index), Label: "Inspect", Description: "Inspect test state.", Risk: connectors.RiskRead})
+	}
+	return actions, nil
 }
 func (accessTestConnector) PrepareAction(context.Context, connectors.ActionRequest) (connectors.PreparedAction, error) {
 	return connectors.PreparedAction{ConnectorKind: testConnectorKind, ActionName: testActionName}, nil
@@ -57,6 +64,10 @@ type handlerFixture struct {
 }
 
 func newHandlerFixture(t *testing.T) *handlerFixture {
+	return newHandlerFixtureWithOptions(t, 1, false)
+}
+
+func newHandlerFixtureWithOptions(t *testing.T, actionCount int, realAudit bool) *handlerFixture {
 	t.Helper()
 	database := openTestDatabase(t)
 	project, err := projects.NewStore(database).Create(t.Context(), "Access project")
@@ -81,8 +92,15 @@ func newHandlerFixture(t *testing.T) *handlerFixture {
 		t.Fatal(err)
 	}
 	registry := connectors.NewRegistry()
-	if err := registry.Register(accessTestConnector{}); err != nil {
+	if err := registry.Register(accessTestConnector{actionCount: actionCount}); err != nil {
 		t.Fatal(err)
+	}
+	runner := auditRunner(database, nil)
+	if realAudit {
+		coordinator := observability.NewCoordinator(database, nil, nil, nil)
+		runner = func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
+			return coordinator.WithMutation(ctx, "user", &token.ID, 0, action, payload, mutate)
+		}
 	}
 	fixture := &handlerFixture{
 		database: database, tokenID: token.ID, projectID: project.ID,
@@ -92,7 +110,7 @@ func newHandlerFixture(t *testing.T) *handlerFixture {
 		return Scope{
 			Database: database, Tokens: tokens.NewStore(database), Registry: registry,
 			ReusableTokens:   func(context.Context) (bool, error) { return false, nil },
-			Mutate:           auditRunner(database, nil),
+			Mutate:           runner,
 			AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil },
 			FinishTokenInvalidation: func(context.Context, int64, []int64) {
 				fixture.invalidations++
@@ -215,6 +233,75 @@ func TestAuthorizationHTTPHandlersRejectInvalidInputsBeforeMutation(t *testing.T
 	}
 	if fixture.invalidations != 0 || countRows(t, fixture.database, "audit_logs") != 0 {
 		t.Fatalf("invalid request mutated state: invalidations=%d", fixture.invalidations)
+	}
+}
+
+func TestLargeConnectorPermissionUpdateFitsRealAuditOutbox(t *testing.T) {
+	const actionCount, targetCount = 16, 12
+	fixture := newHandlerFixtureWithOptions(t, actionCount, true)
+	store := connectortargets.NewStore(fixture.database)
+	pairs := [][2]int64{{fixture.targetID, fixture.profileID}}
+	for index := 1; index < targetCount; index++ {
+		target, err := store.CreateTarget(t.Context(), connectortargets.CreateTargetInput{
+			ProjectID: fixture.projectID, ConnectorKind: testConnectorKind, Name: fmt.Sprintf("review-target-%02d", index),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		profile, err := store.CreateCredentialProfile(t.Context(), connectortargets.CreateCredentialProfileInput{
+			TargetID: target.ID, ConnectorKind: testConnectorKind, Kind: "operator", Label: "operator",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pairs = append(pairs, [2]int64{target.ID, profile.ID})
+	}
+	inputs := make([]ConnectorPermissionInput, 0, targetCount*actionCount)
+	for _, pair := range pairs {
+		for index := range actionCount {
+			inputs = append(inputs, ConnectorPermissionInput{
+				TargetID: pair[0], ProfileID: pair[1], ActionName: fmt.Sprintf("inspect_%02d", index),
+				ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+			})
+		}
+	}
+	path := "/tokens/" + strconv.FormatInt(fixture.tokenID, 10) + "/connector-permissions"
+	response := performAccessRequest(t, fixture.mux, http.MethodPut, path, UpdateConnectorPermissionsRequest{
+		ExpectedRevision: responseRevision(t, fixture.mux, path), Permissions: inputs,
+	})
+	assertChangedResponse(t, response, true)
+	if got := countRows(t, fixture.database, "token_connector_action_permissions"); got != len(inputs) {
+		t.Fatalf("persisted permissions = %d, want %d", got, len(inputs))
+	}
+	var payload string
+	if err := fixture.database.QueryRow(`SELECT payload_json FROM audit_outbox WHERE action = 'token.connector_permissions.updated'`).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	var audit map[string]any
+	if err := json.Unmarshal([]byte(payload), &audit); err != nil {
+		t.Fatal(err)
+	}
+	if audit["permission_count"] != float64(len(inputs)) || audit["previous_count"] != float64(0) || audit["revision"] == audit["previous_revision"] ||
+		audit["permissions_truncated"] != false || len(audit["permissions"].([]any)) != len(inputs) {
+		t.Fatalf("unexpected audit summary: %s", payload)
+	}
+}
+
+func TestPermissionAuditRowsBoundLargeMetadata(t *testing.T) {
+	permissions := make([]connectortargets.ActionPermission, 500)
+	for index := range permissions {
+		permissions[index] = connectortargets.ActionPermission{
+			TargetID: int64(index + 1), ProfileID: 1, ActionName: "inspect_" + strings.Repeat("x", 200),
+			ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+		}
+	}
+	rows, truncated := boundedPermissionAuditRows(permissions)
+	if !truncated || len(rows) == len(permissions) {
+		t.Fatalf("large permission metadata was not bounded: rows=%d truncated=%t", len(rows), truncated)
+	}
+	encoded, err := json.Marshal(rows)
+	if err != nil || len(encoded) > 32*1024+2 {
+		t.Fatalf("bounded audit rows: bytes=%d err=%v", len(encoded), err)
 	}
 }
 
