@@ -162,6 +162,9 @@ jobs:
       - name: Duplication budget
         working-directory: frontend
         run: npm run test:duplication
+      - name: Backend and MCP duplication budget
+        working-directory: frontend
+        run: npm run test:duplication:shared
       - name: Test
         working-directory: frontend
         run: npm test
