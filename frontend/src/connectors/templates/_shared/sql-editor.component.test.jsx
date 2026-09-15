@@ -94,3 +94,31 @@ it("shows a bounded error when the editor chunk cannot load", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("editor chunk unavailable");
 });
+
+it("uses the latest controlled text and disabled state after a deferred editor load", async () => {
+  let resolveMonaco;
+  loadSQLMonaco.mockReturnValueOnce(new Promise((resolve) => (resolveMonaco = resolve)));
+  const props = { onChange: vi.fn(), onSubmit: vi.fn(), focusSignal: 0, tables: [], keywords: [] };
+  const { rerender } = render(<SQLEditor {...props} value="SELECT old" theme="dark" disabled={false} />);
+  rerender(<SQLEditor {...props} value="SELECT new" theme="light" disabled={true} />);
+
+  resolveMonaco(monaco);
+  await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
+  expect(monaco.editor.create.mock.calls[0][1]).toMatchObject({
+    value: "SELECT new",
+    theme: "test-theme",
+    readOnly: true,
+    domReadOnly: true,
+  });
+  expect(applySQLEditorTheme).toHaveBeenCalledWith(monaco, "light");
+});
+
+it("updates the loaded editor when controlled SQL and focus change", async () => {
+  const props = { onChange: vi.fn(), onSubmit: vi.fn(), tables: [], keywords: [], theme: "dark", disabled: false };
+  const { rerender } = render(<SQLEditor {...props} value="SELECT old" focusSignal={0} />);
+  await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
+
+  rerender(<SQLEditor {...props} value="SELECT new" focusSignal={1} />);
+  expect(editor.setValue).toHaveBeenCalledWith("SELECT new");
+  await waitFor(() => expect(editor.focus).toHaveBeenCalled());
+});
