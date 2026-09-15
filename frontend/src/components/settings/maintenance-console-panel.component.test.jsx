@@ -74,6 +74,26 @@ describe("MaintenanceConsolePanel", () => {
     expect(socket.send).toHaveBeenNthCalledWith(3, JSON.stringify({ type: "resize", cols: 100, rows: 40 }));
   });
 
+  it("renders snapshots, output, errors, and exits from the live socket", async () => {
+    const user = userEvent.setup();
+    render(<MaintenanceConsolePanel />);
+    await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const socket = FakeWebSocket.instances[0];
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onmessage?.({ data: JSON.stringify({ type: "snapshot", data: "welcome", shell: "/bin/bash" }) });
+    expect(await screen.findByText("terminal:connected")).toBeVisible();
+    expect(screen.getByText("/bin/bash")).toBeVisible();
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "output", data: "\nready" }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "error", data: "shell failed" }) });
+    expect(await screen.findByText("terminal:error")).toBeVisible();
+    expect(screen.getByText("shell failed")).toBeVisible();
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "exit", status: "closed" }) });
+    expect(await screen.findByText("terminal:closed")).toBeVisible();
+  });
+
   it("shows unexpected disconnects and preserves input until the replacement socket is ready", async () => {
     const user = userEvent.setup();
     render(<MaintenanceConsolePanel />);

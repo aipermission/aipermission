@@ -199,6 +199,9 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Initial JavaScript budget
+        working-directory: frontend
+        run: npm run test:bundle:initial
       - name: Production dependency audit
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=moderate
