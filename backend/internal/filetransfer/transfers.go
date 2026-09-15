@@ -111,56 +111,13 @@ func (s *Store) createdTransfer(ctx context.Context, id int64) (Record, error) {
 }
 
 func (s *Store) Get(ctx context.Context, id int64) (Record, error) {
-	var item Record
-	row := s.db.QueryRowContext(ctx, `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
-			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
-			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
-			COALESCE(ft.completed_at, ''), ft.updated_at
-		FROM file_transfers ft
-		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
-		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind
-		WHERE ft.id = ?`,
-		id,
-	)
-	var failureDetails failureDetailsValue
-	err := row.Scan(
-		&item.ID,
-		&item.BatchID,
-		&item.QueueIndex,
-		&item.RuntimeID,
-		&item.TargetName,
-		&item.Direction,
-		&item.Source,
-		&item.Status,
-		&item.LocalPath,
-		&item.RemotePath,
-		&item.FileName,
-		&item.SizeBytes,
-		&item.TransferredBytes,
-		&item.BytesPerSecond,
-		&item.ETASeconds,
-		&item.ChecksumSHA256,
-		&item.TempPath,
-		&item.Error,
-		&item.FailureKind,
-		&failureDetails,
-		&item.TempExpiresAt,
-		&item.RemoteStagingRef,
-		&item.CreatedAt,
-		&item.StartedAt,
-		&item.CompletedAt,
-		&item.UpdatedAt,
-	)
+	item, err := scanTransfer(s.db.QueryRowContext(ctx, transferSelect+` WHERE ft.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Record{}, ErrNotFound
 	}
 	if err != nil {
 		return Record{}, fmt.Errorf("get file transfer: %w", err)
 	}
-	item.FailureDetails = failureDetails.value
 	return item, nil
 }
 
@@ -173,16 +130,7 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 		return nil, 0, fmt.Errorf("count file transfers: %w", err)
 	}
 
-	query := `
-		SELECT ft.id, COALESCE(ft.batch_id, 0), ft.queue_index, ft.runtime_id, COALESCE(ct.name, ''), ft.direction, ft.source, ft.status,
-			ft.local_path, ft.remote_path, ft.file_name, ft.size_bytes, ft.transferred_bytes,
-			ft.bytes_per_second, ft.eta_seconds, ft.checksum_sha256, ft.temp_path, ft.error, ft.failure_kind,
-			ft.failure_details_json, COALESCE(ft.temp_expires_at, ''), ft.remote_staging_ref, ft.created_at, COALESCE(ft.started_at, ''),
-			COALESCE(ft.completed_at, ''), ft.updated_at
-		FROM file_transfers ft
-		LEFT JOIN connector_runtime_surfaces rs ON rs.id = ft.runtime_id
-		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
-		LEFT JOIN connector_targets ct ON ct.id = cp.target_id AND ct.connector_kind = cp.connector_kind` + where + `
+	query := transferSelect + where + `
 		ORDER BY ft.created_at DESC, ft.id DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, filter.Limit, filter.Offset)
@@ -194,43 +142,10 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]Record, int, err
 
 	items := []Record{}
 	for rows.Next() {
-		var item Record
-		var batchID int64
-		var queueIndex int
-		var failureDetails failureDetailsValue
-		if err := rows.Scan(
-			&item.ID,
-			&batchID,
-			&queueIndex,
-			&item.RuntimeID,
-			&item.TargetName,
-			&item.Direction,
-			&item.Source,
-			&item.Status,
-			&item.LocalPath,
-			&item.RemotePath,
-			&item.FileName,
-			&item.SizeBytes,
-			&item.TransferredBytes,
-			&item.BytesPerSecond,
-			&item.ETASeconds,
-			&item.ChecksumSHA256,
-			&item.TempPath,
-			&item.Error,
-			&item.FailureKind,
-			&failureDetails,
-			&item.TempExpiresAt,
-			&item.RemoteStagingRef,
-			&item.CreatedAt,
-			&item.StartedAt,
-			&item.CompletedAt,
-			&item.UpdatedAt,
-		); err != nil {
+		item, err := scanTransfer(rows)
+		if err != nil {
 			return nil, 0, fmt.Errorf("scan file transfer: %w", err)
 		}
-		item.BatchID = batchID
-		item.QueueIndex = queueIndex
-		item.FailureDetails = failureDetails.value
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {

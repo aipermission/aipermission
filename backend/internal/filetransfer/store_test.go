@@ -270,6 +270,7 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	if batch.Items[0].BatchID != batch.ID || batch.Items[0].QueueIndex != 0 || batch.Items[1].QueueIndex != 1 {
 		t.Fatalf("unexpected batch item ordering: %#v", batch.Items)
 	}
+	assertBatchScansMatch(t, store, ctx, batch, runtimeID)
 
 	if ok, err := store.MarkBatchRunning(ctx, batch.ID); err != nil || !ok {
 		t.Fatalf("mark batch running: ok=%v err=%v", ok, err)
@@ -340,6 +341,37 @@ func TestStoreCreatesPausesAndCompletesBatches(t *testing.T) {
 	}
 	if total != 0 || len(batches) != 0 {
 		t.Fatalf("unexpected filtered batch list: total=%d items=%#v", total, batches)
+	}
+}
+
+func assertBatchScansMatch(t *testing.T, store *Store, ctx context.Context, batch BatchRecord, runtimeID int64) {
+	t.Helper()
+	first, err := store.Get(ctx, batch.Items[0].ID)
+	if err != nil {
+		t.Fatalf("get batch transfer: %v", err)
+	}
+	listed, total, err := store.List(ctx, ListFilter{RuntimeID: runtimeID})
+	if err != nil || total != 2 {
+		t.Fatalf("list transfers: total=%d err=%v", total, err)
+	}
+	batchItems, err := store.ListBatchItems(ctx, batch.ID)
+	if err != nil || len(batchItems) != 2 {
+		t.Fatalf("list batch items: items=%#v err=%v", batchItems, err)
+	}
+	queueItem, err := store.NextBatchPendingItem(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("next pending batch item: %v", err)
+	}
+	for _, item := range []Record{first, batchItems[0], queueItem} {
+		if item.ID != batch.Items[0].ID || item.BatchID != batch.ID || item.QueueIndex != 0 || item.RuntimeID != runtimeID || item.RemotePath != "/tmp/a.txt" {
+			t.Fatalf("shared transfer scan drift: %#v", item)
+		}
+	}
+	if len(listed) != 2 || listed[0].BatchID != batch.ID || listed[1].BatchID != batch.ID {
+		t.Fatalf("list scan drift: %#v", listed)
+	}
+	if _, err := store.NextBatchPendingItem(ctx, batch.ID+1000); err != ErrNotFound {
+		t.Fatalf("empty pending batch: %v", err)
 	}
 }
 

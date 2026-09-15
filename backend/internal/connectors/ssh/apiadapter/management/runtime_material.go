@@ -156,43 +156,6 @@ func ExecutionTarget(gateway connectorapi.PeerIdentityGateway, target TargetMate
 	}
 }
 
-func ExecutionTransferOptions(options connectorapi.TransferOptions) execution.TransferOptions {
-	return execution.TransferOptions{
-		Progress: func(transferred int64, total int64) {
-			if options.Progress != nil {
-				options.Progress(transferred, total)
-			}
-		},
-		Wait:          options.Wait,
-		MaxBytes:      options.MaxBytes,
-		RecordStaging: options.RecordStaging,
-		ClearStaging:  options.ClearStaging,
-	}
-}
-
-func ConnectorTransferResult(result execution.TransferResult) connectorapi.TransferResult {
-	return connectorapi.TransferResult{
-		Bytes:          result.Bytes,
-		Size:           result.Size,
-		ChecksumSHA256: result.ChecksumSHA256,
-		DurationMS:     result.DurationMS,
-	}
-}
-
-func RemoteFileEntries(entries []execution.RemoteFileEntry) []connectorapi.RemoteFileEntry {
-	items := make([]connectorapi.RemoteFileEntry, 0, len(entries))
-	for _, entry := range entries {
-		items = append(items, connectorapi.RemoteFileEntry{
-			Name:       entry.Name,
-			Path:       entry.Path,
-			Type:       entry.Type,
-			Size:       entry.Size,
-			ModifiedAt: entry.ModifiedAt,
-		})
-	}
-	return items
-}
-
 func PeerIdentityFrom(value connectorapi.PeerIdentityGateway) (connectorapi.PeerIdentityGateway, error) {
 	if value == nil {
 		return nil, fmt.Errorf("peer trust services are not available")
