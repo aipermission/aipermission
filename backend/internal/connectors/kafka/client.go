@@ -270,18 +270,8 @@ func intValue(values map[string]any, key string, fallback int) int {
 	if !ok || value == nil {
 		return fallback
 	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case string:
-		parsed, err := strconv.Atoi(typed)
-		if err == nil {
-			return parsed
-		}
+	if parsed, ok := connectors.NativeIntValue(value); ok {
+		return parsed
 	}
 	return fallback
 }
@@ -291,18 +281,8 @@ func int64Value(values map[string]any, key string, fallback int64) int64 {
 	if !ok || value == nil {
 		return fallback
 	}
-	switch typed := value.(type) {
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	case float64:
-		return int64(typed)
-	case string:
-		parsed, err := strconv.ParseInt(typed, 10, 64)
-		if err == nil {
-			return parsed
-		}
+	if parsed, ok := connectors.ExactInt64Value(value); ok {
+		return parsed
 	}
 	return fallback
 }

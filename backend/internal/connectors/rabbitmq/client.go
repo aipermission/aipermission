@@ -270,60 +270,11 @@ func pathPart(value string) string {
 }
 
 func stringValue(values map[string]any, key string) string {
-	if values == nil {
-		return ""
-	}
-	value := values[key]
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	case nil:
-		return ""
-	default:
-		return fmt.Sprint(typed)
-	}
+	return connectors.StringMapValue(values, key)
 }
 
 func normalizeInt(values map[string]any, key string, fallback int, minValue int, maxValue int) int {
-	if values == nil {
-		return fallback
-	}
-	value, ok := values[key]
-	if !ok || value == nil || value == "" {
-		return fallback
-	}
-	var parsed int
-	switch typed := value.(type) {
-	case int:
-		parsed = typed
-	case int64:
-		parsed = int(typed)
-	case float64:
-		parsed = int(typed)
-	case json.Number:
-		n, err := typed.Int64()
-		if err != nil {
-			return fallback
-		}
-		parsed = int(n)
-	case string:
-		n, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err != nil {
-			return fallback
-		}
-		parsed = n
-	default:
-		return fallback
-	}
-	if parsed < minValue {
-		return minValue
-	}
-	if parsed > maxValue {
-		return maxValue
-	}
-	return parsed
+	return connectors.BoundedIntMapValue(values, key, fallback, minValue, maxValue)
 }
 
 func normalizeJSONMap(values map[string]any, key string) (map[string]any, error) {

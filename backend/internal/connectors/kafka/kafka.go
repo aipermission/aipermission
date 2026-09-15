@@ -3,7 +3,6 @@ package kafka
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -382,25 +381,11 @@ func canonicalizeActionInput(action string, input map[string]any) error {
 }
 
 func exactInteger(value any, field string) (int64, error) {
-	switch typed := value.(type) {
-	case int:
-		return int64(typed), nil
-	case int64:
-		return typed, nil
-	case float64:
-		if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || math.Abs(typed) > 9007199254740991 {
-			return 0, fmt.Errorf("%s must be an exact integer", field)
-		}
-		return int64(typed), nil
-	case string:
-		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%s must be an exact base-10 integer", field)
-		}
-		return parsed, nil
-	default:
+	parsed, ok := connectors.ExactInt64Value(value)
+	if !ok {
 		return 0, fmt.Errorf("%s must be an exact integer", field)
 	}
+	return parsed, nil
 }
 
 func exactInt(value any, field string) (int, error) {

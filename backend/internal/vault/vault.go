@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
@@ -169,7 +170,7 @@ func (v *Vault) decryptRecordJSON(encrypted string, target any, context RecordCo
 	if err != nil {
 		return fmt.Errorf("decrypt encrypted record: %w", err)
 	}
-	if err := json.Unmarshal(plain, target); err != nil {
+	if err := decodeRecordJSON(plain, target); err != nil {
 		return fmt.Errorf("unmarshal secret: %w", err)
 	}
 	return nil
@@ -241,8 +242,23 @@ func (v *Vault) decryptJSON(encrypted string, target any, associatedData []byte)
 		return fmt.Errorf("decrypt secret: %w", err)
 	}
 
-	if err := json.Unmarshal(plain, target); err != nil {
+	if err := decodeRecordJSON(plain, target); err != nil {
 		return fmt.Errorf("unmarshal secret: %w", err)
+	}
+	return nil
+}
+
+func decodeRecordJSON(plain []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(plain))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return fmt.Errorf("trailing JSON data: %w", err)
 	}
 	return nil
 }

@@ -45,6 +45,22 @@ func TestTargetAndCredentialSchemasExposeKafkaRedpandaAndSASL(t *testing.T) {
 	}
 }
 
+func TestNumericPayloadHelpersAcceptSealedJSONNumbers(t *testing.T) {
+	values := map[string]any{
+		"partition": json.Number("7"),
+		"offset":    json.Number("9007199254740993"),
+	}
+	if got := intValue(values, "partition", -1); got != 7 {
+		t.Fatalf("partition = %d", got)
+	}
+	if got := int64Value(values, "offset", -1); got != 9007199254740993 {
+		t.Fatalf("offset = %d", got)
+	}
+	if got, err := exactInteger(values["offset"], "offset"); err != nil || got != 9007199254740993 {
+		t.Fatalf("exact offset = %d, %v", got, err)
+	}
+}
+
 func TestKafkaPostDispatchFailureIsOutcomeUnknown(t *testing.T) {
 	result := outcomeUnknownResult("produce_request", errors.New("connection reset"))
 	if result.Status != connectors.ResultOutcomeUnknown || !strings.Contains(result.Error, "inspect broker state") {

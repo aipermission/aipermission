@@ -7,7 +7,32 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/vault"
 )
+
+func TestSealedActionRecordsPreserveExactNumericPayloads(t *testing.T) {
+	secretVault, err := vault.New("ExactNumericPayloadPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := sealedRecords{runtime: Workspace{Storage: ActionStorage{
+		SecretVault: secretVault, WorkspaceID: "numeric-action-workspace",
+	}}}
+	want := int64(9007199254740993)
+	sealed, err := records.SealActionRequest(17, actions.ExecutionEnvelope{
+		Payload: map[string]any{"value": want},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := records.OpenActionRequest(17, sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := connectors.ExactInt64Value(opened.Payload["value"]); !ok || got != want {
+		t.Fatalf("opened payload value = %#v (%T)", opened.Payload["value"], opened.Payload["value"])
+	}
+}
 
 func TestWorkflowRejectsIncompleteWorkspace(t *testing.T) {
 	component := New(Dependencies{SupportsRunning: func(PreparedRequest) bool { return false }})

@@ -585,24 +585,7 @@ func boolValue(values map[string]any, key string, fallback bool) bool {
 }
 
 func normalizeInt(values map[string]any, key string, fallback int, minValue int, maxValue int) int {
-	value := intValue(values, key, fallback)
-	if value < minValue {
-		return minValue
-	}
-	if value > maxValue {
-		return maxValue
-	}
-	return value
-}
-
-func intValue(values map[string]any, key string, fallback int) int {
-	if values == nil {
-		return fallback
-	}
-	if parsed, ok := connectors.NativeIntValue(values[key]); ok {
-		return parsed
-	}
-	return fallback
+	return connectors.BoundedIntMapValue(values, key, fallback, minValue, maxValue)
 }
 
 func truncateString(value string, maxBytes int) string {

@@ -531,6 +531,56 @@ func normalizeIntegerValue(value any) (int64, bool) {
 	}
 }
 
+// ExactInt64Value converts an exact connector integer without losing precision
+// from the json.Number representation used by sealed action payloads.
+func ExactInt64Value(value any) (int64, bool) {
+	return normalizeIntegerValue(value)
+}
+
+// StringMapValue returns one connector map value as text while preserving the
+// empty semantics used by optional fields.
+func StringMapValue(values map[string]any, key string) string {
+	if values == nil || values[key] == nil {
+		return ""
+	}
+	if text, ok := values[key].(string); ok {
+		return text
+	}
+	return fmt.Sprint(values[key])
+}
+
+// IntMapValue reads an exact integer from a connector map. Missing or invalid
+// values use the fallback.
+func IntMapValue(values map[string]any, key string, fallback int) int {
+	if values == nil {
+		return fallback
+	}
+	if parsed, ok := NativeIntValue(values[key]); ok {
+		return parsed
+	}
+	return fallback
+}
+
+// BoolMapValue reads the boolean input forms accepted by connector actions.
+// Missing, invalid, and non-boolean values use the fallback.
+func BoolMapValue(values map[string]any, key string, fallback bool) bool {
+	if values == nil {
+		return fallback
+	}
+	switch typed := values[key].(type) {
+	case bool:
+		return typed
+	case string:
+		if strings.EqualFold(strings.TrimSpace(typed), "true") {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(typed), "false") {
+			return false
+		}
+	}
+	return fallback
+}
+
 // NativeIntValue converts an exact connector integer to the current platform's
 // int width without truncation.
 func NativeIntValue(value any) (int, bool) {
@@ -543,6 +593,25 @@ func NativeIntValue(value any) (int, bool) {
 		return 0, false
 	}
 	return native, true
+}
+
+// BoundedIntMapValue reads an exact integer from a connector map and clamps it
+// to the caller-owned range. Missing or invalid values use the fallback.
+func BoundedIntMapValue(values map[string]any, key string, fallback int, minValue int, maxValue int) int {
+	if values == nil {
+		return fallback
+	}
+	parsed, ok := NativeIntValue(values[key])
+	if !ok {
+		return fallback
+	}
+	if parsed < minValue {
+		return minValue
+	}
+	if parsed > maxValue {
+		return maxValue
+	}
+	return parsed
 }
 
 func exactFloatInteger(value float64) (int64, bool) {

@@ -522,27 +522,11 @@ func cleanIdentifierInput(input map[string]any, name string) string {
 }
 
 func stringInput(values map[string]any, name string) string {
-	if values == nil {
-		return ""
-	}
-	value, ok := values[name]
-	if !ok || value == nil {
-		return ""
-	}
-	if typed, ok := value.(string); ok {
-		return typed
-	}
-	return fmt.Sprint(value)
+	return connectors.StringMapValue(values, name)
 }
 
 func intInput(values map[string]any, name string, fallback int) int {
-	if values == nil {
-		return fallback
-	}
-	if parsed, ok := connectors.NativeIntValue(values[name]); ok {
-		return parsed
-	}
-	return fallback
+	return connectors.IntMapValue(values, name, fallback)
 }
 
 func targetString(values map[string]any, name string) string {

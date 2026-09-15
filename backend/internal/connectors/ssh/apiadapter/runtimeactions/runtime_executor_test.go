@@ -2,6 +2,7 @@ package runtimeactions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -11,6 +12,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
+
+func TestIntPayloadAcceptsSealedJSONNumbers(t *testing.T) {
+	if got := intPayload(map[string]any{"tail_bytes": json.Number("2048")}, "tail_bytes", 10); got != 2048 {
+		t.Fatalf("tail_bytes = %d", got)
+	}
+}
 
 func TestRuntimeCapabilityForActionSeparatesConsoleAndFileTransfers(t *testing.T) {
 	for _, testCase := range []struct {

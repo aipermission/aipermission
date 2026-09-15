@@ -361,59 +361,15 @@ func targetSummary(target connectors.TargetView, action string) string {
 }
 
 func stringInput(input map[string]any, name string) string {
-	if input == nil {
-		return ""
-	}
-	value, ok := input[name]
-	if !ok || value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	default:
-		return fmt.Sprint(typed)
-	}
+	return connectors.StringMapValue(input, name)
 }
 
 func intInput(input map[string]any, name string, fallback int) int {
-	if input == nil {
-		return fallback
-	}
-	value, ok := input[name]
-	if !ok || value == nil {
-		return fallback
-	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case float32:
-		return int(typed)
-	default:
-		return fallback
-	}
+	return connectors.IntMapValue(input, name, fallback)
 }
 
 func boolInput(input map[string]any, name string) bool {
-	if input == nil {
-		return false
-	}
-	value, ok := input[name]
-	if !ok || value == nil {
-		return false
-	}
-	switch typed := value.(type) {
-	case bool:
-		return typed
-	case string:
-		return strings.EqualFold(strings.TrimSpace(typed), "true")
-	default:
-		return false
-	}
+	return connectors.BoolMapValue(input, name, false)
 }
 
 func stringSliceInput(input map[string]any, name string) []string {

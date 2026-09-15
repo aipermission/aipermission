@@ -50,16 +50,10 @@ func intPayload(payload map[string]any, name string, fallback int) int {
 	if !ok || value == nil {
 		return fallback
 	}
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		return fallback
+	if parsed, ok := connectors.NativeIntValue(value); ok {
+		return parsed
 	}
+	return fallback
 }
 
 func stringSlicePayload(payload map[string]any, name string) []string {

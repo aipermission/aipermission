@@ -3,6 +3,7 @@ package s3connector
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -24,6 +25,13 @@ func TestNewS3ClientPropagatesOptionalSessionTokenFailure(t *testing.T) {
 	runtime.Secrets = sessionTokenFailureSecrets{err: errors.New("vault unavailable")}
 	if _, err := newS3Client(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), "vault unavailable") {
 		t.Fatalf("session token failure = %v", err)
+	}
+}
+
+func TestClampedIntAcceptsSealedJSONNumbers(t *testing.T) {
+	values := map[string]any{"limit": json.Number("250")}
+	if got := clampedInt(values, "limit", 10, 1, 1000); got != 250 {
+		t.Fatalf("limit = %d", got)
 	}
 }
 
