@@ -6,6 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "../src/vault-tools.js";
 import { MCP_SERVER_INSTRUCTIONS } from "../src/instructions.js";
+import { parseHTTPTimeout } from "../src/config.js";
+import { idempotencyKeySchema } from "../src/idempotency-key.js";
 
 const serverSource = () => fs.readFile(path.resolve("src/server.js"), "utf8");
 
@@ -113,6 +115,18 @@ test("Vault tool schemas enforce the public MCP contract", () => {
   assert.throws(() => vaultActionRequestSchema.request_id.parse(0));
 });
 
+test("shared MCP configuration rejects ambiguous timeouts and oversized UTF-8 keys", () => {
+  assert.equal(parseHTTPTimeout(undefined), 60_000);
+  assert.equal(parseHTTPTimeout("100"), 100);
+  assert.equal(parseHTTPTimeout("600000"), 600_000);
+  for (const value of ["0", "1000junk", "1e3", "-1", "600001", "2147483648"]) {
+    assert.throws(() => parseHTTPTimeout(value), /AIPERMISSION_HTTP_TIMEOUT_MS/);
+  }
+  assert.equal(idempotencyKeySchema.parse("x".repeat(128)), "x".repeat(128));
+  assert.equal(idempotencyKeySchema.parse("ş".repeat(64)), "ş".repeat(64));
+  assert.throws(() => idempotencyKeySchema.parse("ş".repeat(65)), /128 UTF-8 bytes/);
+});
+
 test("connector tools route through the MCP connector API", async () => {
   const source = await serverSource();
 
@@ -124,7 +138,7 @@ test("connector tools route through the MCP connector API", async () => {
   assert.match(source, /apiGet\("\/api\/mcp\/connector-targets"/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`\)/);
   assert.match(source, /apiPost\("\/api\/mcp\/connector-actions\/call"/);
-  assert.match(source, /idempotency_key:\s*z\s*\.string\(\)\s*\.min\(1\)\s*\.max\(128\)/);
+  assert.match(source, /idempotency_key:\s*idempotencyKeySchema/);
   assert.doesNotMatch(source, /idempotency_key:[\s\S]{0,120}\.optional\(\)/);
   assert.match(source, /idempotency_key,/);
   assert.match(source, /apiGet\(`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`\)/);

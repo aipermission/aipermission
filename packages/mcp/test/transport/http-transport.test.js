@@ -181,6 +181,24 @@ test("timely gateway errors retain their metadata", { timeout: 10000 }, async (t
   });
 });
 
+test("gateway Retry-After headers reach MCP error results", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(429, { "Content-Type": "application/json", "Retry-After": "60" });
+      response.end(JSON.stringify({ error: "connector action capacity is temporarily exhausted", code: "connector_action_backpressure" }));
+    },
+    2000,
+  );
+  const result = await client.callTool({ name: "list_connector_targets", arguments: {} });
+  assert.deepEqual(JSON.parse(result.content[0].text), {
+    status: "error",
+    code: "connector_action_backpressure",
+    retry_after_seconds: 60,
+    error: "connector action capacity is temporarily exhausted",
+  });
+});
+
 test("truncated response body is not misclassified as timeout", { timeout: 10000 }, async (t) => {
   let timer;
   t.after(() => clearTimeout(timer));
@@ -377,6 +395,6 @@ test("Vault mutations and cancellation share transport uncertainty", { timeout: 
   const cancelError = JSON.parse(canceled.content[0].text);
   assert.equal(cancelError.status, "outcome_unknown");
   assert.equal(cancelError.idempotency_key, undefined);
-  assert.equal(cancelError.request_id, undefined);
+  assert.equal(cancelError.request_id, 12);
   assert.match(cancelError.assistant_hint, /Inspect the original request status/);
 });

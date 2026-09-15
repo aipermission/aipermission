@@ -86,8 +86,10 @@ does this automatically.
 ## Tools
 
 `AIPERMISSION_HTTP_TIMEOUT_MS` sets the gateway request deadline (default:
-60000 milliseconds). It covers both response headers and the complete response
-body, including streamed bodies. A timeout does not prove that a submitted
+60000 milliseconds; maximum: 600000). The value must be a positive base-10
+integer; invalid configuration stops the bridge instead of silently changing
+the deadline. It covers both response headers and the complete response body,
+including streamed bodies. A timeout does not prove that a submitted
 operation failed; do not retry mutations with a new idempotency key blindly.
 If a POST response is lost or incomplete, the bridge returns
 `status: outcome_unknown` and `code: gateway_transport_outcome_unknown`.
