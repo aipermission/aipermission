@@ -33,6 +33,8 @@ export const requiredAccessibilityTitles = Object.freeze([
   "@accessibility keeps setup tabs usable at 320px",
   "@accessibility keeps unlock tabs usable at 360px",
   "@accessibility keeps setup tabs usable at 360px",
+  "@accessibility keeps project tables and connector/Vault dialogs usable at 320px",
+  "@accessibility keeps project tables and connector/Vault dialogs usable at 360px",
 ]);
 
 export const requiredSmokeTitles = Object.freeze([
