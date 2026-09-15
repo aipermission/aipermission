@@ -22,6 +22,7 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	applyPrivateFileCreationMask()
 	if handled, status := maintenanceconsole.RunMaintenanceConsoleSupervisorIfRequested(os.Args[1:]); handled {
 		os.Exit(status)
 	}

@@ -726,9 +726,9 @@ func productionFileHasStatements(path string) (bool, error) {
 		}
 		switch typed := node.(type) {
 		case *ast.FuncDecl:
-			hasStatements = typed.Body != nil
+			hasStatements = typed.Body != nil && len(typed.Body.List) > 0
 		case *ast.FuncLit:
-			hasStatements = typed.Body != nil
+			hasStatements = typed.Body != nil && len(typed.Body.List) > 0
 		case *ast.GenDecl:
 			if typed.Tok == token.VAR {
 				hasStatements = declarationCallsFunction(typed)

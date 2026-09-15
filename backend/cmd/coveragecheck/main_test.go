@@ -393,8 +393,8 @@ func TestReadProductionPackagesClassifiesExecutableSources(t *testing.T) {
 	if !packages["internal/sample"]["runtime.go"].hasStatements {
 		t.Fatal("function body was not classified as executable")
 	}
-	if !packages["internal/sample"]["noop.go"].hasStatements {
-		t.Fatal("empty function body was not classified as executable")
+	if packages["internal/sample"]["noop.go"].hasStatements {
+		t.Fatal("empty function body was classified as executable")
 	}
 	if !packages["internal/sample"]["initializer.go"].hasStatements {
 		t.Fatal("package initializer call was not classified as executable")
@@ -427,7 +427,7 @@ func TestReadProductionPackagesBindsImportPathsToRepositoryDirectories(t *testin
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(directory, "source.go"), []byte("package fixture\nfunc Run() {}\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, "source.go"), []byte("package fixture\nfunc Run() { println(\"run\") }\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

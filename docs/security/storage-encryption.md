@@ -5,6 +5,13 @@ aipermission uses two storage protection layers:
 1. Full SQLite database encryption with SQLCipher.
 2. Field-level secret payload encryption through the gateway vault.
 
+On supported Unix platforms, both native and container runtimes start with a
+private file-creation mask. A newly created database directory is restricted to
+`0700`. Existing parent-directory permissions are never changed implicitly;
+group- or other-writable parents are rejected. The main SQLCipher file plus
+WAL/SHM/journal sidecars are restricted to `0600` when opened. This limits local
+ciphertext copying; it does not replace a strong database password.
+
 Project Vault values use both layers. Each value is encrypted with associated
 data bound to the workspace, item id, and value revision so ciphertext cannot be
 silently moved to a different item or revision. Metadata lists never decrypt

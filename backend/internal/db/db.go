@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -61,13 +62,8 @@ type openOptions struct {
 }
 
 func openEncrypted(path string, password string, options openOptions) (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("create data directory: %w", err)
-	}
-	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("database path must be a regular file")
-	} else if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("inspect database path: %w", err)
+	if err := preparePrivateDatabasePath(path); err != nil {
+		return nil, err
 	}
 
 	values := url.Values{}
@@ -91,6 +87,10 @@ func openEncrypted(path string, password string, options openOptions) (*sql.DB, 
 		_ = database.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	if err := protectDatabaseFiles(path); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	if options.runMigrations {
 		snapshotPath := ""
 		if options.createMigrationSnapshot {
@@ -111,6 +111,80 @@ func openEncrypted(path string, password string, options openOptions) (*sql.DB, 
 	}
 
 	return database, nil
+}
+
+func preparePrivateDatabasePath(path string) error {
+	directory := filepath.Dir(path)
+	info, err := os.Lstat(directory)
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return fmt.Errorf("create data directory: %w", err)
+		}
+		info, err = os.Lstat(directory)
+		if err == nil {
+			err = os.Chmod(directory, 0o700)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("inspect data directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("data directory must be a regular directory: %s", directory)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("data directory must not be writable by group or other users: %s", directory)
+	}
+	if err := protectExistingDatabaseFile(path); os.IsNotExist(err) {
+		created, createErr := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if createErr != nil {
+			return fmt.Errorf("create private database file: %w", createErr)
+		}
+		if closeErr := created.Close(); closeErr != nil {
+			return fmt.Errorf("close private database file: %w", closeErr)
+		}
+	} else if err != nil {
+		return err
+	}
+	return protectDatabaseSidecars(path)
+}
+
+func protectDatabaseFiles(path string) error {
+	if err := protectExistingDatabaseFile(path); err != nil {
+		return err
+	}
+	return protectDatabaseSidecars(path)
+}
+
+func protectDatabaseSidecars(path string) error {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		if err := protectExistingDatabaseFile(path + suffix); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func protectExistingDatabaseFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("database path must be a regular file: %s", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open database file for permission check: %w", err)
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil || !os.SameFile(info, openedInfo) {
+		return fmt.Errorf("database file changed during permission check: %s", path)
+	}
+	if err := file.Chmod(0o600); err != nil {
+		return fmt.Errorf("protect database file: %w", err)
+	}
+	return nil
 }
 
 func createPreMigrationSnapshot(database *sql.DB, databasePath string) (string, error) {
