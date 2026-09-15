@@ -3,20 +3,26 @@ package mcpconnector
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
+	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
 
 const (
-	maxActionBodyBytes = 32 << 20
-	maxReasonBytes     = 2 << 10
+	maxActionBodyBytes       = 32 << 20
+	maxReasonBytes           = 2 << 10
+	actionRequestsPerMinute  = 60
+	actionConcurrentRequests = 4
 )
 
 type ActionCallRequest struct {
@@ -43,23 +49,36 @@ type ActionCallResult struct {
 	Replayed bool
 }
 
+type ActionResourcePolicy struct {
+	MaxInputBytes int
+}
+
 type ActionScope struct {
-	Database      *sql.DB
-	TokenID       int64
-	Output        *OutputAuthorization
-	ActionVisible func(context.Context, string, string) (bool, error)
-	Call          func(context.Context, ActionCall) (ActionCallResult, error)
-	Observe       func(context.Context, string, any)
-	Redact        func(context.Context, string) string
-	RunningHint   func(connectortargets.ActionRequest) string
+	Database       *sql.DB
+	RuntimeID      string
+	TokenID        int64
+	Output         *OutputAuthorization
+	ActionVisible  func(context.Context, string, string) (bool, error)
+	ReplayExists   func(context.Context, string) (bool, error)
+	ResourcePolicy func(context.Context, string, string) (ActionResourcePolicy, error)
+	Call           func(context.Context, ActionCall) (ActionCallResult, error)
+	Observe        func(context.Context, string, any)
+	Redact         func(context.Context, string) string
+	RunningHint    func(connectortargets.ActionRequest) string
 }
 
 type ActionScopeProvider func(http.ResponseWriter, *http.Request) (ActionScope, bool)
 
-type ActionHTTPHandlers struct{ scope ActionScopeProvider }
+type ActionHTTPHandlers struct {
+	scope     ActionScopeProvider
+	admission *runtimecontrol.Admission
+}
 
 func NewActionHTTPHandlers(scope ActionScopeProvider) *ActionHTTPHandlers {
-	return &ActionHTTPHandlers{scope: scope}
+	return &ActionHTTPHandlers{
+		scope:     scope,
+		admission: runtimecontrol.NewAdmission(actionRequestsPerMinute, time.Minute, actionConcurrentRequests),
+	}
 }
 
 func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +86,13 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	admissionKey := "runtime:" + scope.RuntimeID + ":token:" + strconv.FormatInt(scope.TokenID, 10)
+	release, retryAfter, admitted := h.admission.Acquire(admissionKey)
+	if !admitted {
+		writeResourceLimit(w, retryAfter)
+		return
+	}
+	defer release()
 	var request ActionCallRequest
 	if !httptransport.DecodeJSON(w, r, &request, maxActionBodyBytes) {
 		return
@@ -91,13 +117,35 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
 		return
 	}
-	visible, err := scope.ActionVisible(r.Context(), request.TargetRef, request.ActionName)
+	replay, err := scope.ReplayExists(r.Context(), request.IdempotencyKey)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	if !visible {
-		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
+	policy := ActionResourcePolicy{MaxInputBytes: connectors.MaximumActionInputBytes}
+	if !replay {
+		visible, visibleErr := scope.ActionVisible(r.Context(), request.TargetRef, request.ActionName)
+		if visibleErr != nil {
+			httptransport.WriteInternalError(w)
+			return
+		}
+		if !visible {
+			httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
+			return
+		}
+		policy, err = scope.ResourcePolicy(r.Context(), request.TargetRef, request.ActionName)
+		if err != nil {
+			httptransport.WriteInternalError(w)
+			return
+		}
+	}
+	inputJSON, err := json.Marshal(request.Input)
+	if err != nil {
+		httptransport.WriteError(w, http.StatusBadRequest, "input must be valid JSON")
+		return
+	}
+	if policy.MaxInputBytes < 1 || len(inputJSON) > policy.MaxInputBytes {
+		writeCodedError(w, http.StatusRequestEntityTooLarge, "connector action input exceeds its size limit", "action_input_too_large")
 		return
 	}
 	result, err := scope.Call(r.Context(), ActionCall{
@@ -160,12 +208,24 @@ func (h *ActionHTTPHandlers) resolve(w http.ResponseWriter, r *http.Request, req
 	if !ok {
 		return ActionScope{}, false
 	}
-	if scope.Database == nil || scope.TokenID < 1 || scope.Output == nil || !scope.Output.valid() || scope.Output.Database != scope.Database ||
-		requireCall && (scope.ActionVisible == nil || scope.Call == nil || scope.Observe == nil || scope.Redact == nil) {
+	if scope.Database == nil || strings.TrimSpace(scope.RuntimeID) == "" || scope.TokenID < 1 || scope.Output == nil || !scope.Output.valid() || scope.Output.Database != scope.Database ||
+		requireCall && (scope.ActionVisible == nil || scope.ReplayExists == nil || scope.ResourcePolicy == nil || scope.Call == nil || scope.Observe == nil || scope.Redact == nil) {
 		httptransport.WriteInternalError(w)
 		return ActionScope{}, false
 	}
 	return scope, true
+}
+
+func writeResourceLimit(w http.ResponseWriter, retryAfter time.Duration) {
+	seconds := int64((retryAfter + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	if seconds > 60 {
+		seconds = 60
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	writeCodedError(w, http.StatusTooManyRequests, "connector action capacity is temporarily exhausted", "connector_action_backpressure")
 }
 
 func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope, err error) {
@@ -183,6 +243,8 @@ func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope,
 		})
 	case errors.Is(err, connectortargets.ErrActionRequestIdempotency):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, connectortargets.ErrActionRequestCapacity):
+		writeResourceLimit(w, time.Minute)
 	case errors.Is(err, connectortargets.ErrInvalidTargetRef), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
 		writeTargetError(w, err)
 	default:

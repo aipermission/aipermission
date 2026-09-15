@@ -81,7 +81,7 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	store := connectortargets.NewStore(r.database)
 	permission, err := store.GetActionPermission(ctx, call.TokenID, prepared.Target.ID, prepared.Profile.ID, prepared.Action.ActionName, r.now().UTC())
 	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
-		request, created, insertErr := r.InsertTokenRequest(ctx, call.TokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultBlocked, MissingPermissionError, call.IdempotencyKey)
+		request, created, insertErr := r.InsertTokenRequestWithCapacity(ctx, call.TokenID, prepared, connectortargets.ActionPermission{}, connectors.ResultBlocked, MissingPermissionError, call.IdempotencyKey)
 		if insertErr != nil {
 			return CallResult{}, insertErr
 		}
@@ -95,7 +95,7 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	}
 	if permission.ExecutionRule == connectortargets.ActionPermissionBlocked {
 		const blocked = "Connector action is blocked for this token"
-		request, created, insertErr := r.InsertTokenRequest(ctx, call.TokenID, prepared, permission, connectors.ResultBlocked, blocked, call.IdempotencyKey)
+		request, created, insertErr := r.InsertTokenRequestWithCapacity(ctx, call.TokenID, prepared, permission, connectors.ResultBlocked, blocked, call.IdempotencyKey)
 		if insertErr != nil {
 			return CallResult{}, insertErr
 		}
@@ -105,7 +105,7 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 		return CallResult{Request: request, Permission: permission, Result: connectors.ActionResult{Status: connectors.ResultBlocked, Error: blocked}}, nil
 	}
 	if permission.ExecutionRule == connectortargets.ActionPermissionApprovalRequired {
-		request, created, insertErr := r.InsertTokenRequest(ctx, call.TokenID, prepared, permission, connectors.ResultApprovalPending, "", call.IdempotencyKey)
+		request, created, insertErr := r.InsertTokenRequestWithCapacity(ctx, call.TokenID, prepared, permission, connectors.ResultApprovalPending, "", call.IdempotencyKey)
 		if insertErr != nil {
 			return CallResult{}, insertErr
 		}
@@ -121,7 +121,7 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	if err != nil {
 		return CallResult{}, err
 	}
-	request, created, err := r.InsertTokenRequest(ctx, call.TokenID, prepared, permission, connectors.ResultRunning, "", call.IdempotencyKey)
+	request, created, err := r.InsertTokenRequestWithCapacity(ctx, call.TokenID, prepared, permission, connectors.ResultRunning, "", call.IdempotencyKey)
 	if err != nil {
 		return CallResult{}, err
 	}

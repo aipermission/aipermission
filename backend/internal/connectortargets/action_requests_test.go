@@ -93,6 +93,116 @@ func TestStoreActionRequestLifecycle(t *testing.T) {
 	}
 }
 
+func TestActionRequestUsageForTokenIsScoped(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := context.Background()
+	firstToken := insertConnectorTestToken(t, database)
+	secondResult, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, created_at, updated_at)
+		VALUES ('connector-second', 'connector-second-hash', 'aip_second', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatalf("insert second token: %v", err)
+	}
+	secondToken, err := secondResult.LastInsertId()
+	if err != nil {
+		t.Fatalf("second token id: %v", err)
+	}
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	for _, tokenID := range []int64{firstToken, firstToken, secondToken} {
+		if _, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Input: map[string]any{"value": "payload"},
+			Status: connectors.ResultCompleted,
+		}); err != nil {
+			t.Fatalf("insert action request: %v", err)
+		}
+	}
+	usage, err := store.ActionRequestUsageForToken(ctx, firstToken)
+	if err != nil {
+		t.Fatalf("read usage: %v", err)
+	}
+	if usage.Rows != 2 || usage.Bytes < 2*int64(len(`{"value":"payload"}`)) {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestActionRequestCapacityCountsProjectedBytesAndRunningRequests(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := t.Context()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	insert := func(status connectors.ResultStatus, value string) ActionRequest {
+		t.Helper()
+		request, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Input: map[string]any{"value": value}, Status: status,
+		})
+		if err != nil {
+			t.Fatalf("insert action request: %v", err)
+		}
+		return request
+	}
+	first := insert(connectors.ResultRunning, "first")
+	insert(connectors.ResultRunning, "second")
+
+	within, err := actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
+		rows: 2, bytes: maxTokenActionRequestBytes, running: 2,
+	})
+	if err != nil || !within {
+		t.Fatalf("capacity at exact row/running boundary = %v, err=%v", within, err)
+	}
+	within, err = actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
+		rows: 2, bytes: actionTerminalReservationBytes - 1, running: 2,
+	})
+	if err != nil || within {
+		t.Fatalf("projected terminal bytes accepted = %v, err=%v", within, err)
+	}
+	within, err = actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
+		rows: 2, bytes: maxTokenActionRequestBytes, running: 1,
+	})
+	if err != nil || within {
+		t.Fatalf("excess running requests accepted = %v, err=%v", within, err)
+	}
+}
+
+func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := t.Context()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+
+	for index := int64(0); index < maxTokenRunningActionRequests; index++ {
+		_, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Input: map[string]any{"index": index}, Status: connectors.ResultRunning,
+			EnforceTokenCapacity: true,
+		})
+		if err != nil {
+			t.Fatalf("insert request %d: %v", index, err)
+		}
+	}
+	_, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+		ActionName: "query_readonly", Input: map[string]any{"index": maxTokenRunningActionRequests}, Status: connectors.ResultRunning,
+		EnforceTokenCapacity: true,
+	})
+	if !errors.Is(err, ErrActionRequestCapacity) {
+		t.Fatalf("fifth running request error = %v", err)
+	}
+	var count int64
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ?`, tokenID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != maxTokenRunningActionRequests {
+		t.Fatalf("persisted request count = %d", count)
+	}
+}
+
 func TestStoreActionRequestIdempotency(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)

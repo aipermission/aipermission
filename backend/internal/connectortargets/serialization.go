@@ -25,6 +25,7 @@ var (
 	ErrActionRequestIdempotency    = errors.New("connector action idempotency key was already used for a different request")
 	ErrActionRequestInsertConflict = errors.New("connector action request could not be inserted; retry with the same idempotency key")
 	ErrActionRequestExecutionClaim = errors.New("connector action execution claim is no longer valid")
+	ErrActionRequestCapacity       = errors.New("connector action capacity is temporarily exhausted")
 )
 
 const MaxIdempotencyKeyBytes = 128

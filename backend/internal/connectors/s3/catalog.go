@@ -213,11 +213,12 @@ func objectActions() []connectors.ActionDefinition {
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
 		},
 		{
-			Name:        ActionUploadObject,
-			Label:       "Upload object",
-			Description: "Upload one bounded object from text or base64 content.",
-			Category:    "write",
-			Risk:        connectors.RiskWrite,
+			Name:          ActionUploadObject,
+			Label:         "Upload object",
+			Description:   "Upload one bounded object from text or base64 content.",
+			Category:      "write",
+			Risk:          connectors.RiskWrite,
+			MaxInputBytes: connectors.MaximumActionInputBytes,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Destination object key."},
 				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, Description: "Text payload for small text objects. Use this or content_base64, not both."},

@@ -20,6 +20,10 @@ func (component *Component) Catalog(database *sql.DB, registry connectors.Catalo
 	return Catalog{component: component, database: database, registry: registry}
 }
 
+func (catalog Catalog) Ready() bool {
+	return catalog.component != nil && catalog.database != nil && catalog.registry != nil
+}
+
 func (catalog Catalog) store() *connectortargets.Store {
 	return connectortargets.NewStore(catalog.database)
 }

@@ -6,6 +6,7 @@ import (
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewaymanagement "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -44,14 +45,14 @@ func (component *AccessOwner) mcpReadScope(handle *WorkspaceHandle, ports MCPRea
 }
 
 type MCPActionPorts struct {
-	TokenID       int64
-	Delivery      func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
-	Principal     func(int64) (gatewayaccess.Principal, error)
-	ActionVisible func(context.Context, string, string) (bool, error)
-	Call          func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
-	Observe       func(context.Context, string, any)
-	Redact        func(context.Context, string) string
-	RunningHint   gatewayaccess.MCPRunningHint
+	TokenID     int64
+	Delivery    func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
+	Principal   func(int64) (gatewayaccess.Principal, error)
+	Policy      gatewaymanagement.Catalog
+	Call        func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
+	Observe     func(context.Context, string, any)
+	Redact      func(context.Context, string) string
+	RunningHint gatewayaccess.MCPRunningHint
 }
 
 func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
@@ -64,7 +65,8 @@ func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPA
 	if !ok || capability.Delivery == nil || capability.Control == nil {
 		return gatewayaccess.MCPActionScope{}, false
 	}
-	if ports.Delivery == nil {
+	if ports.Delivery == nil || !ports.Policy.Ready() ||
+		ports.Call == nil || ports.Observe == nil || ports.Redact == nil || ports.Principal == nil {
 		return gatewayaccess.MCPActionScope{}, false
 	}
 	output := &gatewayaccess.MCPOutputAuthorization{
@@ -73,8 +75,20 @@ func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPA
 		MCPStarted: capability.Control.MCPStarted, Principal: ports.Principal,
 	}
 	return gatewayaccess.MCPActionScope{
-		Database: capability.Database, TokenID: ports.TokenID, Output: output,
-		ActionVisible: ports.ActionVisible, Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
+		Database: capability.Database, RuntimeID: handle.Identity().RuntimeID, TokenID: ports.TokenID, Output: output,
+		ActionVisible: func(ctx context.Context, targetRef, actionName string) (bool, error) {
+			return ports.Policy.MCPActionVisible(ctx, ports.TokenID, targetRef, actionName)
+		},
+		ReplayExists: func(ctx context.Context, idempotencyKey string) (bool, error) {
+			return ports.Policy.MCPReplayExists(ctx, ports.TokenID, idempotencyKey)
+		},
+		ResourcePolicy: func(ctx context.Context, targetRef, actionName string) (gatewayaccess.MCPActionResourcePolicy, error) {
+			policy, err := ports.Policy.MCPActionResourcePolicy(ctx, ports.TokenID, targetRef, actionName)
+			return gatewayaccess.MCPActionResourcePolicy{
+				MaxInputBytes: policy.MaxInputBytes,
+			}, err
+		},
+		Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
 	}, true
 }
 

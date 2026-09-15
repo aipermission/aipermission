@@ -109,6 +109,7 @@ type InsertActionRequestInput struct {
 	IdempotencyIdentityHash string
 	ExecutionOwner          string
 	ExecutionLeaseExpiresAt string
+	EnforceTokenCapacity    bool
 }
 
 type FinishActionRequestInput struct {
@@ -474,20 +475,15 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, err
 	}
 	defer rollback()
-	if strings.TrimSpace(input.IdempotencyKey) != "" {
-		existing, findErr := getActionRequestByIdempotencyWithExecutor(ctx, executor, idempotencyScope, input.IdempotencyKey)
-		if findErr == nil {
-			if existing.IdempotencyIdentityHash != strings.TrimSpace(input.IdempotencyIdentityHash) {
-				return ActionRequest{}, false, ErrActionRequestIdempotency
-			}
-			if commitErr := commit(); commitErr != nil {
-				return ActionRequest{}, false, commitErr
-			}
-			return existing, false, nil
+	existing, found, err := findMatchingActionRequest(ctx, executor, input, idempotencyScope)
+	if err != nil {
+		return ActionRequest{}, false, err
+	}
+	if found {
+		if err := commit(); err != nil {
+			return ActionRequest{}, false, err
 		}
-		if !errors.Is(findErr, ErrActionRequestNotFound) {
-			return ActionRequest{}, false, findErr
-		}
+		return existing, false, nil
 	}
 	result, err := executor.ExecContext(ctx, `
 		INSERT INTO connector_action_requests (
@@ -539,65 +535,30 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, err
 	}
 	if affected == 0 {
-		if strings.TrimSpace(input.IdempotencyKey) != "" {
-			existing, findErr := getActionRequestByIdempotencyWithExecutor(ctx, executor, idempotencyScope, input.IdempotencyKey)
-			if findErr == nil {
-				if existing.IdempotencyIdentityHash != strings.TrimSpace(input.IdempotencyIdentityHash) {
-					return ActionRequest{}, false, ErrActionRequestIdempotency
-				}
-				if commitErr := commit(); commitErr != nil {
-					return ActionRequest{}, false, commitErr
-				}
-				return existing, false, nil
-			}
-			if !errors.Is(findErr, ErrActionRequestNotFound) {
-				return ActionRequest{}, false, findErr
-			}
-			var activePair int
-			if pairErr := executor.QueryRowContext(ctx, `
-				SELECT COUNT(*)
-				FROM connector_targets t
-				JOIN connector_credential_profiles p ON p.target_id = t.id
-				WHERE t.id = ? AND p.id = ? AND t.connector_kind = ?
-					AND p.connector_kind = t.connector_kind
-					AND t.status = 'active' AND p.status = 'active'`,
-				input.TargetID, input.ProfileID, input.ConnectorKind,
-			).Scan(&activePair); pairErr != nil {
-				return ActionRequest{}, false, pairErr
-			}
-			if activePair > 0 {
-				return ActionRequest{}, false, ErrActionRequestInsertConflict
-			}
+		existing, found, err := findMatchingActionRequest(ctx, executor, input, idempotencyScope)
+		if err != nil {
+			return ActionRequest{}, false, err
 		}
-		return ActionRequest{}, false, ErrTargetProfileNotFound
+		if found {
+			if err := commit(); err != nil {
+				return ActionRequest{}, false, err
+			}
+			return existing, false, nil
+		}
+		return ActionRequest{}, false, actionRequestInsertFailure(ctx, executor, input)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return ActionRequest{}, false, err
 	}
 	if seal != nil {
-		encryptedPayload, sealErr := seal(id)
-		if sealErr != nil {
-			return ActionRequest{}, false, sealErr
+		if err := finalizeSealedActionRequest(ctx, executor, id, finalStatus, seal); err != nil {
+			return ActionRequest{}, false, err
 		}
-		if strings.TrimSpace(encryptedPayload) == "" {
-			return ActionRequest{}, false, ValidationError("sealed action payload is required")
-		}
-		finalized, finalizeErr := executor.ExecContext(ctx, `
-			UPDATE connector_action_requests
-			SET encrypted_payload_json = ?, status = ?
-			WHERE id = ? AND status = ?`,
-			encryptedPayload, string(finalStatus), id, string(actionRequestPreparingStatus),
-		)
-		if finalizeErr != nil {
-			return ActionRequest{}, false, fmt.Errorf("finalize sealed connector action request: %w", finalizeErr)
-		}
-		finalizedCount, finalizeErr := finalized.RowsAffected()
-		if finalizeErr != nil {
-			return ActionRequest{}, false, fmt.Errorf("read finalized connector action request rows affected: %w", finalizeErr)
-		}
-		if finalizedCount != 1 {
-			return ActionRequest{}, false, ErrActionRequestInsertConflict
+	}
+	if input.EnforceTokenCapacity {
+		if err := enforceActionRequestTokenCapacity(ctx, executor, input.TokenID, id); err != nil {
+			return ActionRequest{}, false, err
 		}
 	}
 	request, err := getActionRequestWithExecutor(ctx, executor, id)
@@ -611,6 +572,86 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, err
 	}
 	return request, true, nil
+}
+
+func findMatchingActionRequest(ctx context.Context, executor storeDB, input InsertActionRequestInput, scope string) (ActionRequest, bool, error) {
+	if strings.TrimSpace(input.IdempotencyKey) == "" {
+		return ActionRequest{}, false, nil
+	}
+	existing, err := getActionRequestByIdempotencyWithExecutor(ctx, executor, scope, input.IdempotencyKey)
+	if errors.Is(err, ErrActionRequestNotFound) {
+		return ActionRequest{}, false, nil
+	}
+	if err != nil {
+		return ActionRequest{}, false, err
+	}
+	if existing.IdempotencyIdentityHash != strings.TrimSpace(input.IdempotencyIdentityHash) {
+		return ActionRequest{}, false, ErrActionRequestIdempotency
+	}
+	return existing, true, nil
+}
+
+func actionRequestInsertFailure(ctx context.Context, executor storeDB, input InsertActionRequestInput) error {
+	if strings.TrimSpace(input.IdempotencyKey) == "" {
+		return ErrTargetProfileNotFound
+	}
+	var activePair int
+	if err := executor.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM connector_targets t
+		JOIN connector_credential_profiles p ON p.target_id = t.id
+		WHERE t.id = ? AND p.id = ? AND t.connector_kind = ?
+			AND p.connector_kind = t.connector_kind
+			AND t.status = 'active' AND p.status = 'active'`,
+		input.TargetID, input.ProfileID, input.ConnectorKind,
+	).Scan(&activePair); err != nil {
+		return err
+	}
+	if activePair > 0 {
+		return ErrActionRequestInsertConflict
+	}
+	return ErrTargetProfileNotFound
+}
+
+func finalizeSealedActionRequest(ctx context.Context, executor storeDB, id int64, status connectors.ResultStatus, seal func(int64) (string, error)) error {
+	encryptedPayload, err := seal(id)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(encryptedPayload) == "" {
+		return ValidationError("sealed action payload is required")
+	}
+	finalized, err := executor.ExecContext(ctx, `
+		UPDATE connector_action_requests
+		SET encrypted_payload_json = ?, status = ?
+		WHERE id = ? AND status = ?`,
+		encryptedPayload, string(status), id, string(actionRequestPreparingStatus),
+	)
+	if err != nil {
+		return fmt.Errorf("finalize sealed connector action request: %w", err)
+	}
+	finalizedCount, err := finalized.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read finalized connector action request rows affected: %w", err)
+	}
+	if finalizedCount != 1 {
+		return ErrActionRequestInsertConflict
+	}
+	return nil
+}
+
+func enforceActionRequestTokenCapacity(ctx context.Context, executor storeDB, tokenID *int64, id int64) error {
+	if tokenID == nil || *tokenID < 1 {
+		return ValidationError("token capacity requires a token request")
+	}
+	withinCapacity, err := actionRequestWithinTokenCapacity(ctx, executor, *tokenID, id)
+	if err != nil {
+		return err
+	}
+	if !withinCapacity {
+		return ErrActionRequestCapacity
+	}
+	return nil
 }
 
 func (s *Store) GetActionRequestByIdempotency(ctx context.Context, tokenID *int64, source, key string) (ActionRequest, error) {
