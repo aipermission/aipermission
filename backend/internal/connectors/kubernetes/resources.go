@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -496,10 +497,7 @@ func ageText(createdAt string) string {
 }
 
 func truncateString(value string, maxBytes int) string {
-	if maxBytes < 1 || len(value) <= maxBytes {
-		return value
-	}
-	return value[:maxBytes] + "\n... truncated ..."
+	return boundedtext.TruncateUTF8(value, maxBytes, "\n... truncated ...")
 }
 
 func shellQuote(value string) string {

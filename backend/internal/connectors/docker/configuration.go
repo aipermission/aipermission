@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -146,10 +147,7 @@ func normalizeDockerOptionInput(input map[string]any, key string) string {
 
 func firstLine(value string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(value), "\n")
-	if len(line) > 120 {
-		return line[:117] + "..."
-	}
-	return line
+	return boundedtext.TruncateUTF8(line, 120, "...")
 }
 
 func dockerCommandError(command string, result connectors.CommandRunResult) error {

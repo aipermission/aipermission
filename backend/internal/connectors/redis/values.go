@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -423,10 +424,7 @@ func limitStringMap(values map[string]string, limit int, maxBytes int) map[strin
 }
 
 func truncateString(value string, maxBytes int) string {
-	if maxBytes < 1 || len(value) <= maxBytes {
-		return value
-	}
-	return value[:maxBytes] + "...[truncated]"
+	return boundedtext.TruncateUTF8(value, maxBytes, "...[truncated]")
 }
 
 func min(left int, right int) int {

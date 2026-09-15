@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -143,9 +144,7 @@ func classifyRabbitMutationError(operation string, err error) error {
 
 func rabbitHTTPError(status int, data []byte) error {
 	message := strings.TrimSpace(string(data))
-	if len(message) > 800 {
-		message = message[:800] + "...[truncated]"
-	}
+	message = boundedtext.TruncateUTF8(message, 800, "...[truncated]")
 	if message == "" {
 		message = http.StatusText(status)
 	}
@@ -361,10 +360,7 @@ func copyMap(input map[string]any) map[string]any {
 }
 
 func truncateString(value string, maxBytes int) string {
-	if maxBytes < 1 || len(value) <= maxBytes {
-		return value
-	}
-	return value[:maxBytes] + "...[truncated]"
+	return boundedtext.TruncateUTF8(value, maxBytes, "...[truncated]")
 }
 
 func min(left int, right int) int {

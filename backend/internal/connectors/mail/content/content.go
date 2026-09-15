@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-message/charset"
@@ -207,7 +208,7 @@ func DecodeTextPart(input io.Reader, structure *imap.BodyStructure, maxBytes int
 		}
 	}
 	if len(text) > maxBytes {
-		text = strings.ToValidUTF8(text[:maxBytes], "")
+		text = boundedtext.TruncateUTF8(text, maxBytes, "")
 		truncated = true
 	}
 	return text, decodedBytes, truncated, decodedSizeComplete, nil
@@ -284,10 +285,7 @@ func BoundedText(value string, limit int) string {
 		}
 		return r
 	}, strings.ToValidUTF8(value, "�"))
-	if len(value) <= limit {
-		return value
-	}
-	return strings.ToValidUTF8(value[:limit], "")
+	return boundedtext.TruncateUTF8(value, limit, "")
 }
 
 func allowedLinkScheme(value string) bool {
