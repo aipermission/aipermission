@@ -146,7 +146,7 @@ func adaptMCPActionScopeProvider(provider gatewayaccess.MCPActionScopeProvider) 
 		}
 		return mcpconnector.ActionScope{
 			Database: scope.Database, TokenID: scope.TokenID, Output: outputAuthorization(scope.Output),
-			Call: call, Observe: scope.Observe, Redact: scope.Redact,
+			ActionVisible: scope.ActionVisible, Call: call, Observe: scope.Observe, Redact: scope.Redact,
 			RunningHint: func(request connectortargets.ActionRequest) string {
 				if scope.RunningHint == nil {
 					return ""

@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
+	gatewaymanagement "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
@@ -53,6 +55,18 @@ func (s mcpHandlers) mcpConnectorActionPorts(w http.ResponseWriter, r *http.Requ
 	ports := gatewayinfra.MCPActionPorts{
 		TokenID: auth.TokenID, RunningHint: s.connectorRuntime.RunningHintPort(),
 		Delivery: s.connectorActions.Delivery,
+		ActionVisible: func(ctx context.Context, targetRef, actionName string) (bool, error) {
+			permissions, err := s.connectorCatalog(auth.runtime).ProjectScopedSupportedConnectorPermissions(ctx, auth.TokenID)
+			if err != nil {
+				return false, err
+			}
+			for _, permission := range permissions {
+				if permission.ExecutionRule != gatewaymanagement.ActionPermissionBlocked && permission.ActionName == actionName && connectors.FormatTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID) == targetRef {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(auth.runtime, tokenID)
 		},
