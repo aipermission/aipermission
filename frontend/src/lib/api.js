@@ -31,7 +31,7 @@ export async function apiPost(path, body, options = {}) {
     });
     let data;
     try {
-      data = await readResponse(response, { requireJSON: Boolean(prepared.retry) });
+      data = await readResponse(response);
     } catch (error) {
       if (prepared.retry && error?.data?.status === "outcome_unknown") {
         await markLocalActionRetryOutcome(prepared.retry, error.data);
@@ -45,16 +45,16 @@ export async function apiPost(path, body, options = {}) {
       }
       throw error;
     }
-    if (prepared.retry && response.ok && prepared.acknowledged(data) && data.status !== "outcome_unknown") {
+    if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
+      throw new Error(prepared.invalidResponseMessage);
+    }
+    if (prepared.retry && response.ok && data.status !== "outcome_unknown") {
       await completeLocalActionRetry(prepared.retry);
       finalized = true;
     }
-    if (prepared.retry && response.ok && prepared.acknowledged(data) && data.status === "outcome_unknown") {
+    if (prepared.retry && response.ok && data.status === "outcome_unknown") {
       await markLocalActionRetryOutcome(prepared.retry, data);
       finalized = true;
-    }
-    if (prepared.retry && response.ok && !prepared.acknowledged(data)) {
-      throw new Error(prepared.invalidResponseMessage);
     }
     return data;
   } catch (error) {
@@ -95,9 +95,9 @@ function isAcknowledgedLocalActionResponse(data) {
 }
 
 async function preparePostBody(path, body) {
-  if (body?.idempotency_key) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
   const policy = idempotentPostPolicy(path);
   if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
+  if (body?.idempotency_key) return { body, retry: null, ...policy };
   const retry = await prepareLocalActionRetry({ path, body: body || {} });
   return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
@@ -146,7 +146,7 @@ export async function apiPostForm(path, formData, options = {}) {
     signal: options.signal,
     credentials: "include",
   });
-  return readResponse(response, { requireJSON: Boolean(options.requireJSON) });
+  return readResponse(response);
 }
 
 export async function apiPut(path, body, options = {}) {
@@ -207,41 +207,41 @@ export async function apiDownload(path, filename, options = {}) {
 
 async function readResponse(response, options = {}) {
   const text = await response.text();
-  const data = parseResponseBody(text, options);
   if (!response.ok) {
+    let data = null;
+    let parseError = null;
+    try {
+      data = parseResponseBody(text, options);
+    } catch (error) {
+      parseError = error;
+    }
     if (response.status === 401 && data?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
     }
-    throw new APIError(data?.error || `Request failed with ${response.status}`, {
+    throw new APIError(data?.error || parseError?.message || `Request failed with ${response.status}`, {
       status: response.status,
       code: data?.code || data?.status || "",
       details: data?.details || null,
       data,
     });
   }
-  return data;
+  return parseResponseBody(text, options);
 }
 
-function parseResponseBody(text, options = {}) {
+function parseResponseBody(text) {
   if (!text) {
-    if (options.requireJSON) throw new Error("Empty JSON response from gateway.");
-    return null;
-  }
-  if (looksLikeHTML(text)) {
-    if (options.requireJSON) throw new Error("Gateway returned HTML instead of JSON.");
-    return { error: "Gateway is starting or temporarily unavailable. Please retry in a few seconds." };
+    throw new Error("Empty JSON response from gateway.");
   }
   try {
     return JSON.parse(text);
   } catch {
-    if (options.requireJSON) throw new Error("Invalid JSON response from gateway.");
-    return { error: text.trim() || "Invalid non-JSON response from gateway." };
+    if (looksLikeHTML(text)) throw new Error("Gateway returned HTML instead of JSON.");
+    throw new Error("Invalid JSON response from gateway.");
   }
 }
 
 function looksLikeHTML(text) {
-  const trimmed = text.trimStart().toLowerCase();
-  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html") || trimmed.includes("<body");
+  return text.trimStart().startsWith("<");
 }
 
 function normalizeApiUrl(value) {

@@ -1642,10 +1642,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 60.83,
-      "branches": 68.45,
+      "statements": 65,
+      "branches": 73.52,
       "functions": 84,
-      "lines": 61.94
+      "lines": 65.41
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,

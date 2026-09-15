@@ -54,11 +54,56 @@ test("API failures retain structured status and classification", async () => {
   }
 });
 
-test("multipart callers can require a JSON response", async () => {
+test("malformed API failures retain HTTP status and classification", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response("<html>gateway fallback</html>", { status: 200 });
   try {
-    await assert.rejects(() => apiPostForm("/api/test", new FormData(), { requireJSON: true }), /HTML instead of JSON/);
+    for (const [body, status, kind, message] of [
+      ["", 401, "authentication", /Empty JSON response/],
+      ["<html>proxy unavailable</html>", 503, "unavailable", /HTML instead of JSON/],
+    ]) {
+      globalThis.fetch = async () => new Response(body, { status });
+      await assert.rejects(
+        () => apiGet("/api/test"),
+        (error) => {
+          assert.equal(error instanceof APIError, true);
+          assert.equal(error.status, status);
+          assert.equal(error.kind, kind);
+          assert.match(error.message, message);
+          return true;
+        },
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("JSON API helpers reject malformed successful responses by default", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [body, expected] of [
+      ["<html>gateway fallback</html>", /HTML instead of JSON/],
+      ['{"partial":', /Invalid JSON response/],
+      ["", /Empty JSON response/],
+    ]) {
+      globalThis.fetch = async () => new Response(body, { status: 200 });
+      await assert.rejects(() => apiGet("/api/test"), expected);
+      await assert.rejects(() => apiPost("/api/test", {}), expected);
+      await assert.rejects(() => apiPostForm("/api/test", new FormData()), expected);
+      await assert.rejects(() => apiPut("/api/test", {}), expected);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("JSON parsing precedes HTML detection and DELETE explicitly accepts 204", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ value: "remote output contains <body text" }), { status: 200 });
+    assert.deepEqual(await apiGet("/api/test"), { value: "remote output contains <body text" });
+    globalThis.fetch = async () => new Response(null, { status: 204 });
+    assert.equal(await apiDelete("/api/test"), null);
   } finally {
     globalThis.fetch = originalFetch;
   }
