@@ -28,9 +28,10 @@ func (s *Store) MarkRunningOutcomeUnknown(ctx context.Context, message string, c
 		return nil, fmt.Errorf("connector target store is not configured")
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.id, r.token_id, t.project_id, r.target_id, r.profile_id, r.connector_kind, r.action_name
+		SELECT r.id, r.token_id, COALESCE(h.project_id, t.project_id), r.target_id, r.profile_id, r.connector_kind, r.action_name
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
+		LEFT JOIN history_entries h ON h.source_ref_type = 'connector_action_request' AND h.source_ref_id = r.id
 		WHERE r.status = ?
 		ORDER BY r.id`, string(connectors.ResultRunning))
 	if err != nil {
