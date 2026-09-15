@@ -171,7 +171,8 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                   style={labelStyle(label)}
                   onClick={() => removeLabel(label.id)}
                   disabled={state.state === "saving"}
-                  title="Remove label"
+                  aria-label={`Remove ${label.name} label`}
+                  title={`Remove ${label.name} label`}
                 >
                   <span className="truncate">{label.name}</span>
                   <X className="h-3 w-3" />
@@ -179,6 +180,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
               ))}
               <input
                 ref={labelInputRef}
+                aria-label="Add history label"
                 value={labelName}
                 onChange={(event) => {
                   setLabelName(event.target.value);
@@ -207,8 +209,8 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                     }`}
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      void addLabel(label.name);
                     }}
+                    onClick={() => void addLabel(label.name)}
                   >
                     <span className="truncate">{label.name}</span>
                     <span className="text-xs text-stone-400">Enter</span>

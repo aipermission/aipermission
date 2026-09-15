@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { HistoryDialog, StatusBadge, retryPolicyGuidance } from "./history-components";
 
 describe("history outcome uncertainty", () => {
@@ -57,4 +58,27 @@ describe("history outcome uncertainty", () => {
     expect(screen.getByText(/Precondition failed/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(guidance))).toBeInTheDocument();
   });
+});
+
+it("allows history label suggestions to be selected with the keyboard", async () => {
+  const user = userEvent.setup();
+  const onAttachLabel = vi.fn().mockResolvedValue(null);
+  render(
+    <HistoryDialog
+      item={{ id: 42, status: "completed", labels: [], target_name: "Test target", created_at: "2026-09-01T00:00:00Z" }}
+      labels={[{ id: 1, name: "Investigate" }]}
+      onClose={vi.fn()}
+      onAttachLabel={onAttachLabel}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "Add history label" });
+  await user.click(input);
+  await user.type(input, "Invest");
+  await user.tab();
+  expect(screen.getByText("Investigate").closest("button")).toHaveFocus();
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => expect(onAttachLabel).toHaveBeenCalledWith(42, { name: "Investigate" }));
 });
