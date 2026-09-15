@@ -54,6 +54,27 @@ func TestRedactorAppliesWorkspaceCredentialAndSchemaBoundaries(t *testing.T) {
 	}
 }
 
+func TestRedactorBoundsPersistedDisplayAndErrorText(t *testing.T) {
+	redactor, err := NewRedactor(
+		func(_ context.Context, value string) string { return value },
+		func(_ context.Context, value string) string { return value },
+		1024,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := redactor.Result(t.Context(), connectors.ActionResult{
+		DisplayText: strings.Repeat("x", MaxStringBytes+10),
+		Error:       strings.Repeat("y", MaxStringBytes+10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.DisplayText) != MaxStringBytes || len(result.Error) != MaxStringBytes {
+		t.Fatalf("bounded text lengths = display %d, error %d", len(result.DisplayText), len(result.Error))
+	}
+}
+
 func TestRedactorInputHonorsConfiguredEncodedLimit(t *testing.T) {
 	redactor, err := NewRedactor(
 		func(_ context.Context, value string) string { return value },

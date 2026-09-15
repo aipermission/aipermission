@@ -4,7 +4,8 @@ package sqlresult
 import (
 	"encoding/json"
 	"fmt"
-	"unicode/utf8"
+
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 )
 
 type Result struct {
@@ -169,26 +170,7 @@ func uniqueColumns(columns []string) []string {
 }
 
 func truncateString(value string, limit int, suffix string) string {
-	if len(value) <= limit {
-		return value
-	}
-	if limit <= len(suffix) {
-		return truncateUTF8(suffix, limit)
-	}
-	return truncateUTF8(value, limit-len(suffix)) + suffix
-}
-
-func truncateUTF8(value string, limit int) string {
-	if limit <= 0 || value == "" {
-		return ""
-	}
-	if len(value) <= limit {
-		return value
-	}
-	for limit > 0 && !utf8.RuneStart(value[limit]) {
-		limit--
-	}
-	return value[:limit]
+	return boundedtext.TruncateUTF8(value, limit, suffix)
 }
 
 func encodedSize(value any) int {

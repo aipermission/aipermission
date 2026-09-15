@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -94,6 +95,8 @@ func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result conn
 	capabilityFields := temporaryCapabilityFields(hints...)
 	result.DisplayText, _ = r.Text(ctx, result.DisplayText, boundary)
 	result.Error, _ = r.Text(ctx, result.Error, boundary)
+	result.DisplayText = boundedtext.TruncateUTF8(result.DisplayText, MaxStringBytes, "...")
+	result.Error = boundedtext.TruncateUTF8(result.Error, MaxStringBytes, "...")
 	redacted, err := r.ValueWithCredentialBoundary(ctx, result.Output, sensitiveFields, capabilityFields, boundary)
 	if err != nil {
 		return connectors.ActionResult{}, err

@@ -288,6 +288,10 @@
     { "package": "./internal/actions", "name": "FuzzApprovalContextHash" },
     { "package": "./internal/securitypolicy", "name": "FuzzBasicRedaction" },
     {
+      "package": "./internal/boundedtext",
+      "name": "FuzzTruncateUTF8IsValidAndBounded"
+    },
+    {
       "package": "./internal/filetransfer",
       "name": "FuzzTransferPathNormalization"
     },

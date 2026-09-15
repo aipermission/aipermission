@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -41,9 +42,7 @@ func s3HTTPError(status int, data []byte) error {
 
 func classifyS3ServiceError(status int, code string, detail string) error {
 	message := strings.TrimSpace(detail)
-	if len(message) > 800 {
-		message = message[:800] + "...[truncated]"
-	}
+	message = boundedtext.TruncateUTF8(message, 800, "...[truncated]")
 	if message == "" {
 		message = http.StatusText(status)
 	}
