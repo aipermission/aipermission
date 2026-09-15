@@ -32,10 +32,7 @@ type mcpConnectorActionResponse = actions.Response
 func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "codex"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "codex")
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -102,10 +99,7 @@ func TestMCPListConnectorTargetsUsesActionPermissions(t *testing.T) {
 func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-session-poll"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-session-poll")
 	target := fixture.createKeyAndServer(t, "vault-session-output")
 	runtime := fixture.server.activeRuntime()
 	store := connectortargets.NewStore(fixture.db)
@@ -220,10 +214,7 @@ func TestConnectorActionPollWithholdsVaultSessionOutputWithoutExactLease(t *test
 func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "project-scoped-codex"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "project-scoped-codex")
 	projects := projectstore.NewStore(fixture.db)
 	project, err := projects.Create(ctx, "Project Alpha")
 	if err != nil {
@@ -326,10 +317,7 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 func TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "idempotent-connector"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "idempotent-connector")
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -524,10 +512,7 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 func TestMCPConnectorActionResponseWriteFencesTokenRevocation(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "response-fence"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "response-fence")
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
