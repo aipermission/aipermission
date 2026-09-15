@@ -1,9 +1,13 @@
 package connectorruntime
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 func TestAdapterPortsExposeOnlyDeclaredAuthority(t *testing.T) {
@@ -31,5 +35,30 @@ func TestAdapterPortsExposeOnlyDeclaredAuthority(t *testing.T) {
 				t.Fatalf("concrete methods = %v, want %v", methods, test.methods)
 			}
 		})
+	}
+}
+
+func TestScopeRejectsMissingAuthorityAndForeignConnectorKind(t *testing.T) {
+	ctx := context.Background()
+	for _, scope := range []*Scope{nil, NewScope("fixture", Dependencies{}), NewScope(" ", Dependencies{})} {
+		if _, err := scope.store(); !errors.Is(err, ErrInvalidRuntime) {
+			t.Fatalf("store with incomplete authority: %v", err)
+		}
+		if err := scope.requireTarget(ctx, 1); !errors.Is(err, ErrInvalidRuntime) {
+			t.Fatalf("requireTarget with incomplete authority: %v", err)
+		}
+		if _, _, err := scope.resolveTarget(ctx, "fixture:1:1"); !errors.Is(err, ErrInvalidRuntime) {
+			t.Fatalf("resolveTarget with incomplete authority: %v", err)
+		}
+		if _, err := scope.ensureSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{TargetID: 1}); !errors.Is(err, ErrInvalidRuntime) {
+			t.Fatalf("ensureSurface with incomplete authority: %v", err)
+		}
+		if scope.resourcesFor("private_key") != nil {
+			t.Fatal("resource access was exposed without backing authority")
+		}
+	}
+	fixture := NewScope("fixture", Dependencies{})
+	if _, err := fixture.ensureSurface(ctx, connectortargets.EnsureRuntimeSurfaceInput{ConnectorKind: "other", TargetID: 1}); !errors.Is(err, connectortargets.ErrRuntimeSurfaceNotFound) {
+		t.Fatalf("foreign connector surface = %v", err)
 	}
 }
