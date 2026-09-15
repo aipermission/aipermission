@@ -1,8 +1,7 @@
 import { Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { apiPost, apiUrl } from "../../lib/api";
 import { limitTranscript } from "../app-shell-runtime";
-import { PtyConsole } from "../console/pty-console";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog } from "../ui/dialog";
@@ -10,6 +9,7 @@ import { Notice } from "../ui/notice";
 
 const closedSession = { transcript: "", status: "closed", error: null, shell: "" };
 const maxPendingInputBytes = 64 * 1024;
+const PtyConsole = lazy(() => import("../console/pty-console").then((module) => ({ default: module.PtyConsole })));
 
 export function MaintenanceConsolePanel() {
   const [open, setOpen] = useState(false);
@@ -247,7 +247,9 @@ export function MaintenanceConsolePanel() {
             </Notice>
           </div>
           <div className="min-h-0">
-            <PtyConsole session={session} onInput={sendInput} onResize={resize} theme="dark" />
+            <Suspense fallback={<div className="grid h-full place-items-center text-sm text-stone-500">Connecting terminal...</div>}>
+              <PtyConsole session={session} onInput={sendInput} onResize={resize} theme="dark" />
+            </Suspense>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-xs text-stone-500">
             <div className="flex min-w-0 flex-wrap items-center gap-2">

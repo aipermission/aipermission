@@ -9,6 +9,7 @@ export default defineConfig({
     port: 3210,
   },
   build: {
+    manifest: true,
     chunkSizeWarningLimit: 2500,
     rollupOptions: {
       output: {
