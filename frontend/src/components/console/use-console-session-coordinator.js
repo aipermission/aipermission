@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { consoleSessions } from "../../lib/security-contracts";
 import { mergeConsoleSessionData } from "../app-shell-runtime";
 import { isLiveConsoleSession, latestSessionForRuntime } from "./helpers";
 import { useConsoleConnections } from "./use-console-connections";
@@ -30,8 +31,9 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
       try {
         const data = await apiGet("/api/console/sessions", { signal: request.signal });
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(data, current.data), error: null }));
-        data.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachSession(session.id));
+        const verified = consoleSessions(data);
+        setSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(verified, current.data), error: null }));
+        verified.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachSession(session.id));
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setSessions({ state: "error", data: [], error: error.message });

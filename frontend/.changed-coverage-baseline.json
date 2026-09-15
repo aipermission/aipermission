@@ -202,10 +202,10 @@
       "lines": 100
     },
     "src/components/console/use-console-session-coordinator.js": {
-      "statements": 82.35,
+      "statements": 82.5,
       "branches": 61.9,
       "functions": 87.5,
-      "lines": 89.47
+      "lines": 89.58
     },
     "src/components/console/use-console-target-selection.js": {
       "statements": 91.17,
@@ -226,10 +226,10 @@
       "lines": 0
     },
     "src/components/database-lock-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 1,
+      "branches": 1,
+      "functions": 1,
+      "lines": 1
     },
     "src/components/database-switch-dialog.jsx": {
       "statements": 0,
@@ -310,10 +310,10 @@
       "lines": 81.52
     },
     "src/components/history/history-components.jsx": {
-      "statements": 40.96,
-      "branches": 44.44,
-      "functions": 41.3,
-      "lines": 43.75
+      "statements": 60.24,
+      "branches": 53.96,
+      "functions": 65.95,
+      "lines": 65.27
     },
     "src/components/local-action-reconciliation-dialog.jsx": {
       "statements": 75,
@@ -376,10 +376,10 @@
       "lines": 0
     },
     "src/components/settings/history-retention-panel.jsx": {
-      "statements": 65.62,
-      "branches": 70,
-      "functions": 57.89,
-      "lines": 68.96
+      "statements": 71.05,
+      "branches": 70.83,
+      "functions": 65,
+      "lines": 75
     },
     "src/components/settings/local-action-retry-panel.jsx": {
       "statements": 74,
@@ -388,10 +388,10 @@
       "lines": 78.04
     },
     "src/components/settings/maintenance-console-panel.jsx": {
-      "statements": 76.07,
-      "branches": 50,
-      "functions": 64.28,
-      "lines": 82.83
+      "statements": 76.5,
+      "branches": 51,
+      "functions": 66.66,
+      "lines": 82.96
     },
     "src/components/settings/password-settings-panel.jsx": {
       "statements": 100,
@@ -413,8 +413,8 @@
     },
     "src/components/tokens/connector-permission-dialog.jsx": {
       "statements": 75.22,
-      "branches": 51.48,
-      "functions": 62.16,
+      "branches": 52.48,
+      "functions": 63.16,
       "lines": 79.77
     },
     "src/components/tokens/created-token-notice.jsx": {
@@ -538,10 +538,10 @@
       "lines": 90.24
     },
     "src/components/use-gateway-activity-resources.js": {
-      "statements": 33.33,
-      "branches": 11.53,
-      "functions": 28.57,
-      "lines": 37.5
+      "statements": 34.33,
+      "branches": 12.53,
+      "functions": 29.57,
+      "lines": 38.5
     },
     "src/components/use-gateway-core-resources.js": {
       "statements": 57.3,
@@ -562,10 +562,10 @@
       "lines": 0
     },
     "src/components/vault/use-vault-action-approvals.js": {
-      "statements": 79.71,
-      "branches": 48.27,
+      "statements": 80,
+      "branches": 49.27,
       "functions": 92.85,
-      "lines": 88.46
+      "lines": 88.67
     },
     "src/components/vault/use-vault-bindings.js": {
       "statements": 64.28,
@@ -779,7 +779,7 @@
     },
     "src/connectors/templates/_shared/sql-editor.jsx": {
       "statements": 90.62,
-      "branches": 58.33,
+      "branches": 62.5,
       "functions": 89.47,
       "lines": 96.36
     },
@@ -1486,10 +1486,10 @@
       "lines": 0
     },
     "src/connectors/templates/s3/dialogs.jsx": {
-      "statements": 5.55,
-      "branches": 0,
-      "functions": 0,
-      "lines": 7.69
+      "statements": 6.55,
+      "branches": 1,
+      "functions": 1,
+      "lines": 8.69
     },
     "src/connectors/templates/s3/endpoint-footer.jsx": {
       "statements": 0,
@@ -1570,10 +1570,10 @@
       "lines": 73.91
     },
     "src/connectors/templates/s3/use-s3-object-delete.js": {
-      "statements": 67.85,
-      "branches": 50,
-      "functions": 66.66,
-      "lines": 80.95
+      "statements": 93.1,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/s3/use-s3-upload.js": {
       "statements": 58.44,
@@ -1582,10 +1582,10 @@
       "lines": 70.37
     },
     "src/connectors/templates/s3/versions-dialog.jsx": {
-      "statements": 1.75,
-      "branches": 0,
-      "functions": 7.69,
-      "lines": 2
+      "statements": 73.43,
+      "branches": 68.49,
+      "functions": 69.23,
+      "lines": 77.58
     },
     "src/connectors/templates/ssh/bulk-command-dialog.jsx": {
       "statements": 62.58,
@@ -1737,6 +1737,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/lib/security-contracts.ts": {
+      "statements": 93.33,
+      "branches": 94.44,
+      "functions": 100,
+      "lines": 100
+    },
     "src/lib/theme.js": {
       "statements": 0,
       "branches": 0,
@@ -1846,10 +1852,10 @@
       "lines": 0
     },
     "src/pages/projects.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 77.33,
+      "branches": 54.38,
+      "functions": 89.47,
+      "lines": 82.08
     },
     "src/pages/remote-restore-helpers.js": {
       "statements": 100,

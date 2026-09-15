@@ -46,6 +46,17 @@ describe("useVaultActionApprovals", () => {
     expect(result.current.dialog.approval).toEqual(pendingApproval);
   });
 
+  it("rejects malformed approval data without opening an approval dialog", async () => {
+    apiGet.mockResolvedValueOnce([{ id: "not-an-id", status: "approval_pending" }]);
+    const { result } = renderApprovals();
+
+    await act(async () => result.current.load());
+
+    expect(result.current.approvals).toMatchObject({ state: "error", data: [] });
+    expect(result.current.approvals.error).toContain("Invalid Vault approvals response from gateway.");
+    expect(result.current.dialog.approval).toBeNull();
+  });
+
   it("does not restore dialog state when a decision completes after dismissal", async () => {
     const decision = deferred();
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);

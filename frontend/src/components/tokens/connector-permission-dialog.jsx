@@ -7,6 +7,7 @@ import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { useRequestGuard } from "../../lib/request-guard";
+import { tokenActionPermissions } from "../../lib/security-contracts";
 
 const emptyLoad = {
   state: "idle",
@@ -273,7 +274,7 @@ async function loadConnectorPermissionData({ tokenID, requests, setLoad, setDraf
       (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []]),
     );
     const actionsByProfile = Object.fromEntries(actionEntries);
-    const permissionItems = permissions.items || [];
+    const permissionItems = tokenActionPermissions(permissions);
     setLoad({
       state: "ready",
       catalog: catalog.items || [],

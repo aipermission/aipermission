@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { pendingApprovals } from "../../lib/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
 
 const initialApprovals = { state: "loading", data: [], error: null };
@@ -23,8 +24,9 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
       try {
         const data = await apiGet("/api/vault-action-approvals?status=approval_pending", { signal: request.signal });
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setApprovals({ state: "ready", data, error: null });
-        const pending = data.filter((item) => item.status === "approval_pending");
+        const verified = pendingApprovals(data, "Vault approvals");
+        setApprovals({ state: "ready", data: verified, error: null });
+        const pending = verified.filter((item) => item.status === "approval_pending");
         setDialog((current) => reconcileVaultApprovalDialog(current, pending, seenPendingRef.current));
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;

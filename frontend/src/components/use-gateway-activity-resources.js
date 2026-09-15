@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
 import { useRequestGuard } from "../lib/request-guard";
+import { pendingApprovals } from "../lib/security-contracts";
 
 const loadingList = { state: "loading", data: [], error: null };
 
@@ -16,7 +17,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
       try {
         const data = await apiGet("/api/connector-action-approvals", { signal: request.signal });
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setConnectorActionApprovals({ state: "ready", data, error: null });
+        setConnectorActionApprovals({ state: "ready", data: pendingApprovals(data, "connector approvals"), error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setConnectorActionApprovals({ state: "error", data: [], error: error.message });
