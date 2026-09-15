@@ -69,6 +69,12 @@ This runs:
   and token-secret dismissal; removing a test requires a replacement that still
   reaches the protected owner through the import graph
 - frontend duplicate-block comparison against the base Git revision
+- backend and MCP baseline-based duplicate-block comparison that rejects new
+  meaningful clones; existing clones are recorded without retroactive CI failure
+- TypeScript checks for connector action, permission, approval, Vault, and
+  session contracts; untrusted HTTP responses are still validated at runtime
+- a measured initial JavaScript budget with the maintenance terminal loaded
+  only when Settings opens it
 - frontend per-file coverage floors for connector permission editing, shared
   connector action and target/profile lifecycles, approval dialogs, and console
   page-state boundaries
@@ -95,8 +101,9 @@ The reviewed backend coverage floors are enforced by
 consumer; `maintenance-policy.json` is the single source of truth for numeric
 thresholds. Both `internal/*` and executable `cmd/*` packages are inventoried.
 The policy protects transport, gateway-owner, audit, connector, session, token,
-Vault, storage, and command packages. A new security-sensitive package must be
-added once its baseline coverage is established.
+Vault, storage, and command packages. Runtime scopes and critical owner floors
+include failure-path tests; a new security-sensitive package must be added once
+its baseline coverage is established.
 
 Linux coverage inventory and floors are complemented by a native
 `windows-latest` backend job that executes the encrypted-database ownership
