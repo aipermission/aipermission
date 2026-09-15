@@ -7,6 +7,7 @@ const test = require("node:test");
 const { workflowJobContracts } = require("../workflow-contracts");
 
 const script = path.join(__dirname, "..", "gitleaks-history-scan.sh");
+const config = path.join(__dirname, "../..", ".gitleaks.toml");
 
 test("history scan fails closed when the container cannot enumerate commits", () => {
   for (const fixture of [
@@ -57,6 +58,19 @@ test("security hygiene checkout fetches complete history", () => {
     .get("security-hygiene")
     .source.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(checkout?.with?.["fetch-depth"], 0);
+});
+
+test("history scan allowlist is limited to generated recipe digests", () => {
+  const source = fs.readFileSync(config, "utf8");
+  assert.match(source, /\[extend\]\s+useDefault = true/);
+  assert.match(source, /id = "generic-api-key"/);
+  assert.match(source, /regexTarget = "secret"/);
+  assert.match(source, /\^\[a-f0-9\]\{64\}\$/);
+  assert.match(
+    source,
+    /\^scripts\/verification-policy\\\.json\$/,
+  );
+  assert.doesNotMatch(source, /commits\s*=/);
 });
 
 function runWithFakeDocker(mode) {

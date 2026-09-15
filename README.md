@@ -252,15 +252,16 @@ the normal gateway intentionally carries no pre-0.2 compatibility shim. See
 
 ## Development
 
-Install the independently locked frontend and MCP packages, then run the
-standard gates:
+Install the independently locked repository verification, frontend, and MCP
+packages, then run the standard gates:
 
 ```bash
+npm ci --prefix scripts --workspaces=false
 npm ci --prefix frontend --workspaces=false
 npm ci --prefix packages/mcp --workspaces=false
-make test
-make build
-make audit
+make -f Makefile test
+make -f Makefile build
+make -f Makefile audit
 ```
 
 The package-local lockfiles are canonical. Do not run `npm install` at the
@@ -269,7 +270,7 @@ repository root or create a root `package-lock.json`.
 Full release validation:
 
 ```bash
-make release-check
+make -f Makefile release-check
 ```
 
 Useful package checks:

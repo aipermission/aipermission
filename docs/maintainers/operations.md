@@ -51,7 +51,7 @@ recovery.
 3. Implement the patch on the advisory's private fork or another access-limited
    branch. Avoid unrelated dependency or feature changes.
 4. Add a regression test that fails before the fix and passes after it.
-5. Run `make release-check` plus the connector-specific manual smoke needed for
+5. Run `make -f Makefile release-check` plus the connector-specific manual smoke needed for
    the affected boundary.
 6. Review the exact source commit, generated release notes, package contents,
    container provenance, and database migration impact.

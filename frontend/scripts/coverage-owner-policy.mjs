@@ -15,6 +15,7 @@ const testModuleMarkers = architecturePolicy.testModuleMarkers;
 
 export function isBehaviorOwner(file) {
   const normalized = file.split(sep).join("/");
+  if (normalized.endsWith(".d.ts")) return false;
   if (!normalized.startsWith("src/") || !sourceExtensions.has(extname(normalized))) return false;
   if (isTestSource("markers", normalized, testModuleMarkers) || excludedNames.has(basename(normalized))) return false;
   if (excludedPatterns.some((pattern) => pattern.test(normalized))) return false;

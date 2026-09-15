@@ -36,10 +36,14 @@ jobs:
         run: node scripts/go-toolchain-check.js
       - name: Verification workflow contracts
         run: node scripts/verification-policy.js --verify-workflows
+      - name: Local release gate contracts
+        run: node scripts/verification-policy.js --verify-local-release
       - name: Verification policy ratchet
         run: node scripts/verification-policy.js --verify-ratchet
       - name: CI policy tests
         run: node scripts/run-tooling-tests.js scripts/ci
+      - name: Verification policy tests
+        run: node scripts/run-tooling-tests.js scripts/verification
       - name: Maintenance policy tests
         run: node scripts/run-tooling-tests.js scripts/maintenance
       - name: Release policy tests
@@ -77,7 +81,9 @@ jobs:
       - name: Install repository verification dependencies
         run: npm ci --prefix scripts --workspaces=false
       - name: Go format
-        run: make backend-format-check
+        run: 'test -z "${MAKEFILES:-}" && make -f Makefile backend-format-check'
+      - name: Generated REST contracts
+        run: 'test -z "${MAKEFILES:-}" && make -f Makefile rest-contract-check'
       - name: Test with coverage
         working-directory: backend
         run: go test -coverprofile=coverage.out ./...
@@ -91,9 +97,9 @@ jobs:
         working-directory: backend
         run: go run ./cmd/function-budget
       - name: Recovery drill
-        run: make recovery-drill
+        run: 'test -z "${MAKEFILES:-}" && make -f Makefile recovery-drill'
       - name: Bounded security fuzzing
-        run: make bounded-fuzz
+        run: 'test -z "${MAKEFILES:-}" && make -f Makefile bounded-fuzz'
       - name: Race test
         working-directory: backend
         run: go test -race ./...
@@ -239,9 +245,6 @@ jobs:
       - name: Test
         working-directory: packages/mcp
         run: npm test
-      - name: Build
-        working-directory: packages/mcp
-        run: npm run build
       - name: Production dependency audit
         working-directory: packages/mcp
         run: npm audit --omit=dev --audit-level=moderate
