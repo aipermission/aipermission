@@ -11,7 +11,16 @@ import {
   hardCodedConnectorKinds,
   moduleGlobSpecifiers,
   moduleSpecifiers,
+  parseModule,
 } from "./architecture-graph.mjs";
+
+test("keeps import edges when typed security contracts are analyzed", () => {
+  const parsed = parseModule(
+    'import { model } from "./security-contracts";\ntype Model = { id: number };\nexport const result: Model = { id: model };',
+    "owner.ts",
+  );
+  assert.deepEqual(moduleSpecifiers(parsed), ["./security-contracts"]);
+});
 import { productionSourceBoundary, productionSourceViolation } from "./production-source-boundary.mjs";
 
 test("collects static imports, re-exports, and literal dynamic imports from the AST", () => {

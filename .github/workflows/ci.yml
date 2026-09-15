@@ -199,6 +199,9 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Typed security contracts
+        working-directory: frontend
+        run: npm run test:types
       - name: Initial JavaScript budget
         working-directory: frontend
         run: npm run test:bundle:initial

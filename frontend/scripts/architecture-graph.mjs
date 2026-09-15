@@ -2,6 +2,7 @@ import { globSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { parse } from "espree";
+import ts from "typescript";
 import sourceKind from "../../scripts/maintenance-source-kind.js";
 
 const { isTestSource } = sourceKind;
@@ -38,7 +39,7 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     }
     let parsed;
     try {
-      parsed = parseModule(source);
+      parsed = parseModule(source, file);
     } catch (error) {
       failures.push(`${displayPath(sourceRoot, file)} cannot be parsed: ${error.message}`);
       continue;
@@ -79,8 +80,14 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
   return { failures: [...new Set(failures)].sort(), files, graph, importBudget, lineBudget };
 }
 
-export function parseModule(source) {
-  return parse(source, {
+export function parseModule(source, filename = "source.js") {
+  const jsSource = /\.(?:ts|tsx|mts|cts)$/.test(filename)
+    ? ts.transpileModule(source, {
+        fileName: filename,
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.Preserve },
+      }).outputText
+    : source;
+  return parse(jsSource, {
     ecmaVersion: "latest",
     sourceType: "module",
     ecmaFeatures: { jsx: true },
