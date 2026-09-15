@@ -56,4 +56,24 @@ describe("settings panels", () => {
     });
     expect(await screen.findByText("Retention settings saved and cleanup ran.")).toBeVisible();
   });
+
+  it("does not submit default retention values after load failure and retries before saving", async () => {
+    const user = userEvent.setup();
+    apiGet.mockRejectedValueOnce(new Error("Retention unavailable")).mockResolvedValueOnce({
+      history_days: 7,
+      audit_days: 14,
+      console_days: 3,
+      message_days: 2,
+    });
+    render(<HistoryRetentionPanel />);
+
+    expect(await screen.findByText("Retention unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save retention" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save retention" }));
+    expect(apiPut).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save retention" })).toBeEnabled());
+    expect(screen.getByLabelText("Command history days")).toHaveValue(7);
+  });
 });

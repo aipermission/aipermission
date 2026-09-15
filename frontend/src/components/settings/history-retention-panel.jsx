@@ -1,4 +1,4 @@
-import { Clock3 } from "lucide-react";
+import { Clock3, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { useAsyncAction } from "../../lib/use-async-action";
@@ -19,6 +19,7 @@ export function HistoryRetentionPanel() {
   }, []);
 
   async function loadRetention() {
+    setRetention((current) => ({ ...current, state: "loading", error: null }));
     try {
       const data = await apiGet("/api/settings/retention");
       setRetention({ state: "ready", data, error: null });
@@ -28,6 +29,7 @@ export function HistoryRetentionPanel() {
   }
 
   function updateField(field, value) {
+    if (retention.state !== "ready") return;
     const numeric = Number.parseInt(value, 10);
     setRetention((current) => ({
       ...current,
@@ -37,6 +39,7 @@ export function HistoryRetentionPanel() {
 
   async function saveRetention(event) {
     event.preventDefault();
+    if (retention.state !== "ready") return;
     await runSave({
       pending: "saving",
       successMessage: "Retention settings saved and cleanup ran.",
@@ -68,7 +71,15 @@ export function HistoryRetentionPanel() {
             Cleanup runs when a database is unlocked, after saving these settings, and hourly while it remains unlocked. Use 0 to disable
             automatic cleanup for a category.
           </Notice>
-          {retention.state === "error" ? <Notice tone="bad">{retention.error}</Notice> : null}
+          {retention.state === "error" ? (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <Notice tone="bad">{retention.error}</Notice>
+              <Button type="button" variant="outline" onClick={loadRetention}>
+                <RefreshCcw className="h-4 w-4" />
+                Retry
+              </Button>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <RetentionField
               label="Command history days"
@@ -91,7 +102,7 @@ export function HistoryRetentionPanel() {
               onChange={(value) => updateField("message_days", value)}
             />
           </div>
-          <Button type="submit" variant="outline" disabled={saveState.state === "saving" || retention.state === "loading"}>
+          <Button type="submit" variant="outline" disabled={saveState.state === "saving" || retention.state !== "ready"}>
             <Clock3 className="h-4 w-4" />
             {saveState.state === "saving" ? "Saving..." : "Save retention"}
           </Button>
