@@ -25,6 +25,42 @@ func TestCopyWithProgressStopsAtConfiguredByteLimit(t *testing.T) {
 	}
 }
 
+func TestSetupWithContextClosesConnectionWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	connection := &blockingSetupConnection{closed: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, err := setupWithContext(ctx, connection, func() (string, error) {
+			<-connection.closed
+			return "", errors.New("connection closed")
+		})
+		done <- err
+	}()
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("setup error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled setup did not close its connection")
+	}
+}
+
+type blockingSetupConnection struct {
+	closed chan struct{}
+}
+
+func (connection *blockingSetupConnection) Close() error {
+	select {
+	case <-connection.closed:
+	default:
+		close(connection.closed)
+	}
+	return nil
+}
+
 func TestProgressReaderReportsTransferredBytes(t *testing.T) {
 	var seenTransferred int64
 	var seenTotal int64
