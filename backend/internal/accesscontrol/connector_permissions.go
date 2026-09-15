@@ -3,6 +3,7 @@ package accesscontrol
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -102,8 +103,16 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 		return
 	}
 	var permissions []connectortargets.ActionPermission
+	var previousRevision, nextRevision string
+	var previousCount int
+	var auditRows []permissionAuditRow
+	var auditTruncated bool
 	changed, err := mutateAuthorization(r.Context(), scope, tokenID, "token.connector_permissions.updated", func() any {
-		return map[string]any{"token_id": tokenID, "permissions": connectorPermissionResponses(permissions)}
+		return map[string]any{
+			"token_id": tokenID, "previous_revision": previousRevision, "revision": nextRevision,
+			"previous_count": previousCount, "permission_count": len(permissions),
+			"permissions": auditRows, "permissions_truncated": auditTruncated,
+		}
 	}, "connector action permission changed; send a fresh request", func(tx *sql.Tx) (bool, error) {
 		txStore := connectortargets.NewTxStore(tx)
 		current, currentErr := txStore.ListActionPermissions(r.Context(), tokenID)
@@ -114,9 +123,15 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 		if _, revisionErr = requireAuthorizationRevision(request.ExpectedRevision, currentRevision, revisionErr); revisionErr != nil {
 			return false, revisionErr
 		}
+		previousRevision, previousCount = currentRevision, len(current)
 		nextPermissions, mutationChanged, replaceErr := txStore.ReplaceActionPermissionsWithChange(r.Context(), tokenID, inputs)
+		if replaceErr != nil {
+			return false, replaceErr
+		}
 		permissions = nextPermissions
-		return mutationChanged, replaceErr
+		nextRevision, revisionErr = connectorPermissionsRevision(permissions)
+		auditRows, auditTruncated = boundedPermissionAuditRows(permissions)
+		return mutationChanged, revisionErr
 	})
 	if errors.Is(err, ErrVaultDeliveryCanceled) {
 		httptransport.WriteError(w, http.StatusRequestTimeout, "connector permission update was canceled")
@@ -129,14 +144,36 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 		writeConnectorTargetError(w, err)
 		return
 	}
-	revision, revisionErr := connectorPermissionsRevision(permissions)
-	if revisionErr != nil {
-		httptransport.WriteInternalError(w)
-		return
-	}
 	httptransport.WriteJSON(w, http.StatusOK, map[string]any{
-		"items": connectorPermissionResponses(permissions), "changed": changed, "revision": revision,
+		"items": connectorPermissionResponses(permissions), "changed": changed, "revision": nextRevision,
 	})
+}
+
+type permissionAuditRow struct {
+	TargetID      int64  `json:"target_id"`
+	ProfileID     int64  `json:"profile_id"`
+	ActionName    string `json:"action_name"`
+	ExecutionRule string `json:"execution_rule"`
+	ExpiresAt     string `json:"expires_at,omitempty"`
+}
+
+func boundedPermissionAuditRows(permissions []connectortargets.ActionPermission) ([]permissionAuditRow, bool) {
+	const maxRowsBytes = 32 * 1024
+	rows := make([]permissionAuditRow, 0, min(len(permissions), 256))
+	used := 0
+	for _, permission := range permissions {
+		row := permissionAuditRow{
+			TargetID: permission.TargetID, ProfileID: permission.ProfileID,
+			ActionName: permission.ActionName, ExecutionRule: string(permission.ExecutionRule), ExpiresAt: permission.ExpiresAt,
+		}
+		encoded, err := json.Marshal(row)
+		if err != nil || used+len(encoded)+1 > maxRowsBytes {
+			return rows, true
+		}
+		rows = append(rows, row)
+		used += len(encoded) + 1
+	}
+	return rows, false
 }
 
 func connectorPermissionInputs(ctx context.Context, registry connectors.Catalog, store *connectortargets.Store, permissions []ConnectorPermissionInput) ([]connectortargets.SetActionPermissionInput, error) {
