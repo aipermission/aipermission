@@ -9,6 +9,45 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.51] - 2026-09-15
+
+### Changed
+
+- Security-sensitive connector, token, approval, Vault, and API response models now have
+  typed frontend boundaries with runtime response validation.
+- Settings loads its maintenance terminal only when opened, with a ratcheted startup
+  JavaScript budget.
+
+### Fixed
+
+- Retention settings cannot be saved before a successful load, and a failed database
+  lock no longer appears successful or clears the open database.
+- Deferred SQL editor loading preserves the latest controlled text and disabled state,
+  while Project mutations cannot close or clear a newer draft.
+- Destructive S3 confirmations remain open and focused through pending approval or
+  failure, with result feedback inside the dialog.
+- History label suggestions are keyboard-operable, and connector, Vault, Project, and
+  permission controls remain usable at supported mobile widths.
+
+### Security
+
+- Typed frontend models complement, rather than replace, runtime validation and the
+  gateway's authoritative permission checks.
+- Stale UI completions cannot overwrite a newer editor draft or disguise a failed
+  destructive operation as success.
+
+### Maintenance
+
+- CI ratchets TypeScript security-model migration, shared-owner duplicate-code limits,
+  startup chunk size, critical coverage floors, and mobile accessibility checks.
+- Connector transfer validation and store scanning share bounded contracts, with
+  regression fixtures for real frontend imports and runtime authority.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.50] - 2026-09-15
 
 ### Changed
