@@ -598,48 +598,17 @@ type CommandTransportAdapter interface {
 	RunConnectorCommand(ctx context.Context, server PeerIdentityGateway, runtime LiveConsoleRuntime, targetRef string, command string) (connectors.CommandRunResult, error)
 }
 
-type TransferProgress func(transferred int64, total int64)
-
-type TransferOptions struct {
-	Progress      TransferProgress
-	Wait          func(context.Context) error
-	MaxBytes      int64
-	RecordStaging func(context.Context, string) error
-	ClearStaging  func(context.Context, string) error
-}
-
-type TransferResult struct {
-	Bytes          int64
-	Size           int64
-	ChecksumSHA256 string
-	DurationMS     int64
-}
-
-type RemoteFileEntry struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	Type       string `json:"type"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modified_at"`
-}
-
-type RemotePathStatus struct {
-	Exists bool   `json:"exists"`
-	Type   string `json:"type"`
-	Size   int64  `json:"size"`
-}
-
 type RemoteFilePage struct {
-	Entries    []RemoteFileEntry `json:"entries"`
-	NextCursor string            `json:"next_cursor,omitempty"`
-	HasMore    bool              `json:"has_more"`
+	Entries    []connectors.RemoteFileEntry `json:"entries"`
+	NextCursor string                       `json:"next_cursor,omitempty"`
+	HasMore    bool                         `json:"has_more"`
 }
 
 type FileTransferAdapter interface {
-	BrowseRemoteFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) ([]RemoteFileEntry, error)
-	StatRemotePath(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) (RemotePathStatus, error)
-	UploadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error)
-	DownloadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, localPath string, options TransferOptions) (TransferResult, error)
+	BrowseRemoteFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) ([]connectors.RemoteFileEntry, error)
+	StatRemotePath(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string) (connectors.RemotePathStatus, error)
+	UploadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectors.TransferOptions) (connectors.TransferResult, error)
+	DownloadFile(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectors.TransferOptions) (connectors.TransferResult, error)
 }
 
 // RemoteStagingRecoveryAdapter removes connector-owned upload staging after a
@@ -649,7 +618,7 @@ type RemoteStagingRecoveryAdapter interface {
 }
 
 type RecursiveFileTransferAdapter interface {
-	ListRecursiveFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]RemoteFileEntry, error)
+	ListRecursiveFiles(ctx context.Context, server FileTransferGateway, runtime TransferRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]connectors.RemoteFileEntry, error)
 }
 
 type PaginatedFileTransferAdapter interface {

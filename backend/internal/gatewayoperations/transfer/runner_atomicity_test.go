@@ -69,11 +69,11 @@ func (adapter *retryingStagingRecoveryAdapter) CleanupRemoteStaging(context.Cont
 	return nil
 }
 
-func (adapter *recoverableStagingTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter *recoverableStagingTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, options connectors.TransferOptions) (connectors.TransferResult, error) {
 	if err := options.RecordStaging(ctx, "/tmp/.aipermission-upload-0123456789abcdef0123456789abcdef-0.tmp"); err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
-	return connectorapi.TransferResult{}, errors.New("simulated process interruption")
+	return connectors.TransferResult{}, errors.New("simulated process interruption")
 }
 
 func (adapter *recoverableStagingTransferAdapter) CleanupRemoteStaging(_ context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, ref string) error {
@@ -83,8 +83,8 @@ func (adapter *recoverableStagingTransferAdapter) CleanupRemoteStaging(_ context
 
 const uncertainUploadChecksum = "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5"
 
-func (uncertainUploadTransferAdapter) UploadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, bool, connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
-	return connectorapi.TransferResult{Bytes: 7, Size: 7, ChecksumSHA256: uncertainUploadChecksum}, connectors.ClassifyOutcomeUnknown(
+func (uncertainUploadTransferAdapter) UploadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, bool, connectors.TransferOptions) (connectors.TransferResult, error) {
+	return connectors.TransferResult{Bytes: 7, Size: 7, ChecksumSHA256: uncertainUploadChecksum}, connectors.ClassifyOutcomeUnknown(
 		"atomic_replace", map[string]any{
 			"recovery_hint":       "inspect destination",
 			"remote_staging_path": "/tmp/.aipermission-upload-stage.tmp",
@@ -353,10 +353,10 @@ func TestBatchCleanupPreservesUncertainUploadStaging(t *testing.T) {
 	}
 }
 
-func (adapter *cancelCommitTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, _ connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter *cancelCommitTransferAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, _ connectors.TransferOptions) (connectors.TransferResult, error) {
 	close(adapter.started)
 	<-ctx.Done()
-	return connectorapi.TransferResult{Bytes: 7, ChecksumSHA256: "remote-commit"}, nil
+	return connectors.TransferResult{Bytes: 7, ChecksumSHA256: "remote-commit"}, nil
 }
 
 func TestCancelWaitsForRemoteUploadOutcomeBeforePersistingStatus(t *testing.T) {
@@ -398,18 +398,18 @@ func TestCancelWaitsForRemoteUploadOutcomeBeforePersistingStatus(t *testing.T) {
 	}
 }
 
-func (adapter *revisionGateTransferAdapter) DownloadFile(ctx context.Context, _ connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, _ string, _ string, _ connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter *revisionGateTransferAdapter) DownloadFile(ctx context.Context, _ connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, _ string, _ string, _ connectors.TransferOptions) (connectors.TransferResult, error) {
 	close(adapter.started)
 	select {
 	case <-ctx.Done():
-		return connectorapi.TransferResult{}, ctx.Err()
+		return connectors.TransferResult{}, ctx.Err()
 	case <-adapter.proceed:
 	}
 	if _, _, _, err := runtime.TargetProfileByRuntimeID(ctx, runtimeID); err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	adapter.remoteCalls.Add(1)
-	return connectorapi.TransferResult{}, errors.New("remote operation should not start after profile drift")
+	return connectors.TransferResult{}, errors.New("remote operation should not start after profile drift")
 }
 
 func TestAuthorizedBatchLaunchRejectsAnotherConnectorRuntime(t *testing.T) {

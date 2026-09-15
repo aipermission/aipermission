@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
@@ -110,12 +111,12 @@ func TestTransferBrowseUsesOneAcceptedExecutionSnapshot(t *testing.T) {
 
 type successfulBrowseTransferAdapter struct{ rejectingTransferAdapter }
 
-func (successfulBrowseTransferAdapter) BrowseRemoteFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) ([]connectorapi.RemoteFileEntry, error) {
-	return []connectorapi.RemoteFileEntry{}, nil
+func (successfulBrowseTransferAdapter) BrowseRemoteFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) ([]connectors.RemoteFileEntry, error) {
+	return []connectors.RemoteFileEntry{}, nil
 }
 
-func (successfulBrowseTransferAdapter) ListRecursiveFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, int, int64, int64) ([]connectorapi.RemoteFileEntry, error) {
-	return []connectorapi.RemoteFileEntry{}, nil
+func (successfulBrowseTransferAdapter) ListRecursiveFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, int, int64, int64) ([]connectors.RemoteFileEntry, error) {
+	return []connectors.RemoteFileEntry{}, nil
 }
 
 func invokeTestUpload(t *testing.T, fixture transferTestFixture) *httptest.ResponseRecorder {

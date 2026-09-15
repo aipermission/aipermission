@@ -18,7 +18,7 @@ func New() connectorapi.Adapter {
 	return adapter{}
 }
 
-func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
+func (adapter) BrowseRemoteFiles(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string) ([]connectors.RemoteFileEntry, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
 		return nil, err
@@ -42,19 +42,19 @@ func (adapter) BrowseRemoteFilesPage(ctx context.Context, server connectorapi.Fi
 	return connectorapi.RemoteFilePage{Entries: remoteEntries(page.Entries), NextCursor: page.NextCursor, HasMore: page.HasMore}, nil
 }
 
-func (adapter) StatRemotePath(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
+func (adapter) StatRemotePath(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string) (connectors.RemotePathStatus, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
-		return connectorapi.RemotePathStatus{}, err
+		return connectors.RemotePathStatus{}, err
 	}
 	status, err := s3connector.StatRemotePath(ctx, runtime, remotePath)
 	if err != nil {
-		return connectorapi.RemotePathStatus{}, err
+		return connectors.RemotePathStatus{}, err
 	}
-	return connectorapi.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
+	return connectors.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
 }
 
-func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]connectorapi.RemoteFileEntry, error) {
+func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string, maxItems int, maxObjectBytes int64, maxBatchBytes int64) ([]connectors.RemoteFileEntry, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
 		return nil, err
@@ -72,26 +72,26 @@ func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.FileT
 	return remoteEntries(entries), nil
 }
 
-func (adapter) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectors.TransferOptions) (connectors.TransferResult, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	result, err := s3connector.UploadFile(ctx, runtime, localPath, remotePath, overwrite, s3TransferOptions(options))
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	return transferResult(result), nil
 }
 
-func (adapter) DownloadFile(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (adapter) DownloadFile(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectors.TransferOptions) (connectors.TransferResult, error) {
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	result, err := s3connector.DownloadFile(ctx, runtime, remotePath, localPath, s3TransferOptions(options))
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	return transferResult(result), nil
 }
@@ -111,18 +111,18 @@ func transferRuntime(ctx context.Context, server connectorapi.FileTransferGatewa
 	return contextValue, nil
 }
 
-func remoteEntries(entries []s3connector.RemoteFileEntry) []connectorapi.RemoteFileEntry {
-	result := make([]connectorapi.RemoteFileEntry, 0, len(entries))
+func remoteEntries(entries []s3connector.RemoteFileEntry) []connectors.RemoteFileEntry {
+	result := make([]connectors.RemoteFileEntry, 0, len(entries))
 	for _, entry := range entries {
-		result = append(result, connectorapi.RemoteFileEntry{Name: entry.Name, Path: entry.Path, Type: entry.Type, Size: entry.Size, ModifiedAt: entry.ModifiedAt})
+		result = append(result, connectors.RemoteFileEntry{Name: entry.Name, Path: entry.Path, Type: entry.Type, Size: entry.Size, ModifiedAt: entry.ModifiedAt})
 	}
 	return result
 }
 
-func s3TransferOptions(options connectorapi.TransferOptions) s3connector.TransferOptions {
+func s3TransferOptions(options connectors.TransferOptions) s3connector.TransferOptions {
 	return s3connector.TransferOptions{Progress: s3connector.TransferProgress(options.Progress), Wait: options.Wait, MaxBytes: options.MaxBytes}
 }
 
-func transferResult(result s3connector.TransferResult) connectorapi.TransferResult {
-	return connectorapi.TransferResult{Bytes: result.Bytes, Size: result.Size, ChecksumSHA256: result.ChecksumSHA256, DurationMS: result.DurationMS}
+func transferResult(result s3connector.TransferResult) connectors.TransferResult {
+	return connectors.TransferResult{Bytes: result.Bytes, Size: result.Size, ChecksumSHA256: result.ChecksumSHA256, DurationMS: result.DurationMS}
 }

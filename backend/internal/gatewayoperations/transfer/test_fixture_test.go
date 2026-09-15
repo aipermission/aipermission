@@ -152,18 +152,18 @@ func (testTransferGateway) ConnectorRuntimeCapabilities() connectors.RuntimeCapa
 
 type rejectingTransferAdapter struct{}
 
-func (rejectingTransferAdapter) BrowseRemoteFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) ([]connectorapi.RemoteFileEntry, error) {
+func (rejectingTransferAdapter) BrowseRemoteFiles(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) ([]connectors.RemoteFileEntry, error) {
 	return nil, errors.New("unexpected connector browse")
 }
 
-func (rejectingTransferAdapter) StatRemotePath(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) (connectorapi.RemotePathStatus, error) {
-	return connectorapi.RemotePathStatus{Exists: true, Type: "file", Size: 1}, nil
+func (rejectingTransferAdapter) StatRemotePath(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) (connectors.RemotePathStatus, error) {
+	return connectors.RemotePathStatus{Exists: true, Type: "file", Size: 1}, nil
 }
 
-func (rejectingTransferAdapter) UploadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, bool, connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
-	return connectorapi.TransferResult{}, errors.New("unexpected connector upload")
+func (rejectingTransferAdapter) UploadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, bool, connectors.TransferOptions) (connectors.TransferResult, error) {
+	return connectors.TransferResult{}, errors.New("unexpected connector upload")
 }
 
-func (rejectingTransferAdapter) DownloadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
-	return connectorapi.TransferResult{}, errors.New("unexpected connector download")
+func (rejectingTransferAdapter) DownloadFile(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string, string, connectors.TransferOptions) (connectors.TransferResult, error) {
+	return connectors.TransferResult{}, errors.New("unexpected connector download")
 }

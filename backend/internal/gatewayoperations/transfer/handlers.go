@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
@@ -58,11 +59,11 @@ type browseRemoteFilesRequest struct {
 }
 
 type browseRemoteFilesResponse struct {
-	Path       string                         `json:"path"`
-	Parent     string                         `json:"parent"`
-	Entries    []connectorapi.RemoteFileEntry `json:"entries"`
-	NextCursor string                         `json:"next_cursor,omitempty"`
-	HasMore    bool                           `json:"has_more"`
+	Path       string                       `json:"path"`
+	Parent     string                       `json:"parent"`
+	Entries    []connectors.RemoteFileEntry `json:"entries"`
+	NextCursor string                       `json:"next_cursor,omitempty"`
+	HasMore    bool                         `json:"has_more"`
 }
 
 type expandRemoteFilesRequest struct {
@@ -71,9 +72,9 @@ type expandRemoteFilesRequest struct {
 }
 
 type expandRemoteFilesResponse struct {
-	Path       string                         `json:"path"`
-	Entries    []connectorapi.RemoteFileEntry `json:"entries"`
-	TotalBytes int64                          `json:"total_bytes"`
+	Path       string                       `json:"path"`
+	Entries    []connectors.RemoteFileEntry `json:"entries"`
+	TotalBytes int64                        `json:"total_bytes"`
 }
 
 type remoteFileExistsResponse struct {

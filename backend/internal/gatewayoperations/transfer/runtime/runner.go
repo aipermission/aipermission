@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/transferjobs"
 )
 
@@ -137,7 +137,7 @@ func (s Runner) RunDownload(ctx context.Context, runtime *Runtime, transferID in
 		log.Printf("read file download failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	result, err := execution.Adapter.DownloadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectorapi.TransferOptions{
+	result, err := execution.Adapter.DownloadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectors.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID),
 		MaxBytes: s.maxObjectBytes,
 	})
@@ -405,7 +405,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		return
 	}
 	options := s.transferOptions(runtime, transferID, control.Wait, s.maxObjectBytes)
-	var result connectorapi.TransferResult
+	var result connectors.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
 		result, err = execution.Adapter.UploadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
 	} else {
@@ -435,7 +435,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 	}
 }
 
-func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectorapi.TransferProgress {
+func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectors.TransferProgress {
 	var lastWrite time.Time
 	started := time.Now()
 	return func(transferred int64, total int64) {
@@ -457,8 +457,8 @@ func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectorap
 	}
 }
 
-func (s Runner) transferOptions(runtime *Runtime, transferID int64, wait func(context.Context) error, maxBytes int64) connectorapi.TransferOptions {
-	return connectorapi.TransferOptions{
+func (s Runner) transferOptions(runtime *Runtime, transferID int64, wait func(context.Context) error, maxBytes int64) connectors.TransferOptions {
+	return connectors.TransferOptions{
 		Progress: s.transferProgress(runtime, transferID), Wait: wait, MaxBytes: maxBytes,
 		RecordStaging: func(_ context.Context, ref string) error {
 			ctx, cancel := context.WithTimeout(runtime.finalization.Context(), fileTransferPersistenceAttemptTimeout)

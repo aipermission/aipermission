@@ -3,12 +3,13 @@ package transport
 import (
 	"context"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/apiadapter/management"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func (Transport) BrowseRemoteFiles(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) ([]connectorapi.RemoteFileEntry, error) {
+func (Transport) BrowseRemoteFiles(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) ([]connectors.RemoteFileEntry, error) {
 	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
 		return nil, err
@@ -21,55 +22,50 @@ func (Transport) BrowseRemoteFiles(ctx context.Context, server connectorapi.File
 	if err != nil {
 		return nil, err
 	}
-	return management.RemoteFileEntries(entries), nil
+	if entries == nil {
+		return []connectors.RemoteFileEntry{}, nil
+	}
+	return entries, nil
 }
 
-func (Transport) StatRemotePath(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) (connectorapi.RemotePathStatus, error) {
+func (Transport) StatRemotePath(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string) (connectors.RemotePathStatus, error) {
 	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
-		return connectorapi.RemotePathStatus{}, err
+		return connectors.RemotePathStatus{}, err
 	}
 	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
-		return connectorapi.RemotePathStatus{}, err
+		return connectors.RemotePathStatus{}, err
 	}
 	status, err := execution.StatRemotePath(ctx, management.ExecutionTarget(gateway, target, privateKey), remotePath)
 	if err != nil {
-		return connectorapi.RemotePathStatus{}, err
+		return connectors.RemotePathStatus{}, err
 	}
-	return connectorapi.RemotePathStatus{Exists: status.Exists, Type: status.Type, Size: status.Size}, nil
+	return status, nil
 }
 
-func (Transport) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (Transport) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectors.TransferOptions) (connectors.TransferResult, error) {
 	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
-	result, err := execution.UploadFileWithOptions(ctx, management.ExecutionTarget(gateway, target, privateKey), localPath, remotePath, overwrite, management.ExecutionTransferOptions(options))
-	if err != nil {
-		return management.ConnectorTransferResult(result), err
-	}
-	return management.ConnectorTransferResult(result), nil
+	return execution.UploadFileWithOptions(ctx, management.ExecutionTarget(gateway, target, privateKey), localPath, remotePath, overwrite, options)
 }
 
-func (Transport) DownloadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectorapi.TransferOptions) (connectorapi.TransferResult, error) {
+func (Transport) DownloadFile(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, remotePath string, localPath string, options connectors.TransferOptions) (connectors.TransferResult, error) {
 	gateway, err := management.PeerIdentityFrom(server)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
 	target, privateKey, err := management.TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
-		return connectorapi.TransferResult{}, err
+		return connectors.TransferResult{}, err
 	}
-	result, err := execution.DownloadFileWithOptions(ctx, management.ExecutionTarget(gateway, target, privateKey), remotePath, localPath, management.ExecutionTransferOptions(options))
-	if err != nil {
-		return connectorapi.TransferResult{}, err
-	}
-	return management.ConnectorTransferResult(result), nil
+	return execution.DownloadFileWithOptions(ctx, management.ExecutionTarget(gateway, target, privateKey), remotePath, localPath, options)
 }
 
 func (Transport) CleanupRemoteStaging(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64, stagingRef string) error {

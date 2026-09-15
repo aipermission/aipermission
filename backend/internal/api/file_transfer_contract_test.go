@@ -1,6 +1,6 @@
 package api
 
-import connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+import "github.com/aipermission/aipermission/backend/internal/connectors"
 
 type startDownloadRequest struct {
 	RuntimeID      int64  `json:"runtime_id"`
@@ -22,12 +22,12 @@ type browseRemoteFilesRequest struct {
 }
 
 type browseRemoteFilesResponse struct {
-	RuntimeID int64                          `json:"runtime_id"`
-	Path      string                         `json:"path"`
-	Parent    string                         `json:"parent"`
-	Entries   []connectorapi.RemoteFileEntry `json:"entries"`
-	Next      string                         `json:"next_cursor,omitempty"`
-	HasMore   bool                           `json:"has_more"`
+	RuntimeID int64                        `json:"runtime_id"`
+	Path      string                       `json:"path"`
+	Parent    string                       `json:"parent"`
+	Entries   []connectors.RemoteFileEntry `json:"entries"`
+	Next      string                       `json:"next_cursor,omitempty"`
+	HasMore   bool                         `json:"has_more"`
 }
 
 type expandRemoteFilesRequest struct {
