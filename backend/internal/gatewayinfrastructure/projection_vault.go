@@ -84,6 +84,15 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 				}
 				return capability.Policy.Redact(ctx, err.Error())
 			},
+			RedactRequestValue: func(ctx context.Context, value any) (any, error) {
+				return gatewayvault.RedactRequestProjection(ctx, value, capability.Policy.Redact)
+			},
+			SealRequest: func(id int64, value any) (string, error) {
+				return capability.SealVaultActionRequest(identity.WorkspaceID, id, value)
+			},
+			OpenRequest: func(id int64, sealed string, target any) error {
+				return capability.OpenVaultActionRequest(identity.WorkspaceID, id, sealed, target)
+			},
 		},
 	}, true
 }

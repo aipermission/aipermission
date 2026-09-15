@@ -241,7 +241,9 @@ func (port requestMutationPort) Observe(ctx context.Context, actor string, token
 func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime) (VaultRequestApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.DatabaseID == "" || runtime.Requests.Store == nil || component.dependencies.AllowRequest == nil ||
 		runtime.Requests.Transaction == nil || runtime.Requests.Mutate == nil || runtime.Requests.RepairProjection == nil ||
-		runtime.Requests.RedactRequestError == nil || runtime.Session.MCPStarted == nil {
+		runtime.Requests.RedactRequestError == nil || runtime.Requests.RedactRequestValue == nil ||
+		runtime.Requests.SealRequest == nil || runtime.Requests.OpenRequest == nil || runtime.Storage.SecretVault == nil ||
+		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
 	actions, err := component.ActionRuntime(runtime)
@@ -263,8 +265,17 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 		RepairProjection: func(ctx context.Context, id int64) error {
 			return runtime.Requests.RepairProjection(ctx, id)
 		},
-		RedactError: func(ctx context.Context, err error) string { return runtime.Requests.RedactRequestError(ctx, err) },
-		IsStale:     actions.IsStale, MCPStarted: runtime.Session.MCPStarted, ExecutionTimeout: executionTimeout,
+		RedactError:      func(ctx context.Context, err error) string { return runtime.Requests.RedactRequestError(ctx, err) },
+		RedactProjection: runtime.Requests.RedactRequestValue,
+		SealRequest: func(id int64, envelope vaultrequests.ExecutionEnvelope) (string, error) {
+			return runtime.Requests.SealRequest(id, envelope)
+		},
+		OpenRequest: func(id int64, sealed string) (vaultrequests.ExecutionEnvelope, error) {
+			var envelope vaultrequests.ExecutionEnvelope
+			err := runtime.Requests.OpenRequest(id, sealed, &envelope)
+			return envelope, err
+		},
+		IsStale: actions.IsStale, MCPStarted: runtime.Session.MCPStarted, ExecutionTimeout: executionTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)

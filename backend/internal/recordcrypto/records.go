@@ -34,6 +34,7 @@ var (
 	ConnectorCredentialResource = RecordType{Table: "connector_credential_resources", Column: "encrypted_secret", Domain: "connector-credential-resource"}
 	APIToken                    = RecordType{Table: "api_tokens", Column: "token_value", Domain: "api-token"}
 	ConnectorActionRequest      = RecordType{Table: "connector_action_requests", Column: "encrypted_payload_json", Domain: "connector-action-request"}
+	VaultActionRequest          = RecordType{Table: "vault_action_requests", Column: "encrypted_payload_json", Domain: "vault-action-request"}
 	CommandRequest              = RecordType{Table: "command_requests", Column: "encrypted_command", Domain: "command-request"}
 	BackupProvider              = RecordType{Table: "backup_providers", Column: "encrypted_secret_json", Domain: "backup-provider"}
 )
@@ -240,6 +241,9 @@ func verifyBindingSentinel(secretVault *vault.Vault, workspaceID, encrypted stri
 }
 
 func validateRecordType(recordType RecordType) error {
+	if recordType == VaultActionRequest {
+		return nil
+	}
 	for _, known := range persistentRecordTypes {
 		if recordType == known {
 			return nil

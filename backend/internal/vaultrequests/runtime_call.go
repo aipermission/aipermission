@@ -50,7 +50,11 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	}
 	existing, err := r.store.GetByIdempotencyKey(ctx, input.TokenID, input.IdempotencyKey)
 	if err == nil {
-		if !SameActionCall(existing, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+		exact, openErr := r.exactRequest(existing)
+		if openErr != nil {
+			return RequestView{}, openErr
+		}
+		if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
 			return RequestView{}, ErrIdempotencyConflict
 		}
 		return r.View(ctx, existing), nil
@@ -77,9 +81,16 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	if prepared.RunImmediately {
 		initialStatus = StatusRunning
 	}
+	publicInput, publicReason, err := r.publicProjection(ctx, prepared.Input, input.Reason)
+	if err != nil {
+		return RequestView{}, err
+	}
+	envelope := ExecutionEnvelope{
+		Input: prepared.Input, Reason: input.Reason, ApprovalContext: contextMap,
+	}
 	createInput := CreateInput{
 		TokenID: input.TokenID, ProjectID: prepared.ProjectID, RuntimeID: runtimeID,
-		ActionName: input.ActionName, Input: prepared.Input, Reason: input.Reason,
+		ActionName: input.ActionName, Input: publicInput, Reason: publicReason,
 		ApprovalContext: contextMap, ApprovalContextHash: prepared.ApprovalContextHash,
 		IdempotencyKey: input.IdempotencyKey, InitialStatus: initialStatus,
 	}
@@ -90,7 +101,18 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 		func() any { return RequestAuditPayload(request, "") },
 		func(tx *sql.Tx) error {
 			var createErr error
-			request, created, createErr = NewTxStore(tx).Create(ctx, createInput)
+			request, created, createErr = NewTxStore(tx).CreateSealed(ctx, createInput, func(requestID int64) (string, error) {
+				return r.sealRequest(requestID, envelope)
+			})
+			if createErr == nil && !created {
+				exact, openErr := r.exactRequest(request)
+				if openErr != nil {
+					return openErr
+				}
+				if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+					return ErrIdempotencyConflict
+				}
+			}
 			if createErr == nil && !created {
 				return errMutationUnchanged
 			}
@@ -112,7 +134,11 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	}
 	executionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.executionTimeout)
 	defer cancel()
-	result, err := RunClaimedWorkflow(executionCtx, request, r.workflowPorts("mcp", "", "", "mcp.vault_action"))
+	exact := request
+	exact.Input = envelope.Input
+	exact.Reason = envelope.Reason
+	exact.ApprovalContext = envelope.ApprovalContext
+	result, err := RunClaimedWorkflow(executionCtx, exact, r.workflowPorts("mcp", "", "", "mcp.vault_action"))
 	if err != nil {
 		return RequestView{}, err
 	}
@@ -130,7 +156,8 @@ func (r *Runtime) GetOwned(ctx context.Context, id, tokenID int64) (RequestView,
 	if err != nil {
 		return RequestView{}, err
 	}
-	authorized := r.authorizeOutput(ctx, item)
+	exact, openErr := r.exactRequest(item)
+	authorized := openErr == nil && r.authorizeOutput(ctx, exact)
 	if item.Status == StatusApprovalPending && !authorized {
 		if stale, staleErr := r.store.StalePending(ctx, item.ID, "Vault approval context changed; send a fresh request"); staleErr == nil {
 			item = stale
@@ -140,7 +167,8 @@ func (r *Runtime) GetOwned(ctx context.Context, id, tokenID int64) (RequestView,
 }
 
 func (r *Runtime) View(ctx context.Context, item Request) RequestView {
-	return RequestView{Request: item, OutputAuthorized: r.authorizeOutput(ctx, item)}
+	exact, err := r.exactRequest(item)
+	return RequestView{Request: item, OutputAuthorized: err == nil && r.authorizeOutput(ctx, exact)}
 }
 
 func SameActionCall(request Request, projectRef, actionName string, input map[string]any, reason string) bool {

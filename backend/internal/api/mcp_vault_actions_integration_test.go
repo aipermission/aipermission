@@ -18,6 +18,7 @@ import (
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
@@ -348,6 +349,101 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	}
 	if startAudits != 1 || completeAudits != 1 || itemCreatedAudits != 1 {
 		t.Fatalf("always Vault audit counts = start:%d completed:%d item_created:%d", startAudits, completeAudits, itemCreatedAudits)
+	}
+}
+
+func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	ctx := t.Context()
+	project, err := projectstore.NewStore(fixture.db).Create(ctx, "Redacted Vault Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "redacted-vault-agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
+	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate, ExecutionRule: accesscontrol.RuleAlwaysRun},
+		}}),
+	)
+	if capabilities.Code != http.StatusOK {
+		t.Fatalf("set Vault capability: %d %s", capabilities.Code, capabilities.Body.String())
+	}
+	const canary = "PRIVATE-CANARY-7391"
+	rule := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
+		Name: "Vault metadata canary", Pattern: `PRIVATE-CANARY-[0-9]+`, Enabled: true,
+	})
+	if rule.Code != http.StatusCreated {
+		t.Fatalf("create redaction rule: %d %s", rule.Code, rule.Body.String())
+	}
+	callBody := mcpVaultActionCallRequest{
+		ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
+		Input: map[string]any{
+			"name": "REDACTED_METADATA_TOKEN", "generator_kind": "random_token", "secret_type": "api_key",
+			"description": "exact execution " + canary,
+			"usage_notes": []any{map[string]any{"location": "service.env", "notes": "used by " + canary}},
+		},
+		Reason: "generate for " + canary, IdempotencyKey: "redacted-vault-metadata",
+	}
+	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
+	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
+		!strings.Contains(call.Body.String(), "[REDACTED]") || strings.Contains(call.Body.String(), canary) {
+		t.Fatalf("redacted Vault call: %d %s", call.Code, call.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(call.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	requestID := int64(response["request_id"].(float64))
+	var publicInput, publicReason, sealed string
+	if err := fixture.db.QueryRow(`
+		SELECT input_json, reason, encrypted_payload_json
+		FROM vault_action_requests WHERE id = ?`, requestID,
+	).Scan(&publicInput, &publicReason, &sealed); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(publicInput, canary) || strings.Contains(publicReason, canary) || strings.Contains(sealed, canary) ||
+		!strings.Contains(publicInput, "[REDACTED]") || !strings.Contains(publicReason, "[REDACTED]") {
+		t.Fatalf("unsafe Vault persistence input=%s reason=%s sealed=%s", publicInput, publicReason, sealed)
+	}
+	var historyInput, historySummary string
+	if err := fixture.db.QueryRow(`
+		SELECT input_json, summary FROM history_entries
+		WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, requestID,
+	).Scan(&historyInput, &historySummary); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(historyInput, canary) || strings.Contains(historySummary, canary) {
+		t.Fatalf("Vault history exposed canary input=%s summary=%s", historyInput, historySummary)
+	}
+	var description, usageNote string
+	if err := fixture.db.QueryRow(`SELECT description FROM vault_items WHERE name = 'REDACTED_METADATA_TOKEN'`).Scan(&description); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.QueryRow(`
+		SELECT notes FROM vault_item_usage_notes
+		WHERE vault_item_id = (SELECT id FROM vault_items WHERE name = 'REDACTED_METADATA_TOKEN')`,
+	).Scan(&usageNote); err != nil {
+		t.Fatal(err)
+	}
+	if description != "exact execution "+canary || usageNote != "used by "+canary {
+		t.Fatalf("execution metadata changed description=%q usage_note=%q", description, usageNote)
+	}
+	conflict := callBody
+	conflict.Reason = "generate for PRIVATE-CANARY-9999"
+	responseRecorder := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, conflict)
+	if responseRecorder.Code != http.StatusConflict {
+		t.Fatalf("redaction-colliding idempotency input = %d %s", responseRecorder.Code, responseRecorder.Body.String())
+	}
+	var auditPayloads string
+	if err := fixture.db.QueryRow(`SELECT COALESCE(group_concat(payload_json, ''), '') FROM audit_logs WHERE token_id = ?`, token.ID).Scan(&auditPayloads); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(auditPayloads, canary) {
+		t.Fatalf("Vault audit payload exposed canary: %s", auditPayloads)
 	}
 }
 

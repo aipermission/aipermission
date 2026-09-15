@@ -75,6 +75,7 @@ func migrations() []migration {
 		backupUploadIdempotencyMigration,
 		fileTransferRecoveryMigration(),
 		profileRestoreIdempotencyMigration(),
+		vaultActionRequestEnvelopeMigration(),
 	)
 }
 
