@@ -192,10 +192,16 @@ place.
   ports. Runtime shutdown closes the registry and immediately cancels late
   registrations. The `gatewayoperations/transfer` boundary keeps permission,
   adapter dispatch, and audit responsibility; `transferjobs` owns cancellation
-  concurrency and the rule
-  that an uncertain local finalization must never turn a possibly completed
-  remote transfer into a retry-safe failure. A pause cycle uses one broadcast
-  channel so canceled waiters do not accumulate while a batch remains paused.
+  concurrency and the rule that an uncertain local finalization must never turn
+  a possibly completed remote transfer into a retry-safe failure. Operational
+  drain waits only for accepted file and batch work. Workspace
+  shutdown separately cancels and waits for lifetime maintenance jobs, including
+  periodic plaintext staging cleanup. This distinction prevents cleanup loops
+  from making a completed transfer appear permanently active. A partially
+  opened workspace uses the same cancel-and-drain boundary before encrypted
+  storage closes, so cleanup workers cannot outlive their database. A pause cycle uses
+  one broadcast channel so canceled waiters do not accumulate while a batch
+  remains paused.
 - `internal/vault`: AES-GCM secret payload encryption inside the SQLCipher database.
 - `internal/projectvault`: Project Vault item metadata, encrypted values,
   project sharing, default session bindings, exact-session item tracking, and

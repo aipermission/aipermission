@@ -378,6 +378,24 @@ persisted display projections receive redacted fields.
 
 Creates or runs one connector action according to the token permission rule.
 
+The gateway admits at most 60 new connector-action calls per minute for one
+valid token in one unlocked workspace. Transport admission is isolated between
+workspaces even when their local token IDs match. At most four persisted
+connector actions may remain `running` for that token, so work that continues
+after the initial HTTP response still consumes concurrency capacity. Each
+connector action declares its own JSON input-byte limit. The idempotent request
+transaction atomically backpressures new work when the projected record would
+exceed 20,000 rows or 256 MiB of persisted request data for that token; active
+records reserve their bounded terminal-output capacity. Capacity rejection
+returns HTTP `429`, code `connector_action_backpressure`, and `Retry-After`;
+clients must wait instead of spinning. An exact idempotent replay remains
+available and does not allocate another persisted request.
+
+Target and profile discovery is resolved inside the token's active project
+scope. A missing reference and a reference hidden from that token both produce
+the same not-found response. If delivery authorization is lost while an action
+is running, the gateway withholds target/profile identity and action output.
+
 Example SSH command:
 
 ```json
