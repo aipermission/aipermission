@@ -185,12 +185,24 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, scope Scope) (connect
 		httptransport.WriteError(w, http.StatusBadRequest, "target_ref is required")
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	target, profile, err := connectortargets.NewStore(scope.Database).ResolveConnectorActionTarget(r.Context(), targetRef)
+	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
 		writeTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
-	permissions, err := scope.Permissions(r.Context())
+	visible := false
+	for _, permission := range permissions {
+		if permission.ExecutionRule != connectortargets.ActionPermissionBlocked &&
+			connectors.FormatTargetRef(permission.ConnectorKind, permission.TargetID, permission.ProfileID) == targetRef {
+			visible = true
+			break
+		}
+	}
+	if !visible {
+		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
+		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
+	}
+	target, profile, err := connectortargets.NewStore(scope.Database).ResolveConnectorActionTarget(r.Context(), targetRef)
 	if err != nil {
 		writeTargetError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false

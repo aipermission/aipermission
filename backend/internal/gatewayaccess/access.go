@@ -106,13 +106,14 @@ type MCPOutputAuthorization struct {
 }
 
 type MCPActionScope struct {
-	Database    *sql.DB
-	TokenID     int64
-	Output      *MCPOutputAuthorization
-	Call        func(context.Context, MCPActionCall) (MCPActionCallResult, error)
-	Observe     func(context.Context, string, any)
-	Redact      func(context.Context, string) string
-	RunningHint MCPRunningHint
+	Database      *sql.DB
+	TokenID       int64
+	Output        *MCPOutputAuthorization
+	ActionVisible func(context.Context, string, string) (bool, error)
+	Call          func(context.Context, MCPActionCall) (MCPActionCallResult, error)
+	Observe       func(context.Context, string, any)
+	Redact        func(context.Context, string) string
+	RunningHint   MCPRunningHint
 }
 
 type MCPRuntimeState interface {

@@ -45,11 +45,13 @@ func TestFromRequestAddsApprovalPollingGuidance(t *testing.T) {
 
 func TestWithholdRemovesContentAndPreservesSafetyGuidance(t *testing.T) {
 	response := Response{
+		TargetRef: "ssh:7:8", TargetName: "private-host", ConnectorKind: "ssh", ProfileLabel: "root",
 		Input: map[string]any{"secret": "input"}, Output: "secret output",
 		DisplayText: "secret display", Error: "secret error", AssistantHint: OutcomeUnknownHint,
 	}
 	Withhold(&response)
-	if response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" || !response.OutputWithheld {
+	if response.TargetRef != "" || response.TargetName != "" || response.ConnectorKind != "" || response.ProfileLabel != "" ||
+		response.Input != nil || response.Output != nil || response.DisplayText != "" || response.Error != "" || !response.OutputWithheld {
 		t.Fatalf("content was not withheld: %#v", response)
 	}
 	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "authorization") {

@@ -44,13 +44,14 @@ func (component *AccessOwner) mcpReadScope(handle *WorkspaceHandle, ports MCPRea
 }
 
 type MCPActionPorts struct {
-	TokenID     int64
-	Delivery    func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
-	Principal   func(int64) (gatewayaccess.Principal, error)
-	Call        func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
-	Observe     func(context.Context, string, any)
-	Redact      func(context.Context, string) string
-	RunningHint gatewayaccess.MCPRunningHint
+	TokenID       int64
+	Delivery      func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
+	Principal     func(int64) (gatewayaccess.Principal, error)
+	ActionVisible func(context.Context, string, string) (bool, error)
+	Call          func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
+	Observe       func(context.Context, string, any)
+	Redact        func(context.Context, string) string
+	RunningHint   gatewayaccess.MCPRunningHint
 }
 
 func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
@@ -73,7 +74,7 @@ func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPA
 	}
 	return gatewayaccess.MCPActionScope{
 		Database: capability.Database, TokenID: ports.TokenID, Output: output,
-		Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
+		ActionVisible: ports.ActionVisible, Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
 	}, true
 }
 

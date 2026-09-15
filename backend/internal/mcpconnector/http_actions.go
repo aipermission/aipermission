@@ -44,13 +44,14 @@ type ActionCallResult struct {
 }
 
 type ActionScope struct {
-	Database    *sql.DB
-	TokenID     int64
-	Output      *OutputAuthorization
-	Call        func(context.Context, ActionCall) (ActionCallResult, error)
-	Observe     func(context.Context, string, any)
-	Redact      func(context.Context, string) string
-	RunningHint func(connectortargets.ActionRequest) string
+	Database      *sql.DB
+	TokenID       int64
+	Output        *OutputAuthorization
+	ActionVisible func(context.Context, string, string) (bool, error)
+	Call          func(context.Context, ActionCall) (ActionCallResult, error)
+	Observe       func(context.Context, string, any)
+	Redact        func(context.Context, string) string
+	RunningHint   func(connectortargets.ActionRequest) string
 }
 
 type ActionScopeProvider func(http.ResponseWriter, *http.Request) (ActionScope, bool)
@@ -88,6 +89,15 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
 		httptransport.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
+		return
+	}
+	visible, err := scope.ActionVisible(r.Context(), request.TargetRef, request.ActionName)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	if !visible {
+		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
 		return
 	}
 	result, err := scope.Call(r.Context(), ActionCall{
@@ -151,7 +161,7 @@ func (h *ActionHTTPHandlers) resolve(w http.ResponseWriter, r *http.Request, req
 		return ActionScope{}, false
 	}
 	if scope.Database == nil || scope.TokenID < 1 || scope.Output == nil || !scope.Output.valid() || scope.Output.Database != scope.Database ||
-		requireCall && (scope.Call == nil || scope.Observe == nil || scope.Redact == nil) {
+		requireCall && (scope.ActionVisible == nil || scope.Call == nil || scope.Observe == nil || scope.Redact == nil) {
 		httptransport.WriteInternalError(w)
 		return ActionScope{}, false
 	}

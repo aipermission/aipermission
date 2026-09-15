@@ -277,8 +277,49 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		Reason:         "verify disabled project scope",
 		IdempotencyKey: "disabled-project-scope",
 	})
-	if action.Code != http.StatusOK || !strings.Contains(action.Body.String(), `"status":"blocked"`) {
-		t.Fatalf("disabled project action should be blocked: %d %s", action.Code, action.Body.String())
+	unknown := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
+		TargetRef:      connectors.FormatTargetRef(testPostgresConnectorKind, target.ID+9999, profile.ID+9999),
+		ActionName:     testPostgresGetSchemasAction,
+		Reason:         "verify unknown target",
+		IdempotencyKey: "unknown-project-scope",
+	})
+	if action.Code != http.StatusNotFound || unknown.Code != action.Code || unknown.Body.String() != action.Body.String() {
+		t.Fatalf("hidden and unknown targets must be indistinguishable: hidden=%d %s unknown=%d %s", action.Code, action.Body.String(), unknown.Code, unknown.Body.String())
+	}
+	var requestCount int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ?`, token.ID).Scan(&requestCount); err != nil {
+		t.Fatal(err)
+	}
+	if requestCount != 0 {
+		t.Fatalf("invisible target attempts persisted %d requests", requestCount)
+	}
+
+	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+		TokenID:       token.ID,
+		TargetID:      target.ID,
+		ProfileID:     profile.ID,
+		ActionName:    testPostgresReadonlySQLAction,
+		ExecutionRule: connectortargets.ActionPermissionBlocked,
+	}); err != nil {
+		t.Fatalf("set blocked action permission: %v", err)
+	}
+	if _, err := fixture.db.ExecContext(ctx, `UPDATE token_project_scopes SET enabled = 1 WHERE token_id = ? AND project_id = ?`, token.ID, project.ID); err != nil {
+		t.Fatalf("restore project scope: %v", err)
+	}
+	unauthorizedAction := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/connector-actions/call", token.TokenValue, mcpConnectorActionCallRequest{
+		TargetRef:      connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID),
+		ActionName:     testPostgresReadonlySQLAction,
+		Reason:         "verify unauthorized action",
+		IdempotencyKey: "unauthorized-action-scope",
+	})
+	if unauthorizedAction.Code != unknown.Code || unauthorizedAction.Body.String() != unknown.Body.String() {
+		t.Fatalf("unauthorized action and unknown target must be indistinguishable: unauthorized=%d %s unknown=%d %s", unauthorizedAction.Code, unauthorizedAction.Body.String(), unknown.Code, unknown.Body.String())
+	}
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ?`, token.ID).Scan(&requestCount); err != nil {
+		t.Fatal(err)
+	}
+	if requestCount != 0 {
+		t.Fatalf("unauthorized action attempts persisted %d requests", requestCount)
 	}
 }
 
@@ -471,6 +512,9 @@ func TestMCPConnectorActionWithheldOutputPreservesNoRetryGuidance(t *testing.T) 
 	})
 	if !response.OutputWithheld || response.Output != nil {
 		t.Fatalf("response did not withhold output: %#v", response)
+	}
+	if response.TargetRef != "" || response.TargetName != "" || response.ConnectorKind != "" || response.ProfileLabel != "" {
+		t.Fatalf("response retained target/profile identity: %#v", response)
 	}
 	if !strings.Contains(response.AssistantHint, "Do not retry") || !strings.Contains(response.AssistantHint, "authorization") {
 		t.Fatalf("withheld response lost safety guidance: %q", response.AssistantHint)

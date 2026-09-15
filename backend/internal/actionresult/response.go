@@ -89,6 +89,10 @@ func Withhold(response *Response) {
 	}
 	response.Input = nil
 	response.Output = nil
+	response.TargetRef = ""
+	response.TargetName = ""
+	response.ConnectorKind = ""
+	response.ProfileLabel = ""
 	response.DisplayText = ""
 	response.Error = ""
 	response.OutputWithheld = true
