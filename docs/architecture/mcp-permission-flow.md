@@ -86,7 +86,8 @@ Gateway flow:
 14. For a declared network or command transport, allow only the exact
     dependency captured during preparation and re-resolve it under the Vault
     delivery gate immediately before opening the transport.
-15. Record project-snapshotted history and audit events.
+15. Record project-snapshotted history and action lifecycle audit events. A
+    target move does not change the project identity of an existing action.
 
 ```mermaid
 flowchart TD

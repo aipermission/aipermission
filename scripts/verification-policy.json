@@ -53,6 +53,66 @@
         "command": "node ../scripts/ci/windows-runtime-tests.js"
       },
       "reason": "Require exact pass evidence for every native Windows behavior instead of accepting an empty regex match."
+    },
+    {
+      "name": "MCP single artifact build",
+      "from": {
+        "check": "MCP Package",
+        "command": "npm run build"
+      },
+      "to": {
+        "check": "MCP Package",
+        "command": "npm test"
+      },
+      "reason": "Remove the redundant explicit build after npm test already produced the tested package artifact."
+    },
+    {
+      "name": "Backend canonical Makefile invocation",
+      "from": {
+        "check": "Backend",
+        "command": "make backend-format-check"
+      },
+      "to": {
+        "check": "Backend",
+        "command": "test -z \"${MAKEFILES:-}\" && make -f Makefile backend-format-check"
+      },
+      "reason": "Prevent alternate make entrypoints and inherited MAKEFILES from replacing the protected recipe."
+    },
+    {
+      "name": "Recovery drill canonical Makefile invocation",
+      "from": {
+        "check": "Backend",
+        "command": "make recovery-drill"
+      },
+      "to": {
+        "check": "Backend",
+        "command": "test -z \"${MAKEFILES:-}\" && make -f Makefile recovery-drill"
+      },
+      "reason": "Prevent alternate make entrypoints and inherited MAKEFILES from replacing the protected recipe."
+    },
+    {
+      "name": "Bounded fuzz canonical Makefile invocation",
+      "from": {
+        "check": "Backend",
+        "command": "make bounded-fuzz"
+      },
+      "to": {
+        "check": "Backend",
+        "command": "test -z \"${MAKEFILES:-}\" && make -f Makefile bounded-fuzz"
+      },
+      "reason": "Prevent alternate make entrypoints and inherited MAKEFILES from replacing the protected recipe."
+    },
+    {
+      "name": "Connector conformance canonical Makefile invocation",
+      "from": {
+        "check": "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
+        "command": "make connector-conformance"
+      },
+      "to": {
+        "check": "ClickHouse, Postgres, Valkey, RabbitMQ, and S3",
+        "command": "test -z \"${MAKEFILES:-}\" && make -f Makefile connector-conformance"
+      },
+      "reason": "Prevent alternate make entrypoints and inherited MAKEFILES from replacing the protected recipe."
     }
   ],
   "required_checks": [
