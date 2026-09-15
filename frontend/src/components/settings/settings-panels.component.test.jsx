@@ -76,4 +76,18 @@ describe("settings panels", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save retention" })).toBeEnabled());
     expect(screen.getByLabelText("Command history days")).toHaveValue(7);
   });
+
+  it("confirms and reports a manual retention purge", async () => {
+    const user = userEvent.setup();
+    apiGet.mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
+    apiPost.mockResolvedValue({ deleted: 4 });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<HistoryRetentionPanel />);
+
+    await screen.findByLabelText("Command history days");
+    await user.click(screen.getByRole("button", { name: "Purge history older than 30 days" }));
+
+    expect(apiPost).toHaveBeenCalledWith("/api/settings/retention/purge", { target: "history", days: 30 });
+    expect(await screen.findByText("Deleted 4 history records.")).toBeVisible();
+  });
 });

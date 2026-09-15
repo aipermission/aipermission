@@ -13,6 +13,7 @@ export function HistoryRetentionPanel() {
   const [retention, setRetention] = useState({ state: "loading", data: defaultRetention, error: null });
   const { actionState: saveState, runAction: runSave } = useAsyncAction();
   const { actionState: purgeState, runAction: runPurge } = useAsyncAction();
+  const busy = saveState.state === "saving" || purgeState.state === "purging";
 
   useEffect(() => {
     void loadRetention();
@@ -29,7 +30,7 @@ export function HistoryRetentionPanel() {
   }
 
   function updateField(field, value) {
-    if (retention.state !== "ready") return;
+    if (retention.state !== "ready" || busy) return;
     const numeric = Number.parseInt(value, 10);
     setRetention((current) => ({
       ...current,
@@ -39,7 +40,7 @@ export function HistoryRetentionPanel() {
 
   async function saveRetention(event) {
     event.preventDefault();
-    if (retention.state !== "ready") return;
+    if (retention.state !== "ready" || busy) return;
     await runSave({
       pending: "saving",
       successMessage: "Retention settings saved and cleanup ran.",
@@ -51,6 +52,7 @@ export function HistoryRetentionPanel() {
   }
 
   async function purgeRetention(target, days) {
+    if (busy) return;
     if (!window.confirm(`Delete ${target} records older than ${days} days? This cannot be undone.`)) return;
     await runPurge({
       pending: "purging",
@@ -84,25 +86,29 @@ export function HistoryRetentionPanel() {
             <RetentionField
               label="Command history days"
               value={retention.data.history_days}
+              disabled={busy}
               onChange={(value) => updateField("history_days", value)}
             />
             <RetentionField
               label="Audit log days"
               value={retention.data.audit_days}
+              disabled={busy}
               onChange={(value) => updateField("audit_days", value)}
             />
             <RetentionField
               label="Console session days"
               value={retention.data.console_days}
+              disabled={busy}
               onChange={(value) => updateField("console_days", value)}
             />
             <RetentionField
               label="Message days"
               value={retention.data.message_days}
+              disabled={busy}
               onChange={(value) => updateField("message_days", value)}
             />
           </div>
-          <Button type="submit" variant="outline" disabled={saveState.state === "saving" || retention.state !== "ready"}>
+          <Button type="submit" variant="outline" disabled={busy || retention.state !== "ready"}>
             <Clock3 className="h-4 w-4" />
             {saveState.state === "saving" ? "Saving..." : "Save retention"}
           </Button>
@@ -120,13 +126,7 @@ export function HistoryRetentionPanel() {
                 ["console", 7, "Purge consoles older than 7 days"],
                 ["messages", 7, "Purge messages older than 7 days"],
               ].map(([target, days, label]) => (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => purgeRetention(target, days)}
-                  disabled={purgeState.state === "purging"}
-                  key={target}
-                >
+                <Button type="button" variant="outline" onClick={() => purgeRetention(target, days)} disabled={busy} key={target}>
                   {label}
                 </Button>
               ))}
@@ -140,11 +140,11 @@ export function HistoryRetentionPanel() {
   );
 }
 
-function RetentionField({ label, value, onChange }) {
+function RetentionField({ label, value, disabled, onChange }) {
   return (
     <Field>
       {label}
-      <Input type="number" min="0" step="1" value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input type="number" min="0" step="1" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
     </Field>
   );
 }
