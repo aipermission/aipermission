@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
 import { useRequestGuard } from "../lib/request-guard";
-import { pendingApprovals } from "../lib/security-contracts";
+import { connectorApproval, connectorApprovals } from "../lib/gateway-contracts/security-contracts";
 
 const loadingList = { state: "loading", data: [], error: null };
 
@@ -17,7 +17,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
       try {
         const data = await apiGet("/api/connector-action-approvals", { signal: request.signal });
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setConnectorActionApprovals({ state: "ready", data: pendingApprovals(data, "connector approvals"), error: null });
+        setConnectorActionApprovals({ state: "ready", data: connectorApprovals(data), error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setConnectorActionApprovals({ state: "error", data: [], error: error.message });
@@ -62,7 +62,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   const runConnectorActionApproval = useCallback(
     async (requestID, userNote = "") => {
       try {
-        const item = await apiPost(`/api/connector-action-approvals/${requestID}/run`, { user_note: userNote });
+        const item = connectorApproval(await apiPost(`/api/connector-action-approvals/${requestID}/run`, { user_note: userNote }));
         await loadConnectorActionApprovals();
         return item;
       } catch (error) {
@@ -75,7 +75,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
 
   const declineConnectorActionApproval = useCallback(
     async (requestID, userNote = "") => {
-      const item = await apiPost(`/api/connector-action-approvals/${requestID}/decline`, { user_note: userNote });
+      const item = connectorApproval(await apiPost(`/api/connector-action-approvals/${requestID}/decline`, { user_note: userNote }));
       await loadConnectorActionApprovals();
       return item;
     },

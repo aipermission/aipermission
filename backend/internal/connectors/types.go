@@ -29,6 +29,23 @@ const (
 	ResultOutcomeUnknown  ResultStatus = "outcome_unknown"
 )
 
+// ResultStatuses returns the closed connector action lifecycle contract shared
+// by persistence, API generation, MCP, and frontend validation.
+func ResultStatuses() []ResultStatus {
+	return []ResultStatus{
+		ResultCompleted,
+		ResultFailed,
+		ResultCanceled,
+		ResultRunning,
+		ResultApprovalPending,
+		ResultBlocked,
+		ResultStale,
+		ResultDeclined,
+		ResultError,
+		ResultOutcomeUnknown,
+	}
+}
+
 // ConnectorHelp is AI-readable guidance for one target. It may mention actions,
 // but GetActionList remains the executable contract.
 type ConnectorHelp struct {

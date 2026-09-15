@@ -28,6 +28,18 @@ function runnerOptions(overrides = {}) {
   };
 }
 
+function actionResponse(overrides = {}) {
+  return {
+    request_id: 1,
+    target_ref: "test:1:1",
+    connector_kind: "test",
+    action_name: "list_items",
+    retry_policy: { class: "read_only", guidance: "Safe to retry." },
+    status: "completed",
+    ...overrides,
+  };
+}
+
 describe("runGuardedConnectorAction", () => {
   it("keeps a newer channel's visible state when an older channel completes", async () => {
     const list = deferred();
@@ -51,11 +63,11 @@ describe("runGuardedConnectorAction", () => {
       post: () => detail.promise,
     });
 
-    list.resolve({ status: "completed", output: { list: true } });
+    list.resolve(actionResponse({ output: { list: true } }));
     await expect(first).resolves.toMatchObject({ status: "completed" });
     expect(setState).toHaveBeenLastCalledWith({ state: "loading-detail", error: "", message: "" });
 
-    detail.resolve({ status: "completed", output: { detail: true }, display_text: "Detail ready" });
+    detail.resolve(actionResponse({ output: { detail: true }, display_text: "Detail ready" }));
     await expect(second).resolves.toMatchObject({ status: "completed" });
     expect(setState).toHaveBeenLastCalledWith({ state: "idle", error: "", message: "Detail ready" });
   });
@@ -72,7 +84,7 @@ describe("runGuardedConnectorAction", () => {
 
     options.requestGuard.setScope("target:2");
     expect(requestSignal.aborted).toBe(true);
-    resolveResponse({ status: "completed", output: { ok: true } });
+    resolveResponse(actionResponse({ output: { ok: true } }));
 
     await expect(result).resolves.toBeNull();
     expect(setState).toHaveBeenCalledTimes(1);
@@ -82,7 +94,7 @@ describe("runGuardedConnectorAction", () => {
     const onRefreshActivity = vi.fn();
     const onPending = vi.fn();
     const { setState, options } = runnerOptions({
-      post: async () => ({ request_id: 42, status: "approval_pending", display_text: "Waiting for approval" }),
+      post: async () => actionResponse({ request_id: 42, status: "approval_pending", display_text: "Waiting for approval" }),
       onRefreshActivity,
       onPending,
     });
@@ -95,7 +107,7 @@ describe("runGuardedConnectorAction", () => {
 
   it("rejects a failed HTTP 200 action result", async () => {
     const { setState, options } = runnerOptions({
-      post: async () => ({ status: "failed", error: "remote failure" }),
+      post: async () => actionResponse({ status: "failed", error: "remote failure" }),
     });
 
     await expect(runGuardedConnectorAction(options)).rejects.toThrow("remote failure");
@@ -104,7 +116,7 @@ describe("runGuardedConnectorAction", () => {
 
   it("safely reports a non-Error approval refresh failure", async () => {
     const { setState, options } = runnerOptions({
-      post: async () => ({ request_id: 44, status: "approval_pending", display_text: "Waiting for approval" }),
+      post: async () => actionResponse({ request_id: 44, status: "approval_pending", display_text: "Waiting for approval" }),
       onRefreshActivity: async () => Promise.reject(null),
     });
 
@@ -119,7 +131,7 @@ describe("runGuardedConnectorAction", () => {
 
   it("reports activity refresh failure after a completed action", async () => {
     const { setState, options } = runnerOptions({
-      post: async () => ({ status: "completed", output: { ok: true } }),
+      post: async () => actionResponse({ output: { ok: true } }),
       onRefreshActivity: async () => Promise.reject("refresh unavailable"),
     });
 

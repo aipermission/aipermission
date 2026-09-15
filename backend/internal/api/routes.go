@@ -1,6 +1,6 @@
 package api
 
-//go:generate go run ../../cmd/openapi -routes httptransport/routes.go -output ../../../docs/api/openapi.json
+//go:generate go run ../../cmd/openapi -routes httptransport/routes.go -output ../../../docs/api/openapi.json -frontend-output ../../../frontend/src/lib/gateway-contracts/generated-connector-contract.js
 
 import (
 	"net/http"

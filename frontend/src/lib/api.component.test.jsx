@@ -26,16 +26,26 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it("posts ordinary API requests without adding connector retry metadata", async () => {
+  const fetch = vi.fn(async () => jsonResponse({ ok: true }));
+  vi.stubGlobal("fetch", fetch);
+
+  await expect(apiPost("/api/settings", { retention_days: 7 })).resolves.toEqual({ ok: true });
+
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ retention_days: 7 });
+  expect(await listLocalActionRetryEntries()).toEqual([]);
+});
+
 it("rotates the browser retry identity after an acknowledged action", async () => {
   const keys = [];
+  const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "coverage" };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url, options) => {
       keys.push(JSON.parse(options.body).idempotency_key);
-      return jsonResponse({ request_id: keys.length, status: "completed" });
+      return jsonResponse(actionResponse(body, { request_id: keys.length }));
     }),
   );
-  const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "coverage" };
 
   await apiPost("/api/connector-actions/local-run", body);
   await apiPost("/api/connector-actions/local-run", body);
@@ -47,15 +57,15 @@ it("rotates the browser retry identity after an acknowledged action", async () =
 it("retires a fresh retry identity after a definitive client rejection", async () => {
   const keys = [];
   let calls = 0;
+  const body = { target_ref: "fixture:2:1", action_name: "mutate", input: {}, reason: "coverage" };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url, options) => {
       keys.push(JSON.parse(options.body).idempotency_key);
       calls += 1;
-      return calls === 1 ? jsonResponse({ error: "invalid request" }, 400) : jsonResponse({ request_id: 2, status: "completed" });
+      return calls === 1 ? jsonResponse({ error: "invalid request" }, 400) : jsonResponse(actionResponse(body, { request_id: 2 }));
     }),
   );
-  const body = { target_ref: "fixture:2:1", action_name: "mutate", input: {}, reason: "coverage" };
 
   await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toMatchObject({ status: 400 });
   await apiPost("/api/connector-actions/local-run", body);
@@ -66,20 +76,48 @@ it("retires a fresh retry identity after a definitive client rejection", async (
 it("retains the browser retry identity when an acknowledgement is malformed", async () => {
   const keys = [];
   let calls = 0;
+  const body = { target_ref: "fixture:3:1", action_name: "mutate", input: {}, reason: "coverage" };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url, options) => {
       keys.push(JSON.parse(options.body).idempotency_key);
       calls += 1;
-      return calls === 1 ? jsonResponse({ status: "completed" }) : jsonResponse({ request_id: 2, status: "completed" });
+      return calls === 1 ? jsonResponse({ status: "completed" }) : jsonResponse(actionResponse(body, { request_id: 2 }));
     }),
   );
-  const body = { target_ref: "fixture:3:1", action_name: "mutate", input: {}, reason: "coverage" };
 
   await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toThrow(/Invalid connector action response/);
   await apiPost("/api/connector-actions/local-run", body);
 
   expect(keys[0]).toBe(keys[1]);
+});
+
+it("retains one retry identity until the action response matches the dispatched request", async () => {
+  const keys = [];
+  let calls = 0;
+  const body = { target_ref: "fixture:identity:1", action_name: "mutate", input: {}, reason: "coverage" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      calls += 1;
+      if (calls === 1) return jsonResponse(actionResponse(body, { target_ref: "fixture:other:1" }));
+      if (calls === 2) return jsonResponse(actionResponse(body, { action_name: "inspect" }));
+      if (calls === 3) {
+        const response = actionResponse(body);
+        delete response.retry_policy;
+        return jsonResponse(response);
+      }
+      return jsonResponse(actionResponse(body));
+    }),
+  );
+
+  await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toThrow(/Invalid connector action response/);
+  await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toThrow(/Invalid connector action response/);
+  await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toThrow(/Invalid connector action response/);
+  await apiPost("/api/connector-actions/local-run", body);
+
+  expect(new Set(keys).size).toBe(1);
 });
 
 it("rotates the browser retry identity after an acknowledged bulk command", async () => {
@@ -158,20 +196,23 @@ it("retains a backup retry identity when the gateway acknowledgement is malforme
 });
 
 it("preserves a caller-provided idempotency key without opening a browser retry entry", async () => {
+  const body = {
+    target_ref: "fixture:provided:1",
+    action_name: "inspect",
+    input: {},
+    reason: "coverage",
+    idempotency_key: "caller-owned-key",
+  };
   const fetch = vi.fn(async (_url, options) =>
-    jsonResponse({ request_id: 17, status: "completed", echoed: JSON.parse(options.body).idempotency_key }),
+    jsonResponse(actionResponse(body, { request_id: 17, echoed: JSON.parse(options.body).idempotency_key })),
   );
   vi.stubGlobal("fetch", fetch);
 
-  await expect(
-    apiPost("/api/connector-actions/local-run", {
-      target_ref: "fixture:provided:1",
-      action_name: "inspect",
-      input: {},
-      reason: "coverage",
-      idempotency_key: "caller-owned-key",
-    }),
-  ).resolves.toEqual({ request_id: 17, status: "completed", echoed: "caller-owned-key" });
+  await expect(apiPost("/api/connector-actions/local-run", body)).resolves.toMatchObject({
+    request_id: 17,
+    status: "completed",
+    echoed: "caller-owned-key",
+  });
 
   expect(await listLocalActionRetryEntries()).toEqual([]);
 });
@@ -179,18 +220,18 @@ it("preserves a caller-provided idempotency key without opening a browser retry 
 it("retires a reconciled fresh identity after a definitive client rejection", async () => {
   const keys = [];
   let calls = 0;
+  const body = { target_ref: "fixture:4:1", action_name: "mutate", input: {}, reason: "coverage" };
   window.addEventListener(localActionReconciliationEvent, (event) => event.detail.resolve(true), { once: true });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url, options) => {
       keys.push(JSON.parse(options.body).idempotency_key);
       calls += 1;
-      if (calls === 1) return jsonResponse({ request_id: 1, status: "outcome_unknown" });
+      if (calls === 1) return jsonResponse(actionResponse(body, { request_id: 1, status: "outcome_unknown" }));
       if (calls === 2) return jsonResponse({ error: "invalid request" }, 400);
-      return jsonResponse({ request_id: 3, status: "completed" });
+      return jsonResponse(actionResponse(body, { request_id: 3 }));
     }),
   );
-  const body = { target_ref: "fixture:4:1", action_name: "mutate", input: {}, reason: "coverage" };
 
   await apiPost("/api/connector-actions/local-run", body);
   await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toMatchObject({ status: 400 });
@@ -217,20 +258,34 @@ it("accepts concurrent unknown outcomes for one retry identity", async () => {
 
 it("persists an acknowledged unknown outcome for a local action", async () => {
   const keys = [];
+  const body = { target_ref: "fixture:6:1", action_name: "mutate", input: {}, reason: "coverage" };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url, options) => {
       keys.push(JSON.parse(options.body).idempotency_key);
-      return jsonResponse({ request_id: 41, status: "outcome_unknown", assistant_hint: "Inspect state before retrying." });
+      return jsonResponse(
+        actionResponse(body, { request_id: 41, status: "outcome_unknown", assistant_hint: "Inspect state before retrying." }),
+      );
     }),
   );
-  const body = { target_ref: "fixture:6:1", action_name: "mutate", input: {}, reason: "coverage" };
 
   await apiPost("/api/connector-actions/local-run", body);
   const [entry] = await listLocalActionRetryEntries();
 
   expect(entry).toMatchObject({ key: keys[0], state: "outcome_unknown" });
 });
+
+function actionResponse(body, overrides = {}) {
+  return {
+    status: "completed",
+    request_id: 1,
+    target_ref: body.target_ref,
+    connector_kind: "test",
+    action_name: body.action_name,
+    retry_policy: { class: "read_only", guidance: "Safe to retry." },
+    ...overrides,
+  };
+}
 
 it("does not start a download when the native picker is canceled", async () => {
   const abort = new DOMException("Canceled", "AbortError");

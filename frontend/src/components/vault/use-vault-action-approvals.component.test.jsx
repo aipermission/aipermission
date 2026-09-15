@@ -21,7 +21,24 @@ function renderApprovals() {
   return { ...hook, refreshConsoleSessions };
 }
 
-const pendingApproval = { id: 42, status: "approval_pending" };
+const pendingApproval = {
+  id: 42,
+  status: "approval_pending",
+  token_id: 7,
+  token_name: "codex",
+  project_id: 3,
+  project_name: "My Project",
+  project_slug: "my-project",
+  action_name: "generate_item",
+  source: "mcp",
+  input: {},
+  reason: "coverage",
+  approval_context_hash: "context-hash",
+  idempotency_key: "fixture-key",
+  created_at: "2026-09-16T00:00:00Z",
+  expires_at: "2026-09-16T00:15:00Z",
+  updated_at: "2026-09-16T00:00:00Z",
+};
 
 describe("useVaultActionApprovals", () => {
   beforeEach(() => {

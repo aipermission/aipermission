@@ -6,6 +6,7 @@ import {
   releaseLocalActionRetryAttempt,
 } from "./local-action-retry.js";
 import { APIError } from "./errors.js";
+import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
 import { scopedUICookieName } from "./ui-cookie.js";
 
 const viteEnv = import.meta.env || {};
@@ -71,40 +72,29 @@ async function preserveRetryAfterFailure(retry, finalized) {
   return true;
 }
 
-const acknowledgedLocalActionStatuses = new Set([
-  "completed",
-  "failed",
-  "canceled",
-  "running",
-  "approval_pending",
-  "blocked",
-  "stale",
-  "declined",
-  "error",
-  "outcome_unknown",
-]);
-
-function isAcknowledgedLocalActionResponse(data) {
-  return (
-    data !== null &&
-    typeof data === "object" &&
-    Number.isSafeInteger(data.request_id) &&
-    data.request_id > 0 &&
-    acknowledgedLocalActionStatuses.has(data.status)
-  );
+function isAcknowledgedLocalActionResponse(data, body) {
+  try {
+    assertConnectorActionResponse(data, { targetRef: body?.target_ref, actionName: body?.action_name });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function preparePostBody(path, body) {
-  const policy = idempotentPostPolicy(path);
+  const policy = idempotentPostPolicy(path, body);
   if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
   if (body?.idempotency_key) return { body, retry: null, ...policy };
   const retry = await prepareLocalActionRetry({ path, body: body || {} });
   return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 
-function idempotentPostPolicy(path) {
+function idempotentPostPolicy(path, body) {
   if (path === "/api/connector-actions/local-run") {
-    return { acknowledged: isAcknowledgedLocalActionResponse, invalidResponseMessage: "Invalid connector action response from gateway." };
+    return {
+      acknowledged: (data) => isAcknowledgedLocalActionResponse(data, body),
+      invalidResponseMessage: "Invalid connector action response from gateway.",
+    };
   }
   if (path === "/api/console/bulk-exec") {
     return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };

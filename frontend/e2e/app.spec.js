@@ -582,7 +582,9 @@ function pendingApproval() {
   return {
     id: 42,
     connector_kind: "ssh",
+    target_id: 1,
     target_name: "worker-1",
+    profile_id: 1,
     profile_label: "main",
     target_ref: "ssh:1:1",
     token_name: "agent",
@@ -591,6 +593,7 @@ function pendingApproval() {
     input: { command: "uptime" },
     preview: { command: "uptime", mode: "prompt" },
     status: "approval_pending",
+    retry_policy: { class: "non_idempotent", guidance: "Inspect state before retrying." },
     created_at: "2026-09-07T12:00:00Z",
   };
 }

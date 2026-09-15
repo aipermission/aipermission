@@ -1,6 +1,6 @@
 import { apiPost } from "../../../lib/api.js";
 import { errorMessage } from "../../../lib/errors.js";
-import { connectorActionResponse } from "../../../lib/security-contracts";
+import { connectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { requireCompletedConnectorAction } from "./action-result.js";
 
 export async function runGuardedConnectorAction({
@@ -36,6 +36,7 @@ export async function runGuardedConnectorAction({
         },
         { signal: request.signal },
       ),
+      { targetRef, actionName },
     );
     if (!request.isCurrent()) return null;
     const item = requireCompletedConnectorAction(response, `${product} action failed.`);

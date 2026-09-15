@@ -346,10 +346,10 @@
       "lines": 0
     },
     "src/components/settings/backup-retention-panel.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 68.88,
+      "branches": 67.7,
+      "functions": 70,
+      "lines": 76.71
     },
     "src/components/settings/backup-state.js": {
       "statements": 66.66,
@@ -376,10 +376,10 @@
       "lines": 0
     },
     "src/components/settings/history-retention-panel.jsx": {
-      "statements": 71.05,
-      "branches": 70.83,
-      "functions": 65,
-      "lines": 75
+      "statements": 85.36,
+      "branches": 84.37,
+      "functions": 85,
+      "lines": 90.9
     },
     "src/components/settings/local-action-retry-panel.jsx": {
       "statements": 74,
@@ -424,10 +424,10 @@
       "lines": 100
     },
     "src/components/tokens/token-install-dialog.jsx": {
-      "statements": 61.9,
-      "branches": 27.5,
-      "functions": 33.33,
-      "lines": 63.15
+      "statements": 68.42,
+      "branches": 28.94,
+      "functions": 37.5,
+      "lines": 70.58
     },
     "src/components/tokens/token-revoke-dialog.jsx": {
       "statements": 100,
@@ -677,7 +677,7 @@
     },
     "src/connectors/templates/_shared/action-runner.js": {
       "statements": 92.72,
-      "branches": 70.83,
+      "branches": 72.91,
       "functions": 100,
       "lines": 97.67
     },
@@ -1683,6 +1683,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/lib/generated-connector-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/lib/history-pagination.js": {
       "statements": 47.05,
       "branches": 15.38,
@@ -1704,6 +1710,12 @@
     "src/lib/mcp-package.js": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/mcp-setup-command.js": {
+      "statements": 100,
+      "branches": 66.66,
       "functions": 100,
       "lines": 100
     },
@@ -1738,8 +1750,8 @@
       "lines": 100
     },
     "src/lib/security-contracts.ts": {
-      "statements": 93.33,
-      "branches": 94.44,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1846,10 +1858,10 @@
       "lines": 100
     },
     "src/pages/mcp-setup.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 63.63,
+      "branches": 40,
+      "functions": 42.85,
+      "lines": 60
     },
     "src/pages/projects.jsx": {
       "statements": 77.33,

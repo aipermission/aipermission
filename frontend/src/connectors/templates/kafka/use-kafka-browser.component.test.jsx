@@ -115,7 +115,16 @@ it("rejects malformed Kafka publish headers before the mutation is dispatched", 
 });
 
 function completed(actionName, output) {
-  return { id: 1, status: "completed", action_name: actionName, output };
+  return {
+    id: 1,
+    request_id: 1,
+    status: "completed",
+    target_ref: "kafka:1:1",
+    connector_kind: "kafka",
+    action_name: actionName,
+    retry_policy: { class: "read_only", guidance: "Safe to retry." },
+    output,
+  };
 }
 
 function responseFor(actionName, input) {

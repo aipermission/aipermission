@@ -1,6 +1,11 @@
 package restcontract
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+)
 
 type operationContract struct {
 	StatusCode          string
@@ -87,7 +92,7 @@ func sharedSchemas() map[string]any {
 			"idempotency_key": stringSchema(),
 		}, []string{"target_ref", "action_name"}),
 		"ConnectorActionResponse": objectSchema(map[string]any{
-			"status":              actionStatusSchema(),
+			"status":              connectorActionStatusSchema(),
 			"request_id":          integerSchema(),
 			"target_ref":          stringSchema(),
 			"target_name":         stringSchema(),
@@ -103,7 +108,7 @@ func sharedSchemas() map[string]any {
 			"assistant_hint":      stringSchema(),
 			"output_withheld":     boolSchema(),
 			"replayed":            boolSchema(),
-		}, []string{"status", "request_id", "target_ref", "connector_kind", "action_name", "retry_policy"}),
+		}, connectorActionResponseRequiredFields),
 		"ConnectorActionOutcomeUnknown": objectSchema(map[string]any{
 			"status":         enumSchema("outcome_unknown"),
 			"code":           enumSchema("connector_action_persistence_unknown"),
@@ -188,7 +193,7 @@ func connectorActionApprovalSchema(exactPreview bool) map[string]any {
 		"preview":               preview,
 		"input":                 stringMap,
 		"reason":                stringSchema(),
-		"status":                actionStatusSchema(),
+		"status":                connectorActionStatusSchema(),
 		"output":                map[string]any{},
 		"display_text":          stringSchema(),
 		"error":                 stringSchema(),
@@ -268,7 +273,7 @@ func historyEntrySchema() map[string]any {
 		"token_name": stringSchema(), "project_id": integerSchema(), "project_name": stringSchema(),
 		"runtime_id": integerSchema(), "target_id": integerSchema(), "profile_id": integerSchema(),
 		"target_name": stringSchema(), "profile_label": stringSchema(), "source": stringSchema(),
-		"status": actionStatusSchema(), "action_name": stringSchema(), "title": stringSchema(), "summary": stringSchema(),
+		"status": historyActivityStatusSchema(), "action_name": stringSchema(), "title": stringSchema(), "summary": stringSchema(),
 		"preview_json": stringSchema(), "input_text": stringSchema(), "input_json": stringSchema(),
 		"output_text": stringSchema(), "output_json": stringSchema(), "error": stringSchema(),
 		"retry_policy_json": stringSchema(),
@@ -282,7 +287,7 @@ func historyEntrySchema() map[string]any {
 
 func retryPolicySchema() map[string]any {
 	return objectSchema(map[string]any{
-		"class":               enumSchema("read_only", "idempotent", "conditional", "non_idempotent"),
+		"class":               enumSchema(ConnectorRetryClasses()...),
 		"precondition_fields": arraySchema(stringSchema()),
 		"guidance":            stringSchema(),
 	}, []string{"class", "guidance"})
@@ -345,6 +350,46 @@ func enumSchema(values ...string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
 }
 
-func actionStatusSchema() map[string]any {
-	return enumSchema("completed", "failed", "canceled", "running", "approval_pending", "pending_approval", "blocked", "stale", "declined", "expired", "error", "outcome_unknown", "pending", "paused", "untracked")
+func connectorActionStatusSchema() map[string]any {
+	return enumSchema(ConnectorActionStatuses()...)
+}
+
+func historyActivityStatusSchema() map[string]any {
+	return enumSchema(
+		"completed", "failed", "canceled", "running", "approval_pending",
+		"pending_approval", "blocked", "stale", "declined", "expired", "error",
+		"outcome_unknown", "pending", "paused", "untracked",
+	)
+}
+
+var connectorActionResponseRequiredFields = []string{
+	"status", "request_id", "target_ref", "connector_kind", "action_name", "retry_policy",
+}
+
+func ConnectorActionStatuses() []string {
+	statuses := connectors.ResultStatuses()
+	values := make([]string, len(statuses))
+	for index, status := range statuses {
+		values[index] = string(status)
+	}
+	return values
+}
+func ConnectorRetryClasses() []string {
+	classes := connectors.RetryClasses()
+	values := make([]string, len(classes))
+	for index, class := range classes {
+		values[index] = string(class)
+	}
+	return values
+}
+func ConnectorExecutionRules() []string {
+	rules := connectortargets.ActionPermissionRules()
+	values := make([]string, len(rules))
+	for index, rule := range rules {
+		values[index] = string(rule)
+	}
+	return values
+}
+func ConnectorActionResponseRequiredFields() []string {
+	return append([]string(nil), connectorActionResponseRequiredFields...)
 }

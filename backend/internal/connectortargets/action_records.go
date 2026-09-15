@@ -24,6 +24,12 @@ const (
 	ActionPermissionBlocked          ActionPermissionRule = "blocked"
 )
 
+// ActionPermissionRules returns the closed permission rule contract exposed to
+// API and frontend consumers.
+func ActionPermissionRules() []ActionPermissionRule {
+	return []ActionPermissionRule{ActionPermissionAlwaysRun, ActionPermissionApprovalRequired, ActionPermissionBlocked}
+}
+
 type SetActionPermissionInput struct {
 	TokenID       int64
 	TargetID      int64

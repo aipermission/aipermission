@@ -396,6 +396,7 @@ function sourceFiles(directory) {
     .flatMap((entry) => {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(path);
+      if (isDeclarationFilename(entry.name)) return [];
       if (!sourceExtensions.includes(extname(entry.name))) return [];
       return [resolve(path)];
     })
@@ -406,9 +407,14 @@ function executableFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) return executableFiles(path);
+    if (isDeclarationFilename(entry.name)) return [];
     if (!executableExtensions.has(extname(entry.name))) return [];
     return [resolve(path)];
   });
+}
+
+function isDeclarationFilename(filename) {
+  return /\.d\.(?:ts|mts|cts)$/.test(filename);
 }
 
 function isTestModule(filename) {
