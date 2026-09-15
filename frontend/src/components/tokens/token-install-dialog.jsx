@@ -1,6 +1,7 @@
 import { mcpApiUrl } from "../../lib/api";
 import { mcpClientCatalog } from "../../lib/mcp-client-catalog";
-import { mcpPackageName, mcpPackageSpecifier } from "../../lib/mcp-package";
+import { mcpPackageSpecifier } from "../../lib/mcp-package";
+import { buildMCPSetupCommand } from "../../lib/mcp-setup-command";
 import { CopyButton } from "../ui/copy-button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
@@ -16,7 +17,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
   const manualConfig = provider === "manual";
   const customConfig = provider === "custom";
   const targetName = token ? installTargetName(token.name) : "aipermission-default";
-  const command = token ? installCommand(provider, targetName) : "";
+  const command = token ? buildMCPSetupCommand({ provider, name: targetName, apiUrl: mcpApiUrl, print: customConfig }) : "";
   const manualJSON = token ? manualConfigJSON(targetName, token.token) : "";
   const copyValue = manualConfig ? manualJSON : command;
   const providerLabel = installProviders.find((item) => item.id === provider)?.label || "Manual";
@@ -85,13 +86,6 @@ function installTargetName(value) {
     .replace(/[^a-z0-9_.-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `aipermission-${slug || "default"}`;
-}
-
-function installCommand(provider, name) {
-  const printFlag = provider === "custom" ? " \\\n  --print" : "";
-  return `npx -y ${mcpPackageName} setup \\
-  --provider ${provider} \\
-  --name ${name}${printFlag}`;
 }
 
 function manualConfigJSON(name, token) {
