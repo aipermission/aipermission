@@ -3,6 +3,7 @@ package vaultrequests
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -149,8 +150,30 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 		},
 		RepairProjection: func(context.Context, int64) error { return nil },
 		RedactError:      func(_ context.Context, err error) string { return "redacted: " + err.Error() },
-		IsStale:          func(error) bool { return false },
-		MCPStarted:       func() bool { return harness.mcpStarted },
+		RedactProjection: func(_ context.Context, value any) (any, error) { return value, nil },
+		SealRequest: func(_ int64, envelope ExecutionEnvelope) (string, error) {
+			encoded, err := json.Marshal(envelope)
+			if err != nil {
+				return "", err
+			}
+			sealed, err := json.Marshal(map[string]any{
+				"version": 1, "algorithm": "AES-256-GCM", "nonce": "test", "ciphertext": string(encoded),
+			})
+			return string(sealed), err
+		},
+		OpenRequest: func(_ int64, sealed string) (ExecutionEnvelope, error) {
+			var wrapper struct {
+				Ciphertext string `json:"ciphertext"`
+			}
+			var envelope ExecutionEnvelope
+			if err := json.Unmarshal([]byte(sealed), &wrapper); err != nil {
+				return envelope, err
+			}
+			err := json.Unmarshal([]byte(wrapper.Ciphertext), &envelope)
+			return envelope, err
+		},
+		IsStale:    func(error) bool { return false },
+		MCPStarted: func() bool { return harness.mcpStarted },
 	})
 	if err != nil {
 		t.Fatal(err)

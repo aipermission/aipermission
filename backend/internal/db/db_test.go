@@ -574,6 +574,18 @@ func TestOpenEncryptedScrubsLegacyS3UploadProjections(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert legacy S3 history projection: %v", err)
 	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS guard_vault_action_request_envelope_insert`); err != nil {
+		t.Fatalf("remove Vault request insert envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS guard_vault_action_request_envelope_update`); err != nil {
+		t.Fatalf("remove Vault request update envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS protect_vault_action_request_envelope_update`); err != nil {
+		t.Fatalf("remove Vault request immutable envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
+		t.Fatalf("remove Vault request envelope from schema 19 fixture: %v", err)
+	}
 	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 20`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 19: %v", err)
 	}
@@ -620,8 +632,8 @@ func TestRecordEnvelopeWriteGuardsRejectLegacySecretWritesAfterMarker(t *testing
 	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'guard_%_envelope_%'`).Scan(&guardCount); err != nil {
 		t.Fatalf("count record envelope guards: %v", err)
 	}
-	if guardCount != 12 {
-		t.Fatalf("record envelope guard count = %d, want 12", guardCount)
+	if guardCount != 14 {
+		t.Fatalf("record envelope guard count = %d, want 14", guardCount)
 	}
 	if _, err := database.Exec(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))`, recordEnvelopeMarkerKey, "1"); err != nil {
 		t.Fatalf("insert envelope marker: %v", err)
@@ -645,6 +657,123 @@ func TestRecordEnvelopeWriteGuardsRejectLegacySecretWritesAfterMarker(t *testing
 	validShape := `{"version":1,"algorithm":"AES-256-GCM","nonce":"nonce","ciphertext":"ciphertext"}`
 	if _, err := database.Exec(`UPDATE api_tokens SET token_value = ? WHERE name = 'current-token'`, validShape); err != nil {
 		t.Fatalf("record envelope-shaped token update was rejected: %v", err)
+	}
+	var tokenID, projectID int64
+	if err := database.QueryRow(`SELECT id FROM api_tokens WHERE name = 'current-token'`).Scan(&tokenID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT id FROM projects WHERE status = 'active' ORDER BY id LIMIT 1`).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.Exec(`
+		INSERT INTO vault_action_requests (
+			token_id, project_id, action_name, status, idempotency_key,
+			encrypted_payload_json, created_at, expires_at, updated_at
+		) VALUES (?, ?, 'generate_item', 'completed', 'invalid-vault-envelope',
+			'legacy-ciphertext', datetime('now'), datetime('now'), datetime('now'))`, tokenID, projectID)
+	if err == nil || !strings.Contains(err.Error(), "record-bound encrypted envelope is required") {
+		t.Fatalf("legacy Vault request envelope insert error = %v", err)
+	}
+	result, err := database.Exec(`
+		INSERT INTO vault_action_requests (
+			token_id, project_id, action_name, status, idempotency_key,
+			encrypted_payload_json, created_at, expires_at, updated_at
+		) VALUES (?, ?, 'generate_item', 'completed', 'valid-vault-envelope',
+			?, datetime('now'), datetime('now'), datetime('now'))`, tokenID, projectID, validShape)
+	if err != nil {
+		t.Fatalf("valid Vault request envelope insert: %v", err)
+	}
+	requestID, _ := result.LastInsertId()
+	changedShape := `{"version":1,"algorithm":"AES-256-GCM","nonce":"changed","ciphertext":"changed"}`
+	_, err = database.Exec(`UPDATE vault_action_requests SET encrypted_payload_json = ? WHERE id = ?`, changedShape, requestID)
+	if err == nil || !strings.Contains(err.Error(), "Vault action request envelope is immutable") {
+		t.Fatalf("Vault request envelope replacement error = %v", err)
+	}
+}
+
+func TestVaultActionEnvelopeMigrationScrubsLegacyPublicMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault-action-envelope.aipdb")
+	password := "VaultActionEnvelopePassword123"
+	database, err := OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, trigger := range []string{
+		"guard_vault_action_request_envelope_insert",
+		"guard_vault_action_request_envelope_update",
+		"protect_vault_action_request_envelope_update",
+	} {
+		if _, err := database.Exec(`DROP TRIGGER IF EXISTS ` + trigger); err != nil {
+			t.Fatalf("drop %s: %v", trigger, err)
+		}
+	}
+	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
+		t.Fatalf("remove envelope column: %v", err)
+	}
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version = 33`); err != nil {
+		t.Fatal(err)
+	}
+	projectResult, err := database.Exec(`
+		INSERT INTO projects (name, slug, status, created_at, updated_at)
+		VALUES ('Legacy Vault', 'legacy-vault', 'active', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID, _ := projectResult.LastInsertId()
+	tokenResult, err := database.Exec(`
+		INSERT INTO api_tokens (name, token_hash, token_prefix, token_value, created_at, updated_at)
+		VALUES ('legacy-vault-token', 'legacy-vault-hash', 'aip_legacy_vault', '', datetime('now'), datetime('now'))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenID, _ := tokenResult.LastInsertId()
+	requestResult, err := database.Exec(`
+		INSERT INTO vault_action_requests (
+			token_id, project_id, action_name, input_json, reason, status,
+			approval_context_json, idempotency_key, created_at, expires_at, updated_at
+		) VALUES (?, ?, 'generate_item', '{"usage_notes":[{"notes":"legacy-canary"}]}',
+			'legacy-canary reason', 'approval_pending', '{}', 'legacy-envelope-request',
+			datetime('now'), datetime('now', '+15 minutes'), datetime('now'))`, tokenID, projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestID, _ := requestResult.LastInsertId()
+	if _, err := database.Exec(`
+		INSERT INTO history_entries (
+			source_ref_type, source_ref_id, connector_kind, activity_type, token_id,
+			project_id, source, status, action_name, title, summary, input_json,
+			created_at, updated_at
+		) VALUES ('vault_action_request', ?, 'vault', 'vault', ?, ?, 'mcp',
+			'pending_approval', 'generate_item', 'generate_item', 'legacy-canary reason',
+			'{"usage_notes":[{"notes":"legacy-canary"}]}', datetime('now'), datetime('now'))`, requestID, tokenID, projectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err = OpenEncrypted(path, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var status, inputJSON, reason, encrypted string
+	if err := database.QueryRow(`
+		SELECT status, input_json, reason, encrypted_payload_json
+		FROM vault_action_requests WHERE id = ?`, requestID,
+	).Scan(&status, &inputJSON, &reason, &encrypted); err != nil {
+		t.Fatal(err)
+	}
+	if status != "stale" || inputJSON != "{}" || reason != "[REDACTED LEGACY METADATA]" || encrypted != "" {
+		t.Fatalf("migrated request status=%q input=%q reason=%q encrypted=%q", status, inputJSON, reason, encrypted)
+	}
+	var historyStatus, historyInput, historySummary string
+	if err := database.QueryRow(`SELECT status, input_json, summary FROM history_entries WHERE source_ref_id = ?`, requestID).
+		Scan(&historyStatus, &historyInput, &historySummary); err != nil {
+		t.Fatal(err)
+	}
+	if historyStatus != "stale" || historyInput != "{}" || historySummary != "[REDACTED LEGACY METADATA]" {
+		t.Fatalf("migrated history status=%q input=%q summary=%q", historyStatus, historyInput, historySummary)
 	}
 }
 
@@ -931,6 +1060,18 @@ func downgradeDatabaseToSchema18(t *testing.T, database *sql.DB) {
 	}
 	if _, err := database.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
 		t.Fatalf("remove history retry policy from schema 18 fixture: %v", err)
+	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS guard_vault_action_request_envelope_insert`); err != nil {
+		t.Fatalf("remove Vault request insert envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS guard_vault_action_request_envelope_update`); err != nil {
+		t.Fatalf("remove Vault request update envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`DROP TRIGGER IF EXISTS protect_vault_action_request_envelope_update`); err != nil {
+		t.Fatalf("remove Vault request immutable envelope guard: %v", err)
+	}
+	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
+		t.Fatalf("remove Vault request envelope from schema 18 fixture: %v", err)
 	}
 	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)

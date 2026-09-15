@@ -36,28 +36,35 @@ var (
 )
 
 type Request struct {
-	ID                  int64          `json:"id"`
-	TokenID             int64          `json:"token_id"`
-	TokenName           string         `json:"token_name"`
-	ProjectID           int64          `json:"project_id"`
-	ProjectName         string         `json:"project_name"`
-	ProjectSlug         string         `json:"project_slug"`
-	RuntimeID           *int64         `json:"runtime_id,omitempty"`
-	ActionName          string         `json:"action_name"`
-	Source              string         `json:"source"`
-	Input               map[string]any `json:"input"`
-	Reason              string         `json:"reason"`
-	Status              string         `json:"status"`
-	ApprovalContext     map[string]any `json:"approval_context,omitempty"`
-	ApprovalContextHash string         `json:"approval_context_hash"`
-	IdempotencyKey      string         `json:"idempotency_key"`
-	Error               string         `json:"error,omitempty"`
-	Output              any            `json:"output,omitempty"`
-	UserNote            string         `json:"user_note,omitempty"`
-	CreatedAt           string         `json:"created_at"`
-	ExpiresAt           string         `json:"expires_at"`
-	CompletedAt         *string        `json:"completed_at,omitempty"`
-	UpdatedAt           string         `json:"updated_at"`
+	ID                   int64          `json:"id"`
+	TokenID              int64          `json:"token_id"`
+	TokenName            string         `json:"token_name"`
+	ProjectID            int64          `json:"project_id"`
+	ProjectName          string         `json:"project_name"`
+	ProjectSlug          string         `json:"project_slug"`
+	RuntimeID            *int64         `json:"runtime_id,omitempty"`
+	ActionName           string         `json:"action_name"`
+	Source               string         `json:"source"`
+	Input                map[string]any `json:"input"`
+	Reason               string         `json:"reason"`
+	Status               string         `json:"status"`
+	ApprovalContext      map[string]any `json:"approval_context,omitempty"`
+	ApprovalContextHash  string         `json:"approval_context_hash"`
+	IdempotencyKey       string         `json:"idempotency_key"`
+	Error                string         `json:"error,omitempty"`
+	Output               any            `json:"output,omitempty"`
+	UserNote             string         `json:"user_note,omitempty"`
+	CreatedAt            string         `json:"created_at"`
+	ExpiresAt            string         `json:"expires_at"`
+	CompletedAt          *string        `json:"completed_at,omitempty"`
+	UpdatedAt            string         `json:"updated_at"`
+	EncryptedPayloadJSON string         `json:"-"`
+}
+
+type ExecutionEnvelope struct {
+	Input           map[string]any `json:"input"`
+	Reason          string         `json:"reason"`
+	ApprovalContext map[string]any `json:"approval_context"`
 }
 
 type CreateInput struct {
@@ -104,6 +111,17 @@ func (s *Store) transaction(ctx context.Context, label string) (sqldb.Executor, 
 }
 
 func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, error) {
+	return s.create(ctx, input, nil)
+}
+
+func (s *Store) CreateSealed(ctx context.Context, input CreateInput, seal func(int64) (string, error)) (Request, bool, error) {
+	if seal == nil {
+		return Request{}, false, fmt.Errorf("Vault action request sealer is required")
+	}
+	return s.create(ctx, input, seal)
+}
+
+func (s *Store) create(ctx context.Context, input CreateInput, seal func(int64) (string, error)) (Request, bool, error) {
 	input.ActionName = strings.TrimSpace(input.ActionName)
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
@@ -138,6 +156,11 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 		return Request{}, false, err
 	}
 	defer rollback()
+	finalStatus := input.InitialStatus
+	storedStatus := finalStatus
+	if seal != nil {
+		storedStatus = "preparing"
+	}
 	result, err := executor.ExecContext(ctx, `
 		INSERT INTO vault_action_requests (
 			token_id, project_id, runtime_id, action_name, source, input_json, reason,
@@ -146,7 +169,7 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 		) VALUES (?, ?, ?, ?, 'mcp', ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(token_id, idempotency_key) DO NOTHING`,
 		input.TokenID, input.ProjectID, input.RuntimeID, input.ActionName, string(inputJSON),
-		input.Reason, input.InitialStatus, string(contextJSON), input.ApprovalContextHash,
+		input.Reason, storedStatus, string(contextJSON), input.ApprovalContextHash,
 		input.IdempotencyKey, now, expiresAt, now,
 	)
 	if err != nil {
@@ -156,12 +179,45 @@ func (s *Store) Create(ctx context.Context, input CreateInput) (Request, bool, e
 	if err != nil {
 		return Request{}, false, err
 	}
+	if affected == 1 && seal != nil {
+		id, idErr := result.LastInsertId()
+		if idErr != nil {
+			return Request{}, false, fmt.Errorf("read Vault action request ID: %w", idErr)
+		}
+		encrypted, sealErr := seal(id)
+		if sealErr != nil {
+			return Request{}, false, fmt.Errorf("encrypt Vault action request metadata: %w", sealErr)
+		}
+		if strings.TrimSpace(encrypted) == "" {
+			return Request{}, false, fmt.Errorf("sealed Vault action request metadata is required")
+		}
+		finalized, finalizeErr := executor.ExecContext(ctx, `
+			UPDATE vault_action_requests
+			SET encrypted_payload_json = ?, status = ?, updated_at = ?
+			WHERE id = ? AND status = 'preparing'`, encrypted, finalStatus, now, id)
+		if finalizeErr != nil {
+			return Request{}, false, fmt.Errorf("finalize sealed Vault action request: %w", finalizeErr)
+		}
+		finalizedCount, finalizeErr := sqldb.RowsAffected(finalized, "finalize sealed Vault action request")
+		if finalizeErr != nil {
+			return Request{}, false, finalizeErr
+		}
+		if finalizedCount != 1 {
+			return Request{}, false, fmt.Errorf("finalize sealed Vault action request: request changed")
+		}
+	}
 	item, err := scanRequest(executor.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, input.TokenID, input.IdempotencyKey))
 	if err != nil {
 		return Request{}, false, err
 	}
-	if affected != 1 && !sameCreateInput(item, input) {
-		return Request{}, false, ErrIdempotencyConflict
+	if affected != 1 {
+		same := sameCreateIdentity(item, input)
+		if seal == nil {
+			same = sameCreateInput(item, input)
+		}
+		if !same {
+			return Request{}, false, ErrIdempotencyConflict
+		}
 	}
 	if affected == 1 {
 		if err := history.SyncVaultActionRequestWithExecutor(ctx, executor, item.ID); err != nil {
@@ -565,7 +621,7 @@ const requestSelect = `
 	SELECT r.id, r.token_id, t.name, r.project_id, p.name, p.slug, r.runtime_id,
 	       r.action_name, r.source, r.input_json, r.reason, r.status,
 	       r.approval_context_json, r.approval_context_hash, r.idempotency_key,
-	       r.error, r.output_json, r.user_note, r.created_at, r.expires_at,
+	       r.error, r.output_json, r.user_note, r.encrypted_payload_json, r.created_at, r.expires_at,
 	       r.completed_at, r.updated_at
 	FROM vault_action_requests r
 	JOIN api_tokens t ON t.id = r.token_id
@@ -580,7 +636,7 @@ func scanRequest(row scanner) (Request, error) {
 		&item.ID, &item.TokenID, &item.TokenName, &item.ProjectID, &item.ProjectName,
 		&item.ProjectSlug, &item.RuntimeID, &item.ActionName, &item.Source, &inputJSON,
 		&item.Reason, &item.Status, &contextJSON, &item.ApprovalContextHash,
-		&item.IdempotencyKey, &item.Error, &outputJSON, &item.UserNote,
+		&item.IdempotencyKey, &item.Error, &outputJSON, &item.UserNote, &item.EncryptedPayloadJSON,
 		&item.CreatedAt, &item.ExpiresAt, &item.CompletedAt, &item.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -614,15 +670,21 @@ func nonNilMap(value map[string]any) map[string]any {
 	return value
 }
 
-func sameCreateInput(item Request, input CreateInput) bool {
-	if item.ProjectID != input.ProjectID || item.ActionName != input.ActionName ||
-		item.Reason != input.Reason {
+func sameCreateIdentity(item Request, input CreateInput) bool {
+	if item.ProjectID != input.ProjectID || item.ActionName != input.ActionName {
 		return false
 	}
 	if (item.RuntimeID == nil) != (input.RuntimeID == nil) {
 		return false
 	}
 	if item.RuntimeID != nil && *item.RuntimeID != *input.RuntimeID {
+		return false
+	}
+	return true
+}
+
+func sameCreateInput(item Request, input CreateInput) bool {
+	if !sameCreateIdentity(item, input) || item.Reason != input.Reason {
 		return false
 	}
 	itemJSON, itemErr := json.Marshal(item.Input)

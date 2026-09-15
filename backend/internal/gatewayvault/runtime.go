@@ -62,6 +62,9 @@ type RequestRuntimePorts struct {
 	Observe            func(context.Context, string, *int64, int64, string, any)
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
+	RedactRequestValue func(context.Context, any) (any, error)
+	SealRequest        func(int64, any) (string, error)
+	OpenRequest        func(int64, string, any) error
 	ExecutionTimeout   time.Duration
 }
 

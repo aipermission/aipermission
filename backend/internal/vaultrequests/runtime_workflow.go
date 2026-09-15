@@ -30,9 +30,17 @@ func (r *Runtime) workflowPorts(actor, userNote, startedAction, finishedActionPr
 }
 
 func (r *Runtime) claim(ctx context.Context, requestID int64, actor, action, userNote string) (Request, error) {
+	stored, err := r.store.getRaw(ctx, requestID)
+	if err != nil {
+		return Request{}, err
+	}
+	exact, err := r.exactRequest(stored)
+	if err != nil {
+		return Request{}, err
+	}
 	tokenID, runtimeID := r.auditIdentity(ctx, requestID)
 	var item Request
-	err := r.mutations.WithMutation(
+	err = r.mutations.WithMutation(
 		ctx, actor, tokenID, runtimeID, action,
 		func() any { return RequestAuditPayload(item, userNote) },
 		func(tx *sql.Tx) error {
@@ -41,6 +49,11 @@ func (r *Runtime) claim(ctx context.Context, requestID int64, actor, action, use
 			return claimErr
 		},
 	)
+	if err == nil {
+		item.Input = exact.Input
+		item.Reason = exact.Reason
+		item.ApprovalContext = exact.ApprovalContext
+	}
 	return item, err
 }
 

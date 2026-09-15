@@ -65,6 +65,9 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 			runtime := Runtime{Requests: RequestRuntimePorts{
 				Store:              func(context.Context) vaultrequests.RequestStore { return vaultrequests.NewStore(database) },
 				RedactRequestError: func(_ context.Context, err error) string { return err.Error() },
+				RedactRequestValue: func(_ context.Context, value any) (any, error) { return value, nil },
+				SealRequest:        func(int64, any) (string, error) { return "sealed", nil },
+				OpenRequest:        func(int64, string, any) error { return nil },
 				RepairProjection:   func(context.Context, int64) error { return nil },
 				Observe: func(_ context.Context, _ string, _ *int64, _ int64, action string, _ any) {
 					observations = append(observations, action)
