@@ -27,6 +27,8 @@ export const defaultS3ConfirmDialog = Object.freeze({
   action: null,
   pending: false,
   danger: false,
+  error: "",
+  status: "",
 });
 
 export function S3UploadDialog({
@@ -228,7 +230,16 @@ export function S3ConfirmDialog({ value, theme, onClose, onConfirm }) {
   if (!value.open) return null;
   const detailClass = theme === "light" ? "border-stone-200 bg-stone-50 text-stone-700" : "border-stone-700 bg-stone-900 text-stone-200";
   return (
-    <Dialog open={value.open} onClose={onClose} title={value.title} description={value.description} size="md" closeDisabled={value.pending}>
+    <Dialog
+      open={value.open}
+      onClose={onClose}
+      title={value.title}
+      description={value.description}
+      size="md"
+      closeDisabled={value.pending}
+      closeOnOverlay={false}
+      closeOnEscape={false}
+    >
       <div className="grid gap-4">
         <div className={`grid gap-2 rounded-md border p-3 text-sm ${detailClass}`}>
           {value.details.map((detail) => (
@@ -243,6 +254,16 @@ export function S3ConfirmDialog({ value, theme, onClose, onConfirm }) {
         ) : (
           <Notice tone="warn">Review the object keys before continuing.</Notice>
         )}
+        {value.status ? (
+          <div role="status">
+            <Notice tone="warn">{value.status}</Notice>
+          </div>
+        ) : null}
+        {value.error ? (
+          <div role="alert">
+            <Notice tone="bad">{value.error}</Notice>
+          </div>
+        ) : null}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={value.pending}>
             Cancel

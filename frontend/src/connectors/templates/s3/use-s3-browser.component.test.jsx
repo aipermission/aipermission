@@ -205,3 +205,50 @@ it("binds destructive S3 confirmation to the requested object", async () => {
   expect(clearSelection).toHaveBeenCalledOnce();
   expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
 });
+
+it("retains pending approval feedback and action failures inside the S3 confirmation", async () => {
+  const runAction = vi.fn().mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("bucket denied"));
+  const { result } = renderHook(() =>
+    useS3ObjectDelete({
+      scopeKey: "s3:1:1:now",
+      selectedKey: objects[0].key,
+      runAction,
+      clearSelection: vi.fn(),
+      refreshObjects: vi.fn(),
+    }),
+  );
+  act(() => result.current.requestDelete());
+
+  await act(async () => result.current.confirmPendingAction());
+  expect(result.current.confirmDialog).toMatchObject({ open: true, pending: false, status: expect.stringContaining("pending") });
+  await act(async () => result.current.confirmPendingAction());
+  expect(result.current.confirmDialog).toMatchObject({ open: true, pending: false, error: "bucket denied" });
+});
+
+it("does not dismiss a destructive confirmation during a running S3 request", async () => {
+  let resolveAction;
+  const runAction = vi.fn().mockReturnValue(
+    new Promise((resolve) => {
+      resolveAction = resolve;
+    }),
+  );
+  const { result } = renderHook(() =>
+    useS3ObjectDelete({
+      scopeKey: "s3:1:1:now",
+      selectedKey: objects[0].key,
+      runAction,
+      clearSelection: vi.fn(),
+      refreshObjects: vi.fn(),
+    }),
+  );
+  act(() => result.current.requestDelete());
+  let request;
+  act(() => {
+    request = result.current.confirmPendingAction();
+  });
+  act(() => result.current.closeConfirmDialog());
+  expect(result.current.confirmDialog).toMatchObject({ open: true, pending: true });
+  await act(async () => resolveAction(null));
+  await request;
+  expect(result.current.confirmDialog.open).toBe(true);
+});
