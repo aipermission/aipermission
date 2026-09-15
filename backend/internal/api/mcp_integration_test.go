@@ -36,6 +36,15 @@ type apiTestFixture struct {
 	sshKeys *testSSHKeyResourceStore
 }
 
+func createAPITestToken(t *testing.T, fixture apiTestFixture, ctx context.Context, name string) tokens.CreateResponse {
+	t.Helper()
+	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: name})
+	if err != nil {
+		t.Fatalf("create token %q: %v", name, err)
+	}
+	return token
+}
+
 type testSSHConnectorProfile struct {
 	ID        int64
 	TargetID  int64
@@ -277,10 +286,7 @@ func recordTestUICookies(cookies []*http.Cookie) {
 func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "agent")
 
 	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	if response.Code != http.StatusOK {
@@ -322,10 +328,7 @@ func TestMCPAuthenticationRejectsMalformedTokenExpiry(t *testing.T) {
 func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "agent")
 	profile := fixture.createKeyAndServer(t, "core-1")
 	store := connectortargets.NewStore(fixture.db)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -389,10 +392,7 @@ func testMetadataInt64(value any) int64 {
 func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "agent")
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
 	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
@@ -431,10 +431,7 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 func TestOldMCPSSHWrapperRoutesAreNotRegistered(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := context.Background()
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "agent"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "agent")
 
 	for _, tc := range []struct {
 		method string

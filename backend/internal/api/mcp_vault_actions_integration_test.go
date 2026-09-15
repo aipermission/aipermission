@@ -19,7 +19,6 @@ import (
 	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
-	"github.com/aipermission/aipermission/backend/internal/tokens"
 	"github.com/aipermission/aipermission/backend/internal/vaultactions"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -38,10 +37,7 @@ func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	if _, err := projectStore.Create(ctx, "Z Empty Vault"); err != nil {
 		t.Fatal(err)
 	}
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-list-boundary"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-list-boundary")
 	if _, err := accesscontrol.NewCapabilityStore(fixture.db).Replace(ctx, token.ID, []accesscontrol.CapabilitySetInput{{
 		ProjectID: fullProject.ID, Name: accesscontrol.VaultMetadataRead,
 		ExecutionRule: accesscontrol.RuleAlwaysRun,
@@ -84,14 +80,8 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-codex"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherToken, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "other-codex"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-codex")
+	otherToken := createAPITestToken(t, fixture, ctx, "other-codex")
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "", withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{
 		Capabilities: []accesscontrol.ProjectCapabilityInput{
@@ -275,10 +265,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-automation"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-automation")
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
 		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{
@@ -359,10 +346,7 @@ func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "redacted-vault-agent"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "redacted-vault-agent")
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
 		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{
@@ -473,10 +457,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatalf("create Vault item: %d %s", createItem.Code, createItem.Body.String())
 	}
 	item := decodeRouteResponse[projectvault.Item](t, createItem.Body.Bytes())
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-session-e2e-token"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-session-e2e-token")
 	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
 	if response := performJSON(
 		fixture.server.Handler(),
@@ -669,10 +650,7 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		t.Fatalf("create Vault item: %d %s", createItem.Code, createItem.Body.String())
 	}
 	item := decodeRouteResponse[projectvault.Item](t, createItem.Body.Bytes())
-	token, err := fixture.tokens.Create(ctx, tokens.CreateRequest{Name: "vault-session-automation"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := createAPITestToken(t, fixture, ctx, "vault-session-automation")
 	scopePath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-scopes"
 	scope := performJSON(
 		fixture.server.Handler(),
