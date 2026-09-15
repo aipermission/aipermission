@@ -81,7 +81,7 @@ func TestActionCatalogSchemaSnapshot(t *testing.T) {
 	}
 	digest := sha256.Sum256(encoded)
 	got := hex.EncodeToString(digest[:])
-	const want = "6532a1163bdf05b7912b1311da711e726c7bd2a9fd0939310739ca8096f2dc97"
+	const want = "e7d3563df08097c98246702c1675f51823755a042cb5eb55c211b4f6d1616bfe"
 	if got != want {
 		t.Fatalf("action catalog schema changed: got sha256 %s, want %s; review the complete names, schemas, defaults, risks, and output hints before updating the snapshot", got, want)
 	}

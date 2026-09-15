@@ -32,6 +32,31 @@ func (r *Runtime) InsertTokenRequest(
 	errorText string,
 	idempotencyKey string,
 ) (connectortargets.ActionRequest, bool, error) {
+	return r.insertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey, false)
+}
+
+func (r *Runtime) InsertTokenRequestWithCapacity(
+	ctx context.Context,
+	tokenID int64,
+	prepared PreparedRequest,
+	permission connectortargets.ActionPermission,
+	status connectors.ResultStatus,
+	errorText string,
+	idempotencyKey string,
+) (connectortargets.ActionRequest, bool, error) {
+	return r.insertTokenRequest(ctx, tokenID, prepared, permission, status, errorText, idempotencyKey, true)
+}
+
+func (r *Runtime) insertTokenRequest(
+	ctx context.Context,
+	tokenID int64,
+	prepared PreparedRequest,
+	permission connectortargets.ActionPermission,
+	status connectors.ResultStatus,
+	errorText string,
+	idempotencyKey string,
+	enforceCapacity bool,
+) (connectortargets.ActionRequest, bool, error) {
 	token, err := r.tokens.Get(ctx, tokenID, r.now().UTC())
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
@@ -41,7 +66,7 @@ func (r *Runtime) InsertTokenRequest(
 	if err != nil {
 		return connectortargets.ActionRequest{}, false, err
 	}
-	return r.InsertPreparedRequest(ctx, &tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey)
+	return r.insertPreparedRequest(ctx, &tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey, enforceCapacity)
 }
 
 func (r *Runtime) InsertPreparedRequest(
@@ -53,6 +78,20 @@ func (r *Runtime) InsertPreparedRequest(
 	approvalContext string,
 	approvalHash string,
 	idempotencyKey string,
+) (connectortargets.ActionRequest, bool, error) {
+	return r.insertPreparedRequest(ctx, tokenID, prepared, status, errorText, approvalContext, approvalHash, idempotencyKey, false)
+}
+
+func (r *Runtime) insertPreparedRequest(
+	ctx context.Context,
+	tokenID *int64,
+	prepared PreparedRequest,
+	status connectors.ResultStatus,
+	errorText string,
+	approvalContext string,
+	approvalHash string,
+	idempotencyKey string,
+	enforceCapacity bool,
 ) (connectortargets.ActionRequest, bool, error) {
 	redactedPreview, err := r.redactor.Preview(ctx, prepared.Action.Preview, prepared.ActionDefinition.SensitiveInputFields, prepared.ActionDefinition.OutputHint)
 	if err != nil {
@@ -98,6 +137,7 @@ func (r *Runtime) InsertPreparedRequest(
 		ApprovalContext: approvalContext, ApprovalContextHash: approvalHash,
 		RetryPolicy:    connectors.EffectiveRetryPolicy(prepared.ActionDefinition),
 		IdempotencyKey: strings.TrimSpace(idempotencyKey), IdempotencyIdentityHash: identityHash,
+		EnforceTokenCapacity: enforceCapacity,
 	}
 	if status == connectors.ResultRunning {
 		_, runtimeInstanceID, identityErr := r.runtimeIdentity()

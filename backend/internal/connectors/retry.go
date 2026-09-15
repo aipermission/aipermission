@@ -18,6 +18,11 @@ const (
 	RetryNonIdempotent RetryClass = "non_idempotent"
 )
 
+const (
+	DefaultMaxActionInputBytes = 1 << 20
+	MaximumActionInputBytes    = 24 << 20
+)
+
 // RetryPolicy is connector-owned, machine-readable retry guidance. An empty
 // policy receives a conservative default based on the action risk.
 type RetryPolicy struct {
@@ -64,6 +69,9 @@ func GetActionDefinitions(ctx context.Context, connector Connector, target Targe
 	copy(completed, actions)
 	for index := range completed {
 		completed[index].RetryPolicy = EffectiveRetryPolicy(completed[index])
+		if completed[index].MaxInputBytes == 0 {
+			completed[index].MaxInputBytes = DefaultMaxActionInputBytes
+		}
 	}
 	if err := ValidateActionDefinitions(completed, connector.Kind()+" actions"); err != nil {
 		return nil, err

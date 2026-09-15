@@ -254,6 +254,7 @@ func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
 		left.Description != right.Description ||
 		left.Category != right.Category ||
 		left.Risk != right.Risk ||
+		left.MaxInputBytes != right.MaxInputBytes ||
 		!reflect.DeepEqual(EffectiveRetryPolicy(left), EffectiveRetryPolicy(right)) ||
 		left.OutputHint.Format != right.OutputHint.Format ||
 		left.OutputHint.MaxRows != right.OutputHint.MaxRows ||

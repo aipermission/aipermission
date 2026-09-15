@@ -102,6 +102,7 @@ type ActionDefinition struct {
 	SensitiveInputFields []string    `json:"sensitive_input_fields,omitempty"`
 	OutputHint           OutputHint  `json:"output_hint,omitempty"`
 	RetryPolicy          RetryPolicy `json:"retry_policy"`
+	MaxInputBytes        int         `json:"max_input_bytes"`
 }
 
 // ActionRequest is a side-effect-free request to prepare a target action.

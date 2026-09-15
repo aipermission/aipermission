@@ -43,8 +43,21 @@ func TestGetActionDefinitionsCompletesWithoutMutatingConnectorCatalog(t *testing
 	if actions[0].RetryPolicy.Class != RetryReadOnly || actions[0].RetryPolicy.Guidance == "" {
 		t.Fatalf("completed action = %#v", actions[0])
 	}
+	if actions[0].MaxInputBytes != DefaultMaxActionInputBytes {
+		t.Fatalf("max input bytes = %d", actions[0].MaxInputBytes)
+	}
 	if !reflect.DeepEqual(catalog[0].RetryPolicy, RetryPolicy{}) {
 		t.Fatalf("source catalog mutated: %#v", catalog[0])
+	}
+}
+
+func TestValidateActionDefinitionsRejectsInvalidInputBudget(t *testing.T) {
+	action := ActionDefinition{Name: "read", Label: "Read", Description: "Read data.", Risk: RiskRead}
+	for _, limit := range []int{-1, MaximumActionInputBytes + 1} {
+		action.MaxInputBytes = limit
+		if err := ValidateActionDefinitions([]ActionDefinition{action}, "test"); err == nil || !strings.Contains(err.Error(), "max_input_bytes") {
+			t.Fatalf("limit %d error = %v", limit, err)
+		}
 	}
 }
 

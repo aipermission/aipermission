@@ -89,6 +89,10 @@ type MCPActionCallResult struct {
 	Replayed bool
 }
 
+type MCPActionResourcePolicy struct {
+	MaxInputBytes int
+}
+
 type MCPRunningHint func(connectortargets.ActionRequest) string
 
 type DeliveryGate interface {
@@ -106,14 +110,17 @@ type MCPOutputAuthorization struct {
 }
 
 type MCPActionScope struct {
-	Database      *sql.DB
-	TokenID       int64
-	Output        *MCPOutputAuthorization
-	ActionVisible func(context.Context, string, string) (bool, error)
-	Call          func(context.Context, MCPActionCall) (MCPActionCallResult, error)
-	Observe       func(context.Context, string, any)
-	Redact        func(context.Context, string) string
-	RunningHint   MCPRunningHint
+	Database       *sql.DB
+	RuntimeID      string
+	TokenID        int64
+	Output         *MCPOutputAuthorization
+	ActionVisible  func(context.Context, string, string) (bool, error)
+	ReplayExists   func(context.Context, string) (bool, error)
+	ResourcePolicy func(context.Context, string, string) (MCPActionResourcePolicy, error)
+	Call           func(context.Context, MCPActionCall) (MCPActionCallResult, error)
+	Observe        func(context.Context, string, any)
+	Redact         func(context.Context, string) string
+	RunningHint    MCPRunningHint
 }
 
 type MCPRuntimeState interface {

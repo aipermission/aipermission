@@ -163,6 +163,9 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 			return fmt.Errorf("%s contains duplicate action %q", usage, action.Name)
 		}
 		seen[action.Name] = true
+		if action.MaxInputBytes != 0 && (action.MaxInputBytes < 1 || action.MaxInputBytes > MaximumActionInputBytes) {
+			return fmt.Errorf("%s action %q max_input_bytes must be between 1 and %d", usage, action.Name, MaximumActionInputBytes)
+		}
 		if !ValidRisk(action.Risk) {
 			return fmt.Errorf("%s action %q has unsupported risk %q", usage, action.Name, action.Risk)
 		}
