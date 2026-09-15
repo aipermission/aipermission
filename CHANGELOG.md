@@ -9,6 +9,46 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.50] - 2026-09-15
+
+### Changed
+
+- Connector action calls now apply per-token rate, concurrency, request-body, and
+  persisted-output limits with bounded retry feedback.
+- JSON API helpers require valid JSON success responses by default and model legitimate
+  no-content or non-JSON endpoints explicitly.
+
+### Fixed
+
+- MCP connector references are resolved inside the active project before persistence and
+  execution; invisible and nonexistent targets have equivalent public results.
+- Interrupted plaintext transfers retain cleanup state across restart, and SFTP
+  subsystem setup now stops promptly on cancellation.
+- MCP setup preserves unrelated TOML array tables, and connector output and upload names
+  truncate on UTF-8 boundaries.
+
+### Security
+
+- Vault request metadata, reasons, usage notes, history, audit, and MCP projections
+  apply the active redaction policy without exposing execution secrets.
+- MCP gateway origins containing URL credentials are rejected before use without
+  reflecting the supplied username or password.
+- Valid-token floods fail with bounded responses instead of unbounded memory or
+  encrypted-storage growth.
+
+### Maintenance
+
+- Regression suites cover visibility equivalence, quota exhaustion, transfer scavenging,
+  redaction, cancellation, UTF-8 boundaries, malformed JSON, and TOML round trips.
+- Gateway and database test fixtures now separate open guards, migration setup, and
+  shared MCP token initialization.
+
+### Notes
+
+- Resource-limit rejections return HTTP 429 with Retry-After; callers should respect the
+  retry interval rather than immediately resending.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.49] - 2026-09-15
 
 ### Changed

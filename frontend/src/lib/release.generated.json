@@ -1,6 +1,49 @@
 {
-  "version": "0.2.49",
+  "version": "0.2.50",
   "entries": [
+    {
+      "version": "0.2.50",
+      "label": "Security, resource, and protocol boundaries",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Connector action calls now apply per-token rate, concurrency, request-body, and persisted-output limits with bounded retry feedback.",
+            "JSON API helpers require valid JSON success responses by default and model legitimate no-content or non-JSON endpoints explicitly."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "MCP connector references are resolved inside the active project before persistence and execution; invisible and nonexistent targets have equivalent public results.",
+            "Interrupted plaintext transfers retain cleanup state across restart, and SFTP subsystem setup now stops promptly on cancellation.",
+            "MCP setup preserves unrelated TOML array tables, and connector output and upload names truncate on UTF-8 boundaries."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Vault request metadata, reasons, usage notes, history, audit, and MCP projections apply the active redaction policy without exposing execution secrets.",
+            "MCP gateway origins containing URL credentials are rejected before use without reflecting the supplied username or password.",
+            "Valid-token floods fail with bounded responses instead of unbounded memory or encrypted-storage growth."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Regression suites cover visibility equivalence, quota exhaustion, transfer scavenging, redaction, cancellation, UTF-8 boundaries, malformed JSON, and TOML round trips.",
+            "Gateway and database test fixtures now separate open guards, migration setup, and shared MCP token initialization."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "Resource-limit rejections return HTTP 429 with Retry-After; callers should respect the retry interval rather than immediately resending.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.49",
       "label": "Data integrity and uncertain outcome recovery",
@@ -261,34 +304,6 @@
             "Secret-leak canary coverage now exercises approval previews, connector errors, history, audit logs, terminal transcripts, MCP responses, and plaintext persistence surfaces.",
             "Connector contract tests now lock retry-policy defaults, validation, approval-context drift, guarded mutation behavior, and legacy read-only MCP compatibility.",
             "The frontend browser compatibility metadata chain now uses a patched Browserslist release, and release gates audit both production dependencies and the complete build dependency tree."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.42",
-      "label": "HTTP and local runtime hardening",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Local browser and generated MCP URLs now handle IPv4 and IPv6 loopback addresses consistently while preserving loopback-only defaults.",
-            "Frontend progress indicators now use one shared component with stable layout behavior across history, transfers, permissions, and connector views."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "JSON request bodies now use a conservative default limit with explicit larger allowances only for connector actions, restores, and file-transfer routes that require them.",
-            "Backend responses now consistently disable caching, prevent content sniffing, and sanitize bounded attachment filenames across database, diagnostic, connector, and transfer downloads.",
-            "The local reverse proxy now enforces loopback Host validation, stricter browser security headers, and a script policy that blocks inline JavaScript while retaining the bounded style support required by Monaco and xterm."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Native dependency inventory now records the pinned SQLCipher wrapper, embedded SQLite and SQLCipher versions, reviewed upstream release, container digests, and freshness review deadline.",
-            "Route-class conformance and native dependency checks now lock body limits, Host rejection, cache policy, download headers, SQLCipher runtime identity, and build configuration."
           ]
         }
       ]
