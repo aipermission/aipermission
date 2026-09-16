@@ -1,6 +1,42 @@
 {
-  "version": "0.2.52",
+  "version": "0.2.53",
   "entries": [
+    {
+      "version": "0.2.53",
+      "label": "Runtime contracts and verification parity",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Frontend connector action status, retry classification, and required-field contracts are generated from the backend REST contract and untrusted responses are validated at the caller boundary.",
+            "Local release checks and CI now share one ratcheted verification policy, command context, tooling ownership model, and frontend release gate inventory."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Retention setting mutations are serialized so stale completions cannot replace newer UI state.",
+            "The MCP bridge preserves request identity, Retry-After metadata, timeout classification, bounded configuration values, and source-archive test coverage.",
+            "MCP setup commands preserve explicitly configured local gateway origins instead of silently returning to the default origin.",
+            "Postgres read-only policy parsing accepts safe casts, declaration column lists, derived-table aliases, and EXPLAIN options without hiding prohibited function calls.",
+            "Recovered file transfers detach unsafe foreign temporary-path references without deleting files outside the active workspace."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Generated verification recipe digests use a narrow semantic Gitleaks allowlist while default secret-detection rules and complete-history scanning remain active."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.52",
       "label": "Audit integrity and private storage",
@@ -252,51 +288,6 @@
             "Frontend icons, routing, interaction tests, and lint globals now use their reviewed maintenance releases.",
             "The MCP lint environment and backend compression runtime now use their reviewed maintenance releases.",
             "The Go container baseline remains on the coordinated Go 1.26.6 toolchain until its compiler, CI, tooling, and image update can be validated together."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.45",
-      "label": "Frontend architecture and concurrent workflow correctness",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "The application shell now provides an accessible mobile navigation path while preserving the dense desktop operator workspace."
-          ]
-        },
-        {
-          "title": "Changed",
-          "items": [
-            "Console, connector, transfer, token, Vault, unlock, history, security, backup, and settings interfaces are split into behavior-owned coordinators and presentation components with shared layout, focus, empty-state, and action-menu primitives.",
-            "Connector templates now own their browser and session workflows behind explicit transport and capability contracts instead of page-level connector assumptions.",
-            "Backend search parsing, rate limiting, transfer storage, and transport delegation now live behind smaller behavior-owned boundaries."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Superseded, dismissed, or cross-target browser requests can no longer overwrite newer console, connector, transfer, Vault, restore, permission, or activity state.",
-            "Connector action feedback is serialized so overlapping completions preserve the newest visible result.",
-            "Transfer starts are idempotent across retries and concurrent requests while preserving one stable start identity.",
-            "Console session lifecycle, messages, permission dialogs, project scope changes, and uncertain retries now remain bound to the initiating token, target, and request owner.",
-            "Narrow-screen navigation, connector pickers, drawers, dialogs, audit details, and primary workflows now preserve keyboard and screen-reader access."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Token connector, project, and Vault authorization mutations now reject stale revisions instead of applying permissions derived from an obsolete snapshot.",
-            "Runtime recovery, SSH bulk and transfer operations, connector templates, and delegated transports now enforce explicit capability and ownership boundaries."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Frontend architecture gates now ratchet module size, complexity, duplication, async ownership, accessibility, responsive behavior, connector isolation, changed-line coverage, and critical Playwright workflows.",
-            "Connector conformance can require same-commit real-service validation, and backend architecture checks now ratchet dependency boundaries.",
-            "Focused regression coverage locks stale completion handling, request identity preservation, permission revisions, transfer idempotency, responsive layouts, and accessible interaction contracts."
           ]
         }
       ]
