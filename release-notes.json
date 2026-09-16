@@ -3,6 +3,40 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.52",
+      "date": "2026-09-16",
+      "label": "Audit integrity and private storage",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Vault records preserve JSON integer precision while decrypting structured metadata instead of silently rounding large numeric values.",
+            "Connector action audit records retain the project snapshot captured at request time even when the target later moves to another project."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Permission audit snapshots are bounded before persistence so oversized action catalogs cannot produce unbounded audit records.",
+            "Encrypted database artifacts and related sidecar files are created and reopened with owner-only file permissions."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Audit documentation now describes bounded permission snapshots and immutable project attribution."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.51",
       "date": "2026-09-15",
       "label": "Frontend reliability and assurance",
