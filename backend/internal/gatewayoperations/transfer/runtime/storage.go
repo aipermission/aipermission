@@ -256,7 +256,12 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 	}
 	for _, item := range items {
 		if !s.TempPathAllowed(runtime, item.TempPath) {
-			cleanupErrors = append(cleanupErrors, fmt.Errorf("file transfer %d has an unsafe temp path", item.ID))
+			// Stale records can reference a previous workspace namespace. Never
+			// touch that path; detach only the database reference so one completed
+			// transfer cannot prevent the encrypted workspace from opening.
+			if err := runtime.store.ClearTempPath(ctx, item.ID, item.TempPath); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("clear unsafe file transfer temp path %d: %w", item.ID, err))
+			}
 			continue
 		}
 		expiresAt, parseErr := time.Parse(time.RFC3339Nano, item.TempExpiresAt)
@@ -286,7 +291,9 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 	}
 	for _, batch := range archives {
 		if !s.TempPathAllowed(runtime, batch.ArchivePath) {
-			cleanupErrors = append(cleanupErrors, fmt.Errorf("file transfer batch %d has an unsafe archive path", batch.ID))
+			if err := runtime.store.ClearBatchArchive(ctx, batch.ID, batch.ArchivePath); err != nil {
+				cleanupErrors = append(cleanupErrors, fmt.Errorf("clear unsafe file transfer archive path %d: %w", batch.ID, err))
+			}
 			continue
 		}
 		expiresAt, parseErr := time.Parse(time.RFC3339Nano, batch.ArchiveExpiresAt)
