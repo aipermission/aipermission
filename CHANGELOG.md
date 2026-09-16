@@ -9,6 +9,32 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.52] - 2026-09-16
+
+### Fixed
+
+- Vault records preserve JSON integer precision while decrypting structured metadata
+  instead of silently rounding large numeric values.
+- Connector action audit records retain the project snapshot captured at request time
+  even when the target later moves to another project.
+
+### Security
+
+- Permission audit snapshots are bounded before persistence so oversized action catalogs
+  cannot produce unbounded audit records.
+- Encrypted database artifacts and related sidecar files are created and reopened with
+  owner-only file permissions.
+
+### Maintenance
+
+- Audit documentation now describes bounded permission snapshots and immutable project
+  attribution.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.51] - 2026-09-15
 
 ### Changed

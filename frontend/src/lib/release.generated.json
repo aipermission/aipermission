@@ -1,6 +1,39 @@
 {
-  "version": "0.2.51",
+  "version": "0.2.52",
   "entries": [
+    {
+      "version": "0.2.52",
+      "label": "Audit integrity and private storage",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Vault records preserve JSON integer precision while decrypting structured metadata instead of silently rounding large numeric values.",
+            "Connector action audit records retain the project snapshot captured at request time even when the target later moves to another project."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Permission audit snapshots are bounded before persistence so oversized action catalogs cannot produce unbounded audit records.",
+            "Encrypted database artifacts and related sidecar files are created and reopened with owner-only file permissions."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Audit documentation now describes bounded permission snapshots and immutable project attribution."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.51",
       "label": "Frontend reliability and assurance",
@@ -264,39 +297,6 @@
             "Frontend architecture gates now ratchet module size, complexity, duplication, async ownership, accessibility, responsive behavior, connector isolation, changed-line coverage, and critical Playwright workflows.",
             "Connector conformance can require same-commit real-service validation, and backend architecture checks now ratchet dependency boundaries.",
             "Focused regression coverage locks stale completion handling, request identity preservation, permission revisions, transfer idempotency, responsive layouts, and accessible interaction contracts."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.44",
-      "label": "Protocol correctness and backend boundaries",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "History now uses stable created-at and record-ID cursors instead of offset pagination, preserving deterministic navigation as new activity arrives.",
-            "Connector runtime integrations now receive consumer-owned capability ports, while token activity, attachment responses, diagnostics metadata, Vault workflows, transfer finalization, and connector action projections live with their behavior owners."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Redis and Valkey scans now preserve real cursor progress, bound total work, honor cancellation, retain continuation state, and remove duplicate keys across pages.",
-            "S3 object keys remain opaque remote identities across search, actions, presigned URLs, versions, uploads, downloads, and transfers without filesystem-style normalization.",
-            "The MCP bridge keeps one deadline through response-body consumption and distinguishes local pre-dispatch failures from uncertain mutation outcomes after a gateway reply is lost.",
-            "History polling and filter changes no longer allow older responses or cursors to overwrite newer interactive results.",
-            "Transfer pause, resume, cancellation, shutdown, and terminal finalization now share one atomic lifecycle owner.",
-            "Unlock tabs remain usable without horizontal overflow on 320 to 360 pixel browser widths."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Large Docker, Kubernetes, RabbitMQ, Redis, and S3 connector implementations are split into behavior-owned catalog, client, resource, action, and value modules without changing the generic connector pipeline.",
-            "Architecture checks now ratchet production-file size, package size, dependency fan-out, cycles, connector isolation, and gateway-state access.",
-            "The frontend runtime image upgrades to the patched Alpine libuuid package required by the container vulnerability gate.",
-            "Contributor, connector, REST, MCP, S3, and architecture documentation now describes the final registration, identity, retry, and runtime ownership contracts."
           ]
         }
       ]

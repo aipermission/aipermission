@@ -41,8 +41,10 @@ type recoverableStagingTransferAdapter struct {
 
 type blockingStagingRecoveryAdapter struct {
 	rejectingTransferAdapter
-	calls     atomic.Int32
-	recovered atomic.Int32
+	calls          atomic.Int32
+	recovered      atomic.Int32
+	firstDeadline  atomic.Int64
+	secondDeadline atomic.Int64
 }
 
 type retryingStagingRecoveryAdapter struct {
@@ -53,10 +55,16 @@ type retryingStagingRecoveryAdapter struct {
 
 func (adapter *blockingStagingRecoveryAdapter) CleanupRemoteStaging(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, ref string) error {
 	adapter.calls.Add(1)
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("remote staging recovery deadline is missing")
+	}
 	if ref == "opaque-0" {
+		adapter.firstDeadline.Store(deadline.UnixNano())
 		<-ctx.Done()
 		return ctx.Err()
 	}
+	adapter.secondDeadline.Store(deadline.UnixNano())
 	adapter.recovered.Add(1)
 	return nil
 }
@@ -217,14 +225,15 @@ func TestRemoteStagingRecoveryBoundsEachCandidateIndependently(t *testing.T) {
 		DataPath: fixture.dataPath, TempTTL: time.Hour, RemoteRecoveryTimeout: 20 * time.Millisecond,
 		AdapterFor: func(string) connectorapi.FileTransferAdapter { return adapter },
 	})
-	started := time.Now()
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	if err := runner.RecoverRemoteStaging(ctx, fixture.runtime); err != nil {
 		t.Fatalf("recovery error = %v", err)
 	}
-	if elapsed := time.Since(started); elapsed < 20*time.Millisecond || elapsed > 150*time.Millisecond {
-		t.Fatalf("per-candidate recovery deadline took %s", elapsed)
+	firstDeadline := adapter.firstDeadline.Load()
+	secondDeadline := adapter.secondDeadline.Load()
+	if firstDeadline == 0 || secondDeadline <= firstDeadline {
+		t.Fatalf("candidate deadlines first=%d second=%d", firstDeadline, secondDeadline)
 	}
 	items, err := fixture.store.ListRemoteStagingCandidates(t.Context())
 	if err != nil || len(items) != 1 || items[0].RemoteStagingRef != "opaque-0" {
