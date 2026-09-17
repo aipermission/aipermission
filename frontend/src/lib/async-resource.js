@@ -6,3 +6,7 @@ export function failedResource(current, error, overrides = {}) {
     error: error instanceof Error ? error.message : String(error),
   };
 }
+
+export function pollReadOptions(signal, generation) {
+  return generation === undefined ? { signal } : { signal, timeoutMs: 4000 };
+}

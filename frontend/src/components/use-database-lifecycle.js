@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
+import { pollReadOptions } from "../lib/async-resource";
 
 const initialSwitchDialog = { open: false, database_id: "", password: "", state: "idle", error: null };
 const initialLockDialog = { open: false, state: "idle", error: null };
@@ -12,7 +13,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
   const loadStatus = useCallback(
     async (generation) => {
       try {
-        const data = await apiGet("/api/unlock/status");
+        const data = await apiGet("/api/unlock/status", pollReadOptions(undefined, generation));
         if (!pollIsCurrent(generation)) return;
         setStatus({ state: "ready", data, error: null });
       } catch (error) {

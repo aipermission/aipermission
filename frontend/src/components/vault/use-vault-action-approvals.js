@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
-import { failedResource } from "../../lib/async-resource";
+import { failedResource, pollReadOptions } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
 import { vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
@@ -23,7 +23,7 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     async (generation) => {
       const request = requests.begin("load");
       try {
-        const data = await apiGet("/api/vault-action-approvals?status=approval_pending", { signal: request.signal });
+        const data = await apiGet("/api/vault-action-approvals?status=approval_pending", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         const verified = vaultApprovals(data);
         setApprovals({ state: "ready", data: verified, error: null });

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
+import { pollReadOptions } from "../../lib/async-resource";
 import { isActiveTransferBatch } from "../app-shell-runtime";
 import { createFileTransferBatchActions } from "./file-transfer-actions";
 import { createFileTransferListState, loadCurrentFileTransferBatches } from "./file-transfer-list-state";
@@ -13,7 +14,7 @@ export function useTransferCenterState({ pollIsCurrent }) {
   const loadBatches = useCallback(
     async (options = {}, generation) =>
       loadCurrentFileTransferBatches({
-        request: () => apiGet("/api/file-transfer-batches?limit=30"),
+        request: () => apiGet("/api/file-transfer-batches?limit=30", pollReadOptions(undefined, generation)),
         pollGeneration: generation,
         pollIsCurrent,
         listState,

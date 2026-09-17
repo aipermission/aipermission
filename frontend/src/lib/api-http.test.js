@@ -21,14 +21,20 @@ test("all API helpers forward the caller AbortSignal", async () => {
     await apiPut("/api/test", {}, { signal: controller.signal });
     await apiDelete("/api/test", { signal: controller.signal });
     await assert.rejects(() => apiDownload("/api/download", "test.txt", { signal: controller.signal }), /download unavailable/);
-    assert.equal(calls.length, 6);
-    assert.equal(
-      calls.every((options) => options.signal === controller.signal),
-      true,
-    );
+    assert.deepEqual([calls.length, calls.every((options) => options.signal === controller.signal)], [6, true]);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("bounded GET requests abort delayed reads without changing mutation behavior", async (t) => {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url, { signal }) =>
+      new Promise((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true })),
+  );
+  await assert.rejects(() => apiGet("/api/slow", { timeoutMs: 5 }), /Gateway read timed out after 5ms/);
 });
 
 test("API failures retain structured status and classification", async () => {

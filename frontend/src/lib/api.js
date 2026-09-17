@@ -15,8 +15,16 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path, options = {}) {
-  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
-  return readResponse(response);
+  const request = boundedReadSignal(options.signal, options.timeoutMs);
+  try {
+    const response = await fetch(`${apiUrl}${path}`, { signal: request.signal, credentials: "include" });
+    return await readResponse(response);
+  } catch (error) {
+    if (request.timedOut()) throw new Error(`Gateway read timed out after ${options.timeoutMs}ms.`, { cause: error });
+    throw error;
+  } finally {
+    request.cleanup();
+  }
 }
 
 export async function apiPost(path, body, options = {}) {
@@ -244,6 +252,27 @@ function browserOrigin() {
     return window.location.origin;
   }
   return "http://localhost:3210";
+}
+
+function boundedReadSignal(parent, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return { signal: parent, timedOut: () => false, cleanup: () => {} };
+  const controller = new AbortController();
+  let timeoutReached = false;
+  const abortFromParent = () => controller.abort(parent?.reason);
+  if (parent?.aborted) abortFromParent();
+  else parent?.addEventListener("abort", abortFromParent, { once: true });
+  const timer = setTimeout(() => {
+    timeoutReached = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    timedOut: () => timeoutReached,
+    cleanup: () => {
+      clearTimeout(timer);
+      parent?.removeEventListener("abort", abortFromParent);
+    },
+  };
 }
 
 function csrfHeaders(base = {}) {

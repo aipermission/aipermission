@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
-import { failedResource } from "../../lib/async-resource";
+import { failedResource, pollReadOptions } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
 import { consoleSessions } from "../../lib/gateway-contracts/security-contracts";
 import { mergeConsoleSessionData } from "../app-shell-runtime";
@@ -30,7 +30,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
     async (generation) => {
       const request = requests.begin("load");
       try {
-        const data = await apiGet("/api/console/sessions", { signal: request.signal });
+        const data = await apiGet("/api/console/sessions", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         const verified = consoleSessions(data);
         setSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(verified, current.data), error: null }));
