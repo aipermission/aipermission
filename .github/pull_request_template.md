@@ -24,7 +24,7 @@ protocol behavior, or local-only architecture?
 ## Security checklist
 
 - [ ] No SSH private keys, database passwords, API tokens, or reusable token values are logged.
-- [ ] REST and MCP responses do not return credential material.
+- [ ] REST/MCP changes preserve the class-specific [credential boundary](../docs/security/credential-boundary.md), including its narrow authenticated-local exceptions.
 - [ ] New or changed persisted command/audit/message payloads pass through redaction where appropriate.
 - [ ] Mutating web UI routes remain covered by the local UI session and CSRF checks.
 - [ ] MCP routes still require token auth and preserve token/server permission checks.

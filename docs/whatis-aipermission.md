@@ -92,10 +92,12 @@ It is for:
 
 The user grants temporary, scoped access to selected connector targets and actions. The AI calls the gateway through MCP. The gateway checks token validity, target/profile/action permission, and execution rule. It either runs the action, asks the user for approval, or blocks the request.
 
-Gateway-held credential values are never returned through MCP or REST. The
-gateway uses them locally for permitted connector actions; permitted action
-output can still contain sensitive target data and redaction remains best
-effort.
+Stored connector-profile credentials are not returned as REST or MCP
+credential data. The gateway uses them locally for permitted connector actions;
+permitted action output can still contain sensitive target data and redaction
+remains best effort. API tokens, Project Vault reveal, pending approval detail,
+and raw artifact downloads have separate local-browser contracts documented in
+the [credential boundary](security/credential-boundary.md).
 
 Saved token action permissions are separate from the live MCP execution switch.
 By default, each unlock starts with MCP execution stopped. The user starts MCP
@@ -215,8 +217,10 @@ Rules:
 - credentials are stored in the encrypted local SQLite database
 - secret payloads are additionally encrypted by the gateway vault layer
 - API tokens are masked in the UI
-- credentials are never returned by MCP responses
-- credentials are never shown to the AI assistant
+- connector-profile credentials are not returned as MCP credential data
+- Project Vault values and generated previews are not returned to the AI
+  assistant, although a permitted session application gives the selected
+  remote process access to them
 - credentials are never embedded in prompts
 - credentials are used only by the gateway while executing approved or permitted actions
 - private key passphrases are used only during import and are not stored
@@ -321,8 +325,10 @@ If the SSH target is named `core-1`, the AI may see:
 }
 ```
 
-The SSH credential value for `core-1` is never returned through MCP or REST.
-The same rule applies to Postgres passwords and future connector secrets.
+The SSH credential value for `core-1` is not returned as MCP or REST credential
+data. The same rule applies to Postgres passwords and future connector-profile
+secrets; arbitrary target output and raw artifacts remain separate untrusted
+data classes.
 
 If the global MCP switch is stopped, new MCP command execution is blocked even
 when the token still has saved connector action permissions.

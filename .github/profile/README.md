@@ -45,7 +45,7 @@ sessions, messages, history, and audit logs.
 | Principle | What it means |
 | --- | --- |
 | Local-only | The gateway runs on the developer's own machine and stays bound to localhost. |
-| Credential boundary | Gateway-held SSH keys, database passwords, API tokens, and connector secret values are never returned through MCP or REST. |
+| Credential boundary | Connector credentials stay gateway-owned; API tokens, Project Vault values, approval details, and raw artifacts follow explicit class-specific rules. |
 | Scoped tokens | Each AI/client token sees only the connector targets and actions explicitly granted to it. |
 | Human control | Commands can require Run / Decline approval before execution. |
 | Observable work | Users can watch live connector views, send notes, and review history. |
@@ -55,6 +55,7 @@ sessions, messages, history, and audit logs.
 - Main project: [github.com/aipermission/aipermission](https://github.com/aipermission/aipermission)
 - MCP bridge: [`@aipermission/mcp`](https://www.npmjs.com/package/@aipermission/mcp)
 - Security model: [SECURITY.md](https://github.com/aipermission/aipermission/blob/main/SECURITY.md)
+- Credential boundary: [docs/security/credential-boundary.md](https://github.com/aipermission/aipermission/blob/main/docs/security/credential-boundary.md)
 - Roadmap: [docs/ROADMAP.md](https://github.com/aipermission/aipermission/blob/main/docs/ROADMAP.md)
 
 ## Not A Hosted DevOps Platform

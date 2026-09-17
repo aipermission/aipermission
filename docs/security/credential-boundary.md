@@ -1,14 +1,16 @@
 # Credential Boundary
 
-The core credential-return guarantee:
+The core connector-credential guarantee:
 
-> Gateway-held credential values are never returned through MCP or REST
-> responses.
+> Stored connector-profile credential fields are never deliberately returned
+> as REST or MCP response data. During connector execution, registered raw,
+> normalized, and reusable wire forms cross the mandatory credential boundary
+> before structured responses, errors, history, or audit leave that boundary.
 
-The AI assistant, MCP client, and API token never receive SSH private keys, SSH
-passwords, database passwords, API credentials, or decrypted connection
-strings. The gateway decrypts the selected credential in local process memory
-only while preparing or executing an allowed connector action.
+The MCP client does not receive SSH private keys, SSH passwords, database
+passwords, API credentials, or decrypted connection strings as connector
+credential data. The gateway decrypts the selected credential in local process
+memory only while preparing or executing an allowed connector action.
 
 Connector targets use credential profiles. SSH profiles can reference
 gateway-generated or explicitly imported key material. Postgres and ClickHouse
@@ -18,8 +20,24 @@ credential schemas, but the boundary remains the same: credentials stay in the e
 local gateway and are used only during approved or permitted connector action
 execution. This guarantee does not make arbitrary connector output safe: a
 permitted command, query, log read, mailbox read, or object read can return
-sensitive target data. Output redaction is defense in depth and best effort,
-not a credential or data-loss-prevention guarantee.
+sensitive target data. A transformed or embedded value that no registered form
+matches can also evade known-value detection. Output redaction is defense in
+depth and best effort, not a credential or data-loss-prevention guarantee.
+
+## Secret Classes And Response Behavior
+
+The word "secret" covers several different contracts. These classes must not
+be collapsed into one absolute response claim:
+
+| Class | Local browser REST | MCP | Notes |
+| --- | --- | --- | --- |
+| Connector-profile credentials | Write-only or masked metadata | Never returned as credential data | Decrypted only for permitted connector work; registered forms use mandatory execution-scoped redaction. |
+| MCP API tokens | A newly created token is shown once; a locally stored reusable token may be copied again when that Security option was enabled before creation | Used as bearer authentication, never returned by MCP tools | Treat the value like any local bearer credential. |
+| Database password | Accepted for create, unlock, re-authentication, delete, and protected backup operations; never returned | Not used or returned | Unrecoverable and not stored as persistent plaintext. |
+| Project Vault values | Explicit reveal/generation previews are available only to the authenticated local UI through short-lived protected flows | Values and generated previews are never returned; permitted session application injects selected values into the remote process | Metadata such as name, expiry, and revision may be returned. |
+| Sensitive action input | Exact bounded content is visible only in the authenticated local pending-approval detail | Redacted preview only | The execution envelope remains encrypted; history, audit, lists, and ordinary mutation responses use the redacted projection. |
+| Arbitrary target output | May be displayed and persisted after bounds and configured redaction | May be returned after the same structured boundary | Commands, queries, logs, messages, and object content can contain unrelated sensitive data. |
+| Raw browser artifacts | Explicit file-transfer and database-backup downloads return their original bytes | Not exposed as raw MCP artifacts; bounded connector reads such as S3 object content follow the arbitrary-target-output row | Browser download bytes are not rewritten because redaction would corrupt the artifact. |
 
 ## Stored Secrets
 
@@ -141,7 +159,7 @@ AIPermission does and does not guarantee.
 | Boundary | Enforcement | What it covers | What it does not promise |
 | --- | --- | --- | --- |
 | SQLCipher and gateway-vault storage | Mandatory | Supported database records at rest and connector/Project Vault secret payloads | Protection after the database is unlocked or the trusted local process/browser is compromised |
-| Gateway-held connector credentials | Mandatory, even when optional redaction is off | Stored credential values, registered normalized forms, and registered reusable wire forms across REST/MCP output, connector errors, history, and audit | Detection of an unregistered transformation or unrelated sensitive data read from the target |
+| Gateway-held connector credentials | Mandatory, even when optional redaction is off | Exact stored values, registered normalized forms, and registered reusable wire forms across structured REST/MCP output, connector errors, history, and audit | Unregistered transformations; arbitrary target data; or raw browser-artifact bytes intentionally transferred without rewriting |
 | Schema-declared sensitive action input | Mandatory for every declared field outside the authenticated local pending-approval detail | Persisted input/preview, history, audit, MCP responses, and reflected result values from `SensitiveInputFields` | The exact bounded action content intentionally decrypted for a pending local approval decision; fields a connector contributor failed to declare; or derived values that were not registered |
 | Schema-declared sensitive connector output | Mandatory for every declared field | Output fields listed in `OutputHint.SensitiveFields`, including connector-specific names | Secret content placed in undeclared arbitrary fields |
 | Built-in basic patterns | Best effort | Common password, token, API-key, bearer-token, and private-key shapes | Every encoding, split value, novel format, or ordinary-looking secret |
@@ -165,6 +183,17 @@ duplicate key, the result is rejected instead of silently replacing data.
 Generic file-transfer browse, stat, conflict, batch-validation, and transfer
 failure paths load the same runtime credential boundary before returning,
 logging, auditing, or persisting connector-originated error text.
+
+Known-value matching deliberately avoids replacing every occurrence of a
+one- or two-byte value because doing so would corrupt ordinary output. For text
+values, exact and delimited matches are redacted from one byte onward; embedded
+substring matching begins at three bytes. For structured object keys, exact
+and delimited matches are redacted from one byte onward; embedded substring
+matching begins at eight bytes. These are byte thresholds, not character
+counts. This rule is identical whether optional basic/custom redaction is on or
+off. Very short values embedded inside a larger word-like token are therefore
+outside the known-value guarantee; use sufficiently long credentials and do
+not ask connectors to print secrets.
 
 The authenticated local approval-detail endpoint is deliberately narrower. It
 decrypts the exact bounded prepared preview so the operator can inspect message

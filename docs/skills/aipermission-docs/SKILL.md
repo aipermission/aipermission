@@ -124,8 +124,10 @@ When updating docs, check whether the change touches:
 - Postgres connector behavior and query boundaries
 - Mail connector IMAP/SMTP setup, explicit read/unread behavior, hostile-content
   boundary, and `submission_unknown` retry warning
-- security boundary: gateway-held credential values are never returned through
-  MCP or REST; permitted action output may still contain sensitive data
+- security boundary: connector-profile credentials remain gateway-owned;
+  document API tokens, Project Vault reveal, pending approval detail, raw
+  artifacts, and permitted target output through the canonical class-specific
+  contract in `docs/security/credential-boundary.md`
 - developer-tool positioning vs DevOps-platform positioning
 - local-only gateway positioning vs remote-hosted/LAN-shared positioning
 - project principles and `wontfix` boundaries
@@ -156,13 +158,17 @@ Do not describe the gateway as remotely hostable, LAN-shareable, or suitable for
 
 Always preserve these rules:
 
-- SSH passwords and private-key values are never returned through MCP or REST.
+- SSH passwords and private-key values are not returned as connector credential
+  data through MCP or REST; do not extend that statement into a secrecy promise
+  for arbitrary target output or raw artifact transfers.
 - Prefer the Dokploy-style SSH key model: gateway generates SSH keypairs and users paste the public key install command on their VPS.
 - Do not document SSH password collection as the preferred MVP path.
-- Database credential values are never returned through MCP or REST.
-- Mail IMAP/SMTP password and app-password values are never returned through
-  MCP or REST.
-- MCP responses never include credentials.
+- Database credential values are not returned as connector credential data
+  through MCP or REST.
+- Mail IMAP/SMTP password and app-password values are not returned as connector
+  credential data through MCP or REST.
+- MCP responses never include connector credentials or Project Vault values;
+  permitted target output may still contain unrelated sensitive data.
 - API tokens are not SSH or DB credentials.
 - API tokens are masked in the UI and can be copied again for local MCP setup.
 - Token storage is protected by the local SQLCipher database password.
