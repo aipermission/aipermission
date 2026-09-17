@@ -18,6 +18,7 @@ import { idempotencyKeySchema } from "./idempotency-key.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { projectGatewaySuccess, responseContracts } from "./response-contracts.js";
 import { jsonToolResult } from "./results.js";
+import { externalActionAnnotations, localMutationAnnotations, localReadAnnotations } from "./tool-annotations.js";
 
 const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 let apiUrl = "";
@@ -42,6 +43,7 @@ server.tool(
   "list_connector_targets",
   "List connector targets this AIPermission token can access. Credentials and secrets are never returned.",
   {},
+  localReadAnnotations,
   async (_args, { signal }) => {
     return jsonToolResult(
       () => apiGet("/api/mcp/connector-targets", { signal }),
@@ -56,6 +58,7 @@ server.tool(
   {
     target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
+  localReadAnnotations,
   async ({ target_ref }, { signal }) => {
     return jsonToolResult(
       () => {
@@ -73,6 +76,7 @@ server.tool(
   {
     target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
+  localReadAnnotations,
   async ({ target_ref }, { signal }) => {
     return jsonToolResult(
       () => {
@@ -94,6 +98,7 @@ server.tool(
     reason: z.string().optional().describe("Why this connector action is needed."),
     idempotency_key: idempotencyKeySchema,
   },
+  externalActionAnnotations,
   async ({ target_ref, action_name, input, reason, idempotency_key }, { signal }) => {
     return jsonToolResult(
       () =>
@@ -120,6 +125,7 @@ server.tool(
   {
     request_id: z.number().int().positive().describe("Request id returned by call_connector_action."),
   },
+  localReadAnnotations,
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiGet(`/api/mcp/connector-action-requests/${request_id}`, { signal }),
@@ -132,6 +138,7 @@ server.tool(
   "list_vault_items",
   "List secret names and bounded non-secret Vault metadata for projects this token can read. Secret values are never returned.",
   listVaultItemsSchema,
+  localReadAnnotations,
   async ({ project_ref }, { signal }) => {
     return jsonToolResult(
       () => {
@@ -149,6 +156,7 @@ server.tool(
   "call_vault_action",
   "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, secret_type, generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
   callVaultActionSchema,
+  externalActionAnnotations,
   async ({ project_ref, action_name, input, reason, idempotency_key }, { signal }) => {
     return jsonToolResult(
       () =>
@@ -173,6 +181,7 @@ server.tool(
   "get_vault_action_request",
   "Read one Vault action request after call_vault_action returns approval_pending. Responses never include secret values.",
   vaultActionRequestSchema,
+  localReadAnnotations,
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiGet(`/api/mcp/vault-action-requests/${request_id}`, { signal }),
@@ -185,6 +194,7 @@ server.tool(
   "cancel_vault_action_request",
   "Cancel one approval_pending Vault action request owned by this token. Running or terminal requests cannot be canceled.",
   vaultActionRequestSchema,
+  localMutationAnnotations,
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}, { requestID: request_id, signal }),

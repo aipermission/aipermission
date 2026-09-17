@@ -49,6 +49,39 @@ test("packaged CLI completes a clean MCP stdio handshake", { timeout: 10_000 }, 
     assert.ok(names.includes("list_vault_items"));
     assert.ok(names.includes("call_vault_action"));
     assert.ok(!names.includes("exec"));
+    const byName = Object.fromEntries(tools.tools.map((tool) => [tool.name, tool]));
+    const localReadAnnotations = {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    };
+    const externalActionAnnotations = {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+    const localMutationAnnotations = {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    };
+    for (const name of [
+      "list_connector_targets",
+      "get_connector_help",
+      "get_connector_actions",
+      "get_connector_action_request",
+      "list_vault_items",
+      "get_vault_action_request",
+    ]) {
+      assert.deepEqual(byName[name].annotations, localReadAnnotations, name);
+    }
+    for (const name of ["call_connector_action", "call_vault_action"]) {
+      assert.deepEqual(byName[name].annotations, externalActionAnnotations, name);
+    }
+    assert.deepEqual(byName.cancel_vault_action_request.annotations, localMutationAnnotations, "cancel_vault_action_request");
     assert.equal(stderr.join(""), "");
   } finally {
     await client.close();
