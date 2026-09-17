@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 import { errorMessage } from "../../../lib/errors";
 import { defaultS3ConfirmDialog } from "./dialogs";
 
-export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelection, refreshObjects }) {
+export function useS3ObjectDelete({
+  scopeKey,
+  selectedKey,
+  selectedETag,
+  trustConditionalRequests = false,
+  runAction,
+  clearSelection,
+  refreshObjects,
+}) {
   const [confirmDialog, setConfirmDialog] = useState(defaultS3ConfirmDialog);
 
   useEffect(() => setConfirmDialog(defaultS3ConfirmDialog), [scopeKey]);
@@ -10,11 +18,15 @@ export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelec
   function requestDelete() {
     if (!selectedKey) return;
     const objectKey = selectedKey;
+    const expectedETag = trustConditionalRequests ? String(selectedETag || "").trim() : "";
     setConfirmDialog({
       open: true,
       title: "Delete S3 object",
       description: "This permanently deletes the selected object from the bucket.",
-      details: [{ label: "Object", value: JSON.stringify(objectKey) }],
+      details: [
+        { label: "Object", value: JSON.stringify(objectKey) },
+        ...(expectedETag ? [{ label: "Expected ETag", value: expectedETag }] : []),
+      ],
       danger: true,
       pending: false,
       error: "",
@@ -22,7 +34,7 @@ export function useS3ObjectDelete({ scopeKey, selectedKey, runAction, clearSelec
       action: async () => {
         const deleted = await runAction({
           actionName: "delete_object",
-          input: { key: objectKey },
+          input: { key: objectKey, ...(expectedETag ? { expected_etag: expectedETag } : {}) },
           reason: "manual S3 browser object delete",
           busy: "deleting",
         });

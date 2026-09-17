@@ -35,6 +35,8 @@ export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, 
   const deletion = useS3ObjectDelete({
     scopeKey,
     selectedKey: browser.selectedKey,
+    selectedETag: browser.metadata?.etag || browser.selectedObject?.etag,
+    trustConditionalRequests: target.config?.trust_conditional_requests === true,
     runAction: browser.runS3Action,
     clearSelection: browser.clearSelection,
     refreshObjects: browser.refreshObjects,
