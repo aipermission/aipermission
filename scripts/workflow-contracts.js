@@ -154,6 +154,24 @@ function workflowJobs(source) {
   );
 }
 
+function workflowSetupNodeVersions(source, sourcePath = "workflow") {
+  const workflow = parseWorkflow(source, sourcePath);
+  const versions = [];
+  for (const [jobID, job] of Object.entries(workflow.jobs || {})) {
+    if (!plainObject(job) || !Array.isArray(job.steps)) continue;
+    job.steps.forEach((step, index) => {
+      if (!plainObject(step) || typeof step.uses !== "string") return;
+      if (!step.uses.startsWith("actions/setup-node@")) return;
+      const version = plainObject(step.with) ? step.with["node-version"] : undefined;
+      if (version != null && typeof version !== "string" && typeof version !== "number") {
+        throw new Error(`${sourcePath} job ${jobID} step ${index + 1} node-version must be a string or number`);
+      }
+      versions.push(version == null ? undefined : String(version));
+    });
+  }
+  return versions;
+}
+
 function unconditionalStep(step, workingDirectory) {
   return (
     !step.hasCondition &&
@@ -525,4 +543,5 @@ module.exports = {
   verifyWorkflowRuntimeContract,
   workflowJobContracts,
   workflowJobs,
+  workflowSetupNodeVersions,
 };
