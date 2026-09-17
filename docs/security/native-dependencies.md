@@ -17,7 +17,7 @@ the pinned container bases, and the explicit CGO/OpenSSL build boundary.
 | SQLCipher runtime                             | `4.16.0 community`                                   | Verified with `PRAGMA cipher_version` in backend tests      |
 | Embedded SQLite runtime                       | `3.53.1`                                             | Verified with `sqlite_version()` in backend tests           |
 | OpenSSL provider                              | `3.x` from the digest-pinned Debian image repository | Exact package version is captured in the image SBOM         |
-| Latest official SQLCipher reviewed for update | `4.18.0`, commit `63697beb0faf...`                   | Reviewed 2026-08-26; not active until the wrapper embeds it |
+| Latest official SQLCipher reviewed for update | `4.19.0`, commit `c4b275a47932...`                   | Reviewed 2026-09-17; not active until the wrapper embeds it |
 
 The backend does not rely on an untracked system SQLCipher library. The wrapper
 module contains the native SQLite/SQLCipher amalgamation compiled into the Go
@@ -37,15 +37,17 @@ The committed SQLCipher 4.4.2 fixture contains synthetic data only. Its checked
 hash protects the compatibility baseline from accidental regeneration. The
 active runtime must open it before an update can be accepted.
 
-The 4.18.0 upstream review checked the GitHub security advisory pages for both
-the wrapper and official SQLCipher and found no known advisory applicable to
-the pin. This is a point-in-time maintainer review, not a claim that
-`govulncheck` covers the embedded C code. The release moves to SQLite 3.53.4,
-avoids one Windows crash under non-default
-logging with `cipher_memory_security`, and fixes an optimized GCC relocation
-error. The pinned Go wrapper has not advanced and still embeds SQLCipher
-4.16.0, so this review does not change AIPermission's active runtime or database
-compatibility baseline.
+The 4.19.0 upstream review checked the release advisory and the GitHub security
+advisory pages for both the wrapper and official SQLCipher. It found no known
+advisory applicable to AIPermission's use of the pin. The two upstream low-risk
+fixes concern attacker-controlled aliases reaching `sqlcipher_export()` and an
+undocumented `hexkey` URI parameter. AIPermission uses neither API surface. This
+is a point-in-time maintainer review, not a claim that `govulncheck` covers the
+embedded C code. The pinned Go wrapper has not advanced and still embeds
+SQLCipher 4.16.0, so this review does not change AIPermission's active runtime
+or database compatibility baseline. The runtime should move when a reviewed
+wrapper commit embeds the maintenance release and passes the encrypted fixture
+suite.
 
 ## Update Policy
 

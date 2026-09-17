@@ -32,6 +32,7 @@ const runtimeVersion = dbSource.match(
 const sqliteVersion = dbSource.match(
   /expectedSQLiteVersion\s*=\s*"([^"]+)"/,
 )?.[1];
+const immutableUpstreamChangelog = `https://github.com/${sqlcipher.upstream_repository}/blob/${sqlcipher.reviewed_upstream_commit}/CHANGELOG.md`;
 
 function dockerfileAssertsMinimumPackageVersion(name, version) {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -79,7 +80,9 @@ if (
       dockerfileAssertsMinimumPackageVersion(name, version),
   )
 ) {
-  failures.push("runtime package minimum versions are not enforced by the backend image");
+  failures.push(
+    "runtime package minimum versions are not enforced by the backend image",
+  );
 }
 if (
   !goSum.includes(
@@ -126,6 +129,15 @@ if (
   ) ||
   !Number.isInteger(sqlcipher.review_max_age_days) ||
   sqlcipher.review_max_age_days < 1 ||
+  !Array.isArray(sqlcipher.release_review_sources) ||
+  sqlcipher.release_review_sources.length < 2 ||
+  !sqlcipher.release_review_sources.some((source) =>
+    /^https:\/\/(?:www\.)?zetetic\.net\//.test(source),
+  ) ||
+  !sqlcipher.release_review_sources.includes(immutableUpstreamChangelog) ||
+  sqlcipher.release_review_sources.some((source) =>
+    /github\.com\/sqlcipher\/sqlcipher\/blob\/(?:main|master)\//.test(source),
+  ) ||
   sqlcipher.advisory_review?.result !== "no-known-applicable-advisory" ||
   !Array.isArray(sqlcipher.advisory_review?.sources) ||
   sqlcipher.advisory_review.sources.length < 2 ||
