@@ -66,6 +66,47 @@ func TestCredentialBoundaryDoesNotCorruptTextForShortSecrets(t *testing.T) {
 	}
 }
 
+func TestCredentialBoundaryShortSecretContextMatrix(t *testing.T) {
+	tests := []struct {
+		name                    string
+		secret                  string
+		redactEmbeddedValue     bool
+		redactEmbeddedObjectKey bool
+	}{
+		{name: "one_byte", secret: "x"},
+		{name: "two_bytes", secret: "xy"},
+		{name: "three_bytes", secret: "xyz", redactEmbeddedValue: true},
+		{name: "seven_bytes", secret: "xyz1234", redactEmbeddedValue: true},
+		{name: "eight_bytes", secret: "xyz12345", redactEmbeddedValue: true, redactEmbeddedObjectKey: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			boundary := NewCredentialBoundary(map[string]any{"password": test.secret})
+			if got := boundary.Redact(test.secret); got != CredentialRedactionMarker {
+				t.Fatalf("exact value = %q, want %q", got, CredentialRedactionMarker)
+			}
+			if got := boundary.Redact("value=" + test.secret + ";"); strings.Contains(got, test.secret) {
+				t.Fatalf("delimited value remained visible: %q", got)
+			}
+			embeddedValue := "prefix" + test.secret + "suffix"
+			if got := boundary.Redact(embeddedValue); strings.Contains(got, test.secret) == test.redactEmbeddedValue {
+				t.Fatalf("embedded value redaction = %q, want redacted=%t", got, test.redactEmbeddedValue)
+			}
+
+			if got := boundary.RedactKey(test.secret); got != CredentialRedactionMarker {
+				t.Fatalf("exact object key = %q, want %q", got, CredentialRedactionMarker)
+			}
+			if got := boundary.RedactKey("field-" + test.secret); strings.Contains(got, test.secret) {
+				t.Fatalf("delimited object key remained visible: %q", got)
+			}
+			embeddedKey := "prefix" + test.secret + "suffix"
+			if got := boundary.RedactKey(embeddedKey); strings.Contains(got, test.secret) == test.redactEmbeddedObjectKey {
+				t.Fatalf("embedded object-key redaction = %q, want redacted=%t", got, test.redactEmbeddedObjectKey)
+			}
+		})
+	}
+}
+
 func TestCredentialBoundaryRedactsLabeledShortSecret(t *testing.T) {
 	boundary := NewCredentialBoundary(map[string]any{"password": "x"})
 	redacted := boundary.Redact(`remote rejected password=x and "password":"x"`)
