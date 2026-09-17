@@ -1,5 +1,5 @@
 import { Bold, Code2, Heading2, Italic, Link, List, ListOrdered, Quote, Send, Underline } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input, Textarea } from "../../../components/ui/form";
@@ -142,6 +142,8 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
 }
 
 function RichTextEditor({ value, onChange }) {
+  const labelID = useId();
+  const descriptionID = useId();
   const editorRef = useRef(null);
   const savedRange = useRef(null);
   const [linkEditor, setLinkEditor] = useState({ open: false, value: "https://", error: "" });
@@ -196,10 +198,10 @@ function RichTextEditor({ value, onChange }) {
   }
 
   return (
-    <Field>
-      Message
+    <div className="grid gap-2 text-sm font-medium text-stone-800">
+      <span id={labelID}>Message</span>
       <div className="overflow-hidden rounded-md border border-stone-300 bg-white">
-        <div className="flex flex-wrap gap-1 border-b border-stone-200 p-1">
+        <div className="flex flex-wrap gap-1 border-b border-stone-200 p-1" role="toolbar" aria-label="Message formatting">
           <FormatButton title="Bold" onClick={() => command("bold")}>
             <Bold className="h-4 w-4" />
           </FormatButton>
@@ -257,16 +259,21 @@ function RichTextEditor({ value, onChange }) {
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
+          role="textbox"
+          tabIndex={0}
+          aria-multiline="true"
+          aria-labelledby={labelID}
+          aria-describedby={descriptionID}
           className="min-h-64 whitespace-pre-wrap p-3 text-sm outline-none"
           onInput={emitValue}
           onPaste={pastePlainText}
           onDrop={(event) => event.preventDefault()}
         />
       </div>
-      <span className="text-xs font-normal text-stone-500">
+      <span id={descriptionID} className="text-xs font-normal text-stone-500">
         Only basic formatting is accepted. The gateway sanitizes formatted content before approval and SMTP submission.
       </span>
-    </Field>
+    </div>
   );
 }
 
