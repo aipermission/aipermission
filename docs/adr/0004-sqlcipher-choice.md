@@ -27,8 +27,8 @@ SQLCipher amalgamation. It does not publish tagged releases, so AIPermission
 pins a full commit through a Go pseudo-version and treats any change to its
 default branch as a review signal, never an automatic update.
 
-Official SQLCipher 4.18.0 was most recently reviewed on 2026-08-26. The
-selected Go wrapper currently embeds 4.16.0, so 4.18.0 is recorded as reviewed
+Official SQLCipher 4.19.0 was most recently reviewed on 2026-09-17. The
+selected Go wrapper currently embeds 4.16.0, so 4.19.0 is recorded as reviewed
 rather than silently claimed as active. The scheduled native-dependency
 freshness workflow fails when either reviewed upstream source advances or the
 45-day advisory review window expires and requires a deliberate compatibility
