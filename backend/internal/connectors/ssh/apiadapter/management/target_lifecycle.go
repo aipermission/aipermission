@@ -148,35 +148,29 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
 }
 
-func (Management) TestCredentialProfile(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) {
-	if w == nil || r == nil {
-		return
-	}
+func (Management) TestCredentialProfile(ctx context.Context, handler connectorapi.PeerIdentityGateway, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) (connectors.ManagementResponse, error) {
 	gateway, err := PeerIdentityFrom(handler)
 	if err != nil {
-		writeInternalError(w)
-		return
+		return connectors.ManagementResponse{}, err
 	}
 	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	start := time.Now()
 	runtimeID, err := ensureLiveConsoleRuntimeIDForProfile(ctx, runtime, target.ID, profile.ID, profile.Label)
 	if err != nil {
-		handleTargetError(w, err)
-		return
+		return targetErrorResponse(err)
 	}
 	remoteTarget, privateKey, err := TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
-		handleMaterialError(w, err)
-		return
+		return materialErrorResponse(err)
 	}
 	result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, remoteTarget, privateKey), command)
 	if err != nil {
-		if WriteUnknownHostKeyError(w, err) {
-			return
+		if response, ok := managementUnknownHostKeyResponse(err, privateKey.PrivateKey); ok {
+			return response, nil
 		}
-		writeJSON(w, http.StatusOK, targetTestResponse{
+		return managementResponse(http.StatusOK, targetTestResponse{
 			TargetID:      target.ID,
 			ProfileID:     profile.ID,
 			ConnectorKind: target.ConnectorKind,
@@ -184,10 +178,9 @@ func (Management) TestCredentialProfile(handler connectorapi.PeerIdentityGateway
 			Status:        "connection_failed",
 			Message:       ConnectionFailureMessage(err),
 			DurationMS:    time.Since(start).Milliseconds(),
-		})
-		return
+		}, privateKey.PrivateKey), nil
 	}
-	writeJSON(w, http.StatusOK, targetTestResponse{
+	return managementResponse(http.StatusOK, targetTestResponse{
 		TargetID:      target.ID,
 		ProfileID:     profile.ID,
 		ConnectorKind: target.ConnectorKind,
@@ -201,40 +194,32 @@ func (Management) TestCredentialProfile(handler connectorapi.PeerIdentityGateway
 			"exit_code": result.ExitCode,
 		},
 		DurationMS: result.DurationMS,
-	})
+	}, privateKey.PrivateKey), nil
 }
 
-func (Management) TestDraft(handler connectorapi.PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, requestValue any) {
-	if w == nil || r == nil {
-		return
-	}
+func (Management) TestDraft(ctx context.Context, handler connectorapi.PeerIdentityGateway, runtime connectorapi.ConnectorDataRuntime, requestValue any) (connectors.ManagementResponse, error) {
 	gateway, err := PeerIdentityFrom(handler)
 	if err != nil {
-		writeInternalError(w)
-		return
+		return connectors.ManagementResponse{}, err
 	}
 	draft, err := decodeDraftRequest(requestValue)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+		return managementErrorResponse(http.StatusBadRequest, err.Error()), nil
 	}
-	payload, err := connectorPayload(r.Context(), runtime, draft.Name, draft.Config, draft.Profile)
+	payload, err := connectorPayload(ctx, runtime, draft.Name, draft.Config, draft.Profile)
 	if err != nil {
-		handleTargetError(w, err)
-		return
+		return targetErrorResponse(err)
 	}
 	keyStore, err := keyStore(runtime)
 	if err != nil {
-		writeInternalError(w)
-		return
+		return connectors.ManagementResponse{}, err
 	}
-	privateKey, err := keyStore.GetPrivateKey(r.Context(), int64ConfigValue(payload.ProfilePublic, "ssh_key_id"))
+	privateKey, err := keyStore.GetPrivateKey(ctx, int64ConfigValue(payload.ProfilePublic, "ssh_key_id"))
 	if err != nil {
-		handleKeyError(w, err)
-		return
+		return keyErrorResponse(err)
 	}
 	const command = `printf 'aipermission-ok\n'; uname -a`
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	start := time.Now()
 	result, err := execution.RunCommand(ctx, execution.Target{
@@ -245,19 +230,18 @@ func (Management) TestDraft(handler connectorapi.PeerIdentityGateway, w http.Res
 		KnownHostsPath: gateway.ConnectorTrustStorePath(),
 	}, command)
 	if err != nil {
-		if WriteUnknownHostKeyError(w, err) {
-			return
+		if response, ok := managementUnknownHostKeyResponse(err, privateKey.PrivateKey); ok {
+			return response, nil
 		}
-		writeJSON(w, http.StatusOK, targetTestResponse{
+		return managementResponse(http.StatusOK, targetTestResponse{
 			ConnectorKind: sshconnector.Kind,
 			OK:            false,
 			Status:        "connection_failed",
 			Message:       ConnectionFailureMessage(err),
 			DurationMS:    time.Since(start).Milliseconds(),
-		})
-		return
+		}, privateKey.PrivateKey), nil
 	}
-	writeJSON(w, http.StatusOK, targetTestResponse{
+	return managementResponse(http.StatusOK, targetTestResponse{
 		ConnectorKind: sshconnector.Kind,
 		OK:            result.ExitCode == 0,
 		Status:        "ok",
@@ -269,84 +253,72 @@ func (Management) TestDraft(handler connectorapi.PeerIdentityGateway, w http.Res
 			"exit_code": result.ExitCode,
 		},
 		DurationMS: result.DurationMS,
-	})
+	}, privateKey.PrivateKey), nil
 }
 
-func (Management) RunTargetOperation(handler connectorapi.TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.ConnectorDataRuntime, target connectorapi.Target, operation string) {
-	if w == nil || r == nil {
-		return
-	}
+func (Management) RunTargetOperation(ctx context.Context, handler connectorapi.TargetOperationGateway, runtime connectorapi.ConnectorDataRuntime, target connectorapi.Target, operation string, requestValue any) (connectors.ManagementResponse, error) {
 	gateway, err := targetOperationGatewayFrom(handler)
 	if err != nil {
-		writeInternalError(w)
-		return
+		return connectors.ManagementResponse{}, err
 	}
-	var input targetOperationRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-	profiles, err := runtime.ListCredentialProfiles(r.Context(), target.ID)
+	input, err := decodeTargetOperationRequest(requestValue)
 	if err != nil {
-		handleTargetError(w, err)
-		return
+		return managementErrorResponse(http.StatusBadRequest, "invalid json body"), nil
+	}
+	profiles, err := runtime.ListCredentialProfiles(ctx, target.ID)
+	if err != nil {
+		return targetErrorResponse(err)
 	}
 	profileID, err := operationProfileID(profiles, input.ProfileID)
 	if err != nil {
-		handleTargetError(w, err)
-		return
+		return targetErrorResponse(err)
 	}
 	targetRef := connectors.FormatTargetRef(sshconnector.Kind, target.ID, profileID)
-	runtimeID, err := RuntimeIDForTargetRef(r.Context(), runtime, targetRef)
+	runtimeID, err := RuntimeIDForTargetRef(ctx, runtime, targetRef)
 	if err != nil {
-		handleTargetError(w, err)
-		return
+		return targetErrorResponse(err)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	remoteTarget, privateKey, err := TargetMaterialForRuntime(ctx, runtime, runtimeID)
 	if err != nil {
-		handleMaterialError(w, err)
-		return
+		return materialErrorResponse(err)
 	}
 	switch operation {
 	case "docker-check":
 		response, err := dockerCheckForTarget(ctx, gateway, remoteTarget, privateKey)
 		if err != nil {
-			if WriteUnknownHostKeyError(w, err) {
-				return
+			if projected, ok := managementUnknownHostKeyResponse(err, privateKey.PrivateKey); ok {
+				return projected, nil
 			}
-			writeError(w, http.StatusBadGateway, CommandFailureMessage(err))
-			return
+			return sensitiveManagementErrorResponse(http.StatusBadGateway, CommandFailureMessage(err), privateKey.PrivateKey), nil
 		}
-		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
+		handler.ConnectorWriteAudit(ctx, "user", nil, remoteTarget.ID, "server.docker_check", map[string]any{
 			"available":  response.Available,
 			"exit_code":  response.ExitCode,
 			"containers": len(response.Containers),
 		})
-		writeJSON(w, http.StatusOK, response)
+		return managementResponse(http.StatusOK, response, privateKey.PrivateKey), nil
 	case "docker-logs":
 		containerRef := strings.TrimSpace(input.ContainerRef)
 		if err := validateDockerContainerRef(containerRef); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
+			return managementErrorResponse(http.StatusBadRequest, err.Error()), nil
 		}
 		response, err := dockerLogsForTarget(ctx, gateway, remoteTarget, privateKey, containerRef, input.Tail)
 		if err != nil {
-			if WriteUnknownHostKeyError(w, err) {
-				return
+			if projected, ok := managementUnknownHostKeyResponse(err, privateKey.PrivateKey); ok {
+				return projected, nil
 			}
-			writeError(w, http.StatusBadGateway, CommandFailureMessage(err))
-			return
+			return sensitiveManagementErrorResponse(http.StatusBadGateway, CommandFailureMessage(err), privateKey.PrivateKey), nil
 		}
-		handler.ConnectorWriteAudit(r.Context(), "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
+		handler.ConnectorWriteAudit(ctx, "user", nil, remoteTarget.ID, "server.docker_logs", map[string]any{
 			"container_ref": containerRef,
 			"exit_code":     response.ExitCode,
 			"tail":          normalizeDockerLogsTail(input.Tail),
 		})
-		writeJSON(w, http.StatusOK, response)
+		return managementResponse(http.StatusOK, response, privateKey.PrivateKey), nil
 	default:
-		writeError(w, http.StatusBadRequest, "unsupported connector operation")
+		return managementErrorResponse(http.StatusBadRequest, "unsupported connector operation"), nil
 	}
 }
 

@@ -29,7 +29,7 @@ type ProfileTestingScope struct {
 	Database      *sql.DB
 	Registry      connectors.Catalog
 	Runtime       CredentialRuntimePorts
-	SpecialTest   func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
+	SpecialTest   func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
 	RedactDetails func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 }
 
@@ -67,18 +67,22 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 		writeTargetError(w, err)
 		return
 	}
-	if scope.SpecialTest(w, r, target, profile) {
+	response, specialErr := scope.SpecialTest(r.Context(), target, profile)
+	if specialErr != nil {
+		httptransport.WriteInternalError(w)
 		return
 	}
-	connector, ok := scope.Registry.Get(target.ConnectorKind)
-	if !ok {
-		httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
-		return
-	}
-	testable, ok := connector.(connectors.TestableConnector)
-	if !ok {
-		httptransport.WriteError(w, http.StatusBadRequest, "connector does not support connection tests")
-		return
+	var testable connectors.TestableConnector
+	if response == nil {
+		connector, ok := scope.Registry.Get(target.ConnectorKind)
+		if !ok {
+			httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
+			return
+		}
+		if testable, ok = connector.(connectors.TestableConnector); !ok {
+			httptransport.WriteError(w, http.StatusBadRequest, "connector does not support connection tests")
+			return
+		}
 	}
 	fullProfile, err := store.GetCredentialProfile(r.Context(), target.ID, profile.ID)
 	if err != nil {
@@ -91,6 +95,15 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	boundary := actionresult.NewCredentialBoundary(secrets)
+	if response != nil {
+		status, payload, err := ProjectManagementResponse(r.Context(), scope.Runtime, *response, boundary)
+		if err != nil {
+			httptransport.WriteInternalError(w)
+			return
+		}
+		httptransport.WriteJSON(w, status, payload)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), profileConnectionTestTimeout)
 	defer cancel()
 	start := time.Now()

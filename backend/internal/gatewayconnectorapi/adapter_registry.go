@@ -536,7 +536,7 @@ type LiveConsoleAdapter interface {
 
 // DraftTester lets a connector test a not-yet-persisted target/profile draft.
 type DraftTester interface {
-	TestDraft(handler PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, request any)
+	TestDraft(context.Context, PeerIdentityGateway, ConnectorDataRuntime, any) (connectors.ManagementResponse, error)
 }
 
 // TargetDeleter lets a connector customize deletion behavior.
@@ -553,12 +553,12 @@ type CredentialProfileLifecycleAdapter interface {
 
 // CredentialProfileTester lets a connector test an existing profile.
 type CredentialProfileTester interface {
-	TestCredentialProfile(handler PeerIdentityGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView)
+	TestCredentialProfile(context.Context, PeerIdentityGateway, ConnectorDataRuntime, connectors.TargetView, connectors.CredentialProfileView) (connectors.ManagementResponse, error)
 }
 
 // TargetOperationRunner runs connector-specific target operations.
 type TargetOperationRunner interface {
-	RunTargetOperation(handler TargetOperationGateway, w http.ResponseWriter, r *http.Request, runtime ConnectorDataRuntime, target Target, operation string)
+	RunTargetOperation(context.Context, TargetOperationGateway, ConnectorDataRuntime, Target, string, any) (connectors.ManagementResponse, error)
 }
 
 // CredentialCanonicalizer normalizes public credential profile metadata.

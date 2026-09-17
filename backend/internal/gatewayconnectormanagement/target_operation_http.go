@@ -47,5 +47,12 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 		httptransport.WriteInternalError(w)
 		return
 	}
-	adapter.RunTargetOperation(gateway, w, r, runtime, connectorTarget(target), strings.TrimSpace(r.PathValue("operation")))
+	input := map[string]any{}
+	if !httptransport.DecodeJSON(w, r, &input, httptransport.DefaultJSONBodyBytes) {
+		return
+	}
+	response, err := adapter.RunTargetOperation(
+		r.Context(), gateway, runtime, connectorTarget(target), strings.TrimSpace(r.PathValue("operation")), input,
+	)
+	writeManagementResponse(w, r, workspace.Credentials.Runtime, response, err)
 }

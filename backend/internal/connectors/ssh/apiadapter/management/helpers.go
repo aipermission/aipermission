@@ -30,6 +30,75 @@ func decodeDraftRequest(value any) (draftTargetRequest, error) {
 	return request, nil
 }
 
+func decodeTargetOperationRequest(value any) (targetOperationRequest, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return targetOperationRequest{}, fmt.Errorf("invalid connector operation request")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	var request targetOperationRequest
+	if err := decoder.Decode(&request); err != nil {
+		return targetOperationRequest{}, fmt.Errorf("invalid connector operation request")
+	}
+	return request, nil
+}
+
+func managementResponse(status int, payload any, sensitiveValues ...string) connectors.ManagementResponse {
+	return connectors.ManagementResponse{StatusCode: status, Payload: payload, SensitiveValues: sensitiveValues}
+}
+
+func managementErrorResponse(status int, message string) connectors.ManagementResponse {
+	return managementResponse(status, map[string]string{"error": message})
+}
+
+func sensitiveManagementErrorResponse(status int, message string, sensitiveValues ...string) connectors.ManagementResponse {
+	return managementResponse(status, map[string]string{"error": message}, sensitiveValues...)
+}
+
+func targetErrorResponse(err error) (connectors.ManagementResponse, error) {
+	var validation connectortargets.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		return managementErrorResponse(http.StatusBadRequest, validation.Error()), nil
+	case errors.Is(err, connectortargets.ErrTargetNotFound), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
+		return managementErrorResponse(http.StatusNotFound, "connector target profile not found"), nil
+	default:
+		return connectors.ManagementResponse{}, err
+	}
+}
+
+func keyErrorResponse(err error) (connectors.ManagementResponse, error) {
+	var validation sshkeys.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		return managementErrorResponse(http.StatusBadRequest, validation.Error()), nil
+	case errors.Is(err, sshkeys.ErrNotFound):
+		return managementErrorResponse(http.StatusNotFound, "ssh key not found"), nil
+	default:
+		return connectors.ManagementResponse{}, err
+	}
+}
+
+func materialErrorResponse(err error) (connectors.ManagementResponse, error) {
+	switch {
+	case errors.Is(err, connectortargets.ErrTargetProfileNotFound), errors.Is(err, connectortargets.ErrTargetNotFound):
+		return managementErrorResponse(http.StatusNotFound, "connector target profile not found"), nil
+	case errors.Is(err, sshkeys.ErrNotFound):
+		return keyErrorResponse(err)
+	default:
+		return connectors.ManagementResponse{}, err
+	}
+}
+
+func managementUnknownHostKeyResponse(err error, sensitiveValues ...string) (connectors.ManagementResponse, bool) {
+	presentation, ok := PresentUnknownHostKeyError(err)
+	if !ok {
+		return connectors.ManagementResponse{}, false
+	}
+	return managementResponse(presentation.StatusCode, presentation.Payload, sensitiveValues...), true
+}
+
 func operationProfileID(profiles []connectors.CredentialProfileView, requestedProfileID int64) (int64, error) {
 	if requestedProfileID > 0 {
 		return requestedProfileID, nil

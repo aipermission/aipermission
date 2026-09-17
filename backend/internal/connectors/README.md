@@ -64,6 +64,14 @@ results and let the shared action service persist them. In the 0.2 baseline,
 persisted/MCP-visible contract; put operator- or AI-visible fields in
 `ActionResult.Output`.
 
+Runtime-backed adapters that implement `DraftTester`,
+`CredentialProfileTester`, or `TargetOperationRunner` must return a typed
+`ManagementResponse`; they never receive an HTTP response writer. Core owns
+serialization, output bounds, and policy redaction. Add connector-owned
+credential forms, such as a resolved SSH private key, only to
+`ManagementResponse.SensitiveValues` and never to its payload. Those values
+extend the transient credential boundary and are excluded from JSON.
+
 Target and action input schemas must not declare secret fields. Store secret
 values in credential profiles and resolve them through `RuntimeContext.Secrets`
 only after permission and approval checks pass.
