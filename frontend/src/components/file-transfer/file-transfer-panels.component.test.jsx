@@ -38,6 +38,9 @@ it("renders connector-neutral upload controls and preserves recursive folder sel
 
   expect(screen.getByText("My connector")).toBeInTheDocument();
   expect(screen.getByText("Transfer policy")).toBeInTheDocument();
+  const remoteFolder = screen.getByRole("textbox", { name: "Remote folder" });
+  expect(remoteFolder).toHaveAttribute("placeholder", "/home");
+  expect(screen.getByRole("button", { name: "Browse" }).closest("label")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Upload" }));
   expect(onModeChange).toHaveBeenCalledWith("upload");
   await user.type(screen.getByPlaceholderText("/home"), "/incoming");

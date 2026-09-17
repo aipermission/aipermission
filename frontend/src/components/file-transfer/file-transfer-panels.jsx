@@ -1,6 +1,7 @@
 import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
+import { useId } from "react";
 import { Button } from "../ui/button";
-import { Field, Input } from "../ui/form";
+import { Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { fileTransferFailureText } from "../../lib/file-transfer-utils";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
@@ -96,12 +97,14 @@ function UploadSourcePanel({
   onOpenBrowser,
   onLocalFileChange,
 }) {
+  const remoteDirectoryID = useId();
   return (
     <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-      <Field>
-        Remote folder
+      <div className="grid gap-2 text-sm font-medium text-stone-800">
+        <label htmlFor={remoteDirectoryID}>Remote folder</label>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <Input
+            id={remoteDirectoryID}
             value={remoteDir}
             onChange={(event) => onRemoteDirectoryChange(event.target.value)}
             placeholder={defaultRemoteDir}
@@ -118,7 +121,7 @@ function UploadSourcePanel({
             Browse
           </Button>
         </div>
-      </Field>
+      </div>
       <Button
         type="button"
         variant="outline"
