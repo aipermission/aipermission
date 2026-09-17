@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aipermission/aipermission-mcp",
   "title": "AIPermission",
-  "description": "Local-first MCP bridge for the AIPermission gateway.",
+  "description": "Local-only MCP bridge for the AIPermission gateway.",
   "version": "0.2.53",
   "packages": [
     {
