@@ -126,6 +126,7 @@
     "scripts/ci/documented-verification-contract.test.js",
     "scripts/ci/gitleaks-history-scan.test.js",
     "scripts/ci/markdown-link-check.test.js",
+    "scripts/ci/node-toolchain-check.test.js",
     "scripts/ci/platform/windows-runtime-tests.test.js",
     "scripts/ci/policy/verification-policy.test.js",
     "scripts/ci/run-bounded-fuzz.test.js",

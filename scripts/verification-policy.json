@@ -210,6 +210,7 @@
         "node scripts/run-tooling-tests.js scripts/release",
         "node scripts/markdown-link-check.js",
         "node scripts/go-toolchain-check.js",
+        "node scripts/node-toolchain-check.js",
         "node scripts/verification-policy.js --verify-workflows",
         "node scripts/verification-policy.js --verify-local-release",
         "node scripts/verification-policy.js --verify-ratchet",

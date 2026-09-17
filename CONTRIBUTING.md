@@ -21,9 +21,12 @@ of scope for the core project.
 
 ## Development
 
-The reviewed contributor toolchain is Go 1.26.6 and Node.js 24. End users of
+The reviewed contributor toolchain is Go 1.26.6 and Node.js 24.21.0. End users of
 the published MCP package only need the runtime version documented in the
 README; contribution and release checks use these exact repository versions.
+Install and select the pinned Node.js release with `nvm install && nvm use`;
+`.nvmrc`, `.node-version`, the frontend image builder, local hygiene, and CI
+share that exact version.
 
 Backend development uses CGO and OpenSSL 3 for SQLCipher. On Debian/Ubuntu,
 install `build-essential` and `libssl-dev`. On macOS, install OpenSSL 3 with
