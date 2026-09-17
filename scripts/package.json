@@ -4,6 +4,6 @@
   "version": "0.2.47",
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   }
 }
