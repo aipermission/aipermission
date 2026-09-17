@@ -22,6 +22,26 @@ func TestValidateReadOnlyAcceptsOneReadStatement(t *testing.T) {
 	}
 }
 
+func TestValidateReadOnlyUsesOneKeywordBoundaryWhitespacePolicy(t *testing.T) {
+	for name, separator := range map[string]string{
+		"space": " ",
+		"tab":   "\t",
+		"lf":    "\n",
+		"crlf":  "\r\n",
+		"cr":    "\r",
+		"form":  "\f",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateReadOnly("SELECT"+separator+"1", "query_readonly", 20000, []string{"select"}, "SELECT", testDisallowedTerms); err != nil {
+				t.Fatalf("validate SELECT with %s separator: %v", name, err)
+			}
+		})
+	}
+	if err := ValidateReadOnly("SELECTevil 1", "query_readonly", 20000, []string{"select"}, "SELECT", testDisallowedTerms); err == nil {
+		t.Fatal("expected an identifier that starts with SELECT to fail the keyword boundary check")
+	}
+}
+
 func TestValidateReadOnlyRejectsUnsafeSQL(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -63,7 +63,7 @@ func ValidateReadOnlyDialect(sql string, actionName string, maxBytes int, allowe
 func hasAllowedPrefix(sql string, prefixes []string) bool {
 	for _, prefix := range prefixes {
 		prefix = strings.ToLower(strings.TrimSpace(prefix))
-		if prefix != "" && (sql == prefix || strings.HasPrefix(sql, prefix+" ") || strings.HasPrefix(sql, prefix+"\n") || strings.HasPrefix(sql, prefix+"\t")) {
+		if prefix != "" && strings.HasPrefix(sql, prefix) && (len(sql) == len(prefix) || sqlSpace(sql[len(prefix)])) {
 			return true
 		}
 	}
