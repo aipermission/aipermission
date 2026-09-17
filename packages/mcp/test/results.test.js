@@ -65,9 +65,37 @@ test("gateway errors accept bounded Retry-After headers without overriding valid
 });
 
 test("jsonToolResult converts thrown errors to error envelopes", async () => {
-  const result = await jsonToolResult(async () => {
-    throw new Error("invalid or revoked API token");
-  });
+  const result = await jsonToolResult(
+    async () => {
+      throw new Error("invalid or revoked API token");
+    },
+    (value) => value,
+  );
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /invalid or revoked API token/);
+});
+
+test("jsonToolResult fails closed before calling a gateway without a result projector", async () => {
+  let called = false;
+  const result = await jsonToolResult(async () => {
+    called = true;
+    return { provider_secret: "must-not-escape" };
+  });
+  assert.equal(called, false);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /projector is required/);
+  assert.doesNotMatch(result.content[0].text, /provider_secret|must-not-escape/);
+});
+
+test("jsonToolResult does not expose rejected success payloads", async () => {
+  const result = await jsonToolResult(
+    async () => ({ status: "ok", provider_secret: "must-not-escape" }),
+    () => {
+      throw new Error("Gateway success response failed MCP contract validation.");
+    },
+  );
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /contract validation/);
+  assert.equal(result.content[0].text.includes("provider_secret"), false);
+  assert.equal(result.content[0].text.includes("must-not-escape"), false);
 });
