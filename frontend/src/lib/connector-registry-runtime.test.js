@@ -22,6 +22,7 @@ test("connector template registry evaluates at runtime", async () => {
     server: { host: "127.0.0.1", port: 0, strictPort: false },
   });
   await server.listen();
+  await server.warmupRequest("/src/connectors/templates/registry.jsx");
   const address = server.httpServer?.address();
   assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
   const baseURL = `http://127.0.0.1:${address.port}/`;

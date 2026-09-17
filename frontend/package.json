@@ -60,8 +60,8 @@
     "@testing-library/user-event": "^14.6.7",
     "@typescript-eslint/parser": "8.70.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-istanbul": "3.2.7",
-    "@vitest/coverage-v8": "3.2.7",
+    "@vitest/coverage-istanbul": "4.1.11",
+    "@vitest/coverage-v8": "4.1.11",
     "eslint": "^10.10.0",
     "eslint-plugin-jsx-a11y-x": "^0.2.0",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -74,6 +74,6 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.2",
     "vite": "^6.4.3",
-    "vitest": "^3.2.7"
+    "vitest": "4.1.11"
   }
 }
