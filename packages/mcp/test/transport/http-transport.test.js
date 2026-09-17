@@ -150,6 +150,56 @@ test("one deadline spans delayed headers and continuing chunks without retry", {
   assert.equal(requests, 2);
 });
 
+for (const tool of ["list_connector_targets", "call_connector_action"]) {
+  test(`${tool} cancellation closes the in-flight gateway request`, { timeout: 10000 }, async (t) => {
+    let received;
+    let closed;
+    const requestReceived = new Promise((resolve) => {
+      received = resolve;
+    });
+    const responseClosed = new Promise((resolve) => {
+      closed = resolve;
+    });
+    const client = await withGateway(
+      t,
+      async (request, response) => {
+        for await (const chunk of request) {
+          void chunk;
+        }
+        response.on("close", closed);
+        received();
+      },
+      5000,
+    );
+    const controller = new AbortController();
+    const call = client.callTool(
+      {
+        name: tool,
+        arguments:
+          tool === "call_connector_action"
+            ? {
+                target_ref: "redis:1:1",
+                action_name: "set_string",
+                input: {},
+                reason: "cancellation fixture",
+                idempotency_key: "canceled-request",
+              }
+            : {},
+      },
+      undefined,
+      { signal: controller.signal, timeout: 5000 },
+    );
+
+    await requestReceived;
+    controller.abort("test cancellation");
+    await assert.rejects(call, /test cancellation/);
+    await Promise.race([
+      responseClosed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("gateway request remained open after cancellation")), 500)),
+    ]);
+  });
+}
+
 test("timely gateway errors retain their metadata", { timeout: 10000 }, async (t) => {
   const client = await withGateway(
     t,
