@@ -385,8 +385,8 @@ func validatePreparedAction(prepared connectors.PreparedAction, resolved Resolve
 	if preparedValueContainsSensitive(prepared.Title, sensitiveVariants) || preparedValueContainsSensitive(prepared.Summary, sensitiveVariants) {
 		return errors.New("prepared action title or summary contains sensitive input")
 	}
-	if preparedValueContainsSensitive(prepared.Preview, sensitiveVariants) || preparedValueContainsSensitive(prepared.ContextMaterial, sensitiveVariants) {
-		return errors.New("prepared action display context contains sensitive input")
+	if preparedValueContainsSensitive(prepared.ContextMaterial, sensitiveVariants) {
+		return errors.New("prepared action context contains sensitive input")
 	}
 	if field, ok := secretPayloadField(prepared.Payload); ok {
 		return fmt.Errorf("prepared action payload field %q must not contain secrets; store secrets in credential profiles instead", field)

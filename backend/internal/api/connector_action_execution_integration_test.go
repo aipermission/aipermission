@@ -784,14 +784,14 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 		Profile: profileView,
 		ActionDefinition: connectors.ActionDefinition{
 			Name:                 testPostgresReadonlySQLAction,
-			SensitiveInputFields: []string{"access_token", "opaque_message", "client-secret"},
+			SensitiveInputFields: []string{"access_token", "opaque_message", "client-secret", "credential_echo"},
 		},
 		Action: connectors.PreparedAction{
 			ConnectorKind: testPostgresConnectorKind,
 			TargetRef:     targetView.Ref,
 			ProfileID:     profile.ID,
 			ActionName:    testPostgresReadonlySQLAction,
-			Preview:       map[string]any{"body": "password=visible-for-approval internal_abc123", "opaque_message": "exact-sensitive-preview", "client_secret": "hyphen-normalized-preview-secret"},
+			Preview:       map[string]any{"body": "password=visible-for-approval internal_abc123", "opaque_message": "exact-sensitive-preview", "client_secret": "hyphen-normalized-preview-content", "credential_echo": "secret"},
 			Payload:       rawInput,
 		},
 		Requested: actions.PrepareRequest{
@@ -833,7 +833,7 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if strings.Contains(previewJSON, "exact-sensitive-preview") || !strings.Contains(previewJSON, `"opaque_message":"[REDACTED]"`) {
 		t.Fatalf("persisted display preview did not apply sensitive input fields: %s", previewJSON)
 	}
-	if strings.Contains(previewJSON, "hyphen-normalized-preview-secret") || !strings.Contains(previewJSON, `"client_secret":"[REDACTED]"`) {
+	if strings.Contains(previewJSON, "hyphen-normalized-preview-content") || !strings.Contains(previewJSON, `"client_secret":"[REDACTED]"`) {
 		t.Fatalf("persisted display preview did not normalize declared sensitive fields: %s", previewJSON)
 	}
 	var historyInputJSON string
@@ -863,11 +863,14 @@ func TestInsertConnectorActionRequestRedactsDisplayedInputOnly(t *testing.T) {
 	if exactApproval.Preview["body"] != "password=visible-for-approval internal_abc123" {
 		t.Fatalf("pending approval preview must match the exact prepared action: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["opaque_message"] != actions.CredentialRedactionMarker {
-		t.Fatalf("approval preview exposed a declared sensitive value: %#v", exactApproval.Preview)
+	if exactApproval.Preview["opaque_message"] != "exact-sensitive-preview" {
+		t.Fatalf("approval preview hid intentional action content: %#v", exactApproval.Preview)
 	}
-	if exactApproval.Preview["client_secret"] != actions.CredentialRedactionMarker {
-		t.Fatalf("approval preview exposed a normalized sensitive value: %#v", exactApproval.Preview)
+	if exactApproval.Preview["client_secret"] != "hyphen-normalized-preview-content" {
+		t.Fatalf("approval preview hid normalized intentional action content: %#v", exactApproval.Preview)
+	}
+	if exactApproval.Preview["credential_echo"] != actions.CredentialRedactionMarker {
+		t.Fatalf("approval preview exposed a stored connector credential: %#v", exactApproval.Preview)
 	}
 	redactedApproval := server.connectorActionApprovalItemFromRequest(connectormgmt.AdoptActionRequest(request))
 	if redactedApproval.Preview["body"] == "password=visible-for-approval internal_abc123" {
