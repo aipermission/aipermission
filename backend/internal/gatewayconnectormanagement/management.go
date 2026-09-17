@@ -97,7 +97,7 @@ func (boundary CredentialBoundary) Redact(value string) string { return boundary
 func (boundary CredentialBoundary) RedactKey(value string) string {
 	return boundary.value.RedactKey(value)
 }
-func (boundary CredentialBoundary) RedactStructured(value any) any {
+func (boundary CredentialBoundary) RedactStructured(value any) (any, error) {
 	return boundary.value.RedactStructured(value)
 }
 func (boundary CredentialBoundary) Valid() bool { return boundary.value.Valid() }

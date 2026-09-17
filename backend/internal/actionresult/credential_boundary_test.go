@@ -2,6 +2,7 @@ package actionresult
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -78,10 +79,14 @@ func TestCredentialBoundaryRedactsLabeledShortSecret(t *testing.T) {
 
 func TestCredentialBoundaryRedactsStructuredKeysAndValues(t *testing.T) {
 	boundary := NewCredentialBoundary(map[string]any{"token": "credential-value-123"})
-	redacted := boundary.RedactStructured(map[string]any{
+	value, err := boundary.RedactStructured(map[string]any{
 		"credential-value-123": "credential-value-123",
 		"nested":               []any{"safe", "credential-value-123"},
-	}).(map[string]any)
+	})
+	if err != nil {
+		t.Fatalf("redact structured value: %v", err)
+	}
+	redacted := value.(map[string]any)
 	if _, exposed := redacted["credential-value-123"]; exposed {
 		t.Fatal("credential remained visible as a structured key")
 	}
@@ -91,5 +96,16 @@ func TestCredentialBoundaryRedactsStructuredKeysAndValues(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), "credential-value-123") {
 		t.Fatalf("credential remained visible in structured output: %s", string(encoded))
+	}
+}
+
+func TestCredentialBoundaryRejectsStructuredKeyCollisionAfterRedaction(t *testing.T) {
+	boundary := NewCredentialBoundary(map[string]any{"token": "credential-value-123"})
+	_, err := boundary.RedactStructured(map[string]any{
+		"credential-value-123":    "secret field",
+		CredentialRedactionMarker: "existing field",
+	})
+	if !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("redact structured collision error = %v, want %v", err, ErrInvalidValue)
 	}
 }
