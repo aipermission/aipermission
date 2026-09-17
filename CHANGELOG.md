@@ -289,6 +289,11 @@ and this project uses semantic versioning for public releases.
 
 ## [0.2.45] - 2026-09-08
 
+### Release status
+
+- Version 0.2.45 was not tagged, published, or distributed; this preparation record
+  became public with version 0.2.46.
+
 ### Added
 
 - The application shell now provides an accessible mobile navigation path while
