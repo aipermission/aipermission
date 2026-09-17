@@ -1,4 +1,5 @@
 import { effectiveRule } from "./permissions";
+import { readLocalPreference, writeLocalPreference } from "./browser-storage.js";
 
 const profileStoragePrefix = "aipermission.console.profile";
 
@@ -30,14 +31,14 @@ export function selectedConnectorProfileID(tokenID, selectedTarget, profiles, pr
 
 export function readStoredConnectorProfileID(target, tokenID) {
   if (!target || typeof window === "undefined") return "";
-  const value = window.localStorage.getItem(connectorProfileStorageKey(target, tokenID));
+  const value = readLocalPreference(connectorProfileStorageKey(target, tokenID));
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : "";
 }
 
 export function writeStoredConnectorProfileID(target, tokenID, profileID) {
   if (!target || typeof window === "undefined") return;
-  window.localStorage.setItem(connectorProfileStorageKey(target, tokenID), String(profileID));
+  writeLocalPreference(connectorProfileStorageKey(target, tokenID), String(profileID));
 }
 
 export function currentConnectorTargetProfilePermissions(permissions, target, profileID) {

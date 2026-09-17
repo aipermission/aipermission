@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   indexSource,
   themeInitSource,
@@ -44,4 +45,27 @@ test("static bootstrap and release metadata stay bundled", () => {
     assert.ok(entry.label);
     assert.ok(entry.sections.length > 0);
   }
+});
+
+test("theme bootstrap tolerates blocked storage and rejects unknown values", () => {
+  for (const [stored, expected] of [
+    ["light", "light"],
+    ["unknown", "dark"],
+  ]) {
+    const document = { documentElement: { dataset: {} } };
+    runInNewContext(themeInitSource, { document, localStorage: { getItem: () => stored } });
+    assert.equal(document.documentElement.dataset.theme, expected);
+  }
+
+  const document = { documentElement: { dataset: {} } };
+  runInNewContext(themeInitSource, {
+    document,
+    localStorage: {
+      getItem() {
+        throw new DOMException("Storage denied", "SecurityError");
+      },
+    },
+    DOMException,
+  });
+  assert.equal(document.documentElement.dataset.theme, "dark");
 });

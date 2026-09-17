@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
+import { readLocalPreference, writeLocalPreference } from "./browser-storage.js";
 
 export const defaultTheme = "dark";
 const storageKey = "aipermission-theme";
 
 export function readStoredTheme() {
-  if (typeof window === "undefined") return defaultTheme;
-  const value = window.localStorage.getItem(storageKey);
+  const value = readLocalPreference(storageKey);
   return value === "light" || value === "dark" ? value : defaultTheme;
 }
 
@@ -19,7 +19,7 @@ export function useTheme() {
 
   useEffect(() => {
     applyTheme(theme);
-    window.localStorage.setItem(storageKey, theme);
+    writeLocalPreference(storageKey, theme);
   }, [theme]);
 
   function toggleTheme() {

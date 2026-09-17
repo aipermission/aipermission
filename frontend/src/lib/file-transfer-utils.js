@@ -36,19 +36,19 @@ export function pendingBatchItemIDs(batch) {
 export function rememberedDownloadPath(server, fallback, normalize = normalizeRemoteDirectoryInput) {
   const defaultPath = normalize(fallback || "/home");
   if (typeof window === "undefined" || !server?.id) return defaultPath;
-  const value = window.localStorage.getItem(downloadPathStorageKey(server.id));
+  const value = readLocalPreference(downloadPathStorageKey(server.id));
   if (!value) return defaultPath;
   return normalize(value);
 }
 
 export function rememberDownloadPath(server, path, normalize = normalizeRemoteDirectoryInput) {
   if (typeof window === "undefined" || !server?.id) return;
-  window.localStorage.setItem(downloadPathStorageKey(server.id), normalize(path || "/home"));
+  writeLocalPreference(downloadPathStorageKey(server.id), normalize(path || "/home"));
 }
 
 export function forgetDownloadPath(server) {
   if (typeof window === "undefined" || !server?.id) return;
-  window.localStorage.removeItem(downloadPathStorageKey(server.id));
+  removeLocalPreference(downloadPathStorageKey(server.id));
 }
 
 export function joinRemotePath(remoteDir, remoteName) {
@@ -111,3 +111,4 @@ export function formatShortDate(value) {
 function downloadPathStorageKey(runtimeID) {
   return `aipermission-file-transfer-download-path:${runtimeID}`;
 }
+import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "./browser-storage.js";
