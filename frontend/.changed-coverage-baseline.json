@@ -310,10 +310,10 @@
       "lines": 81.52
     },
     "src/components/history/history-components.jsx": {
-      "statements": 60.24,
-      "branches": 53.96,
-      "functions": 65.95,
-      "lines": 65.27
+      "statements": 72.92,
+      "branches": 58.11,
+      "functions": 80,
+      "lines": 78.12
     },
     "src/components/local-action-reconciliation-dialog.jsx": {
       "statements": 75,
@@ -532,7 +532,7 @@
       "lines": 100
     },
     "src/components/use-database-lifecycle.js": {
-      "statements": 90.38,
+      "statements": 90.56,
       "branches": 92.3,
       "functions": 100,
       "lines": 90.24
@@ -544,10 +544,10 @@
       "lines": 95.83
     },
     "src/components/use-gateway-core-resources.js": {
-      "statements": 86.17,
-      "branches": 71.15,
-      "functions": 93.33,
-      "lines": 96.05
+      "statements": 87.12,
+      "branches": 73.21,
+      "functions": 93.75,
+      "lines": 96.29
     },
     "src/components/use-gateway-resources.js": {
       "statements": 100,
@@ -1577,7 +1577,7 @@
     },
     "src/connectors/templates/s3/use-s3-object-delete.js": {
       "statements": 93.33,
-      "branches": 83.33,
+      "branches": 85.71,
       "functions": 100,
       "lines": 100
     },

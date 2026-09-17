@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HistoryDialog, StatusBadge, retryPolicyGuidance } from "./history-components";
@@ -81,4 +81,78 @@ it("allows history label suggestions to be selected with the keyboard", async ()
   await user.keyboard("{Enter}");
 
   await waitFor(() => expect(onAttachLabel).toHaveBeenCalledWith(42, { name: "Investigate" }));
+});
+
+it("cancels pending history label timers when the dialog unmounts", () => {
+  const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+  const { unmount } = render(
+    <HistoryDialog
+      item={{ id: 42, status: "completed", labels: [], target_name: "Test target", created_at: "2026-09-01T00:00:00Z" }}
+      labels={[{ id: 1, name: "Investigate" }]}
+      onClose={vi.fn()}
+      onAttachLabel={vi.fn()}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  fireEvent.blur(screen.getByRole("textbox", { name: "Add history label" }));
+  unmount();
+
+  expect(clearTimeoutSpy).toHaveBeenCalled();
+  clearTimeoutSpy.mockRestore();
+});
+
+it("keeps reopened label suggestions visible and closes them after the next blur delay", async () => {
+  render(
+    <HistoryDialog
+      item={{ id: 42, status: "completed", labels: [], target_name: "Test target", created_at: "2026-09-01T00:00:00Z" }}
+      labels={[{ id: 1, name: "Investigate" }]}
+      onClose={vi.fn()}
+      onAttachLabel={vi.fn()}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "Add history label" });
+  fireEvent.focus(input);
+  fireEvent.blur(input);
+  fireEvent.focus(input);
+  await new Promise((resolve) => window.setTimeout(resolve, 150));
+  expect(screen.getByText("Investigate")).toBeInTheDocument();
+
+  fireEvent.blur(input);
+  await waitFor(() => expect(screen.queryByText("Investigate")).not.toBeInTheDocument());
+});
+
+it("rejects duplicate labels and surfaces failed attach and detach operations", async () => {
+  const onAttachLabel = vi.fn().mockRejectedValue(new Error("attach failed"));
+  const onDetachLabel = vi.fn().mockRejectedValue(new Error("detach failed"));
+  render(
+    <HistoryDialog
+      item={{
+        id: 42,
+        status: "completed",
+        labels: [{ id: 1, name: "Investigate" }],
+        target_name: "Test target",
+        created_at: "2026-09-01T00:00:00Z",
+      }}
+      labels={[{ id: 1, name: "Investigate" }]}
+      onClose={vi.fn()}
+      onAttachLabel={onAttachLabel}
+      onDetachLabel={onDetachLabel}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "Add history label" });
+  fireEvent.change(input, { target: { value: "Investigate" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("");
+  expect(onAttachLabel).not.toHaveBeenCalled();
+
+  fireEvent.change(input, { target: { value: "Follow up" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(screen.getByText("attach failed")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole("button", { name: "Remove Investigate label" }));
+  await waitFor(() => expect(screen.getByText("detach failed")).toBeInTheDocument());
 });
