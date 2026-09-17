@@ -53,8 +53,7 @@ manifest was not weakened relative to trusted history.
 Run backend tests:
 
 ```bash
-cd backend
-go test ./...
+(cd backend && go test ./...)
 ```
 
 Run frontend tests and build:
