@@ -9,6 +9,52 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.54] - 2026-09-17
+
+### Changed
+
+- MCP tools declare behavior annotations, propagate caller cancellation, and validate
+  successful gateway envelopes before projecting connector or Vault results.
+- Native Linux Docker installs expose host.docker.internal to connector transports
+  through the shared network owner while the gateway remains bound to loopback.
+- Contributor and CI Node.js versions are exact, workflow runs are bounded and
+  deduplicated, and repository verification dependencies are covered by maintenance
+  automation.
+
+### Fixed
+
+- Connector approvals preserve the protected execution payload while display redaction
+  remains fail-closed, including collisions between distinct sensitive keys.
+- Postgres and shared SQL handling preserve literal CLI database names and accept
+  consistent keyword whitespace without weakening read-only policy checks.
+- Frontend polling retains last-known-good data through transient failures, bounds
+  background reads, tolerates blocked preference storage, and cleans up History label
+  timers safely.
+- Frontend action recovery, composite-field semantics, prerelease comparisons, and
+  compact regression coverage now follow one consistent contract.
+- S3 object deletion binds confirmed objects to their observed ETag when available so a
+  stale confirmation cannot remove a changed object.
+
+### Security
+
+- Connector management adapters return bounded non-secret projections instead of
+  transport internals, and MCP successful responses fail closed when their contract is
+  malformed.
+- Short credential redaction behavior and class-specific secret boundaries are
+  documented and locked by regression tests.
+
+### Maintenance
+
+- The frontend test stack moves past its reviewed advisory while preserving
+  changed-owner coverage, architecture, duplication, and initial-bundle ratchets.
+- The SQLCipher 4.19.0 upstream release review is recorded while the pinned runtime
+  remains unchanged until a coordinated native dependency upgrade.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.53] - 2026-09-16
 
 ### Changed
