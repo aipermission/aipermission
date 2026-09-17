@@ -204,3 +204,12 @@ type TestResult struct {
 	Message string         `json:"message,omitempty"`
 	Details map[string]any `json:"details,omitempty"`
 }
+
+// ManagementResponse is connector-produced local UI data that core must
+// project before serialization. SensitiveValues extends the credential
+// boundary for connector-owned resources absent from profile JSON.
+type ManagementResponse struct {
+	StatusCode      int
+	Payload         any
+	SensitiveValues []string `json:"-"`
+}

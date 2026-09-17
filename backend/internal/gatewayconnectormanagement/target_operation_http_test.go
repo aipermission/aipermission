@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type targetOperationAdapter struct {
@@ -17,16 +18,20 @@ type targetOperationAdapter struct {
 }
 
 func (adapter *targetOperationAdapter) RunTargetOperation(
+	_ context.Context,
 	_ connectorapi.TargetOperationGateway,
-	w http.ResponseWriter,
-	_ *http.Request,
 	_ connectorapi.ConnectorDataRuntime,
 	_ connectorapi.Target,
 	operation string,
-) {
+	_ any,
+) (connectors.ManagementResponse, error) {
 	adapter.called = true
 	adapter.operation = operation
-	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"operation": operation})
+	return connectors.ManagementResponse{
+		StatusCode:      http.StatusOK,
+		Payload:         map[string]any{"operation": operation, "stdout": "docker-log-private-key"},
+		SensitiveValues: []string{"docker-log-private-key"},
+	}, nil
 }
 
 type targetOperationGateway struct{ targetDraftPeer }
@@ -45,7 +50,8 @@ func TestTargetOperationHandlerDispatchesThroughWorkspacePorts(t *testing.T) {
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
 			return Workspace{
-				Storage: StoragePorts{Database: database, Registry: registry},
+				Storage:     StoragePorts{Database: database, Registry: registry},
+				Credentials: CredentialPorts{Runtime: targetManagementRuntime()},
 				Adapters: TargetAdapterPorts{
 					DataRuntime:      func(string) connectorapi.ConnectorDataRuntime { return targetDraftRuntime{} },
 					OperationGateway: func(string, int64) connectorapi.TargetOperationGateway { return targetOperationGateway{} },
@@ -55,7 +61,7 @@ func TestTargetOperationHandlerDispatchesThroughWorkspacePorts(t *testing.T) {
 		Adapters: adapters,
 	})
 	response := executeTargetOperation(t, component, target.ID, " inspect ")
-	if response.Code != http.StatusOK || !adapter.called || adapter.operation != "inspect" {
+	if response.Code != http.StatusOK || !adapter.called || adapter.operation != "inspect" || strings.Contains(response.Body.String(), "docker-log-private-key") {
 		t.Fatalf("response=%d %s called=%t operation=%q", response.Code, response.Body.String(), adapter.called, adapter.operation)
 	}
 }
@@ -95,7 +101,8 @@ func TestTargetOperationHandlerRejectsUnsupportedOrIncompletePorts(t *testing.T)
 func executeTargetOperation(t *testing.T, component *Component, targetID int64, operation string) *httptest.ResponseRecorder {
 	t.Helper()
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(targetID, 10)+"/operations/run", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(targetID, 10)+"/operations/run", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
 	request.SetPathValue("id", strconv.FormatInt(targetID, 10))
 	request.SetPathValue("operation", operation)
 	component.HTTPHandlers().TargetOperation.Run(response, request)

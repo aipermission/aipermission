@@ -38,8 +38,8 @@ func (component *Component) ProfileTestingScope(w http.ResponseWriter) (connecto
 	}
 	return connectormanagement.ProfileTestingScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
-		SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
-			return workspace.Credentials.SpecialTest(w, r, target, profile)
+		SpecialTest: func(ctx context.Context, target connectors.TargetView, profile connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
+			return workspace.Credentials.SpecialTest(ctx, target, profile)
 		},
 		RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormanagement.CredentialBoundary) (map[string]any, error) {
 			return workspace.Credentials.RedactDetails(ctx, details, wrapCredentialBoundary(boundary))

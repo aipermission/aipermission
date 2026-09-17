@@ -13,7 +13,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const targetDraftTestKind = "draft_test"
@@ -44,9 +43,9 @@ type targetDraftTestAdapter struct {
 	request connectormanagement.CreateTargetRequest
 }
 
-func (adapter *targetDraftTestAdapter) TestDraft(_ connectorapi.PeerIdentityGateway, w http.ResponseWriter, _ *http.Request, _ connectorapi.ConnectorDataRuntime, request any) {
+func (adapter *targetDraftTestAdapter) TestDraft(_ context.Context, _ connectorapi.PeerIdentityGateway, _ connectorapi.ConnectorDataRuntime, request any) (connectors.ManagementResponse, error) {
 	adapter.request = request.(connectormanagement.CreateTargetRequest)
-	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return connectors.ManagementResponse{StatusCode: http.StatusOK, Payload: map[string]any{"ok": true}}, nil
 }
 
 type targetDraftPeer struct{}
@@ -84,8 +83,9 @@ func TestTargetDraftHandlerNormalizesAndDispatches(t *testing.T) {
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
 			return Workspace{
-				Storage:  StoragePorts{Database: database, Registry: registry},
-				Adapters: TargetAdapterPorts{DataRuntime: func(string) connectorapi.ConnectorDataRuntime { return targetDraftRuntime{} }},
+				Storage:     StoragePorts{Database: database, Registry: registry},
+				Credentials: CredentialPorts{Runtime: targetManagementRuntime()},
+				Adapters:    TargetAdapterPorts{DataRuntime: func(string) connectorapi.ConnectorDataRuntime { return targetDraftRuntime{} }},
 			}, true
 		},
 		Adapters: adapters, PeerIdentity: targetDraftPeer{},
@@ -98,6 +98,16 @@ func TestTargetDraftHandlerNormalizesAndDispatches(t *testing.T) {
 	if response.Code != http.StatusOK || adapter.request.ConnectorKind != targetDraftTestKind || adapter.request.Config["endpoint"] != "default-endpoint" {
 		t.Fatalf("response=%d %s request=%#v", response.Code, response.Body.String(), adapter.request)
 	}
+}
+
+func targetManagementRuntime() CredentialRuntimePorts {
+	return CredentialRuntimePorts{value: connectormanagement.CredentialRuntimePorts{
+		RedactResult: func(_ context.Context, result connectors.ActionResult, boundary connectormanagement.CredentialBoundary) (connectors.ActionResult, error) {
+			projected, err := boundary.RedactStructured(result.Output)
+			result.Output = projected
+			return result, err
+		},
+	}}
 }
 
 func TestTargetDraftHandlerRejectsUnsupportedAndIncompletePorts(t *testing.T) {

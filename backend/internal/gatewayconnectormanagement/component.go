@@ -40,7 +40,7 @@ type CredentialPorts struct {
 	SessionEnvironment func(context.Context, int64) bool
 	BeforeCreate       func(context.Context, Target) error
 	BeforeDelete       func(context.Context, Target, CredentialProfile) error
-	SpecialTest        func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool
+	SpecialTest        func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
 	RedactDetails      func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 	ResourceRuntime    func(string) connectorapi.CredentialResourceRuntime
 }

@@ -35,10 +35,8 @@ func TestProfileTestingHandlerRunsConnectorAndReturnsRedactedResult(t *testing.T
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry,
-			Runtime: managementCredentialRuntimePorts(),
-			SpecialTest: func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool {
-				return false
-			},
+			Runtime:     managementCredentialRuntimePorts(),
+			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
 			},
@@ -80,9 +78,7 @@ func TestProfileTestingHandlerRedactsConnectorErrors(t *testing.T) {
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: registry, Runtime: runtime,
-			SpecialTest: func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool {
-				return false
-			},
+			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
 			},
@@ -111,11 +107,21 @@ func TestProfileTestingHandlerHonorsSpecialTestAndFailsClosedOnDetailRedaction(t
 	}
 
 	special := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
+		runtime := managementCredentialRuntimePorts()
+		runtime.RedactResult = func(_ context.Context, result connectors.ActionResult, boundary CredentialBoundary) (connectors.ActionResult, error) {
+			projected, err := boundary.RedactStructured(result.Output)
+			result.Output = projected
+			return result, err
+		}
 		return ProfileTestingScope{
-			Database: fixture.database, Registry: fixture.registry, Runtime: managementCredentialRuntimePorts(),
-			SpecialTest: func(w http.ResponseWriter, _ *http.Request, _ connectors.TargetView, _ connectors.CredentialProfileView) bool {
-				w.WriteHeader(http.StatusAccepted)
-				return true
+			Database: fixture.database, Registry: fixture.registry, Runtime: runtime,
+			SpecialTest: func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
+				response := connectors.ManagementResponse{
+					StatusCode:      http.StatusAccepted,
+					Payload:         map[string]any{"ok": true, "stdout": "special-private-key"},
+					SensitiveValues: []string{"special-private-key"},
+				}
+				return &response, nil
 			},
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
@@ -124,16 +130,14 @@ func TestProfileTestingHandlerHonorsSpecialTestAndFailsClosedOnDetailRedaction(t
 	})
 	specialResponse := httptest.NewRecorder()
 	special.Test(specialResponse, newRequest())
-	if specialResponse.Code != http.StatusAccepted {
+	if specialResponse.Code != http.StatusAccepted || strings.Contains(specialResponse.Body.String(), "special-private-key") {
 		t.Fatalf("special response=%d %s", specialResponse.Code, specialResponse.Body.String())
 	}
 
 	redactionFailure := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry, Runtime: managementCredentialRuntimePorts(),
-			SpecialTest: func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool {
-				return false
-			},
+			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error) {
 				return nil, errors.New("redaction failed")
 			},
@@ -152,9 +156,7 @@ func TestProfileTestingHandlerRejectsMalformedTargetAndProfileIDs(t *testing.T) 
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry, Runtime: managementCredentialRuntimePorts(),
-			SpecialTest: func(http.ResponseWriter, *http.Request, connectors.TargetView, connectors.CredentialProfileView) bool {
-				return false
-			},
+			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
 			},
@@ -183,6 +185,10 @@ func TestProfileTestingHandlerRejectsMalformedTargetAndProfileIDs(t *testing.T) 
 			t.Fatalf("ids=%v response=%d %s", ids, response.Code, response.Body.String())
 		}
 	}
+}
+
+func noSpecialProfileTest(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
+	return nil, nil
 }
 
 func managementCredentialRuntimePorts() CredentialRuntimePorts {

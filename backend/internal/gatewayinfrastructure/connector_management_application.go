@@ -182,13 +182,13 @@ func (application *ConnectorManagementApplication) workspace(handle *WorkspaceHa
 				gateway, _ := application.runtime.RuntimeActionPorts(handle, target.ConnectorKind)
 				return adapter.BeforeDeleteCredentialProfile(ctx, gateway, application.runtime.TargetLifecycleRuntime(handle, target.ConnectorKind), connectorTarget(target), connectorCredentialProfile(profile))
 			},
-			SpecialTest: func(w http.ResponseWriter, r *http.Request, target connectors.TargetView, profile connectors.CredentialProfileView) bool {
+			SpecialTest: func(ctx context.Context, target connectors.TargetView, profile connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
 				adapter := application.runtime.CredentialProfileTester(target.ConnectorKind)
 				if adapter == nil {
-					return false
+					return nil, nil
 				}
-				adapter.TestCredentialProfile(application.runtime.PeerGateway(), w, r, application.runtime.DataRuntime(handle, target.ConnectorKind), target, profile)
-				return true
+				response, err := adapter.TestCredentialProfile(ctx, application.runtime.PeerGateway(), application.runtime.DataRuntime(handle, target.ConnectorKind), target, profile)
+				return &response, err
 			},
 			RedactDetails: func(ctx context.Context, details map[string]any, boundary connectormgmt.CredentialBoundary) (map[string]any, error) {
 				return application.ports.RedactDetails(ctx, handle, details, boundary)

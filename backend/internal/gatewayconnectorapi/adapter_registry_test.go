@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 type testRouteAdapter []RouteDefinition
@@ -29,6 +31,28 @@ func (a testRouteAdapter) Routes() []RouteDefinition {
 
 func testReadRouteHandler(ReadRouteGateway, http.ResponseWriter, *http.Request)         {}
 func testMutationRouteHandler(MutationRouteGateway, http.ResponseWriter, *http.Request) {}
+
+func TestManagementAdaptersCannotOwnHTTPSerialization(t *testing.T) {
+	responseWriter := reflect.TypeOf((*http.ResponseWriter)(nil)).Elem()
+	httpRequest := reflect.TypeOf((*http.Request)(nil))
+	managementResponse := reflect.TypeOf(connectors.ManagementResponse{})
+	for name, contract := range map[string]reflect.Type{
+		"draft":   reflect.TypeOf((*DraftTester)(nil)).Elem(),
+		"profile": reflect.TypeOf((*CredentialProfileTester)(nil)).Elem(),
+		"target":  reflect.TypeOf((*TargetOperationRunner)(nil)).Elem(),
+	} {
+		method := contract.Method(0)
+		for index := 0; index < method.Type.NumIn(); index++ {
+			input := method.Type.In(index)
+			if input == responseWriter || input == httpRequest {
+				t.Fatalf("%s management adapter accepts HTTP serialization input %s", name, input)
+			}
+		}
+		if method.Type.NumOut() != 2 || method.Type.Out(0) != managementResponse {
+			t.Fatalf("%s management adapter result contract is %s", name, method.Type)
+		}
+	}
+}
 
 func TestRegisterRejectsDuplicateAdapter(t *testing.T) {
 	registry := NewRegistry()

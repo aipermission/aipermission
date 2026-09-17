@@ -59,5 +59,6 @@ func (handler *TargetDraftHTTPHandler) Test(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteInternalError(w)
 		return
 	}
-	adapter.TestDraft(handler.component.dependencies.PeerIdentity, w, r, runtime, request)
+	response, err := adapter.TestDraft(r.Context(), handler.component.dependencies.PeerIdentity, runtime, request)
+	writeManagementResponse(w, r, workspace.Credentials.Runtime, response, err)
 }
