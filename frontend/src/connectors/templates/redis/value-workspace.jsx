@@ -5,6 +5,7 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { connectorActionBusy } from "../_shared/action-state";
 import { formatRedisValue, keyMetaText } from "./browser-helpers";
 
 export function RedisValueWorkspace({ browser, styles }) {
@@ -88,7 +89,7 @@ function ValueToolbar({ browser, styles }) {
             title="Reload key"
             aria-label="Reload key"
             onClick={() => browser.loadKey(browser.activeKey)}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </Button>
@@ -127,7 +128,7 @@ function ValueToolbar({ browser, styles }) {
         <Button
           type="button"
           className="h-8 px-3 text-xs"
-          disabled={browser.state.state !== "idle" || !browser.canSaveString}
+          disabled={connectorActionBusy(browser.state) || !browser.canSaveString}
           onClick={browser.saveStringValue}
           title={browser.editableString ? `Save ${browser.product} string value` : `This ${browser.product} type is read-only in the MVP`}
         >

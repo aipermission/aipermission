@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { connectorActionBusy } from "../_shared/action-state";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorActionRequestID } from "../_shared/action-result";
 import { filterQueues, parsePublishProperties } from "./helpers";
@@ -185,7 +186,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   async function publishMessage() {
-    if (!activeSession.active || state.state !== "idle" || publishOwnership.locked) return;
+    if (!activeSession.active || connectorActionBusy(state) || publishOwnership.locked) return;
     const routingKey = publish.routingKey.trim();
     if (!routingKey || !publish.payload) {
       setState({ state: "error", error: "Routing key and payload are required.", message: "" });

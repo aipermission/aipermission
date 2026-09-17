@@ -5,6 +5,7 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { connectorActionBusy } from "../_shared/action-state";
 import { formatMessages, queueMetaText } from "./helpers";
 import { RabbitPublishForm } from "./publish-form";
 
@@ -92,7 +93,7 @@ function DetailToolbar({ browser, styles }) {
             <Button
               type="button"
               className="h-8 px-3 text-xs"
-              disabled={browser.publishLocked || !browser.activeQueue || browser.state.state !== "idle"}
+              disabled={browser.publishLocked || !browser.activeQueue || connectorActionBusy(browser.state)}
               onClick={browser.peekMessages}
             >
               <Eye className="h-3.5 w-3.5" />
@@ -102,7 +103,7 @@ function DetailToolbar({ browser, styles }) {
               type="button"
               variant="outline"
               className="h-8 px-3 text-xs"
-              disabled={browser.publishLocked || browser.state.state !== "idle"}
+              disabled={browser.publishLocked || connectorActionBusy(browser.state)}
               onClick={browser.startPublish}
             >
               <Send className="h-3.5 w-3.5" />

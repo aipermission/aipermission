@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { connectorActionBusy } from "../_shared/action-state";
 import { mailFolderAllowed, mailProtocolCapabilities } from "./helpers";
 import { useMailActionRunner } from "./use-mail-action-runner";
 import { useMailCompose } from "./use-mail-compose";
@@ -18,7 +19,7 @@ export function useMailWorkspace({ target, approvals, session, onRefreshActivity
   }
 
   const runner = useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution: resolvePending });
-  const busy = runner.state.state !== "idle" && runner.state.state !== "error";
+  const busy = connectorActionBusy(runner.state);
   const outboundPending =
     Object.values(runner.pendingActions).some((pending) => outboundActions.has(pending.actionName)) ||
     runner.activeItems.some((item) => outboundActions.has(item.action_name) && ["approval_pending", "running"].includes(item.status));

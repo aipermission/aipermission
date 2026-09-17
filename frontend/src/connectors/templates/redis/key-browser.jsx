@@ -3,6 +3,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Checkbox, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionBusy } from "../_shared/action-state";
 
 export function RedisKeyBrowser({ browser, styles }) {
   const allSelected = browser.selectedKeys.length === browser.keys.length && browser.keys.length > 0;
@@ -24,7 +25,7 @@ export function RedisKeyBrowser({ browser, styles }) {
             title="Refresh keys"
             aria-label="Refresh keys"
             onClick={() => browser.scanKeys({ reset: true })}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </Button>
@@ -59,7 +60,7 @@ export function RedisKeyBrowser({ browser, styles }) {
             aria-label="Redis key scan pattern"
           />
         </div>
-        <Button type="submit" variant="outline" className="h-9" disabled={browser.state.state !== "idle"}>
+        <Button type="submit" variant="outline" className="h-9" disabled={connectorActionBusy(browser.state)}>
           {browser.state.state === "scanning" ? "Scanning" : "Scan keys"}
         </Button>
       </form>
@@ -78,7 +79,7 @@ export function RedisKeyBrowser({ browser, styles }) {
           type="button"
           variant="outline"
           className="h-8 px-3 text-xs"
-          disabled={browser.cursor === "0" || browser.state.state !== "idle"}
+          disabled={browser.cursor === "0" || connectorActionBusy(browser.state)}
           onClick={() => browser.scanKeys({ reset: false })}
         >
           More
@@ -87,7 +88,7 @@ export function RedisKeyBrowser({ browser, styles }) {
           type="button"
           variant="outline"
           className="h-8 px-3 text-xs text-red-600"
-          disabled={(browser.selectedCount === 0 && !browser.activeKey) || browser.state.state !== "idle"}
+          disabled={(browser.selectedCount === 0 && !browser.activeKey) || connectorActionBusy(browser.state)}
           onClick={browser.deleteSelected}
         >
           <Trash2 className="h-3.5 w-3.5" />

@@ -1,5 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { connectorActionBusy } from "../_shared/action-state";
 import { HighlightedText } from "../_shared/highlighted-text";
 import { ConnectorResultHeader, RawDataSection } from "../_shared/result-sections";
 import { resourceSubtitle } from "./helpers";
@@ -63,7 +64,7 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
 }
 
 export function KubernetesHeaderStatus({ state, mutedClass }) {
-  if (state.state !== "idle" && state.state !== "error") {
+  if (connectorActionBusy(state)) {
     return (
       <p className="mt-1 flex min-h-4 items-center gap-1 truncate text-[11px] text-amber-500">
         <LoaderCircle className="h-3 w-3 shrink-0 animate-spin" />

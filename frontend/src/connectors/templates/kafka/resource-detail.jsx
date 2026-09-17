@@ -4,6 +4,7 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { connectorActionBusy } from "../_shared/action-state";
 
 export function KafkaResourceDetail({ browser, writes, styles }) {
   return (
@@ -57,7 +58,7 @@ function DetailHeader({ browser, writes, styles }) {
             variant="outline"
             className="h-8 px-2 text-xs"
             onClick={writes.openPublishDialog}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             <Send className="h-3.5 w-3.5" />
             Publish
@@ -69,7 +70,7 @@ function DetailHeader({ browser, writes, styles }) {
             variant="outline"
             className="h-8 px-2 text-xs"
             onClick={writes.openOffsetDialog}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             <Gauge className="h-3.5 w-3.5" />
             Set offset
@@ -140,7 +141,7 @@ function ReadControls({ browser, styles }) {
       <Button
         type="button"
         className="h-9"
-        disabled={!browser.selectedName || browser.state.state !== "idle"}
+        disabled={!browser.selectedName || connectorActionBusy(browser.state)}
         onClick={() => void browser.readMessages()}
       >
         <Eye className="h-4 w-4" />

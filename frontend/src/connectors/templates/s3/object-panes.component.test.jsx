@@ -64,6 +64,73 @@ it("routes S3 browser controls while preserving selected object identity", async
   expect(callbacks.onLoadMore).toHaveBeenCalledOnce();
 });
 
+it("keeps S3 read recovery controls available after a terminal error", async () => {
+  const user = userEvent.setup();
+  const onSearch = vi.fn();
+  const onRefresh = vi.fn();
+  render(
+    <S3ObjectBrowser
+      target={{ config: { bucket: "backups" } }}
+      directories={[]}
+      objects={[]}
+      prefix=""
+      search=""
+      selectedKey=""
+      nextToken=""
+      latestAction={null}
+      state={{ state: "error", error: "bucket unavailable" }}
+      classes={classes}
+      onPrefixChange={vi.fn()}
+      onSearchChange={vi.fn()}
+      onSearch={onSearch}
+      onBucketInfo={vi.fn()}
+      onOpenTransfer={vi.fn()}
+      onOpenUpload={vi.fn()}
+      onRefresh={onRefresh}
+      onOpenParent={vi.fn()}
+      onOpenDirectory={vi.fn()}
+      onSelectObject={vi.fn()}
+      onLoadMore={vi.fn()}
+    />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.click(screen.getByTitle("Refresh objects"));
+  expect(onSearch).toHaveBeenCalledOnce();
+  expect(onRefresh).toHaveBeenCalledOnce();
+});
+
+it("keeps S3 reconciliation reads available when an outcome is unknown", () => {
+  render(
+    <S3ObjectBrowser
+      target={{ config: { bucket: "backups" } }}
+      directories={[]}
+      objects={[]}
+      prefix=""
+      search=""
+      selectedKey=""
+      nextToken=""
+      latestAction={null}
+      state={{ state: "error", error: "inspect before retrying", retryBlocked: true }}
+      classes={classes}
+      onPrefixChange={vi.fn()}
+      onSearchChange={vi.fn()}
+      onSearch={vi.fn()}
+      onBucketInfo={vi.fn()}
+      onOpenTransfer={vi.fn()}
+      onOpenUpload={vi.fn()}
+      onRefresh={vi.fn()}
+      onOpenParent={vi.fn()}
+      onOpenDirectory={vi.fn()}
+      onSelectObject={vi.fn()}
+      onLoadMore={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: "Search" })).toBeEnabled();
+  expect(screen.getByTitle("Refresh objects")).toBeEnabled();
+});
+
 it("keeps S3 object actions controlled by the detail owner", async () => {
   const user = userEvent.setup();
   const callbacks = {
