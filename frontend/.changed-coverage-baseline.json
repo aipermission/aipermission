@@ -202,9 +202,9 @@
       "lines": 100
     },
     "src/components/console/use-console-session-coordinator.js": {
-      "statements": 82.5,
+      "statements": 82.64,
       "branches": 61.9,
-      "functions": 87.5,
+      "functions": 88,
       "lines": 89.58
     },
     "src/components/console/use-console-target-selection.js": {
@@ -268,10 +268,10 @@
       "lines": 100
     },
     "src/components/file-transfer/file-transfer-panels.jsx": {
-      "statements": 67.66,
-      "branches": 80,
-      "functions": 64.63,
-      "lines": 67.66
+      "statements": 100,
+      "branches": 94,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/file-transfer/file-transfer-queue.jsx": {
       "statements": 85,
@@ -532,26 +532,26 @@
       "lines": 100
     },
     "src/components/use-database-lifecycle.js": {
-      "statements": 84.61,
-      "branches": 61.53,
-      "functions": 80,
+      "statements": 90.38,
+      "branches": 92.3,
+      "functions": 100,
       "lines": 90.24
     },
     "src/components/use-gateway-activity-resources.js": {
-      "statements": 72.22,
-      "branches": 46.15,
-      "functions": 85.71,
-      "lines": 81.25
+      "statements": 84.21,
+      "branches": 53.84,
+      "functions": 90,
+      "lines": 95.83
     },
     "src/components/use-gateway-core-resources.js": {
-      "statements": 57.3,
-      "branches": 32.69,
-      "functions": 80,
-      "lines": 61.84
+      "statements": 86.17,
+      "branches": 71.15,
+      "functions": 93.33,
+      "lines": 96.05
     },
     "src/components/use-gateway-resources.js": {
-      "statements": 84.61,
-      "branches": 50,
+      "statements": 100,
+      "branches": 66.66,
       "functions": 100,
       "lines": 100
     },
@@ -562,10 +562,10 @@
       "lines": 0
     },
     "src/components/vault/use-vault-action-approvals.js": {
-      "statements": 82.85,
-      "branches": 58.62,
-      "functions": 92.85,
-      "lines": 92.45
+      "statements": 87.67,
+      "branches": 74.35,
+      "functions": 93.75,
+      "lines": 96.42
     },
     "src/components/vault/use-vault-bindings.js": {
       "statements": 64.28,
@@ -587,7 +587,7 @@
     },
     "src/components/vault/vault-action-approval-dialog.jsx": {
       "statements": 100,
-      "branches": 94,
+      "branches": 95.83,
       "functions": 100,
       "lines": 100
     },
@@ -680,6 +680,12 @@
       "branches": 72.91,
       "functions": 100,
       "lines": 97.67
+    },
+    "src/connectors/templates/_shared/action-state.js": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/_shared/console-theme.js": {
       "statements": 0,
@@ -935,7 +941,7 @@
     },
     "src/connectors/templates/docker/resource-browser.jsx": {
       "statements": 100,
-      "branches": 47.36,
+      "branches": 68.42,
       "functions": 100,
       "lines": 100
     },
@@ -1018,16 +1024,16 @@
       "lines": 0
     },
     "src/connectors/templates/kafka/resource-browser.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 77.77,
+      "branches": 50,
+      "functions": 77.77,
+      "lines": 77.77
     },
     "src/connectors/templates/kafka/resource-detail.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 62.5,
+      "branches": 46.93,
+      "functions": 58.33,
+      "lines": 69.23
     },
     "src/connectors/templates/kafka/sasl-fields.jsx": {
       "statements": 66.66,
@@ -1102,22 +1108,22 @@
       "lines": 33.33
     },
     "src/connectors/templates/kubernetes/resource-browser.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 80,
+      "branches": 50,
+      "functions": 90,
+      "lines": 84.61
     },
     "src/connectors/templates/kubernetes/resource-detail.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 67.34,
+      "branches": 58.46,
+      "functions": 90,
+      "lines": 69.04
     },
     "src/connectors/templates/kubernetes/resource-workspace.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 75,
+      "branches": 64.7,
+      "functions": 66.66,
+      "lines": 75
     },
     "src/connectors/templates/kubernetes/restart-dialog.jsx": {
       "statements": 0,
@@ -1144,10 +1150,10 @@
       "lines": 0
     },
     "src/connectors/templates/mail/compose-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 28.8,
+      "branches": 35.44,
+      "functions": 25,
+      "lines": 31.53
     },
     "src/connectors/templates/mail/console.jsx": {
       "statements": 0,
@@ -1229,7 +1235,7 @@
     },
     "src/connectors/templates/mail/use-mail-workspace.js": {
       "statements": 88.46,
-      "branches": 77.77,
+      "branches": 87.5,
       "functions": 90.9,
       "lines": 85.71
     },
@@ -1354,22 +1360,22 @@
       "lines": 0
     },
     "src/connectors/templates/rabbitmq/publish-form.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
+      "statements": 38.46,
+      "branches": 64.7,
+      "functions": 27.27,
+      "lines": 45.45
     },
     "src/connectors/templates/rabbitmq/queue-browser.jsx": {
-      "statements": 46.66,
-      "branches": 24,
-      "functions": 55.55,
-      "lines": 53.84
+      "statements": 80,
+      "branches": 64,
+      "functions": 100,
+      "lines": 84.61
     },
     "src/connectors/templates/rabbitmq/queue-detail.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
+      "statements": 80,
+      "branches": 79.48,
+      "functions": 66.66,
+      "lines": 80
     },
     "src/connectors/templates/rabbitmq/routing-key-picker.jsx": {
       "statements": 1,
@@ -1378,10 +1384,10 @@
       "lines": 1
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": {
-      "statements": 90.84,
-      "branches": 66.01,
+      "statements": 91.89,
+      "branches": 67.92,
       "functions": 95.23,
-      "lines": 93.45
+      "lines": 94.4
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.js": {
       "statements": 96.42,
@@ -1426,10 +1432,10 @@
       "lines": 100
     },
     "src/connectors/templates/redis/key-browser.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 27.77,
+      "branches": 44.82,
+      "functions": 33.33,
+      "lines": 31.25
     },
     "src/connectors/templates/redis/list-item.jsx": {
       "statements": 0,
@@ -1462,10 +1468,10 @@
       "lines": 54
     },
     "src/connectors/templates/redis/value-workspace.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 47.36,
+      "branches": 47.05,
+      "functions": 45.45,
+      "lines": 50
     },
     "src/connectors/templates/registry.jsx": {
       "statements": 77.08,
@@ -1474,10 +1480,10 @@
       "lines": 76.59
     },
     "src/connectors/templates/s3/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 39.02,
+      "branches": 21.73,
+      "functions": 9.09,
+      "lines": 41.02
     },
     "src/connectors/templates/s3/credential-form.jsx": {
       "statements": 0,
@@ -1535,7 +1541,7 @@
     },
     "src/connectors/templates/s3/object-browser.jsx": {
       "statements": 100,
-      "branches": 52.77,
+      "branches": 66.66,
       "functions": 100,
       "lines": 100
     },
@@ -1570,8 +1576,8 @@
       "lines": 73.91
     },
     "src/connectors/templates/s3/use-s3-object-delete.js": {
-      "statements": 93.1,
-      "branches": 75,
+      "statements": 93.33,
+      "branches": 83.33,
       "functions": 100,
       "lines": 100
     },
@@ -1624,10 +1630,10 @@
       "lines": 0
     },
     "src/connectors/templates/ssh/model.js": {
-      "statements": 5.09,
-      "branches": 4.76,
-      "functions": 5.17,
-      "lines": 6.01
+      "statements": 7.64,
+      "branches": 6.06,
+      "functions": 10.34,
+      "lines": 9.02
     },
     "src/connectors/templates/ssh/operations.jsx": {
       "statements": 43.95,
@@ -1642,10 +1648,22 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 66,
-      "branches": 73.52,
-      "functions": 84.61,
-      "lines": 66.41
+      "statements": 89.15,
+      "branches": 84.17,
+      "functions": 100,
+      "lines": 90.25
+    },
+    "src/lib/async-resource.js": {
+      "statements": 100,
+      "branches": 80,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/browser-storage.js": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/connector-action-risks.js": {
       "statements": 87.5,
@@ -1654,10 +1672,10 @@
       "lines": 87.5
     },
     "src/lib/connector-permissions.js": {
-      "statements": 89.36,
-      "branches": 65.45,
+      "statements": 95.74,
+      "branches": 74.54,
       "functions": 100,
-      "lines": 96.96
+      "lines": 100
     },
     "src/lib/date-time.js": {
       "statements": 53.33,
@@ -1672,10 +1690,10 @@
       "lines": 15.78
     },
     "src/lib/file-transfer-utils.js": {
-      "statements": 37.68,
-      "branches": 34.61,
-      "functions": 40,
-      "lines": 39.62
+      "statements": 44.92,
+      "branches": 38.46,
+      "functions": 50,
+      "lines": 49.05
     },
     "src/lib/gateway-context.js": {
       "statements": 100,
@@ -1762,10 +1780,10 @@
       "lines": 100
     },
     "src/lib/theme.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 92.85,
+      "branches": 62.5,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/ui-cookie.js": {
       "statements": 45.45,
@@ -1774,10 +1792,10 @@
       "lines": 62.5
     },
     "src/lib/update-check.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 93.65,
+      "branches": 81.35,
+      "functions": 100,
+      "lines": 95.83
     },
     "src/lib/use-async-action.js": {
       "statements": 96.66,

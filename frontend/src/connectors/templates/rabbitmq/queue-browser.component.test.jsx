@@ -100,3 +100,13 @@ it("renders publish and inspection details through the RabbitMQ workspace", asyn
   expect(screen.getByText("Queue and bindings")).toBeVisible();
   expect(screen.getByText("No messages peeked in this session.")).toBeVisible();
 });
+
+it("selects a queue while normalizing absent RabbitMQ counters", async () => {
+  const user = userEvent.setup();
+  const queue = { name: "jobs", vhost: "/", messages_ready: null, messages_unacknowledged: undefined, consumers: "" };
+  const model = browser({ filteredQueues: [queue], queues: [queue], latestAction: { status: "failed", action_name: "list_queues" } });
+  render(<QueueBrowser browser={model} styles={styles} />);
+  expect(screen.getAllByText(/ready 0 · unacked 0 · consumers 0/)).toHaveLength(2);
+  await user.click(screen.getByRole("button", { name: /jobs/ }));
+  expect(model.selectQueue).toHaveBeenCalledWith("jobs");
+});

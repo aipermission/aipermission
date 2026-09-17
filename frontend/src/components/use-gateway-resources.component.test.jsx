@@ -146,4 +146,40 @@ describe("useGatewayResources", () => {
       error: null,
     });
   });
+
+  it("projects gateway state and keeps core snapshots through poll failures", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/status") return { state: "running" };
+      if (path === "/api/tokens") return [{ id: 3 }];
+      if (path === "/api/settings/mcp-runtime") return { enabled: true, start_enabled: false };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    const { result } = renderResources();
+    expect(result.current.gatewayState).toBe("checking");
+
+    await act(async () => Promise.all([result.current.loadStatus(1), result.current.loadTokens(1), result.current.loadMCPRuntime(1)]));
+    expect(result.current.gatewayState).toBe("running");
+    expect(result.current.tokens.data).toEqual([{ id: 3 }]);
+    expect(result.current.mcpRuntime.data).toEqual({ enabled: true, start_enabled: false });
+
+    apiGet.mockRejectedValue(new Error("gateway offline"));
+    await act(async () => Promise.all([result.current.loadStatus(2), result.current.loadTokens(2), result.current.loadMCPRuntime(2)]));
+    expect(result.current.gatewayState).toBe("unreachable");
+    expect(result.current.tokens).toMatchObject({ state: "error", data: [{ id: 3 }], error: "gateway offline" });
+    expect(result.current.mcpRuntime).toMatchObject({ state: "error", data: { enabled: true, start_enabled: false } });
+  });
+
+  it("derives live console targets from the latest target snapshot", async () => {
+    const resolveConnectorModel = vi.fn(() => ({
+      usesLiveConsole: () => true,
+      liveConsoleRuntimeTarget: ({ target }) => ({ ...target, runtime: true }),
+    }));
+    apiGet.mockResolvedValue({ items: [{ id: 8, runtime_id: 9, connector_kind: "fixture" }] });
+    const { result } = renderResources({ resolveConnectorModel });
+    await act(async () => result.current.loadTargets());
+    expect(result.current.liveConsoleTargets).toMatchObject({
+      state: "ready",
+      data: [{ id: 8, runtime_id: 9, connector_kind: "fixture", runtime: true }],
+    });
+  });
 });

@@ -41,3 +41,26 @@ it("keeps resource selection, filtering, refresh, and tabs connector-owned", asy
   expect(onFilter).toHaveBeenCalledWith("a");
   expect(onSelect).toHaveBeenCalledWith(container);
 });
+
+it("renders empty light-theme resource views and failed action state", () => {
+  render(
+    <DockerResourceBrowser
+      resourceView="images"
+      items={[]}
+      visibleCount={0}
+      selectedContainer={null}
+      selectedResourceID=""
+      filter=""
+      state={{ state: "idle" }}
+      latestAction={{ status: "failed", action_name: "list_images" }}
+      theme="light"
+      classes={classes}
+      onRefresh={vi.fn()}
+      onSwitchView={vi.fn()}
+      onFilter={vi.fn()}
+      onSelect={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("list_images")).toBeVisible();
+  expect(screen.getByText(/No images matched/i)).toBeVisible();
+});
