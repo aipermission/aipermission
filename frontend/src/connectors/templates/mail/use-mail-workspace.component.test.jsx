@@ -136,6 +136,20 @@ it("allows a newer folder selection to supersede an in-flight message read", asy
   expect(result.current.mailbox.selectedMessage).toBeNull();
 });
 
+it("derives inactive capabilities and outbound ownership from the current approval scope", () => {
+  const scopedTarget = { ref: target.ref, public: { imap_enabled: false, smtp_auth_mode: "none" } };
+  const { result } = renderWorkspace({
+    target: scopedTarget,
+    session: undefined,
+    approvals: { data: [{ id: 72, target_ref: target.ref, action_name: "send_message", status: "running" }] },
+  });
+  expect(result.current.activeSession).toEqual({ active: false, startedAt: "" });
+  expect(result.current.outboundPending).toBe(true);
+  expect(result.current.destinationFolders).toEqual([]);
+  expect(result.current.canArchive).toBe(false);
+  expect(result.current.canDelete).toBe(false);
+});
+
 function actionResponse(actionName) {
   const outputs = {
     list_folders: { folders: [{ name: "INBOX" }, { name: "Archive" }], count: 2 },

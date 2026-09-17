@@ -66,3 +66,33 @@ it("keeps the last approval snapshot through a transient failure and recovers", 
   await act(async () => result.current.loadConnectorActionApprovals());
   expect(result.current.connectorActionApprovals).toEqual({ state: "ready", data: [], error: null });
 });
+
+it("declines approvals, refreshes messages, and preserves freshness data on failure", async () => {
+  apiGet.mockImplementation(async (path) => {
+    if (path === "/api/connector-action-approvals") return [];
+    if (path === "/api/messages") return [{ id: 4 }];
+    if (path === "/api/backup/freshness") return { items: [{ provider_id: 2 }], check_errors: [] };
+    throw new Error(`Unexpected GET ${path}`);
+  });
+  apiPost.mockResolvedValue({ ...pendingApproval, status: "declined" });
+  const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
+
+  await act(async () => result.current.loadMessages(1));
+  await act(async () => result.current.loadBackupFreshness());
+  await act(async () => result.current.declineConnectorActionApproval(12, "not now"));
+  expect(apiPost).toHaveBeenCalledWith("/api/connector-action-approvals/12/decline", { user_note: "not now" });
+  expect(result.current.messages.data).toEqual([{ id: 4 }]);
+  expect(result.current.backupFreshness.data).toEqual([{ provider_id: 2 }]);
+
+  apiGet.mockRejectedValue(new Error("provider offline"));
+  await act(async () => result.current.loadBackupFreshness());
+  expect(result.current.backupFreshness).toMatchObject({ state: "error", data: [{ provider_id: 2 }], error: "provider offline" });
+});
+
+it("refreshes approvals after a failed run before surfacing the error", async () => {
+  apiPost.mockRejectedValue(new Error("execution failed"));
+  apiGet.mockResolvedValue([]);
+  const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
+  await expect(act(async () => result.current.runConnectorActionApproval(12))).rejects.toThrow("execution failed");
+  expect(apiGet).toHaveBeenCalledWith("/api/connector-action-approvals", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+});

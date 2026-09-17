@@ -111,4 +111,17 @@ describe("VaultActionApprovalDialog", () => {
 
     expect(screen.queryByText("Requested metadata")).not.toBeInTheDocument();
   });
+
+  it("shows expiry and target context for an active approval", () => {
+    renderDialog({
+      approval: {
+        created_at: new Date(Date.now() - 1000).toISOString(),
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        approval_context: { connector_kind: "ssh", target_id: 4, profile_id: 8, expected_session_id: 12 },
+      },
+      action: { state: "running", error: "" },
+    });
+    expect(screen.getByText(/ssh target 4 · profile 8 · session 12/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
+  });
 });
