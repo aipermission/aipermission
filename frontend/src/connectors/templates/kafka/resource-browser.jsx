@@ -2,6 +2,7 @@ import { Database, RefreshCcw, Search, Users } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionBusy } from "../_shared/action-state";
 
 export function KafkaResourceBrowser({ browser, styles }) {
   return (
@@ -34,7 +35,7 @@ export function KafkaResourceBrowser({ browser, styles }) {
           title={`Refresh ${browser.view}`}
           aria-label={`Refresh ${browser.view}`}
           onClick={() => void browser.refreshList()}
-          disabled={browser.state.state !== "idle"}
+          disabled={connectorActionBusy(browser.state)}
         >
           <RefreshCcw className="h-4 w-4" />
         </Button>

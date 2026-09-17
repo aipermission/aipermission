@@ -1,6 +1,7 @@
 import { Download, Link2, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { formatBytes } from "../../../lib/file-transfer-utils";
+import { connectorActionBusy } from "../_shared/action-state";
 import { shortDate } from "./helpers";
 import { LifecycleIcon } from "./lifecycle-dialog";
 import { S3MetadataPanel } from "./metadata-panel";
@@ -26,7 +27,7 @@ export function S3ObjectDetailPane({
   onDownload,
   onDelete,
 }) {
-  const disabled = state.state !== "idle";
+  const disabled = connectorActionBusy(state);
   return (
     <section
       className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${classes.border} ${classes.subtlePanel}`}

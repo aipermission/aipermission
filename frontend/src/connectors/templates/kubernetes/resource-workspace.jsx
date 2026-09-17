@@ -1,5 +1,6 @@
 import { RotateCcw, TerminalSquare } from "lucide-react";
 import { Button } from "../../../components/ui/button";
+import { connectorActionBusy } from "../_shared/action-state";
 import { resourceSubtitle, resourceTitle } from "./helpers";
 import { KubernetesPodConsolePanel } from "./pod-console-panel";
 import { KubernetesHeaderStatus, KubernetesResourceDetail } from "./resource-detail";
@@ -73,7 +74,7 @@ function ResourceActions({ browser, restart }) {
             variant="outline"
             className="h-8 px-2 text-xs"
             onClick={() => browser.readLogs(resource)}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             Logs
           </Button>
@@ -82,7 +83,7 @@ function ResourceActions({ browser, restart }) {
             variant="outline"
             className="h-8 w-8 px-0"
             onClick={() => browser.openPodConsole(resource)}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
             title="Open live console inside this pod"
             aria-label="Open live console inside this pod"
           >
@@ -96,7 +97,7 @@ function ResourceActions({ browser, restart }) {
           variant="outline"
           className="h-8 px-2 text-xs"
           onClick={() => restart.open(resource)}
-          disabled={browser.state.state !== "idle"}
+          disabled={connectorActionBusy(browser.state)}
         >
           <RotateCcw className="h-3.5 w-3.5" />
           Restart

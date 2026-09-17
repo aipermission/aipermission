@@ -3,6 +3,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionBusy } from "../_shared/action-state";
 import { resourceKey, resourceStatus, resourceSubtitle, resourceTabs, resourceTertiary, resourceTitle, resourceTone } from "./helpers";
 
 export function KubernetesResourceBrowser({ browser, styles, theme }) {
@@ -26,7 +27,7 @@ export function KubernetesResourceBrowser({ browser, styles, theme }) {
             title="Refresh"
             aria-label="Refresh resources"
             onClick={() => browser.refreshResource(browser.tab)}
-            disabled={browser.state.state !== "idle"}
+            disabled={connectorActionBusy(browser.state)}
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </Button>

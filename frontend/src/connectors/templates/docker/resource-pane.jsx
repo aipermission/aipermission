@@ -1,6 +1,7 @@
 import { FileJson, LoaderCircle, Play, RefreshCcw, RotateCcw, Square, TerminalSquare } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
+import { connectorActionBusy } from "../_shared/action-state";
 import { DockerContainerConsolePanel } from "./container-console-panel";
 import { resourcePlaceholder, resourcePrimary, resourceSecondary, resourceSingular } from "./helpers";
 import { DockerResourceDetail, DockerResultView } from "./result-view";
@@ -103,7 +104,7 @@ function DockerResourcePaneHeader({
               <p className="truncate text-sm font-semibold">
                 {selectedResource ? resourcePrimary(resourceView, selectedResource) : `Select ${resourceSingular(resourceView)}`}
               </p>
-              {state.state !== "idle" ? (
+              {connectorActionBusy(state) ? (
                 <span className={`inline-flex shrink-0 items-center gap-1 text-xs ${classes.muted}`}>
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   Loading
@@ -119,7 +120,7 @@ function DockerResourcePaneHeader({
               viewMode={viewMode}
               showingInspect={showingInspect}
               tail={tail}
-              disabled={state.state !== "idle"}
+              disabled={connectorActionBusy(state)}
               inputClass={classes.input}
               onTailChange={onTailChange}
               onReadLogs={onReadLogs}
@@ -250,7 +251,7 @@ function DockerResourcePaneContent({
         {children}
       </DockerContainerConsolePanel>
     );
-  } else if (state.state !== "idle" && !result) {
+  } else if (connectorActionBusy(state) && !result) {
     content = (
       <EmptyPane classes={classes} fill>
         <span className="inline-flex items-center gap-2">

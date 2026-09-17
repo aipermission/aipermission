@@ -3,6 +3,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionBusy } from "../_shared/action-state";
 import { queueTotals } from "./helpers";
 
 export function QueueBrowser({ browser, styles }) {
@@ -27,7 +28,7 @@ export function QueueBrowser({ browser, styles }) {
               title="Refresh queues"
               aria-label="Refresh queues"
               onClick={browser.refreshQueues}
-              disabled={browser.state.state !== "idle" || browser.publishLocked}
+              disabled={connectorActionBusy(browser.state) || browser.publishLocked}
             >
               <RefreshCcw className="h-3.5 w-3.5" />
             </Button>

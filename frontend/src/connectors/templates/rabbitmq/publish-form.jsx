@@ -2,6 +2,7 @@ import { Send } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionBusy } from "../_shared/action-state";
 import { RoutingKeyPicker } from "./routing-key-picker";
 
 export function RabbitPublishForm({ browser, styles }) {
@@ -100,7 +101,7 @@ export function RabbitPublishForm({ browser, styles }) {
           type="submit"
           className="h-9 px-4 text-sm"
           disabled={
-            browser.publishLocked || browser.state.state !== "idle" || !browser.publish.routingKey.trim() || !browser.publish.payload
+            browser.publishLocked || connectorActionBusy(browser.state) || !browser.publish.routingKey.trim() || !browser.publish.payload
           }
         >
           <Send className="h-4 w-4" />

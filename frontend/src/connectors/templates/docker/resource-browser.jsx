@@ -2,6 +2,7 @@ import { RefreshCcw } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
+import { connectorActionBusy } from "../_shared/action-state";
 import {
   resourceKey,
   resourceLabel,
@@ -53,7 +54,7 @@ export function DockerResourceBrowser({
               className="h-8 w-8 px-0"
               title={`Refresh ${resourceLabel(resourceView).toLowerCase()}`}
               onClick={onRefresh}
-              disabled={state.state !== "idle"}
+              disabled={connectorActionBusy(state)}
             >
               <RefreshCcw className="h-3.5 w-3.5" />
             </Button>

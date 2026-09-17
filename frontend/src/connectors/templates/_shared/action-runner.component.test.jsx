@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { connectorActionBusy } from "./action-state.js";
 import { runGuardedConnectorAction } from "./action-runner.js";
 import { createRequestGuard } from "../../../lib/request-guard.js";
 
@@ -41,6 +42,14 @@ function actionResponse(overrides = {}) {
 }
 
 describe("runGuardedConnectorAction", () => {
+  it("distinguishes retriable failures from active and uncertain actions", () => {
+    expect(connectorActionBusy({ state: "idle" })).toBe(false);
+    expect(connectorActionBusy({ state: "error" })).toBe(false);
+    expect(connectorActionBusy({ state: "loading" })).toBe(true);
+    expect(connectorActionBusy({ state: "error", retryBlocked: true })).toBe(false);
+    expect(connectorActionBusy(null)).toBe(true);
+  });
+
   it("keeps a newer channel's visible state when an older channel completes", async () => {
     const list = deferred();
     const detail = deferred();

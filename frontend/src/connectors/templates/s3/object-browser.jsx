@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { formatBytes } from "../../../lib/file-transfer-utils";
+import { connectorActionBusy } from "../_shared/action-state";
 import { parentPrefix, shortDate } from "./helpers";
 
 export function S3ObjectBrowser({
@@ -29,7 +30,7 @@ export function S3ObjectBrowser({
   onSelectObject,
   onLoadMore,
 }) {
-  const disabled = state.state !== "idle";
+  const disabled = connectorActionBusy(state);
   return (
     <section
       className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${classes.border} ${classes.subtlePanel}`}
