@@ -227,6 +227,77 @@ function workflowFiles() {
   return files.sort();
 }
 
+function workflowManifestFiles() {
+  const directory = path.join(root, ".github", "workflows");
+  return fs
+    .readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
+    .map((entry) => path.join(directory, entry.name))
+    .sort();
+}
+
+function hasPullRequestTrigger(workflow) {
+  const trigger = workflow.on;
+  if (trigger === "pull_request") return true;
+  if (Array.isArray(trigger)) return trigger.includes("pull_request");
+  return plainObject(trigger) && Object.hasOwn(trigger, "pull_request");
+}
+
+function verifyWorkflowRuntimeContract(source, sourcePath = "workflow") {
+  const workflow = parseWorkflow(source, sourcePath);
+  const concurrency = workflow.concurrency;
+  if (!plainObject(concurrency)) {
+    throw new Error(`${sourcePath} must define workflow concurrency`);
+  }
+  if (
+    typeof concurrency.group !== "string" ||
+    concurrency.group.trim() === ""
+  ) {
+    throw new Error(`${sourcePath} concurrency group must be a string`);
+  }
+  if (hasPullRequestTrigger(workflow)) {
+    const expectedGroup = "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}";
+    if (concurrency.group !== expectedGroup) {
+      throw new Error(
+        `${sourcePath} pull-request concurrency group must equal the canonical workflow and run identity expression`,
+      );
+    }
+    if (
+      concurrency["cancel-in-progress"] !==
+      "${{ github.event_name == 'pull_request' }}"
+    ) {
+      throw new Error(
+        `${sourcePath} must cancel only superseded pull-request runs`,
+      );
+    }
+  } else if (concurrency["cancel-in-progress"] !== false) {
+    throw new Error(
+      `${sourcePath} non-PR runs must not cancel work already in progress`,
+    );
+  }
+  if (path.basename(sourcePath) === "publish-mcp.yml" && concurrency.group !== "publish-mcp") {
+    throw new Error(`${sourcePath} must serialize every npm publication in the publish-mcp group`);
+  }
+  if (!plainObject(workflow.jobs)) {
+    throw new Error(`${sourcePath} must define jobs`);
+  }
+  for (const [jobID, job] of Object.entries(workflow.jobs)) {
+    const timeout = job?.["timeout-minutes"];
+    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 60) {
+      throw new Error(
+        `${sourcePath} job ${jobID} must define timeout-minutes between 1 and 60`,
+      );
+    }
+  }
+}
+
+function verifyRepositoryWorkflowRuntimeContracts() {
+  for (const file of workflowManifestFiles()) {
+    const relative = path.relative(root, file);
+    verifyWorkflowRuntimeContract(fs.readFileSync(file, "utf8"), relative);
+  }
+}
+
 function verifyExternalActionPins() {
   for (const file of workflowFiles()) {
     verifyActionPinsInSource(
@@ -449,7 +520,9 @@ module.exports = {
   plainObject,
   verifyActionPinsInSource,
   verifyExternalActionPins,
+  verifyRepositoryWorkflowRuntimeContracts,
   verifyRequiredWorkflows,
+  verifyWorkflowRuntimeContract,
   workflowJobContracts,
   workflowJobs,
 };

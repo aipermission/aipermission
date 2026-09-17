@@ -10,6 +10,7 @@ const {
   plainObject,
   verifyActionPinsInSource,
   verifyExternalActionPins,
+  verifyRepositoryWorkflowRuntimeContracts,
   verifyRequiredWorkflows,
   workflowJobContracts,
   workflowJobs,
@@ -169,6 +170,11 @@ function validateRequiredCommandMigrations(policy) {
 
 function verifyWorkflows(policy = loadPolicy()) {
   verifyRequiredWorkflows(policy);
+}
+
+function verifyRepositoryWorkflows(policy = loadPolicy()) {
+  verifyWorkflows(policy);
+  verifyRepositoryWorkflowRuntimeContracts();
 }
 
 function releaseCheckTargets(makefileSource) {
@@ -495,7 +501,7 @@ function verifyRatchet(
 
 if (require.main === module) {
   try {
-    if (process.argv[2] === "--verify-workflows") verifyWorkflows();
+    if (process.argv[2] === "--verify-workflows") verifyRepositoryWorkflows();
     else if (process.argv[2] === "--verify-local-release")
       verifyLocalReleaseTargets();
     else if (process.argv[2] === "--verify-ratchet") verifyRatchet();
@@ -517,6 +523,7 @@ module.exports = {
   verifyNoRemovals,
   verifyLocalReleaseTargets,
   verifyRatchet,
+  verifyRepositoryWorkflows,
   verifyWorkflows,
   verifyActionPinsInSource,
   verifyExternalActionPins,
