@@ -1,5 +1,9 @@
 # Implementation Roadmap
 
+> **Historical design snapshot (2026):** This completed MVP sequence is kept
+> for architectural context. It is not the current roadmap. See
+> [Roadmap](../ROADMAP.md) for current public direction.
+
 This file gives the high-level sprint sequence. The detailed checklist lives in [Roadmap](../ROADMAP.md).
 
 ## Sprint 1: Runnable Skeleton

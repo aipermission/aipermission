@@ -7,8 +7,8 @@ Related central notes:
 - [MCP Permission Flow](architecture/mcp-permission-flow.md)
 - [Projects And Token Visibility](projects.md)
 - [Credential Boundary](security/credential-boundary.md)
-- [MVP Scope](mvp/scope.md)
-- [Use Cases](mvp/use-cases.md)
+- [Historical MVP Scope](mvp/scope.md)
+- [Historical MVP Use Cases](mvp/use-cases.md)
 
 `aipermission` is a local developer gateway that lets AI coding assistants
 operate on connector targets without receiving SSH private keys, SSH passwords,

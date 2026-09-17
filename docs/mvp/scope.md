@@ -1,5 +1,11 @@
 # MVP Scope
 
+> **Historical design snapshot (2026):** This document records the original
+> MVP boundary. It is not current operator documentation or an active roadmap.
+> See [What Is aipermission?](../whatis-aipermission.md),
+> [Built-In Connectors](../connectors.md), and [Roadmap](../ROADMAP.md) for the
+> current product surface.
+
 The first public MVP should stay small, usable, and honest about its boundaries.
 
 Main target:
