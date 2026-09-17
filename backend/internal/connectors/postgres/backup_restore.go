@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -552,14 +554,19 @@ func postgresCLIConnection(ctx context.Context, runtime connectors.RuntimeContex
 	if networkHost != "" {
 		env = append(env, "PGHOSTADDR="+networkHost)
 	}
-	args := []string{
-		"--host", host,
-		"--port", strconv.Itoa(port),
-		"--username", username,
-		"--dbname", database,
-		"--no-password",
-	}
+	args := []string{"--dbname", postgresCLIConnectionURL(host, port, username, database), "--no-password"}
 	return postgresCLIInvocation{Env: env, Args: args, Cleanup: cleanup}, nil
+}
+
+func postgresCLIConnectionURL(host string, port int, username, database string) string {
+	connectionURL := url.URL{
+		Scheme:  "postgresql",
+		User:    url.User(username),
+		Host:    net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:    "/" + database,
+		RawPath: "/" + url.PathEscape(database),
+	}
+	return connectionURL.String()
 }
 
 func withoutPostgresEnvironment(environment []string) []string {

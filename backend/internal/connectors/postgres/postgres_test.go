@@ -6,8 +6,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +123,24 @@ func TestPostgresCLIUsesSystemRootsForVerifiedTLS(t *testing.T) {
 	if containsPrefix(invocation.Env, "PGOPTIONS=") {
 		t.Fatalf("direct CLI connection inherited ambient PGOPTIONS: %#v", invocation.Env)
 	}
+	assertPostgresCLIConnectionURL(t, invocation.Args, "db.example.com", 5432, "reader", "app")
+}
+
+func TestPostgresCLIConnectionURLPreservesLiteralDatabaseNames(t *testing.T) {
+	tests := []string{
+		"app",
+		"review=db",
+		"host=/tmp/socket port=2 dbname=postgres",
+		"database with spaces",
+		"folder/name?sslmode=disable#fragment",
+		`quote'and\\backslash`,
+	}
+	for _, database := range tests {
+		t.Run(database, func(t *testing.T) {
+			args := []string{"--dbname", postgresCLIConnectionURL("db.example.com", 5432, "reader", database), "--no-password"}
+			assertPostgresCLIConnectionURL(t, args, "db.example.com", 5432, "reader", database)
+		})
+	}
 }
 
 func TestPostgresCLIOverSSHPreservesTLSHostIdentity(t *testing.T) {
@@ -141,9 +161,35 @@ func TestPostgresCLIOverSSHPreservesTLSHostIdentity(t *testing.T) {
 	if !containsString(invocation.Env, "PGSSLMODE=verify-full") || !containsString(invocation.Env, "PGSSLROOTCERT=system") || !containsPrefix(invocation.Env, "PGHOSTADDR=127.0.0.1") {
 		t.Fatalf("tunneled CLI environment does not separate TLS identity and dial address: %#v", invocation.Env)
 	}
-	if host := argumentValue(invocation.Args, "--host"); host != "db.internal.example" {
-		t.Fatalf("CLI TLS host = %q, want original database host", host)
+	connectionURL := assertPostgresCLIConnectionURL(t, invocation.Args, "db.internal.example", 0, "reader", "app")
+	if connectionURL.Port() == "5432" {
+		t.Fatalf("tunneled CLI URL retained remote port instead of local forwarded port: %q", connectionURL.String())
 	}
+}
+
+func assertPostgresCLIConnectionURL(t *testing.T, args []string, wantHost string, wantPort int, wantUser, wantDatabase string) *url.URL {
+	t.Helper()
+	rawURL := argumentValue(args, "--dbname")
+	connectionURL, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse Postgres CLI URL %q: %v", rawURL, err)
+	}
+	if connectionURL.Scheme != "postgresql" {
+		t.Fatalf("CLI URL scheme = %q, want postgresql", connectionURL.Scheme)
+	}
+	if connectionURL.Hostname() != wantHost || connectionURL.User == nil || connectionURL.User.Username() != wantUser {
+		t.Fatalf("CLI URL connection identity = %q, want host=%q user=%q", connectionURL.String(), wantHost, wantUser)
+	}
+	if wantPort > 0 && connectionURL.Port() != strconv.Itoa(wantPort) {
+		t.Fatalf("CLI URL port = %q, want %d", connectionURL.Port(), wantPort)
+	}
+	if strings.TrimPrefix(connectionURL.Path, "/") != wantDatabase {
+		t.Fatalf("CLI URL database = %q, want literal %q", strings.TrimPrefix(connectionURL.Path, "/"), wantDatabase)
+	}
+	if _, passwordPresent := connectionURL.User.Password(); passwordPresent || connectionURL.Query().Has("password") || strings.Contains(rawURL, "secret") {
+		t.Fatalf("CLI URL must not contain a password: %q", rawURL)
+	}
+	return connectionURL
 }
 
 func TestGetHelpAndActionList(t *testing.T) {
