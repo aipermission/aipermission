@@ -41,8 +41,8 @@ server.tool(
   "list_connector_targets",
   "List connector targets this AIPermission token can access. Credentials and secrets are never returned.",
   {},
-  async () => {
-    return jsonToolResult(() => apiGet("/api/mcp/connector-targets"));
+  async (_args, { signal }) => {
+    return jsonToolResult(() => apiGet("/api/mcp/connector-targets", { signal }));
   },
 );
 
@@ -52,10 +52,10 @@ server.tool(
   {
     target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
-  async ({ target_ref }) => {
+  async ({ target_ref }, { signal }) => {
     return jsonToolResult(() => {
       const params = new URLSearchParams({ target_ref });
-      return apiGet(`/api/mcp/connector-help?${params.toString()}`);
+      return apiGet(`/api/mcp/connector-help?${params.toString()}`, { signal });
     });
   },
 );
@@ -66,10 +66,10 @@ server.tool(
   {
     target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
-  async ({ target_ref }) => {
+  async ({ target_ref }, { signal }) => {
     return jsonToolResult(() => {
       const params = new URLSearchParams({ target_ref });
-      return apiGet(`/api/mcp/connector-actions?${params.toString()}`);
+      return apiGet(`/api/mcp/connector-actions?${params.toString()}`, { signal });
     });
   },
 );
@@ -84,15 +84,19 @@ server.tool(
     reason: z.string().optional().describe("Why this connector action is needed."),
     idempotency_key: idempotencyKeySchema,
   },
-  async ({ target_ref, action_name, input, reason, idempotency_key }) => {
+  async ({ target_ref, action_name, input, reason, idempotency_key }, { signal }) => {
     return jsonToolResult(() =>
-      apiPost("/api/mcp/connector-actions/call", {
-        target_ref,
-        action_name,
-        input: input || {},
-        reason: reason || "",
-        idempotency_key,
-      }),
+      apiPost(
+        "/api/mcp/connector-actions/call",
+        {
+          target_ref,
+          action_name,
+          input: input || {},
+          reason: reason || "",
+          idempotency_key,
+        },
+        { signal },
+      ),
     );
   },
 );
@@ -103,8 +107,8 @@ server.tool(
   {
     request_id: z.number().int().positive().describe("Request id returned by call_connector_action."),
   },
-  async ({ request_id }) => {
-    return jsonToolResult(() => apiGet(`/api/mcp/connector-action-requests/${request_id}`));
+  async ({ request_id }, { signal }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/connector-action-requests/${request_id}`, { signal }));
   },
 );
 
@@ -112,12 +116,12 @@ server.tool(
   "list_vault_items",
   "List secret names and bounded non-secret Vault metadata for projects this token can read. Secret values are never returned.",
   listVaultItemsSchema,
-  async ({ project_ref }) => {
+  async ({ project_ref }, { signal }) => {
     return jsonToolResult(() => {
       const params = new URLSearchParams();
       if (project_ref) params.set("project_ref", project_ref);
       const query = params.toString();
-      return apiGet(`/api/mcp/vault-items${query ? `?${query}` : ""}`);
+      return apiGet(`/api/mcp/vault-items${query ? `?${query}` : ""}`, { signal });
     });
   },
 );
@@ -126,15 +130,19 @@ server.tool(
   "call_vault_action",
   "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, secret_type, generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
   callVaultActionSchema,
-  async ({ project_ref, action_name, input, reason, idempotency_key }) => {
+  async ({ project_ref, action_name, input, reason, idempotency_key }, { signal }) => {
     return jsonToolResult(() =>
-      apiPost("/api/mcp/vault-actions/call", {
-        project_ref,
-        action_name,
-        input,
-        reason,
-        idempotency_key,
-      }),
+      apiPost(
+        "/api/mcp/vault-actions/call",
+        {
+          project_ref,
+          action_name,
+          input,
+          reason,
+          idempotency_key,
+        },
+        { signal },
+      ),
     );
   },
 );
@@ -143,8 +151,8 @@ server.tool(
   "get_vault_action_request",
   "Read one Vault action request after call_vault_action returns approval_pending. Responses never include secret values.",
   vaultActionRequestSchema,
-  async ({ request_id }) => {
-    return jsonToolResult(() => apiGet(`/api/mcp/vault-action-requests/${request_id}`));
+  async ({ request_id }, { signal }) => {
+    return jsonToolResult(() => apiGet(`/api/mcp/vault-action-requests/${request_id}`, { signal }));
   },
 );
 
@@ -152,18 +160,23 @@ server.tool(
   "cancel_vault_action_request",
   "Cancel one approval_pending Vault action request owned by this token. Running or terminal requests cannot be canceled.",
   vaultActionRequestSchema,
-  async ({ request_id }) => {
-    return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}, { requestID: request_id }));
+  async ({ request_id }, { signal }) => {
+    return jsonToolResult(() => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}, { requestID: request_id, signal }));
   },
 );
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-async function apiGet(path) {
-  return apiRequest(path, {
-    method: "GET",
-  });
+async function apiGet(path, context = {}) {
+  return apiRequest(
+    path,
+    {
+      method: "GET",
+    },
+    undefined,
+    context,
+  );
 }
 
 async function apiPost(path, body, context = {}) {
@@ -199,9 +212,20 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
   }
   const timeout = apiTimeoutMs;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeout);
+  const cancelRequest = () => controller.abort();
+  context.signal?.addEventListener("abort", cancelRequest, { once: true });
   let bodyReceived = false;
+  let dispatchStarted = false;
   try {
+    if (context.signal?.aborted) {
+      throw new Error("MCP request was canceled.");
+    }
+    dispatchStarted = true;
     const response = await fetch(request, { signal: controller.signal });
     const text = await response.text();
     const data = response.status === 204 ? null : parseResponseBody(text);
@@ -212,9 +236,12 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
     return data;
   } catch (error) {
     let failure = bodyReceived ? error : new Error("Gateway response unavailable or invalid.", { cause: error });
-    if (controller.signal.aborted) {
+    if (timedOut) {
       failure = new Error(`AIPermission API request timed out after ${timeout}ms`, { cause: error });
+    } else if (context.signal?.aborted) {
+      failure = new Error("MCP request was canceled.", { cause: error });
     }
+    if (!dispatchStarted) throw failure;
     const definitelyNotDispatched = !bodyReceived && isDefinitePredispatchTransportError(error);
     if (definitelyNotDispatched) {
       throw new Error("AIPermission gateway connection failed before request dispatch.", { cause: error });
@@ -233,6 +260,7 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
     throw failure;
   } finally {
     clearTimeout(timer);
+    context.signal?.removeEventListener("abort", cancelRequest);
   }
 }
 
