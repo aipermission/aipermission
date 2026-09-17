@@ -28,6 +28,22 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const labelInputRef = useRef(null);
+  const blurTimerRef = useRef(null);
+  const focusTimerRef = useRef(null);
+
+  function cancelTimer(timerRef) {
+    if (timerRef.current === null) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+
+  useEffect(
+    () => () => {
+      cancelTimer(blurTimerRef);
+      cancelTimer(focusTimerRef);
+    },
+    [],
+  );
 
   useEffect(() => {
     setLabelName("");
@@ -50,7 +66,19 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   const output = entryOutput(item);
 
   function focusLabelInput() {
-    window.setTimeout(() => labelInputRef.current?.focus(), 0);
+    cancelTimer(focusTimerRef);
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null;
+      labelInputRef.current?.focus();
+    }, 0);
+  }
+
+  function closeSuggestionsAfterBlur() {
+    cancelTimer(blurTimerRef);
+    blurTimerRef.current = window.setTimeout(() => {
+      blurTimerRef.current = null;
+      setSuggestionsOpen(false);
+    }, 120);
   }
 
   async function addLabel(value = labelName) {
@@ -188,10 +216,11 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                   setActiveSuggestion(0);
                 }}
                 onFocus={() => {
+                  cancelTimer(blurTimerRef);
                   setSuggestionsOpen(true);
                   setActiveSuggestion(0);
                 }}
-                onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+                onBlur={closeSuggestionsAfterBlur}
                 onKeyDown={handleLabelKeyDown}
                 placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
                 disabled={state.state === "saving"}
