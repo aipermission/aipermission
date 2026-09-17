@@ -64,6 +64,20 @@ not host the AIPermission web/API gateway for other clients.
 
 If the default frontend port is occupied, it can be changed through environment variables.
 
+## Services On The Docker Host
+
+For a Direct connector target that runs on the same machine as AIPermission,
+use `host.docker.internal` instead of `localhost`. Both Compose files map this
+name to Docker's host gateway, including on native Linux Docker Engine. Docker
+Desktop provides the same hostname.
+
+The target service must listen on an address reachable from the Docker bridge;
+a service bound only to host `127.0.0.1` is not reachable from a container.
+Prefer binding that service to the host's Docker bridge address when it supports
+one. If it must listen on a broader host interface, restrict its port with the
+host firewall. Do not expose the AIPermission gateway itself: its UI/API remains
+bound to host `127.0.0.1` as described above.
+
 ## MCP URL
 
 MCP clients should use the local gateway URL:

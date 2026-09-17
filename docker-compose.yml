@@ -56,6 +56,8 @@ services:
         VITE_MCP_API_URL: ${AIPERMISSION_MCP_API_URL:-}
     container_name: aipermission-frontend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${AIPERMISSION_FRONTEND_PORT:-3210}:3210"
 

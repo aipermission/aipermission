@@ -46,6 +46,8 @@ services:
     image: ghcr.io/aipermission/aipermission-frontend:${AIPERMISSION_VERSION:-0.2.53}
     container_name: aipermission-frontend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${AIPERMISSION_FRONTEND_PORT:-3210}:3210"
 
