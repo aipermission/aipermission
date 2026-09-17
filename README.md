@@ -210,8 +210,10 @@ stale and require a fresh approval. See
 Important boundaries:
 
 - Runtime data is stored in a SQLCipher-encrypted local SQLite database.
-- Connector credential values stay inside the gateway and are not returned to
-  the AI client.
+- Connector-profile credentials stay gateway-owned and are not exposed as
+  credential data to the AI client. Permitted target output remains untrusted;
+  see the [credential boundary](docs/security/credential-boundary.md) for the
+  exact class-specific response and redaction contract.
 - MCP clients authenticate with scoped API tokens, not connector credentials.
 - Web mutations require the unlocked local browser session and CSRF checks.
 - Connector outputs, command text, mail content, paths, and notes are untrusted

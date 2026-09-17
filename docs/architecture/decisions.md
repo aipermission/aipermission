@@ -44,7 +44,10 @@ Consequence:
 
 - The database password is unrecoverable.
 - The vault is not a second independent security boundary if the encrypted database and password are both compromised.
-- Secret payloads must not be returned by REST or MCP responses.
+- Connector-profile secrets remain write-only/masked metadata. API-token
+  creation, local Project Vault reveal, pending approval detail, and raw
+  artifact downloads follow the explicit class-specific exceptions and limits
+  in the [credential boundary](../security/credential-boundary.md).
 
 ## ADR-003: SSH Host Key Trust Is Local Machine State
 
