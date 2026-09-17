@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	mailconnector "github.com/aipermission/aipermission/backend/internal/connectors/mail"
+	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
+	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 )
 
 type fakeResolver struct {
@@ -336,7 +339,7 @@ func TestServicePrepareRejectsSensitiveInputInDisplayFields(t *testing.T) {
 	for _, prepared := range []connectors.PreparedAction{
 		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Title: "Send secret-value"},
 		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Summary: "secret-value"},
-		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, Preview: map[string]any{"value": "secret-value"}},
+		{ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34, ActionName: "query_readonly", Risk: connectors.RiskRead, ContextMaterial: map[string]any{"value": "secret-value"}},
 	} {
 		connector := &prepareConnector{kind: "memory", prepared: &prepared, actions: []connectors.ActionDefinition{{
 			Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
@@ -356,6 +359,100 @@ func TestServicePrepareRejectsSensitiveInputInDisplayFields(t *testing.T) {
 		}); err == nil || !strings.Contains(err.Error(), "sensitive input") {
 			t.Fatalf("prepared display leak was accepted: prepared=%#v err=%v", prepared, err)
 		}
+	}
+}
+
+func TestServicePrepareAllowsSensitiveInputOnlyInEncryptedApprovalPreview(t *testing.T) {
+	prepared := connectors.PreparedAction{
+		ConnectorKind: "memory", TargetRef: "memory:21:34", ProfileID: 34,
+		ActionName: "query_readonly", Risk: connectors.RiskRead,
+		Preview: map[string]any{"payload": "secret-value"},
+		Payload: map[string]any{"payload": "secret-value"},
+	}
+	connector := &prepareConnector{kind: "memory", prepared: &prepared, actions: []connectors.ActionDefinition{{
+		Name: "query_readonly", Label: "Query", Description: "Query.", Risk: connectors.RiskRead,
+		InputSchema:          connectors.Schema{Fields: []connectors.Field{{Name: "payload", Label: "Payload", Type: connectors.FieldString, Required: true}}},
+		SensitiveInputFields: []string{"payload"},
+	}}}
+	registry := connectors.NewRegistry()
+	if err := registry.Register(connector); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry, &fakeResolver{
+		target:  connectors.TargetView{ID: 21, Ref: "memory:21:34", ConnectorKind: "memory"},
+		profile: connectors.CredentialProfileView{ID: 34, TargetID: 21, ConnectorKind: "memory"},
+	})
+
+	result, err := service.Prepare(t.Context(), PrepareRequest{
+		TargetRef: "memory:21:34", ActionName: "query_readonly", Input: map[string]any{"payload": "secret-value"},
+	})
+	if err != nil {
+		t.Fatalf("prepare sensitive approval content: %v", err)
+	}
+	if result.Action.Preview["payload"] != "secret-value" {
+		t.Fatalf("approval preview = %#v", result.Action.Preview)
+	}
+}
+
+func TestServicePrepareAcceptsBuiltInSensitiveWriteActions(t *testing.T) {
+	tests := []struct {
+		name      string
+		connector connectors.Connector
+		target    connectors.TargetView
+		profile   connectors.CredentialProfileView
+		action    string
+		input     map[string]any
+	}{
+		{
+			name: "redis set string", connector: redisconnector.New(), action: redisconnector.ActionSetString,
+			target:  connectors.TargetView{ID: 1, Ref: "redis:1:1", ConnectorKind: redisconnector.Kind},
+			profile: connectors.CredentialProfileView{ID: 1, TargetID: 1, ConnectorKind: redisconnector.Kind},
+			input:   map[string]any{"key": "review-key", "value": "normal-message-content"},
+		},
+		{
+			name: "rabbitmq publish", connector: rabbitmqconnector.New(), action: rabbitmqconnector.ActionPublish,
+			target:  connectors.TargetView{ID: 2, Ref: "rabbitmq:2:2", ConnectorKind: rabbitmqconnector.Kind},
+			profile: connectors.CredentialProfileView{ID: 2, TargetID: 2, ConnectorKind: rabbitmqconnector.Kind},
+			input:   map[string]any{"routing_key": "review-queue", "payload": "normal-message-content"},
+		},
+		{
+			name: "mail send", connector: mailconnector.New(), action: mailconnector.ActionSendMessage,
+			target: connectors.TargetView{ID: 3, Ref: "mail:3:3", ConnectorKind: mailconnector.Kind, Config: map[string]any{
+				"imap_host": "imap.example.com", "smtp_host": "smtp.example.com",
+			}},
+			profile: connectors.CredentialProfileView{ID: 3, TargetID: 3, ConnectorKind: mailconnector.Kind, Public: map[string]any{
+				"mailbox_address": "sender@example.com", "smtp_auth_mode": "reuse_imap",
+			}},
+			input: map[string]any{"to": []any{"recipient@example.com"}, "subject": "review subject", "text_body": "normal-message-content"},
+		},
+		{
+			name: "mail reply", connector: mailconnector.New(), action: mailconnector.ActionReplyMessage,
+			target: connectors.TargetView{ID: 4, Ref: "mail:4:4", ConnectorKind: mailconnector.Kind, Config: map[string]any{
+				"imap_host": "imap.example.com", "smtp_host": "smtp.example.com",
+			}},
+			profile: connectors.CredentialProfileView{ID: 4, TargetID: 4, ConnectorKind: mailconnector.Kind, Public: map[string]any{
+				"mailbox_address": "sender@example.com", "smtp_auth_mode": "reuse_imap",
+			}},
+			input: map[string]any{
+				"message_ref": map[string]any{"folder": "INBOX", "uidvalidity": 1, "uid": 1},
+				"to":          []any{"recipient@example.com"}, "subject": "review subject", "text_body": "normal-message-content",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registry := connectors.NewRegistry()
+			if err := registry.Register(test.connector); err != nil {
+				t.Fatal(err)
+			}
+			service := NewService(registry, &fakeResolver{target: test.target, profile: test.profile})
+			if _, err := service.Prepare(t.Context(), PrepareRequest{
+				TargetRef: test.target.Ref, ActionName: test.action, Input: test.input, Reason: "review shared preparation",
+			}); err != nil {
+				t.Fatalf("prepare built-in action through shared service: %v", err)
+			}
+		})
 	}
 }
 

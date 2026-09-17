@@ -260,20 +260,10 @@ func (r *Runtime) CredentialBoundaryForRequest(ctx context.Context, requestID in
 	if boundary, ok := r.CredentialBoundary(requestID); ok {
 		return boundary, nil
 	}
-	store := connectortargets.NewStore(r.database)
-	request, err := store.GetActionRequest(ctx, requestID)
+	boundary, request, err := r.storedCredentialBoundaryForRequest(ctx, requestID)
 	if err != nil {
 		return actionresult.CredentialBoundary{}, err
 	}
-	profile, err := store.GetCredentialProfile(ctx, request.TargetID, request.ProfileID)
-	if err != nil {
-		return actionresult.CredentialBoundary{}, err
-	}
-	secrets, err := r.sealedRecords.OpenCredentialProfile(profile.ID, profile.EncryptedSecretJSON)
-	if err != nil {
-		return actionresult.CredentialBoundary{}, err
-	}
-	boundary := actionresult.NewCredentialBoundary(secrets)
 	if request.EncryptedPayloadJSON == "" {
 		return boundary, nil
 	}
@@ -284,4 +274,29 @@ func (r *Runtime) CredentialBoundaryForRequest(ctx context.Context, requestID in
 	boundary.Add(actionresult.SensitiveValues(envelope.Input, envelope.Payload, envelope.SensitiveInputFields)...)
 	boundary.Add(actionresult.SensitiveValues(envelope.ApprovalPreview, nil, envelope.SensitiveInputFields)...)
 	return boundary, nil
+}
+
+// approvalCredentialBoundaryForRequest intentionally excludes declared action
+// input. Exact action content is visible only through the authenticated local
+// approval detail, while stored connector credentials remain masked there.
+func (r *Runtime) approvalCredentialBoundaryForRequest(ctx context.Context, requestID int64) (actionresult.CredentialBoundary, error) {
+	boundary, _, err := r.storedCredentialBoundaryForRequest(ctx, requestID)
+	return boundary, err
+}
+
+func (r *Runtime) storedCredentialBoundaryForRequest(ctx context.Context, requestID int64) (actionresult.CredentialBoundary, connectortargets.ActionRequest, error) {
+	store := connectortargets.NewStore(r.database)
+	request, err := store.GetActionRequest(ctx, requestID)
+	if err != nil {
+		return actionresult.CredentialBoundary{}, connectortargets.ActionRequest{}, err
+	}
+	profile, err := store.GetCredentialProfile(ctx, request.TargetID, request.ProfileID)
+	if err != nil {
+		return actionresult.CredentialBoundary{}, connectortargets.ActionRequest{}, err
+	}
+	secrets, err := r.sealedRecords.OpenCredentialProfile(profile.ID, profile.EncryptedSecretJSON)
+	if err != nil {
+		return actionresult.CredentialBoundary{}, connectortargets.ActionRequest{}, err
+	}
+	return actionresult.NewCredentialBoundary(secrets), request, nil
 }

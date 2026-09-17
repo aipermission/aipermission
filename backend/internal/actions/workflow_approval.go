@@ -119,7 +119,7 @@ func (r *Runtime) ApprovalPreview(ctx context.Context, item connectortargets.Act
 	if envelope.ApprovalPreview == nil {
 		return item.Preview, nil
 	}
-	boundary, err := r.CredentialBoundaryForRequest(ctx, item.ID)
+	boundary, err := r.approvalCredentialBoundaryForRequest(ctx, item.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load connector approval credential boundary: %w", err)
 	}

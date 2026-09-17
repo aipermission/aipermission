@@ -135,7 +135,9 @@ type ActionRequest struct {
 }
 
 // PreparedAction is the immutable execution payload produced before permission
-// evaluation and approval. Preview is safe for display; Payload is the raw
+// evaluation and approval. Preview may contain declared sensitive action input
+// that an authenticated local operator must inspect; core encrypts that exact
+// approval view and persists only its redacted projection. Payload is the raw
 // connector-specific execution payload that core may encrypt for later use.
 type PreparedAction struct {
 	ConnectorKind string    `json:"connector_kind"`

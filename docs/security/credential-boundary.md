@@ -142,7 +142,7 @@ AIPermission does and does not guarantee.
 | --- | --- | --- | --- |
 | SQLCipher and gateway-vault storage | Mandatory | Supported database records at rest and connector/Project Vault secret payloads | Protection after the database is unlocked or the trusted local process/browser is compromised |
 | Gateway-held connector credentials | Mandatory, even when optional redaction is off | Stored credential values, registered normalized forms, and registered reusable wire forms across REST/MCP output, connector errors, history, and audit | Detection of an unregistered transformation or unrelated sensitive data read from the target |
-| Schema-declared sensitive action input | Mandatory for every declared field | Persisted input previews plus exact reflected values from `SensitiveInputFields` | Fields a connector contributor failed to declare, or derived values that were not registered |
+| Schema-declared sensitive action input | Mandatory for every declared field outside the authenticated local pending-approval detail | Persisted input/preview, history, audit, MCP responses, and reflected result values from `SensitiveInputFields` | The exact bounded action content intentionally decrypted for a pending local approval decision; fields a connector contributor failed to declare; or derived values that were not registered |
 | Schema-declared sensitive connector output | Mandatory for every declared field | Output fields listed in `OutputHint.SensitiveFields`, including connector-specific names | Secret content placed in undeclared arbitrary fields |
 | Built-in basic patterns | Best effort | Common password, token, API-key, bearer-token, and private-key shapes | Every encoding, split value, novel format, or ordinary-looking secret |
 | Operator custom regex rules | Deterministic for text that matches a valid configured expression; coverage remains best effort | Additional project- or provider-specific text patterns | Values the expression does not match, non-text semantics, or a complete data-loss-prevention boundary |
@@ -165,6 +165,14 @@ duplicate key, the result is rejected instead of silently replacing data.
 Generic file-transfer browse, stat, conflict, batch-validation, and transfer
 failure paths load the same runtime credential boundary before returning,
 logging, auditing, or persisting connector-originated error text.
+
+The authenticated local approval-detail endpoint is deliberately narrower. It
+decrypts the exact bounded prepared preview so the operator can inspect message
+bodies, queue payloads, values, and other action content before deciding. That
+endpoint still masks stored connector credentials. Approval lists, mutation
+responses, history, audit, MCP responses, and backups' ordinary projections
+use the redacted preview; the exact preview exists only inside the encrypted
+action envelope until retention cleanup removes the request.
 
 If a connector has already performed remote work but its result cannot cross
 the canonical output boundary, the gateway records `outcome_unknown`. Agents
