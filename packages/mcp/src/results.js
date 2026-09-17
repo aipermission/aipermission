@@ -45,10 +45,34 @@ export function errorResult(error) {
   };
 }
 
-export async function jsonToolResult(callback) {
+export async function jsonToolResult(callback, project, mutationContext = null) {
+  if (typeof project !== "function") {
+    return errorResult(new Error("MCP tool result projector is required."));
+  }
+  let value;
   try {
-    return textResult(await callback());
+    value = await callback();
   } catch (error) {
     return errorResult(error);
   }
+  try {
+    return textResult(project(value));
+  } catch (error) {
+    return errorResult(mutationContext ? projectionOutcomeUnknown(error, mutationContext) : error);
+  }
+}
+
+function projectionOutcomeUnknown(cause, context) {
+  const error = new Error(
+    "The gateway accepted the mutation, but its response failed MCP contract validation. The operation may have completed.",
+    { cause },
+  );
+  error.resultStatus = "outcome_unknown";
+  error.code = "gateway_response_contract_outcome_unknown";
+  if (typeof context.idempotencyKey === "string") error.idempotencyKey = context.idempotencyKey;
+  if (Number.isSafeInteger(context.requestID) && context.requestID > 0) error.requestID = context.requestID;
+  error.assistantHint = context.idempotencyKey
+    ? "Reconcile the original request using the same idempotency key and unchanged input. Never retry with a new key blindly."
+    : "Inspect the original request status before repeating the operation.";
+  return error;
 }

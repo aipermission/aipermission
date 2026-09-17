@@ -88,14 +88,42 @@ test("packaged MCP accepts a timely streamed body", { timeout: 10000 }, async (t
     t,
     (_request, response) => {
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.write('{"targets":');
-      response.end("[]}");
+      response.write("[");
+      response.end("]");
     },
     2000,
   );
   const result = await client.callTool({ name: "list_connector_targets", arguments: {} });
   assert.notEqual(result.isError, true);
-  assert.deepEqual(JSON.parse(result.content[0].text), { targets: [] });
+  assert.deepEqual(JSON.parse(result.content[0].text), []);
+});
+
+test("packaged MCP rejects unexpected successful gateway fields without exposing them", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ status: "completed", provider_secret: "must-not-escape" }));
+    },
+    2000,
+  );
+  const result = await client.callTool({
+    name: "call_connector_action",
+    arguments: {
+      target_ref: "redis:1:1",
+      action_name: "get_string",
+      input: { key: "fixture" },
+      reason: "response contract fixture",
+      idempotency_key: "response-contract-fixture",
+    },
+  });
+  assert.equal(result.isError, true);
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.status, "outcome_unknown");
+  assert.equal(payload.code, "gateway_response_contract_outcome_unknown");
+  assert.equal(payload.idempotency_key, "response-contract-fixture");
+  assert.match(payload.assistant_hint, /same idempotency key/);
+  assert.doesNotMatch(result.content[0].text, /provider_secret|must-not-escape/);
 });
 
 test("one deadline spans delayed headers and continuing chunks without retry", { timeout: 10000 }, async (t) => {
@@ -113,7 +141,7 @@ test("one deadline spans delayed headers and continuing chunks without retry", {
     (_request, response) => {
       requests++;
       if (requests > 1) {
-        response.end('{"targets":[]}');
+        response.end("[]");
         return;
       }
       started = performance.now();

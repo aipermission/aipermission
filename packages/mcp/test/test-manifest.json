@@ -4,13 +4,14 @@
     "test/doctor.test.js",
     "test/init/init.test.js",
     "test/private-file.test.js",
+    "test/response-contracts.test.js",
     "test/results.test.js",
     "test/server.test.js",
     "test/skill-drift.test.js",
     "test/test-manifest-policy.test.js",
     "test/transport/http-transport.test.js"
   ],
-  "minimumTests": 116,
+  "minimumTests": 122,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",
