@@ -24,6 +24,10 @@ jobs:
           cache-dependency-path: scripts/package-lock.json
       - name: Install repository verification dependencies
         run: npm ci --prefix scripts --workspaces=false
+      - name: Repository verification production dependency audit
+        run: npm audit --prefix scripts --omit=dev --audit-level=moderate
+      - name: Repository verification full dependency audit
+        run: npm audit --prefix scripts --audit-level=high
       - name: Secret scan
         run: node scripts/secret-scan.js
       - name: Repository history secret scan

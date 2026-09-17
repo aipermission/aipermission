@@ -200,6 +200,8 @@
       "commands": [
         "node scripts/secret-scan.js",
         "npm ci --prefix scripts --workspaces=false",
+        "npm audit --prefix scripts --omit=dev --audit-level=moderate",
+        "npm audit --prefix scripts --audit-level=high",
         "sh scripts/gitleaks-history-scan.sh",
         "node scripts/line-ending-check.js",
         "node scripts/run-tooling-tests.js scripts/ci",
