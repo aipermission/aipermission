@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
+import { failedResource } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { connectorApproval, connectorApprovals } from "../lib/gateway-contracts/security-contracts";
 
@@ -20,7 +21,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
         setConnectorActionApprovals({ state: "ready", data: connectorApprovals(data), error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setConnectorActionApprovals({ state: "error", data: [], error: error.message });
+        setConnectorActionApprovals((current) => failedResource(current, error));
       } finally {
         request.complete();
       }
@@ -37,7 +38,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
         setMessages({ state: "ready", data, error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setMessages({ state: "error", data: [], error: error.message });
+        setMessages((current) => failedResource(current, error));
       } finally {
         request.complete();
       }
@@ -53,7 +54,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
       setBackupFreshness({ state: "ready", data: data?.items || [], checkErrors: data?.check_errors || [], error: null });
     } catch (error) {
       if (!request.isCurrent()) return;
-      setBackupFreshness({ state: "error", data: [], checkErrors: [], error: error.message });
+      setBackupFreshness((current) => failedResource(current, error));
     } finally {
       request.complete();
     }

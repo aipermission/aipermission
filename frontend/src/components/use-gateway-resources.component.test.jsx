@@ -48,6 +48,21 @@ describe("useGatewayResources", () => {
     expect(result.current.targets.data).toEqual([{ id: 2 }]);
   });
 
+  it("keeps the last target snapshot through a transient failure and recovers", async () => {
+    apiGet
+      .mockResolvedValueOnce({ items: [{ id: 1 }] })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ items: [{ id: 2 }] });
+    const { result } = renderResources();
+
+    await act(async () => result.current.loadTargets());
+    await act(async () => result.current.loadTargets());
+    expect(result.current.targets).toEqual({ state: "error", data: [{ id: 1 }], error: "offline" });
+
+    await act(async () => result.current.loadTargets());
+    expect(result.current.targets).toEqual({ state: "ready", data: [{ id: 2 }], error: null });
+  });
+
   it("does not let an older MCP load overwrite a successful mutation", async () => {
     const older = deferred();
     apiGet.mockReturnValue(older.promise);
@@ -78,6 +93,39 @@ describe("useGatewayResources", () => {
       expect.objectContaining({ id: 1, connector_kind: "good", resource_ref: "good:credential:1" }),
     ]);
     expect(result.current.credentials.errors).toEqual(["bad: offline"]);
+  });
+
+  it("keeps each connector credential slice through a transient failure", async () => {
+    const ssh = {
+      loadCredentialResources: vi
+        .fn()
+        .mockResolvedValueOnce([{ id: 1, name: "main" }])
+        .mockRejectedValueOnce(new Error("ssh timeout")),
+    };
+    const { result } = renderResources({ connectorKinds: ["ssh"], resolveConnectorModel: () => ssh });
+
+    await act(async () => result.current.loadCredentials(1));
+    await act(async () => result.current.loadCredentials(2));
+
+    expect(result.current.credentials.data).toEqual([
+      expect.objectContaining({ id: 1, connector_kind: "ssh", resource_ref: "ssh:credential:1" }),
+    ]);
+    expect(result.current.credentials.errors).toEqual(["ssh: ssh timeout"]);
+  });
+
+  it("drops credential slices for connector kinds removed from the catalog", async () => {
+    const kinds = ["ssh", "retired"];
+    const models = {
+      ssh: { loadCredentialResources: vi.fn().mockResolvedValue([{ id: 1, name: "main" }]) },
+      retired: { loadCredentialResources: vi.fn().mockResolvedValue([{ id: 2, name: "old" }]) },
+    };
+    const { result } = renderResources({ connectorKinds: kinds, resolveConnectorModel: (kind) => models[kind] });
+
+    await act(async () => result.current.loadCredentials(1));
+    kinds.pop();
+    await act(async () => result.current.loadCredentials(2));
+
+    expect(result.current.credentials.data).toEqual([expect.objectContaining({ id: 1, connector_kind: "ssh" })]);
   });
 
   it("keeps backup freshness records and provider failures visible together", async () => {

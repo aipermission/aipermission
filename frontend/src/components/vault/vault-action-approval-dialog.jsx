@@ -7,13 +7,15 @@ import { Notice } from "../ui/notice";
 import { TerminalBlock } from "../ui/terminal-block";
 import { formatLocalTimestamp, formatRelativeAge, formatRelativeDeadline } from "../../lib/date-time";
 
+const terminalStates = new Set(["stale", "failed", "load_error"]);
+
 export function VaultActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
   const input = approval ? JSON.stringify(approval.input || {}, null, 2) : "";
   const age = approval ? formatRelativeAge(approval.created_at) : "";
   const timestamp = approval ? formatLocalTimestamp(approval.created_at) : "";
   const expiry = approval ? formatRelativeDeadline(approval.expires_at) : "";
   const expiryTimestamp = approval ? formatLocalTimestamp(approval.expires_at) : "";
-  const terminal = action.state === "stale" || action.state === "failed";
+  const terminal = terminalStates.has(action.state);
   const context = approval?.approval_context || {};
   const approvedItems = context.items || [];
   const appliesSessionEnvironment = approvedItems.length > 0;

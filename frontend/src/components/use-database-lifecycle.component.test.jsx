@@ -38,6 +38,25 @@ describe("useDatabaseLifecycle", () => {
     expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
   });
 
+  it("keeps the last database snapshot through a transient poll failure", async () => {
+    apiGet
+      .mockResolvedValueOnce({ databases: [{ unlocked: true }, { unlocked: true }] })
+      .mockRejectedValueOnce(new Error("status timeout"));
+    const { result } = renderLifecycle();
+
+    await act(async () => result.current.loadStatus(1));
+    await act(async () => result.current.loadStatus(2));
+    expect(result.current.status).toEqual({
+      state: "error",
+      data: { databases: [{ unlocked: true }, { unlocked: true }] },
+      error: "status timeout",
+    });
+
+    act(() => result.current.requestLock());
+    expect(result.current.lockDialog.open).toBe(true);
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
   it("locks the current database directly when it is the only unlocked database", async () => {
     apiGet.mockResolvedValue({ databases: [{ unlocked: true }, { unlocked: false }] });
     apiPost.mockRejectedValue(new Error("lock failed"));

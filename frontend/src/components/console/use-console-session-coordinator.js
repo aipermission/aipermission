@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
+import { failedResource } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
 import { consoleSessions } from "../../lib/gateway-contracts/security-contracts";
 import { mergeConsoleSessionData } from "../app-shell-runtime";
@@ -36,7 +37,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
         verified.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachSession(session.id));
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setSessions({ state: "error", data: [], error: error.message });
+        setSessions((current) => failedResource(current, error));
       } finally {
         request.complete();
       }

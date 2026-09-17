@@ -20,8 +20,8 @@ export function useGatewayResources({
   }, [core.status.state]);
 
   const liveConsoleTargets = useMemo(() => {
-    if (core.targets.state !== "ready") return { state: core.targets.state, data: [], error: core.targets.error };
-    return { state: "ready", data: liveConsoleRuntimeTargets(core.targets.data, resolveConnectorModel), error: null };
+    const data = liveConsoleRuntimeTargets(core.targets.data, resolveConnectorModel);
+    return { state: core.targets.state, data, error: core.targets.error };
   }, [core.targets.data, core.targets.error, core.targets.state, resolveConnectorModel]);
 
   return { ...core, ...activity, gatewayState, liveConsoleTargets };

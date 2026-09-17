@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPut } from "../lib/api";
+import { failedResource } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { normalizeCredentialResources } from "./app-shell-runtime";
 
@@ -15,6 +16,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
     data: { enabled: false, start_enabled: false },
     error: null,
   });
+  const credentialSlices = useRef(new Map());
   const requests = useRequestGuard("gateway-core-resources");
 
   const loadStatus = useCallback(
@@ -26,7 +28,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         setStatus({ state: "ready", data, error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setStatus({ state: "error", data: null, error: error.message });
+        setStatus((current) => failedResource(current, error));
       } finally {
         request.complete();
       }
@@ -45,7 +47,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         return items;
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
-        setTargets({ state: "error", data: [], error: error.message });
+        setTargets((current) => failedResource(current, error));
         return [];
       } finally {
         request.complete();
@@ -66,7 +68,13 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
           }),
         );
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
-        const data = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") credentialSlices.current.set(connectorKinds[index], result.value);
+        });
+        for (const kind of credentialSlices.current.keys()) {
+          if (!connectorKinds.includes(kind)) credentialSlices.current.delete(kind);
+        }
+        const data = connectorKinds.flatMap((kind) => credentialSlices.current.get(kind) || []);
         const errors = results
           .map((result, index) =>
             result.status === "rejected" ? `${connectorKinds[index]}: ${result.reason?.message || result.reason}` : "",
@@ -76,7 +84,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         return data;
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
-        setCredentials({ state: "error", data: [], error: error.message, errors: [] });
+        setCredentials((current) => failedResource(current, error, { errors: [] }));
         return [];
       } finally {
         request.complete();
@@ -95,7 +103,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         return data;
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
-        setTokens({ state: "error", data: [], error: error.message });
+        setTokens((current) => failedResource(current, error));
         return [];
       } finally {
         request.complete();
@@ -115,7 +123,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         return data;
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return fallback;
-        setMCPRuntime({ state: "error", data: fallback, error: error.message });
+        setMCPRuntime((current) => failedResource(current, error));
         return fallback;
       } finally {
         request.complete();
