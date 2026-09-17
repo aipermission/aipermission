@@ -9,7 +9,7 @@ body:
       value: |
         Thanks for helping improve AIPermission. Before submitting, remove credentials, private endpoints, message bodies, action payloads, and other sensitive data.
 
-        Security-sensitive reports belong in a [private GitHub Security Advisory](https://github.com/aipermission/aipermission/security/advisories/new), not a public issue.
+        Security-sensitive reports belong in the private channel described by the [Security Policy](https://github.com/aipermission/aipermission/blob/main/SECURITY.md), not a public issue.
 
   - type: textarea
     id: happened
@@ -115,11 +115,18 @@ body:
       required: true
 
   - type: textarea
-    id: evidence
+    id: logs
     attributes:
-      label: Sanitized logs or screenshots
+      label: Sanitized logs
       description: Include timestamps when relevant. Do not include secrets, endpoints, private paths, message bodies, action inputs, or database contents.
       render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Sanitized screenshots
+      description: Optional. Drag screenshots here after removing credentials, private infrastructure details, message content, and other sensitive data.
+      placeholder: Drag sanitized screenshots here.
 
   - type: textarea
     id: diagnostics
