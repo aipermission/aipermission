@@ -5,7 +5,6 @@ issues small, scoped, and friendly to contributors who are learning the codebase
 
 ## Documentation
 
-- Add screenshots to README after final visual polish.
 - Add one short example for each MCP tool response.
 - Improve provider-specific MCP setup notes as client docs change.
 - Add a short troubleshooting note for "MCP is stopped" responses.
@@ -21,7 +20,6 @@ issues small, scoped, and friendly to contributors who are learning the codebase
 
 - Add Playwright coverage for Settings security toggles.
 - Add Playwright coverage for import flow using a temporary encrypted database.
-- Add Playwright coverage for token permission edits from Console and Tokens.
 - Add backend tests for more retention combinations.
 
 ## Security And Safety
