@@ -127,7 +127,7 @@ type CredentialBoundaryPort interface {
 	Empty() bool
 	Redact(string) string
 	RedactKey(string) string
-	RedactStructured(any) any
+	RedactStructured(any) (any, error)
 	Valid() bool
 }
 
@@ -162,7 +162,7 @@ func (boundary CredentialBoundary) Redact(value string) string {
 func (boundary CredentialBoundary) RedactKey(value string) string {
 	return boundary.effective().RedactKey(value)
 }
-func (boundary CredentialBoundary) RedactStructured(value any) any {
+func (boundary CredentialBoundary) RedactStructured(value any) (any, error) {
 	return boundary.effective().RedactStructured(value)
 }
 func (boundary CredentialBoundary) Valid() bool { return boundary.effective().Valid() }

@@ -317,23 +317,35 @@ func (r CredentialBoundary) AddStructured(value any) {
 	r.Add(values...)
 }
 
-func (r CredentialBoundary) RedactStructured(value any) any {
+func (r CredentialBoundary) RedactStructured(value any) (any, error) {
 	switch typed := value.(type) {
 	case map[string]any:
 		result := make(map[string]any, len(typed))
 		for key, item := range typed {
-			result[r.RedactKey(key)] = r.RedactStructured(item)
+			redactedKey := r.RedactKey(key)
+			if _, exists := result[redactedKey]; exists {
+				return nil, fmt.Errorf("%w: credential redaction produced duplicate object key", ErrInvalidValue)
+			}
+			redactedItem, err := r.RedactStructured(item)
+			if err != nil {
+				return nil, err
+			}
+			result[redactedKey] = redactedItem
 		}
-		return result
+		return result, nil
 	case []any:
 		result := make([]any, len(typed))
 		for index, item := range typed {
-			result[index] = r.RedactStructured(item)
+			redactedItem, err := r.RedactStructured(item)
+			if err != nil {
+				return nil, err
+			}
+			result[index] = redactedItem
 		}
-		return result
+		return result, nil
 	case string:
-		return r.Redact(typed)
+		return r.Redact(typed), nil
 	default:
-		return value
+		return value, nil
 	}
 }

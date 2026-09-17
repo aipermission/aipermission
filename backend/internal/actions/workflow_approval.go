@@ -123,7 +123,11 @@ func (r *Runtime) ApprovalPreview(ctx context.Context, item connectortargets.Act
 	if err != nil {
 		return nil, fmt.Errorf("load connector approval credential boundary: %w", err)
 	}
-	redacted, ok := boundary.RedactStructured(envelope.ApprovalPreview).(map[string]any)
+	value, err := boundary.RedactStructured(envelope.ApprovalPreview)
+	if err != nil {
+		return nil, fmt.Errorf("redact connector approval preview: %w", err)
+	}
+	redacted, ok := value.(map[string]any)
 	if !ok {
 		return nil, errors.New("redact connector approval preview")
 	}
