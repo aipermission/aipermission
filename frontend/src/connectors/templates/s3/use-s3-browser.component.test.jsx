@@ -191,19 +191,67 @@ it("binds destructive S3 confirmation to the requested object", async () => {
   const clearSelection = vi.fn();
   const refreshObjects = vi.fn().mockResolvedValue([]);
   const { result, rerender } = renderHook(
-    ({ selectedKey }) => useS3ObjectDelete({ scopeKey: "s3:1:1:now", selectedKey, runAction, clearSelection, refreshObjects }),
-    { initialProps: { selectedKey: objects[0].key } },
+    ({ selectedKey, selectedETag }) =>
+      useS3ObjectDelete({
+        scopeKey: "s3:1:1:now",
+        selectedKey,
+        selectedETag,
+        trustConditionalRequests: true,
+        runAction,
+        clearSelection,
+        refreshObjects,
+      }),
+    { initialProps: { selectedKey: objects[0].key, selectedETag: '"etag-one"' } },
   );
 
   act(() => result.current.requestDelete());
-  rerender({ selectedKey: objects[1].key });
+  rerender({ selectedKey: objects[1].key, selectedETag: "etag-two" });
+  await act(async () => result.current.confirmPendingAction());
+
+  expect(runAction).toHaveBeenCalledWith(
+    expect.objectContaining({ actionName: "delete_object", input: { key: objects[0].key, expected_etag: '"etag-one"' }, busy: "deleting" }),
+  );
+  expect(clearSelection).toHaveBeenCalledOnce();
+  expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
+});
+
+it("omits conditional deletion guards for default S3 targets", async () => {
+  const runAction = vi.fn().mockResolvedValue({ action_name: "delete_object" });
+  const { result } = renderHook(() =>
+    useS3ObjectDelete({
+      scopeKey: "s3:1:1:now",
+      selectedKey: objects[0].key,
+      selectedETag: '"etag-one"',
+      runAction,
+      clearSelection: vi.fn(),
+      refreshObjects: vi.fn().mockResolvedValue([]),
+    }),
+  );
+
+  act(() => result.current.requestDelete());
   await act(async () => result.current.confirmPendingAction());
 
   expect(runAction).toHaveBeenCalledWith(
     expect.objectContaining({ actionName: "delete_object", input: { key: objects[0].key }, busy: "deleting" }),
   );
-  expect(clearSelection).toHaveBeenCalledOnce();
-  expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
+});
+
+it("omits an empty ETag when conditional S3 requests are trusted", async () => {
+  const runAction = vi.fn().mockResolvedValue({ action_name: "delete_object" });
+  const { result } = renderHook(() =>
+    useS3ObjectDelete({
+      scopeKey: "s3:1:1:now",
+      selectedKey: objects[0].key,
+      trustConditionalRequests: true,
+      runAction,
+      clearSelection: vi.fn(),
+      refreshObjects: vi.fn().mockResolvedValue([]),
+    }),
+  );
+
+  act(() => result.current.requestDelete());
+  await act(async () => result.current.confirmPendingAction());
+  expect(runAction).toHaveBeenCalledWith(expect.objectContaining({ input: { key: objects[0].key } }));
 });
 
 it("retains pending approval feedback and action failures inside the S3 confirmation", async () => {
