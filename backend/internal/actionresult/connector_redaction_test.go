@@ -54,6 +54,44 @@ func TestRedactorAppliesWorkspaceCredentialAndSchemaBoundaries(t *testing.T) {
 	}
 }
 
+func TestRedactorAlwaysAppliesCredentialBoundaryAcrossWorkspaceModes(t *testing.T) {
+	workspaceModes := []struct {
+		name   string
+		redact TextRedactor
+	}{
+		{
+			name:   "optional_redaction_disabled",
+			redact: func(_ context.Context, value string) string { return value },
+		},
+		{
+			name: "optional_redaction_enabled",
+			redact: func(_ context.Context, value string) string {
+				return strings.ReplaceAll(value, "workspace-secret", "[WORKSPACE]")
+			},
+		},
+	}
+	for _, mode := range workspaceModes {
+		t.Run(mode.name, func(t *testing.T) {
+			redactor, err := NewRedactor(mode.redact, mode.redact, 1024)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundary := NewCredentialBoundary(map[string]any{"password": "xy"})
+			result, err := redactor.ResultWithCredentialBoundary(t.Context(), connectors.ActionResult{
+				DisplayText: "password=xy; workspace-secret",
+				Output:      map[string]any{"message": "password=xy; workspace-secret"},
+			}, boundary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded := result.DisplayText + " " + fmt.Sprint(result.Output)
+			if strings.Contains(encoded, "password=xy") {
+				t.Fatalf("mandatory credential boundary was disabled: %s", encoded)
+			}
+		})
+	}
+}
+
 func TestRedactorBoundsPersistedDisplayAndErrorText(t *testing.T) {
 	redactor, err := NewRedactor(
 		func(_ context.Context, value string) string { return value },
