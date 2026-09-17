@@ -22,10 +22,15 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: publish-mcp
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Publish @aipermission/mcp
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

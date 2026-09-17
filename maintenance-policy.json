@@ -139,7 +139,8 @@
     "scripts/release/release-notes.test.js",
     "scripts/release/release-version.test.js",
     "scripts/release/source/verify-release-source.test.js",
-    "scripts/verification/verification-policy.test.js"
+    "scripts/verification/verification-policy.test.js",
+    "scripts/verification/workflow-runtime-contract.test.js"
   ],
   "windowsRuntimeTests": [
     {

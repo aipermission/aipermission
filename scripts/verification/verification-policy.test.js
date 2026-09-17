@@ -11,6 +11,7 @@ const {
   verifyActionPinsInSource,
   verifyNoRemovals,
   verifyLocalReleaseTargets,
+  verifyRepositoryWorkflows,
   verifyWorkflows,
   workflowJobs,
 } = require("../verification-policy");
@@ -137,6 +138,9 @@ test("workflow parser scopes commands to their owning job", () => {
   assert.match(jobs.get("first"), /alpha/);
   assert.doesNotMatch(jobs.get("first"), /beta/);
   assert.match(jobs.get("second"), /beta/);
+});
+test("repository workflows bound runtime and cancel only stale PR runs", () => {
+  assert.doesNotThrow(() => verifyRepositoryWorkflows());
 });
 test("workflow verification accepts only active exact commands", (t) => {
   const write = useFixture(t);
