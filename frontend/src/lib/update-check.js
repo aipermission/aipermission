@@ -40,21 +40,47 @@ function normalizeVersion(value) {
     .replace(/^v/i, "");
 }
 
-function compareVersions(a, b) {
+export function compareVersions(a, b) {
   const left = versionParts(a);
   const right = versionParts(b);
   for (let index = 0; index < 3; index += 1) {
-    if (left[index] > right[index]) return 1;
-    if (left[index] < right[index]) return -1;
+    const comparison = compareNumericIdentifier(left.numbers[index], right.numbers[index]);
+    if (comparison !== 0) return comparison;
   }
-  if (left[3] === right[3]) return 0;
-  if (left[3] === "") return 1;
-  if (right[3] === "") return -1;
-  return left[3] > right[3] ? 1 : left[3] < right[3] ? -1 : 0;
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
+  if (left.prerelease.length === 0) return 1;
+  if (right.prerelease.length === 0) return -1;
+  for (let index = 0; index < Math.max(left.prerelease.length, right.prerelease.length); index += 1) {
+    if (index >= left.prerelease.length) return -1;
+    if (index >= right.prerelease.length) return 1;
+    const comparison = comparePrereleaseIdentifier(left.prerelease[index], right.prerelease[index]);
+    if (comparison !== 0) return comparison;
+  }
+  return 0;
 }
 
 function versionParts(value) {
-  const [numbers, prerelease = ""] = normalizeVersion(value).split("-", 2);
-  const parts = numbers.split(".").map((part) => Number.parseInt(part, 10));
-  return [parts[0] || 0, parts[1] || 0, parts[2] || 0, prerelease];
+  const withoutBuild = normalizeVersion(value).split("+", 1)[0];
+  const prereleaseIndex = withoutBuild.indexOf("-");
+  const core = prereleaseIndex >= 0 ? withoutBuild.slice(0, prereleaseIndex) : withoutBuild;
+  const prerelease = prereleaseIndex >= 0 ? withoutBuild.slice(prereleaseIndex + 1).split(".") : [];
+  const numbers = core.split(".").slice(0, 3);
+  while (numbers.length < 3) numbers.push("0");
+  return { numbers: numbers.map((part) => (/^\d+$/.test(part) ? part : "0")), prerelease };
+}
+
+function comparePrereleaseIdentifier(left, right) {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) return compareNumericIdentifier(left, right);
+  if (leftNumeric) return -1;
+  if (rightNumeric) return 1;
+  return left > right ? 1 : left < right ? -1 : 0;
+}
+
+function compareNumericIdentifier(left, right) {
+  const normalizedLeft = left.replace(/^0+(?=\d)/, "");
+  const normalizedRight = right.replace(/^0+(?=\d)/, "");
+  if (normalizedLeft.length !== normalizedRight.length) return normalizedLeft.length > normalizedRight.length ? 1 : -1;
+  return normalizedLeft > normalizedRight ? 1 : normalizedLeft < normalizedRight ? -1 : 0;
 }
