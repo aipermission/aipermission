@@ -13,7 +13,7 @@ Related documentation:
 
 - [What Is AIPermission?](whatis-aipermission.md)
 - [Project Principles](project-principles.md)
-- [MVP Scope](mvp/scope.md)
+- [Historical MVP Scope](mvp/scope.md)
 - [Local Gateway](architecture/local-gateway.md)
 - [MCP Permission Flow](architecture/mcp-permission-flow.md)
 - [Credential Boundary](security/credential-boundary.md)

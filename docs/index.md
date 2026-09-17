@@ -9,14 +9,20 @@ Start here:
 
 - [What Is aipermission?](whatis-aipermission.md)
 - [Built-In Connectors](connectors.md)
-- [MVP Scope](mvp/scope.md)
-- [Use Cases](mvp/use-cases.md)
-- [Implementation Roadmap](mvp/implementation-roadmap.md)
 - [Roadmap](ROADMAP.md)
 - [Project Principles](project-principles.md)
 - [Projects And Token Visibility](projects.md)
 - [Project Vault](project-vault.md)
 - [Support Diagnostics](support-diagnostics.md)
+
+## Historical Design Records
+
+These notes preserve the original MVP decisions and are not current operator
+documentation or an active implementation plan:
+
+- [MVP Scope](mvp/scope.md)
+- [MVP Use Cases](mvp/use-cases.md)
+- [MVP Implementation Roadmap](mvp/implementation-roadmap.md)
 
 ## Architecture
 
@@ -75,7 +81,7 @@ not published for those two decisions; numbering is intentionally preserved.
 - [aipermission Docs Skill](skills/aipermission-docs/SKILL.md)
 - [aipermission Operator Skill](skills/aipermission-operator/SKILL.md)
 
-## Open Questions
+## Current Design Questions
 
 - How can manual terminal history capture improve for interactive programs and
   shells without reliable command boundaries? Manual command history already

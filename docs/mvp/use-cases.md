@@ -1,5 +1,10 @@
 # Use Cases
 
+> **Historical design snapshot (2026):** These scenarios preserve the original
+> MVP framing. For the current product surface, use
+> [What Is aipermission?](../whatis-aipermission.md),
+> [Built-In Connectors](../connectors.md), and the connector setup guides.
+
 This note defines the target usage model for aipermission.
 
 `aipermission` is not a DevOps platform. Its main use is helping a developer inspect, debug, and temporarily automate work on their own systems with AI assistance while keeping credentials out of the AI context.

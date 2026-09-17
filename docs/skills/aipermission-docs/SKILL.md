@@ -33,7 +33,7 @@ Write links as GitHub Markdown relative links from the current file:
 [MCP Permission Flow](../../architecture/mcp-permission-flow.md)
 [Credential Boundary](../../security/credential-boundary.md)
 [MCP Client Setup](../../setup/mcp-client-setup.md)
-[MVP Scope](../../mvp/scope.md)
+[Built-In Connectors](../../connectors.md)
 ```
 
 From nested docs, use `../` as needed:
@@ -91,7 +91,8 @@ Use focused notes:
 - `adr/` for stable architecture and product-scope decisions
 - `security/` for credential, token, audit, threat boundaries
 - `setup/` for Docker and MCP client setup
-- `mvp/` for scope, roadmap, demo flows
+- `mvp/` for historical MVP design records; never treat these files as current
+  operator guidance or an active roadmap
 - `api/` for REST/MCP contracts when they stabilize
 - `community/` for contributor-friendly issue pools
 - `maintainers/` for label, triage, and release-maintenance notes
@@ -170,7 +171,8 @@ Always preserve these rules:
 - MCP responses never include connector credentials or Project Vault values;
   permitted target output may still contain unrelated sensitive data.
 - API tokens are not SSH or DB credentials.
-- API tokens are masked in the UI and can be copied again for local MCP setup.
+- API tokens are shown once by default. A token can be copied again only when
+  the user explicitly enables reusable local copy for that token.
 - Token storage is protected by the local SQLCipher database password.
 - Revoked tokens must stop working immediately.
 - Backup files are raw SQLCipher `.aipdb` database downloads protected by the database password.
@@ -230,7 +232,9 @@ For notes, separate:
 - approval note: attached to a specific pending command
 - live message queue: delivered in the next MCP response
 
-For MVP, describe live messages as `send once`. User-to-AI notes may be generic or server/session scoped; server-scoped notes must only be consumed by MCP responses for that same server. Sticky messages are future work.
+Describe live messages as `send once`. User-to-AI notes may be generic or
+target/session scoped; scoped notes must only be consumed by MCP responses for
+that same target. Sticky messages are future work.
 
 ## Docker Setup Documentation Rules
 
@@ -238,8 +242,8 @@ When documenting local setup, include:
 
 - `docker compose up`
 - frontend URL
-- backend URL
-- MCP/API URL
+- same-origin `/api` and `/health` routes; the backend has no separate host port
+- MCP URL
 - SQLite volume or data path
 - gateway secret environment variable
 - `.env.example` when environment variables exist
@@ -260,7 +264,10 @@ When documenting PostgreSQL, keep the boundary clear:
   `list_connector_targets`, `get_connector_actions`, and
   `call_connector_action`; avoid inventing product-specific MCP tools unless
   the API actually adds them.
-- Advanced SQL safety such as parser enforcement, masking, limits, and readonly transactions can be deferred.
+- SQL connectors keep dialect-specific parsing and policy connector-owned while
+  enforcing bounded results, read-only transactions, and output redaction in
+  their current documented action contracts. Do not describe those controls as
+  deferred work.
 
 ## Index Maintenance
 
