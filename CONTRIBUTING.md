@@ -21,6 +21,10 @@ of scope for the core project.
 
 ## Development
 
+The reviewed contributor toolchain is Go 1.26.6 and Node.js 24. End users of
+the published MCP package only need the runtime version documented in the
+README; contribution and release checks use these exact repository versions.
+
 Backend development uses CGO and OpenSSL 3 for SQLCipher. On Debian/Ubuntu,
 install `build-essential` and `libssl-dev`. On macOS, install OpenSSL 3 with
 Homebrew and expose its include/library paths to CGO. Windows contributors can

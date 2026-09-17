@@ -97,17 +97,29 @@ Requirements:
 - Docker with Docker Compose
 - Node.js 20+ with npm/npx when using the MCP bridge or developing its package
 
+Start from a full Git checkout so version pinning and repository verification
+metadata remain available:
+
+```bash
+git clone https://github.com/aipermission/aipermission.git
+cd aipermission
+```
+
 Start from published images:
 
 ```bash
 docker compose -f docker-compose.release.yml pull
 docker compose -f docker-compose.release.yml up -d
+docker compose -f docker-compose.release.yml ps
+curl --fail http://localhost:3210/health
 ```
 
 Or build the current source tree:
 
 ```bash
 docker compose up -d --build
+docker compose ps
+curl --fail http://localhost:3210/health
 ```
 
 Open:
@@ -137,6 +149,16 @@ docker compose -f docker-compose.release.yml up -d
 Containers use the `unless-stopped` restart policy. See
 [Docker Runtime](docs/setup/docker-runtime.md) for Windows line endings, host
 services, logs, and recovery guidance.
+
+Published container images are currently built and validated for Linux AMD64.
+ARM64 hosts may use platform emulation or build from source, but native ARM64
+images are not yet part of the supported release matrix. If startup or health
+verification fails, inspect the first bounded log sample before changing the
+gateway bind or deleting local data:
+
+```bash
+docker compose -f docker-compose.release.yml logs --tail=100
+```
 
 ### First Setup
 

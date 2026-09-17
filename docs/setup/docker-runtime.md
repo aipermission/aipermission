@@ -17,6 +17,11 @@ docker compose -f docker-compose.release.yml pull
 docker compose -f docker-compose.release.yml up -d
 ```
 
+Published images are built and validated for Linux AMD64. Native ARM64 images
+are not currently published. An ARM64 host may explicitly use emulation or
+build from source, but those paths are not part of the release validation
+matrix yet.
+
 The frontend and backend use Docker's `unless-stopped` restart policy. After
 the initial Compose start, they start again when Docker starts after a host
 reboot. An intentional manual stop remains stopped until you start the stack
@@ -87,6 +92,34 @@ http://localhost:3210
 ```
 
 For MCP setup, see [MCP Client Setup](mcp-client-setup.md).
+
+## Startup Verification And Recovery
+
+After starting the stack, confirm that both services are running and that the
+loopback proxy can reach the backend:
+
+```bash
+docker compose -f docker-compose.release.yml ps
+curl --fail http://localhost:3210/health
+```
+
+For a source build, omit `-f docker-compose.release.yml`. If either check
+fails, inspect a bounded log sample first:
+
+```bash
+docker compose -f docker-compose.release.yml logs --tail=100
+```
+
+Then retry the exact pinned deployment with a full recreation:
+
+```bash
+docker compose -f docker-compose.release.yml up -d --force-recreate
+```
+
+Do not delete the `aipermission_data` volume as a startup troubleshooting step;
+it contains encrypted databases, gateway material, and SSH host trust records.
+If images are missing or intentionally being upgraded, run `pull` before the
+recreation. Source builds use `docker compose up -d --build --force-recreate`.
 
 ## Data Persistence
 
