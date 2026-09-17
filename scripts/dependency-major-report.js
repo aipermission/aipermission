@@ -5,7 +5,7 @@ const { readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const npmDirectories = ["frontend", "packages/mcp"];
+const npmDirectories = ["frontend", "packages/mcp", "scripts"];
 
 function commandOutput(command, args, cwd, acceptJSONFailure = false) {
   try {

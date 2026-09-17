@@ -26,6 +26,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             packages/mcp/package-lock.json
+            scripts/package-lock.json
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: "1.26.6"
@@ -34,6 +35,7 @@ jobs:
         run: |
           npm ci --prefix frontend --workspaces=false --ignore-scripts
           npm ci --prefix packages/mcp --workspaces=false --ignore-scripts
+          npm ci --prefix scripts --workspaces=false --ignore-scripts
       - name: Build report
         run: node scripts/dependency-major-report.js --output "$RUNNER_TEMP/dependency-major-report.md"
       - name: Publish one maintainer issue
