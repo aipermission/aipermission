@@ -32,6 +32,17 @@ describe("useTransferCenterState", () => {
     expect(result.current.activeCount).toBe(1);
   });
 
+  it("bounds poll reads without imposing a deadline on manual refresh", async () => {
+    apiGet.mockResolvedValue({ items: [] });
+    const { result } = renderHook(() => useTransferCenterState({ pollIsCurrent: () => true }));
+
+    await act(async () => result.current.loadBatches({ keepData: true }, 2));
+    await act(async () => result.current.loadBatches({ keepData: true }));
+
+    expect(apiGet.mock.calls[0][1]).toEqual({ signal: undefined, timeoutMs: 4000 });
+    expect(apiGet.mock.calls[1][1]).toEqual({ signal: undefined });
+  });
+
   it("applies an action result before replacing it with the refreshed list", async () => {
     const post = deferred();
     apiPost.mockReturnValue(post.promise);

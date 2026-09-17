@@ -39,13 +39,14 @@ describe("useGatewayResources", () => {
 
     let oldLoad;
     await act(async () => {
-      oldLoad = result.current.loadTargets();
-      await result.current.loadTargets();
+      oldLoad = result.current.loadTargets(1);
+      await result.current.loadTargets(1);
     });
     await act(async () => older.resolve({ items: [{ id: 1 }] }));
     await oldLoad;
 
     expect(result.current.targets.data).toEqual([{ id: 2 }]);
+    expect(apiGet.mock.calls[1][1]).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: 4000 }));
   });
 
   it("keeps the last target snapshot through a transient failure and recovers", async () => {
@@ -93,6 +94,7 @@ describe("useGatewayResources", () => {
       expect.objectContaining({ id: 1, connector_kind: "good", resource_ref: "good:credential:1" }),
     ]);
     expect(result.current.credentials.errors).toEqual(["bad: offline"]);
+    expect(models.good.loadCredentialResources).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
   });
 
   it("keeps each connector credential slice through a transient failure", async () => {

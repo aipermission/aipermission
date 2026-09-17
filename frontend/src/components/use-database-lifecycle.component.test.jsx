@@ -24,6 +24,7 @@ describe("useDatabaseLifecycle", () => {
     await act(async () => result.current.loadStatus(1));
 
     expect(result.current.status).toEqual({ state: "loading", data: null, error: null });
+    expect(apiGet).toHaveBeenCalledWith("/api/unlock/status", { signal: undefined, timeoutMs: 4000 });
   });
 
   it("asks which database to lock when multiple databases are unlocked", async () => {

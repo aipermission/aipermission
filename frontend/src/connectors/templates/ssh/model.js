@@ -82,8 +82,8 @@ export function emptyCredentialState() {
   };
 }
 
-export async function loadCredentialResources() {
-  const data = await apiGet("/api/connectors/ssh/credentials");
+export async function loadCredentialResources(options) {
+  const data = await apiGet("/api/connectors/ssh/credentials", options);
   return (data.items || data || []).map((item) => ({
     ...item,
     connector_kind: "ssh",

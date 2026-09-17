@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPut } from "../lib/api";
-import { failedResource } from "../lib/async-resource";
+import { failedResource, pollReadOptions } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { normalizeCredentialResources } from "./app-shell-runtime";
 
@@ -23,7 +23,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
     async (generation) => {
       const request = requests.begin("status");
       try {
-        const data = await apiGet("/api/status", { signal: request.signal });
+        const data = await apiGet("/api/status", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setStatus({ state: "ready", data, error: null });
       } catch (error) {
@@ -40,7 +40,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
     async (generation) => {
       const request = requests.begin("targets");
       try {
-        const data = await apiGet("/api/targets", { signal: request.signal });
+        const data = await apiGet("/api/targets", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
         const items = data.items || [];
         setTargets({ state: "ready", data: items, error: null });
@@ -64,7 +64,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
           connectorKinds.map(async (kind) => {
             const model = resolveConnectorModel(kind);
             if (!model?.loadCredentialResources) return [];
-            return normalizeCredentialResources(kind, await model.loadCredentialResources());
+            return normalizeCredentialResources(kind, await model.loadCredentialResources(pollReadOptions(request.signal, generation)));
           }),
         );
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
@@ -97,7 +97,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
     async (generation) => {
       const request = requests.begin("tokens");
       try {
-        const data = await apiGet("/api/tokens", { signal: request.signal });
+        const data = await apiGet("/api/tokens", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return [];
         setTokens({ state: "ready", data, error: null });
         return data;
@@ -117,7 +117,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
       const request = requests.begin("mcp-runtime");
       const fallback = { enabled: false, start_enabled: false };
       try {
-        const data = await apiGet("/api/settings/mcp-runtime", { signal: request.signal });
+        const data = await apiGet("/api/settings/mcp-runtime", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return fallback;
         setMCPRuntime({ state: "ready", data, error: null });
         return data;

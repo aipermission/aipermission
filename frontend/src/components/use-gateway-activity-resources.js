@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
-import { failedResource } from "../lib/async-resource";
+import { failedResource, pollReadOptions } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { connectorApproval, connectorApprovals } from "../lib/gateway-contracts/security-contracts";
 
@@ -16,7 +16,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
     async (generation) => {
       const request = requests.begin("connector-approvals");
       try {
-        const data = await apiGet("/api/connector-action-approvals", { signal: request.signal });
+        const data = await apiGet("/api/connector-action-approvals", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setConnectorActionApprovals({ state: "ready", data: connectorApprovals(data), error: null });
       } catch (error) {
@@ -33,7 +33,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
     async (generation) => {
       const request = requests.begin("messages");
       try {
-        const data = await apiGet("/api/messages", { signal: request.signal });
+        const data = await apiGet("/api/messages", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setMessages({ state: "ready", data, error: null });
       } catch (error) {
