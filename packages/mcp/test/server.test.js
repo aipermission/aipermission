@@ -76,8 +76,8 @@ test("Vault tools route through secret-free MCP Vault APIs", async () => {
   assert.match(source, /server\.tool\(\s*"get_vault_action_request"/);
   assert.match(source, /server\.tool\(\s*"cancel_vault_action_request"/);
   assert.match(source, /apiGet\(`\/api\/mcp\/vault-items/);
-  assert.match(source, /apiPost\("\/api\/mcp\/vault-actions\/call"/);
-  assert.match(source, /apiGet\(`\/api\/mcp\/vault-action-requests\/\$\{request_id\}`\)/);
+  assert.match(source, /apiPost\(\s*"\/api\/mcp\/vault-actions\/call"/);
+  assert.match(source, /apiGet\(\s*`\/api\/mcp\/vault-action-requests\/\$\{request_id\}`/);
   assert.match(source, /apiPost\(`\/api\/mcp\/vault-action-requests\/\$\{request_id\}\/cancel`/);
 });
 
@@ -135,11 +135,11 @@ test("connector tools route through the MCP connector API", async () => {
   assert.match(source, /server\.tool\(\s*"get_connector_actions"/);
   assert.match(source, /server\.tool\(\s*"call_connector_action"/);
   assert.match(source, /server\.tool\(\s*"get_connector_action_request"/);
-  assert.match(source, /apiGet\("\/api\/mcp\/connector-targets"/);
-  assert.match(source, /apiGet\(`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`\)/);
-  assert.match(source, /apiPost\("\/api\/mcp\/connector-actions\/call"/);
+  assert.match(source, /apiGet\(\s*"\/api\/mcp\/connector-targets"/);
+  assert.match(source, /apiGet\(\s*`\/api\/mcp\/connector-help\?\$\{params\.toString\(\)\}`/);
+  assert.match(source, /apiPost\(\s*"\/api\/mcp\/connector-actions\/call"/);
   assert.match(source, /idempotency_key:\s*idempotencyKeySchema/);
   assert.doesNotMatch(source, /idempotency_key:[\s\S]{0,120}\.optional\(\)/);
   assert.match(source, /idempotency_key,/);
-  assert.match(source, /apiGet\(`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`\)/);
+  assert.match(source, /apiGet\(\s*`\/api\/mcp\/connector-action-requests\/\$\{request_id\}`/);
 });
