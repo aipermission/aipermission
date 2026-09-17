@@ -1,9 +1,16 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
+
+test("Compose environment example excludes MCP process-only variables", () => {
+  const source = fs.readFileSync(path.join(root, ".env.example"), "utf8");
+  assert.doesNotMatch(source, /^AIPERMISSION_API_URL=/m);
+  assert.match(source, /^AIPERMISSION_MCP_API_URL=/m);
+});
 
 function composeConfig(file) {
   const migrationPort = "43211";
