@@ -184,12 +184,17 @@ New Database creates a separate named encrypted DB. Import Database imports a us
 
 ## Environment
 
-Expected MVP environment shape:
+The Compose files consume this optional local UI setting:
 
 ```env
-AIPERMISSION_BACKEND_PORT=8080
 AIPERMISSION_FRONTEND_PORT=3210
 ```
+
+The backend port remains the container-internal `8080`; Compose does not expose
+or override it. `AIPERMISSION_MCP_API_URL` is an optional frontend build hint
+for generated MCP setup and normally stays empty so the UI origin is used.
+`AIPERMISSION_API_URL` belongs to the launched MCP client process and is not a
+Compose `.env` setting.
 
 `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal
 local installs. On first start, the gateway generates a high-entropy local vault
