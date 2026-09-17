@@ -54,3 +54,15 @@ it("rejects malformed pending approvals without exposing them as ready data", as
   expect(result.current.connectorActionApprovals).toMatchObject({ state: "error", data: [] });
   expect(result.current.connectorActionApprovals.error).toMatch(/Invalid connector approvals response/);
 });
+
+it("keeps the last approval snapshot through a transient failure and recovers", async () => {
+  apiGet.mockResolvedValueOnce([pendingApproval]).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([]);
+  const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
+
+  await act(async () => result.current.loadConnectorActionApprovals());
+  await act(async () => result.current.loadConnectorActionApprovals());
+  expect(result.current.connectorActionApprovals).toEqual({ state: "error", data: [pendingApproval], error: "offline" });
+
+  await act(async () => result.current.loadConnectorActionApprovals());
+  expect(result.current.connectorActionApprovals).toEqual({ state: "ready", data: [], error: null });
+});

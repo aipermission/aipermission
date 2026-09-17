@@ -17,7 +17,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
         setStatus({ state: "ready", data, error: null });
       } catch (error) {
         if (!pollIsCurrent(generation)) return;
-        setStatus({ state: "error", data: null, error: error.message });
+        setStatus((current) => ({ state: "error", data: current.data, error: error.message }));
       }
     },
     [pollIsCurrent],

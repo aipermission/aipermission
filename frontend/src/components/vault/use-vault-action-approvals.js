@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
+import { failedResource } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
 import { vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
@@ -27,10 +28,21 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         const verified = vaultApprovals(data);
         setApprovals({ state: "ready", data: verified, error: null });
         const pending = verified.filter((item) => item.status === "approval_pending");
-        setDialog((current) => reconcileVaultApprovalDialog(current, pending, seenPendingRef.current));
+        setDialog((current) =>
+          reconcileVaultApprovalDialog(
+            current.state === "load_error" ? { ...current, state: "idle", error: null } : current,
+            pending,
+            seenPendingRef.current,
+          ),
+        );
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setApprovals({ state: "error", data: [], error: error.message });
+        setApprovals((current) => failedResource(current, error));
+        setDialog((current) =>
+          current.approval && ["idle", "error"].includes(current.state)
+            ? { ...current, state: "load_error", error: "Approval refresh failed. Refresh before making a decision." }
+            : current,
+        );
       } finally {
         request.complete();
       }
@@ -40,7 +52,7 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
 
   const run = useCallback(async () => {
     const approval = dialog.approval;
-    if (!approval) return;
+    if (!approval || approvals.state !== "ready") return;
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "running", error: null }));
     try {
@@ -60,11 +72,11 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     } finally {
       request.complete();
     }
-  }, [dialog.approval, dialog.note, load, refreshConsoleSessions, requests]);
+  }, [approvals.state, dialog.approval, dialog.note, load, refreshConsoleSessions, requests]);
 
   const decline = useCallback(async () => {
     const approval = dialog.approval;
-    if (!approval) return;
+    if (!approval || approvals.state !== "ready") return;
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "declining", error: null }));
     try {
@@ -78,7 +90,7 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     } finally {
       request.complete();
     }
-  }, [dialog.approval, dialog.note, load, requests]);
+  }, [approvals.state, dialog.approval, dialog.note, load, requests]);
 
   const close = useCallback(() => {
     requests.invalidate("decision");

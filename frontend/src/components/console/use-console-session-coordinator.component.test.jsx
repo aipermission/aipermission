@@ -245,13 +245,17 @@ describe("useConsoleSessionCoordinator", () => {
     expect(result.current.sessions.data).toEqual([]);
   });
 
-  it("reports a current session-list failure", async () => {
-    apiGet.mockRejectedValue(new Error("session service unavailable"));
+  it("keeps the last session snapshot through a transient failure and recovers", async () => {
+    const session = { id: 10, runtime_id: 7, status: "connected" };
+    apiGet.mockResolvedValueOnce([session]).mockRejectedValueOnce(new Error("session service unavailable")).mockResolvedValueOnce([]);
     const { result } = renderCoordinator();
 
     await act(async () => result.current.loadSessions());
+    await act(async () => result.current.loadSessions());
+    expect(result.current.sessions).toEqual({ state: "error", data: [session], error: "session service unavailable" });
 
-    expect(result.current.sessions).toEqual({ state: "error", data: [], error: "session service unavailable" });
+    await act(async () => result.current.loadSessions());
+    expect(result.current.sessions).toEqual({ state: "ready", data: [], error: null });
   });
 
   it("reattaches an existing live runtime session without creating another", async () => {

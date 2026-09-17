@@ -74,6 +74,42 @@ describe("useVaultActionApprovals", () => {
     expect(result.current.dialog.approval).toBeNull();
   });
 
+  it("keeps approval context read-only through a transient failure and recovers", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([pendingApproval]);
+    const { result } = renderApprovals();
+
+    await act(async () => result.current.load());
+    await act(async () => result.current.load());
+    expect(result.current.approvals).toEqual({ state: "error", data: [pendingApproval], error: "offline" });
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "load_error" });
+
+    await act(async () => result.current.run());
+    expect(apiPost).not.toHaveBeenCalled();
+
+    await act(async () => result.current.load());
+    expect(result.current.approvals).toEqual({ state: "ready", data: [pendingApproval], error: null });
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "idle", error: null });
+  });
+
+  it("does not replace an in-flight decision with a poll error", async () => {
+    const decision = deferred();
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([]);
+    apiPost.mockReturnValue(decision.promise);
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    let run;
+    act(() => {
+      run = result.current.run();
+    });
+    await act(async () => result.current.load());
+    expect(result.current.dialog.state).toBe("running");
+
+    await act(async () => decision.resolve({ status: "completed" }));
+    await run;
+    expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
+  });
+
   it("does not restore dialog state when a decision completes after dismissal", async () => {
     const decision = deferred();
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);

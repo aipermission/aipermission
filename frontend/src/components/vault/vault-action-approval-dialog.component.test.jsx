@@ -88,6 +88,14 @@ describe("VaultActionApprovalDialog", () => {
     expect(handlers.onClose).toHaveBeenCalledOnce();
   });
 
+  it("makes approvals acknowledgement-only while their source cannot refresh", () => {
+    renderDialog({ action: { state: "load_error", error: "Approval refresh failed." } });
+
+    expect(screen.getByText("Approval refresh failed.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "OK" })).toBeVisible();
+  });
+
   it("does not render approval content after the request closes", () => {
     render(
       <VaultActionApprovalDialog
