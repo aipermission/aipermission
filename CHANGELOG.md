@@ -27,8 +27,9 @@ and this project uses semantic versioning for public releases.
   classification, bounded configuration values, and source-archive test coverage.
 - MCP setup commands preserve explicitly configured local gateway origins instead of
   silently returning to the default origin.
-- Postgres read-only policy parsing accepts safe casts, declaration column lists,
-  derived-table aliases, and EXPLAIN options without hiding prohibited function calls.
+- Postgres read-only policy parsing accepts declaration column lists, derived-table
+  aliases, and EXPLAIN options while continuing to reject explicit casts and prohibited
+  function calls.
 - Recovered file transfers detach unsafe foreign temporary-path references without
   deleting files outside the active workspace.
 
