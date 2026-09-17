@@ -32,6 +32,15 @@ function composeConfig(file) {
 }
 
 for (const file of ["docker-compose.yml", "docker-compose.release.yml"]) {
+  test(`${file} exposes the Docker host alias to connector transports`, () => {
+    const { config } = composeConfig(file);
+    assert.equal(config.services.backend.network_mode, "service:frontend");
+    assert.equal(config.services.backend.extra_hosts, undefined);
+    assert.deepEqual(config.services.frontend.extra_hosts, [
+      "host.docker.internal=host-gateway",
+    ]);
+  });
+
   test(`${file} keeps migration behind its loopback proxy`, () => {
     const { config, migrationPort } = composeConfig(file);
     const migration = config.services.migration;
