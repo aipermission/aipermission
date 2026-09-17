@@ -15,7 +15,7 @@ remote gateway hosting in the core project.
 
 ## Consequences
 
-- The core project remains local-first and single-user.
+- The core project remains local-only and single-user.
 - The project does not manage accounts, organizations, tenants, billing, or
   hosted execution infrastructure.
 - Cloud mode proposals conflict with the project principles and should normally

@@ -1,6 +1,6 @@
 # Backup And Import
 
-Because aipermission is local-first, database portability should stay simple.
+Because aipermission is local-only, database portability should stay simple.
 
 ## Current Model
 

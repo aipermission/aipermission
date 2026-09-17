@@ -1,6 +1,6 @@
 # @aipermission/mcp
 
-Local-first MCP bridge for the AIPermission connector gateway.
+Local-only MCP bridge for the AIPermission connector gateway.
 
 AIPermission lets AI coding assistants use scoped connector actions through a
 local gateway without receiving SSH private keys, database passwords, API

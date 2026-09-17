@@ -1,6 +1,6 @@
 # Local Gateway
 
-`aipermission` is a local-first developer gateway.
+`aipermission` is a local-only developer gateway.
 
 The user runs it on their own machine with Docker. The gateway owns the web UI, HTTP API, MCP bridge behavior, SQLite storage, encrypted vault, approval flow, and audit/history records.
 
