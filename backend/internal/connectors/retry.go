@@ -74,6 +74,9 @@ func GetActionDefinitions(ctx context.Context, connector Connector, target Targe
 	completed := make([]ActionDefinition, len(actions))
 	copy(completed, actions)
 	for index := range completed {
+		if completed[index].InputSchema.Fields == nil {
+			completed[index].InputSchema.Fields = []Field{}
+		}
 		completed[index].RetryPolicy = EffectiveRetryPolicy(completed[index])
 		if completed[index].MaxInputBytes == 0 {
 			completed[index].MaxInputBytes = DefaultMaxActionInputBytes

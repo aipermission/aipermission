@@ -2,6 +2,7 @@ package connectors
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"reflect"
@@ -45,6 +46,16 @@ func TestGetActionDefinitionsCompletesWithoutMutatingConnectorCatalog(t *testing
 	}
 	if actions[0].MaxInputBytes != DefaultMaxActionInputBytes {
 		t.Fatalf("max input bytes = %d", actions[0].MaxInputBytes)
+	}
+	if actions[0].InputSchema.Fields == nil || len(actions[0].InputSchema.Fields) != 0 {
+		t.Fatalf("empty input fields must be an empty array: %#v", actions[0].InputSchema.Fields)
+	}
+	if catalog[0].InputSchema.Fields != nil {
+		t.Fatalf("source catalog input schema mutated: %#v", catalog[0].InputSchema.Fields)
+	}
+	encoded, err := json.Marshal(actions[0].InputSchema)
+	if err != nil || string(encoded) != `{"fields":[]}` {
+		t.Fatalf("empty input schema JSON = %s, error = %v", encoded, err)
 	}
 	if !reflect.DeepEqual(catalog[0].RetryPolicy, RetryPolicy{}) {
 		t.Fatalf("source catalog mutated: %#v", catalog[0])
