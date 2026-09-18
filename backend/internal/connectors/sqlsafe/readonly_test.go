@@ -15,6 +15,9 @@ func TestValidateReadOnlyAcceptsOneReadStatement(t *testing.T) {
 		"SELECT 'drop table users' AS value",
 		"SELECT `delete` FROM events",
 		"SELECT $$update users$$ AS value",
+		"SELECT 1; -- trailing comment",
+		"SELECT 1; /* trailing comment */",
+		"SELECT ';' AS value; -- trailing comment",
 	} {
 		if err := ValidateReadOnly(sql, "query_readonly", 20000, []string{"select", "with", "show", "explain"}, "SELECT, WITH, SHOW, or EXPLAIN", testDisallowedTerms); err != nil {
 			t.Fatalf("validate %q: %v", sql, err)
@@ -51,6 +54,8 @@ func TestValidateReadOnlyRejectsUnsafeSQL(t *testing.T) {
 		{name: "empty", sql: " ", message: "sql is required"},
 		{name: "write", sql: "UPDATE users SET active = true", message: "read-only"},
 		{name: "multi", sql: "SELECT 1; SELECT 2", message: "single statement"},
+		{name: "multi after comment", sql: "SELECT 1; /* comment */ SELECT 2", message: "single statement"},
+		{name: "two terminators", sql: "SELECT 1;; -- comment", message: "single statement"},
 		{name: "prefix", sql: "DESCRIBE users", message: "only accepts SELECT, WITH, SHOW, or EXPLAIN SQL"},
 		{name: "null", sql: "SELECT\x00 1", message: "invalid null byte"},
 		{name: "unterminated single quote", sql: "SELECT '", message: "unterminated single-quoted value"},
@@ -80,6 +85,7 @@ func TestPostgreSQLDialectAcceptsEscapeStringsAndNestedComments(t *testing.T) {
 	for _, sql := range []string{
 		`SELECT E'can\'t; DROP TABLE users' AS value`,
 		`/* outer /* inner */ still outer */ SELECT 1`,
+		`SELECT 1; /* outer /* inner */ still outer */`,
 	} {
 		if err := ValidateReadOnlyDialect(sql, "query_readonly", 20000, []string{"select"}, "SELECT", testDisallowedTerms, DialectPostgreSQL); err != nil {
 			t.Fatalf("validate %q: %v", sql, err)

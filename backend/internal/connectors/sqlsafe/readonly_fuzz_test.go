@@ -31,11 +31,11 @@ func FuzzValidateReadOnly(f *testing.F) {
 		if err != nil {
 			return
 		}
-		checkSQL, parseErr := validationSQL(strings.TrimSpace(stripTrailingStatementTerminator(sql)), DialectANSI)
+		checkSQL, parseErr := validationSQL(sql, DialectANSI)
 		if parseErr != nil {
 			t.Fatalf("accepted SQL failed validation scan: %v", parseErr)
 		}
-		checkSQL = strings.TrimSpace(checkSQL)
+		checkSQL = strings.TrimSpace(stripTrailingStatementTerminator(checkSQL))
 		if strings.Contains(checkSQL, ";") || fuzzDisallowedTerms.MatchString(checkSQL) || !hasAllowedPrefix(checkSQL, []string{"select", "with", "show", "explain"}) {
 			t.Fatalf("unsafe SQL was accepted: %q normalized=%q", sql, checkSQL)
 		}
