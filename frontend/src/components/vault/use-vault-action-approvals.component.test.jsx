@@ -110,6 +110,21 @@ describe("useVaultActionApprovals", () => {
     expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
   });
 
+  it("reopens a dismissed pending approval for an explicit decision", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
+    apiPost.mockResolvedValue({ status: "completed" });
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+    act(() => result.current.close());
+    await act(async () => result.current.load());
+    expect(result.current.dialog.approval).toBeNull();
+
+    act(() => result.current.openPending());
+    expect(result.current.dialog.approval).toEqual(pendingApproval);
+    await act(async () => result.current.run());
+    expect(apiPost).toHaveBeenCalledWith("/api/vault-action-approvals/42/run", { user_note: "" });
+  });
+
   it("does not restore dialog state when a decision completes after dismissal", async () => {
     const decision = deferred();
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);

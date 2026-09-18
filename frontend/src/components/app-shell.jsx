@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef } from "react";
+import { ShieldCheck } from "lucide-react";
 import { Outlet, useLocation } from "react-router";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
@@ -17,6 +18,8 @@ import { useConsoleSessionCoordinator } from "./console/use-console-session-coor
 import { useDatabaseLifecycle } from "./use-database-lifecycle";
 import { useGatewayResources } from "./use-gateway-resources";
 import { useVaultActionApprovals } from "./vault/use-vault-action-approvals";
+import { Button } from "./ui/button";
+import { Notice } from "./ui/notice";
 export function Shell({ theme, setTheme }) {
   const location = useLocation();
   function toggleTheme() {
@@ -175,6 +178,16 @@ export function Shell({ theme, setTheme }) {
       <section className="lg:pl-72">
         <div className={`mx-auto grid gap-6 p-5 ${location.pathname === "/console" ? "max-w-none" : "max-w-7xl"}`}>
           <BackupFreshnessNotices value={resources.backupFreshness} onChange={resources.setBackupFreshness} />
+          {vaultApprovals.approvals.state === "ready" && pendingVaultActionApprovalCount > 0 && !vaultApprovals.dialog.approval ? (
+            <Notice tone="warn" className="flex items-center justify-between gap-3">
+              <span>
+                {pendingVaultActionApprovalCount} pending Vault approval{pendingVaultActionApprovalCount === 1 ? "" : "s"}
+              </span>
+              <Button type="button" variant="outline" aria-label="Review pending Vault approval" onClick={vaultApprovals.openPending}>
+                <ShieldCheck size={16} aria-hidden="true" /> Review
+              </Button>
+            </Notice>
+          ) : null}
           <Outlet
             context={{
               status: resources.status,
