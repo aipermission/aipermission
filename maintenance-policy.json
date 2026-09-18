@@ -217,6 +217,7 @@
   },
   "backendCoverageFloors": {
     "internal/accesscontrol": 69.0,
+    "internal/actions": 25.0,
     "internal/api": 57.0,
     "internal/backups": 64.0,
     "internal/connectors/clickhouse": 58.0,
