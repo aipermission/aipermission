@@ -86,7 +86,7 @@ does this automatically.
 ## Tools
 
 `AIPERMISSION_HTTP_TIMEOUT_MS` sets the gateway request deadline (default:
-60000 milliseconds; maximum: 600000). The value must be a positive base-10
+95000 milliseconds; maximum: 600000). The value must be a positive base-10
 integer; invalid configuration stops the bridge instead of silently changing
 the deadline. It covers both response headers and the complete response body,
 including streamed bodies. A timeout does not prove that a submitted

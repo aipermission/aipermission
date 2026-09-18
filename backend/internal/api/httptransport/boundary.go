@@ -234,6 +234,12 @@ func WithRequestDeadline(next http.Handler, timeout time.Duration) http.Handler 
 }
 
 func RequestTimeoutForPath(path string, fallback time.Duration) time.Duration {
+	if requestID, ok := strings.CutPrefix(path, "/api/connector-action-approvals/"); ok && strings.HasSuffix(requestID, "/run") {
+		requestID = strings.TrimSuffix(requestID, "/run")
+		if requestID != "" && !strings.Contains(requestID, "/") {
+			return ConnectorActionRequestTimeout
+		}
+	}
 	switch path {
 	case "/api/file-transfers/browse", "/api/file-transfers/expand":
 		return RemoteBrowseRequestTimeout

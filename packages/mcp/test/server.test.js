@@ -149,7 +149,7 @@ test("Vault tool schemas enforce the public MCP contract", () => {
 });
 
 test("shared MCP configuration rejects ambiguous timeouts and oversized UTF-8 keys", () => {
-  assert.equal(parseHTTPTimeout(undefined), 60_000);
+  assert.equal(parseHTTPTimeout(undefined), 95_000);
   assert.equal(parseHTTPTimeout("100"), 100);
   assert.equal(parseHTTPTimeout("600000"), 600_000);
   for (const value of ["0", "1000junk", "1e3", "-1", "600001", "2147483648"]) {
