@@ -1,4 +1,4 @@
-const defaultHTTPTimeoutMs = 60_000;
+const defaultHTTPTimeoutMs = 95_000;
 const maxHTTPTimeoutMs = 10 * 60_000;
 
 export function parseHTTPTimeout(value) {

@@ -182,13 +182,16 @@ func TestRemoteBrowseKeepsItsLongerBoundedDeadline(t *testing.T) {
 }
 
 func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
-	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call"} {
+	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call", "/api/connector-action-approvals/42/run"} {
 		if got := RequestTimeoutForPath(path, OrdinaryRequestTimeout); got != ConnectorActionRequestTimeout {
 			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, ConnectorActionRequestTimeout)
 		}
 	}
 	if ConnectorActionRequestTimeout <= connectortransport.MaxCommandTimeout {
 		t.Fatalf("connector action timeout %s must exceed command timeout %s", ConnectorActionRequestTimeout, connectortransport.MaxCommandTimeout)
+	}
+	if got := RequestTimeoutForPath("/api/connector-action-approvals/42/decline", OrdinaryRequestTimeout); got != OrdinaryRequestTimeout {
+		t.Fatalf("approval decision timeout = %s, want %s", got, OrdinaryRequestTimeout)
 	}
 }
 
