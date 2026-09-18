@@ -200,6 +200,38 @@ func TestLoadOrCreateGatewaySecretRejectsInvalidExistingFileWithoutReplacingIt(t
 	}
 }
 
+func TestLoadOrCreateGatewaySecretBoundsExistingFileRead(t *testing.T) {
+	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
+	path := GatewaySecretPath(dataPath)
+	for _, testCase := range []struct {
+		name    string
+		length  int
+		rejects bool
+	}{
+		{name: "at limit", length: 4096},
+		{name: "above limit", length: 4097, rejects: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			value := strings.Repeat("s", testCase.length)
+			if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := LoadOrCreateGatewaySecret(dataPath)
+			if testCase.rejects {
+				if err == nil || !strings.Contains(err.Error(), "exceeds") {
+					t.Fatalf("expected size error, got value length %d, %v", len(got), err)
+				}
+			} else if err != nil || got != value {
+				t.Fatalf("secret at limit changed: value length %d, %v", len(got), err)
+			}
+			stored, err := os.ReadFile(path)
+			if err != nil || string(stored) != value {
+				t.Fatalf("existing secret was replaced: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadOrCreateGatewaySecretRejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	dataPath := filepath.Join(dir, "aipermission.db")
