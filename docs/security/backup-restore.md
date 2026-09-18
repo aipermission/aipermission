@@ -4,7 +4,9 @@ Because aipermission is local-only, database portability should stay simple.
 
 ## Current Model
 
-The Settings page Backup panel downloads the currently unlocked database file directly.
+The Settings page Backup panel creates a temporary, consistent snapshot of the
+currently unlocked database and downloads that snapshot. It does not stream
+the live database file directly.
 
 Extension:
 
@@ -12,7 +14,7 @@ Extension:
 .aipdb
 ```
 
-This file is a SQLCipher encrypted SQLite database. There is no separate backup password; the security boundary is the database password that was active when the file was downloaded.
+This file is a SQLCipher encrypted SQLite database. There is no separate backup password; the security boundary is the database password that was active when the snapshot was created.
 
 ## Portable Vault Secret
 

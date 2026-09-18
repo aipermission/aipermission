@@ -300,7 +300,8 @@ Example MCP call:
   "target_ref": "ssh:3:1",
   "action_name": "exec",
   "input": { "command": "ls" },
-  "reason": "Inspect the current directory."
+  "reason": "Inspect the current directory.",
+  "idempotency_key": "inspect-current-directory-001"
 }
 ```
 
@@ -421,13 +422,12 @@ Postgres uses the same connector action model:
 
 Recommended PostgreSQL setup is a dedicated readonly database user.
 
-Additional SQL safety hardening can grow over time:
-
-- SELECT-only policy
-- parser enforcement
-- masking
-- result limits
-- blocked keyword checks
+The `query_readonly` action validates read-only SQL, rejects disallowed
+statements and functions, applies execution timeouts and result bounds, and
+runs inside a read-only transaction. A dedicated readonly database user is
+still important: the connector guard is not a substitute for database grants.
+Field-level masking is not currently provided by this action; configure
+database views or grants when sensitive columns must remain hidden.
 
 ## Core Value
 

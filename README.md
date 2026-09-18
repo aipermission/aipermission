@@ -348,6 +348,11 @@ security fixes.
 
 The public roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+For a reproducible bug, open a [bug report](.github/ISSUE_TEMPLATE/bug_report.yml).
+For a security-sensitive finding, use the private reporting instructions in
+[SECURITY.md](SECURITY.md), not a public issue. Design proposals can start in
+[GitHub Discussions](https://github.com/aipermission/aipermission/discussions).
+
 ## License
 
 AIPermission is licensed under AGPL-3.0-only from v0.1.14 onward. See
