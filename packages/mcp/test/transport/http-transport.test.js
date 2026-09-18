@@ -98,6 +98,72 @@ test("packaged MCP accepts a timely streamed body", { timeout: 10000 }, async (t
   assert.deepEqual(JSON.parse(result.content[0].text), []);
 });
 
+test("connector action call errors differ from pending states and request reads", { timeout: 10000 }, async (t) => {
+  let status = "completed";
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ status, request_id: 42, error: status === "completed" ? "" : "fixture status" }));
+    },
+    2000,
+  );
+  for (const [nextStatus, isError] of [
+    ["completed", false],
+    ["approval_pending", false],
+    ["running", false],
+    ["failed", true],
+    ["blocked", true],
+    ["stopped", true],
+    ["outcome_unknown", true],
+  ]) {
+    status = nextStatus;
+    const result = await client.callTool({
+      name: "call_connector_action",
+      arguments: {
+        target_ref: "redis:1:1",
+        action_name: "get_string",
+        input: { key: "fixture" },
+        idempotency_key: `status-${nextStatus}`,
+      },
+    });
+    assert.equal(result.isError === true, isError, nextStatus);
+    assert.equal(JSON.parse(result.content[0].text).status, nextStatus);
+  }
+
+  status = "failed";
+  const read = await client.callTool({ name: "get_connector_action_request", arguments: { request_id: 42 } });
+  assert.notEqual(read.isError, true);
+  assert.equal(JSON.parse(read.content[0].text).status, "failed");
+});
+
+test("Vault action failures are tool errors but reading a failed request is not", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ status: "failed", request_id: 17, error: "fixture failure", secret_values_returned: false }));
+    },
+    2000,
+  );
+  const called = await client.callTool({
+    name: "call_vault_action",
+    arguments: {
+      project_ref: "my-project",
+      action_name: "generate_item",
+      input: { name: "TEST_KEY", secret_type: "generic" },
+      reason: "test action failure envelope",
+      idempotency_key: "vault-failed-fixture",
+    },
+  });
+  assert.equal(called.isError, true);
+  assert.equal(JSON.parse(called.content[0].text).status, "failed");
+
+  const read = await client.callTool({ name: "get_vault_action_request", arguments: { request_id: 17 } });
+  assert.notEqual(read.isError, true);
+  assert.equal(JSON.parse(read.content[0].text).status, "failed");
+});
+
 test("packaged MCP rejects unexpected successful gateway fields without exposing them", { timeout: 10000 }, async (t) => {
   const client = await withGateway(
     t,
