@@ -72,10 +72,15 @@ func openEncrypted(path string, password string, options openOptions) (*sql.DB, 
 		values.Set("_key", quoteSQLDoubleQuotedString(password))
 	}
 
-	dsn := path
-	if encoded := values.Encode(); encoded != "" {
-		dsn += "?" + encoded
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sqlite path: %w", err)
 	}
+	uriPath := filepath.ToSlash(absolutePath)
+	if runtime.GOOS == "windows" && filepath.VolumeName(absolutePath) != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	dsn := (&url.URL{Scheme: "file", Path: uriPath, RawQuery: values.Encode()}).String()
 
 	database, err := sql.Open("sqlite3", dsn)
 	if err != nil {
