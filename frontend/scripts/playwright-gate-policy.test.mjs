@@ -50,6 +50,21 @@ test("rejects removing a base-branch Playwright gate in the same change", () => 
   assert.throws(() => assertPlaywrightManifestRatchet(base, { highRisk: ["approval"], smoke: ["settings"] }), /highRisk: unlock/);
 });
 
+test("local browser tests use an isolated port without reusing another app", async () => {
+  const previous = process.env.AIPERMISSION_PLAYWRIGHT_PORT;
+  process.env.AIPERMISSION_PLAYWRIGHT_PORT = "4273";
+  try {
+    const { default: config } = await import("../playwright.config.js?isolated-port-test");
+    assert.equal(config.use.baseURL, "http://127.0.0.1:4273");
+    assert.equal(config.webServer.url, config.use.baseURL);
+    assert.equal(config.webServer.reuseExistingServer, false);
+    assert.match(config.webServer.command, /--strictPort --port 4273/);
+  } finally {
+    if (previous === undefined) delete process.env.AIPERMISSION_PLAYWRIGHT_PORT;
+    else process.env.AIPERMISSION_PLAYWRIGHT_PORT = previous;
+  }
+});
+
 function listing(titles) {
   return {
     suites: [
