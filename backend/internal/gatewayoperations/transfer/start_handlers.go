@@ -159,10 +159,12 @@ func (s FileTransferHTTPHandlers) StartUploadBatch(w http.ResponseWriter, r *htt
 			"overwrite":  createdBatch.overwrite,
 		})
 	}
-	if err := s.runner.LaunchBatch(r.Context(), runtime, createdBatch.batch.ID, createdBatch.overwrite, createdBatch.execution.runnerExecution()); err != nil {
-		s.runner.RejectBatchLaunch(runtime, createdBatch.batch.ID)
-		writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
-		return
+	if fileTransferCanLaunch(createdBatch.batch.Status) {
+		if err := s.runner.LaunchBatch(r.Context(), runtime, createdBatch.batch.ID, createdBatch.overwrite, createdBatch.execution.runnerExecution()); err != nil {
+			s.runner.RejectBatchLaunch(runtime, createdBatch.batch.ID)
+			writeError(w, http.StatusServiceUnavailable, "file transfer batch could not start")
+			return
+		}
 	}
 	writeJSON(w, http.StatusAccepted, createdBatch.batch)
 }
