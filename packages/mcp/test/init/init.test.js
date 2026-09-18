@@ -254,6 +254,31 @@ test("writeTOMLMCPConfig handles quoted headers, comments, and unrelated multili
   assert.doesNotMatch(content, /command = "old"/);
 });
 
+test("writeTOMLMCPConfig preserves headers after quoted markers in strings", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-strings-"));
+  const filePath = path.join(dir, "config.toml");
+  const original = `note = "contains ''' marker"
+message = """first line
+keep this # """
+
+[mcp_servers.aipermission]
+command = "old"
+
+[mcp_servers.other]
+command = "node"
+`;
+  await fs.writeFile(filePath, original);
+
+  await writeTOMLMCPConfig(filePath, "aipermission", { command: "npx", args: [], env: {} });
+
+  const content = await fs.readFile(filePath, "utf8");
+  assert.match(content, /note = "contains ''' marker"/);
+  assert.match(content, /keep this # """/);
+  assert.equal(parseTOML(content).mcp_servers.aipermission.command, "npx");
+  assert.equal(parseTOML(content).mcp_servers.other.command, "node");
+  assert.doesNotMatch(content, /command = "old"/);
+});
+
 test("writeTOMLMCPConfig preserves array-of-table sections after the selected server", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-array-tables-"));
   const filePath = path.join(dir, "config.toml");
