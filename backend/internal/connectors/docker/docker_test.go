@@ -109,6 +109,31 @@ func TestPrepareActionRejectsEmptyContainer(t *testing.T) {
 	}
 }
 
+func TestPrepareActionRejectsTimeoutBeyondCommandTransportBudget(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		action  string
+		maximum int
+	}{
+		{name: "exec", action: ActionContainerExec, maximum: maxDockerExecTimeoutSeconds},
+		{name: "stop", action: ActionStopContainer, maximum: maxDockerLifecycleTimeoutSeconds},
+		{name: "restart", action: ActionRestartContainer, maximum: maxDockerLifecycleTimeoutSeconds},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := map[string]any{"container": "api", "command": "echo ok", "timeout_seconds": test.maximum}
+			request := connectors.ActionRequest{Target: dockerTarget(), Profile: dockerProfile("selected"), ActionName: test.action, Input: input}
+			prepared, err := New().PrepareAction(context.Background(), request)
+			if err != nil || prepared.Payload["timeout_seconds"] != test.maximum {
+				t.Fatalf("maximum supported timeout: payload=%#v error=%v", prepared.Payload, err)
+			}
+			input["timeout_seconds"] = test.maximum + 1
+			if _, err := New().PrepareAction(context.Background(), request); err == nil || !strings.Contains(err.Error(), "timeout_seconds") {
+				t.Fatalf("unsupported timeout must be rejected, got %v", err)
+			}
+		})
+	}
+}
+
 func TestExecuteActionFiltersContainersByProfileScope(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
