@@ -31,3 +31,4 @@ protocol behavior, or local-only architecture?
 - [ ] `always_run` behavior remains explicit and visible to the user.
 - [ ] Local-only assumptions are preserved; no LAN/public gateway path is introduced.
 - [ ] Docs are updated when behavior, security boundaries, or API/MCP contracts change.
+- [ ] New security-sensitive Go packages have an explicit measured coverage floor in `maintenance-policy.json`, with failure-path tests.
