@@ -28,9 +28,9 @@
       "lines": 68.75
     },
     "src/components/app-shell.jsx": {
-      "statements": 83.63,
-      "branches": 60.86,
-      "functions": 57.14,
+      "statements": 85.45,
+      "branches": 67.85,
+      "functions": 64.28,
       "lines": 90
     },
     "src/components/app-sidebar.jsx": {
@@ -561,11 +561,17 @@
       "functions": 0,
       "lines": 0
     },
+    "src/components/vault/pending-vault-approval-notice.jsx": {
+      "statements": 100,
+      "branches": 60,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/vault/use-vault-action-approvals.js": {
       "statements": 87.67,
       "branches": 74.35,
-      "functions": 93.75,
-      "lines": 96.42
+      "functions": 94.44,
+      "lines": 96.77
     },
     "src/components/vault/use-vault-bindings.js": {
       "statements": 64.28,
@@ -1682,6 +1688,12 @@
       "branches": 43.33,
       "functions": 80,
       "lines": 61.29
+    },
+    "src/lib/downloads/download-buffer.js": {
+      "statements": 75,
+      "branches": 60,
+      "functions": 70,
+      "lines": 75
     },
     "src/lib/errors.js": {
       "statements": 17.24,
