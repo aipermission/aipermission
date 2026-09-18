@@ -3,17 +3,25 @@ import test from "node:test";
 
 import { projectGatewaySuccess, responseContracts } from "../src/response-contracts.js";
 
+const actionResponse = {
+  status: "completed",
+  request_id: 7,
+  target_ref: "redis:1:1",
+  connector_kind: "redis",
+  action_name: "get_string",
+  retry_policy: { class: "read_only", guidance: "Read again if needed." },
+};
+
 test("connector action contracts reject unexpected envelope fields without constraining opaque output", () => {
-  const projected = projectGatewaySuccess(responseContracts.connectorAction, {
-    status: "completed",
-    request_id: 7,
+  const projected = projectGatewaySuccess(responseContracts.connectorActionRequest, {
+    ...actionResponse,
     output: { password: "domain data", rows: [{ arbitrary_connector_field: true }] },
   });
   assert.deepEqual(projected.output, { password: "domain data", rows: [{ arbitrary_connector_field: true }] });
   assert.throws(() => {
     try {
-      projectGatewaySuccess(responseContracts.connectorAction, {
-        status: "completed",
+      projectGatewaySuccess(responseContracts.connectorActionRequest, {
+        ...actionResponse,
         output: { arbitrary_connector_field: true },
         provider_secret: "must-not-escape",
       });

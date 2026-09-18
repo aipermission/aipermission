@@ -16,6 +16,7 @@ func main() {
 	routesPath := flag.String("routes", "internal/api/httptransport/routes.go", "path to the Go route registration source")
 	outputPath := flag.String("output", "../docs/api/openapi.json", "path to the generated OpenAPI document")
 	frontendOutputPath := flag.String("frontend-output", "../frontend/src/lib/gateway-contracts/generated-connector-contract.js", "path to the generated frontend connector contract")
+	mcpOutputPath := flag.String("mcp-output", "../packages/mcp/src/generated-connector-contract.js", "path to the generated MCP connector contract")
 	check := flag.Bool("check", false, "verify that the generated document is current")
 	flag.Parse()
 
@@ -30,6 +31,7 @@ func main() {
 	if *check {
 		verifyGeneratedFile(*outputPath, output)
 		verifyGeneratedFile(*frontendOutputPath, generateFrontendContract())
+		verifyGeneratedFile(*mcpOutputPath, generateFrontendContract())
 		verifyGeneratedFile(frontendDeclarationPath(*frontendOutputPath), generateFrontendContractDeclaration())
 		return
 	}
@@ -38,6 +40,9 @@ func main() {
 	}
 	if err := os.WriteFile(*frontendOutputPath, generateFrontendContract(), 0o644); err != nil {
 		fatalf("write generated frontend contract: %v", err)
+	}
+	if err := os.WriteFile(*mcpOutputPath, generateFrontendContract(), 0o644); err != nil {
+		fatalf("write generated MCP contract: %v", err)
 	}
 	if err := os.WriteFile(frontendDeclarationPath(*frontendOutputPath), generateFrontendContractDeclaration(), 0o644); err != nil {
 		fatalf("write generated frontend contract declaration: %v", err)

@@ -47,8 +47,10 @@ func TestGenerateFrontendContractUsesCanonicalEnums(t *testing.T) {
 
 func TestCommittedFrontendContractIsCurrent(t *testing.T) {
 	contractPath := filepath.Join("..", "..", "..", "frontend", "src", "lib", "gateway-contracts", "generated-connector-contract.js")
+	mcpPath := filepath.Join("..", "..", "..", "packages", "mcp", "src", "generated-connector-contract.js")
 	declarationPath := frontendDeclarationPath(contractPath)
 	assertGeneratedFile(t, contractPath, generateFrontendContract())
+	assertGeneratedFile(t, mcpPath, generateFrontendContract())
 	assertGeneratedFile(t, declarationPath, generateFrontendContractDeclaration())
 }
 

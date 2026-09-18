@@ -228,8 +228,11 @@ disclose secrets. Never automatically retry `submission_unknown`.
 
 Connector responses can include `approval_pending` or `running`. Poll
 `get_connector_action_request(request_id)` until the request reaches a terminal
-status. `outcome_unknown` is terminal and means the gateway could not prove the
-remote outcome after interruption; inspect target state or ask the operator
+status. Failed action calls carry the MCP `isError` flag; reading a recorded
+failed request is a successful read and does not. A `stopped` call response is a
+gateway control result, not a recorded request. `outcome_unknown` is terminal
+and means the gateway could not prove the remote outcome after interruption;
+inspect target state or ask the operator
 before retrying. Gateway API errors with that status retain their request id,
 assistant hint, and bounded retry delay in the MCP error envelope. MCP tool
 responses never include file contents, gateway

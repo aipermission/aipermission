@@ -113,7 +113,7 @@ server.tool(
           },
           { signal },
         ),
-      (value) => projectGatewaySuccess(responseContracts.connectorAction, value),
+      (value) => projectGatewaySuccess(responseContracts.connectorActionCall, value),
       { idempotencyKey: idempotency_key },
     );
   },
@@ -129,7 +129,7 @@ server.tool(
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiGet(`/api/mcp/connector-action-requests/${request_id}`, { signal }),
-      (value) => projectGatewaySuccess(responseContracts.connectorAction, value),
+      (value) => projectGatewaySuccess(responseContracts.connectorActionRequest, value),
     );
   },
 );

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { connectorActionStatuses, connectorRetryClasses } from "./generated-connector-contract.js";
 
 const positiveID = z.number().int().positive();
 const nonNegativeInteger = z.number().int().nonnegative();
@@ -97,7 +98,7 @@ const outputHintSchema = z
   .strict();
 const retryPolicySchema = z
   .object({
-    class: z.string(),
+    class: z.enum([...connectorRetryClasses]),
     precondition_fields: z.array(z.string()).optional(),
     guidance: z.string(),
   })
@@ -119,28 +120,39 @@ const actionDefinitionSchema = z
 
 const connectorActionsSchema = z.object({ items: z.array(actionDefinitionSchema) }).strict();
 
-const connectorActionResponseSchema = z
+const connectorActionRequestSchema = z
   .object({
-    status: z.string(),
-    request_id: positiveID.optional(),
-    target_ref: z.string().optional(),
+    status: z.enum([...connectorActionStatuses]),
+    request_id: positiveID,
+    target_ref: z.string(),
     target_name: z.string().optional(),
-    connector_kind: z.string().optional(),
+    connector_kind: z.string(),
     profile_label: z.string().optional(),
-    action_name: z.string().optional(),
+    action_name: z.string(),
     input: z.record(z.unknown()).optional(),
     // Connector-owned output is intentionally opaque. The gateway credential
     // boundary redacts values; this schema owns only the shared MCP envelope.
     output: z.unknown().optional(),
     display_text: z.string().optional(),
     error: z.string().optional(),
-    retry_policy: retryPolicySchema.optional(),
-    retry_after_seconds: nonNegativeInteger.optional(),
+    retry_policy: retryPolicySchema,
+    retry_after_seconds: nonNegativeInteger.max(3600).optional(),
     assistant_hint: z.string().optional(),
     output_withheld: z.boolean().optional(),
     replayed: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.output_withheld) {
+      if (value.input !== undefined || value.output !== undefined || value.display_text !== undefined || value.error !== undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "withheld action output must not contain request or result content" });
+      }
+    } else if (!value.target_ref || !value.connector_kind || !value.action_name) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "action response identity is required" });
+    }
+  });
+const connectorActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1) }).strict();
+const connectorActionCallSchema = z.union([connectorActionRequestSchema, connectorActionStoppedSchema]);
 
 const vaultItemSchema = z
   .object({
@@ -248,7 +260,8 @@ export const responseContracts = Object.freeze({
   connectorTargets: z.array(connectorTargetSchema),
   connectorHelp: connectorHelpSchema,
   connectorActions: connectorActionsSchema,
-  connectorAction: connectorActionResponseSchema,
+  connectorActionCall: connectorActionCallSchema,
+  connectorActionRequest: connectorActionRequestSchema,
   vaultItems: vaultItemsSchema,
   vaultAction: vaultActionResponseSchema,
 });
