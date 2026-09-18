@@ -104,7 +104,21 @@ test("connector action call errors differ from pending states and request reads"
     t,
     (_request, response) => {
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ status, request_id: 42, error: status === "completed" ? "" : "fixture status" }));
+      response.end(
+        JSON.stringify(
+          status === "stopped"
+            ? { status, error: "Start MCP from the web UI." }
+            : {
+                status,
+                request_id: 42,
+                target_ref: "redis:1:1",
+                connector_kind: "redis",
+                action_name: "get_string",
+                retry_policy: { class: "read_only", guidance: "Read again if needed." },
+                error: status === "completed" ? "" : "fixture status",
+              },
+        ),
+      );
     },
     2000,
   );

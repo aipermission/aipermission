@@ -1,6 +1,7 @@
 {
   "files": [
     "test/client-registry.test.js",
+    "test/contracts/lifecycle.test.js",
     "test/doctor.test.js",
     "test/init/init.test.js",
     "test/private-file.test.js",
