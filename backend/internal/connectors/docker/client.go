@@ -219,7 +219,7 @@ func executeContainerExec(ctx context.Context, client *dockerClient, input map[s
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	timeout := normalizeInt(input, "timeout_seconds", 30, 1, 600)
+	timeout := normalizeInt(input, "timeout_seconds", 30, 1, maxDockerExecTimeoutSeconds)
 	var options []string
 	if user := normalizeDockerOptionInput(input, "user"); user != "" {
 		options = append(options, "--user", shellQuote(user))
@@ -267,7 +267,7 @@ func executeContainerLifecycle(ctx context.Context, client *dockerClient, input 
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	timeout := normalizeInt(input, "timeout_seconds", 10, 1, 120)
+	timeout := normalizeInt(input, "timeout_seconds", 10, 1, maxDockerLifecycleTimeoutSeconds)
 	command := fmt.Sprintf("%s %s", client.command, operation)
 	if operation == "stop" || operation == "restart" {
 		command = fmt.Sprintf("%s %s --time %d", client.command, operation, timeout)

@@ -8,6 +8,19 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
+const (
+	maxDockerExecTimeoutSeconds      = 50
+	maxDockerLifecycleTimeoutSeconds = 35
+)
+
+func dockerTimeout(input map[string]any, fallback, maximum int) (int, error) {
+	timeout := connectors.IntMapValue(input, "timeout_seconds", fallback)
+	if timeout < 1 || timeout > maximum {
+		return 0, fmt.Errorf("timeout_seconds must be between 1 and %d", maximum)
+	}
+	return timeout, nil
+}
+
 func (Connector) TargetSchema() connectors.Schema {
 	return connectors.Schema{Fields: []connectors.Field{
 		{
@@ -187,7 +200,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
 				{Name: "command", Label: "Command", Type: connectors.FieldMultiline, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 30},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 30, Description: "1-50 seconds."},
 				{Name: "user", Label: "User", Type: connectors.FieldString, Description: "Optional container user."},
 				{Name: "workdir", Label: "Working directory", Type: connectors.FieldString, Description: "Optional container working directory."},
 			}},
@@ -212,7 +225,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10, Description: "1-35 seconds of shutdown grace."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -224,7 +237,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "container", Label: "Container", Type: connectors.FieldString, Required: true},
-				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10},
+				{Name: "timeout_seconds", Label: "Timeout seconds", Type: connectors.FieldInteger, Default: 10, Description: "1-35 seconds of shutdown grace."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
 		},
@@ -285,7 +298,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["container"] = container
 		input["command"] = command
-		input["timeout_seconds"] = normalizeInt(input, "timeout_seconds", 30, 1, 600)
+		input["timeout_seconds"], err = dockerTimeout(input, 30, maxDockerExecTimeoutSeconds)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		input["user"] = normalizeDockerOptionInput(input, "user")
 		input["workdir"] = normalizeDockerOptionInput(input, "workdir")
 		title = "Exec inside Docker container"
@@ -306,7 +322,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			return connectors.PreparedAction{}, err
 		}
 		input["container"] = container
-		input["timeout_seconds"] = normalizeInt(input, "timeout_seconds", 10, 1, 120)
+		input["timeout_seconds"], err = dockerTimeout(input, 10, maxDockerLifecycleTimeoutSeconds)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "Stop Docker container"
 		summary = fmt.Sprintf("%s timeout=%ss", container, fmt.Sprint(input["timeout_seconds"]))
 	case ActionRestartContainer:
@@ -316,7 +335,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 			return connectors.PreparedAction{}, err
 		}
 		input["container"] = container
-		input["timeout_seconds"] = normalizeInt(input, "timeout_seconds", 10, 1, 120)
+		input["timeout_seconds"], err = dockerTimeout(input, 10, maxDockerLifecycleTimeoutSeconds)
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "Restart Docker container"
 		summary = fmt.Sprintf("%s timeout=%ss", container, fmt.Sprint(input["timeout_seconds"]))
 	default:
