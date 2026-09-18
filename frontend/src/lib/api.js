@@ -8,6 +8,7 @@ import {
 import { APIError } from "./errors.js";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
 import { scopedUICookieName } from "./ui-cookie.js";
+import { readBufferedDownload } from "./downloads/download-buffer.js";
 
 const viteEnv = import.meta.env || {};
 
@@ -193,7 +194,7 @@ export async function apiDownload(path, filename, options = {}) {
     await response.body.pipeTo(writable, { signal: options.signal });
     return { saved: true, method: "picker" };
   }
-  const blob = await response.blob();
+  const blob = await readBufferedDownload(response);
   if (saveHandle) {
     const writable = await saveHandle.createWritable();
     await writable.write(blob);

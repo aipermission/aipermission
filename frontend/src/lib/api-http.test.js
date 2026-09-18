@@ -149,30 +149,26 @@ test("picker downloads stream the response directly to the selected file", async
   }
 });
 
-test("picker downloads retain the Blob fallback when response streaming is unavailable", async () => {
+test("picker downloads reject unavailable response streams without buffering", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
-  const blob = { size: 42 };
-  const writes = [];
-  let closed = false;
   globalThis.window = {
     showSaveFilePicker: async () => ({
-      createWritable: async () => ({
-        async write(value) {
-          writes.push(value);
-        },
-        async close() {
-          closed = true;
-        },
-      }),
+      createWritable: async () => {
+        throw new Error("must not open a writer");
+      },
     }),
   };
-  globalThis.fetch = async () => ({ ok: true, body: null, blob: async () => blob });
+  globalThis.fetch = async () => ({
+    ok: true,
+    headers: new Headers({ "Content-Length": "42" }),
+    body: null,
+    blob: async () => {
+      throw new Error("must not buffer");
+    },
+  });
   try {
-    const result = await apiDownload("/api/backup/download", "backup.aipdb", { picker: true });
-    assert.deepEqual(result, { saved: true, method: "picker" });
-    assert.deepEqual(writes, [blob]);
-    assert.equal(closed, true);
+    await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { picker: true }), /streaming Save dialog/);
   } finally {
     globalThis.fetch = originalFetch;
     restoreWindow(originalWindow);

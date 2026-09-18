@@ -268,6 +268,9 @@ The UI can download and import encrypted `.aipdb` database files. The optional
 self-hosted AIPermission Backup provider stores versioned encrypted database
 streams without receiving the database password or encryption key. See
 [AIPermission Backup](docs/providers/aipermission-backup.md).
+Browsers with a streaming Save dialog write downloads directly to disk. Other
+browsers with response-stream support buffer at most 64 MiB per download.
+Browsers without response streaming cannot safely download through this UI.
 
 Version 0.2.0 established the connector-native database baseline. Important
 0.1.x preview data can be imported with the local one-time migration helper;
