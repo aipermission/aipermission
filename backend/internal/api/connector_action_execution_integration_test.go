@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	connectormgmt "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
 	historypkg "github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/mcpconnector"
@@ -197,16 +198,19 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create local profile: %v", err)
 	}
-
-	result, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
-		ActionName: "echo",
-		Input:      map[string]any{"value": "hello"},
-		Reason:     "manual console smoke",
-	})
-	if err != nil {
-		t.Fatalf("run local connector action: %v", err)
+	runEcho := func(value, reason string) gatewayactions.CallResult {
+		t.Helper()
+		result, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
+			TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+			ActionName: "echo", Input: map[string]any{"value": value}, Reason: reason,
+		})
+		if err != nil {
+			t.Fatalf("run local connector action: %v", err)
+		}
+		return result
 	}
+
+	result := runEcho("hello", "manual console smoke")
 	if result.Request.TokenID != nil || result.Request.Source != commandRequestSourceManual || result.Request.Status != connectors.ResultCompleted {
 		t.Fatalf("unexpected local request: %#v", result.Request)
 	}
@@ -228,45 +232,34 @@ func TestRunLocalConnectorActionCreatesManualHistory(t *testing.T) {
 		t.Fatalf("expected one local action history row, got %d", historyCount)
 	}
 
-	completedWithHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
-		ActionName: "echo",
-		Input:      map[string]any{"value": "with-handle"},
-		Reason:     "capture completed session handle",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	completedWithHandle := runEcho("with-handle", "capture completed session handle")
 	if completedWithHandle.Request.Status != connectors.ResultCompleted ||
 		completedWithHandle.Request.SessionID == nil || *completedWithHandle.Request.SessionID != 123 ||
 		completedWithHandle.Request.SessionGeneration == nil || *completedWithHandle.Request.SessionGeneration != 456 {
 		t.Fatalf("completed action handle was not persisted: %#v", completedWithHandle.Request)
 	}
-
-	incompleteHandle, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
-		ActionName: "echo",
-		Input:      map[string]any{"value": "incomplete-handle"},
-		Reason:     "reject incomplete session handle",
-	})
-	if err != nil {
-		t.Fatal(err)
+	if _, err := database.Exec(`CREATE TRIGGER reject_action_session_handle
+		BEFORE UPDATE OF session_id ON connector_action_requests
+		BEGIN SELECT RAISE(FAIL, 'session handle write rejected'); END`); err != nil {
+		t.Fatalf("install session handle failure fixture: %v", err)
 	}
+	captureFailure := runEcho("with-handle", "capture failure preserves request identity")
+	if captureFailure.Request.ID < 1 || captureFailure.Request.Status != connectors.ResultOutcomeUnknown ||
+		captureFailure.Result.Status != connectors.ResultOutcomeUnknown {
+		t.Fatalf("session handle failure did not finish the original request: %#v", captureFailure)
+	}
+	if _, err := database.Exec(`DROP TRIGGER reject_action_session_handle`); err != nil {
+		t.Fatalf("remove session handle failure fixture: %v", err)
+	}
+
+	incompleteHandle := runEcho("incomplete-handle", "reject incomplete session handle")
 	if incompleteHandle.Request.Status != connectors.ResultOutcomeUnknown ||
 		incompleteHandle.Result.Status != connectors.ResultOutcomeUnknown ||
 		!strings.Contains(incompleteHandle.Result.Error, "incomplete session handle") {
 		t.Fatalf("incomplete session handle should fail terminally: %#v", incompleteHandle)
 	}
 
-	classifiedFailure, err := server.runLocalConnectorAction(context.Background(), runtime, connectorActionCall{
-		TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
-		ActionName: "echo",
-		Input:      map[string]any{"value": "classified-error"},
-		Reason:     "preserve a stable connector error code",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	classifiedFailure := runEcho("classified-error", "preserve a stable connector error code")
 	output, _ := classifiedFailure.Request.Output.(map[string]any)
 	if classifiedFailure.Request.Status != connectors.ResultFailed || output["code"] != "fixture_failure" || classifiedFailure.Result.Output.(map[string]any)["code"] != "fixture_failure" {
 		t.Fatalf("classified connector error code was not persisted: %#v", classifiedFailure)
