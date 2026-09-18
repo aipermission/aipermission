@@ -221,59 +221,14 @@ func (r *Runtime) ExecuteInserted(ctx context.Context, prepared PreparedRequest,
 	release()
 	claimHeld = false
 	request = claimed
-	result, err := r.ExecutePrepared(ctx, principal, prepared, snapshot)
+	completed, err := r.completeDispatch(ctx, ctx, ctx, request, prepared, principal, snapshot, options)
 	if err != nil {
-		finished, finishErr := r.Finish(ctx, request.ID, ExecutionFailureStatus(err), FailureOutput(err), "", err.Error(), prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return CallResult{}, NewTerminalPersistenceError(request.ID, finishErr)
-		}
-		return CallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Output: finished.Output, Error: finished.Error}}, nil
+		return CallResult{}, err
 	}
-	status := result.Status
-	request, err = r.CaptureSessionHandleIfReturned(ctx, request, result.Handles)
-	if err != nil {
-		finished, finishErr := r.Finish(ctx, request.ID, connectors.ResultOutcomeUnknown, nil, "", HandlePersistenceError, prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return CallResult{}, NewTerminalPersistenceError(request.ID, errors.Join(err, finishErr))
-		}
-		return CallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: connectors.ResultOutcomeUnknown, Error: finished.Error}}, nil
-	}
-	if status == connectors.ResultRunning {
-		if !r.runningActions.SupportsRunning(prepared) {
-			finished, finishErr := r.Finish(ctx, request.ID, connectors.ResultError, nil, "", options.UnsupportedRunningError, prepared.ActionDefinition.OutputHint)
-			if finishErr != nil {
-				return CallResult{}, NewTerminalPersistenceError(request.ID, finishErr)
-			}
-			return CallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: connectors.ResultError, Error: options.UnsupportedRunningError}}, nil
-		}
-		result.Handles.RequestID = request.ID
-		if result.Handles.FollowupTool == "" {
-			result.Handles.FollowupTool = options.FollowupTool
-		}
-		launched := r.launchFinalizer(func(finalizerCtx context.Context) {
-			defer r.ClearCredentialBoundary(request.ID)
-			r.runningActions.FinishRunning(finalizerCtx, request.ID, prepared, principal, result.Handles)
-		})
-		if !launched {
-			finished, finishErr := r.Finish(ctx, request.ID, connectors.ResultOutcomeUnknown, nil, "", "connector action runtime is shutting down", prepared.ActionDefinition.OutputHint)
-			if finishErr != nil {
-				return CallResult{}, NewTerminalPersistenceError(request.ID, finishErr)
-			}
-			return CallResult{Request: finished, Permission: options.Permission, Result: connectors.ActionResult{Status: finished.Status, Error: finished.Error}}, nil
-		}
+	if completed.boundaryTransferred {
 		clearBoundary = false
-		return CallResult{Request: request, Permission: options.Permission, Result: result}, nil
 	}
-	if status == connectors.ResultApprovalPending {
-		status = connectors.ResultFailed
-		result.Error = options.ApprovalPendingError
-	}
-	finished, err := r.Finish(ctx, request.ID, status, result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint)
-	if err != nil {
-		return CallResult{}, NewTerminalPersistenceError(request.ID, err)
-	}
-	result.Output, result.DisplayText, result.Error, result.Status = finished.Output, finished.DisplayText, finished.Error, finished.Status
-	return CallResult{Request: finished, Permission: options.Permission, Result: result}, nil
+	return CallResult{Request: completed.request, Permission: options.Permission, Result: completed.result}, nil
 }
 
 func (r *Runtime) Revalidate(ctx context.Context, request connectortargets.ActionRequest, prepared PreparedRequest, requiredRule connectortargets.ActionPermissionRule) (PreparedRequest, error) {

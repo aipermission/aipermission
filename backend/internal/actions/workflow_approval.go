@@ -311,61 +311,31 @@ func (r *Runtime) executePending(ctx context.Context, execution pendingExecution
 	}
 	release()
 	claimHeld = false
-	result, err := r.ExecutePrepared(ctx, execution.principal, prepared, snapshot)
+	completed, err := r.completeDispatch(ctx, context.Background(), ctx, item, prepared, execution.principal, snapshot, ExecutionOptions{
+		UnsupportedRunningError: "connector returned running for an action that does not support asynchronous execution",
+		ApprovalPendingError:    "connector returned approval_pending after approval was already granted",
+		FollowupTool:            "get_connector_action_request",
+	})
 	if err != nil {
-		finished, finishErr := r.Finish(context.Background(), item.ID, ExecutionFailureStatus(err), FailureOutput(err), "", err.Error(), prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return connectortargets.ActionRequest{}, NewTerminalPersistenceError(item.ID, finishErr)
-		}
-		return finished, nil
+		return connectortargets.ActionRequest{}, err
 	}
-	status := result.Status
-	item, err = r.CaptureSessionHandleIfReturned(ctx, item, result.Handles)
-	if err != nil {
-		finished, finishErr := r.Finish(context.Background(), item.ID, connectors.ResultOutcomeUnknown, nil, "", HandlePersistenceError, prepared.ActionDefinition.OutputHint)
-		if finishErr != nil {
-			return connectortargets.ActionRequest{}, NewTerminalPersistenceError(item.ID, errors.Join(err, finishErr))
-		}
-		return finished, nil
-	}
-	if status == connectors.ResultRunning {
-		if !r.runningActions.SupportsRunning(prepared) {
-			finished, finishErr := r.Finish(context.Background(), item.ID, connectors.ResultError, nil, "", "connector returned running for an action that does not support asynchronous execution", prepared.ActionDefinition.OutputHint)
-			if finishErr != nil {
-				return connectortargets.ActionRequest{}, NewTerminalPersistenceError(item.ID, finishErr)
-			}
-			r.observeApproval(ctx, item, execution, "error", false)
-			return finished, nil
-		}
-		result.Handles.RequestID = item.ID
-		if result.Handles.FollowupTool == "" {
-			result.Handles.FollowupTool = "get_connector_action_request"
-		}
-		launched := r.launchFinalizer(func(finalizerCtx context.Context) {
-			defer r.ClearCredentialBoundary(item.ID)
-			r.runningActions.FinishRunning(finalizerCtx, item.ID, prepared, execution.principal, result.Handles)
-		})
-		if !launched {
-			return r.Finish(ctx, item.ID, connectors.ResultOutcomeUnknown, nil, "", "connector action runtime is shutting down", prepared.ActionDefinition.OutputHint)
-		}
+	if completed.boundaryTransferred {
 		clearBoundary = false
+	}
+	switch completed.stage {
+	case dispatchUnsupportedRunning:
+		r.observeApproval(ctx, item, execution, "error", false)
+	case dispatchRunning:
 		running, getErr := connectortargets.NewStore(r.database).GetActionRequest(context.Background(), item.ID)
 		if getErr != nil {
 			return connectortargets.ActionRequest{}, NewTerminalPersistenceError(item.ID, getErr)
 		}
 		r.observeApproval(ctx, item, execution, "running", false)
 		return running, nil
+	case dispatchFinished:
+		r.observeApproval(ctx, item, execution, string(completed.request.Status), true)
 	}
-	if status == connectors.ResultApprovalPending {
-		status = connectors.ResultFailed
-		result.Error = "connector returned approval_pending after approval was already granted"
-	}
-	finished, err := r.Finish(context.Background(), item.ID, status, result.Output, result.DisplayText, result.Error, prepared.ActionDefinition.OutputHint)
-	if err != nil {
-		return connectortargets.ActionRequest{}, NewTerminalPersistenceError(item.ID, err)
-	}
-	r.observeApproval(ctx, item, execution, string(finished.Status), true)
-	return finished, nil
+	return completed.request, nil
 }
 
 func (r *Runtime) observeApproval(ctx context.Context, item connectortargets.ActionRequest, execution pendingExecution, suffix string, includeNote bool) {
