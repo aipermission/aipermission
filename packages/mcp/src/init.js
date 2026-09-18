@@ -609,29 +609,40 @@ function removeTOMLServer(source, name) {
 }
 
 function scanTOMLHeader(line, state) {
-  if (state.multiline) {
-    if (hasMultilineDelimiter(line, state.multiline)) state.multiline = "";
-    return null;
-  }
   const trimmed = line.trimStart();
-  if (trimmed.startsWith("[")) {
+  if (!state.multiline && trimmed.startsWith("[")) {
     try {
       return findMarkerPath(parseTOML(`${line}\n__aipermission_header_marker = true\n`));
     } catch {
-      return null;
+      // A string can start with a bracket; scan it before the next line.
     }
   }
-  for (const delimiter of ['"""', "'''"]) {
-    if (!hasMultilineDelimiter(line, delimiter)) continue;
-    if ((line.split(delimiter).length - 1) % 2 === 1) state.multiline = delimiter;
-    break;
-  }
+  scanTOMLStrings(line, state);
   return null;
 }
 
-function hasMultilineDelimiter(line, delimiter) {
-  const comment = line.indexOf("#");
-  return (comment < 0 ? line : line.slice(0, comment)).includes(delimiter);
+function scanTOMLStrings(line, state) {
+  let quote = state.multiline;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (!quote && character === "#") break;
+    if (quote.startsWith('"') && character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      if (line.startsWith(quote, index)) {
+        index += quote.length - 1;
+        quote = "";
+      }
+      continue;
+    }
+    if (character !== '"' && character !== "'") continue;
+    const triple = character.repeat(3);
+    quote = line.startsWith(triple, index) ? triple : character;
+    index += quote.length - 1;
+  }
+  state.multiline = quote.length === 3 ? quote : "";
 }
 
 function findMarkerPath(value, pathParts = []) {
