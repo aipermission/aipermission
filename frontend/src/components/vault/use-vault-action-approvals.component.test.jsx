@@ -174,6 +174,38 @@ describe("useVaultActionApprovals", () => {
     expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "stale" });
   });
 
+  it("keeps a non-stale failed decision visible for review", async () => {
+    apiGet.mockResolvedValue([pendingApproval]);
+    apiPost.mockRejectedValue(new Error("Delivery failed"));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.run());
+
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "failed", error: "Delivery failed" });
+  });
+
+  it("preserves an approval after a declined decision fails", async () => {
+    apiGet.mockResolvedValue([pendingApproval]);
+    apiPost.mockRejectedValue(new Error("Decline failed"));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "error", error: "Decline failed" });
+  });
+
+  it("does not open a review when no pending approval exists", async () => {
+    apiGet.mockResolvedValue([]);
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    act(() => result.current.openPending());
+
+    expect(result.current.dialog.approval).toBeNull();
+  });
+
   it("submits the local note and refreshes after declining", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
     apiPost.mockResolvedValue({ status: "declined" });
