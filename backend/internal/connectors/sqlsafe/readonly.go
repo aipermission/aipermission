@@ -37,13 +37,13 @@ func ValidateReadOnlyDialect(sql string, actionName string, maxBytes int, allowe
 		return fmt.Errorf("%s sql contains invalid null byte", actionName)
 	}
 
-	normalized := strings.TrimSpace(stripTrailingStatementTerminator(sql))
-	if normalized == "" {
-		return fmt.Errorf("%s sql is required", actionName)
-	}
-	checkSQL, err := validationSQL(normalized, dialect)
+	checkSQL, err := validationSQL(sql, dialect)
 	if err != nil {
 		return fmt.Errorf("%s sql is malformed: %w", actionName, err)
+	}
+	checkSQL = strings.TrimSpace(stripTrailingStatementTerminator(checkSQL))
+	if checkSQL == "" {
+		return fmt.Errorf("%s sql is required", actionName)
 	}
 	if strings.Contains(checkSQL, ";") {
 		return fmt.Errorf("%s only accepts a single statement", actionName)
