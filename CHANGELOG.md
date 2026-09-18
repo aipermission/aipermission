@@ -9,6 +9,41 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.55] - 2026-09-19
+
+### Changed
+
+- Connector actions share one post-dispatch completion path that preserves request
+  identity and records late session-capture failures consistently.
+- Approved action execution and MCP polling use aligned deadlines; Docker rejects
+  requested timeouts beyond its command transport budget.
+
+### Fixed
+
+- MCP returns empty action fields as arrays, preserves TOML sections after quoted
+  markers, reports failed action calls as tool errors, and validates recorded request
+  lifecycles against the generated contract.
+- Dismissed Vault approvals can reopen while still pending, and completed upload batches
+  no longer relaunch.
+- SQLite database paths are encoded as file URIs, and read-only SQL accepts comments
+  after the final statement terminator.
+
+### Security
+
+- Gateway secret-file reads and browser-buffered downloads have explicit size bounds.
+
+### Maintenance
+
+- Vault approval notices are isolated, action workflow coverage is ratcheted, and backup
+  and connector action examples are aligned with current behavior.
+- Go network and crypto modules, MCP and repository YAML parsers, and frontend UI
+  dependencies include reviewed maintenance updates.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.54] - 2026-09-17
 
 ### Changed
