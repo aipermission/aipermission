@@ -17,7 +17,7 @@ import { parseHTTPTimeout } from "./config.js";
 import { idempotencyKeySchema } from "./idempotency-key.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { projectGatewaySuccess, responseContracts } from "./response-contracts.js";
-import { jsonToolResult } from "./results.js";
+import { jsonActionToolResult, jsonToolResult } from "./results.js";
 import { externalActionAnnotations, localMutationAnnotations, localReadAnnotations } from "./tool-annotations.js";
 
 const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -100,7 +100,7 @@ server.tool(
   },
   externalActionAnnotations,
   async ({ target_ref, action_name, input, reason, idempotency_key }, { signal }) => {
-    return jsonToolResult(
+    return jsonActionToolResult(
       () =>
         apiPost(
           "/api/mcp/connector-actions/call",
@@ -158,7 +158,7 @@ server.tool(
   callVaultActionSchema,
   externalActionAnnotations,
   async ({ project_ref, action_name, input, reason, idempotency_key }, { signal }) => {
-    return jsonToolResult(
+    return jsonActionToolResult(
       () =>
         apiPost(
           "/api/mcp/vault-actions/call",

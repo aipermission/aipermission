@@ -45,7 +45,7 @@ export function errorResult(error) {
   };
 }
 
-export async function jsonToolResult(callback, project, mutationContext = null) {
+export async function jsonToolResult(callback, project, mutationContext = null, isFailure = () => false) {
   if (typeof project !== "function") {
     return errorResult(new Error("MCP tool result projector is required."));
   }
@@ -56,10 +56,21 @@ export async function jsonToolResult(callback, project, mutationContext = null) 
     return errorResult(error);
   }
   try {
-    return textResult(project(value));
+    const projected = project(value);
+    const result = textResult(projected);
+    return isFailure(projected) ? { ...result, isError: true } : result;
   } catch (error) {
     return errorResult(mutationContext ? projectionOutcomeUnknown(error, mutationContext) : error);
   }
+}
+
+export function jsonActionToolResult(callback, project, mutationContext) {
+  return jsonToolResult(
+    callback,
+    project,
+    mutationContext,
+    (value) => !["completed", "approval_pending", "running"].includes(value.status),
+  );
 }
 
 function projectionOutcomeUnknown(cause, context) {
