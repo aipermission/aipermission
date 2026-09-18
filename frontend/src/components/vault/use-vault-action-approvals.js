@@ -97,7 +97,15 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     setDialog(initialDialog);
   }, [requests]);
 
+  const openPending = useCallback(() => {
+    if (approvals.state !== "ready" || dialog.approval) return;
+    const approval = approvals.data.find((item) => item.status === "approval_pending");
+    if (!approval) return;
+    seenPendingRef.current.add(approval.id);
+    setDialog({ ...initialDialog, approval });
+  }, [approvals, dialog.approval]);
+
   const setNote = useCallback((note) => setDialog((current) => ({ ...current, note })), []);
 
-  return { approvals, close, decline, dialog, load, run, setNote };
+  return { approvals, close, decline, dialog, load, openPending, run, setNote };
 }

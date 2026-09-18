@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Shell } from "./app-shell";
 
@@ -47,6 +47,14 @@ it("serializes route polling and stops scheduling after unmount", async () => {
   view.unmount();
   await act(async () => vi.advanceTimersByTimeAsync(10000));
   expect(state.resources.loadStatus).toHaveBeenCalledTimes(2);
+});
+
+it("offers a way back to a dismissed pending Vault approval", () => {
+  state.vault.approvals = { state: "ready", data: [{ id: 42, status: "approval_pending" }] };
+  state.vault.openPending = vi.fn();
+  render(<Shell theme="dark" setTheme={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Review pending Vault approval" }));
+  expect(state.vault.openPending).toHaveBeenCalledOnce();
 });
 
 function asyncMock() {
