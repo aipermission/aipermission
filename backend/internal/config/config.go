@@ -15,6 +15,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/localhttp"
 )
 
+const maxGatewaySecretFileBytes = 4 << 10
+
 type Config struct {
 	Host           string   `json:"host"`
 	Port           string   `json:"port"`
@@ -362,9 +364,12 @@ func readGatewaySecret(path string) (string, error) {
 	if err := file.Chmod(0o600); err != nil {
 		return "", fmt.Errorf("secure gateway secret: %w", err)
 	}
-	data, err := io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, maxGatewaySecretFileBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read gateway secret: %w", err)
+	}
+	if len(data) > maxGatewaySecretFileBytes {
+		return "", fmt.Errorf("gateway secret file exceeds %d bytes", maxGatewaySecretFileBytes)
 	}
 	value := strings.TrimSpace(string(data))
 	if err := validateGatewaySecret(value); err != nil {
