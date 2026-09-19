@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -330,6 +331,109 @@ func TestRuntimeApprovalAndCancellationTransitions(t *testing.T) {
 		item, err := harness.runtime.CancelOwned(t.Context(), created.Request.ID, harness.tokenID)
 		if err != nil || item.Status != StatusCanceled {
 			t.Fatalf("item=%#v err=%v", item, err)
+		}
+	})
+}
+
+func TestRuntimeRedactsOperatorNoteBeforeEveryDecisionPath(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		decision func(*runtimeHarness, int64) (Request, error)
+		status   string
+	}{
+		{
+			name: "run success", status: StatusCompleted,
+			decision: func(harness *runtimeHarness, id int64) (Request, error) {
+				result, err := harness.runtime.RunPending(t.Context(), id, "keep CANARY password=raw-secret")
+				return result.Request, err
+			},
+		},
+		{
+			name: "run failure", status: StatusFailed,
+			decision: func(harness *runtimeHarness, id int64) (Request, error) {
+				harness.runtime.execute = func(context.Context, Request) (any, error) {
+					return nil, errors.New("synthetic execution failure")
+				}
+				result, err := harness.runtime.RunPending(t.Context(), id, "keep CANARY password=raw-secret")
+				return result.Request, err
+			},
+		},
+		{
+			name: "decline", status: StatusDeclined,
+			decision: func(harness *runtimeHarness, id int64) (Request, error) {
+				return harness.runtime.DeclinePending(t.Context(), id, "keep CANARY password=raw-secret")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newRuntimeHarness(t)
+			harness.runtime.redactProjection = func(_ context.Context, value any) (any, error) {
+				text, ok := value.(string)
+				if !ok {
+					return value, nil
+				}
+				text = strings.ReplaceAll(text, "CANARY", "[REDACTED]")
+				text = strings.ReplaceAll(text, "raw-secret", "[REDACTED]")
+				return text, nil
+			}
+			created := harness.call(t, "redact-"+strings.ReplaceAll(test.name, " ", "-"))
+			item, err := test.decision(harness, created.Request.ID)
+			if err != nil || item.Status != test.status {
+				t.Fatalf("decision item=%#v err=%v", item, err)
+			}
+			persisted, err := harness.store.Get(t.Context(), created.Request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.UserNote != "keep [REDACTED] password=[REDACTED]" {
+				t.Fatalf("persisted user note = %q", persisted.UserNote)
+			}
+			var historyNote string
+			if err := harness.database.QueryRow(`
+				SELECT user_note FROM history_entries
+				WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, created.Request.ID).Scan(&historyNote); err != nil {
+				t.Fatal(err)
+			}
+			if historyNote != persisted.UserNote {
+				t.Fatalf("history note = %q, want %q", historyNote, persisted.UserNote)
+			}
+		})
+	}
+
+	t.Run("atomic executor", func(t *testing.T) {
+		harness := newRuntimeHarness(t)
+		created := harness.call(t, "redact-atomic")
+		harness.runtime.redactProjection = func(_ context.Context, value any) (any, error) {
+			text, ok := value.(string)
+			if !ok {
+				return value, nil
+			}
+			return strings.ReplaceAll(text, "CANARY", "[REDACTED]"), nil
+		}
+		var atomicNote string
+		harness.runtime.executeAtomic = func(ctx context.Context, request Request, _ string, userNote string, _ string) (WorkflowResult, bool, error) {
+			atomicNote = userNote
+			completed, err := harness.store.Complete(ctx, request.ID, StatusFailed, nil, "synthetic atomic failure", userNote)
+			return WorkflowResult{Request: completed, ExecutionError: errors.New("synthetic atomic failure")}, true, err
+		}
+		result, err := harness.runtime.RunPending(t.Context(), created.Request.ID, "keep CANARY")
+		if err != nil || result.Request.Status != StatusFailed || atomicNote != "keep [REDACTED]" || result.Request.UserNote != atomicNote {
+			t.Fatalf("atomic result=%#v note=%q err=%v", result, atomicNote, err)
+		}
+	})
+
+	t.Run("redaction failure does not claim", func(t *testing.T) {
+		harness := newRuntimeHarness(t)
+		created := harness.call(t, "redact-failure")
+		harness.runtime.redactProjection = func(context.Context, any) (any, error) {
+			return nil, errors.New("redaction unavailable")
+		}
+		if _, err := harness.runtime.RunPending(t.Context(), created.Request.ID, "CANARY"); err == nil || !strings.Contains(err.Error(), "redaction unavailable") {
+			t.Fatalf("redaction error = %v", err)
+		}
+		persisted, err := harness.store.Get(t.Context(), created.Request.ID)
+		if err != nil || persisted.Status != StatusApprovalPending || persisted.UserNote != "" {
+			t.Fatalf("request changed after redaction failure: %#v err=%v", persisted, err)
 		}
 	})
 }

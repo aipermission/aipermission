@@ -45,6 +45,96 @@ func displayedVaultApprovalContextHash(t *testing.T, fixture apiTestFixture, req
 	return ""
 }
 
+func createPendingVaultGenerateApproval(t *testing.T, fixture apiTestFixture, key string) int64 {
+	t.Helper()
+	project, err := projectstore.NewStore(fixture.db).Get(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := createAPITestToken(t, fixture, t.Context(), "vault-note-"+key)
+	if _, err := accesscontrol.NewCapabilityStore(fixture.db).Replace(t.Context(), token.ID, []accesscontrol.CapabilitySetInput{{
+		ProjectID: project.ID, Name: accesscontrol.VaultItemGenerate,
+		ExecutionRule: accesscontrol.RuleApprovalRequired,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, mcpVaultActionCallRequest{
+		ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
+		Input: map[string]any{
+			"name": "VAULT_NOTE_" + strings.ToUpper(key), "secret_type": "generic_secret",
+			"generator_kind": "random_token",
+		},
+		Reason: "Verify operator note handling.", IdempotencyKey: "vault-note-" + key,
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("create pending Vault request: %d %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		RequestID int64  `json:"request_id"`
+		Status    string `json:"status"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RequestID < 1 || body.Status != vaultrequests.StatusApprovalPending {
+		t.Fatalf("pending Vault response = %#v", body)
+	}
+	return body.RequestID
+}
+
+func TestVaultOperatorNotesUseConfiguredPersistenceRedaction(t *testing.T) {
+	for _, decision := range []string{"run", "decline"} {
+		t.Run(decision, func(t *testing.T) {
+			fixture := newAPITestFixture(t)
+			const customCanary = "VAULT_NOTE_CANARY_7391"
+			const basicCanary = "Bearer abcdefghijklmnopqrstuvwxyz123456"
+			rule := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
+				Name: "Vault operator note canary", Pattern: customCanary, Enabled: true,
+			})
+			if rule.Code != http.StatusCreated {
+				t.Fatalf("create custom redaction rule: %d %s", rule.Code, rule.Body.String())
+			}
+
+			requestID := createPendingVaultGenerateApproval(t, fixture, decision)
+			note := "harmless operator context " + customCanary + " " + basicCanary
+			response := performJSON(
+				fixture.server.Handler(), http.MethodPost,
+				fmt.Sprintf("/api/vault-action-approvals/%d/%s", requestID, decision), "",
+				vaultrequests.DecisionHTTPRequest{
+					UserNote: note, ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID),
+				},
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s Vault request: %d %s", decision, response.Code, response.Body.String())
+			}
+
+			var storedNote, historyNote string
+			if err := fixture.db.QueryRow(`SELECT user_note FROM vault_action_requests WHERE id = ?`, requestID).Scan(&storedNote); err != nil {
+				t.Fatal(err)
+			}
+			if err := fixture.db.QueryRow(`
+				SELECT user_note FROM history_entries
+				WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, requestID).Scan(&historyNote); err != nil {
+				t.Fatal(err)
+			}
+			list := performJSON(fixture.server.Handler(), http.MethodGet, "/api/vault-action-approvals", "", nil)
+			history := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?limit=100", "", nil)
+			for surface, value := range map[string]string{
+				"request row": storedNote, "history row": historyNote,
+				"decision response": response.Body.String(), "approval list": list.Body.String(),
+				"history response": history.Body.String(),
+			} {
+				if strings.Contains(value, customCanary) || strings.Contains(value, "abcdefghijklmnopqrstuvwxyz123456") {
+					t.Fatalf("%s exposed raw operator note: %s", surface, value)
+				}
+				if !strings.Contains(value, "harmless operator context") || !strings.Contains(value, "[REDACTED]") {
+					t.Fatalf("%s did not retain harmless text with redaction: %s", surface, value)
+				}
+			}
+		})
+	}
+}
+
 func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
