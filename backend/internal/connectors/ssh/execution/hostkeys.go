@@ -2,9 +2,12 @@ package execution
 
 import (
 	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/sha1" // #nosec G505 -- OpenSSH known_hosts hashing is fixed to HMAC-SHA1.
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -238,42 +241,67 @@ func ReplaceHostKey(path string, hostname string, publicKey string) error {
 	if err != nil {
 		return fmt.Errorf("read known_hosts: %w", err)
 	}
+	previousKeys, err := acceptedHostKeys(path, data, hostname)
+	if err != nil {
+		return err
+	}
 	output := replaceKnownHostData(data, hostname, knownhosts.Line([]string{hostname}, key))
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("stat known_hosts: %w", err)
 	}
-	return writeKnownHostsAtomically(path, output, info.Mode().Perm())
+	return writeKnownHostsAtomically(path, output, info.Mode().Perm(), func(candidatePath string) error {
+		return validateHostKeyReplacement(candidatePath, hostname, key, previousKeys)
+	})
 }
 
 func replaceKnownHostData(data []byte, hostname, replacement string) []byte {
-	matches := knownHostNameSet(hostname)
+	target := knownhosts.Normalize(strings.TrimSpace(hostname))
 	lines := strings.Split(string(data), "\n")
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if line == "" {
+			kept = append(kept, line)
 			continue
 		}
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
+			kept = append(kept, line)
 			continue
 		}
-		remove := false
-		for _, name := range strings.Split(fields[0], ",") {
-			if matches[name] {
-				remove = true
-				break
-			}
-		}
-		if !remove {
+		if strings.HasPrefix(fields[0], "@") {
+			// Marker records carry OpenSSH security semantics that must survive a
+			// normal host-key replacement. In particular, removing @revoked can
+			// silently reactivate a key that is also trusted by a wildcard entry.
 			kept = append(kept, line)
+			continue
 		}
+		hostField := 0
+		names := strings.Split(fields[hostField], ",")
+		remaining := names[:0]
+		removed := false
+		for _, name := range names {
+			if knownHostPatternMatches(name, target) {
+				removed = true
+				continue
+			}
+			remaining = append(remaining, name)
+		}
+		if !removed {
+			kept = append(kept, line)
+			continue
+		}
+		if len(remaining) == 0 {
+			continue
+		}
+		fields[hostField] = strings.Join(remaining, ",")
+		kept = append(kept, strings.Join(fields, " "))
 	}
 	kept = append(kept, replacement)
-	return []byte(strings.Join(kept, "\n") + "\n")
+	return []byte(strings.TrimRight(strings.Join(kept, "\n"), "\n") + "\n")
 }
 
-func writeKnownHostsAtomically(path string, data []byte, mode os.FileMode) (err error) {
+func writeKnownHostsAtomically(path string, data []byte, mode os.FileMode, validate func(string) error) (err error) {
 	dir := filepath.Dir(path)
 	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
@@ -302,24 +330,85 @@ func writeKnownHostsAtomically(path string, data []byte, mode os.FileMode) (err 
 		return fmt.Errorf("close known_hosts replacement: %w", err)
 	}
 	file = nil
+	if validate != nil {
+		if err = validate(tempPath); err != nil {
+			return err
+		}
+	}
 	if err = os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("replace known_hosts: %w", err)
 	}
 	return nil
 }
 
-func knownHostNameSet(hostname string) map[string]bool {
-	hostname = strings.TrimSpace(hostname)
-	values := map[string]bool{hostname: true}
-	host, port, err := net.SplitHostPort(hostname)
-	if err == nil {
-		values[host] = true
-		values[net.JoinHostPort(host, port)] = true
-		if port == "22" {
-			values[host] = true
+func knownHostPatternMatches(pattern, target string) bool {
+	if strings.HasPrefix(pattern, "!") {
+		return false
+	}
+	if !strings.HasPrefix(pattern, "|1|") {
+		return knownhosts.Normalize(pattern) == target
+	}
+	parts := strings.Split(pattern, "|")
+	if len(parts) != 4 {
+		return false
+	}
+	salt, err := base64.StdEncoding.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+	want, err := base64.StdEncoding.DecodeString(parts[3])
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha1.New, salt) // #nosec G401 -- required by the OpenSSH known_hosts format.
+	_, _ = mac.Write([]byte(target))
+	return hmac.Equal(mac.Sum(nil), want)
+}
+
+func acceptedHostKeys(path string, data []byte, hostname string) ([]ssh.PublicKey, error) {
+	callback, err := knownhosts.New(path)
+	if err != nil {
+		return nil, fmt.Errorf("load known_hosts: %w", err)
+	}
+	seen := map[string]bool{}
+	accepted := []ssh.PublicKey{}
+	for len(data) > 0 {
+		_, _, key, _, rest, parseErr := ssh.ParseKnownHosts(data)
+		if errors.Is(parseErr, io.EOF) {
+			break
+		}
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse known_hosts: %w", parseErr)
+		}
+		data = rest
+		fingerprint := HostKeyFingerprintSHA256(key)
+		if seen[fingerprint] || callback(hostname, knownHostsRemoteAddr(nil), key) != nil {
+			continue
+		}
+		seen[fingerprint] = true
+		accepted = append(accepted, key)
+	}
+	return accepted, nil
+}
+
+func validateHostKeyReplacement(path, hostname string, replacement ssh.PublicKey, previous []ssh.PublicKey) error {
+	callback, err := knownhosts.New(path)
+	if err != nil {
+		return fmt.Errorf("validate known_hosts replacement: %w", err)
+	}
+	if err := callback(hostname, knownHostsRemoteAddr(nil), replacement); err != nil {
+		return fmt.Errorf("validate replacement host key: %w", err)
+	}
+	replacementFingerprint := HostKeyFingerprintSHA256(replacement)
+	for _, key := range previous {
+		if HostKeyFingerprintSHA256(key) == replacementFingerprint {
+			continue
+		}
+		if err := callback(hostname, knownHostsRemoteAddr(nil), key); err == nil {
+			return fmt.Errorf("replace host key: prior key remains trusted by a wildcard or unsupported known_hosts pattern")
 		}
 	}
-	return values
+	return nil
 }
 
 func knownHostsRemoteAddr(remote net.Addr) net.Addr {
