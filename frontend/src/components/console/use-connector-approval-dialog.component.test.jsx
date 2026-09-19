@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../../lib/api";
+import { APIError } from "../../lib/errors";
 import { useConnectorApprovalDialog } from "./use-connector-approval-dialog";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn() }));
@@ -99,7 +100,7 @@ describe("useConnectorApprovalDialog", () => {
   });
 
   it("keeps a stale approval visible with actionable state", async () => {
-    const runApproval = vi.fn().mockRejectedValue(new Error("Approval context is stale; create a fresh request."));
+    const runApproval = vi.fn().mockRejectedValue(new APIError("Approval changed.", { code: "approval_context_changed" }));
     apiGet.mockResolvedValue(approval(7));
     const { result } = renderDialog({ approvals: [approval(7)], runApproval });
     await act(async () => {});
@@ -107,12 +108,12 @@ describe("useConnectorApprovalDialog", () => {
     await act(async () => result.current.approve());
 
     expect(result.current.activeApproval.id).toBe(7);
-    expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("stale") });
+    expect(result.current.action).toMatchObject({ state: "stale", error: "Approval changed." });
     expect(runApproval).toHaveBeenCalledWith(expect.objectContaining({ id: 7, approval_context_hash: "context-7" }), "");
   });
 
   it("reloads and disables a decline decision whose context became stale", async () => {
-    const declineApproval = vi.fn().mockRejectedValue(new Error("Approval context changed; review a fresh request."));
+    const declineApproval = vi.fn().mockRejectedValue(new APIError("Approval changed.", { code: "approval_not_pending" }));
     apiGet.mockResolvedValueOnce(approval(7)).mockResolvedValueOnce({ ...approval(7), status: "stale", approval_context_hash: undefined });
     const { result } = renderDialog({ approvals: [approval(7)], declineApproval });
     await act(async () => {});

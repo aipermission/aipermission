@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPost } from "../../lib/api";
+import { APIError } from "../../lib/errors";
 import { useVaultActionApprovals } from "./use-vault-action-approvals";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
@@ -39,6 +40,10 @@ const pendingApproval = {
   expires_at: "2026-09-16T00:15:00Z",
   updated_at: "2026-09-16T00:00:00Z",
 };
+
+function decisionApproval(status, overrides = {}) {
+  return { ...pendingApproval, status, approval_context_hash: "", ...overrides };
+}
 
 describe("useVaultActionApprovals", () => {
   beforeEach(() => {
@@ -105,14 +110,14 @@ describe("useVaultActionApprovals", () => {
     await act(async () => result.current.load());
     expect(result.current.dialog.state).toBe("running");
 
-    await act(async () => decision.resolve({ status: "completed" }));
+    await act(async () => decision.resolve(decisionApproval("completed")));
     await run;
     expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
   });
 
   it("reopens a dismissed pending approval for an explicit decision", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
-    apiPost.mockResolvedValue({ status: "completed" });
+    apiPost.mockResolvedValue(decisionApproval("completed"));
     const { result } = renderApprovals();
     await act(async () => result.current.load());
     act(() => result.current.close());
@@ -140,7 +145,7 @@ describe("useVaultActionApprovals", () => {
       run = result.current.run();
     });
     act(() => result.current.close());
-    await act(async () => decision.resolve({ status: "completed" }));
+    await act(async () => decision.resolve(decisionApproval("completed")));
     await run;
 
     expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
@@ -159,7 +164,7 @@ describe("useVaultActionApprovals", () => {
       run = result.current.run();
     });
     unmount();
-    await act(async () => decision.resolve({ status: "completed" }));
+    await act(async () => decision.resolve(decisionApproval("completed")));
     await run;
 
     expect(apiGet).toHaveBeenCalledOnce();
@@ -168,7 +173,7 @@ describe("useVaultActionApprovals", () => {
 
   it("turns an approval context failure into an acknowledgement-only stale state", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
-    apiPost.mockRejectedValue(new Error("Approval context changed. Review a fresh request."));
+    apiPost.mockRejectedValue(new APIError("Approval changed.", { code: "approval_context_changed" }));
     const { result } = renderApprovals();
     await act(async () => result.current.load());
 
@@ -201,7 +206,7 @@ describe("useVaultActionApprovals", () => {
 
   it("reloads and makes a stale decline conflict acknowledgement-only", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
-    apiPost.mockRejectedValue(new Error("Approval context changed. Review a fresh request."));
+    apiPost.mockRejectedValue(new APIError("Approval changed.", { code: "approval_not_pending" }));
     const { result } = renderApprovals();
     await act(async () => result.current.load());
 
@@ -223,7 +228,7 @@ describe("useVaultActionApprovals", () => {
 
   it("submits the local note and refreshes after declining", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
-    apiPost.mockResolvedValue({ status: "declined" });
+    apiPost.mockResolvedValue(decisionApproval("declined"));
     const { result } = renderApprovals();
     await act(async () => result.current.load());
     act(() => result.current.setNote("Not this time"));
@@ -235,5 +240,31 @@ describe("useVaultActionApprovals", () => {
       approval_context_hash: "context-hash",
     });
     expect(result.current.dialog.approval).toBeNull();
+  });
+
+  it("keeps the approval visible when a run returns a malformed success envelope", async () => {
+    apiGet.mockResolvedValue([pendingApproval]);
+    apiPost.mockResolvedValue({ id: pendingApproval.id, status: "completed" });
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.run());
+
+    expect(result.current.dialog).toMatchObject({
+      approval: pendingApproval,
+      state: "failed",
+      error: expect.stringContaining("Invalid Vault approval decision"),
+    });
+  });
+
+  it("keeps the approval visible when a decision response belongs to another request", async () => {
+    apiGet.mockResolvedValue([pendingApproval]);
+    apiPost.mockResolvedValue(decisionApproval("completed", { id: pendingApproval.id + 1 }));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.run());
+
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "failed" });
   });
 });

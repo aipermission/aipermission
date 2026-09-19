@@ -166,7 +166,17 @@ func TestRunRejectsApprovalContextThatWasNotDisplayed(t *testing.T) {
 
 	handlers.Run(response, request)
 
-	if response.Code != http.StatusConflict || called {
+	if response.Code != http.StatusConflict || called || !strings.Contains(response.Body.String(), `"code":"approval_context_changed"`) {
 		t.Fatalf("status=%d workflow_called=%t body=%s", response.Code, called, response.Body.String())
+	}
+}
+
+func TestKnownPendingConflictUsesStableErrorCode(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeKnownError(response, connectortargets.ErrActionRequestNotPending) {
+		t.Fatal("pending conflict was not handled")
+	}
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_not_pending"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }

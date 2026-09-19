@@ -201,7 +201,11 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 			"tags":                          []string{routeTag(route.Path)},
 			"x-aipermission-contract-level": contractLevel,
 		}
-		if parameters := pathParameters(route.Path); len(parameters) > 0 {
+		parameters := pathParameters(route.Path)
+		if parameter := workspaceHeaderParameter(route); parameter != nil {
+			parameters = append(parameters, parameter)
+		}
+		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}
 		if contract, ok := typedContracts[route]; ok && contract.RequestSchema != nil {
@@ -239,6 +243,35 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 		return nil, fmt.Errorf("encode OpenAPI route inventory: %w", err)
 	}
 	return output.Bytes(), nil
+}
+
+func workspaceHeaderParameter(route Route) map[string]any {
+	if !isMutationMethod(route.Method) || !strings.HasPrefix(route.Path, "/api/") || strings.HasPrefix(route.Path, "/api/mcp/") || route.Path == "/api/unlock" {
+		return nil
+	}
+	return map[string]any{
+		"name": "X-AIPermission-Workspace", "in": "header", "required": !workspaceHeaderIsConditional(route.Path),
+		"description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+		"schema":      nonBlankStringSchema(),
+	}
+}
+
+func isMutationMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return true
+	default:
+		return false
+	}
+}
+
+func workspaceHeaderIsConditional(path string) bool {
+	switch path {
+	case "/api/unlock/setup", "/api/backup/import", "/api/backup/remote/list", "/api/backup/remote/restore", "/api/databases/delete-locked":
+		return true
+	default:
+		return false
+	}
 }
 
 func responseWithSchema(description string, schema map[string]any) map[string]any {

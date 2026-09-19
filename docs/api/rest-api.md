@@ -2,7 +2,7 @@
 
 This document tracks the public-ish REST surface used by the web UI and MCP bridge. The API is local-only and assumes the encrypted database has been unlocked unless the endpoint is part of setup/unlock.
 
-The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating web REST requests also send a double-submit CSRF header/cookie pair. MCP endpoints do not use that cookie; they authenticate with API tokens.
+The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating web REST requests also send a double-submit CSRF header/cookie pair and `X-AIPermission-Workspace`, the workspace identity observed by that browser tab. A valid session and CSRF token without the matching workspace header is rejected with `409 Conflict`; clients must refresh instead of replaying the mutation against another unlocked database. Setup and recovery mutations that can run while locked require the header only after a workspace is unlocked. MCP endpoints do not use browser cookies or this workspace header; they authenticate with API tokens.
 
 The machine-readable [OpenAPI contract](openapi.json) is generated from the
 core route registration source, connector-owned adapter route catalogs, and a
@@ -1481,9 +1481,11 @@ redacted.
 
 Run changes an `approval_pending` connector action to `running`, validates the
 current token/target/profile/action permission and approval-context hash, then
-decrypts the stored payload and executes the connector. It accepts an optional
-JSON body with `user_note`; when provided, the note is delivered to the matching
-MCP token through the message queue. The request later becomes `completed`,
+decrypts the stored payload and executes the connector. It requires a JSON body
+with the exact `approval_context_hash` returned by the reviewed detail response;
+`user_note` is optional and, when provided, is delivered to the matching MCP
+token through the message queue. Missing or malformed decision input returns
+`400`, a missing request returns `404`, and changed context returns `409`. The request later becomes `completed`,
 `failed`, `error`, or `stale`.
 
 If the token, connector action permission, target/profile context, credential
@@ -1498,9 +1500,10 @@ If execution finishes but terminal persistence cannot be proven, Run returns
 `request_id`, and explicit no-automatic-retry guidance. Inspect that request
 and the external target before deciding whether another action is safe.
 
-Decline changes the connector action request to `declined`. The optional
-`user_note` is stored on the connector action request and returned to MCP as
-operator guidance.
+Decline also requires the reviewed `approval_context_hash` and changes the
+connector action request to `declined`. The optional `user_note` is stored on
+the connector action request and returned to MCP as operator guidance. It uses
+the same `400`, `404`, and `409` decision errors as Run.
 
 Connector approval context includes token validity, permission rule,
 target/profile public

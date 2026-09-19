@@ -44,6 +44,18 @@ func TestHTTPHandlersPreserveSecurityPolicyContract(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"redaction_mode":"off"`) {
 		t.Fatalf("settings update response = %d %s", response.Code, response.Body.String())
 	}
+	legacyDocument := SettingsDocument{}
+	if err := json.Unmarshal(response.Body.Bytes(), &legacyDocument); err != nil {
+		t.Fatal(err)
+	}
+	response = performRequest(mux, http.MethodPut, "/settings", `{"reusable_tokens":false,"expose_mcp_server_metadata":false,"mcp_start_enabled":false,"redaction_mode":"basic","revision":"`+legacyDocument.Revision+`"}`)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"redaction_mode":"basic"`) {
+		t.Fatalf("legacy settings update response = %d %s", response.Code, response.Body.String())
+	}
+	response = performRequest(mux, http.MethodPut, "/settings", `{"reusable_tokens":false,"expose_mcp_server_metadata":false,"mcp_start_enabled":false,"redaction_mode":"basic","expected_revision":"one","revision":"two"}`)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "revision fields conflict") {
+		t.Fatalf("conflicting revision response = %d %s", response.Code, response.Body.String())
+	}
 
 	response = performRequest(mux, http.MethodPost, "/rules", `{"name":"broken","pattern":"[","enabled":true}`)
 	if response.Code != http.StatusBadRequest {

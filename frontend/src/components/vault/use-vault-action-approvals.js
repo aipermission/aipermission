@@ -2,15 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { failedResource, pollReadOptions } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
-import { vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
+import { vaultApproval, vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
 
 const initialApprovals = { state: "loading", data: [], error: null };
 const initialDialog = { approval: null, note: "", state: "idle", error: null };
 
 function isStaleApprovalError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("stale") || message.includes("changed") || message.includes("fresh request");
+  return ["approval_context_changed", "approval_not_pending"].includes(error?.code);
 }
 
 export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions }) {
@@ -56,10 +55,14 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "running", error: null }));
     try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/run`, {
-        user_note: dialog.note,
-        approval_context_hash: approval.approval_context_hash,
-      });
+      vaultApproval(
+        await apiPost(`/api/vault-action-approvals/${approval.id}/run`, {
+          user_note: dialog.note,
+          approval_context_hash: approval.approval_context_hash,
+        }),
+        { id: approval.id, statuses: ["completed"] },
+        "Vault approval decision",
+      );
       if (!request.isCurrent()) return;
       setDialog(initialDialog);
       await Promise.all([load(), refreshConsoleSessions()]);
@@ -83,10 +86,14 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "declining", error: null }));
     try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, {
-        user_note: dialog.note,
-        approval_context_hash: approval.approval_context_hash,
-      });
+      vaultApproval(
+        await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, {
+          user_note: dialog.note,
+          approval_context_hash: approval.approval_context_hash,
+        }),
+        { id: approval.id, statuses: ["declined"] },
+        "Vault approval decision",
+      );
       if (!request.isCurrent()) return;
       setDialog(initialDialog);
       await load();

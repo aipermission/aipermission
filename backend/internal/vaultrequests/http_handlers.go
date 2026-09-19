@@ -41,6 +41,11 @@ type DecisionHTTPRequest struct {
 	ApprovalContextHash string `json:"approval_context_hash"`
 }
 
+const (
+	approvalContextChangedCode = "approval_context_changed"
+	approvalNotPendingCode     = "approval_not_pending"
+)
+
 func NewHTTPHandlers(scope HTTPScopeProvider) *HTTPHandlers {
 	return &HTTPHandlers{scope: scope}
 }
@@ -140,7 +145,7 @@ func validateVaultDecisionContext(w http.ResponseWriter, r *http.Request, runtim
 		return false
 	}
 	if item.ApprovalContextHash == "" || item.ApprovalContextHash != expected {
-		httptransport.WriteError(w, http.StatusConflict, "Vault approval context changed; refresh and review the request again")
+		httptransport.WriteErrorCode(w, http.StatusConflict, "Vault approval context changed; refresh and review the request again", approvalContextChangedCode)
 		return false
 	}
 	return true
@@ -194,7 +199,7 @@ func writeDecisionHTTPError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, ErrNotFound):
 		httptransport.WriteError(w, http.StatusNotFound, "Vault action request not found")
 	case errors.Is(err, ErrNotPending):
-		httptransport.WriteError(w, http.StatusConflict, "Vault action request is no longer pending")
+		httptransport.WriteErrorCode(w, http.StatusConflict, "Vault action request is no longer pending", approvalNotPendingCode)
 	case errors.Is(err, ErrMCPExecutionStopped):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	case errors.As(err, &validation):

@@ -33,6 +33,19 @@ type SettingsUpdateRequest struct {
 	MCPStartEnabled         *bool   `json:"mcp_start_enabled"`
 	RedactionMode           *string `json:"redaction_mode"`
 	ExpectedRevision        string  `json:"expected_revision"`
+	Revision                string  `json:"revision"`
+}
+
+func (request SettingsUpdateRequest) RevisionValue() (string, error) {
+	expected := strings.TrimSpace(request.ExpectedRevision)
+	legacy := strings.TrimSpace(request.Revision)
+	if expected != "" && legacy != "" && !strings.EqualFold(expected, legacy) {
+		return "", ValidationError("security settings revision fields conflict")
+	}
+	if expected != "" {
+		return expected, nil
+	}
+	return legacy, nil
 }
 
 func NewSettingsUpdateRequest(settings Settings, expectedRevision string) SettingsUpdateRequest {

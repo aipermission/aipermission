@@ -117,12 +117,22 @@ func TestHTTPHandlersRejectApprovalContextThatWasNotDisplayed(t *testing.T) {
 
 	handlers.Run(response, request)
 
-	if response.Code != http.StatusConflict {
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_context_changed"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 	stored, err := harness.runtime.Get(t.Context(), created.Request.ID)
 	if err != nil || stored.Status != StatusApprovalPending {
 		t.Fatalf("stored request = %#v err=%v", stored, err)
+	}
+}
+
+func TestDecisionPendingConflictUsesStableErrorCode(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeDecisionHTTPError(response, ErrNotPending) {
+		t.Fatal("pending conflict was not handled")
+	}
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_not_pending"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
 

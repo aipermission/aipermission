@@ -16,6 +16,11 @@ import (
 
 const noAutomaticRetryHint = "Do not retry automatically. Inspect the recorded request and external target state first."
 
+const (
+	approvalContextChangedCode = "approval_context_changed"
+	approvalNotPendingCode     = "approval_not_pending"
+)
+
 type Scope struct {
 	Requests   RequestStore
 	Workflow   func() (Workflow, error)
@@ -234,7 +239,7 @@ func (h *HTTPHandlers) validateDecisionContext(w http.ResponseWriter, r *http.Re
 		return false
 	}
 	if item.ApprovalContextHash == "" || item.ApprovalContextHash != expected {
-		httptransport.WriteError(w, http.StatusConflict, "approval context changed; refresh and review the request again")
+		httptransport.WriteErrorCode(w, http.StatusConflict, "approval context changed; refresh and review the request again", approvalContextChangedCode)
 		return false
 	}
 	return true
@@ -301,7 +306,7 @@ func writeKnownError(w http.ResponseWriter, err error) bool {
 		return true
 	}
 	if errors.Is(err, connectortargets.ErrActionRequestNotPending) {
-		httptransport.WriteError(w, http.StatusConflict, "connector action request is no longer pending")
+		httptransport.WriteErrorCode(w, http.StatusConflict, "connector action request is no longer pending", approvalNotPendingCode)
 		return true
 	}
 	var persistenceErr *actions.TerminalPersistenceError

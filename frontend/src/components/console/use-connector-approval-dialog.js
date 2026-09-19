@@ -131,8 +131,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
 }
 
 function isStaleApprovalError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("stale") || message.includes("approval context") || message.includes("fresh request");
+  return ["approval_context_changed", "approval_not_pending"].includes(error?.code);
 }
 
 function isTerminalActionState(state) {

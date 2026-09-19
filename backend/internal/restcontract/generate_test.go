@@ -266,6 +266,145 @@ func Register() { mux.HandleFunc("POST /api/connector-action-approvals/{id}/run"
 	}
 }
 
+func TestGenerateTypesSecuritySettingsAndVaultApprovalMutations(t *testing.T) {
+	source := []byte(`package api
+func Register() {
+	mux.HandleFunc("GET /api/settings/security", getSettings)
+	mux.HandleFunc("PUT /api/settings/security", updateSettings)
+	mux.HandleFunc("GET /api/vault-action-approvals", listVaultApprovals)
+	mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", runVaultApproval)
+	mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", declineVaultApproval)
+}`)
+	output, err := Generate(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	paths := document["paths"].(map[string]any)
+	for _, item := range []struct {
+		path   string
+		method string
+		errors []string
+	}{
+		{path: "/api/settings/security", method: "put", errors: []string{"400", "409"}},
+		{path: "/api/vault-action-approvals/{id}/run", method: "post", errors: []string{"400", "404", "409"}},
+		{path: "/api/vault-action-approvals/{id}/decline", method: "post", errors: []string{"400", "404", "409"}},
+	} {
+		operation := paths[item.path].(map[string]any)[item.method].(map[string]any)
+		if operation["x-aipermission-contract-level"] != "typed-request-response" || operation["requestBody"] == nil {
+			t.Fatalf("%s %s contract = %#v", item.method, item.path, operation)
+		}
+		responses := operation["responses"].(map[string]any)
+		for _, status := range append([]string{"200", "default"}, item.errors...) {
+			if responses[status] == nil {
+				t.Fatalf("%s %s response %s missing: %#v", item.method, item.path, status, responses)
+			}
+		}
+	}
+
+	schemas := document["components"].(map[string]any)["schemas"].(map[string]any)
+	assertAlternativeRequiredSchemaField(t, schemas, "SecuritySettingsUpdate", "expected_revision", "revision")
+	assertRequiredSchemaField(t, schemas, "SecuritySettingsDocument", "revision")
+	assertRequiredSchemaField(t, schemas, "ApprovalDecisionRequest", "approval_context_hash")
+	assertWorkspaceHeaderParameter(t, paths["/api/settings/security"].(map[string]any)["put"].(map[string]any), true)
+	approvalHash := schemas["ApprovalDecisionRequest"].(map[string]any)["properties"].(map[string]any)["approval_context_hash"].(map[string]any)
+	if approvalHash["minLength"] != float64(1) || approvalHash["pattern"] != `\S` {
+		t.Fatalf("approval context hash constraints = %#v", approvalHash)
+	}
+	vaultContext := schemas["VaultActionRequest"].(map[string]any)["properties"].(map[string]any)["approval_context"].(map[string]any)
+	if vaultContext["$ref"] != "#/components/schemas/VaultApprovalContext" {
+		t.Fatalf("Vault approval context schema = %#v", vaultContext)
+	}
+	assertPendingApprovalRequiresContextHash(t, schemas, "ConnectorActionApprovalSummary")
+	assertPendingApprovalRequiresContextHash(t, schemas, "ConnectorActionApprovalDetail")
+}
+
+func assertPendingApprovalRequiresContextHash(t *testing.T, schemas map[string]any, name string) {
+	t.Helper()
+	schema := schemas[name].(map[string]any)
+	allOf, ok := schema["allOf"].([]any)
+	if !ok || len(allOf) != 1 {
+		t.Fatalf("%s pending constraint = %#v", name, schema["allOf"])
+	}
+	condition := allOf[0].(map[string]any)
+	then := condition["then"].(map[string]any)
+	required := then["required"].([]any)
+	hash := then["properties"].(map[string]any)["approval_context_hash"].(map[string]any)
+	if len(required) != 1 || required[0] != "approval_context_hash" || hash["minLength"] != float64(1) || hash["pattern"] != `\S` {
+		t.Fatalf("%s pending hash constraint = %#v", name, condition)
+	}
+}
+
+func TestGenerateDocumentsConditionalWorkspaceHeaderForLockedRecoveryMutation(t *testing.T) {
+	output, err := Generate([]byte(`package api
+func Register() { mux.HandleFunc("POST /api/backup/import", restore) }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	operation := document["paths"].(map[string]any)["/api/backup/import"].(map[string]any)["post"].(map[string]any)
+	assertWorkspaceHeaderParameter(t, operation, false)
+}
+
+func assertWorkspaceHeaderParameter(t *testing.T, operation map[string]any, required bool) {
+	t.Helper()
+	parameters, _ := operation["parameters"].([]any)
+	for _, raw := range parameters {
+		parameter, _ := raw.(map[string]any)
+		if parameter["name"] == "X-AIPermission-Workspace" && parameter["in"] == "header" {
+			if parameter["required"] != required {
+				t.Fatalf("workspace header required = %#v, want %t", parameter["required"], required)
+			}
+			return
+		}
+	}
+	t.Fatalf("workspace header parameter missing: %#v", parameters)
+}
+
+func assertAlternativeRequiredSchemaField(t *testing.T, schemas map[string]any, schemaName string, fields ...string) {
+	t.Helper()
+	schema := schemas[schemaName].(map[string]any)
+	alternatives, ok := schema["anyOf"].([]any)
+	if !ok {
+		t.Fatalf("schema %s does not define revision alternatives", schemaName)
+	}
+	found := map[string]bool{}
+	for _, alternative := range alternatives {
+		entry, ok := alternative.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, value := range entry["required"].([]any) {
+			if field, ok := value.(string); ok {
+				found[field] = true
+			}
+		}
+	}
+	for _, field := range fields {
+		if !found[field] {
+			t.Fatalf("schema %s does not accept required alternative %s: %#v", schemaName, field, alternatives)
+		}
+	}
+}
+
+func assertRequiredSchemaField(t *testing.T, schemas map[string]any, schemaName, field string) {
+	t.Helper()
+	schema := schemas[schemaName].(map[string]any)
+	required := schema["required"].([]any)
+	for _, value := range required {
+		if value == field {
+			return
+		}
+	}
+	t.Fatalf("schema %s does not require %s: %#v", schemaName, field, required)
+}
+
 func TestValidateTypedRoutesRejectsRemovedRoutes(t *testing.T) {
 	if err := ValidateTypedRoutes([]Route{{Method: "GET", Path: "/health"}}); err == nil || !strings.Contains(err.Error(), "unregistered route") {
 		t.Fatalf("expected stale typed route error, got %v", err)
@@ -314,6 +453,33 @@ func TestValidateTypedResponseAcceptsDocumentedApprovalFailures(t *testing.T) {
 	if err := ValidateTypedResponse("POST", "/api/connector-action-approvals/{id}/run", 503, invalid); err == nil {
 		t.Fatal("invalid approval uncertain outcome should violate the contract")
 	}
+	for _, path := range []string{"/api/connector-action-approvals/{id}/run", "/api/connector-action-approvals/{id}/decline"} {
+		for _, status := range []int{400, 404, 409} {
+			if err := ValidateTypedResponse("POST", path, status, conflict); err != nil {
+				t.Fatalf("%s status %d rejected: %v", path, status, err)
+			}
+		}
+	}
+}
+
+func TestValidateTypedResponseEnforcesPendingApprovalContextHash(t *testing.T) {
+	const fields = `"id":1,"target_id":2,"target_name":"db","target_ref":"postgres:2:3","profile_id":3,"profile_label":"main","connector_kind":"postgres","action_name":"query_readonly","retry_policy":{"class":"read_only","guidance":"safe"},"created_at":"2026-09-21T01:00:00Z"`
+	for _, body := range []string{
+		`[{` + fields + `,"status":"approval_pending"}]`,
+		`[{` + fields + `,"status":"approval_pending","approval_context_hash":"   "}]`,
+	} {
+		if err := ValidateTypedResponse("GET", "/api/connector-action-approvals", 200, []byte(body)); err == nil {
+			t.Fatalf("invalid pending approval passed: %s", body)
+		}
+	}
+	for _, body := range []string{
+		`[{` + fields + `,"status":"approval_pending","approval_context_hash":"hash"}]`,
+		`[{` + fields + `,"status":"completed"}]`,
+	} {
+		if err := ValidateTypedResponse("GET", "/api/connector-action-approvals", 200, []byte(body)); err != nil {
+			t.Fatalf("valid approval response failed: %v", err)
+		}
+	}
 }
 
 func TestValidateTypedResponseRejectsUndocumentedAndInvalidFields(t *testing.T) {
@@ -353,6 +519,8 @@ func TestValidateSchemaValueRejectsEachSupportedShapeDrift(t *testing.T) {
 		{name: "array type", value: "wrong", schema: arraySchema(stringSchema()), want: "must be an array"},
 		{name: "array item", value: []any{true}, schema: arraySchema(stringSchema()), want: "must be a string"},
 		{name: "date time", value: "yesterday", schema: dateTimeSchema(), want: "RFC3339"},
+		{name: "nonblank minimum", value: "", schema: nonBlankStringSchema(), want: "at least 1"},
+		{name: "nonblank pattern", value: "   ", schema: nonBlankStringSchema(), want: "must match pattern"},
 		{name: "integer type", value: "1", schema: integerSchema(), want: "must be an integer"},
 		{name: "integer value", value: json.Number("1.5"), schema: integerSchema(), want: "must be an integer"},
 		{name: "boolean type", value: "true", schema: boolSchema(), want: "must be a boolean"},
@@ -367,6 +535,50 @@ func TestValidateSchemaValueRejectsEachSupportedShapeDrift(t *testing.T) {
 
 	if err := validateSchemaValue("$", map[string]any{"name": "valid"}, refSchema("Known"), schemas); err != nil {
 		t.Fatalf("valid referenced schema: %v", err)
+	}
+}
+
+func TestValidateSchemaValueEnforcesConditionalAndAlternativeBranches(t *testing.T) {
+	pending := objectSchema(map[string]any{
+		"status":                enumSchema("approval_pending", "completed"),
+		"approval_context_hash": stringSchema(),
+	}, []string{"status"})
+	pending["allOf"] = []any{map[string]any{
+		"if": map[string]any{
+			"properties": map[string]any{"status": map[string]any{"const": "approval_pending"}},
+			"required":   []string{"status"},
+		},
+		"then": map[string]any{
+			"properties": map[string]any{"approval_context_hash": nonBlankStringSchema()},
+			"required":   []string{"approval_context_hash"},
+		},
+	}}
+	for _, value := range []map[string]any{
+		{"status": "approval_pending", "approval_context_hash": "hash"},
+		{"status": "completed"},
+	} {
+		if err := validateSchemaValue("$", value, pending, nil); err != nil {
+			t.Fatalf("valid conditional value %#v: %v", value, err)
+		}
+	}
+	for _, value := range []map[string]any{
+		{"status": "approval_pending"},
+		{"status": "approval_pending", "approval_context_hash": "   "},
+	} {
+		if err := validateSchemaValue("$", value, pending, nil); err == nil {
+			t.Fatalf("invalid pending value passed: %#v", value)
+		}
+	}
+
+	alternative := map[string]any{"anyOf": []any{
+		map[string]any{"required": []string{"expected_revision"}},
+		map[string]any{"required": []string{"revision"}},
+	}}
+	if err := validateSchemaValue("$", map[string]any{"revision": "r1"}, alternative, nil); err != nil {
+		t.Fatalf("valid alternative: %v", err)
+	}
+	if err := validateSchemaValue("$", map[string]any{}, alternative, nil); err == nil {
+		t.Fatal("missing alternative requirement passed")
 	}
 }
 

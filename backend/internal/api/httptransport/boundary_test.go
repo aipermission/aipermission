@@ -80,6 +80,20 @@ func TestBoundaryRejectsStaleWorkspaceMutation(t *testing.T) {
 	}
 }
 
+func TestBoundaryRejectsCSRFOnlyMutationWithoutWorkspace(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/tokens", nil)
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("unbound mutation reached routes") }),
+		Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		HasCSRF: func(*http.Request) bool { return true }, RequiresCSRF: func(string, string) bool { return true },
+		CurrentWorkspace: func() string { return "workspace-a" },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusConflict)
+	}
+}
+
 func TestBoundaryFailsClosedWhenWorkspaceResolverIsMissing(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/tokens", nil)
 	request.Header.Set(WorkspaceHeaderName, "workspace-a")

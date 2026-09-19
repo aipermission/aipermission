@@ -63,7 +63,12 @@ func (h *HTTPHandlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	settings, err := scope.Service.UpdateSettingsAtRevision(r.Context(), requestedSettings, request.ExpectedRevision, scope.Mutate)
+	revision, err := request.RevisionValue()
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	settings, err := scope.Service.UpdateSettingsAtRevision(r.Context(), requestedSettings, revision, scope.Mutate)
 	if err != nil {
 		handleError(w, err)
 		return
