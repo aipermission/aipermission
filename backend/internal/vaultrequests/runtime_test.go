@@ -17,10 +17,37 @@ import (
 )
 
 type runtimeTestMutation struct {
-	database *sql.DB
-	mu       sync.Mutex
-	actions  []string
-	observed []string
+	database            *sql.DB
+	delivery            *runtimeTestDelivery
+	mu                  sync.Mutex
+	actions             []string
+	observed            []string
+	createdWithDelivery bool
+}
+
+type runtimeTestDelivery struct {
+	mu     sync.Mutex
+	active int
+}
+
+func (d *runtimeTestDelivery) acquire(context.Context) (func(), error) {
+	d.mu.Lock()
+	d.active++
+	d.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			d.mu.Lock()
+			d.active--
+			d.mu.Unlock()
+		})
+	}, nil
+}
+
+func (d *runtimeTestDelivery) held() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.active > 0
 }
 
 func (m *runtimeTestMutation) WithMutation(
@@ -48,6 +75,9 @@ func (m *runtimeTestMutation) WithMutation(
 	}
 	m.mu.Lock()
 	m.actions = append(m.actions, action)
+	if action == "mcp.vault_action.request.created" {
+		m.createdWithDelivery = m.delivery != nil && m.delivery.held()
+	}
 	m.mu.Unlock()
 	return nil
 }
@@ -75,21 +105,23 @@ func (m *runtimeTestMutation) snapshot() ([]string, []string) {
 }
 
 type runtimeHarness struct {
-	runtime       *Runtime
-	store         *Store
-	mutations     *runtimeTestMutation
-	database      *sql.DB
-	tokenID       int64
-	otherTokenID  int64
-	projectID     int64
-	projectRef    string
-	prepareCalls  int
-	executeCalls  int
-	compensations int
-	authorized    bool
-	allowRequest  bool
-	mcpStarted    bool
-	runAlways     bool
+	runtime              *Runtime
+	store                *Store
+	mutations            *runtimeTestMutation
+	delivery             *runtimeTestDelivery
+	database             *sql.DB
+	tokenID              int64
+	otherTokenID         int64
+	projectID            int64
+	projectRef           string
+	prepareCalls         int
+	executeCalls         int
+	executedWithDelivery bool
+	compensations        int
+	authorized           bool
+	allowRequest         bool
+	mcpStarted           bool
+	runAlways            bool
 }
 
 func newRuntimeHarness(t *testing.T) *runtimeHarness {
@@ -112,10 +144,11 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	delivery := &runtimeTestDelivery{}
 	harness := &runtimeHarness{
 		database: database, store: NewStore(database),
-		mutations: &runtimeTestMutation{database: database},
-		tokenID:   token.ID, otherTokenID: otherToken.ID,
+		mutations: &runtimeTestMutation{database: database, delivery: delivery}, delivery: delivery,
+		tokenID: token.ID, otherTokenID: otherToken.ID,
 		projectID: project.ID, projectRef: strconv.FormatInt(project.ID, 10),
 		authorized: true, allowRequest: true, mcpStarted: true,
 	}
@@ -139,6 +172,7 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 		AllowRequest:    func(int64) bool { return harness.allowRequest },
 		Execute: func(_ context.Context, request Request) (any, error) {
 			harness.executeCalls++
+			harness.executedWithDelivery = delivery.held()
 			return map[string]any{"request_id": request.ID}, nil
 		},
 		ExecuteAtomic: func(context.Context, Request, string, string, string) (WorkflowResult, bool, error) {
@@ -172,8 +206,9 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 			err := json.Unmarshal([]byte(wrapper.Ciphertext), &envelope)
 			return envelope, err
 		},
-		IsStale:    func(error) bool { return false },
-		MCPStarted: func() bool { return harness.mcpStarted },
+		IsStale:         func(error) bool { return false },
+		MCPStarted:      func() bool { return harness.mcpStarted },
+		AcquireDelivery: delivery.acquire,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +239,9 @@ func TestRuntimeCallCreatesPromptRequestAndReplaysIdempotently(t *testing.T) {
 	if first.Request.Status != StatusApprovalPending || !first.OutputAuthorized {
 		t.Fatalf("first request = %#v", first)
 	}
+	if !harness.mutations.createdWithDelivery || harness.delivery.held() {
+		t.Fatalf("request insertion delivery lease: held_at_insert=%t held_after_return=%t", harness.mutations.createdWithDelivery, harness.delivery.held())
+	}
 	second := harness.call(t, "prompt-request")
 	if second.Request.ID != first.Request.ID || harness.prepareCalls != 1 || harness.executeCalls != 0 {
 		t.Fatalf("replay = %#v prepare=%d execute=%d", second, harness.prepareCalls, harness.executeCalls)
@@ -231,6 +269,10 @@ func TestRuntimeCallAlwaysExecutesThroughAuditedWorkflow(t *testing.T) {
 	view := harness.call(t, "always-request")
 	if view.Request.Status != StatusCompleted || harness.executeCalls != 1 || harness.compensations != 0 {
 		t.Fatalf("request=%#v execute=%d compensate=%d", view.Request, harness.executeCalls, harness.compensations)
+	}
+	if !harness.mutations.createdWithDelivery || harness.executedWithDelivery || harness.delivery.held() {
+		t.Fatalf("Always delivery lease: held_at_insert=%t held_during_effect=%t held_after_return=%t",
+			harness.mutations.createdWithDelivery, harness.executedWithDelivery, harness.delivery.held())
 	}
 	actions, observed := harness.mutations.snapshot()
 	if fmt.Sprint(actions) != "[mcp.vault_action.request.created mcp.vault_action.completed]" || len(observed) != 0 {

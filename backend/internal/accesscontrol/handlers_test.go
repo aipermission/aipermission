@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -196,6 +197,115 @@ func TestAuthorizationHTTPHandlersOwnLifecycleAndOptimisticConcurrency(t *testin
 	}
 	if revokeAudits != 1 {
 		t.Fatalf("revoke audits = %d, want 1", revokeAudits)
+	}
+}
+
+func TestAuthorizationChangesPermanentlyStalePendingConnectorApprovals(t *testing.T) {
+	fixture := newHandlerFixture(t)
+	base := "/tokens/" + strconv.FormatInt(fixture.tokenID, 10)
+	permissionPath := base + "/connector-permissions"
+	scopePath := base + "/project-scopes"
+	prompt := ConnectorPermissionInput{
+		TargetID: fixture.targetID, ProfileID: fixture.profileID,
+		ActionName: testActionName, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+	}
+	blocked := prompt
+	blocked.ExecutionRule = string(connectortargets.ActionPermissionBlocked)
+
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, scopePath, UpdateProjectScopesRequest{
+		EnabledProjectIDs: []int64{fixture.projectID}, ExpectedRevision: responseRevision(t, fixture.mux, scopePath),
+	}), true)
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, permissionPath, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{prompt}, ExpectedRevision: responseRevision(t, fixture.mux, permissionPath),
+	}), true)
+
+	permissionRequestID := insertPendingConnectorApproval(t, fixture, "permission-revoke")
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, permissionPath, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{blocked}, ExpectedRevision: responseRevision(t, fixture.mux, permissionPath),
+	}), true)
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, permissionPath, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{prompt}, ExpectedRevision: responseRevision(t, fixture.mux, permissionPath),
+	}), true)
+	assertConnectorApprovalStatus(t, fixture.database, permissionRequestID, connectors.ResultStale)
+
+	scopeRequestID := insertPendingConnectorApproval(t, fixture, "project-visibility")
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, scopePath, UpdateProjectScopesRequest{
+		EnabledProjectIDs: []int64{}, ExpectedRevision: responseRevision(t, fixture.mux, scopePath),
+	}), true)
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, scopePath, UpdateProjectScopesRequest{
+		EnabledProjectIDs: []int64{fixture.projectID}, ExpectedRevision: responseRevision(t, fixture.mux, scopePath),
+	}), true)
+	assertConnectorApprovalStatus(t, fixture.database, scopeRequestID, connectors.ResultStale)
+
+	predispatchRequestID := insertPendingConnectorApproval(t, fixture, "predispatch-authorization")
+	store := connectortargets.NewStore(fixture.database)
+	leaseExpiry := time.Now().UTC().Add(time.Minute)
+	if _, err := store.MarkActionRequestRunning(t.Context(), predispatchRequestID, "approval-worker", leaseExpiry); err != nil {
+		t.Fatal(err)
+	}
+	dispatchedRequestID := insertPendingConnectorApproval(t, fixture, "dispatched-authorization")
+	if _, err := store.MarkActionRequestRunning(t.Context(), dispatchedRequestID, "approval-worker", leaseExpiry); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BeginActionRequestDispatch(t.Context(), dispatchedRequestID, "approval-worker", time.Now().UTC(), leaseExpiry); err != nil {
+		t.Fatal(err)
+	}
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, permissionPath, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{blocked}, ExpectedRevision: responseRevision(t, fixture.mux, permissionPath),
+	}), true)
+	assertConnectorApprovalStatus(t, fixture.database, predispatchRequestID, connectors.ResultStale)
+	assertConnectorApprovalStatus(t, fixture.database, dispatchedRequestID, connectors.ResultRunning)
+}
+
+func TestIdenticalAuthorizationUpdatePreservesPendingConnectorApproval(t *testing.T) {
+	fixture := newHandlerFixture(t)
+	path := "/tokens/" + strconv.FormatInt(fixture.tokenID, 10) + "/connector-permissions"
+	prompt := ConnectorPermissionInput{
+		TargetID: fixture.targetID, ProfileID: fixture.profileID,
+		ActionName: testActionName, ExecutionRule: string(connectortargets.ActionPermissionApprovalRequired),
+	}
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, path, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{prompt}, ExpectedRevision: responseRevision(t, fixture.mux, path),
+	}), true)
+	requestID := insertPendingConnectorApproval(t, fixture, "no-op")
+	assertChangedResponse(t, performAccessRequest(t, fixture.mux, http.MethodPut, path, UpdateConnectorPermissionsRequest{
+		Permissions: []ConnectorPermissionInput{prompt}, ExpectedRevision: responseRevision(t, fixture.mux, path),
+	}), false)
+	assertConnectorApprovalStatus(t, fixture.database, requestID, connectors.ResultApprovalPending)
+}
+
+func insertPendingConnectorApproval(t *testing.T, fixture *handlerFixture, key string) int64 {
+	t.Helper()
+	tokenID := fixture.tokenID
+	request, err := connectortargets.NewStore(fixture.database).InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: fixture.targetID, ProfileID: fixture.profileID,
+		ConnectorKind: testConnectorKind, ActionName: testActionName, Source: "mcp",
+		Status: connectors.ResultApprovalPending, EncryptedPayloadJSON: "sealed-" + key,
+		ApprovalContext: `{"permission":"prompt"}`, ApprovalContextHash: "approval-" + key,
+	})
+	if err != nil {
+		t.Fatalf("insert pending connector approval: %v", err)
+	}
+	return request.ID
+}
+
+func assertConnectorApprovalStatus(t *testing.T, database *sql.DB, requestID int64, want connectors.ResultStatus) {
+	t.Helper()
+	var requestStatus, historyStatus string
+	if err := database.QueryRow(`SELECT status FROM connector_action_requests WHERE id = ?`, requestID).Scan(&requestStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`
+		SELECT status FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, requestID).Scan(&historyStatus); err != nil {
+		t.Fatal(err)
+	}
+	wantHistory := string(want)
+	if want == connectors.ResultApprovalPending {
+		wantHistory = "pending_approval"
+	}
+	if requestStatus != string(want) || historyStatus != wantHistory {
+		t.Fatalf("connector approval %d: request=%q history=%q want=%q/%q", requestID, requestStatus, historyStatus, want, wantHistory)
 	}
 }
 

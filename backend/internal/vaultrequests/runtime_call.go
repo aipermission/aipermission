@@ -48,6 +48,16 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	if err != nil {
 		return RequestView{}, ValidationError(err.Error())
 	}
+	releaseDelivery, err := r.acquireDelivery(ctx)
+	if err != nil {
+		return RequestView{}, err
+	}
+	deliveryHeld := true
+	defer func() {
+		if deliveryHeld {
+			releaseDelivery()
+		}
+	}()
 	existing, err := r.store.GetByIdempotencyKey(ctx, input.TokenID, input.IdempotencyKey)
 	if err == nil {
 		exact, openErr := r.exactRequest(existing)
@@ -132,6 +142,8 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 		})
 		return r.View(ctx, request), nil
 	}
+	releaseDelivery()
+	deliveryHeld = false
 	executionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.executionTimeout)
 	defer cancel()
 	exact := request

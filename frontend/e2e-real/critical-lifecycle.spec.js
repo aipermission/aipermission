@@ -63,7 +63,7 @@ test("runs approval, stale rejection, lock, and restart against the real backend
       { target_id: fixture.targetID, profile_id: fixture.profileID, action_name: "echo", execution_rule: "blocked" },
     ]);
     await page.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "e2e action approval" }).getByText(/approval context changed/i)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "e2e action approval" }).getByText(/request is no longer pending/i)).toBeVisible();
     await page.getByRole("button", { name: "OK", exact: true }).click();
 
     const stale = await mcpRequest(page, fixture.token, `/api/mcp/connector-action-requests/${request.request_id}`);

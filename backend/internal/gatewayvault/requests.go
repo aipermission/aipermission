@@ -243,7 +243,7 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 		runtime.Requests.Transaction == nil || runtime.Requests.Mutate == nil || runtime.Requests.RepairProjection == nil ||
 		runtime.Requests.RedactRequestError == nil || runtime.Requests.RedactRequestValue == nil ||
 		runtime.Requests.SealRequest == nil || runtime.Requests.OpenRequest == nil || runtime.Storage.SecretVault == nil ||
-		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil {
+		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil || runtime.Session.AcquireDelivery == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
 	actions, err := component.ActionRuntime(runtime)
@@ -275,7 +275,8 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 			err := runtime.Requests.OpenRequest(id, sealed, &envelope)
 			return envelope, err
 		},
-		IsStale: actions.IsStale, MCPStarted: runtime.Session.MCPStarted, ExecutionTimeout: executionTimeout,
+		IsStale: actions.IsStale, MCPStarted: runtime.Session.MCPStarted,
+		AcquireDelivery: runtime.Session.AcquireDelivery, ExecutionTimeout: executionTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)

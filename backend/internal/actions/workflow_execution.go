@@ -48,17 +48,24 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	var replay CallResult
 	var replayed bool
 	var err error
+	var releaseDelivery func()
+	deliveryHeld := false
+	defer func() {
+		if deliveryHeld {
+			releaseDelivery()
+		}
+	}()
 	if call.Source == SourceMCP {
 		release, acquireErr := r.delivery.Acquire(ctx)
 		if acquireErr != nil {
 			return CallResult{}, acquireErr
 		}
+		releaseDelivery = release
+		deliveryHeld = true
 		if !r.mcpStarted() {
-			release()
 			return CallResult{}, ErrMCPExecutionStopped
 		}
 		replay, replayed, err = r.Replay(ctx, &tokenID, call)
-		release()
 	} else {
 		replay, replayed, err = r.Replay(ctx, &tokenID, call)
 	}
@@ -127,6 +134,10 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	}
 	if !created {
 		return replayedCallResult(request), nil
+	}
+	if deliveryHeld {
+		releaseDelivery()
+		deliveryHeld = false
 	}
 	return r.ExecuteInserted(ctx, prepared, request, principal, ExecutionOptions{
 		Permission: permission, RequiredPermissionRule: connectortargets.ActionPermissionAlwaysRun,
