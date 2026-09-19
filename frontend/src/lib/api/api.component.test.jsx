@@ -1,7 +1,7 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./api";
+import { apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "../api";
 import {
   localActionReconciliationEvent,
   completeLocalActionRetry,
@@ -11,8 +11,8 @@ import {
   releaseLocalActionRetryAttempt,
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
-} from "./local-action-retry";
-import { scopedUICookieName } from "./ui-cookie";
+} from "../local-action-retry";
+import { scopedUICookieName } from "../ui-cookie";
 
 beforeEach(async () => {
   vi.stubGlobal("indexedDB", new IDBFactory());

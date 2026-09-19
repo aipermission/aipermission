@@ -1,15 +1,16 @@
-package api
+package httpsecurity_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	api "github.com/aipermission/aipermission/backend/internal/api"
 	"github.com/aipermission/aipermission/backend/internal/config"
 )
 
 func TestCORSAllowsConfiguredOrigin(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -37,7 +38,7 @@ func TestCORSAllowsConfiguredOrigin(t *testing.T) {
 }
 
 func TestCORSRejectsUnexpectedOrigin(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -62,7 +63,7 @@ func TestCORSRejectsUnexpectedOrigin(t *testing.T) {
 }
 
 func TestCORSRejectsWildcardOriginConfiguration(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -84,7 +85,7 @@ func TestCORSRejectsWildcardOriginConfiguration(t *testing.T) {
 }
 
 func TestCORSAllowsNonBrowserRequestsWithoutOrigin(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -105,7 +106,7 @@ func TestCORSAllowsNonBrowserRequestsWithoutOrigin(t *testing.T) {
 }
 
 func TestRemoteHostHeaderAndRemoteClientAreAlwaysRejected(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "0.0.0.0",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -133,7 +134,7 @@ func TestRemoteHostHeaderAndRemoteClientAreAlwaysRejected(t *testing.T) {
 }
 
 func TestCORSPreflightCannotBypassLocalHTTPBoundary(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host:           "127.0.0.1",
 		Port:           "8080",
 		DataPath:       t.TempDir() + "/aipermission.db",
@@ -228,7 +229,7 @@ func TestLocalRemoteAddressValidation(t *testing.T) {
 }
 
 func TestHTTPBoundaryRejectsMissingHostOrRemoteAddress(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: t.TempDir() + "/aipermission.db", GatewaySecret: "test-secret",
 	})
 

@@ -1,4 +1,4 @@
-package api
+package architecture_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestLegacyAuditMutationHelperDoesNotReturn(t *testing.T) {
-	err := filepath.WalkDir(".", func(path string, entry os.DirEntry, walkErr error) error {
+	err := filepath.WalkDir("..", func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}

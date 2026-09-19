@@ -1,15 +1,16 @@
-package api
+package httpsecurity_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	api "github.com/aipermission/aipermission/backend/internal/api"
 	"github.com/aipermission/aipermission/backend/internal/config"
 )
 
 func TestHTTPResponsePolicyCoversRouteClassesAndBoundaryFailures(t *testing.T) {
-	server := NewLockedServer(config.Config{
+	server := api.NewLockedServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: t.TempDir() + "/aipermission.db", GatewaySecret: "test-secret",
 	})
 	tests := []struct {
