@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "ApprovalDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_context_hash": {
+            "type": "string"
+          },
+          "user_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_context_hash"
+        ],
+        "type": "object"
+      },
       "AuditEntry": {
         "additionalProperties": false,
         "properties": {
@@ -2149,6 +2164,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2174,7 +2199,7 @@
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "typed-response"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/connector-action-approvals/{id}/run": {
@@ -2190,6 +2215,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2235,7 +2270,7 @@
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "typed-response"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/connector-actions/local-run": {

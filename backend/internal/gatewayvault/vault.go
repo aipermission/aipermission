@@ -53,6 +53,7 @@ type SessionSelection struct {
 
 type VaultRequestApplication interface {
 	List(context.Context, string, int) ([]vaultrequests.Request, error)
+	Get(context.Context, int64) (vaultrequests.Request, error)
 	RunPending(context.Context, int64, string) (vaultrequests.WorkflowResult, error)
 	DeclinePending(context.Context, int64, string) (vaultrequests.Request, error)
 	Call(context.Context, vaultrequests.CallInput) (vaultrequests.RequestView, error)

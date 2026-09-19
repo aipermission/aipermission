@@ -11,6 +11,10 @@ import { scopedUICookieName } from "./ui-cookie.js";
 import { readBufferedDownload } from "./downloads/download-buffer.js";
 
 const viteEnv = import.meta.env || {};
+const workspaceHeaderName = "X-AIPermission-Workspace";
+const workspaceChangedHeaderName = "X-AIPermission-Workspace-Changed";
+let workspaceBinding = "";
+let workspaceBindingOwner = null;
 
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
@@ -29,12 +33,13 @@ export async function apiGet(path, options = {}) {
 }
 
 export async function apiPost(path, body, options = {}) {
-  const prepared = await preparePostBody(path, body);
+  const requestWorkspace = currentWorkspaceBinding();
+  const prepared = await preparePostBody(path, body, requestWorkspace);
   let finalized = false;
   try {
     const response = await fetch(`${apiUrl}${path}`, {
       method: "POST",
-      headers: csrfHeaders({ "Content-Type": "application/json" }),
+      headers: mutationHeaders({ "Content-Type": "application/json" }, requestWorkspace),
       body: JSON.stringify(prepared.body),
       signal: options.signal,
       credentials: "include",
@@ -90,11 +95,11 @@ function isAcknowledgedLocalActionResponse(data, body) {
   }
 }
 
-async function preparePostBody(path, body) {
+async function preparePostBody(path, body, workspaceID) {
   const policy = idempotentPostPolicy(path, body);
   if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
   if (body?.idempotency_key) return { body, retry: null, ...policy };
-  const retry = await prepareLocalActionRetry({ path, body: body || {} });
+  const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID });
   return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 
@@ -138,9 +143,10 @@ function isAcknowledgedBulkCommandResponse(data) {
 }
 
 export async function apiPostForm(path, formData, options = {}) {
+  const requestWorkspace = options.workspaceBinding || currentWorkspaceBinding();
   const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
-    headers: csrfHeaders(),
+    headers: mutationHeaders({}, requestWorkspace),
     body: formData,
     signal: options.signal,
     credentials: "include",
@@ -151,7 +157,7 @@ export async function apiPostForm(path, formData, options = {}) {
 export async function apiPut(path, body, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "PUT",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    headers: mutationHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
     signal: options.signal,
     credentials: "include",
@@ -162,7 +168,7 @@ export async function apiPut(path, body, options = {}) {
 export async function apiDelete(path, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "DELETE",
-    headers: csrfHeaders(),
+    headers: mutationHeaders(),
     signal: options.signal,
     credentials: "include",
   });
@@ -224,7 +230,9 @@ async function readResponse(response, options = {}) {
       data,
     });
   }
-  return parseResponseBody(text, options);
+  const data = parseResponseBody(text, options);
+  if (options.captureWorkspace !== false) captureWorkspaceBinding(response);
+  return data;
 }
 
 function parseResponseBody(text) {
@@ -280,6 +288,34 @@ function csrfHeaders(base = {}) {
   const token = readCookie(scopedUICookieName("aipermission_csrf"));
   if (!token) return base;
   return { ...base, "X-AIPermission-CSRF": token };
+}
+
+function mutationHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+  const headers = csrfHeaders(base);
+  if (!requestWorkspace) return headers;
+  return { ...headers, [workspaceHeaderName]: requestWorkspace };
+}
+
+export function currentWorkspaceBinding() {
+  synchronizeWorkspaceBindingOwner();
+  if (!workspaceBinding) workspaceBinding = readCookie(scopedUICookieName("aipermission_workspace"));
+  return workspaceBinding;
+}
+
+function captureWorkspaceBinding(response) {
+  synchronizeWorkspaceBindingOwner();
+  if (!response?.headers?.has?.(workspaceHeaderName)) return;
+  const changed = response.headers.get(workspaceChangedHeaderName) === "true";
+  if (!workspaceBinding || changed) {
+    workspaceBinding = String(response.headers.get(workspaceHeaderName) || "").trim();
+  }
+}
+
+function synchronizeWorkspaceBindingOwner() {
+  const owner = typeof window === "undefined" ? null : window;
+  if (owner === workspaceBindingOwner) return;
+  workspaceBindingOwner = owner;
+  workspaceBinding = "";
 }
 
 function readCookie(name) {

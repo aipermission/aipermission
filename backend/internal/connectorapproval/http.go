@@ -39,7 +39,8 @@ type ScopeProvider func(http.ResponseWriter) (Scope, bool)
 type HTTPHandlers struct{ scope ScopeProvider }
 
 type NoteRequest struct {
-	UserNote string `json:"user_note"`
+	UserNote            string `json:"user_note"`
+	ApprovalContextHash string `json:"approval_context_hash"`
 }
 
 type Item struct {
@@ -148,6 +149,10 @@ func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusConflict, "MCP execution is stopped; start MCP from the web UI before running connector approvals")
 		return
 	}
+	if scope.Requests == nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
 	request := NoteRequest{}
 	if r.ContentLength != 0 && !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
@@ -155,6 +160,9 @@ func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	request.UserNote = strings.TrimSpace(request.UserNote)
 	if err := actions.ValidateApprovalNote(request.UserNote); err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !h.validateDecisionContext(w, r, scope.Requests, id, request.ApprovalContextHash) {
 		return
 	}
 	workflow, err := scope.Workflow()
@@ -178,7 +186,7 @@ func (h *HTTPHandlers) Decline(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	scope, ok := h.resolve(w, requireWorkflow)
+	scope, ok := h.resolve(w, requireRequests|requireWorkflow)
 	if !ok {
 		return
 	}
@@ -189,6 +197,9 @@ func (h *HTTPHandlers) Decline(w http.ResponseWriter, r *http.Request) {
 	request.UserNote = strings.TrimSpace(request.UserNote)
 	if err := actions.ValidateApprovalNote(request.UserNote); err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !h.validateDecisionContext(w, r, scope.Requests, id, request.ApprovalContextHash) {
 		return
 	}
 	workflow, err := scope.Workflow()
@@ -205,6 +216,28 @@ func (h *HTTPHandlers) Decline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, ItemFromRequest(item))
+}
+
+func (h *HTTPHandlers) validateDecisionContext(w http.ResponseWriter, r *http.Request, store RequestStore, id int64, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		httptransport.WriteError(w, http.StatusBadRequest, "approval_context_hash is required")
+		return false
+	}
+	item, err := store.GetActionRequest(r.Context(), id)
+	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
+		httptransport.WriteError(w, http.StatusNotFound, "connector action request not found")
+		return false
+	}
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return false
+	}
+	if item.ApprovalContextHash == "" || item.ApprovalContextHash != expected {
+		httptransport.WriteError(w, http.StatusConflict, "approval context changed; refresh and review the request again")
+		return false
+	}
+	return true
 }
 
 func ItemFromRequest(item connectortargets.ActionRequest) Item {

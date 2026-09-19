@@ -18,6 +18,19 @@ type previewWorkflow struct {
 	runError error
 }
 
+type requestStoreStub struct {
+	item connectortargets.ActionRequest
+	err  error
+}
+
+func (store requestStoreStub) ListActionRequests(context.Context, connectortargets.ActionRequestFilter) ([]connectortargets.ActionRequest, error) {
+	return []connectortargets.ActionRequest{store.item}, store.err
+}
+
+func (store requestStoreStub) GetActionRequest(context.Context, int64) (connectortargets.ActionRequest, error) {
+	return store.item, store.err
+}
+
 func (workflow previewWorkflow) ApprovalPreview(context.Context, connectortargets.ActionRequest) (map[string]any, error) {
 	return workflow.preview, nil
 }
@@ -97,8 +110,10 @@ func TestHandlersRejectIncompleteScope(t *testing.T) {
 }
 
 func TestRunPreservesOutcomeUnknownContract(t *testing.T) {
+	const contextHash = "approval-context"
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (Scope, bool) {
 		return Scope{
+			Requests: requestStoreStub{item: connectortargets.ActionRequest{ID: 42, ApprovalContextHash: contextHash}},
 			Workflow: func() (Workflow, error) {
 				return previewWorkflow{runError: actions.NewTerminalPersistenceError(42, context.DeadlineExceeded)}, nil
 			},
@@ -106,7 +121,8 @@ func TestRunPreservesOutcomeUnknownContract(t *testing.T) {
 			Redact:     func(_ context.Context, value string) string { return value },
 		}, true
 	})
-	request := httptest.NewRequest(http.MethodPost, "/api/connector-action-approvals/42/run", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-action-approvals/42/run", strings.NewReader(`{"approval_context_hash":"`+contextHash+`"}`))
+	request.Header.Set("Content-Type", "application/json")
 	request.SetPathValue("id", "42")
 	response := httptest.NewRecorder()
 
@@ -127,5 +143,30 @@ func TestRunPreservesOutcomeUnknownContract(t *testing.T) {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("body %q does not contain %q", response.Body.String(), expected)
 		}
+	}
+}
+
+func TestRunRejectsApprovalContextThatWasNotDisplayed(t *testing.T) {
+	called := false
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (Scope, bool) {
+		return Scope{
+			Requests: requestStoreStub{item: connectortargets.ActionRequest{ID: 42, ApprovalContextHash: "current-context"}},
+			Workflow: func() (Workflow, error) {
+				called = true
+				return previewWorkflow{}, nil
+			},
+			MCPStarted: func() bool { return true },
+			Redact:     func(_ context.Context, value string) string { return value },
+		}, true
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-action-approvals/42/run", strings.NewReader(`{"approval_context_hash":"displayed-context"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.SetPathValue("id", "42")
+	response := httptest.NewRecorder()
+
+	handlers.Run(response, request)
+
+	if response.Code != http.StatusConflict || called {
+		t.Fatalf("status=%d workflow_called=%t body=%s", response.Code, called, response.Body.String())
 	}
 }

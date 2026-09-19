@@ -705,14 +705,11 @@ func performDatabaseImport(t *testing.T, handler http.Handler, databaseName, pas
 	request.RemoteAddr = "127.0.0.1:12345"
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	if authenticated {
-		if cookie := currentTestUICookie(); cookie != nil {
-			request.AddCookie(cookie)
-		}
-		request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-		request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+		attachTestUIAuthorization(request)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
+	recordTestUIResponse(response)
 	return response
 }
 
@@ -1059,14 +1056,10 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 	request.Host = "localhost:8080"
 	request.RemoteAddr = "127.0.0.1:12345"
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	if cookie := currentTestUICookie(); cookie != nil {
-		request.AddCookie(cookie)
-	}
-	request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-	request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	attachTestUIAuthorization(request)
 	importResponse := httptest.NewRecorder()
 	handler.ServeHTTP(importResponse, request)
-	recordTestUICookies(importResponse.Result().Cookies())
+	recordTestUIResponse(importResponse)
 	if importResponse.Code != http.StatusOK {
 		t.Fatalf("import failed: %d %s", importResponse.Code, importResponse.Body.String())
 	}
@@ -1196,14 +1189,10 @@ func TestDeleteActiveDatabasePromotesRemainingUnlockedWorkspace(t *testing.T) {
 	request.Host = "localhost:8080"
 	request.RemoteAddr = "127.0.0.1:12345"
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	if cookie := currentTestUICookie(); cookie != nil {
-		request.AddCookie(cookie)
-	}
-	request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-	request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	attachTestUIAuthorization(request)
 	importResponse := httptest.NewRecorder()
 	handler.ServeHTTP(importResponse, request)
-	recordTestUICookies(importResponse.Result().Cookies())
+	recordTestUIResponse(importResponse)
 	if importResponse.Code != http.StatusOK {
 		t.Fatalf("import failed: %d %s", importResponse.Code, importResponse.Body.String())
 	}

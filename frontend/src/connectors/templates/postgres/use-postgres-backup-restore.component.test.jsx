@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiDownload, apiPostForm } from "../../../lib/api";
+import { apiDownload, apiPostForm, currentWorkspaceBinding } from "../../../lib/api";
 import { APIError } from "../../../lib/errors";
 import {
   completeLocalActionRetry,
@@ -10,7 +10,7 @@ import {
 } from "../../../lib/local-action-retry";
 import { usePostgresBackupRestore } from "./use-postgres-backup-restore";
 
-vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn() }));
+vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn(), currentWorkspaceBinding: vi.fn() }));
 vi.mock("../../../lib/local-action-retry", () => ({
   prepareLocalActionRetry: vi.fn(),
   completeLocalActionRetry: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock("../../../lib/local-action-retry", () => ({
 beforeEach(() => {
   apiDownload.mockReset().mockResolvedValue({ saved: true });
   apiPostForm.mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
+  currentWorkspaceBinding.mockReset().mockReturnValue("workspace-a");
   prepareLocalActionRetry.mockReset().mockResolvedValue({ idempotencyKey: "restore-attempt-key" });
   completeLocalActionRetry.mockReset().mockResolvedValue(undefined);
   markLocalActionRetryOutcome.mockReset().mockResolvedValue(undefined);
@@ -82,8 +83,9 @@ it("restores only after exact target confirmation and captures the selected dump
   expect(apiPostForm).toHaveBeenCalledWith(
     "/api/connector-targets/1/profiles/10/restore",
     expect.any(FormData),
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect.objectContaining({ signal: expect.any(AbortSignal), workspaceBinding: "workspace-a" }),
   );
+  expect(prepareLocalActionRetry).toHaveBeenCalledWith(expect.any(Object), { workspaceID: "workspace-a" });
   const submitted = apiPostForm.mock.calls[0][1];
   expect(submitted.get("dump")).toBe(dump);
   expect(submitted.get("confirm_target")).toBe("Main DB 1");

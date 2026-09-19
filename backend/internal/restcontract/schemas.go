@@ -84,6 +84,10 @@ func sharedSchemas() map[string]any {
 		}, []string{"ref", "project_id", "project_name", "project_slug", "connector_kind", "target_id", "target_name", "profile_id", "profile_kind", "profile_label", "status", "created_at", "updated_at"}),
 		"ConnectorActionApprovalSummary": connectorActionApprovalSchema(false),
 		"ConnectorActionApprovalDetail":  connectorActionApprovalSchema(true),
+		"ApprovalDecisionRequest": objectSchema(map[string]any{
+			"user_note":             stringSchema(),
+			"approval_context_hash": stringSchema(),
+		}, []string{"approval_context_hash"}),
 		"LocalConnectorActionRequest": objectSchema(map[string]any{
 			"target_ref":      stringSchema(),
 			"action_name":     stringSchema(),
@@ -142,18 +146,22 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}:                      okContract(refSchema("ConnectorActionApprovalDetail")),
 		{Method: "POST", Path: "/api/connector-action-approvals/{id}/run"}: {
 			StatusCode:     "200",
+			RequestSchema:  refSchema("ApprovalDecisionRequest"),
 			ResponseSchema: refSchema("ConnectorActionApprovalSummary"),
 			AdditionalResponses: map[string]map[string]any{
 				"409": refSchema("Error"),
 				"503": refSchema("ConnectorActionOutcomeUnknown"),
 			},
 		},
-		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}: okContract(refSchema("ConnectorActionApprovalSummary")),
-		{Method: "GET", Path: "/api/history"}:                                  okContract(refSchema("HistoryPage")),
-		{Method: "GET", Path: "/api/history/{id}"}:                             okContract(refSchema("HistoryEntry")),
-		{Method: "GET", Path: "/api/audit-logs"}:                               okContract(refSchema("AuditPage")),
-		{Method: "GET", Path: "/api/audit-logs/{id}"}:                          okContract(refSchema("AuditEntry")),
-		{Method: "GET", Path: "/api/settings/diagnostics"}:                     okContract(refSchema("DiagnosticsReport")),
+		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}: {
+			StatusCode: "200", RequestSchema: refSchema("ApprovalDecisionRequest"),
+			ResponseSchema: refSchema("ConnectorActionApprovalSummary"),
+		},
+		{Method: "GET", Path: "/api/history"}:              okContract(refSchema("HistoryPage")),
+		{Method: "GET", Path: "/api/history/{id}"}:         okContract(refSchema("HistoryEntry")),
+		{Method: "GET", Path: "/api/audit-logs"}:           okContract(refSchema("AuditPage")),
+		{Method: "GET", Path: "/api/audit-logs/{id}"}:      okContract(refSchema("AuditEntry")),
+		{Method: "GET", Path: "/api/settings/diagnostics"}: okContract(refSchema("DiagnosticsReport")),
 		{Method: "POST", Path: "/api/connector-actions/local-run"}: {
 			StatusCode:     "200",
 			RequestSchema:  refSchema("LocalConnectorActionRequest"),

@@ -24,6 +24,7 @@ function approval(id, targetRef = "ssh:1:1") {
     connector_kind: "ssh",
     action_name: "exec",
     status: "approval_pending",
+    approval_context_hash: `context-${id}`,
     retry_policy: { class: "non_idempotent", guidance: "Inspect before retrying." },
     created_at: "2026-09-16T00:00:00Z",
     preview: {},
@@ -94,6 +95,7 @@ describe("useConnectorApprovalDialog", () => {
 
     expect(result.current.activeApproval).toBeNull();
     expect(result.current.action.state).toBe("idle");
+    expect(runApproval).toHaveBeenCalledWith(expect.objectContaining({ id: 7, approval_context_hash: "context-7" }), "");
   });
 
   it("keeps a stale approval visible with actionable state", async () => {
@@ -106,5 +108,31 @@ describe("useConnectorApprovalDialog", () => {
 
     expect(result.current.activeApproval.id).toBe(7);
     expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("stale") });
+    expect(runApproval).toHaveBeenCalledWith(expect.objectContaining({ id: 7, approval_context_hash: "context-7" }), "");
+  });
+
+  it("reloads and disables a decline decision whose context became stale", async () => {
+    const declineApproval = vi.fn().mockRejectedValue(new Error("Approval context changed; review a fresh request."));
+    apiGet.mockResolvedValueOnce(approval(7)).mockResolvedValueOnce({ ...approval(7), status: "stale", approval_context_hash: undefined });
+    const { result } = renderDialog({ approvals: [approval(7)], declineApproval });
+    await act(async () => {});
+
+    await act(async () => result.current.decline());
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "stale" });
+    expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("changed") });
+  });
+
+  it("keeps non-success run outcomes visible instead of closing the decision", async () => {
+    const runApproval = vi.fn().mockResolvedValue({ ...approval(7), status: "outcome_unknown", error: "Inspect target state." });
+    apiGet.mockResolvedValue(approval(7));
+    const { result } = renderDialog({ approvals: [approval(7)], runApproval });
+    await act(async () => {});
+
+    await act(async () => result.current.approve());
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "outcome_unknown" });
+    expect(result.current.action).toEqual({ state: "failed", error: "Inspect target state." });
   });
 });

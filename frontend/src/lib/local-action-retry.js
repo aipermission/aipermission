@@ -24,8 +24,8 @@ import { resetRetryStorage } from "./local-action-retry/storage.js";
 
 export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent };
 
-export async function prepareLocalActionRetry(body) {
-  const scope = currentRetryScope();
+export async function prepareLocalActionRetry(body, options = {}) {
+  const scope = currentRetryScope(options.workspaceID);
   assertNoLegacyLedger(scope);
   const signedRequest = await requestSignature(scope, body || {});
   let reservationActive = true;

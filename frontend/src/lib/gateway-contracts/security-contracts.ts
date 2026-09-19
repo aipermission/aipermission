@@ -24,6 +24,7 @@ export type ConnectorActionResponse = Record<string, unknown> & {
   target_ref: string;
   connector_kind: string;
   action_name: string;
+  approval_context_hash: string;
   retry_policy: ConnectorRetryPolicy;
   target_name?: string;
   profile_label?: string;
@@ -56,6 +57,7 @@ export type ConnectorApproval = Record<string, unknown> & {
   action_name: string;
   retry_policy: ConnectorRetryPolicy;
   created_at: string;
+  approval_context_hash?: string;
 };
 
 export type VaultApproval = Record<string, unknown> & {
@@ -142,7 +144,7 @@ export function connectorApprovals(value: unknown, context = "connector approval
 
 export function connectorApproval(
   value: unknown,
-  expected?: { id: number; targetRef: string; actionName: string },
+  expected?: { id: number; targetRef: string; actionName: string; statuses?: readonly ConnectorActionStatus[] },
   context = "connector approval",
 ): ConnectorApproval {
   const item = record(value, context);
@@ -156,9 +158,14 @@ export function connectorApproval(
     !nonEmptyString(item.profile_label) ||
     !nonEmptyString(item.connector_kind) ||
     !nonEmptyString(item.action_name) ||
+    !approvalContextHash(item.status, item.approval_context_hash, false) ||
     !isConnectorRetryPolicy(item.retry_policy) ||
     !nonEmptyString(item.created_at) ||
-    (expected && (item.id !== expected.id || item.target_ref !== expected.targetRef || item.action_name !== expected.actionName))
+    (expected &&
+      (item.id !== expected.id ||
+        item.target_ref !== expected.targetRef ||
+        item.action_name !== expected.actionName ||
+        (expected.statuses && !expected.statuses.includes(item.status as ConnectorActionStatus))))
   ) {
     throw new Error(`Invalid ${context} response from gateway.`);
   }
@@ -183,7 +190,7 @@ export function vaultApprovals(value: unknown, context = "Vault approvals"): Vau
       !nonEmptyString(item.source) ||
       !requiredRecord(item.input) ||
       !optionalString(item.reason) ||
-      !nonEmptyString(item.approval_context_hash) ||
+      !approvalContextHash(item.status, item.approval_context_hash, true) ||
       !nonEmptyString(item.idempotency_key) ||
       !nonEmptyString(item.created_at) ||
       !nonEmptyString(item.expires_at) ||
@@ -193,6 +200,11 @@ export function vaultApprovals(value: unknown, context = "Vault approvals"): Vau
     }
     return item as VaultApproval;
   });
+}
+
+function approvalContextHash(status: unknown, value: unknown, alwaysPresent: boolean): boolean {
+  if (status === "approval_pending") return nonEmptyString(value);
+  return alwaysPresent ? typeof value === "string" : value === undefined || typeof value === "string";
 }
 
 export function consoleSessions(value: unknown): ConsoleSession[] {

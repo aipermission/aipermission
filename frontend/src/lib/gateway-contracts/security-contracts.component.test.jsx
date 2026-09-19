@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { connectorActionResponse, connectorApprovals, consoleSessions, tokenActionPermissions, vaultApprovals } from "./security-contracts";
+import {
+  connectorActionResponse,
+  connectorApproval as parseConnectorApproval,
+  connectorApprovals,
+  consoleSessions,
+  tokenActionPermissions,
+  vaultApproval as parseVaultApproval,
+  vaultApprovals,
+} from "./security-contracts";
 
 describe("typed untrusted gateway contracts", () => {
   const action = (overrides = {}) => ({
@@ -44,6 +52,10 @@ describe("typed untrusted gateway contracts", () => {
     expect(() => connectorApprovals([{ id: 1, status: "approval_pending" }])).toThrow(/Invalid connector/);
     expect(() => vaultApprovals([{ id: "1", status: "approval_pending" }])).toThrow(/Invalid Vault/);
     expect(vaultApprovals([vaultApproval()])).toHaveLength(1);
+    expect(() => connectorApprovals([connectorApproval({ approval_context_hash: "" })])).toThrow(/Invalid connector/);
+    expect(connectorApprovals([connectorApproval({ status: "completed", approval_context_hash: undefined })])).toHaveLength(1);
+    expect(() => vaultApprovals([vaultApproval({ approval_context_hash: "" })])).toThrow(/Invalid Vault/);
+    expect(vaultApprovals([vaultApproval({ status: "completed", approval_context_hash: "" })])).toHaveLength(1);
     expect(() =>
       tokenActionPermissions({ items: [{ target_id: 1, profile_id: 2, action_name: "exec", execution_rule: "future_rule" }] }),
     ).toThrow(/Invalid token/);
@@ -52,11 +64,115 @@ describe("typed untrusted gateway contracts", () => {
     ).toHaveLength(1);
   });
 
+  it("binds connector decision envelopes to the displayed approval", () => {
+    const expected = { id: 1, targetRef: "fixture:2:3", actionName: "read", statuses: ["completed", "running"] };
+    expect(parseConnectorApproval(connectorApproval({ status: "completed", approval_context_hash: "" }), expected)).toMatchObject({
+      id: 1,
+      status: "completed",
+    });
+    for (const item of [
+      connectorApproval({ id: 2 }),
+      connectorApproval({ target_ref: "fixture:9:9" }),
+      connectorApproval({ action_name: "write" }),
+      connectorApproval({ status: "declined", approval_context_hash: "" }),
+    ]) {
+      expect(() => parseConnectorApproval(item, expected)).toThrow(/Invalid connector approval/);
+    }
+    expect(() => parseConnectorApproval(connectorApproval({ status: "completed", approval_context_hash: 7 }))).toThrow(
+      /Invalid connector approval/,
+    );
+  });
+
+  it("validates every typed Vault approval context field", () => {
+    const item = {
+      item_id: 11,
+      name: "API_TOKEN",
+      source_project_id: 4,
+      value_version: 2,
+      metadata_revision: 3,
+      replace_existing: false,
+      binding_id: 8,
+      binding_revision: 5,
+    };
+    const context = { target_id: 2, profile_id: 3, expected_session_id: 4, connector_kind: "ssh", items: [item] };
+    expect(parseVaultApproval(vaultApproval({ approval_context: context }))).toMatchObject({ approval_context: context });
+
+    const invalidContexts = [
+      null,
+      [],
+      { target_id: 0 },
+      { profile_id: "3" },
+      { expected_session_id: -1 },
+      { connector_kind: "" },
+      { items: {} },
+      { items: [null] },
+      { items: [{ ...item, item_id: 0 }] },
+      { items: [{ ...item, name: "" }] },
+      { items: [{ ...item, source_project_id: 0 }] },
+      { items: [{ ...item, value_version: 0 }] },
+      { items: [{ ...item, metadata_revision: 0 }] },
+      { items: [{ ...item, replace_existing: "false" }] },
+      { items: [{ ...item, binding_id: 0 }] },
+      { items: [{ ...item, binding_revision: 0 }] },
+    ];
+    for (const approvalContext of invalidContexts) {
+      expect(() => parseVaultApproval(vaultApproval({ approval_context: approvalContext }))).toThrow(/Invalid Vault approval/);
+    }
+    expect(parseVaultApproval(vaultApproval({ approval_context: {} }))).toMatchObject({ approval_context: {} });
+  });
+
+  it("rejects malformed Vault approval envelope fields", () => {
+    const invalid = [
+      { status: 1 },
+      { status: "unknown" },
+      { token_id: 0 },
+      { token_name: "" },
+      { project_id: 0 },
+      { project_name: "" },
+      { project_slug: "" },
+      { action_name: "" },
+      { source: "" },
+      { input: [] },
+      { reason: 7 },
+      { idempotency_key: "" },
+      { created_at: "" },
+      { expires_at: "" },
+      { updated_at: "" },
+    ];
+    for (const overrides of invalid) {
+      expect(() => parseVaultApproval(vaultApproval(overrides))).toThrow(/Invalid Vault approval/);
+    }
+    expect(
+      parseVaultApproval(vaultApproval({ status: "completed", approval_context_hash: "", reason: undefined }), {
+        id: 1,
+        statuses: ["completed"],
+      }),
+    ).toMatchObject({ status: "completed" });
+  });
+
   it("rejects malformed console sessions without activating a socket", () => {
     expect(() => consoleSessions([{ id: 0 }])).toThrow(/Invalid console session/);
     expect(consoleSessions([{ id: 1, status: "active" }])).toHaveLength(1);
   });
 });
+
+function connectorApproval(overrides = {}) {
+  return {
+    id: 1,
+    status: "approval_pending",
+    target_id: 2,
+    target_name: "Fixture",
+    target_ref: "fixture:2:3",
+    profile_id: 3,
+    profile_label: "default",
+    connector_kind: "fixture",
+    action_name: "read",
+    approval_context_hash: "context-hash",
+    retry_policy: { class: "read_only", guidance: "Safe to retry." },
+    created_at: "2026-09-16T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function vaultApproval(overrides = {}) {
   return {

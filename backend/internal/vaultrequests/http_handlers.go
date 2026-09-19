@@ -16,6 +16,7 @@ type HTTPScope struct {
 
 type Application interface {
 	List(context.Context, string, int) ([]Request, error)
+	Get(context.Context, int64) (Request, error)
 	RunPending(context.Context, int64, string) (WorkflowResult, error)
 	DeclinePending(context.Context, int64, string) (Request, error)
 	Call(context.Context, CallInput) (RequestView, error)
@@ -36,7 +37,8 @@ type HTTPHandlers struct {
 }
 
 type DecisionHTTPRequest struct {
-	UserNote string `json:"user_note"`
+	UserNote            string `json:"user_note"`
+	ApprovalContextHash string `json:"approval_context_hash"`
 }
 
 func NewHTTPHandlers(scope HTTPScopeProvider) *HTTPHandlers {
@@ -81,6 +83,9 @@ func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !validateVaultDecisionContext(w, r, runtime, id, request.ApprovalContextHash) {
+		return
+	}
 	result, err := runtime.RunPending(r.Context(), id, request.UserNote)
 	if writeDecisionHTTPError(w, err) {
 		return
@@ -109,11 +114,36 @@ func (h *HTTPHandlers) Decline(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !validateVaultDecisionContext(w, r, runtime, id, request.ApprovalContextHash) {
+		return
+	}
 	item, err := runtime.DeclinePending(r.Context(), id, request.UserNote)
 	if writeDecisionHTTPError(w, err) {
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, item)
+}
+
+func validateVaultDecisionContext(w http.ResponseWriter, r *http.Request, runtime Application, id int64, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		httptransport.WriteError(w, http.StatusBadRequest, "approval_context_hash is required")
+		return false
+	}
+	item, err := runtime.Get(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		httptransport.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
+		return false
+	}
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return false
+	}
+	if item.ApprovalContextHash == "" || item.ApprovalContextHash != expected {
+		httptransport.WriteError(w, http.StatusConflict, "Vault approval context changed; refresh and review the request again")
+		return false
+	}
+	return true
 }
 
 func (h *HTTPHandlers) resolve(w http.ResponseWriter) (HTTPScope, bool) {

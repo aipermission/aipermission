@@ -1,8 +1,12 @@
 package httptransport
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +17,8 @@ const (
 	OrdinaryRequestTimeout        = 45 * time.Second
 	RemoteBrowseRequestTimeout    = 75 * time.Second
 	ConnectorActionRequestTimeout = 90 * time.Second
+	WorkspaceHeaderName           = "X-AIPermission-Workspace"
+	WorkspaceChangedHeaderName    = "X-AIPermission-Workspace-Changed"
 )
 
 type Lifecycle interface {
@@ -32,6 +38,7 @@ type HTTPBoundary struct {
 	HasCSRF           func(*http.Request) bool
 	IsSessionExempt   func(string) bool
 	RequiresCSRF      func(string, string) bool
+	CurrentWorkspace  func() string
 	WriteError        func(http.ResponseWriter, int, string)
 }
 
@@ -75,7 +82,8 @@ func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-AIPermission-CSRF")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-AIPermission-CSRF, "+WorkspaceHeaderName)
+			w.Header().Set("Access-Control-Expose-Headers", WorkspaceHeaderName+", "+WorkspaceChangedHeaderName)
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -86,6 +94,11 @@ func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 }
 
 func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	w = &workspaceResponseWriter{
+		ResponseWriter: w,
+		current:        boundary.CurrentWorkspace,
+		requested:      strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)),
+	}
 	if IsStateChangingMethod(r.Method) && !boundary.safeBrowserMutationSource(r) {
 		boundary.writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
@@ -128,7 +141,85 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		boundary.writeError(w, http.StatusForbidden, "csrf token required")
 		return
 	}
+	if unlocked && boundary.RequiresCSRF != nil && boundary.RequiresCSRF(r.Method, r.URL.Path) &&
+		!boundary.hasCurrentWorkspace(r) {
+		boundary.writeError(w, http.StatusConflict, "workspace changed; refresh before making changes")
+		return
+	}
 	boundary.Routes.ServeHTTP(w, r)
+}
+
+func (boundary HTTPBoundary) hasCurrentWorkspace(r *http.Request) bool {
+	if boundary.CurrentWorkspace == nil {
+		return false
+	}
+	want := strings.TrimSpace(boundary.CurrentWorkspace())
+	return want != "" && strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)) == want
+}
+
+type workspaceResponseWriter struct {
+	http.ResponseWriter
+	current   func() string
+	requested string
+	wrote     bool
+}
+
+func (w *workspaceResponseWriter) WriteHeader(status int) {
+	w.applyHeader()
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *workspaceResponseWriter) Write(data []byte) (int, error) {
+	w.applyHeader()
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *workspaceResponseWriter) Flush() {
+	w.applyHeader()
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *workspaceResponseWriter) ReadFrom(reader io.Reader) (int64, error) {
+	w.applyHeader()
+	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(reader)
+	}
+	return io.Copy(w.ResponseWriter, reader)
+}
+
+func (w *workspaceResponseWriter) Push(target string, options *http.PushOptions) error {
+	pusher, ok := w.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, options)
+}
+
+func (w *workspaceResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	w.applyHeader()
+	return hijacker.Hijack()
+}
+
+func (w *workspaceResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *workspaceResponseWriter) applyHeader() {
+	if w.wrote {
+		return
+	}
+	w.wrote = true
+	if w.current != nil {
+		current := strings.TrimSpace(w.current())
+		w.Header().Set(WorkspaceHeaderName, current)
+		if w.requested != "" && current != w.requested {
+			w.Header().Set(WorkspaceChangedHeaderName, "true")
+		}
+	}
 }
 
 func (boundary HTTPBoundary) safeBrowserMutationSource(r *http.Request) bool {

@@ -56,7 +56,10 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "running", error: null }));
     try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/run`, { user_note: dialog.note });
+      await apiPost(`/api/vault-action-approvals/${approval.id}/run`, {
+        user_note: dialog.note,
+        approval_context_hash: approval.approval_context_hash,
+      });
       if (!request.isCurrent()) return;
       setDialog(initialDialog);
       await Promise.all([load(), refreshConsoleSessions()]);
@@ -80,13 +83,23 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     const request = requests.begin("decision");
     setDialog((current) => ({ ...current, state: "declining", error: null }));
     try {
-      await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, { user_note: dialog.note });
+      await apiPost(`/api/vault-action-approvals/${approval.id}/decline`, {
+        user_note: dialog.note,
+        approval_context_hash: approval.approval_context_hash,
+      });
       if (!request.isCurrent()) return;
       setDialog(initialDialog);
       await load();
     } catch (error) {
       if (!request.isCurrent()) return;
-      setDialog((current) => ({ ...current, state: "error", error: error.message }));
+      await load();
+      if (!request.isCurrent()) return;
+      setDialog((current) => ({
+        ...current,
+        approval: current.approval || approval,
+        state: isStaleApprovalError(error) ? "stale" : "error",
+        error: error.message,
+      }));
     } finally {
       request.complete();
     }

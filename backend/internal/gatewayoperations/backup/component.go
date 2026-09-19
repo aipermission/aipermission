@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/uisession"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
@@ -65,7 +66,7 @@ type Dependencies struct {
 	Lifecycle           Lifecycle
 	ActiveRuntime       func(http.ResponseWriter) (Runtime, bool)
 	CurrentDatabaseName func() string
-	HasSession          func(*http.Request) bool
+	AuthorizeOperation  func(http.ResponseWriter, *http.Request) bool
 	BeginAttempt        func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
 	IssuePrepared       func(http.ResponseWriter, uisession.Prepared) error
 	AcquireOperation    backups.OperationLease
@@ -106,6 +107,34 @@ func (component *Component) acquireMutationOperation(ctx context.Context) (*life
 		return nil, ErrLifecycleUnavailable
 	}
 	return component.acquireLifecycleOperation(ctx, component.dependencies.Lifecycle.AcquireMutationContext)
+}
+
+func (component *Component) authorizedReadOperation(w http.ResponseWriter, r *http.Request) (*lifecycleOperationLease, bool) {
+	return component.authorizedOperation(w, r, component.acquireReadOperation)
+}
+
+func (component *Component) authorizedMutationOperation(w http.ResponseWriter, r *http.Request) (*lifecycleOperationLease, bool) {
+	return component.authorizedOperation(w, r, component.acquireMutationOperation)
+}
+
+func (component *Component) authorizedOperation(
+	w http.ResponseWriter,
+	r *http.Request,
+	acquire func(context.Context) (*lifecycleOperationLease, error),
+) (*lifecycleOperationLease, bool) {
+	lease, err := acquire(r.Context())
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "backup operation was canceled")
+		return nil, false
+	}
+	if component.dependencies.AuthorizeOperation == nil || !component.dependencies.AuthorizeOperation(w, r) {
+		lease.Release()
+		if component.dependencies.AuthorizeOperation == nil {
+			httptransport.WriteInternalError(w)
+		}
+		return nil, false
+	}
+	return lease, true
 }
 
 func (lease *lifecycleOperationLease) ReleaseLifecycle() {

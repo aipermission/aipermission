@@ -4,6 +4,9 @@ import { failedResource, pollReadOptions } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { connectorApproval, connectorApprovals } from "../lib/gateway-contracts/security-contracts";
 
+const runApprovalStatuses = ["completed", "failed", "canceled", "running", "blocked", "stale", "error", "outcome_unknown"];
+const declineApprovalStatuses = ["declined"];
+
 const loadingList = { state: "loading", data: [], error: null };
 
 export function useGatewayActivityResources({ pollIsCurrent }) {
@@ -61,9 +64,20 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   }, [requests]);
 
   const runConnectorActionApproval = useCallback(
-    async (requestID, userNote = "") => {
+    async (approval, userNote = "") => {
       try {
-        const item = connectorApproval(await apiPost(`/api/connector-action-approvals/${requestID}/run`, { user_note: userNote }));
+        const item = connectorApproval(
+          await apiPost(`/api/connector-action-approvals/${approval.id}/run`, {
+            user_note: userNote,
+            approval_context_hash: approval.approval_context_hash,
+          }),
+          {
+            id: approval.id,
+            targetRef: approval.target_ref,
+            actionName: approval.action_name,
+            statuses: runApprovalStatuses,
+          },
+        );
         await loadConnectorActionApprovals();
         return item;
       } catch (error) {
@@ -75,8 +89,19 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   );
 
   const declineConnectorActionApproval = useCallback(
-    async (requestID, userNote = "") => {
-      const item = connectorApproval(await apiPost(`/api/connector-action-approvals/${requestID}/decline`, { user_note: userNote }));
+    async (approval, userNote = "") => {
+      const item = connectorApproval(
+        await apiPost(`/api/connector-action-approvals/${approval.id}/decline`, {
+          user_note: userNote,
+          approval_context_hash: approval.approval_context_hash,
+        }),
+        {
+          id: approval.id,
+          targetRef: approval.target_ref,
+          actionName: approval.action_name,
+          statuses: declineApprovalStatuses,
+        },
+      );
       await loadConnectorActionApprovals();
       return item;
     },

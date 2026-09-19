@@ -36,6 +36,109 @@ it("posts ordinary API requests without adding connector retry metadata", async 
   expect(await listLocalActionRetryEntries()).toEqual([]);
 });
 
+it("does not adopt another workspace after a stale mutation is rejected", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "workspace-a",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "X-AIPermission-Workspace": "workspace-b" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "workspace changed" }), {
+        status: 409,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "workspace-b",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    )
+    .mockResolvedValueOnce(jsonResponse({ ok: true }));
+  vi.stubGlobal("fetch", fetch);
+
+  await apiPost("/api/databases/switch", { database_id: "workspace-a" });
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
+
+  await apiGet("/api/status");
+  await expect(apiPost("/api/settings", { retention_days: 7 })).rejects.toMatchObject({ status: 409 });
+  expect(fetch.mock.calls[2][1].headers["X-AIPermission-Workspace"]).toBe("workspace-a");
+
+  await apiPost("/api/settings", { retention_days: 8 });
+  expect(fetch.mock.calls[3][1].headers["X-AIPermission-Workspace"]).toBe("workspace-a");
+
+  // Leave the module-scoped tab binding in the fixture state for later tests.
+  fetch.mockResolvedValueOnce(
+    new Response(JSON.stringify({ state: "unlocked" }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "X-AIPermission-Workspace": "browser-retry-test",
+        "X-AIPermission-Workspace-Changed": "true",
+      },
+    }),
+  );
+  await apiPost("/api/databases/switch", { database_id: "browser-retry-test" });
+});
+
+it("binds retry storage and mutation headers to the same tab workspace", async () => {
+  const body = { target_ref: "fixture:workspace:1", action_name: "mutate", input: {}, reason: "coverage" };
+  const protectedEntry = await prepareLocalActionRetry(body, { workspaceID: "workspace-b" });
+  await markLocalActionRetryOutcome(protectedEntry, { request_id: 91, assistant_hint: "Inspect workspace B." });
+
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "workspace-a",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    )
+    .mockResolvedValueOnce(jsonResponse(actionResponse(body)))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "browser-retry-test",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    );
+  vi.stubGlobal("fetch", fetch);
+  const reconciliation = vi.fn((event) => event.detail.resolve(false));
+  window.addEventListener(localActionReconciliationEvent, reconciliation, { once: true });
+
+  await apiPost("/api/databases/switch", { database_id: "workspace-a" });
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
+  await apiPost("/api/connector-actions/local-run", body);
+
+  expect(fetch.mock.calls[1][1].headers["X-AIPermission-Workspace"]).toBe("workspace-a");
+  expect(reconciliation).not.toHaveBeenCalled();
+  window.removeEventListener(localActionReconciliationEvent, reconciliation);
+  await expect(listLocalActionRetryEntries()).resolves.toEqual([
+    expect.objectContaining({ key: protectedEntry.idempotencyKey, state: "outcome_unknown" }),
+  ]);
+
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=browser-retry-test; path=/`;
+  await apiPost("/api/databases/switch", { database_id: "browser-retry-test" });
+});
+
 it("rotates the browser retry identity after an acknowledged action", async () => {
   const keys = [];
   const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "coverage" };

@@ -22,6 +22,11 @@ type failedLifecycle struct{ err error }
 func (l failedLifecycle) AcquireMutationContext(context.Context) (func(), error) { return nil, l.err }
 func (l failedLifecycle) AcquireReadContext(context.Context) (func(), error)     { return nil, l.err }
 
+type openLifecycle struct{}
+
+func (openLifecycle) AcquireMutationContext(context.Context) (func(), error) { return func() {}, nil }
+func (openLifecycle) AcquireReadContext(context.Context) (func(), error)     { return func() {}, nil }
+
 func TestBoundaryDistinguishesLifecycleFailureFromRequestExpiry(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	response := httptest.NewRecorder()
@@ -51,6 +56,63 @@ func TestBoundaryRejectsRequestWhoseWorkspaceLeaseExpired(t *testing.T) {
 	}.serveHTTP(response, request)
 	if response.Code != http.StatusRequestTimeout {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestTimeout)
+	}
+}
+
+func TestBoundaryRejectsStaleWorkspaceMutation(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/tokens", nil)
+	request.Header.Set(WorkspaceHeaderName, "workspace-a")
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("stale mutation reached routes") }),
+		Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		HasCSRF: func(*http.Request) bool { return true }, RequiresCSRF: func(string, string) bool { return true },
+		CurrentWorkspace: func() string { return "workspace-b" },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusConflict)
+	}
+	if response.Header().Get(WorkspaceHeaderName) != "workspace-b" {
+		t.Fatalf("response workspace = %q", response.Header().Get(WorkspaceHeaderName))
+	}
+	if response.Header().Get(WorkspaceChangedHeaderName) != "true" {
+		t.Fatal("rejected stale mutation did not publish the authoritative workspace")
+	}
+}
+
+func TestBoundaryFailsClosedWhenWorkspaceResolverIsMissing(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/tokens", nil)
+	request.Header.Set(WorkspaceHeaderName, "workspace-a")
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("unbound mutation reached routes") }),
+		Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		HasCSRF: func(*http.Request) bool { return true }, RequiresCSRF: func(string, string) bool { return true },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusConflict)
+	}
+}
+
+func TestBoundaryPublishesWorkspaceSelectedByMutation(t *testing.T) {
+	current := "workspace-a"
+	request := httptest.NewRequest(http.MethodPost, "/api/databases/switch", nil)
+	request.Header.Set(WorkspaceHeaderName, current)
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			current = "workspace-b"
+			w.WriteHeader(http.StatusOK)
+		}),
+		Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		HasCSRF: func(*http.Request) bool { return true }, RequiresCSRF: func(string, string) bool { return true },
+		CurrentWorkspace: func() string { return current },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get(WorkspaceHeaderName) != "workspace-b" {
+		t.Fatalf("response = %d workspace=%q", response.Code, response.Header().Get(WorkspaceHeaderName))
+	}
+	if response.Header().Get(WorkspaceChangedHeaderName) != "true" {
+		t.Fatal("successful workspace mutation did not publish its transition")
 	}
 }
 

@@ -656,8 +656,9 @@ test("browser retry keys are isolated by persistent workspace identity", async (
   const originalIndexedDB = globalThis.indexedDB;
   const originalIDBKeyRange = globalThis.IDBKeyRange;
   const keys = [];
-  const storage = memoryStorage();
-  globalThis.window = { localStorage: storage, location: { protocol: "http:", port: "3210" } };
+  const firstWindow = { localStorage: memoryStorage(), location: { protocol: "http:", port: "3210" } };
+  const secondWindow = { localStorage: memoryStorage(), location: { protocol: "http:", port: "3210" } };
+  globalThis.window = firstWindow;
   globalThis.indexedDB = fakeRetryIndexedDB;
   globalThis.IDBKeyRange = IDBKeyRange;
   globalThis.fetch = async (_url, options) => {
@@ -669,8 +670,10 @@ test("browser retry keys are isolated by persistent workspace identity", async (
   try {
     globalThis.document = { cookie: "aipermission_workspace_3210=workspace-one" };
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    globalThis.window = secondWindow;
     globalThis.document.cookie = "aipermission_workspace_3210=workspace-two";
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
+    globalThis.window = firstWindow;
     globalThis.document.cookie = "aipermission_workspace_3210=workspace-one";
     await apiPost("/api/connector-actions/local-run", body);
     assert.notEqual(keys[0], keys[1]);

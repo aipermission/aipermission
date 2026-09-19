@@ -22,16 +22,11 @@ type ImportDatabaseRequest struct {
 }
 
 func (component *Component) downloadDatabase(w http.ResponseWriter, r *http.Request) {
-	lease, err := component.acquireReadOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "database backup was canceled")
+	lease, ok := component.authorizedReadOperation(w, r)
+	if !ok {
 		return
 	}
 	defer lease.Release()
-	if component.dependencies.HasSession == nil || !component.dependencies.HasSession(r) {
-		httptransport.WriteError(w, http.StatusUnauthorized, "ui session required")
-		return
-	}
 	runtime, ok := component.dependencies.ActiveRuntime(w)
 	if !ok {
 		return

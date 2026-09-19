@@ -13,6 +13,13 @@ func (r *Runtime) List(ctx context.Context, status string, limit int) ([]Request
 	return r.store.List(ctx, strings.TrimSpace(status), limit)
 }
 
+func (r *Runtime) Get(ctx context.Context, id int64) (Request, error) {
+	if err := r.validate(); err != nil {
+		return Request{}, err
+	}
+	return r.store.Get(ctx, id)
+}
+
 func (r *Runtime) RunPending(ctx context.Context, id int64, userNote string) (WorkflowResult, error) {
 	if err := r.validate(); err != nil {
 		return WorkflowResult{}, err

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiDownload, apiPostForm } from "../../../lib/api";
+import { apiDownload, apiPostForm, currentWorkspaceBinding } from "../../../lib/api";
 import { APIError, errorMessage } from "../../../lib/errors";
 import {
   completeLocalActionRetry,
@@ -65,19 +65,27 @@ export function usePostgresBackupRestore(value) {
     setRestoreState({ state: "running", error: "", message: "" });
     try {
       const formData = new FormData();
-      retry = await prepareLocalActionRetry({
-        path: `${endpoint}/restore`,
-        body: {
-          confirm_target: capturedConfirmation,
-          filename: capturedFile.name,
-          size: capturedFile.size,
-          last_modified: capturedFile.lastModified || 0,
+      const workspaceID = currentWorkspaceBinding();
+      retry = await prepareLocalActionRetry(
+        {
+          path: `${endpoint}/restore`,
+          body: {
+            confirm_target: capturedConfirmation,
+            filename: capturedFile.name,
+            size: capturedFile.size,
+            last_modified: capturedFile.lastModified || 0,
+          },
         },
-      });
+        { workspaceID },
+      );
       formData.append("dump", capturedFile);
       formData.append("confirm_target", capturedConfirmation);
       formData.append("idempotency_key", retry.idempotencyKey);
-      const response = await apiPostForm(`${endpoint}/restore`, formData, { signal: request.signal, requireJSON: true });
+      const response = await apiPostForm(`${endpoint}/restore`, formData, {
+        signal: request.signal,
+        requireJSON: true,
+        workspaceBinding: workspaceID,
+      });
       requireCompletedRestoreResponse(response);
       await completeLocalActionRetry(retry);
       if (!request.isCurrent()) return;

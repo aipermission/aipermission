@@ -28,6 +28,8 @@ const (
 	WorkspaceCookieBase = uisession.WorkspaceCookieBase
 )
 
+func WorkspaceBinding(retryIdentity string) string { return uisession.RetryIdentity(retryIdentity) }
+
 type Principal = executionprincipal.Principal
 type SecuritySettings = securitypolicy.Settings
 type SecurityRule = securitypolicy.Rule

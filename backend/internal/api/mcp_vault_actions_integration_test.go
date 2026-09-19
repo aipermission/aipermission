@@ -26,6 +26,25 @@ import (
 
 type mcpVaultActionCallRequest = vaultrequests.MCPActionCallRequest
 
+func displayedVaultApprovalContextHash(t *testing.T, fixture apiTestFixture, requestID int64) string {
+	t.Helper()
+	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/vault-action-approvals?status=approval_pending", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list local Vault approvals: %d %s", response.Code, response.Body.String())
+	}
+	var items []vaultrequests.Request
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode local Vault approvals: %v", err)
+	}
+	for _, item := range items {
+		if item.ID == requestID && item.ApprovalContextHash != "" {
+			return item.ApprovalContextHash
+		}
+	}
+	t.Fatalf("local Vault approval %d did not expose its decision context", requestID)
+	return ""
+}
+
 func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
@@ -202,7 +221,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatalf("foreign token cancel = %d %s", foreignCancel.Code, foreignCancel.Body.String())
 	}
 
-	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."})
+	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally.", ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID)})
 	if run.Code != http.StatusOK || strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
 		t.Fatalf("run Vault action: %d %s", run.Code, run.Body.String())
 	}
@@ -574,7 +593,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		http.MethodPost,
 		"/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run",
 		"",
-		vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."},
+		vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally.", ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID)},
 	)
 	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"status":"completed"`) {
 		t.Fatalf("run Prompt session apply: %d %s", run.Code, run.Body.String())

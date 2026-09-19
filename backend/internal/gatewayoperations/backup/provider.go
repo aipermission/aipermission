@@ -67,9 +67,8 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 }
 
 func (component *Component) providerOperationScope(w http.ResponseWriter, r *http.Request) (backups.HTTPScope, func(), bool) {
-	lease, err := component.acquireReadOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "backup operation was canceled")
+	lease, ok := component.authorizedReadOperation(w, r)
+	if !ok {
 		return backups.HTTPScope{}, nil, false
 	}
 	scope, ok := component.providerScope(w)
@@ -99,9 +98,8 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 		return
 	}
 	defer clearStrings(&request.DatabasePassword)
-	lease, err := component.acquireMutationOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "backup restore was canceled")
+	lease, ok := component.authorizedMutationOperation(w, r)
+	if !ok {
 		return
 	}
 	defer lease.Release()

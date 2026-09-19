@@ -255,6 +255,9 @@ func Register() { mux.HandleFunc("POST /api/connector-action-approvals/{id}/run"
 		t.Fatal(err)
 	}
 	operation := document["paths"].(map[string]any)["/api/connector-action-approvals/{id}/run"].(map[string]any)["post"].(map[string]any)
+	if operation["x-aipermission-contract-level"] != "typed-request-response" || operation["requestBody"] == nil {
+		t.Fatalf("approval run request contract = %#v", operation)
+	}
 	responses := operation["responses"].(map[string]any)
 	for _, status := range []string{"200", "409", "503", "default"} {
 		if responses[status] == nil {

@@ -73,9 +73,9 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     const request = requests.begin("mutation");
     setAction({ state: "running", error: null });
     try {
-      const item = await runApproval(approval.id, note);
+      const item = await runApproval(approval, note);
       if (!request.isCurrent()) return;
-      if (["error", "failed", "stale"].includes(item?.status)) {
+      if (!["completed", "running"].includes(item?.status)) {
         setSnapshot({ ...approval, ...item });
         setAction({ state: item.status === "stale" ? "stale" : "failed", error: item.error || "Connector action failed." });
         return;
@@ -97,17 +97,19 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     const request = requests.begin("mutation");
     setAction({ state: "declining", error: null });
     try {
-      await declineApproval(approval.id, note);
+      await declineApproval(approval, note);
       if (!request.isCurrent()) return;
       setDismissedIDs((current) => withoutKey(current, approval.id));
       reset();
     } catch (error) {
       if (!request.isCurrent()) return;
-      setAction({ state: "error", error: error.message });
+      await open(approval);
+      if (!request.isCurrent()) return;
+      setAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
     } finally {
       request.complete();
     }
-  }, [activeApproval, declineApproval, note, requests, reset]);
+  }, [activeApproval, declineApproval, note, open, requests, reset]);
 
   useEffect(() => reset(), [reset, selectedTargetRef]);
 

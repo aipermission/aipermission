@@ -122,7 +122,10 @@ describe("useVaultActionApprovals", () => {
     act(() => result.current.openPending());
     expect(result.current.dialog.approval).toEqual(pendingApproval);
     await act(async () => result.current.run());
-    expect(apiPost).toHaveBeenCalledWith("/api/vault-action-approvals/42/run", { user_note: "" });
+    expect(apiPost).toHaveBeenCalledWith("/api/vault-action-approvals/42/run", {
+      user_note: "",
+      approval_context_hash: "context-hash",
+    });
   });
 
   it("does not restore dialog state when a decision completes after dismissal", async () => {
@@ -196,6 +199,18 @@ describe("useVaultActionApprovals", () => {
     expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "error", error: "Decline failed" });
   });
 
+  it("reloads and makes a stale decline conflict acknowledgement-only", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
+    apiPost.mockRejectedValue(new Error("Approval context changed. Review a fresh request."));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.decline());
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "stale" });
+  });
+
   it("does not open a review when no pending approval exists", async () => {
     apiGet.mockResolvedValue([]);
     const { result } = renderApprovals();
@@ -215,7 +230,10 @@ describe("useVaultActionApprovals", () => {
 
     await act(async () => result.current.decline());
 
-    expect(apiPost).toHaveBeenCalledWith("/api/vault-action-approvals/42/decline", { user_note: "Not this time" });
+    expect(apiPost).toHaveBeenCalledWith("/api/vault-action-approvals/42/decline", {
+      user_note: "Not this time",
+      approval_context_hash: "context-hash",
+    });
     expect(result.current.dialog.approval).toBeNull();
   });
 });

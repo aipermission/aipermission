@@ -138,10 +138,16 @@ async function uiRequest(page, path, method, body) {
     async ({ requestPath, requestMethod, requestBody }) => {
       const csrfCookie = document.cookie.split("; ").find((entry) => entry.startsWith("aipermission_csrf_4174="));
       const csrf = csrfCookie ? decodeURIComponent(csrfCookie.split("=").slice(1).join("=")) : "";
+      const workspaceCookie = document.cookie.split("; ").find((entry) => entry.startsWith("aipermission_workspace_4174="));
+      const workspace = workspaceCookie ? decodeURIComponent(workspaceCookie.split("=").slice(1).join("=")) : "";
       const response = await fetch(`http://127.0.0.1:18080${requestPath}`, {
         method: requestMethod,
         credentials: "include",
-        headers: { "Content-Type": "application/json", "X-AIPermission-CSRF": csrf },
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-CSRF": csrf,
+          ...(workspace ? { "X-AIPermission-Workspace": workspace } : {}),
+        },
         body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
       });
       const data = await response.json();

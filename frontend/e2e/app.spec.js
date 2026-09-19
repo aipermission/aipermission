@@ -444,7 +444,7 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
   });
   await page.route("http://localhost:8080/api/connector-action-approvals/42/run", async (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postDataJSON()).toEqual({ user_note: "" });
+    expect(route.request().postDataJSON()).toEqual({ user_note: "", approval_context_hash: "approval-context-42" });
     runCount += 1;
     pending = false;
     await route.fulfill({ json: { ...approval, status: "completed" } });
@@ -593,6 +593,7 @@ function pendingApproval() {
     input: { command: "uptime" },
     preview: { command: "uptime", mode: "prompt" },
     status: "approval_pending",
+    approval_context_hash: "approval-context-42",
     retry_policy: { class: "non_idempotent", guidance: "Inspect state before retrying." },
     created_at: "2026-09-07T12:00:00Z",
   };
