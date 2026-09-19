@@ -137,13 +137,17 @@ func (r *Runtime) prepareGenerate(ctx context.Context, request vaultrequests.Req
 		release()
 		return projectvault.CreateInput{}, nil, err
 	}
+	return generateCreateInput(request.ProjectID, input), release, nil
+}
+
+func generateCreateInput(projectID int64, input vaultrequests.GenerateInput) projectvault.CreateInput {
 	return projectvault.CreateInput{
-		Name: input.Name, OwnerProjectID: request.ProjectID, SharedProjectIDs: input.SharedProjectIDs,
+		Name: input.Name, OwnerProjectID: projectID, SharedProjectIDs: input.SharedProjectIDs,
 		SecretType: input.SecretType, Provider: input.Provider, Environment: input.Environment,
 		Description: input.Description, ExpiresAt: input.ExpiresAt,
 		ExpiryWarningDays: input.ExpiryWarningDays, Source: "generated",
 		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.ProjectUsageNotes(),
-	}, release, nil
+	}
 }
 
 func generatedItemOutput(item projectvault.Item) map[string]any {

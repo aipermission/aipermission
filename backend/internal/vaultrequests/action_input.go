@@ -61,7 +61,7 @@ func NormalizeActionInput(actionName string, input map[string]any) (map[string]a
 	var typed any
 	switch actionName {
 	case ActionGenerateItem:
-		typed = &GenerateInput{}
+		typed = &GenerateInput{SecretType: projectvault.DefaultSecretType}
 	case ActionRestartSession:
 		typed = &SessionApplyInput{}
 	default:

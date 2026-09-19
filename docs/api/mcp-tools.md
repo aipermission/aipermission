@@ -117,8 +117,10 @@ expire after 15 minutes. Action input is decoded against the documented action
 schema before the request is stored; unknown fields are rejected and are never
 copied verbatim into approval, history, or replay data.
 
-For `generate_item`, `tags` is an array of strings, `shared_project_ids` is an
-array of integer project ids, and `usage_notes` uses this shape:
+For `generate_item`, omitted `secret_type` defaults to `generic_secret`. Invalid
+metadata is rejected before an Always execution or Prompt approval is created.
+`tags` is an array of strings, `shared_project_ids` is an array of integer
+project ids, and `usage_notes` uses this shape:
 
 ```json
 [

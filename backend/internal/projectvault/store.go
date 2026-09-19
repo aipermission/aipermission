@@ -25,6 +25,7 @@ const (
 	defaultExpiryWarnDays  = 14
 	workspaceUUIDSetting   = "workspace_uuid"
 	uiRetryIdentitySetting = "ui_retry_instance_id"
+	DefaultSecretType      = "generic_secret"
 )
 
 var validSecretTypes = map[string]bool{

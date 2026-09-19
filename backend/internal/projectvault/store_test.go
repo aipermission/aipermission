@@ -381,6 +381,23 @@ func TestStoreValidationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestNormalizeCreateMetadataDoesNotGenerateSecret(t *testing.T) {
+	input := CreateInput{
+		Name: "GENERATED_SECRET", OwnerProjectID: 1, SecretType: DefaultSecretType,
+		Source: "generated", GeneratorKind: "hex_secret",
+	}
+	normalized, err := NormalizeCreateMetadata(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.Value != "" || normalized.GeneratorParams != nil {
+		t.Fatalf("metadata validation generated secret material: %#v", normalized)
+	}
+	if normalized.ExpiryWarningDays != defaultExpiryWarnDays {
+		t.Fatalf("default warning days = %d", normalized.ExpiryWarningDays)
+	}
+}
+
 func TestGeneratorsUseExpectedShapes(t *testing.T) {
 	for _, kind := range []string{"random_token", "hex_secret", "password", "long_hmac_secret", "uuid_v4"} {
 		t.Run(kind, func(t *testing.T) {

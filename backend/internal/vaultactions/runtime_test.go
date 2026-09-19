@@ -177,7 +177,6 @@ func TestPrepareSnapshotsGenerateAuthorizationAndExecutionRule(t *testing.T) {
 		t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem,
 		map[string]any{
 			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
-			"shared_project_ids": []any{float64(fixture.projectID), float64(fixture.projectID)},
 		},
 	)
 	if err != nil {
@@ -202,6 +201,47 @@ func TestPrepareSnapshotsGenerateAuthorizationAndExecutionRule(t *testing.T) {
 	}
 	if err := fixture.runtime.ValidateAuthorization(t.Context(), request, prepared.ApprovalContext); !IsStale(err) {
 		t.Fatalf("changed capability error = %v", err)
+	}
+}
+
+func TestPrepareValidatesGenerateMetadataBeforeApproval(t *testing.T) {
+	fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+	valid, err := fixture.runtime.Prepare(
+		t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem,
+		map[string]any{"name": "PROJECT_TOKEN", "generator_kind": "hex_secret"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid.Input["secret_type"] != projectvault.DefaultSecretType {
+		t.Fatalf("default secret type = %#v", valid.Input["secret_type"])
+	}
+
+	for name, input := range map[string]map[string]any{
+		"secret type": {
+			"name": "PROJECT_TOKEN", "secret_type": "certificate", "generator_kind": "hex_secret",
+		},
+		"generator": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "unknown",
+		},
+		"expiry": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret", "expires_at": "not-rfc3339",
+		},
+		"warning days": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret", "expiry_warning_days": 3651,
+		},
+		"owner repeated as shared": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret",
+			"shared_project_ids": []any{float64(fixture.projectID)},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := fixture.runtime.Prepare(
+				t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, input,
+			); err == nil {
+				t.Fatal("invalid generation metadata reached approval")
+			}
+		})
 	}
 }
 

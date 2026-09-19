@@ -87,13 +87,11 @@ func (r *Runtime) completeGenerateApproval(
 	if err != nil {
 		return err
 	}
-	if err := projectvault.ValidateSessionItemName(actionInput.Name); err != nil {
+	normalized, err := projectvault.NormalizeCreateMetadata(generateCreateInput(projectID, actionInput))
+	if err != nil {
 		return err
 	}
-	if err := projectvault.ValidateGeneratorKind(actionInput.GeneratorKind); err != nil {
-		return err
-	}
-	approval.SourceProjectIDs = uniquePositiveIDs(append([]int64{projectID}, actionInput.SharedProjectIDs...))
+	approval.SourceProjectIDs = append([]int64{projectID}, normalized.SharedProjectIDs...)
 	return r.requireProjectVisibility(ctx, tokenID, approval.SourceProjectIDs)
 }
 

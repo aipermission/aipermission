@@ -222,6 +222,25 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	if rejectedCount != 0 {
 		t.Fatal("rejected Vault input was persisted")
 	}
+	for index, invalidInput := range []map[string]any{
+		{"name": "INVALID_TYPE", "secret_type": "certificate", "generator_kind": "random_token"},
+		{"name": "INVALID_EXPIRY", "generator_kind": "random_token", "expires_at": "not-rfc3339"},
+	} {
+		idempotencyKey := "rejected-metadata-" + strconv.Itoa(index)
+		response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, mcpVaultActionCallRequest{
+			ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
+			Input: invalidInput, Reason: "Reject invalid metadata before approval.", IdempotencyKey: idempotencyKey,
+		})
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid generation metadata %d = %d %s", index, response.Code, response.Body.String())
+		}
+		if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM vault_action_requests WHERE idempotency_key = ?`, idempotencyKey).Scan(&rejectedCount); err != nil {
+			t.Fatal(err)
+		}
+		if rejectedCount != 0 {
+			t.Fatalf("invalid generation metadata %d created an approval", index)
+		}
+	}
 	for index, nestedInput := range []map[string]any{
 		{
 			"name": "REJECTED_USAGE_NOTE", "generator_kind": "random_token",
@@ -250,7 +269,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	}
 
 	input := map[string]any{
-		"name": "MY_PROJECT_API_TOKEN", "secret_type": "api_key",
+		"name":           "MY_PROJECT_API_TOKEN",
 		"generator_kind": "random_token", "provider": "Example API",
 		"description": "Generated without exposing its value.",
 	}
@@ -312,7 +331,8 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	}
 
 	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally.", ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID)})
-	if run.Code != http.StatusOK || strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
+	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"secret_type":"generic_secret"`) ||
+		strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
 		t.Fatalf("run Vault action: %d %s", run.Code, run.Body.String())
 	}
 	poll := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/vault-action-requests/"+strconv.FormatInt(requestID, 10), token.TokenValue, nil)
@@ -390,7 +410,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 		ProjectRef: project.Slug,
 		ActionName: vaultrequests.ActionGenerateItem,
 		Input: map[string]any{
-			"name": "AUTOMATED_API_TOKEN", "secret_type": "api_key",
+			"name":           "AUTOMATED_API_TOKEN",
 			"generator_kind": "random_token", "provider": "Example API",
 		},
 		Reason:         "Create a token for the approved autonomous workflow.",
@@ -399,6 +419,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	fixture.server.access.ConfigureVaultRequestLimit(1, time.Minute)
 	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
 	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
+		!strings.Contains(call.Body.String(), `"secret_type":"generic_secret"`) ||
 		strings.Contains(call.Body.String(), `"retry_after_seconds"`) ||
 		strings.Contains(call.Body.String(), `"value"`) || strings.Contains(call.Body.String(), "encrypted_value") {
 		t.Fatalf("always Vault action: %d %s", call.Code, call.Body.String())

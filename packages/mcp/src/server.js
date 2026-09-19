@@ -154,7 +154,7 @@ server.tool(
 
 server.tool(
   "call_vault_action",
-  "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, secret_type, generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
+  "Run a Vault action under the configured project capability. Prompt waits for local approval; Always executes immediately through the same tracked request path. generate_item input accepts name, optional secret_type (defaults to generic_secret), generator_kind, provider, environment, description, expires_at, expiry_warning_days, tags (string array), usage_notes (array of {location, notes}), and shared_project_ids (integer array). restart_session_with_environment input requires target_ref and items with item_id, source_project_id, and optional replace_existing. Never include raw secret values.",
   callVaultActionSchema,
   externalActionAnnotations,
   async ({ project_ref, action_name, input, reason, idempotency_key }, { signal }) => {

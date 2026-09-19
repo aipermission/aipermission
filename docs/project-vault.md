@@ -154,6 +154,10 @@ cancel_vault_action_request(request_id)
 - `generate_item`
 - `restart_session_with_environment`
 
+`generate_item` defaults an omitted `secret_type` to `generic_secret` and
+validates all generation metadata before creating either an Always request or
+a local Prompt approval.
+
 Every mutation creates a tracked request. Prompt requests can be declined,
 canceled by the owning token, expire after 15 minutes, or become stale when the
 approval context changes. Always requests execute immediately through the same
