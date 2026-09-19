@@ -40,13 +40,14 @@ type PreparedUISession = uisession.Prepared
 type MutationRunner func(context.Context, string, func() any, func(*sql.Tx) error) error
 
 type AccessScope struct {
-	Database                *sql.DB
-	Tokens                  *tokens.Store
-	Registry                connectors.Catalog
-	ReusableTokens          func(context.Context) (bool, error)
-	Mutate                  MutationRunner
-	AcquireExclusive        func(context.Context) (func(), error)
-	FinishTokenInvalidation func(context.Context, int64, []int64)
+	Database                  *sql.DB
+	Tokens                    *tokens.Store
+	Registry                  connectors.Catalog
+	ReusableTokens            func(context.Context) (bool, error)
+	ReusableTokensForMutation func(context.Context, *sql.Tx) (bool, error)
+	Mutate                    MutationRunner
+	AcquireExclusive          func(context.Context) (func(), error)
+	FinishTokenInvalidation   func(context.Context, int64, []int64)
 }
 
 type ActionPermissionRule string

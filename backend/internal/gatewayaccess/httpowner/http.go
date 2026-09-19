@@ -72,7 +72,8 @@ func adaptAccessScopeProvider(provider gatewayaccess.AccessScopeProvider) access
 		scope, ok := provider(w)
 		return accesscontrol.Scope{
 			Database: scope.Database, Tokens: scope.Tokens, Registry: scope.Registry,
-			ReusableTokens: scope.ReusableTokens, Mutate: accesscontrol.MutationRunner(scope.Mutate),
+			ReusableTokens: scope.ReusableTokens, ReusableTokensForMutation: scope.ReusableTokensForMutation,
+			Mutate:           accesscontrol.MutationRunner(scope.Mutate),
 			AcquireExclusive: scope.AcquireExclusive, FinishTokenInvalidation: scope.FinishTokenInvalidation,
 		}, ok
 	}

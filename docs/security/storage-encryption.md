@@ -239,5 +239,8 @@ timestamp for temporary MCP access. Token action permission grants can also have
 an `expires_at` timestamp for temporary maintenance windows. When reusable token
 copy is disabled, newly created token values are not stored for later copying;
 authentication still uses SHA256 hashes of high-entropy random token values.
+The create path reads this policy inside the same audited database transaction
+that inserts the token, so a concurrent disable either prevents reusable
+storage or commits afterward and clears it.
 
 If the user enables reusable token copy for local convenience, token values created after that point are stored in encrypted `token_value` form through the gateway vault and can be copied again from the UI. Disabling the setting clears stored reusable token values. Token hashes remain for authentication, but token values cannot be recovered after clearing.

@@ -53,6 +53,17 @@ func (s *Service) ReadSettings(ctx context.Context) (Settings, error) {
 	return settings, nil
 }
 
+// ReusableTokensForMutation reads the authoritative policy from the caller's
+// transaction so sensitive persistence decisions cannot race a settings
+// update or rely on the read cache.
+func (s *Service) ReusableTokensForMutation(ctx context.Context, tx *sql.Tx) (bool, error) {
+	if s == nil || s.database == nil || tx == nil {
+		return false, errors.New("security policy transaction is unavailable")
+	}
+	settings, err := readSettings(ctx, tx)
+	return settings.ReusableTokens, err
+}
+
 func (s *Service) UpdateSettings(ctx context.Context, settings Settings, mutate auditedmutation.Runner) (Settings, error) {
 	if s == nil || s.database == nil {
 		return Settings{}, errors.New("security policy database is unavailable")
