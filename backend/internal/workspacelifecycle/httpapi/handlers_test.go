@@ -15,12 +15,13 @@ import (
 )
 
 type fakeLifecycle struct {
-	unlocked    bool
-	status      workspacelifecycle.Status
-	renameError error
-	unlockError error
-	lockError   error
-	lockCalls   int
+	unlocked      bool
+	status        workspacelifecycle.Status
+	renameError   error
+	unlockError   error
+	passwordError error
+	lockError     error
+	lockCalls     int
 }
 
 func (f *fakeLifecycle) IsUnlocked() bool                           { return f.unlocked }
@@ -48,12 +49,42 @@ func (f *fakeLifecycle) DeleteLocked(string, string) (workspacelifecycle.Transit
 func (f *fakeLifecycle) Switch(context.Context, string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, nil
 }
-func (f *fakeLifecycle) ChangePassword(context.Context, string, string) error { return nil }
+func (f *fakeLifecycle) ChangePassword(context.Context, string, string) error { return f.passwordError }
 
 type fakeAttempt struct{ successes, failures int }
 
 func (a *fakeAttempt) Success() { a.successes++ }
 func (a *fakeAttempt) Failure() { a.failures++ }
+
+type detachedRuntimeError struct{ databaseID string }
+
+func (e detachedRuntimeError) Error() string                       { return "runtime reactivation failed" }
+func (e detachedRuntimeError) SessionInvalidationDatabase() string { return e.databaseID }
+
+func TestChangePasswordDetachedRuntimeInvalidatesWorkspaceSessionsAndExpiresCookies(t *testing.T) {
+	attempt := &fakeAttempt{}
+	invalidated := ""
+	expired := false
+	handlers := New(Dependencies{
+		Lifecycle: &fakeLifecycle{passwordError: detachedRuntimeError{databaseID: "workspace-a"}},
+		BeginAttempt: func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool) {
+			return attempt, true
+		},
+		InvalidateSessions: func(databaseID string) { invalidated = databaseID },
+		ExpireSession:      func(http.ResponseWriter) { expired = true },
+	})
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/settings/database-password", strings.NewReader(
+		`{"current_password":"CurrentPassword123","new_password":"ReplacementPassword456","confirm_password":"ReplacementPassword456"}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+
+	handlers.ChangePassword(response, request)
+
+	if response.Code != http.StatusInternalServerError || invalidated != "workspace-a" || !expired {
+		t.Fatalf("code=%d invalidated=%q expired=%t", response.Code, invalidated, expired)
+	}
+}
 
 func TestStatusRedactsFilesystemPathsAndReportsSessionRequirement(t *testing.T) {
 	lifecycle := &fakeLifecycle{unlocked: true, status: workspacelifecycle.Status{

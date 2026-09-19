@@ -110,6 +110,13 @@ func (m *Manager) Clear(w http.ResponseWriter) {
 	m.mu.Lock()
 	m.sessions = map[string]sessionRecord{}
 	m.mu.Unlock()
+	m.Expire(w)
+}
+
+func (m *Manager) Expire(w http.ResponseWriter) {
+	if m == nil || w == nil {
+		return
+	}
 	expires := time.Unix(0, 0).UTC()
 	http.SetCookie(w, expiredSessionCookie(m.sessionCookie, expires))
 	for _, name := range []string{m.csrfCookie, m.workspaceCookie} {

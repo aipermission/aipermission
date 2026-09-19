@@ -14,6 +14,7 @@ func (s *Server) workspaceLifecycleHTTPHandlers() gatewayinfra.WorkspaceHTTPHand
 		HasSession:         s.hasValidUISession,
 		IssueSession:       s.issueUISessionLocked,
 		ClearSessions:      s.clearUISessions,
+		ExpireSession:      s.access.ExpireUISessionCookies,
 		InvalidateSessions: s.access.InvalidateUISessions,
 		CloseMaintenance:   func(reason string) { s.closeMaintenanceConsoleForLifecycle(reason) },
 	})

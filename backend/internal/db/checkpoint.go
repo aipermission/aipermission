@@ -30,8 +30,12 @@ func CheckpointFull(ctx context.Context, database *sql.DB) error {
 	if database == nil {
 		return ErrDatabaseNotOpen
 	}
-	if _, err := database.ExecContext(ctx, `PRAGMA wal_checkpoint(FULL)`); err != nil {
+	var busy, logFrames, checkpointedFrames int
+	if err := database.QueryRowContext(ctx, `PRAGMA wal_checkpoint(FULL)`).Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
 		return fmt.Errorf("checkpoint database: %w", err)
+	}
+	if busy != 0 || checkpointedFrames < logFrames {
+		return errors.New("checkpoint database: database remained busy")
 	}
 	return nil
 }

@@ -88,6 +88,28 @@ func TestManagerExpiresAndClearsSessions(t *testing.T) {
 	}
 }
 
+func TestManagerExpiresCookiesWithoutClearingOtherWorkspaceSessions(t *testing.T) {
+	manager := New("3212")
+	issued := httptest.NewRecorder()
+	if err := manager.Issue(issued, "workspace-a", "retry-a"); err != nil {
+		t.Fatal(err)
+	}
+	session := cookieMap(issued.Result().Cookies())[SessionCookieBase+"_3212"]
+	request := httptest.NewRequest(http.MethodGet, "/api/connectors", nil)
+	request.AddCookie(session)
+
+	expired := httptest.NewRecorder()
+	manager.Expire(expired)
+	if !manager.Valid(request, "workspace-a") {
+		t.Fatal("expiring caller cookies removed the server-side session")
+	}
+	for _, cookie := range expired.Result().Cookies() {
+		if cookie.MaxAge >= 0 {
+			t.Fatalf("cookie was not expired: %#v", cookie)
+		}
+	}
+}
+
 func TestManagerRejectsInvalidPreparedSession(t *testing.T) {
 	manager := New("")
 	response := httptest.NewRecorder()

@@ -211,6 +211,414 @@ func (r *serviceRuntime) WorkspaceIdentity() Identity    { return r.identity }
 func (r *serviceRuntime) WorkspaceDatabase() *sql.DB     { return r.database }
 func (r *serviceRuntime) WorkspaceGatewaySecret() string { return r.secret }
 
+func TestServiceChangePasswordReplacesRuntimeConnectionPool(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	const newPassword = "ReplacementPassword456"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	opened, closed := 0, 0
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path,
+		Registry: registry,
+		Open: func(_ context.Context, path, id, password string) (*serviceRuntime, error) {
+			reopened, err := db.OpenEncrypted(path, password)
+			if err != nil {
+				return nil, err
+			}
+			opened++
+			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: reopened}, nil
+		},
+		Close: func(runtime *serviceRuntime) error {
+			closed++
+			return runtime.database.Close()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.ChangePassword(t.Context(), currentPassword, newPassword); err != nil {
+		t.Fatal(err)
+	}
+	active, ok := service.Active()
+	if !ok || active == original || opened != 1 || closed != 1 {
+		t.Fatalf("runtime was not replaced: active=%p original=%p opened=%d closed=%d", active, original, opened, closed)
+	}
+	if err := original.database.Ping(); err == nil {
+		t.Fatal("original database pool remained open after password change")
+	}
+
+	txCtx, cancelTx := context.WithCancel(t.Context())
+	tx, err := active.database.BeginTx(txCtx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelTx()
+	_ = tx.Rollback()
+	deadline := time.Now().Add(time.Second)
+	for active.database.Stats().InUse != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if active.database.Stats().InUse != 0 {
+		t.Fatal("canceled transaction did not release its connection")
+	}
+
+	active.database.SetMaxIdleConns(0)
+	var schemaVersion int
+	if err := active.database.QueryRow(`PRAGMA user_version`).Scan(&schemaVersion); err != nil {
+		t.Fatalf("query through replacement physical connection: %v", err)
+	}
+	if err := db.ValidateEncrypted(path, currentPassword); err == nil {
+		t.Fatal("old password still opens the rekeyed database")
+	}
+	if err := db.ValidateEncrypted(path, newPassword); err != nil {
+		t.Fatalf("new password does not open the rekeyed database: %v", err)
+	}
+	if err := active.database.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServiceChangePasswordFinishesDeferredReactivationAfterRequestCancellation(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	const newPassword = "ReplacementPassword456"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	requestCtx, cancelRequest := context.WithCancel(t.Context())
+	closed, releaseClose, waiting := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(ctx context.Context, path, id, password string) (*serviceRuntime, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			reopened, openErr := db.OpenEncrypted(path, password)
+			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: reopened}, openErr
+		},
+		Close: func(runtime *serviceRuntime) error {
+			go func() {
+				<-releaseClose
+				_ = runtime.database.Close()
+				close(closed)
+			}()
+			return deferredCloseTestError{}
+		},
+		WaitClosed: func(ctx context.Context, _ *serviceRuntime) error {
+			close(waiting)
+			select {
+			case <-closed:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		Rekey: func(database *sql.DB, password string) error {
+			if err := db.Rekey(database, password); err != nil {
+				return err
+			}
+			cancelRequest()
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := make(chan error, 1)
+	go func() { result <- service.ChangePassword(requestCtx, currentPassword, newPassword) }()
+	<-waiting
+	select {
+	case err := <-result:
+		t.Fatalf("password change returned before deferred close completed: %v", err)
+	default:
+	}
+	close(releaseClose)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	active, ok := service.Active()
+	if !ok || active == original {
+		t.Fatal("request cancellation prevented replacement runtime activation")
+	}
+	t.Cleanup(func() { _ = active.database.Close() })
+}
+
+func TestServiceChangePasswordRecoversWhenRekeyReportsErrorAfterApplyingNewPassword(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	const newPassword = "ReplacementPassword456"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(_ context.Context, path, id, password string) (*serviceRuntime, error) {
+			reopened, openErr := db.OpenEncrypted(path, password)
+			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: reopened}, openErr
+		},
+		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		Rekey: func(database *sql.DB, password string) error {
+			if err := db.Rekey(database, password); err != nil {
+				return err
+			}
+			return errors.New("response lost after rekey")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.ChangePassword(t.Context(), currentPassword, newPassword); err != nil {
+		t.Fatalf("recover applied rekey: %v", err)
+	}
+	active, ok := service.Active()
+	if !ok || active == original {
+		t.Fatal("applied rekey did not replace the original runtime")
+	}
+	t.Cleanup(func() { _ = active.database.Close() })
+	if err := db.ValidateEncrypted(path, newPassword); err != nil {
+		t.Fatalf("new password does not open the rekeyed database: %v", err)
+	}
+}
+
+func TestServiceChangePasswordDetachesRuntimeWhenRekeyOutcomeCannotBeProved(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	validationCalls := 0
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("detached workspace must not reopen")
+		},
+		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		Validate: func(string, string) error {
+			validationCalls++
+			if validationCalls == 1 {
+				return nil
+			}
+			return errors.New("credential probe unavailable")
+		},
+		Rekey: func(*sql.DB, string) error { return errors.New("ambiguous rekey failure") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changeErr := service.ChangePassword(t.Context(), currentPassword, "ReplacementPassword456")
+	if databaseID, invalidate := SessionInvalidationDatabase(changeErr); !invalidate || databaseID != "default" {
+		t.Fatalf("session invalidation = %q, %t for %v", databaseID, invalidate, changeErr)
+	}
+	if service.IsUnlocked() {
+		t.Fatal("ambiguous password change left the runtime active")
+	}
+}
+
+func TestServiceChangePasswordDeferredCloseFailureInvalidatesDetachedWorkspace(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	const newPassword = "ReplacementPassword456"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("detached workspace must not reopen")
+		},
+		Close: func(runtime *serviceRuntime) error {
+			if err := runtime.database.Close(); err != nil {
+				return err
+			}
+			return deferredCloseTestError{}
+		},
+		WaitClosed: func(context.Context, *serviceRuntime) error { return context.DeadlineExceeded },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changeErr := service.ChangePassword(t.Context(), currentPassword, newPassword)
+	if !errors.Is(changeErr, context.DeadlineExceeded) {
+		t.Fatalf("ChangePassword() error = %v, want deferred-close deadline", changeErr)
+	}
+	if databaseID, invalidate := SessionInvalidationDatabase(changeErr); !invalidate || databaseID != "default" {
+		t.Fatalf("session invalidation = %q, %t", databaseID, invalidate)
+	}
+	if service.IsUnlocked() {
+		t.Fatal("deferred-close failure left the detached workspace unlocked")
+	}
+	if err := db.ValidateEncrypted(path, newPassword); err != nil {
+		t.Fatalf("rekeyed database does not accept its new password: %v", err)
+	}
+}
+
+func TestServiceChangePasswordFailureAfterRekeyLeavesWorkspaceLocked(t *testing.T) {
+	for _, failure := range []string{"checkpoint", "verification", "close", "reopen"} {
+		t.Run(failure, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Chmod(root, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "aipermission.db")
+			const currentPassword = "CurrentPassword123"
+			const newPassword = "ReplacementPassword456"
+			database, err := db.OpenEncrypted(path, currentPassword)
+			if err != nil {
+				t.Fatal(err)
+			}
+			registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+			original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+			registry.Activate(original)
+			forced := errors.New("forced " + failure + " failure")
+			checkpointCalls, validationCalls := 0, 0
+			dependencies := Dependencies[*serviceRuntime]{
+				DataPath: path, Registry: registry,
+				Open: func(_ context.Context, path, id, password string) (*serviceRuntime, error) {
+					if failure == "reopen" {
+						return nil, forced
+					}
+					reopened, openErr := db.OpenEncrypted(path, password)
+					return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: reopened}, openErr
+				},
+				Close: func(runtime *serviceRuntime) error {
+					closeErr := runtime.database.Close()
+					if failure == "close" {
+						return errors.Join(closeErr, forced)
+					}
+					return closeErr
+				},
+				CheckpointFull: func(ctx context.Context, database *sql.DB) error {
+					checkpointCalls++
+					if failure == "checkpoint" && checkpointCalls == 2 {
+						return forced
+					}
+					return db.CheckpointFull(ctx, database)
+				},
+			}
+			if failure == "verification" {
+				dependencies.Validate = func(path, password string) error {
+					validationCalls++
+					if validationCalls == 2 {
+						return forced
+					}
+					return db.ValidateEncrypted(path, password)
+				}
+			}
+			service, err := NewService(dependencies)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = service.ChangePassword(t.Context(), currentPassword, newPassword)
+			if err == nil {
+				t.Fatalf("ChangePassword() error = %v", err)
+			}
+			if databaseID, invalidate := SessionInvalidationDatabase(err); !invalidate || databaseID != "default" {
+				t.Fatalf("session invalidation = %q, %t", databaseID, invalidate)
+			}
+			if service.IsUnlocked() {
+				t.Fatal("failed post-rekey recovery left a runtime active")
+			}
+			if err := original.database.Ping(); err == nil {
+				t.Fatal("failed post-rekey recovery left the original pool usable")
+			}
+			if err := db.ValidateEncrypted(path, newPassword); err != nil {
+				t.Fatalf("rekeyed database does not accept its new password: %v", err)
+			}
+		})
+	}
+}
+
+func TestServiceChangePasswordPreflightFailureKeepsOriginalRuntime(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	forced := errors.New("forced checkpoint failure")
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path, Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("unused")
+		},
+		Close:          func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		CheckpointFull: func(context.Context, *sql.DB) error { return forced },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changeErr := service.ChangePassword(t.Context(), currentPassword, "ReplacementPassword456")
+	if !errors.Is(changeErr, forced) {
+		t.Fatalf("ChangePassword() error = %v", changeErr)
+	}
+	if databaseID, invalidate := SessionInvalidationDatabase(changeErr); invalidate || databaseID != "" {
+		t.Fatalf("preflight session invalidation = %q, %t", databaseID, invalidate)
+	}
+	active, ok := service.Active()
+	if !ok || active != original {
+		t.Fatal("preflight failure retired an unchanged runtime")
+	}
+	if err := database.Ping(); err != nil {
+		t.Fatalf("preflight failure closed original pool: %v", err)
+	}
+}
+
 func TestServiceUnlockSwitchAndLockLifecycle(t *testing.T) {
 	root := t.TempDir()
 	defaultPath := filepath.Join(root, "aipermission.db")

@@ -366,9 +366,6 @@ func Rekey(database *sql.DB, newPassword string) error {
 	if _, err := database.Exec(`PRAGMA rekey = "` + quoteSQLDoubleQuotedString(newPassword) + `"`); err != nil {
 		return fmt.Errorf("rekey encrypted sqlite: %w", err)
 	}
-	if err := database.Ping(); err != nil {
-		return fmt.Errorf("ping rekeyed sqlite: %w", err)
-	}
 	return nil
 }
 

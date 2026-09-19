@@ -37,6 +37,7 @@ type Dependencies struct {
 	HasSession         func(*http.Request) bool
 	IssueSession       func(http.ResponseWriter) error
 	ClearSessions      func(http.ResponseWriter)
+	ExpireSession      func(http.ResponseWriter)
 	InvalidateSessions func(string)
 	CloseMaintenance   func(string)
 	Now                func() time.Time

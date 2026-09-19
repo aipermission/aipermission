@@ -167,6 +167,14 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.dependencies.Lifecycle.ChangePassword(r.Context(), request.CurrentPassword, request.NewPassword)
+	if databaseID, invalidate := workspacelifecycle.SessionInvalidationDatabase(err); invalidate {
+		if h.dependencies.InvalidateSessions != nil {
+			h.dependencies.InvalidateSessions(databaseID)
+		}
+		if h.dependencies.ExpireSession != nil {
+			h.dependencies.ExpireSession(w)
+		}
+	}
 	if !h.handleMutationResult(w, attempt, err, "invalid current database password") {
 		return
 	}
