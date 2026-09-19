@@ -967,9 +967,27 @@ Security settings:
 {
   "reusable_tokens": false,
   "expose_mcp_server_metadata": false,
-  "redaction_mode": "basic"
+  "mcp_start_enabled": false,
+  "redaction_mode": "basic",
+  "revision": "current-revision-from-get"
 }
 ```
+
+`PUT /api/settings/security` replaces the complete settings document and
+requires the revision returned by the latest GET:
+
+```json
+{
+  "reusable_tokens": false,
+  "expose_mcp_server_metadata": false,
+  "mcp_start_enabled": false,
+  "redaction_mode": "basic",
+  "expected_revision": "current-revision-from-get"
+}
+```
+
+A stale `expected_revision` returns `409 Conflict`; clients must reload before
+retrying so one browser tab cannot restore settings disabled in another tab.
 
 `expose_mcp_server_metadata` controls whether MCP connector target discovery includes SSH `host`, `port`, and `username`. `redaction_mode` is `basic` or `off`; basic redaction masks common token/password/API-key/private-key patterns before command history, connector action history, console transcripts, and audit payloads are persisted or returned through MCP.
 

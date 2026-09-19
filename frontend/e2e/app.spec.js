@@ -87,12 +87,24 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/settings/security", async (route) => {
     if (route.request().method() === "PUT") {
       await route.fulfill({
-        json: { reusable_tokens: false, expose_mcp_server_metadata: true, mcp_start_enabled: false, redaction_mode: "basic" },
+        json: {
+          reusable_tokens: false,
+          expose_mcp_server_metadata: true,
+          mcp_start_enabled: false,
+          redaction_mode: "basic",
+          revision: "security-2",
+        },
       });
       return;
     }
     await route.fulfill({
-      json: { reusable_tokens: false, expose_mcp_server_metadata: false, mcp_start_enabled: false, redaction_mode: "basic" },
+      json: {
+        reusable_tokens: false,
+        expose_mcp_server_metadata: false,
+        mcp_start_enabled: false,
+        redaction_mode: "basic",
+        revision: "security-1",
+      },
     });
   });
   await page.route("http://localhost:8080/api/settings/mcp-runtime", async (route) => {

@@ -394,7 +394,12 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("metadata should be hidden by default: %#v", items)
 	}
 
-	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "", securitypolicy.Settings{ExposeMCPServerMetadata: true})
+	settingsDocument := decodeRouteResponse[securitypolicy.SettingsDocument](t,
+		performJSON(fixture.server.Handler(), http.MethodGet, "/api/settings/security", "", nil).Body.Bytes())
+	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "",
+		securitypolicy.NewSettingsUpdateRequest(
+			securitypolicy.Settings{ExposeMCPServerMetadata: true}, settingsDocument.Revision,
+		))
 	if settingsResponse.Code != http.StatusOK {
 		t.Fatalf("enable metadata setting failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}

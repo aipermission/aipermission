@@ -114,7 +114,10 @@ Host *
 		assertSensitiveResponseHeaders(t, response)
 	}
 
-	settingsResponse := performJSON(handler, http.MethodPut, "/api/settings/security", "", securitypolicy.Settings{ReusableTokens: true})
+	settingsDocument := decodeRouteResponse[securitypolicy.SettingsDocument](t,
+		performJSON(handler, http.MethodGet, "/api/settings/security", "", nil).Body.Bytes())
+	settingsResponse := performJSON(handler, http.MethodPut, "/api/settings/security", "",
+		securitypolicy.NewSettingsUpdateRequest(securitypolicy.Settings{ReusableTokens: true}, settingsDocument.Revision))
 	if settingsResponse.Code != http.StatusOK || !strings.Contains(settingsResponse.Body.String(), `"reusable_tokens":true`) {
 		t.Fatalf("enable reusable token copy failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}

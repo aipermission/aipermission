@@ -154,10 +154,10 @@
       "lines": 100
     },
     "src/components/console/use-connector-approval-dialog.js": {
-      "statements": 71.15,
-      "branches": 57.4,
-      "functions": 75,
-      "lines": 75.29
+      "statements": 83.01,
+      "branches": 71.69,
+      "functions": 80,
+      "lines": 90.69
     },
     "src/components/console/use-connector-token-permission-state.js": {
       "statements": 94.03,
@@ -322,10 +322,10 @@
       "lines": 75
     },
     "src/components/security/security-settings-panels.jsx": {
-      "statements": 72.22,
-      "branches": 68.18,
-      "functions": 58.33,
-      "lines": 70.58
+      "statements": 73.22,
+      "branches": 77.27,
+      "functions": 59.33,
+      "lines": 71.58
     },
     "src/components/settings/backup-provider-dialogs.jsx": {
       "statements": 0,
@@ -538,10 +538,10 @@
       "lines": 90.24
     },
     "src/components/use-gateway-activity-resources.js": {
-      "statements": 84.21,
-      "branches": 53.84,
+      "statements": 84.74,
+      "branches": 57.69,
       "functions": 90,
-      "lines": 95.83
+      "lines": 96
     },
     "src/components/use-gateway-core-resources.js": {
       "statements": 87.12,
@@ -568,10 +568,10 @@
       "lines": 100
     },
     "src/components/vault/use-vault-action-approvals.js": {
-      "statements": 87.67,
-      "branches": 74.35,
-      "functions": 94.44,
-      "lines": 96.77
+      "statements": 90.47,
+      "branches": 80.43,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/vault/use-vault-bindings.js": {
       "statements": 64.28,
@@ -1312,10 +1312,10 @@
       "lines": 42.04
     },
     "src/connectors/templates/postgres/use-postgres-backup-restore.js": {
-      "statements": 96.05,
-      "branches": 85.48,
+      "statements": 96.25,
+      "branches": 86.36,
       "functions": 100,
-      "lines": 98.55
+      "lines": 98.63
     },
     "src/connectors/templates/postgres/use-postgres-provisioning.js": {
       "statements": 87.3,
@@ -1654,10 +1654,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 89.15,
-      "branches": 84.17,
+      "statements": 90.62,
+      "branches": 84.9,
       "functions": 100,
-      "lines": 90.25
+      "lines": 91.47
     },
     "src/lib/async-resource.js": {
       "statements": 100,
@@ -1726,8 +1726,8 @@
       "lines": 100
     },
     "src/lib/gateway-contracts/security-contracts.ts": {
-      "statements": 97.22,
-      "branches": 98.48,
+      "statements": 98.24,
+      "branches": 99.07,
       "functions": 100,
       "lines": 100
     },
@@ -1745,7 +1745,7 @@
     },
     "src/lib/local-action-retry.js": {
       "statements": 78.48,
-      "branches": 73.77,
+      "branches": 74.19,
       "functions": 100,
       "lines": 83.33
     },
@@ -1919,7 +1919,7 @@
     },
     "src/pages/security.jsx": {
       "statements": 100,
-      "branches": 75,
+      "branches": 92.3,
       "functions": 100,
       "lines": 100
     },
@@ -1966,10 +1966,10 @@
       "lines": 90.59
     },
     "src/pages/use-security-page-state.js": {
-      "statements": 77.77,
-      "branches": 0,
-      "functions": 71.42,
-      "lines": 77.14
+      "statements": 84.61,
+      "branches": 76.47,
+      "functions": 75,
+      "lines": 85.71
     },
     "src/pages/use-unlock-lifecycle-mutation.js": {
       "statements": 95.23,

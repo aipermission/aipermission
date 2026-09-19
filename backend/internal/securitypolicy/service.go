@@ -65,6 +65,25 @@ func (s *Service) ReusableTokensForMutation(ctx context.Context, tx *sql.Tx) (bo
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, settings Settings, mutate auditedmutation.Runner) (Settings, error) {
+	return s.updateSettings(ctx, settings, "", false, mutate)
+}
+
+func (s *Service) UpdateSettingsAtRevision(
+	ctx context.Context,
+	settings Settings,
+	expectedRevision string,
+	mutate auditedmutation.Runner,
+) (Settings, error) {
+	return s.updateSettings(ctx, settings, expectedRevision, true, mutate)
+}
+
+func (s *Service) updateSettings(
+	ctx context.Context,
+	settings Settings,
+	expectedRevision string,
+	requireRevision bool,
+	mutate auditedmutation.Runner,
+) (Settings, error) {
 	if s == nil || s.database == nil {
 		return Settings{}, errors.New("security policy database is unavailable")
 	}
@@ -77,6 +96,15 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings, mutate 
 	err := mutate(ctx, "settings.security.updated", func() any {
 		return settingsAuditPayload(settings)
 	}, func(tx *sql.Tx) error {
+		if requireRevision {
+			current, err := readSettings(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if err := requireSettingsRevision(expectedRevision, current); err != nil {
+				return err
+			}
+		}
 		return writeSettings(ctx, tx, settings)
 	})
 	if err != nil {

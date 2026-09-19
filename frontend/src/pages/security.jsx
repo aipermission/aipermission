@@ -6,7 +6,7 @@ const securityToggleSettings = ["reusable_tokens", "expose_mcp_server_metadata",
 
 export function SecurityPage() {
   const state = useSecurityPageState();
-  const toggleDisabled = state.security.state === "loading" || state.securityAction.state === "saving";
+  const securityDisabled = state.security.state !== "ready" || !state.security.data.revision || state.securityAction.state === "saving";
   return (
     <section className="mx-auto grid w-full max-w-2xl gap-5">
       <div>
@@ -19,13 +19,14 @@ export function SecurityPage() {
           key={setting}
           setting={setting}
           value={state.security.data?.[setting]}
-          disabled={toggleDisabled}
+          disabled={securityDisabled}
           onUpdate={state.updateSecurity}
         />
       ))}
       <RedactionSettingsCard
         security={state.security}
-        action={state.redactionAction}
+        securityAction={state.securityAction}
+        ruleAction={state.redactionAction}
         rules={state.redactionRules}
         form={state.redactionForm}
         onUpdateSecurity={state.updateSecurity}

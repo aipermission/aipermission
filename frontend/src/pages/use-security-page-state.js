@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
 
@@ -8,10 +8,23 @@ const defaultSecurity = {
   expose_mcp_server_metadata: false,
   mcp_start_enabled: false,
   redaction_mode: "basic",
+  revision: "",
 };
+
+function requireSecurityDocument(data) {
+  const validMode = data?.redaction_mode === "basic" || data?.redaction_mode === "off";
+  const validBooleans = ["reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled"].every(
+    (field) => typeof data?.[field] === "boolean",
+  );
+  if (!validMode || !validBooleans || typeof data?.revision !== "string" || data.revision.trim() === "") {
+    throw new Error("Security settings response is invalid.");
+  }
+  return data;
+}
 
 export function useSecurityPageState() {
   const [security, setSecurity] = useState({ state: "loading", data: defaultSecurity, error: null });
+  const securitySavingRef = useRef(false);
   const { actionState: securityAction, runAction: runSecurityAction } = useAsyncAction(emptyActionState);
   const [redactionRules, setRedactionRules] = useState({ state: "loading", data: [], error: null });
   const { actionState: redactionAction, runAction: runRedactionAction } = useAsyncAction(emptyActionState);
@@ -19,7 +32,7 @@ export function useSecurityPageState() {
 
   async function loadSecurity() {
     try {
-      const data = await apiGet("/api/settings/security");
+      const data = requireSecurityDocument(await apiGet("/api/settings/security"));
       setSecurity({ state: "ready", data, error: null });
     } catch (error) {
       setSecurity({ state: "error", data: defaultSecurity, error: error.message });
@@ -41,13 +54,29 @@ export function useSecurityPageState() {
   }, []);
 
   async function updateSecurity(patch, message) {
-    const next = { ...security.data, ...patch };
+    if (security.state !== "ready" || !security.data.revision || securitySavingRef.current) return;
+    const nextData = { ...security.data, ...patch };
+    const request = {
+      reusable_tokens: nextData.reusable_tokens,
+      expose_mcp_server_metadata: nextData.expose_mcp_server_metadata,
+      mcp_start_enabled: nextData.mcp_start_enabled,
+      redaction_mode: nextData.redaction_mode,
+      expected_revision: security.data.revision,
+    };
+    securitySavingRef.current = true;
     await runSecurityAction({
       pending: "saving",
       successMessage: message,
       action: async () => {
-        const data = await apiPut("/api/settings/security", next);
-        setSecurity({ state: "ready", data, error: null });
+        try {
+          const data = requireSecurityDocument(await apiPut("/api/settings/security", request));
+          setSecurity({ state: "ready", data, error: null });
+        } catch (error) {
+          if (error?.status === 409) await loadSecurity();
+          throw error;
+        } finally {
+          securitySavingRef.current = false;
+        }
       },
     });
   }

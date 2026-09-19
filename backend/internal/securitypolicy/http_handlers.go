@@ -41,7 +41,12 @@ func (h *HTTPHandlers) GetSettings(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	httptransport.WriteJSON(w, http.StatusOK, settings)
+	document, err := NewSettingsDocument(settings)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, document)
 }
 
 func (h *HTTPHandlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -49,16 +54,26 @@ func (h *HTTPHandlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var settings Settings
-	if !httptransport.DecodeJSON(w, r, &settings, httptransport.DefaultJSONBodyBytes) {
+	var request SettingsUpdateRequest
+	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	settings, err := scope.Service.UpdateSettings(r.Context(), settings, scope.Mutate)
+	requestedSettings, err := request.SettingsValue()
 	if err != nil {
 		handleError(w, err)
 		return
 	}
-	httptransport.WriteJSON(w, http.StatusOK, settings)
+	settings, err := scope.Service.UpdateSettingsAtRevision(r.Context(), requestedSettings, request.ExpectedRevision, scope.Mutate)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	document, err := NewSettingsDocument(settings)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, document)
 }
 
 func (h *HTTPHandlers) ListRules(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +171,10 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 func handleError(w http.ResponseWriter, err error) {
 	var validation ValidationError
 	switch {
+	case errors.Is(err, ErrSettingsRevisionRequired):
+		httptransport.WriteError(w, http.StatusBadRequest, "security settings revision is required; reload settings and retry")
+	case errors.Is(err, ErrSettingsRevisionConflict):
+		httptransport.WriteError(w, http.StatusConflict, "security settings changed in another client; reload settings and retry")
 	case errors.As(err, &validation):
 		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 	case errors.Is(err, sql.ErrNoRows):
