@@ -252,6 +252,7 @@
         "go test -race ./...",
         "go vet ./...",
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
+        "GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0",
         "\"$(go env GOPATH)/bin/govulncheck\" ./..."
       ],
@@ -262,6 +263,7 @@
         "go test -race ./...": "backend",
         "go vet ./...": "backend",
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
+        "GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0": "backend",
         "\"$(go env GOPATH)/bin/govulncheck\" ./...": "backend"
       }
@@ -274,6 +276,16 @@
       "commands": ["node ../scripts/ci/windows-runtime-tests.js"],
       "command_working_directories": {
         "node ../scripts/ci/windows-runtime-tests.js": "backend"
+      }
+    },
+    {
+      "name": "Backend macOS Runtime",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "backend-darwin-runtime",
+      "job_name": "Backend macOS Runtime",
+      "commands": ["node ../scripts/ci/darwin-runtime-tests.js"],
+      "command_working_directories": {
+        "node ../scripts/ci/darwin-runtime-tests.js": "backend"
       }
     },
     {

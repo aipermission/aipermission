@@ -37,6 +37,12 @@ test("native Windows runtime evidence stays on a Windows runner", () => {
     /backend-windows-runtime:[\s\S]*?runs-on: windows-latest[\s\S]*?node \.\.\/scripts\/ci\/windows-runtime-tests\.js/,
   );
 });
+test("native macOS runtime evidence stays on a macOS runner", () => {
+  assert.match(
+    workflow,
+    /backend-darwin-runtime:[\s\S]*?runs-on: macos-latest[\s\S]*?node \.\.\/scripts\/ci\/darwin-runtime-tests\.js/,
+  );
+});
 test("backend CI enforces formatting and bounded fuzz dependencies", () => {
   const backendJob =
     /\n  backend:\n([\s\S]*?)\n  backend-windows-runtime:/.exec(

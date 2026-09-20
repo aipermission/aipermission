@@ -329,6 +329,7 @@ type quarantinedDatabaseFile struct {
 
 type databaseDeleteOps struct {
 	lstat     func(string) (os.FileInfo, error)
+	readDir   func(string) ([]os.DirEntry, error)
 	glob      func(string) ([]string, error)
 	mkdir     func(string, os.FileMode) error
 	rename    func(string, string) error
@@ -341,7 +342,7 @@ type databaseDeleteOps struct {
 
 func defaultDatabaseDeleteOps() databaseDeleteOps {
 	return databaseDeleteOps{
-		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: os.Rename,
+		lstat: os.Lstat, readDir: os.ReadDir, glob: filepath.Glob, mkdir: os.Mkdir, rename: os.Rename,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
@@ -469,9 +470,7 @@ func deleteDatabaseWithOps(path string, ops databaseDeleteOps) error {
 
 	// Once every file is quarantined, the logical database deletion is complete.
 	// Failed physical cleanup remains hidden and is retried during catalog reads.
-	if ops.removeAll(quarantineDir) == nil {
-		_ = ops.syncDir(parentDir)
-	}
+	_ = removeCompletedDatabaseDeleteQuarantine(parentDir, quarantineDir, ops)
 	return nil
 }
 
@@ -499,15 +498,6 @@ func writeDatabaseDeleteManifest(quarantineDir string, paths []string, ops datab
 		return fmt.Errorf("sync published database delete manifest: %w", err)
 	}
 	return nil
-}
-
-func syncDatabaseDeletePath(path string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return file.Sync()
 }
 
 func databaseDeleteQuarantineSuffix() (string, error) {
@@ -546,7 +536,7 @@ func recoverDatabaseDeleteQuarantine(dir, quarantineDir string, publish func(str
 	markerPath := filepath.Join(quarantineDir, databaseDeleteCompleteMarker)
 	marker, markerErr := readDatabaseDeleteMarker(markerPath)
 	if markerErr == nil && string(marker) == "complete\n" {
-		return removeDatabaseDeleteQuarantine(dir, quarantineDir)
+		return removeCompletedDatabaseDeleteQuarantine(dir, quarantineDir, defaultDatabaseDeleteOps())
 	}
 	if markerErr != nil && !os.IsNotExist(markerErr) {
 		return fmt.Errorf("read database delete completion marker: %w", markerErr)
@@ -697,7 +687,13 @@ func recoverManifestedDatabaseDelete(candidates []quarantinedDatabaseFile, publi
 		}
 		switch {
 		case quarantined && original:
-			return fmt.Errorf("%w %q", errDatabaseDeleteRecoveryConflict, item.original)
+			same, err := databaseArtifactsAreSameFile(item.quarantine, item.original)
+			if err != nil {
+				return err
+			}
+			if !same {
+				return fmt.Errorf("%w %q", errDatabaseDeleteRecoveryConflict, item.original)
+			}
 		case !quarantined && !original:
 			return fmt.Errorf("database delete recovery lost artifact %q", item.original)
 		case quarantined:
@@ -751,6 +747,37 @@ func removeDatabaseDeleteQuarantine(parent, quarantine string) error {
 	}
 	if err := syncDatabaseDeletePath(parent); err != nil {
 		return fmt.Errorf("sync removed database delete quarantine: %w", err)
+	}
+	return nil
+}
+
+func removeCompletedDatabaseDeleteQuarantine(parent, quarantine string, ops databaseDeleteOps) error {
+	entries, err := ops.readDir(quarantine)
+	if err != nil {
+		return fmt.Errorf("inspect completed database delete quarantine: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == databaseDeleteCompleteMarker {
+			continue
+		}
+		if err := ops.remove(filepath.Join(quarantine, entry.Name())); err != nil {
+			return fmt.Errorf("remove completed database delete artifact %q: %w", entry.Name(), err)
+		}
+	}
+	if err := ops.syncDir(quarantine); err != nil {
+		return fmt.Errorf("sync completed database delete artifacts: %w", err)
+	}
+	if err := ops.remove(filepath.Join(quarantine, databaseDeleteCompleteMarker)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove completed database delete marker: %w", err)
+	}
+	if err := ops.syncDir(quarantine); err != nil {
+		return fmt.Errorf("sync completed database delete marker removal: %w", err)
+	}
+	if err := ops.remove(quarantine); err != nil {
+		return fmt.Errorf("remove completed database delete quarantine: %w", err)
+	}
+	if err := ops.syncDir(parent); err != nil {
+		return fmt.Errorf("sync completed database delete quarantine removal: %w", err)
 	}
 	return nil
 }

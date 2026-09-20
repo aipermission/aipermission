@@ -249,30 +249,37 @@ function validatePolicy(candidate = policy, target = failures) {
       target.push(`invalid tooling test inventory path ${testPath}`);
     }
   }
-  const runtimeTests = Array.isArray(candidate.windowsRuntimeTests)
-    ? candidate.windowsRuntimeTests
-    : [];
-  const runtimeTestKeys = runtimeTests.map(runtimeTestKey);
-  if (
-    !Array.isArray(candidate.windowsRuntimeTests) ||
-    runtimeTests.length === 0
-  ) {
-    target.push("Windows runtime test inventory must not be empty");
-  } else if (new Set(runtimeTestKeys).size !== runtimeTestKeys.length) {
-    target.push("Windows runtime test inventory must be unique");
-  }
-  for (const entry of runtimeTests) {
-    const modulePrefix = "github.com/aipermission/aipermission/backend/";
-    const packagePath = String(entry?.package || "").slice(modulePrefix.length);
-    if (
-      !String(entry?.package || "").startsWith(modulePrefix) ||
-      !validBackendPackagePath(packagePath) ||
-      !/^Test[A-Za-z0-9_]+$/.test(entry?.name || "")
-    ) {
-      target.push(`invalid Windows runtime test ${runtimeTestKey(entry)}`);
+  const runtimeLabels = new Map([
+    ["windows", "Windows"],
+    ["darwin", "Darwin"],
+  ]);
+  const runtimeEvidence = new Map();
+  for (const [platform, label] of runtimeLabels) {
+    const inventoryName = `${platform}RuntimeTests`;
+    const runtimeTests = Array.isArray(candidate[inventoryName])
+      ? candidate[inventoryName]
+      : [];
+    const runtimeTestKeys = runtimeTests.map(runtimeTestKey);
+    if (!Array.isArray(candidate[inventoryName]) || runtimeTests.length === 0) {
+      target.push(`${label} runtime test inventory must not be empty`);
+    } else if (new Set(runtimeTestKeys).size !== runtimeTestKeys.length) {
+      target.push(`${label} runtime test inventory must be unique`);
     }
+    for (const entry of runtimeTests) {
+      const modulePrefix = "github.com/aipermission/aipermission/backend/";
+      const packagePath = String(entry?.package || "").slice(
+        modulePrefix.length,
+      );
+      if (
+        !String(entry?.package || "").startsWith(modulePrefix) ||
+        !validBackendPackagePath(packagePath) ||
+        !/^Test[A-Za-z0-9_]+$/.test(entry?.name || "")
+      ) {
+        target.push(`invalid ${label} runtime test ${runtimeTestKey(entry)}`);
+      }
+    }
+    runtimeEvidence.set(platform, new Set(runtimeTestKeys));
   }
-  const runtimeEvidence = new Set(runtimeTestKeys);
   const platformCoverage = candidate.backendCoveragePlatformFiles || {};
   if (
     !platformCoverage ||
@@ -286,7 +293,7 @@ function validatePolicy(candidate = policy, target = failures) {
         target.push(`invalid backend platform coverage source ${sourcePath}`);
       }
       if (
-        evidence?.platform !== "windows" ||
+        !runtimeEvidence.has(evidence?.platform) ||
         !String(evidence?.buildConstraint || "").trim() ||
         typeof evidence?.minimumCoverage !== "number" ||
         evidence.minimumCoverage <= 0 ||
@@ -298,9 +305,9 @@ function validatePolicy(candidate = policy, target = failures) {
         continue;
       }
       for (const test of evidence.tests) {
-        if (!runtimeEvidence.has(runtimeTestKey(test))) {
+        if (!runtimeEvidence.get(evidence.platform).has(runtimeTestKey(test))) {
           target.push(
-            `backend platform coverage evidence ${sourcePath} references an unregistered Windows test ${runtimeTestKey(test)}`,
+            `backend platform coverage evidence ${sourcePath} references an unregistered ${runtimeLabels.get(evidence.platform)} test ${runtimeTestKey(test)}`,
           );
         }
       }

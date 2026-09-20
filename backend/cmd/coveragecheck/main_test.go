@@ -163,17 +163,33 @@ func TestInventoryEnvironmentReplacesGoBuildSelectors(t *testing.T) {
 
 func TestProductionInventoryIncludesNativeAndTaggedBuildContexts(t *testing.T) {
 	contexts := productionBuildContexts()
-	if len(contexts) != 3 {
+	if len(contexts) != 4 {
 		t.Fatalf("build contexts = %#v", contexts)
 	}
 	if got := inventoryArguments(contexts[1]); strings.Contains(strings.Join(got, " "), "-tags=") {
+		t.Fatalf("Darwin inventory unexpectedly has build tags: %v", got)
+	}
+	if got := inventoryArguments(contexts[2]); strings.Contains(strings.Join(got, " "), "-tags=") {
 		t.Fatalf("Windows inventory unexpectedly has build tags: %v", got)
 	}
 	if got := inventoryArguments(contexts[0]); !strings.Contains(strings.Join(got, " "), "-deps") {
 		t.Fatalf("production inventory must include module-local dependencies: %v", got)
 	}
-	if got := inventoryArguments(contexts[2]); !strings.Contains(strings.Join(got, " "), "-tags=e2e") {
+	if got := inventoryArguments(contexts[3]); !strings.Contains(strings.Join(got, " "), "-tags=e2e") {
 		t.Fatalf("tagged command inventory is missing e2e context: %v", got)
+	}
+}
+
+func TestSupportedCoveragePlatformsAreExplicit(t *testing.T) {
+	for _, platform := range []string{"windows", "darwin"} {
+		if !supportedCoveragePlatform(platform) {
+			t.Fatalf("supported platform %q was rejected", platform)
+		}
+	}
+	for _, platform := range []string{"", "linux", "freebsd"} {
+		if supportedCoveragePlatform(platform) {
+			t.Fatalf("unsupported platform %q was accepted", platform)
+		}
 	}
 }
 

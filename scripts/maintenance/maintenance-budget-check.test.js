@@ -98,11 +98,14 @@ test("keeps nested javascript tests in their aggregate top-level owner", () => {
   assert.equal(owner("ci/policy/first.test.js"), path.join(root, "scripts/ci"));
 });
 
-test("validates tooling, Windows evidence, and explicit coverage exclusions", () => {
+test("validates tooling, native platform evidence, and explicit coverage exclusions", () => {
   const candidate = copyPolicy();
   candidate.toolingTestFiles.push("scripts/../outside.test.js");
   candidate.windowsRuntimeTests.push(
     structuredClone(candidate.windowsRuntimeTests[0]),
+  );
+  candidate.darwinRuntimeTests.push(
+    structuredClone(candidate.darwinRuntimeTests[0]),
   );
   candidate.backendCoveragePlatformFiles[
     "internal/db/ownership_windows.go"
@@ -121,6 +124,7 @@ test("validates tooling, Windows evidence, and explicit coverage exclusions", ()
   for (const expected of [
     "invalid tooling test inventory path",
     "Windows runtime test inventory must be unique",
+    "Darwin runtime test inventory must be unique",
     "references an unregistered Windows test",
     "invalid backend coverage excluded package internal/api",
     "tooling test roots must be unique",

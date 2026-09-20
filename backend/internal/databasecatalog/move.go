@@ -30,6 +30,7 @@ type databaseMoveManifest struct {
 
 type databaseMoveOps struct {
 	lstat     func(string) (os.FileInfo, error)
+	readDir   func(string) ([]os.DirEntry, error)
 	glob      func(string) ([]string, error)
 	mkdir     func(string, os.FileMode) error
 	rename    func(string, string) error
@@ -43,7 +44,7 @@ type databaseMoveOps struct {
 
 func defaultDatabaseMoveOps() databaseMoveOps {
 	return databaseMoveOps{
-		lstat: os.Lstat, glob: filepath.Glob, mkdir: os.Mkdir, rename: db.PublishFileNoReplace, publish: db.PublishFileNoReplace,
+		lstat: os.Lstat, readDir: os.ReadDir, glob: filepath.Glob, mkdir: os.Mkdir, rename: moveFileNoReplace, publish: moveFileNoReplace,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
@@ -72,7 +73,7 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 	if err := ops.mkdir(journalDir, 0o700); err != nil {
 		return fmt.Errorf("create database move journal: %w", err)
 	}
-	cleanupJournal := func() {
+	cleanupIncompleteJournal := func() {
 		if ops.removeAll(journalDir) == nil {
 			_ = ops.syncDir(root)
 		}
@@ -80,29 +81,29 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 	manifest := databaseMoveManifest{SourceBase: currentPath, TargetBase: targetPath, Moves: moves}
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("encode database move journal: %w", err)
 	}
 	manifestPath := filepath.Join(journalDir, databaseMoveManifestFile)
 	pendingManifestPath := manifestPath + ".pending"
 	if err := ops.write(pendingManifestPath, manifestJSON, 0o600); err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("write database move journal: %w", err)
 	}
 	if err := ops.syncFile(pendingManifestPath); err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("sync database move manifest: %w", err)
 	}
 	if err := ops.publish(pendingManifestPath, manifestPath); err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("publish database move manifest: %w", err)
 	}
 	if err := ops.syncDir(journalDir); err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("sync database move journal directory: %w", err)
 	}
 	if err := ops.syncDir(root); err != nil {
-		cleanupJournal()
+		cleanupIncompleteJournal()
 		return fmt.Errorf("sync database move root: %w", err)
 	}
 
@@ -134,13 +135,20 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 			}
 		}
 		if len(errs) == 1 {
-			cleanupJournal()
+			cleanupIncompleteJournal()
 		}
 		return errors.Join(errs...)
 	}
 
 	for _, item := range moves {
 		if err := ops.rename(item.Source, item.Target); err != nil {
+			if errors.Is(err, errDurableFileMoveStateIndeterminate) {
+				// The platform move crossed the rename boundary but could not
+				// prove its own rollback. Include this artifact in the outer
+				// rollback so the journal is only removed after a known-good
+				// source state has been restored.
+				moved = append(moved, item)
+			}
 			return rollback(fmt.Errorf("rename database artifact %q: %w", item.Source, err))
 		}
 		moved = append(moved, item)
@@ -171,7 +179,7 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 
 	// A durable completion marker makes the target authoritative. Journal cleanup
 	// is best effort and is retried by the database catalog on startup.
-	cleanupJournal()
+	_ = removeCompletedMoveJournalWithOps(root, journalDir, ops)
 	return nil
 }
 
@@ -298,10 +306,35 @@ func databaseMoveJournalComplete(journalDir string) (bool, error) {
 }
 
 func removeCompletedMoveJournal(root, journalDir string) error {
-	if err := os.RemoveAll(journalDir); err != nil {
+	return removeCompletedMoveJournalWithOps(root, journalDir, defaultDatabaseMoveOps())
+}
+
+func removeCompletedMoveJournalWithOps(root, journalDir string, ops databaseMoveOps) error {
+	entries, err := ops.readDir(journalDir)
+	if err != nil {
+		return fmt.Errorf("inspect completed database move journal: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == databaseMoveCompleteFile {
+			continue
+		}
+		if err := ops.remove(filepath.Join(journalDir, entry.Name())); err != nil {
+			return fmt.Errorf("remove completed database move journal artifact %q: %w", entry.Name(), err)
+		}
+	}
+	if err := ops.syncDir(journalDir); err != nil {
+		return fmt.Errorf("sync completed database move journal artifacts: %w", err)
+	}
+	if err := ops.remove(filepath.Join(journalDir, databaseMoveCompleteFile)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove completed database move marker: %w", err)
+	}
+	if err := ops.syncDir(journalDir); err != nil {
+		return fmt.Errorf("sync completed database move marker removal: %w", err)
+	}
+	if err := ops.remove(journalDir); err != nil {
 		return fmt.Errorf("remove completed database move journal: %w", err)
 	}
-	if err := syncDatabaseDeletePath(root); err != nil {
+	if err := ops.syncDir(root); err != nil {
 		return fmt.Errorf("sync completed database move journal removal: %w", err)
 	}
 	return nil
@@ -326,11 +359,12 @@ func removeIncompleteMoveJournal(root, journalDir string) error {
 }
 
 func recoverDatabaseMoveJournal(manifest databaseMoveManifest) error {
-	return recoverDatabaseMoveJournalWithPublish(manifest, db.PublishFileNoReplace)
+	return recoverDatabaseMoveJournalWithPublish(manifest, moveFileNoReplace)
 }
 
 func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publish func(string, string) error) error {
 	restore := make([]databaseMove, 0, len(manifest.Moves))
+	duplicateLinks := make([]databaseMove, 0, len(manifest.Moves))
 	for index := len(manifest.Moves) - 1; index >= 0; index-- {
 		item := manifest.Moves[index]
 		sourceExists, sourceErr := databaseMoveRegularFileExists(item.Source)
@@ -344,7 +378,14 @@ func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publis
 		case !sourceExists && targetExists:
 			restore = append(restore, item)
 		case sourceExists && targetExists:
-			return fmt.Errorf("incomplete database move journal has duplicate artifact state")
+			same, err := databaseArtifactsAreSameFile(item.Source, item.Target)
+			if err != nil {
+				return err
+			}
+			if !same {
+				return fmt.Errorf("incomplete database move journal has duplicate artifact state")
+			}
+			duplicateLinks = append(duplicateLinks, item)
 		default:
 			return fmt.Errorf("incomplete database move journal is missing an artifact")
 		}
@@ -363,6 +404,18 @@ func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publis
 		}
 		restored = append(restored, item)
 	}
+	for _, item := range duplicateLinks {
+		same, err := databaseArtifactsAreSameFile(item.Source, item.Target)
+		if err != nil {
+			return err
+		}
+		if !same {
+			return fmt.Errorf("incomplete database move journal artifact identity changed")
+		}
+		if err := os.Remove(item.Target); err != nil {
+			return fmt.Errorf("remove duplicate database move target %q: %w", item.Target, err)
+		}
+	}
 	paths := make([]string, 0, len(manifest.Moves))
 	for _, item := range manifest.Moves {
 		paths = append(paths, item.Source)
@@ -380,11 +433,23 @@ func recoverDatabaseMoveJournalWithPublish(manifest databaseMoveManifest, publis
 	return nil
 }
 
+func databaseArtifactsAreSameFile(firstPath, secondPath string) (bool, error) {
+	first, err := os.Stat(firstPath)
+	if err != nil {
+		return false, fmt.Errorf("inspect database artifact %q: %w", firstPath, err)
+	}
+	second, err := os.Stat(secondPath)
+	if err != nil {
+		return false, fmt.Errorf("inspect database artifact %q: %w", secondPath, err)
+	}
+	return os.SameFile(first, second), nil
+}
+
 func validateDatabaseMoveManifest(root string, manifest databaseMoveManifest) error {
 	root, _ = filepath.Abs(filepath.Clean(root))
 	sourceBase, sourceErr := filepath.Abs(filepath.Clean(manifest.SourceBase))
 	targetBase, targetErr := filepath.Abs(filepath.Clean(manifest.TargetBase))
-	if sourceErr != nil || targetErr != nil || sourceBase == targetBase || filepath.Ext(sourceBase) != ".db" || filepath.Ext(targetBase) != ".db" {
+	if sourceErr != nil || targetErr != nil || sourceBase != manifest.SourceBase || targetBase != manifest.TargetBase || sourceBase == targetBase || filepath.Ext(sourceBase) != ".db" || filepath.Ext(targetBase) != ".db" {
 		return fmt.Errorf("database move journal has invalid base paths")
 	}
 	if !databaseMovePathWithin(root, sourceBase) || !databaseMovePathWithin(root, targetBase) || len(manifest.Moves) == 0 || len(manifest.Moves) > 64 {
@@ -403,7 +468,7 @@ func validateDatabaseMoveManifest(root string, manifest databaseMoveManifest) er
 		source, sourceErr := filepath.Abs(filepath.Clean(item.Source))
 		target, targetErr := filepath.Abs(filepath.Clean(item.Target))
 		suffix := strings.TrimPrefix(source, sourceBase)
-		if sourceErr != nil || targetErr != nil || !validDatabaseMoveSuffix(suffix) || target != targetBase+suffix {
+		if sourceErr != nil || targetErr != nil || source != item.Source || target != item.Target || !validDatabaseMoveSuffix(suffix) || target != targetBase+suffix {
 			return fmt.Errorf("database move journal has an invalid artifact path")
 		}
 		if _, err := checkedDatabasePath(source); err != nil {
