@@ -16,6 +16,8 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 	audits := []string{}
 	ensured := []int64{}
 	lifecycle := []TargetLifecycleChange{}
+	acquired := 0
+	released := 0
 	scope := CombinedMutationScope{
 		Database: fixture.database,
 		Registry: fixture.registry,
@@ -29,7 +31,10 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 			}
 			return nil
 		},
-		AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil },
+		AcquireExclusive: func(context.Context) (func(), error) {
+			acquired++
+			return func() { released++ }, nil
+		},
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
 			tx, err := fixture.database.BeginTx(ctx, nil)
 			if err != nil {
@@ -90,8 +95,8 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 		t.Fatalf("updated profile = %#v", profile)
 	}
 	wantAudits := "connector.target.created,connector.profile.created,connector.target.updated,connector.profile.updated"
-	if strings.Join(audits, ",") != wantAudits || len(ensured) != 2 || len(lifecycle) != 1 || lifecycle[0].ProfileID != 0 {
-		t.Fatalf("audits=%v ensured=%v lifecycle=%#v", audits, ensured, lifecycle)
+	if strings.Join(audits, ",") != wantAudits || len(ensured) != 2 || len(lifecycle) != 1 || lifecycle[0].ProfileID != 0 || acquired != 2 || released != 2 {
+		t.Fatalf("audits=%v ensured=%v lifecycle=%#v acquired=%d released=%d", audits, ensured, lifecycle, acquired, released)
 	}
 }
 

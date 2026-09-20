@@ -45,6 +45,11 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential profile create was canceled")
+	if !ok {
+		return
+	}
+	defer release()
 	store := connectortargets.NewStore(scope.Database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
@@ -139,13 +144,8 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential profile update was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -254,9 +254,9 @@ func (h *ProfileMutationHTTPHandler) resolve(w http.ResponseWriter, update bool)
 		return ProfileMutationScope{}, false
 	}
 	valid := scope.Database != nil && scope.Registry != nil && scope.WithTransaction != nil &&
-		scope.EnsureRuntimeSurfaces != nil
+		scope.EnsureRuntimeSurfaces != nil && scope.AcquireExclusive != nil
 	if update {
-		valid = valid && scope.AcquireExclusive != nil && scope.AfterLifecycleChange != nil
+		valid = valid && scope.AfterLifecycleChange != nil
 	} else {
 		valid = valid && scope.BeforeCreate != nil
 	}

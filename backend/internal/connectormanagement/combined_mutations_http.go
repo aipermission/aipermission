@@ -58,6 +58,11 @@ func (h *CombinedMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Requ
 		writeTargetError(w, err)
 		return
 	}
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target create was canceled")
+	if !ok {
+		return
+	}
+	defer release()
 	prepared, err := PrepareCredentialProfile(r.Context(), connector, request.Profile, true, nil, "", scope.Preparation)
 	if err != nil {
 		writeCredentialPreparationError(w, err)
@@ -115,13 +120,8 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector target update was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target update was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -224,9 +224,9 @@ func (h *CombinedMutationHTTPHandler) resolve(w http.ResponseWriter, update bool
 		return CombinedMutationScope{}, false
 	}
 	valid := scope.Database != nil && scope.Registry != nil && scope.ValidateTransport != nil &&
-		scope.WithTransaction != nil && scope.EnsureRuntimeSurfaces != nil
+		scope.WithTransaction != nil && scope.EnsureRuntimeSurfaces != nil && scope.AcquireExclusive != nil
 	if update {
-		valid = valid && scope.AcquireExclusive != nil && scope.AfterLifecycleChange != nil
+		valid = valid && scope.AfterLifecycleChange != nil
 	} else {
 		valid = valid && scope.BeforeCreate != nil
 	}
