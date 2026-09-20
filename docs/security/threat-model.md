@@ -134,6 +134,10 @@ Mitigations:
   affected pending requests and exact-session leases
 - connector target/profile changes and MCP stop are serialized against secret
   delivery, close affected secret-bearing sessions, and stale pending requests
+- target/profile mutations persist their Vault and action-request invalidation
+  intent in the same transaction as the mutation. Each cleanup component is
+  acknowledged independently; a remaining intent blocks all later connector
+  delivery and is retried when the encrypted workspace is opened again
 - MCP command/input authorization and the corresponding PTY write share that
   lifecycle gate, preventing permission mutations from crossing the
   authorize-to-I/O boundary; long-running output is reauthorized before return

@@ -79,6 +79,7 @@ func migrations() []migration {
 		projectScopeRevisionMigration(),
 		chronologicalTimestampMigration(),
 		backupUploadExpiryMigration(),
+		connectorLifecycleFinalizationMigration,
 	)
 }
 

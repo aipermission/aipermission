@@ -15,11 +15,18 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-type targetDeleteAdapter struct{ called bool }
+type targetDeleteAdapter struct {
+	called bool
+	err    error
+}
 
-func (adapter *targetDeleteAdapter) DeleteTarget(_ connectorapi.TargetDeletionGateway, w http.ResponseWriter, _ *http.Request, _ connectorapi.TargetLifecycleRuntime, _ connectorapi.Target) {
+func (adapter *targetDeleteAdapter) DeleteTarget(_ connectorapi.TargetDeletionGateway, w http.ResponseWriter, _ *http.Request, _ connectorapi.TargetLifecycleRuntime, _ connectorapi.Target) error {
 	adapter.called = true
+	if adapter.err != nil {
+		return adapter.err
+	}
 	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"adapter": true})
+	return nil
 }
 
 type targetDeleteGateway struct{ targetDraftPeer }
@@ -64,6 +71,7 @@ func (targetDeleteConsoleRuntime) InterruptActive(context.Context, connectorapi.
 func TestTargetDeleteHandlerOwnsGenericLifecycleUnderExclusiveLease(t *testing.T) {
 	database, registry := targetDraftFixture(t)
 	target := createTargetDeleteFixture(t, database)
+	const lockedName = "delete fixture after lease"
 	steps := []string{}
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
@@ -72,12 +80,15 @@ func TestTargetDeleteHandlerOwnsGenericLifecycleUnderExclusiveLease(t *testing.T
 					Database: database, Registry: registry,
 					AcquireExclusive: func(context.Context) (func(), error) {
 						steps = append(steps, "acquire")
+						if _, err := database.ExecContext(t.Context(), `UPDATE connector_targets SET name = ? WHERE id = ?`, lockedName, target.ID); err != nil {
+							t.Fatalf("update target after lease acquisition: %v", err)
+						}
 						return func() { steps = append(steps, "release") }, nil
 					},
 				},
 				Lifecycle: LifecyclePorts{
 					DeleteTarget: func(_ context.Context, got Target, _ map[string]any) error {
-						if got.ID != target.ID {
+						if got.ID != target.ID || got.Name != lockedName {
 							t.Fatalf("target = %#v", got)
 						}
 						steps = append(steps, "delete")
@@ -124,6 +135,32 @@ func TestTargetDeleteHandlerDispatchesConnectorAdapter(t *testing.T) {
 	response := executeTargetDelete(t, component, target.ID)
 	if response.Code != http.StatusOK || !adapter.called {
 		t.Fatalf("response=%d %s called=%t", response.Code, response.Body.String(), adapter.called)
+	}
+}
+
+func TestTargetDeleteHandlerMapsAdapterPostCommitFailureToConflict(t *testing.T) {
+	database, registry := targetDraftFixture(t)
+	target := createTargetDeleteFixture(t, database)
+	adapter := &targetDeleteAdapter{err: errors.New("private finalization failure")}
+	adapters := connectorapi.NewRegistry()
+	if err := adapters.Register(targetDraftTestKind, adapter); err != nil {
+		t.Fatal(err)
+	}
+	component := New(Dependencies{
+		Active: func(http.ResponseWriter) (Workspace, bool) {
+			return Workspace{
+				Storage: StoragePorts{Database: database, Registry: registry, AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil }},
+				Adapters: TargetAdapterPorts{
+					DeletionGateway:  func(string, int64) connectorapi.TargetDeletionGateway { return targetDeleteGateway{} },
+					LifecycleRuntime: func(string) connectorapi.TargetLifecycleRuntime { return targetDeleteRuntime{} },
+				},
+			}, true
+		},
+		Adapters: adapters,
+	})
+	response := executeTargetDelete(t, component, target.ID)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"connector_lifecycle_finalization_pending"`) || strings.Contains(response.Body.String(), "private finalization failure") {
+		t.Fatalf("response=%d %s", response.Code, response.Body.String())
 	}
 }
 

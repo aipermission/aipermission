@@ -82,13 +82,8 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector credential provisioning was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential provisioning was canceled")
+	if !ok {
 		return
 	}
 	defer release()

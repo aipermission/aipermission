@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 // DeliveryCoordinator allows secret deliveries to proceed together while
@@ -14,6 +16,24 @@ type DeliveryCoordinator struct {
 	writer         bool
 	waitingWriters int
 	changed        chan struct{}
+	identity       connectors.DeliveryAdmissionIdentity
+	deliveryGuard  func(context.Context) error
+}
+
+func (c *DeliveryCoordinator) AdmissionIdentity() *connectors.DeliveryAdmissionIdentity {
+	if c == nil {
+		return nil
+	}
+	return &c.identity
+}
+
+func (c *DeliveryCoordinator) SetDeliveryGuard(guard func(context.Context) error) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.deliveryGuard = guard
+	c.mu.Unlock()
 }
 
 func (c *DeliveryCoordinator) AcquireDelivery(ctx context.Context) (func(), error) {
@@ -28,16 +48,24 @@ func (c *DeliveryCoordinator) AcquireDelivery(ctx context.Context) (func(), erro
 		c.initializeLocked()
 		if !c.writer && c.waitingWriters == 0 {
 			c.readers++
+			guard := c.deliveryGuard
 			c.mu.Unlock()
 			var once sync.Once
-			return func() {
+			release := func() {
 				once.Do(func() {
 					c.mu.Lock()
 					c.readers--
 					c.notifyLocked()
 					c.mu.Unlock()
 				})
-			}, nil
+			}
+			if guard != nil {
+				if err := guard(ctx); err != nil {
+					release()
+					return nil, err
+				}
+			}
+			return release, nil
 		}
 		changed := c.changed
 		c.mu.Unlock()

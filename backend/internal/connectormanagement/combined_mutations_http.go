@@ -54,15 +54,15 @@ func (h *CombinedMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Requ
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := scope.ValidateTransport(r.Context(), request.Target.ProjectID, config); err != nil {
-		writeTargetError(w, err)
-		return
-	}
 	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target create was canceled")
 	if !ok {
 		return
 	}
 	defer release()
+	if err := scope.ValidateTransport(r.Context(), request.Target.ProjectID, config); err != nil {
+		writeTargetError(w, err)
+		return
+	}
 	prepared, err := PrepareCredentialProfile(r.Context(), connector, request.Profile, true, nil, "", scope.Preparation)
 	if err != nil {
 		writeCredentialPreparationError(w, err)
@@ -172,6 +172,11 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	lifecycleChange := TargetLifecycleChange{
+		TargetID:    targetID,
+		StaleReason: "connector target or credential profile changed; send a fresh Vault request",
+		UserMessage: "connector target or credential profile was updated; ask the AI to send a fresh request",
+	}
 	var target connectortargets.Target
 	var profile connectortargets.CredentialProfile
 	err = scope.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit AuditAppender) error {
@@ -194,6 +199,9 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 		if updateErr != nil {
 			return updateErr
 		}
+		if updateErr := queueLifecycleChange(r.Context(), tx, lifecycleChange); updateErr != nil {
+			return updateErr
+		}
 		if updateErr := appendAudit(tx, "user", nil, 0, "connector.target.updated", targetAuditPayload(target)); updateErr != nil {
 			return updateErr
 		}
@@ -203,12 +211,10 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 		writeTargetError(w, err)
 		return
 	}
-	if err := scope.AfterLifecycleChange(r.Context(), TargetLifecycleChange{
-		TargetID:    target.ID,
-		StaleReason: "connector target or credential profile changed; send a fresh Vault request",
-		UserMessage: "connector target or credential profile was updated; ask the AI to send a fresh request",
+	if err := finalizeLifecycleMutation(r.Context(), func(ctx context.Context) error {
+		return scope.AfterLifecycleChange(ctx, lifecycleChange)
 	}); err != nil {
-		httptransport.WriteInternalError(w)
+		WriteCommittedLifecycleError(w, err)
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, TargetToResponse(target, []connectortargets.CredentialProfile{profile}))

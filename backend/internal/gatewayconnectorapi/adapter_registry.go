@@ -542,7 +542,9 @@ type DraftTester interface {
 
 // TargetDeleter lets a connector customize deletion behavior.
 type TargetDeleter interface {
-	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target Target)
+	// DeleteTarget writes connector-owned pre-commit responses itself. A returned
+	// error means the target mutation committed but lifecycle finalization did not.
+	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target Target) error
 }
 
 // CredentialProfileLifecycleAdapter lets a connector react to profile lifecycle

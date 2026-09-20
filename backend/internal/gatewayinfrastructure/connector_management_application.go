@@ -119,7 +119,8 @@ func (application *ConnectorManagementApplication) credentialRuntime(handle *Wor
 
 func (application *ConnectorManagementApplication) lifecycle(handle *WorkspaceHandle) *connectormgmt.LifecycleService {
 	return connectormgmt.NewLifecycleService(connectormgmt.LifecycleServiceDependencies{
-		Mutate: application.owner.lifecycleMutationRunner(handle),
+		Mutate:        application.owner.lifecycleMutationRunner(handle),
+		Finalizations: application.owner.lifecycleFinalizationStore(handle),
 		Redact: func(ctx context.Context, value string) string {
 			return application.redact(ctx, handle, value)
 		},
@@ -127,6 +128,10 @@ func (application *ConnectorManagementApplication) lifecycle(handle *WorkspaceHa
 			return application.ports.InvalidateVault(ctx, handle, targetID, profileID, reason)
 		},
 	})
+}
+
+func (application *ConnectorManagementApplication) RecoverLifecycleFinalizations(ctx context.Context, handle *WorkspaceHandle) error {
+	return application.lifecycle(handle).RecoverPending(ctx)
 }
 
 func (application *ConnectorManagementApplication) DeleteTarget(ctx context.Context, handle *WorkspaceHandle, target connectormgmt.Target, payload map[string]any) error {

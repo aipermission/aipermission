@@ -75,9 +75,8 @@ func (h *ProfileBackupHTTPHandler) Restore(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil || release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector profile restore was canceled")
+	if !ok {
 		return
 	}
 	defer release()

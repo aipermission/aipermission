@@ -453,6 +453,15 @@ non-secret config. Connector-specific runtime behavior, such as SSH remote-key
 cleanup, host-key approval, persistent console, and SFTP-backed file transfer,
 is owned by the connector implementation.
 
+Target/profile updates and deletions persist a lifecycle-finalization intent in
+the same SQL transaction as the mutation. The gateway then invalidates affected
+Vault sessions and tracked connector requests independently before releasing
+the exclusive delivery gate. If either cleanup cannot be confirmed, the
+mutation remains committed and the API returns `409` with
+`connector_lifecycle_finalization_pending`; connector delivery stays blocked
+until workspace-open recovery completes the pending intent. Clients must reload
+state rather than retrying the already committed mutation.
+
 `PUT /api/connector-targets/{id}/with-profile/{profile_id}` updates the target
 and one credential profile in one database transaction. Prefer it for add/edit
 forms that present target and profile fields together.

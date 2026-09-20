@@ -16,6 +16,18 @@ func (component *ConnectorManagementOwner) lifecycleMutationRunner(handle *Works
 	}
 }
 
+func (component *ConnectorManagementOwner) lifecycleFinalizationStore(handle *WorkspaceHandle) connectormgmt.LifecycleFinalizationStore {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil
+	}
+	capability, ok := capabilities.Management.Current()
+	if !ok {
+		return nil
+	}
+	return connectormgmt.NewLifecycleFinalizationStore(capability.Database)
+}
+
 func (component *ConnectorManagementOwner) connectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
 	capabilities, available := component.projection(handle)
 	if !available || application == nil {
