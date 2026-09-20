@@ -103,6 +103,9 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 		case r.Method == http.MethodHead:
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
+				t.Fatalf("multipart content type = %q", got)
+			}
 			_, _ = w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>upload-1</UploadId></InitiateMultipartUploadResult>`))
 		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-1":
 			partCount++
