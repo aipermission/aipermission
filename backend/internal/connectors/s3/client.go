@@ -221,7 +221,7 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 func (client *s3Client) URL(key string, query url.Values) *url.URL {
 	host := net.JoinHostPort(client.host, strconv.Itoa(client.port))
 	if (client.scheme == "http" && client.port == 80) || (client.scheme == "https" && client.port == 443) {
-		host = client.host
+		host = strings.TrimSuffix(host, ":"+strconv.Itoa(client.port))
 	}
 	path := ""
 	rawPath := ""
