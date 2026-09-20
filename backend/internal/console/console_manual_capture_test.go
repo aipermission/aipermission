@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 func TestManualCaptureCompletesAfterTranscriptTrimming(t *testing.T) {
@@ -466,6 +469,57 @@ func TestManualInputClearsStaleRunningRowsWhenCanceled(t *testing.T) {
 
 	if count := countManualRunningRows(t, database, session.id); count != 0 {
 		t.Fatalf("expected canceled manual command to clear stale running rows, got %d", count)
+	}
+}
+
+func TestDelayedManualCompletionPreservesNewerRunningCommand(t *testing.T) {
+	database, _, session := newManualHistoryTestSession(t)
+	insert := func(command string) int64 {
+		t.Helper()
+		result, err := database.Exec(`
+			INSERT INTO command_requests (runtime_id, source, command, reason, status, tracking_reason, session_id, created_at)
+			VALUES (?, 'manual', ?, 'manual console command', 'running', 'manual_output_tracked', ?, ?)`,
+			session.runtimeID, command, session.id, timeformat.Now(),
+		)
+		if err != nil {
+			t.Fatalf("insert %q: %v", command, err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			t.Fatalf("read %q id: %v", command, err)
+		}
+		if err := history.NewStore(database).SyncCommandRequest(t.Context(), id); err != nil {
+			t.Fatalf("project %q: %v", command, err)
+		}
+		return id
+	}
+	olderID := insert("older")
+	newerID := insert("newer")
+
+	session.finishManualOutputCapture(&manualOutputCompletion{
+		RequestID: olderID,
+		Status:    "completed",
+		Stdout:    "older output",
+	})
+
+	for _, testCase := range []struct {
+		id         int64
+		wantStatus string
+	}{
+		{id: olderID, wantStatus: "completed"},
+		{id: newerID, wantStatus: "running"},
+	} {
+		var canonical string
+		if err := database.QueryRow(`SELECT status FROM command_requests WHERE id = ?`, testCase.id).Scan(&canonical); err != nil {
+			t.Fatal(err)
+		}
+		var projected string
+		if err := database.QueryRow(`SELECT status FROM history_entries WHERE source_ref_type = ? AND source_ref_id = ?`, history.SourceCommandRequest, testCase.id).Scan(&projected); err != nil {
+			t.Fatal(err)
+		}
+		if canonical != testCase.wantStatus || projected != testCase.wantStatus {
+			t.Fatalf("request %d canonical=%q projected=%q want=%q", testCase.id, canonical, projected, testCase.wantStatus)
+		}
 	}
 }
 

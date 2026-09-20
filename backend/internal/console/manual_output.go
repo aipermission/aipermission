@@ -3,9 +3,9 @@ package console
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
+	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
@@ -269,54 +269,8 @@ func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reas
 	if reason == "" {
 		reason = manualCaptureSuperseded
 	}
-	now := timeformat.Now()
-	return s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(context.Background(), `
-				SELECT id
-				FROM command_requests
-				WHERE source = 'manual'
-					AND session_id = ?
-					AND status = 'running'
-					AND (? = 0 OR id <> ?)`,
-			s.id,
-			exceptID,
-			exceptID,
-		)
-		if err != nil {
-			return fmt.Errorf("list stale manual command rows: %w", err)
-		}
-		ids := []int64{}
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				_ = rows.Close()
-				return fmt.Errorf("scan stale manual command row: %w", err)
-			}
-			ids = append(ids, id)
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("iterate stale manual command rows: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return fmt.Errorf("close stale manual command rows: %w", err)
-		}
-		if _, err := tx.ExecContext(context.Background(), `
-				UPDATE command_requests
-				SET status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
-				WHERE source = 'manual'
-					AND session_id = ?
-					AND status = 'running'
-					AND (? = 0 OR id <> ?)`,
-			s.redactForPersistence(reason), now, s.id, exceptID, exceptID,
-		); err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if err := history.SyncCommandRequestWithExecutor(context.Background(), tx, id); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return consolepersistence.CloseStaleManualRunningRows(
+		context.Background(), s.manager.db, s.id, exceptID,
+		s.redactForPersistence(reason), timeformat.Now(),
+	)
 }
