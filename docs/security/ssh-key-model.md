@@ -42,6 +42,15 @@ entries. `ProxyCommand` is reported as configured, but the raw command is not
 returned. In Docker, gateway config scan reads the container user's config;
 choose a config file or paste config content to parse a local workstation config.
 
+The importer is deliberately a bounded metadata prefill parser, not an OpenSSH
+configuration evaluator. It accepts concrete `Host` aliases plus `Host *`
+defaults and the first applicable `HostName`, `User`, `Port`, `IdentityFile`,
+`ProxyJump`, and `ProxyCommand` presence value. It does not expand `Include`,
+evaluate `Match`, apply wildcard or negated host patterns, expand `%` tokens, or
+execute proxy commands. Unsupported directives are ignored. The selected file
+is limited to 256 KiB and the operator must review every prefilled field before
+creating a connector.
+
 ## Install Command
 
 The gateway shows a command in this shape:

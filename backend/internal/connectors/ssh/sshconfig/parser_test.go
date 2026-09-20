@@ -136,3 +136,26 @@ Host worker
 		t.Fatalf("first matching values should win: %#v", entries[0])
 	}
 }
+
+func TestParseSSHConfigTreatsIncludeMatchAndPatternsAsUnsupportedPrefillSyntax(t *testing.T) {
+	entries := Parse(`
+Include ~/.ssh/conf.d/*
+
+Host worker-*
+  User wildcard-user
+
+Match host worker
+  User matched-user
+
+Host worker
+  HostName 10.0.0.42
+  User deploy
+`)
+
+	if len(entries) != 1 {
+		t.Fatalf("unexpected entries: %#v", entries)
+	}
+	if entries[0].Alias != "worker" || entries[0].Host != "10.0.0.42" || entries[0].Username != "deploy" {
+		t.Fatalf("unsupported directives changed prefill result: %#v", entries[0])
+	}
+}

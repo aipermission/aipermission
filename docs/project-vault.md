@@ -59,6 +59,13 @@ idempotency, context-drift, history, audit, and secret-redaction path without
 opening the approval dialog. Always is an explicit autonomous secret-use grant,
 not a way to expose the secret value to MCP.
 
+Metadata responses contain no Vault values. Revocation is authoritative for
+every metadata read admitted after the revocation commits. A non-secret metadata
+response whose authorization check already completed may finish concurrently
+with that commit; AIPermission does not promise cancellation between an admitted
+read and its final HTTP byte. Secret delivery has a stronger boundary and uses
+the lifecycle lease and exact-session checks described below.
+
 ## Session Application
 
 Supported connector runtimes advertise a typed session-environment capability.

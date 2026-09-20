@@ -929,9 +929,12 @@ identity file path, proxy jump metadata, whether a `ProxyCommand` is configured,
 and warnings where OpenSSH tokens are present. The raw `ProxyCommand` value is
 not returned. It does not import private key material silently. Wildcard-only
 blocks such as `Host *` are not returned as servers, but matching fields are
-applied in OpenSSH-style first-value-wins order. Docker installs should use
-explicit file parsing or pasted config content unless the host SSH config was
-deliberately mounted into the gateway container.
+applied in first-value-wins order. This is a bounded metadata prefill parser,
+not a complete OpenSSH evaluator: `Include`, `Match`, wildcard/negated host
+patterns, and token expansion are not evaluated. Unsupported directives are
+ignored and every prefilled field must be reviewed before connector creation.
+Docker installs should use explicit file parsing or pasted config content unless
+the host SSH config was deliberately mounted into the gateway container.
 
 ## Tokens
 
