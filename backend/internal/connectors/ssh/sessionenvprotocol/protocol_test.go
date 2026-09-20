@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +33,130 @@ func TestMetadataNeverContainsValues(t *testing.T) {
 	}
 	if total == 0 || strings.Contains(metadata, "value with spaces") {
 		t.Fatalf("unsafe metadata: %q", metadata)
+	}
+}
+
+func TestBootstrapCancellationInterruptsBlockedWrites(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{Name: "TOKEN", Value: []byte("secret-value")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	protocol, err := New(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := newBlockingBootstrapWriter()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := protocol.Bootstrap(ctx, writer, strings.NewReader(""), envelope)
+		done <- err
+	}()
+	<-writer.started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("bootstrap error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation did not interrupt the blocked bootstrap write")
+	}
+	if !writer.wasClosed() {
+		t.Fatal("bootstrap input was not closed on cancellation")
+	}
+}
+
+func TestBootstrapCancellationDuringValueWriteReturnsContextError(t *testing.T) {
+	envelope, err := sessionenv.NewEnvelope([]sessionenv.EntryInput{{Name: "TOKEN", Value: []byte("secret-value")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer envelope.Destroy()
+	protocol, err := New(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := newValueBlockingBootstrapWriter()
+	stdout := strings.NewReader("READY " + Version + " " + protocol.nonce + " 1\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := protocol.Bootstrap(ctx, writer, stdout, envelope)
+		done <- err
+	}()
+	<-writer.started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("bootstrap error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation did not interrupt the blocked value write")
+	}
+}
+
+type blockingBootstrapWriter struct {
+	started chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+type valueBlockingBootstrapWriter struct {
+	started chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func newValueBlockingBootstrapWriter() *valueBlockingBootstrapWriter {
+	return &valueBlockingBootstrapWriter{started: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (w *valueBlockingBootstrapWriter) Write(value []byte) (int, error) {
+	if !bytes.HasPrefix(value, []byte("VALUE ")) {
+		return len(value), nil
+	}
+	w.once.Do(func() { close(w.started) })
+	<-w.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (w *valueBlockingBootstrapWriter) Close() error {
+	select {
+	case <-w.closed:
+	default:
+		close(w.closed)
+	}
+	return nil
+}
+
+func newBlockingBootstrapWriter() *blockingBootstrapWriter {
+	return &blockingBootstrapWriter{started: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (w *blockingBootstrapWriter) Write([]byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (w *blockingBootstrapWriter) Close() error {
+	select {
+	case <-w.closed:
+	default:
+		close(w.closed)
+	}
+	return nil
+}
+
+func (w *blockingBootstrapWriter) wasClosed() bool {
+	select {
+	case <-w.closed:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -228,6 +353,52 @@ func TestBootstrapFiltersSingleLineWrapperEcho(t *testing.T) {
 	}
 }
 
+func TestWaitForFrameEnforcesConsumedByteLimit(t *testing.T) {
+	expected := "READY APENV/1 fixture 1"
+	for _, testCase := range []struct {
+		name      string
+		input     string
+		wantError bool
+		wantBytes int
+	}{
+		{
+			name:      "fragmented frame at limit",
+			input:     strings.Repeat("x", maxPreludeBytes-len(expected)-1) + expected + "\n",
+			wantBytes: maxPreludeBytes - len(expected) - 1,
+		},
+		{
+			name:      "frame one byte over limit",
+			input:     strings.Repeat("x", maxPreludeBytes-len(expected)) + expected + "\n",
+			wantError: true,
+		},
+		{
+			name:      "newline free input over limit",
+			input:     strings.Repeat("x", maxPreludeBytes+1),
+			wantError: true,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			prelude, err := waitForFrame(t.Context(), bufio.NewReader(strings.NewReader(testCase.input)), expected)
+			if (err != nil) != testCase.wantError {
+				t.Fatalf("err = %v, wantError %t", err, testCase.wantError)
+			}
+			if len(prelude) != testCase.wantBytes {
+				t.Fatalf("prelude bytes = %d, want %d", len(prelude), testCase.wantBytes)
+			}
+		})
+	}
+}
+
+func TestWaitForFrameCountsIgnoredLines(t *testing.T) {
+	expected := "READY APENV/1 fixture 1"
+	ignored := "wrapper-command"
+	line := "prompt " + ignored + "\n"
+	input := strings.Repeat(line, maxPreludeBytes/len(line)+1) + expected + "\n"
+	if _, err := waitForFrame(t.Context(), bufio.NewReader(strings.NewReader(input)), expected, ignored); err == nil || !strings.Contains(err.Error(), "safety limit") {
+		t.Fatalf("ignored-line overflow error = %v", err)
+	}
+}
+
 func TestPOSIXBootstrapPreservesComplexValues(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("POSIX shell is unavailable")
@@ -254,7 +425,7 @@ func TestPOSIXBootstrapPreservesComplexValues(t *testing.T) {
 	_, _ = io.WriteString(&input, Version+" "+nonce+" "+strconv.FormatInt(generation, 10)+" 1 "+strconv.Itoa(total)+"\n")
 	input.WriteString(metadata)
 	input.WriteString("META_END " + nonce + "\n")
-	if err := writeValueFrames(&input, envelope, nonce); err != nil {
+	if err := writeValueFrames(t.Context(), &input, envelope, nonce); err != nil {
 		t.Fatal(err)
 	}
 	input.WriteString(`printf 'VALUE_B64='; printf '%s' "$MY_PROJECT_COMPLEX_VALUE" | base64 | tr -d '\n'; printf '\n'` + "\n")

@@ -63,22 +63,24 @@ func (p *Protocol) Command() string {
 // Bootstrap applies the complete envelope to one POSIX interactive shell.
 // The caller starts Command first. Metadata is acknowledged before any value
 // frame is sent.
-func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Reader, envelope Environment) (Result, error) {
+func (p *Protocol) Bootstrap(ctx context.Context, stdin io.WriteCloser, stdout io.Reader, envelope Environment) (Result, error) {
 	if p == nil || stdin == nil || stdout == nil || envelope == nil || envelope.Len() == 0 {
 		return Result{}, errors.New("secret environment bootstrap requires a protocol, stdin, stdout, and a non-empty envelope")
 	}
 	bootstrapCtx, cancel := context.WithTimeout(ctx, bootstrapTimeout)
 	defer cancel()
+	stopContextClose := context.AfterFunc(bootstrapCtx, func() { _ = stdin.Close() })
+	defer stopContextClose()
 	reader := bufio.NewReader(stdout)
 	frames, aggregateBytes, err := metadataFrames(envelope)
 	if err != nil {
 		return Result{}, err
 	}
 	if _, err := fmt.Fprintf(stdin, "%s %s %d %d %d\n", Version, p.nonce, p.generation, envelope.Len(), aggregateBytes); err != nil {
-		return Result{}, fmt.Errorf("write environment header: %w", err)
+		return Result{}, bootstrapWriteError(bootstrapCtx, "write environment header", err)
 	}
 	if _, err := io.WriteString(stdin, frames+"META_END "+p.nonce+"\n"); err != nil {
-		return Result{}, fmt.Errorf("write environment metadata: %w", err)
+		return Result{}, bootstrapWriteError(bootstrapCtx, "write environment metadata", err)
 	}
 	prelude, err := waitForFrame(
 		bootstrapCtx,
@@ -89,7 +91,7 @@ func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Rea
 	if err != nil {
 		return Result{}, fmt.Errorf("environment metadata was not accepted: %w", err)
 	}
-	if err := writeValueFrames(stdin, envelope, p.nonce); err != nil {
+	if err := writeValueFrames(bootstrapCtx, stdin, envelope, p.nonce); err != nil {
 		return Result{}, err
 	}
 	afterMetadata, err := waitForFrame(bootstrapCtx, reader, "ACK "+Version+" "+p.nonce+" "+strconv.FormatInt(p.generation, 10))
@@ -98,6 +100,13 @@ func (p *Protocol) Bootstrap(ctx context.Context, stdin io.Writer, stdout io.Rea
 	}
 	prelude = append(prelude, afterMetadata...)
 	return Result{Prelude: prelude, Reader: reader, Nonce: p.nonce}, nil
+}
+
+func bootstrapWriteError(ctx context.Context, operation string, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return fmt.Errorf("%s: %w", operation, contextErr)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func metadataFrames(envelope Environment) (string, int, error) {
@@ -121,13 +130,13 @@ func metadataFrames(envelope Environment) (string, int, error) {
 	return builder.String(), total, err
 }
 
-func writeValueFrames(stdin io.Writer, envelope Environment, nonce string) error {
+func writeValueFrames(ctx context.Context, stdin io.Writer, envelope Environment, nonce string) error {
 	index := 0
 	err := envelope.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
 		index++
 		encoded := base64.StdEncoding.EncodeToString(value)
 		if _, err := fmt.Fprintf(stdin, "VALUE %d %s\n", index, encoded); err != nil {
-			return fmt.Errorf("write environment value frame: %w", err)
+			return bootstrapWriteError(ctx, "write environment value frame", err)
 		}
 		return nil
 	})
@@ -135,28 +144,33 @@ func writeValueFrames(stdin io.Writer, envelope Environment, nonce string) error
 		return err
 	}
 	if _, err := fmt.Fprintf(stdin, "END %s\n", nonce); err != nil {
-		return fmt.Errorf("write environment end frame: %w", err)
+		return bootstrapWriteError(ctx, "write environment end frame", err)
 	}
 	return nil
 }
 
 func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string, ignoredSuffixes ...string) ([]byte, error) {
 	type lineResult struct {
-		line string
+		line []byte
 		err  error
 	}
 	prelude := bytes.Buffer{}
+	consumed := 0
 	for {
 		result := make(chan lineResult, 1)
 		go func() {
-			line, err := reader.ReadString('\n')
+			line, err := readBoundedLine(reader, maxPreludeBytes-consumed)
 			result <- lineResult{line: line, err: err}
 		}()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case item := <-result:
-			normalized := strings.ReplaceAll(item.line, "\r", "")
+			if item.err != nil && len(item.line) == 0 {
+				return nil, item.err
+			}
+			consumed += len(item.line)
+			normalized := strings.ReplaceAll(string(item.line), "\r", "")
 			trimmed := strings.TrimSpace(normalized)
 			ignored := false
 			for _, suffix := range ignoredSuffixes {
@@ -166,6 +180,9 @@ func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string, ig
 				}
 			}
 			if ignored {
+				if item.err != nil {
+					return nil, item.err
+				}
 				continue
 			}
 			if strings.HasSuffix(trimmed, expected) {
@@ -178,16 +195,31 @@ func waitForFrame(ctx context.Context, reader *bufio.Reader, expected string, ig
 				}
 				return prelude.Bytes(), nil
 			}
-			if item.line != "" {
-				if prelude.Len()+len(item.line) > maxPreludeBytes {
-					return nil, errors.New("shell prelude exceeded safety limit")
-				}
-				prelude.WriteString(item.line)
+			if len(item.line) != 0 {
+				prelude.Write(item.line)
 			}
 			if item.err != nil {
 				return nil, item.err
 			}
 		}
+	}
+}
+
+func readBoundedLine(reader *bufio.Reader, limit int) ([]byte, error) {
+	if limit < 1 {
+		return nil, errors.New("shell prelude exceeded safety limit")
+	}
+	line := make([]byte, 0, min(limit, reader.Size()))
+	for {
+		fragment, err := reader.ReadSlice('\n')
+		if len(line)+len(fragment) > limit {
+			return nil, errors.New("shell prelude exceeded safety limit")
+		}
+		line = append(line, fragment...)
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		return line, err
 	}
 }
 
