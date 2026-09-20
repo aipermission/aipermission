@@ -59,16 +59,17 @@ func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*r
 func authenticateRedis(ctx context.Context, runtime connectors.RuntimeContext, client *redisClient) error {
 	username := strings.TrimSpace(stringValue(runtime.Profile.Public, "username"))
 	password, err := runtime.Secrets.GetSecret(ctx, "password")
+	passwordPresent := true
 	if errors.Is(err, connectors.ErrSecretNotFound) {
+		passwordPresent = false
 		password = ""
 	} else if err != nil {
 		return fmt.Errorf("%w: resolve redis password: %w", connectors.ErrSecretProvider, err)
 	}
-	password = strings.TrimSpace(password)
-	if username == "" && password == "" {
+	if username == "" && !passwordPresent {
 		return nil
 	}
-	if password == "" {
+	if !passwordPresent || password == "" {
 		return ErrMissingSecret
 	}
 	if username != "" {
@@ -169,9 +170,9 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 }
 
 func executeGetKey(client *redisClient, input map[string]any) (connectors.ActionResult, error) {
-	key := strings.TrimSpace(stringValue(input, "key"))
-	if key == "" {
-		return connectors.ActionResult{}, fmt.Errorf("key is required")
+	key, err := exactRedisKey(input, "key")
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
 	limit := normalizeInt(input, "limit", defaultValueLimit, 1, maxValueLimit)
 	maxBytes := normalizeInt(input, "max_bytes", defaultMaxValueBytes, 1, maxValueBytes)
@@ -250,11 +251,11 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 }
 
 func executeSetString(client *redisClient, input map[string]any) (connectors.ActionResult, error) {
-	key := strings.TrimSpace(stringValue(input, "key"))
-	value := fmt.Sprint(input["value"])
-	if key == "" {
-		return connectors.ActionResult{}, fmt.Errorf("key is required")
+	key, err := exactRedisKey(input, "key")
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
+	value := fmt.Sprint(input["value"])
 	args := []string{"SET", key, value}
 	if ttl := normalizeInt(input, "ttl_seconds", 0, 0, 31_536_000); ttl > 0 {
 		args = append(args, "EX", strconv.Itoa(ttl))
@@ -274,13 +275,12 @@ func executeSetString(client *redisClient, input map[string]any) (connectors.Act
 }
 
 func executeExpireKey(client *redisClient, input map[string]any) (connectors.ActionResult, error) {
-	key := strings.TrimSpace(stringValue(input, "key"))
-	ttl := normalizeInt(input, "ttl_seconds", 0, -1, 31_536_000)
-	if key == "" {
-		return connectors.ActionResult{}, fmt.Errorf("key is required")
+	key, err := exactRedisKey(input, "key")
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
+	ttl := normalizeInt(input, "ttl_seconds", 0, -1, 31_536_000)
 	var value respValue
-	var err error
 	if ttl < 0 {
 		value, err = client.DoMutation("PERSIST", key)
 	} else {
