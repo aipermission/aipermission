@@ -278,8 +278,8 @@ func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) er
 }
 
 func validateFieldDefinition(field Field, usage string) error {
-	if field.PreserveWhitespace && field.Type != FieldString {
-		return fmt.Errorf("%s schema field %q can preserve whitespace only for string fields", usage, field.Name)
+	if field.PreserveWhitespace && field.Type != FieldString && field.Type != FieldMultiline {
+		return fmt.Errorf("%s schema field %q can preserve whitespace only for string or multiline fields", usage, field.Name)
 	}
 	switch field.Type {
 	case FieldString, FieldSecret, FieldMultiline, FieldMultilineSecret, FieldNumber, FieldInteger, FieldBoolean, FieldSelect, FieldJSON, FieldFileText, FieldFileBase64:
@@ -422,9 +422,9 @@ func emptySchemaValue(value any) bool {
 	return ok && strings.TrimSpace(text) == ""
 }
 
-// Opaque string identities distinguish whitespace from an absent value.
+// Opaque string identities and payloads distinguish whitespace from absence.
 func emptyFieldValue(field Field, value any) bool {
-	if field.PreserveWhitespace && field.Type == FieldString {
+	if field.PreserveWhitespace && (field.Type == FieldString || field.Type == FieldMultiline) {
 		if text, ok := value.(string); ok {
 			return text == ""
 		}
