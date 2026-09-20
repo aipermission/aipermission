@@ -180,6 +180,7 @@ type PeerTrustGateway interface {
 // exposing the provider connector's runtime data or credential resources.
 type LiveConsoleGateway interface {
 	PeerIdentityGateway
+	ConnectorRunCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error)
 	ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*LiveConsoleSession, error)
 }
 

@@ -100,6 +100,7 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 		LiveConsole: connectorports.LiveConsoleDependencies{
 			TransportAdapter: application.liveConsoleTransportAdapter,
 			TargetAdapter:    application.liveConsoleTargetAdapter,
+			AdapterFor:       application.adapters.For,
 		},
 	})
 	return application, nil

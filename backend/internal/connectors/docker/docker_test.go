@@ -55,6 +55,74 @@ func TestValidateTargetConfigRejectsUnsafeDockerCommand(t *testing.T) {
 	}
 }
 
+func TestResolveProfileContainerSeparatesNamesIDPrefixesAndPatterns(t *testing.T) {
+	inventory := strings.Join([]string{
+		`{"ID":"aaaaaaaaaaaa1111111111111111111111111111111111111111111111111111","Names":"api-other","Image":"api","State":"running","Status":"Up"}`,
+		`{"ID":"bbbbbbbbbbbb2222222222222222222222222222222222222222222222222222","Names":"api","Image":"api","State":"running","Status":"Up"}`,
+	}, "\n")
+	exactProfile := dockerProfile("selected")
+
+	if _, err := ResolveProfileContainer(exactProfile, "api-other", inventory); !errors.Is(err, ErrScopeDenied) {
+		t.Fatalf("longer name prefix should be denied: %v", err)
+	}
+	container, err := ResolveProfileContainer(exactProfile, "api", inventory)
+	if err != nil || container.Name != "api" || !strings.HasPrefix(container.ID, "bbbbbbbbbbbb") {
+		t.Fatalf("exact name resolution failed: container=%#v err=%v", container, err)
+	}
+
+	idProfile := dockerProfile("selected")
+	idProfile.Public["allowed_containers"] = "bbbbbbbbbbbb"
+	container, err = ResolveProfileContainer(idProfile, "bbbbbbbb", inventory)
+	if err != nil || container.Name != "api" {
+		t.Fatalf("allowed ID prefix resolution failed: container=%#v err=%v", container, err)
+	}
+	idProfile.Public["allowed_containers"] = "bbbbbb"
+	container, err = ResolveProfileContainer(idProfile, "bbbbbbbb", inventory)
+	if err != nil || container.Name != "api" {
+		t.Fatalf("legacy short ID prefix resolution failed: container=%#v err=%v", container, err)
+	}
+
+	patternProfile := dockerProfile("selected")
+	patternProfile.Public["allowed_containers"] = ""
+	patternProfile.Public["allowed_patterns"] = "api-*"
+	container, err = ResolveProfileContainer(patternProfile, "api-other", inventory)
+	if err != nil || container.Name != "api-other" {
+		t.Fatalf("explicit name pattern resolution failed: container=%#v err=%v", container, err)
+	}
+}
+
+func TestProfileScopeRejectsAmbiguousContainerIDPrefixes(t *testing.T) {
+	inventory := strings.Join([]string{
+		`{"ID":"abcdefabcdef1111111111111111111111111111111111111111111111111111","Names":"api-a","Image":"api","State":"running","Status":"Up"}`,
+		`{"ID":"abcdefabcdef2222222222222222222222222222222222222222222222222222","Names":"api-b","Image":"api","State":"running","Status":"Up"}`,
+	}, "\n")
+	for _, prefix := range []string{"abcdef", "abcdefabcdef"} {
+		t.Run(prefix, func(t *testing.T) {
+			profile := dockerProfile("selected")
+			profile.Public["allowed_containers"] = prefix
+			if _, err := ResolveProfileContainer(profile, "api-a", inventory); !errors.Is(err, ErrScopeDenied) {
+				t.Fatalf("ambiguous allowed ID prefix %q should be denied: %v", prefix, err)
+			}
+		})
+	}
+}
+
+func TestResolveProfileContainerRejectsNameAndIDPrefixCollisions(t *testing.T) {
+	inventory := strings.Join([]string{
+		`{"ID":"aaaaaaaaaaaa1111111111111111111111111111111111111111111111111111","Names":"abcdefabcdef","Image":"api","State":"running","Status":"Up"}`,
+		`{"ID":"abcdefabcdef2222222222222222222222222222222222222222222222222222","Names":"worker","Image":"worker","State":"running","Status":"Up"}`,
+	}, "\n")
+	profile := dockerProfile("selected")
+	profile.Public["allowed_containers"] = "abcdefabcdef"
+
+	if _, err := ResolveProfileContainer(profile, "abcdefabcdef", inventory); !errors.Is(err, ErrScopeDenied) {
+		t.Fatalf("colliding hexadecimal name should be denied: %v", err)
+	}
+	if _, err := ResolveProfileContainer(profile, "worker", inventory); !errors.Is(err, ErrScopeDenied) {
+		t.Fatalf("hexadecimal container name must not authorize an unrelated ID prefix: %v", err)
+	}
+}
+
 func TestConnectionUsesConfiguredDockerExecutable(t *testing.T) {
 	target := dockerTarget()
 	target.Config["docker_command"] = "/usr/local/bin/docker-wrapper"
@@ -181,7 +249,7 @@ func TestInspectRedactsEnvironment(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
 			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
-			"docker inspect -- 'api'":                       {Stdout: `[{"Config":{"Env":["TOKEN=secret","DEBUG=true"]}}]`},
+			"docker inspect -- '111111111111'":              {Stdout: `[{"Config":{"Env":["TOKEN=secret","DEBUG=true"]}}]`},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -206,7 +274,7 @@ func TestLifecycleReturnsRefreshedContainerState(t *testing.T) {
 			},
 		},
 		results: map[string]connectors.CommandRunResult{
-			"docker start -- 'api' 2>&1": {Stdout: "api\n"},
+			"docker start -- '111111111111' 2>&1": {Stdout: "api\n"},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -227,8 +295,8 @@ func TestLifecycleReturnsRefreshedContainerState(t *testing.T) {
 func TestContainerExecRunsBoundedCommandInsideScopedContainer(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
-			"docker ps -a --no-trunc --format '{{json .}}'": {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
-			"docker exec -- 'api' sh -lc 'printf hi' 2>&1":  {Stdout: "hi", ExitCode: 0, DurationMS: 7},
+			"docker ps -a --no-trunc --format '{{json .}}'":         {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
+			"docker exec -- '111111111111' sh -lc 'printf hi' 2>&1": {Stdout: "hi", ExitCode: 0, DurationMS: 7},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -251,8 +319,8 @@ func TestContainerExecRunsBoundedCommandInsideScopedContainer(t *testing.T) {
 func TestContainerExecReturnsFailedStatusForNonZeroExit(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
-			"docker ps -a --no-trunc --format '{{json .}}'":   {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
-			"docker exec -- 'api' sh -lc 'cat /missing' 2>&1": {Stdout: "missing\n", ExitCode: 1},
+			"docker ps -a --no-trunc --format '{{json .}}'":            {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
+			"docker exec -- '111111111111' sh -lc 'cat /missing' 2>&1": {Stdout: "missing\n", ExitCode: 1},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -303,7 +371,7 @@ func TestListNetworksAndVolumesUseScopedInspect(t *testing.T) {
 				`{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour (healthy)","Labels":"com.docker.compose.project=sample-app,com.docker.compose.service=api"}`,
 				`{"ID":"222222222222","Names":"db","Image":"postgres:16","State":"running","Status":"Up 1 hour"}`,
 			}, "\n")},
-			"docker inspect -- 'api'": {Stdout: `[{
+			"docker inspect -- '111111111111'": {Stdout: `[{
 				"NetworkSettings":{"Networks":{"frontend":{"NetworkID":"net1","Driver":"bridge"}}},
 				"Mounts":[{"Type":"volume","Name":"api-data","Driver":"local","Source":"/var/lib/docker/volumes/api-data/_data"}]
 			}]`},

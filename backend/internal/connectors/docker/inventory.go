@@ -70,10 +70,10 @@ func (image DockerImage) Ref() string {
 }
 
 func (container DockerContainer) Ref() string {
-	if strings.TrimSpace(container.Name) != "" {
-		return container.Name
+	if strings.TrimSpace(container.ID) != "" {
+		return container.ID
 	}
-	return container.ID
+	return container.Name
 }
 
 func (client *dockerClient) listContainers(ctx context.Context, includeStopped bool) ([]DockerContainer, error) {
@@ -92,13 +92,7 @@ func (client *dockerClient) listContainers(ctx context.Context, includeStopped b
 	if err != nil {
 		return nil, err
 	}
-	filtered := containers[:0]
-	for _, container := range containers {
-		if client.scope.allows(container) {
-			filtered = append(filtered, container)
-		}
-	}
-	return filtered, nil
+	return client.scope.filter(containers), nil
 }
 
 func (client *dockerClient) listImages(ctx context.Context) ([]DockerImage, error) {
@@ -295,12 +289,59 @@ func (client *dockerClient) resolveContainer(ctx context.Context, requested stri
 	if err != nil {
 		return DockerContainer{}, err
 	}
+	return resolveContainerFromInventory(containers, requested)
+}
+
+func ResolveProfileContainer(profile connectors.CredentialProfileView, requested string, inventoryOutput string) (DockerContainer, error) {
+	requested = strings.TrimSpace(requested)
+	if !ValidContainerRef(requested) {
+		return DockerContainer{}, fmt.Errorf("container must be a name or ID without shell syntax")
+	}
+	containers, err := parseDockerPS(inventoryOutput)
+	if err != nil {
+		return DockerContainer{}, err
+	}
+	container, err := resolveContainerFromInventory(containers, requested)
+	if err != nil {
+		return DockerContainer{}, err
+	}
+	if !dockerScopeFromProfile(profile).allowsInInventory(container, containers) {
+		return DockerContainer{}, fmt.Errorf("%w: %s", ErrScopeDenied, requested)
+	}
+	return container, nil
+}
+
+func resolveContainerFromInventory(containers []DockerContainer, requested string) (DockerContainer, error) {
 	for _, container := range containers {
-		if container.Name == requested || container.ID == requested || strings.HasPrefix(container.ID, requested) {
+		if container.Name == requested || container.ID == requested {
 			return container, nil
 		}
 	}
-	return DockerContainer{}, fmt.Errorf("%w: %s", ErrScopeDenied, requested)
+
+	var matched *DockerContainer
+	for index := range containers {
+		container := containers[index]
+		if !strings.HasPrefix(container.ID, requested) {
+			continue
+		}
+		if matched != nil && matched.ID != container.ID {
+			return DockerContainer{}, fmt.Errorf("container reference is ambiguous: %s", requested)
+		}
+		copy := container
+		matched = &copy
+	}
+	if matched == nil {
+		return DockerContainer{}, fmt.Errorf("%w: %s", ErrScopeDenied, requested)
+	}
+	return *matched, nil
+}
+
+func ContainerInventoryCommand(target connectors.TargetView) (string, error) {
+	command, err := DockerShellCommand(target)
+	if err != nil {
+		return "", err
+	}
+	return command + " ps -a --no-trunc --format '{{json .}}'", nil
 }
 
 func parseDockerPS(data string) ([]DockerContainer, error) {

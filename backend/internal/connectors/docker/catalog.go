@@ -79,7 +79,7 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 					Name:        "allowed_containers",
 					Label:       "Allowed containers",
 					Type:        connectors.FieldMultiline,
-					Description: "One container name, full ID, or ID prefix per line.",
+					Description: "One exact container name, full ID, or unambiguous ID prefix of at least 6 hex characters per line.",
 				},
 				{
 					Name:        "allowed_patterns",
@@ -358,7 +358,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		ContextMaterial: map[string]any{
 			"target":          req.Target.Name,
 			"profile":         req.Profile.Label,
-			"connection_mode": connectionMode(req.Target),
+			"connection_mode": ConnectionMode(req.Target),
 			"scope_mode":      scopeMode(req.Profile),
 		},
 	}, nil

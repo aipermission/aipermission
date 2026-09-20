@@ -14,6 +14,7 @@ import (
 var (
 	dockerAbsoluteCommandPattern = regexp.MustCompile(`^/[A-Za-z0-9_./+-]+$`)
 	dockerContainerRefPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$`)
+	dockerContainerIDPrefix      = regexp.MustCompile(`^[a-fA-F0-9]{6,64}$`)
 )
 
 type dockerScope struct {
@@ -30,33 +31,25 @@ func dockerScopeFromProfile(profile connectors.CredentialProfileView) dockerScop
 	}
 }
 
-func ProfileAllowsContainerRef(profile connectors.CredentialProfileView, containerRef string) bool {
-	containerRef = strings.TrimSpace(containerRef)
-	if !ValidContainerRef(containerRef) {
-		return false
-	}
-	return dockerScopeFromProfile(profile).allows(DockerContainer{ID: containerRef, Name: containerRef})
-}
-
 // ValidContainerRef accepts Docker container names and IDs without allowing
 // shell syntax into the live-console force command.
 func ValidContainerRef(containerRef string) bool {
 	return dockerContainerRefPattern.MatchString(strings.TrimSpace(containerRef))
 }
 
-func (scope dockerScope) allows(container DockerContainer) bool {
+func (scope dockerScope) allowsInInventory(container DockerContainer, inventory []DockerContainer) bool {
 	if scope.mode != "selected" {
 		return true
 	}
-	candidates := []string{container.ID, container.Name}
-	if len(container.ID) >= 12 {
-		candidates = append(candidates, container.ID[:12])
-	}
 	for _, allowed := range scope.exact {
-		for _, candidate := range candidates {
-			if allowed == candidate || strings.HasPrefix(container.ID, allowed) {
-				return true
-			}
+		if ambiguousContainerSelector(inventory, allowed) {
+			continue
+		}
+		if allowed == container.Name || allowed == container.ID {
+			return true
+		}
+		if dockerContainerIDPrefix.MatchString(allowed) && uniqueContainerIDPrefix(inventory, allowed, container.ID) {
+			return true
 		}
 	}
 	for _, pattern := range scope.patterns {
@@ -67,6 +60,50 @@ func (scope dockerScope) allows(container DockerContainer) bool {
 	return false
 }
 
+func ambiguousContainerSelector(containers []DockerContainer, selector string) bool {
+	matchedID := ""
+	for _, container := range containers {
+		matches := container.Name == selector || container.ID == selector ||
+			(dockerContainerIDPrefix.MatchString(selector) && strings.HasPrefix(strings.ToLower(container.ID), strings.ToLower(selector)))
+		if !matches {
+			continue
+		}
+		if matchedID != "" && !strings.EqualFold(matchedID, container.ID) {
+			return true
+		}
+		matchedID = container.ID
+	}
+	return false
+}
+
+func (scope dockerScope) filter(containers []DockerContainer) []DockerContainer {
+	if scope.mode != "selected" {
+		return containers
+	}
+	filtered := make([]DockerContainer, 0, len(containers))
+	for _, container := range containers {
+		if scope.allowsInInventory(container, containers) {
+			filtered = append(filtered, container)
+		}
+	}
+	return filtered
+}
+
+func uniqueContainerIDPrefix(containers []DockerContainer, prefix string, expectedID string) bool {
+	prefix = strings.ToLower(prefix)
+	expectedID = strings.ToLower(expectedID)
+	matches := 0
+	matchedID := ""
+	for _, container := range containers {
+		id := strings.ToLower(strings.TrimSpace(container.ID))
+		if strings.HasPrefix(id, prefix) {
+			matches++
+			matchedID = id
+		}
+	}
+	return matches == 1 && matchedID == expectedID
+}
+
 func scopeMode(profile connectors.CredentialProfileView) string {
 	if strings.TrimSpace(stringValue(profile.Public, "scope_mode")) == "selected" {
 		return "selected"
@@ -74,7 +111,7 @@ func scopeMode(profile connectors.CredentialProfileView) string {
 	return "all"
 }
 
-func connectionMode(target connectors.TargetView) string {
+func ConnectionMode(target connectors.TargetView) string {
 	mode := strings.TrimSpace(stringValue(target.Config, "connection_mode"))
 	if mode == "" {
 		return "over_ssh"

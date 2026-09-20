@@ -233,7 +233,7 @@ func TestConnectorCapabilityPortsStayLeastPrivilege(t *testing.T) {
 		{name: "runtime availability gateway", value: (*RuntimeAvailabilityGateway)(nil), methods: []string{"ConnectorActiveRuntimeAvailable"}},
 		{name: "peer identity gateway", value: (*PeerIdentityGateway)(nil), methods: []string{"ConnectorTrustStorePath"}},
 		{name: "peer trust gateway", value: (*PeerTrustGateway)(nil), methods: []string{"ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
-		{name: "live console gateway", value: (*LiveConsoleGateway)(nil), methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
+		{name: "live console gateway", value: (*LiveConsoleGateway)(nil), methods: []string{"ConnectorOpenLiveConsole", "ConnectorRunCommand", "ConnectorTrustStorePath"}},
 		{name: "console restart gateway", value: (*ConsoleRestartGateway)(nil), methods: []string{"ConnectorRestartConsoleSession"}},
 		{name: "action finish gateway", value: (*ActionFinishGateway)(nil), methods: []string{"ConnectorFinishActionRequest"}},
 		{name: "transfer batch gateway", value: (*TransferBatchGateway)(nil), methods: []string{"ConnectorCreateAndRunDownloadBatch"}},

@@ -30,6 +30,7 @@ type RouteDependencies struct {
 type LiveConsoleDependencies struct {
 	TransportAdapter func(string) connectorapi.LiveConsoleTransportAdapter
 	TargetAdapter    func(string) connectorapi.LiveConsoleTargetAdapter
+	AdapterFor       func(string) connectorapi.Adapter
 }
 
 type Workspace struct {
@@ -163,6 +164,18 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 		return nil, err
 	}
 	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+}
+
+func (gateway LiveConsoleGateway) ConnectorRunCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil ||
+		gateway.component.dependencies.LiveConsole.AdapterFor == nil {
+		return connectors.CommandRunResult{}, ErrRuntimeUnavailable
+	}
+	return CommandTransport(
+		gateway.workspace,
+		gateway.component.dependencies.LiveConsole.AdapterFor,
+		gateway.component.dependencies.Peer.TrustStorePath,
+	).RunConnectorCommand(ctx, request)
 }
 
 type RuntimeActionGateway struct {

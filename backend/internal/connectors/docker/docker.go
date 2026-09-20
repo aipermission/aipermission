@@ -119,7 +119,7 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 		Message: "Docker connection ok.",
 		Details: map[string]any{
 			"duration_ms": result.DurationMS,
-			"mode":        connectionMode(runtime.Target),
+			"mode":        ConnectionMode(runtime.Target),
 		},
 	}, nil
 }
