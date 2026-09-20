@@ -184,6 +184,13 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	if _, err := recordcrypto.RewriteLegacy(ctx, targetDB, targetVault, workspaceID); err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("bind migrated encrypted records: %w", err)
 	}
+	resolvedSecret, err := projectvault.ResolveGatewaySecret(ctx, targetDB, "")
+	if err != nil {
+		return Legacy010To020Result{}, fmt.Errorf("validate migrated gateway identity: %w", err)
+	}
+	if resolvedSecret != sourceSecret {
+		return Legacy010To020Result{}, errors.New("validate migrated gateway identity: resolved secret changed")
+	}
 	if err := targetDB.Close(); err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("close migrated target database: %w", err)
 	}

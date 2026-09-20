@@ -19,7 +19,11 @@ func copyLegacySettings(ctx context.Context, sourceDB *sql.DB, tx *sql.Tx) (int,
 	if err != nil {
 		return 0, err
 	}
+	copied := 0
 	for _, setting := range settings {
+		if setting.Key == "gateway_secret" {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO settings (key, value, updated_at)
 			VALUES (?, ?, ?)
@@ -28,8 +32,9 @@ func copyLegacySettings(ctx context.Context, sourceDB *sql.DB, tx *sql.Tx) (int,
 		); err != nil {
 			return 0, fmt.Errorf("copy setting %q: %w", setting.Key, err)
 		}
+		copied++
 	}
-	return len(settings), nil
+	return copied, nil
 }
 
 func copyLegacySSHKeys(
