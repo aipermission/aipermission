@@ -509,15 +509,22 @@ func TestConsoleSessionManagerCloseAllWaitsForSessionClosedHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
-	defer cancel()
-	if err := manager.CloseAll(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("CloseAll() error = %v, want hook deadline", err)
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	closeResult := make(chan error, 1)
+	go func() { closeResult <- manager.CloseAll(ctx) }()
 	select {
 	case <-hookStarted:
-	default:
-		t.Fatal("session-closed hook did not enter before CloseAll returned")
+	case <-time.After(time.Second):
+		t.Fatal("session-closed hook did not start")
+	}
+	cancel()
+	select {
+	case err := <-closeResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CloseAll() error = %v, want canceled hook", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CloseAll did not return after cancellation")
 	}
 	if manager.active(record.ID) == nil {
 		t.Fatal("session disappeared while its ownership hook was blocked")
