@@ -168,11 +168,6 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 			return Record{}, nil, err
 		}
 	}
-	if !request.CloseExisting && m.activeSessionCount() >= maxActiveConsoleSessions {
-		destroyCreateEnvironment(request)
-		return Record{}, nil, ErrSessionLimit
-	}
-
 	var err error
 	now := timeformat.Now()
 	m.mu.Lock()
@@ -180,6 +175,11 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 		m.mu.Unlock()
 		destroyCreateEnvironment(request)
 		return Record{}, nil, ErrManagerClosed
+	}
+	if !request.CloseExisting && m.activeSessionCountLocked() >= maxActiveConsoleSessions {
+		m.mu.Unlock()
+		destroyCreateEnvironment(request)
+		return Record{}, nil, ErrSessionLimit
 	}
 	var generation int64
 	err = m.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(generation), 0) + 1 FROM console_sessions WHERE runtime_id = ?`, request.RuntimeID).Scan(&generation)
@@ -388,19 +388,9 @@ func (m *Manager) Exec(ctx context.Context, principal executionprincipal.Princip
 	if err := principal.Validate(); err != nil {
 		return ExecResult{}, err
 	}
-	session := m.activeForRuntime(runtimeID)
-	if session == nil {
-		record, err := m.Create(ctx, CreateRequest{
-			RuntimeID: runtimeID,
-			Name:      fmt.Sprintf("runtime-%d ai session", runtimeID),
-			Cols:      120,
-			Rows:      32,
-			Principal: principal,
-		})
-		if err != nil {
-			return ExecResult{}, err
-		}
-		session = m.active(record.ID)
+	session, err := m.implicitSession(ctx, principal, runtimeID)
+	if err != nil {
+		return ExecResult{}, err
 	}
 	if session == nil {
 		return ExecResult{}, fmt.Errorf("console session did not start")
@@ -426,19 +416,9 @@ func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.
 	if err := principal.Validate(); err != nil {
 		return SessionHandle{}, err
 	}
-	session := m.activeForRuntime(runtimeID)
-	if session == nil {
-		record, err := m.Create(ctx, CreateRequest{
-			RuntimeID: runtimeID,
-			Name:      fmt.Sprintf("runtime-%d ai session", runtimeID),
-			Cols:      120,
-			Rows:      32,
-			Principal: principal,
-		})
-		if err != nil {
-			return SessionHandle{}, err
-		}
-		session = m.active(record.ID)
+	session, err := m.implicitSession(ctx, principal, runtimeID)
+	if err != nil {
+		return SessionHandle{}, err
 	}
 	if session == nil {
 		return SessionHandle{}, fmt.Errorf("console session did not start")
@@ -450,6 +430,26 @@ func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.
 		return SessionHandle{}, err
 	}
 	return session.handle(), nil
+}
+
+func (m *Manager) implicitSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (*managedConsoleSession, error) {
+	if session := m.activeForRuntime(runtimeID); session != nil {
+		return session, nil
+	}
+	lock := m.runtimeLifecycle(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
+	if session := m.activeForRuntime(runtimeID); session != nil {
+		return session, nil
+	}
+	_, session, err := m.createLocked(ctx, CreateRequest{
+		RuntimeID: runtimeID,
+		Name:      fmt.Sprintf("runtime-%d ai session", runtimeID),
+		Cols:      120,
+		Rows:      32,
+		Principal: principal,
+	})
+	return session, err
 }
 
 func (m *Manager) WaitActive(ctx context.Context, principal executionprincipal.Principal, handle SessionHandle) (ExecResult, error) {
@@ -741,6 +741,10 @@ func (m *Manager) exactSession(handle SessionHandle) (*managedConsoleSession, er
 func (m *Manager) activeSessionCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.activeSessionCountLocked()
+}
+
+func (m *Manager) activeSessionCountLocked() int {
 	count := 0
 	for _, session := range m.sessions {
 		status, _ := session.snapshot()

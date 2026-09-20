@@ -91,6 +91,142 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 	}
 }
 
+func TestConsoleSessionManagerImplicitSessionCreationIsSingleFlight(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-single-flight", "127.0.0.1", 22)
+	output := make(chan RuntimeOutput)
+	var opens atomic.Int32
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		opens.Add(1)
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Output: output,
+			Done: testRuntimeDone(func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	t.Cleanup(func() {
+		_ = manager.CloseAll(context.Background())
+	})
+
+	const callers = 12
+	start := make(chan struct{})
+	handles := make(chan SessionHandle, callers)
+	resultErrors := make(chan error, callers)
+	for range callers {
+		go func() {
+			<-start
+			handle, ensureErr := manager.EnsureReady(t.Context(), testExecutionPrincipal(), runtimeID)
+			handles <- handle
+			resultErrors <- ensureErr
+		}()
+	}
+	close(start)
+	var first SessionHandle
+	for range callers {
+		if ensureErr := <-resultErrors; ensureErr != nil {
+			t.Fatal(ensureErr)
+		}
+		handle := <-handles
+		if !first.Valid() {
+			first = handle
+		} else if handle != first {
+			t.Fatalf("implicit session handles differ: first=%#v current=%#v", first, handle)
+		}
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("runtime opens = %d, want 1", opens.Load())
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id = ?`, runtimeID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("persisted implicit sessions = %d, want 1", rows)
+	}
+}
+
+func TestConsoleSessionManagerSerializesGlobalSessionAdmission(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeIDs := []int64{
+		insertConsoleTestSSHProfile(t, database, "worker-admission-a", "127.0.0.1", 22),
+		insertConsoleTestSSHProfile(t, database, "worker-admission-b", "127.0.0.1", 22),
+	}
+	output := make(chan RuntimeOutput)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Output: output,
+			Done: testRuntimeDone(func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	for index := 0; index < maxActiveConsoleSessions-1; index++ {
+		id := int64(index + 10_000)
+		manager.sessions[id] = &managedConsoleSession{id: id, runtimeID: id, status: "connected"}
+	}
+	start := make(chan struct{})
+	resultErrors := make(chan error, len(runtimeIDs))
+	for _, runtimeID := range runtimeIDs {
+		go func() {
+			<-start
+			_, createErr := manager.Create(t.Context(), CreateRequest{RuntimeID: runtimeID, Principal: testExecutionPrincipal()})
+			resultErrors <- createErr
+		}()
+	}
+	close(start)
+	successes := 0
+	limits := 0
+	for range runtimeIDs {
+		switch createErr := <-resultErrors; {
+		case createErr == nil:
+			successes++
+		case errors.Is(createErr, ErrSessionLimit):
+			limits++
+		default:
+			t.Fatalf("unexpected create error: %v", createErr)
+		}
+	}
+	if successes != 1 || limits != 1 || manager.activeSessionCount() != maxActiveConsoleSessions {
+		t.Fatalf("successes=%d limits=%d active=%d", successes, limits, manager.activeSessionCount())
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id IN (?, ?)`, runtimeIDs[0], runtimeIDs[1]).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("persisted admitted sessions = %d, want 1", rows)
+	}
+	var admitted *managedConsoleSession
+	for _, runtimeID := range runtimeIDs {
+		if session := manager.activeForRuntime(runtimeID); session != nil {
+			admitted = session
+			break
+		}
+	}
+	if admitted == nil {
+		t.Fatal("admitted session is not active")
+	}
+	admitted.beginClose()
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := admitted.waitDone(cleanupCtx); err != nil {
+		t.Fatalf("drain admitted session: %v", err)
+	}
+}
+
 func TestConsoleSessionCloseDoesNotWaitForTransportCompletionSignal(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
