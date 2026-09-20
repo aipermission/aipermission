@@ -259,7 +259,8 @@ the operator how to rotate or redact it.
 Use Project Vault only through its dedicated tools:
 
 1. Call `list_vault_items(project_ref)` to discover names and non-secret
-   metadata. Never ask the gateway to reveal values.
+   metadata. Prefer an explicit `id:<id>` or `slug:<slug>` reference. Never ask
+   the gateway to reveal values.
 2. Use `call_vault_action` with `generate_item` only when the operator asked for
    a new secret. Use a stable, unique `idempotency_key`. Send `tags` as a string
    array, `shared_project_ids` as an integer array, and `usage_notes` as an

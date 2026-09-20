@@ -64,12 +64,23 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 		if openErr != nil {
 			return RequestView{}, openErr
 		}
-		if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+		projectID, resolveErr := r.resolveProject(ctx, input.ProjectRef)
+		if errors.Is(resolveErr, ErrProjectNotFound) && storedProjectReferenceMatches(exact, input.ProjectRef) {
+			projectID, resolveErr = exact.ProjectID, nil
+		}
+		if resolveErr != nil {
+			return RequestView{}, resolveErr
+		}
+		if !SameActionCall(exact, projectID, input.ActionName, normalizedInput, input.Reason) {
 			return RequestView{}, ErrIdempotencyConflict
 		}
 		return r.View(ctx, existing), nil
 	}
 	if !errors.Is(err, ErrNotFound) {
+		return RequestView{}, err
+	}
+	projectID, err := r.resolveProject(ctx, input.ProjectRef)
+	if err != nil {
 		return RequestView{}, err
 	}
 	if !r.allowRequest(input.TokenID) {
@@ -78,6 +89,9 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	prepared, err := r.prepare(ctx, input.TokenID, input.ProjectRef, input.ActionName, normalizedInput)
 	if err != nil {
 		return RequestView{}, err
+	}
+	if prepared.ProjectID != projectID {
+		return RequestView{}, ErrProjectNotFound
 	}
 	contextMap, err := approvalContextMap(prepared.ApprovalContext)
 	if err != nil {
@@ -119,7 +133,7 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 				if openErr != nil {
 					return openErr
 				}
-				if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+				if !SameActionCall(exact, projectID, input.ActionName, normalizedInput, input.Reason) {
 					return ErrIdempotencyConflict
 				}
 			}
@@ -157,6 +171,21 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	return r.View(ctx, result.Request), nil
 }
 
+func storedProjectReferenceMatches(request Request, ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if strings.HasPrefix(ref, "id:") {
+		id, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(ref, "id:")), 10, 64)
+		return err == nil && id > 0 && id == request.ProjectID
+	}
+	if strings.HasPrefix(ref, "slug:") {
+		return strings.TrimSpace(strings.TrimPrefix(ref, "slug:")) == request.ProjectSlug
+	}
+	if id, err := strconv.ParseInt(ref, 10, 64); err == nil && id > 0 && id == request.ProjectID {
+		return true
+	}
+	return ref != "" && ref == request.ProjectSlug
+}
+
 func (r *Runtime) GetOwned(ctx context.Context, id, tokenID int64) (RequestView, error) {
 	if err := r.validate(); err != nil {
 		return RequestView{}, err
@@ -183,9 +212,8 @@ func (r *Runtime) View(ctx context.Context, item Request) RequestView {
 	return RequestView{Request: item, OutputAuthorized: err == nil && r.authorizeOutput(ctx, exact)}
 }
 
-func SameActionCall(request Request, projectRef, actionName string, input map[string]any, reason string) bool {
-	projectMatches := request.ProjectSlug == projectRef || strconv.FormatInt(request.ProjectID, 10) == projectRef
-	if !projectMatches || request.ActionName != actionName || request.Reason != reason {
+func SameActionCall(request Request, projectID int64, actionName string, input map[string]any, reason string) bool {
+	if request.ProjectID != projectID || request.ActionName != actionName || request.Reason != reason {
 		return false
 	}
 	requestJSON, requestErr := json.Marshal(request.Input)

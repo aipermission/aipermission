@@ -31,6 +31,10 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
+Vault tools accept project references as `id:<id>` or `slug:<slug>`. Prefer
+these explicit forms in stored prompts and automation. Unprefixed references
+remain compatible unless a legacy numeric slug collides with a project ID.
+
 ## Connector Model
 
 Every connector uses the same permission path:

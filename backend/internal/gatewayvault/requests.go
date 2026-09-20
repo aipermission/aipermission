@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -257,7 +258,11 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 	mutations := requestMutationPort{component: component, runtime: runtime, finalizationTimeout: executionTimeout}
 	owner, err := vaultrequests.NewRuntime(vaultrequests.RuntimeDependencies{
 		Store: runtime.Requests.Store(ctx), Mutations: mutations,
-		Prepare: actions.Prepare, AuthorizeOutput: actions.AuthorizeOutput,
+		Prepare: actions.Prepare,
+		ResolveProject: func(ctx context.Context, ref string) (int64, error) {
+			return resolveVaultRequestProject(ctx, runtime.Storage.Database, ref)
+		},
+		AuthorizeOutput: actions.AuthorizeOutput,
 		AllowRequest: func(tokenID int64) bool {
 			return component.dependencies.AllowRequest("vault-request:" + runtime.Storage.DatabaseID + ":" + strconv.FormatInt(tokenID, 10))
 		},
@@ -282,4 +287,15 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)
 	}
 	return owner, nil
+}
+
+func resolveVaultRequestProject(ctx context.Context, database *sql.DB, ref string) (int64, error) {
+	project, err := projects.NewStore(database).ResolveRef(ctx, ref)
+	if errors.Is(err, projects.ErrNotFound) {
+		return 0, vaultrequests.ErrProjectNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return project.ID, nil
 }

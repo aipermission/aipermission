@@ -149,6 +149,11 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
+Use explicit project references in automation: `id:<id>` for a database ID or
+`slug:<slug>` for a stable slug. Plain IDs and slugs remain supported for
+compatibility, but a legacy numeric slug that collides with an ID is rejected
+instead of selecting a project implicitly.
+
 `call_vault_action` currently supports:
 
 - `generate_item`

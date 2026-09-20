@@ -49,6 +49,7 @@ type PreparedAction struct {
 }
 
 type ActionPreparer func(context.Context, int64, string, string, map[string]any) (PreparedAction, error)
+type ProjectResolver func(context.Context, string) (int64, error)
 type OutputAuthorizer func(context.Context, Request) bool
 type RequestLimiter func(int64) bool
 type EffectExecutor func(context.Context, Request) (any, error)
@@ -86,6 +87,7 @@ type RuntimeDependencies struct {
 	Store            RequestStore
 	Mutations        MutationPort
 	Prepare          ActionPreparer
+	ResolveProject   ProjectResolver
 	AuthorizeOutput  OutputAuthorizer
 	AllowRequest     RequestLimiter
 	Execute          EffectExecutor
@@ -106,6 +108,7 @@ type Runtime struct {
 	store            RequestStore
 	mutations        MutationPort
 	prepare          ActionPreparer
+	resolveProject   ProjectResolver
 	authorizeOutput  OutputAuthorizer
 	allowRequest     RequestLimiter
 	execute          EffectExecutor
@@ -123,7 +126,7 @@ type Runtime struct {
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
-	if dependencies.Store == nil || dependencies.Mutations == nil || dependencies.Prepare == nil ||
+	if dependencies.Store == nil || dependencies.Mutations == nil || dependencies.Prepare == nil || dependencies.ResolveProject == nil ||
 		dependencies.AuthorizeOutput == nil || dependencies.AllowRequest == nil || dependencies.Execute == nil ||
 		dependencies.ExecuteAtomic == nil || dependencies.Compensate == nil || dependencies.RepairProjection == nil || dependencies.RedactError == nil ||
 		dependencies.RedactProjection == nil || dependencies.SealRequest == nil || dependencies.OpenRequest == nil ||
@@ -136,7 +139,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	}
 	return &Runtime{
 		store: dependencies.Store, mutations: dependencies.Mutations,
-		prepare: dependencies.Prepare, authorizeOutput: dependencies.AuthorizeOutput,
+		prepare: dependencies.Prepare, resolveProject: dependencies.ResolveProject, authorizeOutput: dependencies.AuthorizeOutput,
 		allowRequest: dependencies.AllowRequest, execute: dependencies.Execute, executeAtomic: dependencies.ExecuteAtomic,
 		compensate: dependencies.Compensate, repairProjection: dependencies.RepairProjection,
 		redactError: dependencies.RedactError, redactProjection: dependencies.RedactProjection,
@@ -146,7 +149,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 }
 
 func (r *Runtime) validate() error {
-	if r == nil || r.store == nil || r.mutations == nil || r.prepare == nil || r.authorizeOutput == nil ||
+	if r == nil || r.store == nil || r.mutations == nil || r.prepare == nil || r.resolveProject == nil || r.authorizeOutput == nil ||
 		r.allowRequest == nil || r.execute == nil || r.compensate == nil || r.repairProjection == nil ||
 		r.executeAtomic == nil || r.redactError == nil || r.redactProjection == nil || r.sealRequest == nil ||
 		r.openRequest == nil || r.isStale == nil || r.mcpStarted == nil || r.acquireDelivery == nil || r.executionTimeout <= 0 {

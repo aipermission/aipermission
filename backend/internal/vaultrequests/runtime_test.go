@@ -155,6 +155,16 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 	}
 	runtime, err := NewRuntime(RuntimeDependencies{
 		Store: harness.store, Mutations: harness.mutations,
+		ResolveProject: func(ctx context.Context, ref string) (int64, error) {
+			project, resolveErr := projectstore.NewStore(database).ResolveRef(ctx, ref)
+			if errors.Is(resolveErr, projectstore.ErrNotFound) {
+				return 0, ErrProjectNotFound
+			}
+			if resolveErr != nil {
+				return 0, resolveErr
+			}
+			return project.ID, nil
+		},
 		Prepare: func(_ context.Context, tokenID int64, projectRef, actionName string, input map[string]any) (PreparedAction, error) {
 			harness.prepareCalls++
 			if tokenID != harness.tokenID || projectRef != harness.projectRef {
@@ -261,6 +271,80 @@ func TestRuntimeCallCreatesPromptRequestAndReplaysIdempotently(t *testing.T) {
 	})
 	if !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflicting replay error = %v", err)
+	}
+}
+
+func TestSameActionCallUsesResolvedProjectIdentity(t *testing.T) {
+	request := Request{
+		ProjectID: 42, ProjectSlug: "42", ActionName: ActionGenerateItem,
+		Input: map[string]any{"name": "PROJECT_KEY"}, Reason: "generate key",
+	}
+	if !SameActionCall(request, 42, request.ActionName, request.Input, request.Reason) {
+		t.Fatal("resolved project identity did not replay")
+	}
+	if SameActionCall(request, 43, request.ActionName, request.Input, request.Reason) {
+		t.Fatal("different explicit project id replayed")
+	}
+}
+
+func TestRuntimeCallCanonicalizesProjectReferenceBeforeReplay(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	first := harness.call(t, "canonical-project-replay")
+	for _, ref := range []string{"id:" + strconv.FormatInt(harness.projectID, 10), "id:+" + strconv.FormatInt(harness.projectID, 10)} {
+		view, err := harness.runtime.Call(t.Context(), CallInput{
+			TokenID: harness.tokenID, ProjectRef: ref, ActionName: ActionGenerateItem,
+			Input:  map[string]any{"name": "PROJECT_KEY", "generator_kind": "hex_32"},
+			Reason: "create a deployment key", IdempotencyKey: "canonical-project-replay",
+		})
+		if err != nil || view.Request.ID != first.Request.ID {
+			t.Fatalf("replay through %q = %#v, err=%v", ref, view, err)
+		}
+	}
+}
+
+func TestRuntimeCallRejectsAmbiguousBareNumericProjectBeforeReplay(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	_ = harness.call(t, "ambiguous-project-replay")
+	conflicting, err := projectstore.NewStore(harness.database).Create(t.Context(), "Numeric Slug Collision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.database.Exec(`UPDATE projects SET slug = ? WHERE id = ?`, harness.projectRef, conflicting.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = harness.runtime.Call(t.Context(), CallInput{
+		TokenID: harness.tokenID, ProjectRef: harness.projectRef, ActionName: ActionGenerateItem,
+		Input:  map[string]any{"name": "PROJECT_KEY", "generator_kind": "hex_32"},
+		Reason: "create a deployment key", IdempotencyKey: "ambiguous-project-replay",
+	})
+	if !errors.Is(err, projectstore.ErrAmbiguousRef) {
+		t.Fatalf("ambiguous replay error = %v", err)
+	}
+}
+
+func TestRuntimeCallReplaysAfterProjectIsArchived(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	first := harness.call(t, "archived-project-replay")
+	if err := projectstore.NewStore(harness.database).Archive(t.Context(), harness.projectID); err != nil {
+		t.Fatal(err)
+	}
+	second := harness.call(t, "archived-project-replay")
+	if second.Request.ID != first.Request.ID || harness.prepareCalls != 1 {
+		t.Fatalf("archived replay = %#v prepare=%d", second, harness.prepareCalls)
+	}
+}
+
+func TestStoredProjectReferenceMatchesCanonicalIdentity(t *testing.T) {
+	request := Request{ProjectID: 42, ProjectSlug: "project-42"}
+	for _, ref := range []string{"42", "+42", "id:42", "id:+42", "project-42", "slug:project-42"} {
+		if !storedProjectReferenceMatches(request, ref) {
+			t.Fatalf("reference %q did not match", ref)
+		}
+	}
+	for _, ref := range []string{"", "41", "id:41", "slug:other", "other"} {
+		if storedProjectReferenceMatches(request, ref) {
+			t.Fatalf("reference %q unexpectedly matched", ref)
+		}
 	}
 }
 

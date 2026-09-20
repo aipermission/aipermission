@@ -60,13 +60,23 @@ func (h *MCPHTTPHandlers) ListItems(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	rawProjectRefs, projectRefProvided := r.URL.Query()["project_ref"]
 	projectRef := strings.TrimSpace(r.URL.Query().Get("project_ref"))
+	if projectRefProvided && (len(rawProjectRefs) == 0 || projectRef == "") {
+		httptransport.WriteError(w, http.StatusBadRequest, "project_ref must not be empty when provided")
+		return
+	}
 	projects := projectstore.NewStore(scope.Database)
 	var visibleProjects []projectstore.Project
 	if projectRef != "" {
 		project, err := projects.ResolveRef(r.Context(), projectRef)
 		if errors.Is(err, projectstore.ErrNotFound) {
 			httptransport.WriteError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		var validation projectstore.ValidationError
+		if errors.Is(err, projectstore.ErrAmbiguousRef) || errors.As(err, &validation) {
+			httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err != nil {
@@ -256,8 +266,9 @@ func writeMCPCallError(w http.ResponseWriter, err error) bool {
 	}
 	var validation ValidationError
 	var preparation PreparationError
+	var projectValidation projectstore.ValidationError
 	switch {
-	case errors.As(err, &validation), errors.As(err, &preparation):
+	case errors.As(err, &validation), errors.As(err, &preparation), errors.As(err, &projectValidation), errors.Is(err, projectstore.ErrAmbiguousRef):
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrProjectNotFound):
 		httptransport.WriteError(w, http.StatusNotFound, err.Error())
