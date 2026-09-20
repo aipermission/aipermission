@@ -15,6 +15,25 @@ import (
 
 type failingConnectionTestConnector struct{ managementTestConnector }
 
+type admissionCheckingConnectionTestConnector struct {
+	managementTestConnector
+	admission *connectors.DeliveryAdmissionIdentity
+	held      *bool
+	checked   *bool
+}
+
+func (connector admissionCheckingConnectionTestConnector) TestConnection(ctx context.Context, runtime connectors.RuntimeContext) (connectors.TestResult, error) {
+	if !connectors.DeliveryAdmissionHeld(ctx, connector.admission) || connector.held == nil || !*connector.held {
+		return connectors.TestResult{}, errors.New("delivery admission is not held")
+	}
+	*connector.checked = true
+	return connector.managementTestConnector.TestConnection(ctx, runtime)
+}
+
+var managementTestDeliveryAdmission = &connectors.DeliveryAdmissionIdentity{}
+
+func managementTestAcquireDelivery(context.Context) (func(), error) { return func() {}, nil }
+
 func (failingConnectionTestConnector) TestConnection(context.Context, connectors.RuntimeContext) (connectors.TestResult, error) {
 	return connectors.TestResult{}, errors.New("remote reflected connection-secret")
 }
@@ -32,10 +51,26 @@ func TestProfileTestingHandlerRejectsIncompleteScope(t *testing.T) {
 
 func TestProfileTestingHandlerRunsConnectorAndReturnsRedactedResult(t *testing.T) {
 	fixture := newManagementHTTPFixture(t)
+	checked := false
+	held := false
+	admission := &connectors.DeliveryAdmissionIdentity{}
+	registry := connectors.NewRegistry()
+	if err := registry.Register(admissionCheckingConnectionTestConnector{
+		admission: admission,
+		held:      &held,
+		checked:   &checked,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
-			Database: fixture.database, Registry: fixture.registry,
-			Runtime:     managementCredentialRuntimePorts(),
+			Database: fixture.database, Registry: registry,
+			Runtime: managementCredentialRuntimePorts(),
+			AcquireDelivery: func(context.Context) (func(), error) {
+				held = true
+				return func() { held = false }, nil
+			},
+			Admission:   admission,
 			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
@@ -50,6 +85,12 @@ func TestProfileTestingHandlerRunsConnectorAndReturnsRedactedResult(t *testing.T
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !checked {
+		t.Fatal("connection test did not execute under delivery admission")
+	}
+	if held {
+		t.Fatal("connection test retained delivery admission after the response")
 	}
 	for _, expected := range []string{
 		"\"ok\":true", "\"status\":\"ok\"", "\"message\":\"connection ready\"", "\"transport\":\"fixture\"",
@@ -78,6 +119,7 @@ func TestProfileTestingHandlerRedactsConnectorErrors(t *testing.T) {
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: registry, Runtime: runtime,
+			AcquireDelivery: managementTestAcquireDelivery, Admission: managementTestDeliveryAdmission,
 			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil
@@ -115,6 +157,7 @@ func TestProfileTestingHandlerHonorsSpecialTestAndFailsClosedOnDetailRedaction(t
 		}
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry, Runtime: runtime,
+			AcquireDelivery: managementTestAcquireDelivery, Admission: managementTestDeliveryAdmission,
 			SpecialTest: func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
 				response := connectors.ManagementResponse{
 					StatusCode:      http.StatusAccepted,
@@ -137,6 +180,7 @@ func TestProfileTestingHandlerHonorsSpecialTestAndFailsClosedOnDetailRedaction(t
 	redactionFailure := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry, Runtime: managementCredentialRuntimePorts(),
+			AcquireDelivery: managementTestAcquireDelivery, Admission: managementTestDeliveryAdmission,
 			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error) {
 				return nil, errors.New("redaction failed")
@@ -156,6 +200,7 @@ func TestProfileTestingHandlerRejectsMalformedTargetAndProfileIDs(t *testing.T) 
 	handler := NewProfileTestingHTTPHandler(func(http.ResponseWriter) (ProfileTestingScope, bool) {
 		return ProfileTestingScope{
 			Database: fixture.database, Registry: fixture.registry, Runtime: managementCredentialRuntimePorts(),
+			AcquireDelivery: managementTestAcquireDelivery, Admission: managementTestDeliveryAdmission,
 			SpecialTest: noSpecialProfileTest,
 			RedactDetails: func(_ context.Context, details map[string]any, _ CredentialBoundary) (map[string]any, error) {
 				return details, nil

@@ -3,6 +3,7 @@ package gatewayconnectormanagement
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -83,6 +84,7 @@ func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Re
 			return
 		}
 		defer release()
+		*r = *r.WithContext(connectors.WithDeliveryAdmission(r.Context(), workspace.Storage.Admission))
 	}
 	operation(adapter, w, r, workspace.Credentials.ResourceRuntime(kind))
 }

@@ -68,7 +68,9 @@ func (component *ConnectorManagementOwner) connectorManagementWorkspace(handle *
 	}
 	ports.Storage.Database = capability.Database
 	ports.Storage.Registry = capability.Registry
+	ports.Storage.AcquireDelivery = capability.Delivery.AcquireDelivery
 	ports.Storage.AcquireExclusive = capability.Delivery.AcquireExclusive
+	ports.Storage.Admission = capability.Delivery.AdmissionIdentity()
 	ports.Storage.Transaction = func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 		return component.observation.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 			return mutate(tx, connectormgmt.AuditAppender(appendAudit))

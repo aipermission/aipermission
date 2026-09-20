@@ -195,6 +195,7 @@ func (r *Runtime) executeSessionApply(
 	}
 	admission := newDeliveryAdmission(releaseDelivery)
 	defer admission.releaseIfUnclaimed()
+	ctx = withDeliveryAdmission(ctx, r.delivery)
 	if err := authorize(ctx); err != nil {
 		return nil, err
 	}
@@ -246,12 +247,17 @@ func (r *Runtime) executeSessionApply(
 	if rows < 1 {
 		rows = 32
 	}
+	startupAdmissionRelease, err := admission.claim()
+	if err != nil {
+		return nil, err
+	}
 	createRequest := console.CreateRequest{
 		RuntimeID: approval.RuntimeID, Name: fmt.Sprintf("Vault session for %s", request.ProjectName),
 		CloseExisting: false, Cols: cols, Rows: rows, WaitForStart: true, Principal: principal,
-		PrepareEnvironment:     consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize, admission)),
-		EnvironmentContentHash: approval.EnvironmentContentHash,
-		ApprovalContextHash:    request.ApprovalContextHash,
+		PrepareEnvironment:      consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize, startupAdmissionRelease)),
+		StartupAdmissionRelease: startupAdmissionRelease,
+		EnvironmentContentHash:  approval.EnvironmentContentHash,
+		ApprovalContextHash:     request.ApprovalContextHash,
 	}
 	expected := console.SessionHandle{}
 	if approval.ExpectedSessionID > 0 {
@@ -271,6 +277,13 @@ func (r *Runtime) executeSessionApply(
 		"runtime_id": record.RuntimeID, "status": record.Status,
 		"environment_names": itemNames(approval.Items), "expires_at": expiresAt.Format(time.RFC3339),
 	}, nil
+}
+
+func withDeliveryAdmission(ctx context.Context, delivery DeliveryGate) context.Context {
+	if delivery == nil {
+		return ctx
+	}
+	return delivery.WithAdmission(ctx)
 }
 
 func consoleEnvironmentPreparer(preparer EnvironmentPreparer) console.EnvironmentPreparer {

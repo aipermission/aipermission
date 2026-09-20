@@ -29,7 +29,9 @@ func adaptTransaction(transaction Transaction) func(context.Context, func(*sql.T
 type StoragePorts struct {
 	Database         *sql.DB
 	Registry         connectors.Catalog
+	AcquireDelivery  func(context.Context) (func(), error)
 	AcquireExclusive func(context.Context) (func(), error)
+	Admission        *connectors.DeliveryAdmissionIdentity
 	Transaction      Transaction
 	EncryptSecret    func(context.Context, int64, json.RawMessage) (string, error)
 }
@@ -195,6 +197,7 @@ func (component *Component) targetMutation(workspace Workspace) connectormanagem
 			return ValidateTransport(ctx, connectortargets.NewStore(workspace.Storage.Database), projectID, config, component.dependencies.Capabilities.HasTCPTransport)
 		},
 		AcquireExclusive: workspace.Storage.AcquireExclusive,
+		Admission:        workspace.Storage.Admission,
 		WithTransaction:  adaptTransaction(workspace.Storage.Transaction),
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
@@ -217,6 +220,7 @@ func (component *Component) profileMutation(workspace Workspace) connectormanage
 	return connectormanagement.ProfileMutationScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry,
 		Preparation: workspace.Credentials.Preparation.domain(), AcquireExclusive: workspace.Storage.AcquireExclusive,
+		Admission:       workspace.Storage.Admission,
 		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
 		BeforeCreate: func(ctx context.Context, target connectortargets.Target) error {
 			return workspace.Credentials.BeforeCreate(ctx, targetFromDomain(target))
@@ -239,6 +243,7 @@ func (component *Component) CombinedMutationScope(w http.ResponseWriter) (connec
 	return connectormanagement.CombinedMutationScope{
 		Database: target.Database, Registry: target.Registry, Preparation: profile.Preparation,
 		ValidateTransport: target.ValidateTransport, AcquireExclusive: target.AcquireExclusive,
+		Admission:       target.Admission,
 		WithTransaction: profile.WithTransaction, BeforeCreate: profile.BeforeCreate,
 		EnsureRuntimeSurfaces: profile.EnsureRuntimeSurfaces, AfterLifecycleChange: profile.AfterLifecycleChange,
 	}, true
@@ -279,6 +284,7 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 	return connectormanagement.ProvisioningScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
 		AcquireExclusive: workspace.Storage.AcquireExclusive,
+		Admission:        workspace.Storage.Admission,
 		EncryptSecret:    workspace.Storage.EncryptSecret,
 		WithTransaction:  adaptTransaction(workspace.Storage.Transaction),
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {

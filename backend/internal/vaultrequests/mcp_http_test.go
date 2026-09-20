@@ -12,6 +12,31 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
+type deliveryCheckingResponseWriter struct {
+	*httptest.ResponseRecorder
+	t       *testing.T
+	held    func() bool
+	checked bool
+}
+
+func (writer *deliveryCheckingResponseWriter) WriteHeader(status int) {
+	writer.t.Helper()
+	if !writer.held() {
+		writer.t.Error("Vault response headers were written without delivery admission")
+	}
+	writer.checked = true
+	writer.ResponseRecorder.WriteHeader(status)
+}
+
+func (writer *deliveryCheckingResponseWriter) Write(payload []byte) (int, error) {
+	writer.t.Helper()
+	if !writer.held() {
+		writer.t.Error("Vault response body was written without delivery admission")
+	}
+	writer.checked = true
+	return writer.ResponseRecorder.Write(payload)
+}
+
 func TestMCPHandlersFailClosedWithoutCompositionScope(t *testing.T) {
 	handlers := NewMCPHTTPHandlers(func(http.ResponseWriter, *http.Request) (MCPHTTPScope, bool) {
 		return MCPHTTPScope{}, true
@@ -42,6 +67,32 @@ func TestMCPCallPreservesStoppedPrecedenceBeforeBodyDecode(t *testing.T) {
 	handlers.Call(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"stopped"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestMCPCallHoldsDeliveryAdmissionThroughResponseWrite(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	secretVault, err := vault.New("mcp-http-delivery-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handlers := NewMCPHTTPHandlers(func(http.ResponseWriter, *http.Request) (MCPHTTPScope, bool) {
+		return MCPHTTPScope{
+			Database: harness.database, Vault: secretVault, WorkspaceUUID: "mcp-http-workspace",
+			TokenID: harness.tokenID, MCPStarted: func() bool { return true },
+			Runtime:      func(context.Context) (Application, error) { return harness.runtime, nil },
+			MetadataRead: func(context.Context, int64) (bool, error) { return true, nil },
+		}, true
+	})
+	recorder := httptest.NewRecorder()
+	response := &deliveryCheckingResponseWriter{ResponseRecorder: recorder, t: t, held: harness.delivery.held}
+	body := fmt.Sprintf(`{"project_ref":%q,"action_name":%q,"input":{"name":"PROJECT_KEY","generator_kind":"hex_32"},"reason":"create a deployment key","idempotency_key":"http-delivery"}`,
+		harness.projectRef, ActionGenerateItem)
+	request := httptest.NewRequest(http.MethodPost, "/api/mcp/vault-actions/call", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	handlers.Call(response, request)
+	if recorder.Code != http.StatusOK || !response.checked || harness.delivery.held() {
+		t.Fatalf("response=%d checked=%v held=%v body=%s", recorder.Code, response.checked, harness.delivery.held(), recorder.Body.String())
 	}
 }
 

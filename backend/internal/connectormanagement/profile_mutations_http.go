@@ -16,6 +16,7 @@ type ProfileMutationScope struct {
 	Registry              connectors.Catalog
 	Preparation           CredentialPreparationPorts
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	BeforeCreate          func(context.Context, connectortargets.Target) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
@@ -45,7 +46,7 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential profile create was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile create was canceled")
 	if !ok {
 		return
 	}
@@ -144,7 +145,7 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential profile update was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile update was canceled")
 	if !ok {
 		return
 	}

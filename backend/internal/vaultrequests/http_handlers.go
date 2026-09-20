@@ -19,8 +19,9 @@ type Application interface {
 	Get(context.Context, int64) (Request, error)
 	RunPending(context.Context, int64, string) (WorkflowResult, error)
 	DeclinePending(context.Context, int64, string) (Request, error)
-	Call(context.Context, CallInput) (RequestView, error)
-	GetOwned(context.Context, int64, int64) (RequestView, error)
+	Call(context.Context, CallInput) (Request, error)
+	DeliverCallResult(context.Context, int64, int64, func(RequestView)) error
+	DeliverOwned(context.Context, int64, int64, func(RequestView)) error
 	CancelOwned(context.Context, int64, int64) (Request, error)
 	StalePendingForContext(context.Context, int64, int64, string) error
 	StalePendingForProject(context.Context, int64, string) error

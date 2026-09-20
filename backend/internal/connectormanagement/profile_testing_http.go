@@ -26,11 +26,13 @@ type ConnectionTestResponse struct {
 }
 
 type ProfileTestingScope struct {
-	Database      *sql.DB
-	Registry      connectors.Catalog
-	Runtime       CredentialRuntimePorts
-	SpecialTest   func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
-	RedactDetails func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
+	Database        *sql.DB
+	Registry        connectors.Catalog
+	Runtime         CredentialRuntimePorts
+	AcquireDelivery func(context.Context) (func(), error)
+	Admission       *connectors.DeliveryAdmissionIdentity
+	SpecialTest     func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
+	RedactDetails   func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
 }
 
 type ProfileTestingScopeProvider func(http.ResponseWriter) (ProfileTestingScope, bool)
@@ -46,6 +48,11 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	release, ok := acquireLifecycleDelivery(w, r, scope.AcquireDelivery, scope.Admission, "connector connection test was canceled")
+	if !ok {
+		return
+	}
+	defer release()
 	targetID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
 		return
@@ -141,7 +148,7 @@ func (h *ProfileTestingHTTPHandler) resolve(w http.ResponseWriter) (ProfileTesti
 	if !ok {
 		return ProfileTestingScope{}, false
 	}
-	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.SpecialTest == nil || scope.RedactDetails == nil {
+	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.AcquireDelivery == nil || scope.Admission == nil || scope.SpecialTest == nil || scope.RedactDetails == nil {
 		httptransport.WriteInternalError(w)
 		return ProfileTestingScope{}, false
 	}

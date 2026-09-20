@@ -22,8 +22,8 @@ func TestHTTPHandlersListAndRunPendingRequest(t *testing.T) {
 		t.Fatalf("list response = %d %s", listed.Code, listed.Body.String())
 	}
 
-	run := approvalHTTPRequest(http.MethodPost, `/api/vault-action-approvals/1/run`, `{"user_note":" approved ","approval_context_hash":"`+created.Request.ApprovalContextHash+`"}`)
-	run.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	run := approvalHTTPRequest(http.MethodPost, `/api/vault-action-approvals/1/run`, `{"user_note":" approved ","approval_context_hash":"`+created.ApprovalContextHash+`"}`)
+	run.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 	handlers.Run(response, run)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"completed"`) ||
@@ -39,13 +39,13 @@ func TestHTTPHandlersGetExactRequest(t *testing.T) {
 		return testApprovalHTTPScope(harness), true
 	})
 	request := httptest.NewRequest(http.MethodGet, "/api/vault-action-approvals/1", nil)
-	request.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	request.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 
 	handlers.Get(response, request)
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":`+strconv.FormatInt(created.Request.ID, 10)) ||
-		!strings.Contains(response.Body.String(), `"approval_context_hash":"`+created.Request.ApprovalContextHash+`"`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":`+strconv.FormatInt(created.ID, 10)) ||
+		!strings.Contains(response.Body.String(), `"approval_context_hash":"`+created.ApprovalContextHash+`"`) {
 		t.Fatalf("get response = %d %s", response.Code, response.Body.String())
 	}
 }
@@ -102,8 +102,8 @@ func TestHTTPHandlersDeclineAndValidateNotes(t *testing.T) {
 		return testApprovalHTTPScope(harness), true
 	})
 
-	decline := approvalHTTPRequest(http.MethodPost, "/api/vault-action-approvals/1/decline", `{"approval_context_hash":"`+created.Request.ApprovalContextHash+`"}`)
-	decline.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	decline := approvalHTTPRequest(http.MethodPost, "/api/vault-action-approvals/1/decline", `{"approval_context_hash":"`+created.ApprovalContextHash+`"}`)
+	decline.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 	handlers.Decline(response, decline)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"declined"`) {
@@ -115,7 +115,7 @@ func TestHTTPHandlersDeclineAndValidateNotes(t *testing.T) {
 		http.MethodPost, "/api/vault-action-approvals/1/decline",
 		`{"user_note":"`+strings.Repeat("x", maxUserNoteBytes+1)+`"}`,
 	)
-	tooLong.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	tooLong.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	invalid := httptest.NewRecorder()
 	handlers.Decline(invalid, tooLong)
 	if invalid.Code != http.StatusBadRequest {
@@ -130,7 +130,7 @@ func TestHTTPHandlersRejectApprovalContextThatWasNotDisplayed(t *testing.T) {
 		return testApprovalHTTPScope(harness), true
 	})
 	request := approvalHTTPRequest(http.MethodPost, "/api/vault-action-approvals/1/run", `{"approval_context_hash":"different-context"}`)
-	request.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	request.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 
 	handlers.Run(response, request)
@@ -138,7 +138,7 @@ func TestHTTPHandlersRejectApprovalContextThatWasNotDisplayed(t *testing.T) {
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_context_changed"`) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
-	stored, err := harness.runtime.Get(t.Context(), created.Request.ID)
+	stored, err := harness.runtime.Get(t.Context(), created.ID)
 	if err != nil || stored.Status != StatusApprovalPending {
 		t.Fatalf("stored request = %#v err=%v", stored, err)
 	}

@@ -54,6 +54,12 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	}
 }
 
+func activeSessionCount(manager *Manager) int {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.activeSessionCountLocked()
+}
+
 func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
@@ -81,7 +87,7 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 	if err := manager.CloseAll(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if count := manager.activeSessionCount(); count != 0 {
+	if count := activeSessionCount(manager); count != 0 {
 		t.Fatalf("sessions retained after CloseAll: %d", count)
 	}
 	if _, err := manager.Create(t.Context(), CreateRequest{
@@ -199,8 +205,8 @@ func TestConsoleSessionManagerSerializesGlobalSessionAdmission(t *testing.T) {
 			t.Fatalf("unexpected create error: %v", createErr)
 		}
 	}
-	if successes != 1 || limits != 1 || manager.activeSessionCount() != maxActiveConsoleSessions {
-		t.Fatalf("successes=%d limits=%d active=%d", successes, limits, manager.activeSessionCount())
+	if successes != 1 || limits != 1 || activeSessionCount(manager) != maxActiveConsoleSessions {
+		t.Fatalf("successes=%d limits=%d active=%d", successes, limits, activeSessionCount(manager))
 	}
 	var rows int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id IN (?, ?)`, runtimeIDs[0], runtimeIDs[1]).Scan(&rows); err != nil {
@@ -227,6 +233,54 @@ func TestConsoleSessionManagerSerializesGlobalSessionAdmission(t *testing.T) {
 	}
 }
 
+func TestConsoleSessionManagerPreservesContextValuesWithoutRequestCancellation(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-context", "127.0.0.1", 22)
+	type contextKey struct{}
+	const contextValue = "delivery-admission"
+	entered := make(chan struct{})
+	continueOpen := make(chan struct{})
+	observed := make(chan struct {
+		value any
+		err   error
+	}, 1)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		close(entered)
+		<-continueOpen
+		observed <- struct {
+			value any
+			err   error
+		}{value: ctx.Value(contextKey{}), err: ctx.Err()}
+		return nil, errors.New("stop after context observation")
+	}, nil)
+
+	requestCtx, cancelRequest := context.WithCancel(context.WithValue(t.Context(), contextKey{}, contextValue))
+	if _, err := manager.Create(requestCtx, CreateRequest{
+		RuntimeID: runtimeID, Principal: testExecutionPrincipal(), WaitForStart: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	cancelRequest()
+	close(continueOpen)
+	got := <-observed
+	if got.err != nil {
+		t.Fatalf("session context inherited request cancellation: %v", got.err)
+	}
+	if got.value != contextValue {
+		t.Fatalf("session context value = %#v, want %q", got.value, contextValue)
+	}
+	cleanupCtx, cancelCleanup := context.WithTimeout(t.Context(), time.Second)
+	defer cancelCleanup()
+	if err := manager.CloseAll(cleanupCtx); err != nil {
+		t.Fatalf("close context test manager: %v", err)
+	}
+}
+
 func TestConsoleSessionManagerCloseExistingCannotBypassGlobalLimit(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
@@ -246,8 +300,8 @@ func TestConsoleSessionManagerCloseExistingCannotBypassGlobalLimit(t *testing.T)
 	if !errors.Is(err, ErrSessionLimit) {
 		t.Fatalf("create error = %v, want %v", err, ErrSessionLimit)
 	}
-	if manager.activeSessionCount() != maxActiveConsoleSessions {
-		t.Fatalf("active sessions = %d", manager.activeSessionCount())
+	if activeSessionCount(manager) != maxActiveConsoleSessions {
+		t.Fatalf("active sessions = %d", activeSessionCount(manager))
 	}
 	var rows int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id = ?`, runtimeID).Scan(&rows); err != nil {
@@ -589,6 +643,61 @@ func TestClosingBeforeRuntimePublicationClosesPublishedTransportOnce(t *testing.
 	}
 	if closeCalls.Load() != 1 {
 		t.Fatalf("transport close calls = %d, want 1", closeCalls.Load())
+	}
+}
+
+func TestCanceledCreateRetainsStartupAdmissionUntilRuntimeOpenerExits(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-startup-admission", "127.0.0.1", 22)
+	openStarted := make(chan struct{})
+	releaseOpen := make(chan struct{})
+	admissionReleased := make(chan struct{})
+	var releaseOnce sync.Once
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		close(openStarted)
+		<-releaseOpen
+		return nil, ctx.Err()
+	}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	createResult := make(chan error, 1)
+	go func() {
+		_, createErr := manager.Create(ctx, CreateRequest{
+			RuntimeID: runtimeID, Name: "startup admission", Principal: testExecutionPrincipal(), WaitForStart: true,
+			StartupAdmissionRelease: func() { releaseOnce.Do(func() { close(admissionReleased) }) },
+		})
+		createResult <- createErr
+	}()
+	<-openStarted
+	session := manager.activeForRuntime(runtimeID)
+	if session == nil {
+		t.Fatal("connecting session was not published")
+	}
+	cancel()
+	select {
+	case err := <-createResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Create() error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled create did not return")
+	}
+	select {
+	case <-admissionReleased:
+		t.Fatal("startup admission released while runtime opener still held the admitted context")
+	default:
+	}
+	close(releaseOpen)
+	select {
+	case <-admissionReleased:
+	case <-time.After(time.Second):
+		t.Fatal("startup admission was not released after runtime opener exited")
+	}
+	if err := session.waitDone(t.Context()); err != nil {
+		t.Fatalf("wait for canceled session finalization: %v", err)
 	}
 }
 

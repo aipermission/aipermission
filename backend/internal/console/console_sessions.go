@@ -71,18 +71,20 @@ type Record struct {
 }
 
 type CreateRequest struct {
-	RuntimeID              int64                        `json:"runtime_id"`
-	Name                   string                       `json:"name"`
-	CloseExisting          bool                         `json:"close_existing"`
-	Cols                   int                          `json:"cols"`
-	Rows                   int                          `json:"rows"`
-	WaitForStart           bool                         `json:"wait_for_start"`
-	Params                 map[string]any               `json:"params,omitempty"`
-	Principal              executionprincipal.Principal `json:"-"`
-	Environment            *sessionenv.Envelope         `json:"-"`
-	PrepareEnvironment     EnvironmentPreparer          `json:"-"`
-	EnvironmentContentHash string                       `json:"-"`
-	ApprovalContextHash    string                       `json:"-"`
+	RuntimeID          int64                        `json:"runtime_id"`
+	Name               string                       `json:"name"`
+	CloseExisting      bool                         `json:"close_existing"`
+	Cols               int                          `json:"cols"`
+	Rows               int                          `json:"rows"`
+	WaitForStart       bool                         `json:"wait_for_start"`
+	Params             map[string]any               `json:"params,omitempty"`
+	Principal          executionprincipal.Principal `json:"-"`
+	Environment        *sessionenv.Envelope         `json:"-"`
+	PrepareEnvironment EnvironmentPreparer          `json:"-"`
+	// StartupAdmissionRelease is an idempotent callback owned by the session.
+	StartupAdmissionRelease func() `json:"-"`
+	EnvironmentContentHash  string `json:"-"`
+	ApprovalContextHash     string `json:"-"`
 }
 
 type EnvironmentPreparation struct {
@@ -211,23 +213,24 @@ func (m *Manager) redactText(value string) string {
 }
 
 type managedConsoleSession struct {
-	id                     int64
-	runtimeID              int64
-	generation             int64
-	name                   string
-	cols                   int
-	rows                   int
-	params                 map[string]any
-	principal              executionprincipal.Principal
-	environment            *sessionenv.Envelope
-	prepareEnvironment     EnvironmentPreparer
-	environmentContentHash string
-	approvalContextHash    string
-	exactRedactor          *sessionenv.Redactor
-	stdoutExactRedactor    *sessionenv.Redactor
-	stderrExactRedactor    *sessionenv.Redactor
-	exactRedactionClosed   bool
-	manager                *Manager
+	id                      int64
+	runtimeID               int64
+	generation              int64
+	name                    string
+	cols                    int
+	rows                    int
+	params                  map[string]any
+	principal               executionprincipal.Principal
+	environment             *sessionenv.Envelope
+	prepareEnvironment      EnvironmentPreparer
+	startupAdmissionRelease func()
+	environmentContentHash  string
+	approvalContextHash     string
+	exactRedactor           *sessionenv.Redactor
+	stdoutExactRedactor     *sessionenv.Redactor
+	stderrExactRedactor     *sessionenv.Redactor
+	exactRedactionClosed    bool
+	manager                 *Manager
 
 	ctx        context.Context
 	cancel     context.CancelFunc

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -19,6 +20,7 @@ type ProfileCleanupOutcome struct {
 type ProfileDeletionScope struct {
 	Database             *sql.DB
 	AcquireExclusive     func(context.Context) (func(), error)
+	Admission            *connectors.DeliveryAdmissionIdentity
 	Cleanup              func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) (ProfileCleanupOutcome, error)
 	BeforeDelete         func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) error
 	WithTransaction      func(context.Context, func(*sql.Tx, AuditAppender) error) error
@@ -48,7 +50,7 @@ func (h *ProfileDeletionHTTPHandler) Delete(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential profile deletion was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile deletion was canceled")
 	if !ok {
 		return
 	}

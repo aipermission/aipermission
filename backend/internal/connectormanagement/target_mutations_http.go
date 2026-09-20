@@ -27,6 +27,7 @@ type TargetMutationScope struct {
 	Registry              connectors.Catalog
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
 	AfterLifecycleChange  func(context.Context, TargetLifecycleChange) error
@@ -110,7 +111,7 @@ func (h *TargetMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reques
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target update was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector target update was canceled")
 	if !ok {
 		return
 	}

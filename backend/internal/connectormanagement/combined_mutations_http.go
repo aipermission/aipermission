@@ -18,6 +18,7 @@ type CombinedMutationScope struct {
 	Preparation           CredentialPreparationPorts
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	BeforeCreate          func(context.Context, connectortargets.Target) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
@@ -54,7 +55,7 @@ func (h *CombinedMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Requ
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target create was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector target create was canceled")
 	if !ok {
 		return
 	}
@@ -120,7 +121,7 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector target update was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector target update was canceled")
 	if !ok {
 		return
 	}

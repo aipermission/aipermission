@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -34,10 +36,20 @@ func (testConnectorPort) ExpectedPeerIdentities(context.Context, connectortarget
 	return PeerIdentityExpectation{}, nil
 }
 
-type testDeliveryGate struct{}
+type testDeliveryGate struct {
+	identity *connectors.DeliveryAdmissionIdentity
+}
+
+var fallbackTestDeliveryAdmission connectors.DeliveryAdmissionIdentity
 
 func (testDeliveryGate) AcquireDelivery(context.Context) (func(), error)  { return func() {}, nil }
 func (testDeliveryGate) AcquireExclusive(context.Context) (func(), error) { return func() {}, nil }
+func (gate testDeliveryGate) WithAdmission(ctx context.Context) context.Context {
+	if gate.identity != nil {
+		return connectors.WithDeliveryAdmission(ctx, gate.identity)
+	}
+	return connectors.WithDeliveryAdmission(ctx, &fallbackTestDeliveryAdmission)
+}
 
 type testProjectPort struct{ store *projectstore.Store }
 
@@ -82,7 +94,13 @@ type testSessions struct{}
 func (testSessions) ActiveRecord(context.Context, int64) (console.Record, error) {
 	return console.Record{}, console.ErrNotFound
 }
-func (testSessions) ReplaceIfCurrent(context.Context, executionprincipal.Principal, console.SessionHandle, console.CreateRequest) (console.Record, error) {
+func (testSessions) ReplaceIfCurrent(_ context.Context, _ executionprincipal.Principal, _ console.SessionHandle, request console.CreateRequest) (console.Record, error) {
+	if request.Environment != nil {
+		request.Environment.Destroy()
+	}
+	if request.StartupAdmissionRelease != nil {
+		request.StartupAdmissionRelease()
+	}
 	return console.Record{}, errors.New("not used")
 }
 func (testSessions) Close(context.Context, executionprincipal.Principal, int64) error { return nil }
@@ -360,6 +378,69 @@ func TestDeliveryAdmissionReleasesExactlyOnceForCallerAndPreparerOwnership(t *te
 	release()
 	if preparerReleases != 1 {
 		t.Fatalf("claimed delivery releases = %d, want 1", preparerReleases)
+	}
+}
+
+func TestVaultSessionContextCarriesExactDeliveryAdmission(t *testing.T) {
+	identity := &connectors.DeliveryAdmissionIdentity{}
+	other := &connectors.DeliveryAdmissionIdentity{}
+	ctx := withDeliveryAdmission(t.Context(), testDeliveryGate{identity: identity})
+	if !connectors.DeliveryAdmissionHeld(ctx, identity) {
+		t.Fatal("Vault session context does not carry its delivery admission")
+	}
+	if connectors.DeliveryAdmissionHeld(ctx, other) {
+		t.Fatal("Vault session context carries a different delivery admission")
+	}
+}
+
+func TestVaultSessionAdmissionPreventsNestedTransportDeadlock(t *testing.T) {
+	coordinator := &vaultsessions.DeliveryCoordinator{}
+	outerRelease, err := coordinator.AcquireDelivery(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outerRelease()
+
+	writerAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := coordinator.AcquireExclusive(t.Context())
+		if acquireErr == nil {
+			writerAcquired <- release
+		}
+	}()
+	writerQueued := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		probeCtx, cancelProbe := context.WithTimeout(t.Context(), 5*time.Millisecond)
+		probeRelease, probeErr := coordinator.AcquireDelivery(probeCtx)
+		cancelProbe()
+		if probeErr != nil {
+			writerQueued = true
+			break
+		}
+		probeRelease()
+	}
+	if !writerQueued {
+		t.Fatal("lifecycle writer did not enter the admission queue")
+	}
+
+	gate := testDeliveryGate{identity: coordinator.AdmissionIdentity()}
+	admittedCtx := withDeliveryAdmission(t.Context(), gate)
+	nestedRelease, err := (connectortransport.Approved(nil)).Acquire(admittedCtx, connectortransport.Runtime{
+		Database:        &sql.DB{},
+		AcquireDelivery: coordinator.AcquireDelivery,
+		Admission:       coordinator.AdmissionIdentity(),
+	}, connectors.CommandTransportCapabilityName, "ssh:1:1")
+	if err != nil {
+		t.Fatalf("nested transport acquisition blocked behind its own writer: %v", err)
+	}
+	nestedRelease()
+
+	outerRelease()
+	select {
+	case release := <-writerAcquired:
+		release()
+	case <-time.After(time.Second):
+		t.Fatal("waiting lifecycle writer did not acquire after the Vault delivery released")
 	}
 }
 

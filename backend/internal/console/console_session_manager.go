@@ -77,7 +77,7 @@ func (m *Manager) List(ctx context.Context, runtimeID int64) ([]Record, error) {
 
 func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, error) {
 	if request.RuntimeID < 1 {
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, fmt.Errorf("runtime_id is required")
 	}
 	lock := m.runtimeLifecycle(request.RuntimeID)
@@ -92,11 +92,11 @@ func (m *Manager) Create(ctx context.Context, request CreateRequest) (Record, er
 
 func (m *Manager) ReplaceIfCurrent(ctx context.Context, closePrincipal executionprincipal.Principal, expected SessionHandle, request CreateRequest) (Record, error) {
 	if err := closePrincipal.Validate(); err != nil {
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, err
 	}
 	if request.RuntimeID < 1 || (expected.Valid() && expected.RuntimeID != request.RuntimeID) {
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, ErrSessionChanged
 	}
 	lock := m.runtimeLifecycle(request.RuntimeID)
@@ -106,24 +106,24 @@ func (m *Manager) ReplaceIfCurrent(ctx context.Context, closePrincipal execution
 		current := m.active(expected.ID)
 		if current == nil || current.runtimeID != expected.RuntimeID || current.generation != expected.Generation {
 			lock.Unlock()
-			destroyCreateEnvironment(request)
+			destroyCreateResources(request)
 			return Record{}, ErrSessionChanged
 		}
 		status, _ := current.snapshot()
 		if status != "connecting" && status != "connected" {
 			lock.Unlock()
-			destroyCreateEnvironment(request)
+			destroyCreateResources(request)
 			return Record{}, ErrSessionChanged
 		}
 		request.Cols, request.Rows = current.dimensions()
 		if err := m.closeSessionLocked(ctx, closePrincipal, current); err != nil {
 			lock.Unlock()
-			destroyCreateEnvironment(request)
+			destroyCreateResources(request)
 			return Record{}, err
 		}
 	} else if m.activeForRuntime(request.RuntimeID) != nil {
 		lock.Unlock()
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, ErrSessionChanged
 	}
 	request.CloseExisting = false
@@ -145,11 +145,11 @@ func (m *Manager) ActiveRecord(ctx context.Context, runtimeID int64) (Record, er
 
 func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Record, *managedConsoleSession, error) {
 	if err := request.Principal.Validate(); err != nil {
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, nil, err
 	}
 	if request.RuntimeID < 1 {
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, nil, fmt.Errorf("runtime_id is required")
 	}
 	request.Name = strings.TrimSpace(request.Name)
@@ -164,7 +164,7 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 	}
 	if request.CloseExisting {
 		if err := m.closeRuntimeLocked(ctx, request.Principal, request.RuntimeID); err != nil {
-			destroyCreateEnvironment(request)
+			destroyCreateResources(request)
 			return Record{}, nil, err
 		}
 	}
@@ -173,19 +173,19 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, nil, ErrManagerClosed
 	}
 	if m.activeSessionCountLocked() >= maxActiveConsoleSessions {
 		m.mu.Unlock()
-		destroyCreateEnvironment(request)
+		destroyCreateResources(request)
 		return Record{}, nil, ErrSessionLimit
 	}
 	var generation int64
 	err = m.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(generation), 0) + 1 FROM console_sessions WHERE runtime_id = ?`, request.RuntimeID).Scan(&generation)
 	if err != nil {
 		m.mu.Unlock()
-		request.Environment.Destroy()
+		destroyCreateResources(request)
 		return Record{}, nil, fmt.Errorf("read next console generation: %w", err)
 	}
 	result, err := m.db.ExecContext(ctx, `
@@ -211,37 +211,40 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 	)
 	if err != nil {
 		m.mu.Unlock()
-		request.Environment.Destroy()
+		destroyCreateResources(request)
 		return Record{}, nil, fmt.Errorf("create console session: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		m.mu.Unlock()
-		request.Environment.Destroy()
+		destroyCreateResources(request)
 		return Record{}, nil, fmt.Errorf("read console session id: %w", err)
 	}
 
-	sessionCtx, cancel := context.WithCancel(context.Background())
+	// A console session outlives the creating HTTP request, but connector-owned
+	// admission values must survive into the runtime-opening goroutine.
+	sessionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	managed := &managedConsoleSession{
-		id:                     id,
-		runtimeID:              request.RuntimeID,
-		generation:             generation,
-		name:                   request.Name,
-		cols:                   request.Cols,
-		rows:                   request.Rows,
-		params:                 maps.Clone(request.Params),
-		principal:              request.Principal,
-		environment:            request.Environment,
-		prepareEnvironment:     request.PrepareEnvironment,
-		environmentContentHash: strings.TrimSpace(request.EnvironmentContentHash),
-		approvalContextHash:    strings.TrimSpace(request.ApprovalContextHash),
-		manager:                m,
-		ctx:                    sessionCtx,
-		cancel:                 cancel,
-		start:                  make(chan struct{}),
-		done:                   make(chan struct{}),
-		status:                 "connecting",
-		clients:                map[*websocket.Conn]*sync.Mutex{},
+		id:                      id,
+		runtimeID:               request.RuntimeID,
+		generation:              generation,
+		name:                    request.Name,
+		cols:                    request.Cols,
+		rows:                    request.Rows,
+		params:                  maps.Clone(request.Params),
+		principal:               request.Principal,
+		environment:             request.Environment,
+		prepareEnvironment:      request.PrepareEnvironment,
+		startupAdmissionRelease: request.StartupAdmissionRelease,
+		environmentContentHash:  strings.TrimSpace(request.EnvironmentContentHash),
+		approvalContextHash:     strings.TrimSpace(request.ApprovalContextHash),
+		manager:                 m,
+		ctx:                     sessionCtx,
+		cancel:                  cancel,
+		start:                   make(chan struct{}),
+		done:                    make(chan struct{}),
+		status:                  "connecting",
+		clients:                 map[*websocket.Conn]*sync.Mutex{},
 	}
 
 	m.sessions[id] = managed
@@ -270,9 +273,10 @@ func (m *Manager) finishCreate(ctx context.Context, record Record, session *mana
 	return m.Get(ctx, record.ID)
 }
 
-func destroyCreateEnvironment(request CreateRequest) {
-	if request.Environment != nil {
-		request.Environment.Destroy()
+func destroyCreateResources(request CreateRequest) {
+	request.Environment.Destroy()
+	if request.StartupAdmissionRelease != nil {
+		request.StartupAdmissionRelease()
 	}
 }
 
@@ -731,12 +735,6 @@ func (m *Manager) exactSession(handle SessionHandle) (*managedConsoleSession, er
 		return nil, ErrNotFound
 	}
 	return session, nil
-}
-
-func (m *Manager) activeSessionCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.activeSessionCountLocked()
 }
 
 func (m *Manager) activeSessionCountLocked() int {

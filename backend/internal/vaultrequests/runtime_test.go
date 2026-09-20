@@ -228,7 +228,7 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 	return harness
 }
 
-func (h *runtimeHarness) call(t *testing.T, key string) RequestView {
+func (h *runtimeHarness) call(t *testing.T, key string) Request {
 	t.Helper()
 	view, err := h.runtime.Call(t.Context(), CallInput{
 		TokenID: h.tokenID, ProjectRef: h.projectRef,
@@ -247,14 +247,23 @@ func (h *runtimeHarness) call(t *testing.T, key string) RequestView {
 func TestRuntimeCallCreatesPromptRequestAndReplaysIdempotently(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	first := harness.call(t, "prompt-request")
-	if first.Request.Status != StatusApprovalPending || !first.OutputAuthorized {
+	if first.Status != StatusApprovalPending {
 		t.Fatalf("first request = %#v", first)
 	}
 	if !harness.mutations.createdWithDelivery || harness.delivery.held() {
 		t.Fatalf("request insertion delivery lease: held_at_insert=%t held_after_return=%t", harness.mutations.createdWithDelivery, harness.delivery.held())
 	}
+	var delivered RequestView
+	if err := harness.runtime.DeliverOwned(t.Context(), first.ID, harness.tokenID, func(view RequestView) {
+		if !harness.delivery.held() {
+			t.Fatal("owned output was delivered after releasing admission")
+		}
+		delivered = view
+	}); err != nil || !delivered.OutputAuthorized || harness.delivery.held() {
+		t.Fatalf("delivered view=%#v held=%v err=%v", delivered, harness.delivery.held(), err)
+	}
 	second := harness.call(t, "prompt-request")
-	if second.Request.ID != first.Request.ID || harness.prepareCalls != 1 || harness.executeCalls != 0 {
+	if second.ID != first.ID || harness.prepareCalls != 1 || harness.executeCalls != 0 {
 		t.Fatalf("replay = %#v prepare=%d execute=%d", second, harness.prepareCalls, harness.executeCalls)
 	}
 	actions, observed := harness.mutations.snapshot()
@@ -291,13 +300,13 @@ func TestRuntimeCallCanonicalizesProjectReferenceBeforeReplay(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	first := harness.call(t, "canonical-project-replay")
 	for _, ref := range []string{"id:" + strconv.FormatInt(harness.projectID, 10), "id:+" + strconv.FormatInt(harness.projectID, 10)} {
-		view, err := harness.runtime.Call(t.Context(), CallInput{
+		item, err := harness.runtime.Call(t.Context(), CallInput{
 			TokenID: harness.tokenID, ProjectRef: ref, ActionName: ActionGenerateItem,
 			Input:  map[string]any{"name": "PROJECT_KEY", "generator_kind": "hex_32"},
 			Reason: "create a deployment key", IdempotencyKey: "canonical-project-replay",
 		})
-		if err != nil || view.Request.ID != first.Request.ID {
-			t.Fatalf("replay through %q = %#v, err=%v", ref, view, err)
+		if err != nil || item.ID != first.ID {
+			t.Fatalf("replay through %q = %#v, err=%v", ref, item, err)
 		}
 	}
 }
@@ -329,7 +338,7 @@ func TestRuntimeCallReplaysAfterProjectIsArchived(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := harness.call(t, "archived-project-replay")
-	if second.Request.ID != first.Request.ID || harness.prepareCalls != 1 {
+	if second.ID != first.ID || harness.prepareCalls != 1 {
 		t.Fatalf("archived replay = %#v prepare=%d", second, harness.prepareCalls)
 	}
 }
@@ -351,9 +360,9 @@ func TestStoredProjectReferenceMatchesCanonicalIdentity(t *testing.T) {
 func TestRuntimeCallAlwaysExecutesThroughAuditedWorkflow(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	harness.runAlways = true
-	view := harness.call(t, "always-request")
-	if view.Request.Status != StatusCompleted || harness.executeCalls != 1 || harness.compensations != 0 {
-		t.Fatalf("request=%#v execute=%d compensate=%d", view.Request, harness.executeCalls, harness.compensations)
+	request := harness.call(t, "always-request")
+	if request.Status != StatusCompleted || harness.executeCalls != 1 || harness.compensations != 0 {
+		t.Fatalf("request=%#v execute=%d compensate=%d", request, harness.executeCalls, harness.compensations)
 	}
 	if !harness.mutations.createdWithDelivery || harness.executedWithDelivery || harness.delivery.held() {
 		t.Fatalf("Always delivery lease: held_at_insert=%t held_during_effect=%t held_after_return=%t",
@@ -368,11 +377,23 @@ func TestRuntimeCallAlwaysExecutesThroughAuditedWorkflow(t *testing.T) {
 func TestRuntimeGetOwnedConcealsTokensAndStalesDriftedApproval(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	created := harness.call(t, "owned-request")
-	if _, err := harness.runtime.GetOwned(t.Context(), created.Request.ID, harness.otherTokenID); !errors.Is(err, ErrNotFound) {
+	if err := harness.runtime.DeliverOwned(t.Context(), created.ID, harness.otherTokenID, func(RequestView) {}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other token error = %v", err)
 	}
 	harness.authorized = false
-	view, err := harness.runtime.GetOwned(t.Context(), created.Request.ID, harness.tokenID)
+	var callView RequestView
+	if err := harness.runtime.DeliverCallResult(t.Context(), created.ID, harness.tokenID, func(delivered RequestView) {
+		callView = delivered
+	}); err != nil || callView.OutputAuthorized || callView.Request.Status != StatusApprovalPending {
+		t.Fatalf("idempotent call delivery = %#v err=%v", callView, err)
+	}
+	var view RequestView
+	err := harness.runtime.DeliverOwned(t.Context(), created.ID, harness.tokenID, func(delivered RequestView) {
+		if !harness.delivery.held() {
+			t.Fatal("drifted output authorization ran without delivery admission")
+		}
+		view = delivered
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +406,7 @@ func TestRuntimeApprovalAndCancellationTransitions(t *testing.T) {
 	t.Run("run", func(t *testing.T) {
 		harness := newRuntimeHarness(t)
 		created := harness.call(t, "run-request")
-		result, err := harness.runtime.RunPending(t.Context(), created.Request.ID, "approved")
+		result, err := harness.runtime.RunPending(t.Context(), created.ID, "approved")
 		if err != nil || result.Request.Status != StatusCompleted || harness.executeCalls != 1 {
 			t.Fatalf("result=%#v execute=%d err=%v", result, harness.executeCalls, err)
 		}
@@ -394,14 +415,14 @@ func TestRuntimeApprovalAndCancellationTransitions(t *testing.T) {
 		harness := newRuntimeHarness(t)
 		created := harness.call(t, "stopped-request")
 		harness.mcpStarted = false
-		if _, err := harness.runtime.RunPending(t.Context(), created.Request.ID, ""); !errors.Is(err, ErrMCPExecutionStopped) {
+		if _, err := harness.runtime.RunPending(t.Context(), created.ID, ""); !errors.Is(err, ErrMCPExecutionStopped) {
 			t.Fatalf("RunPending() error = %v", err)
 		}
 	})
 	t.Run("decline", func(t *testing.T) {
 		harness := newRuntimeHarness(t)
 		created := harness.call(t, "decline-request")
-		item, err := harness.runtime.DeclinePending(t.Context(), created.Request.ID, "not now")
+		item, err := harness.runtime.DeclinePending(t.Context(), created.ID, "not now")
 		if err != nil || item.Status != StatusDeclined || item.UserNote != "not now" {
 			t.Fatalf("item=%#v err=%v", item, err)
 		}
@@ -409,10 +430,10 @@ func TestRuntimeApprovalAndCancellationTransitions(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		harness := newRuntimeHarness(t)
 		created := harness.call(t, "cancel-request")
-		if _, err := harness.runtime.CancelOwned(t.Context(), created.Request.ID, harness.otherTokenID); !errors.Is(err, ErrNotFound) {
+		if _, err := harness.runtime.CancelOwned(t.Context(), created.ID, harness.otherTokenID); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("other token cancel error = %v", err)
 		}
-		item, err := harness.runtime.CancelOwned(t.Context(), created.Request.ID, harness.tokenID)
+		item, err := harness.runtime.CancelOwned(t.Context(), created.ID, harness.tokenID)
 		if err != nil || item.Status != StatusCanceled {
 			t.Fatalf("item=%#v err=%v", item, err)
 		}
@@ -461,11 +482,11 @@ func TestRuntimeRedactsOperatorNoteBeforeEveryDecisionPath(t *testing.T) {
 				return text, nil
 			}
 			created := harness.call(t, "redact-"+strings.ReplaceAll(test.name, " ", "-"))
-			item, err := test.decision(harness, created.Request.ID)
+			item, err := test.decision(harness, created.ID)
 			if err != nil || item.Status != test.status {
 				t.Fatalf("decision item=%#v err=%v", item, err)
 			}
-			persisted, err := harness.store.Get(t.Context(), created.Request.ID)
+			persisted, err := harness.store.Get(t.Context(), created.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -475,7 +496,7 @@ func TestRuntimeRedactsOperatorNoteBeforeEveryDecisionPath(t *testing.T) {
 			var historyNote string
 			if err := harness.database.QueryRow(`
 				SELECT user_note FROM history_entries
-				WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, created.Request.ID).Scan(&historyNote); err != nil {
+				WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, created.ID).Scan(&historyNote); err != nil {
 				t.Fatal(err)
 			}
 			if historyNote != persisted.UserNote {
@@ -500,7 +521,7 @@ func TestRuntimeRedactsOperatorNoteBeforeEveryDecisionPath(t *testing.T) {
 			completed, err := harness.store.Complete(ctx, request.ID, StatusFailed, nil, "synthetic atomic failure", userNote)
 			return WorkflowResult{Request: completed, ExecutionError: errors.New("synthetic atomic failure")}, true, err
 		}
-		result, err := harness.runtime.RunPending(t.Context(), created.Request.ID, "keep CANARY")
+		result, err := harness.runtime.RunPending(t.Context(), created.ID, "keep CANARY")
 		if err != nil || result.Request.Status != StatusFailed || atomicNote != "keep [REDACTED]" || result.Request.UserNote != atomicNote {
 			t.Fatalf("atomic result=%#v note=%q err=%v", result, atomicNote, err)
 		}
@@ -512,10 +533,10 @@ func TestRuntimeRedactsOperatorNoteBeforeEveryDecisionPath(t *testing.T) {
 		harness.runtime.redactProjection = func(context.Context, any) (any, error) {
 			return nil, errors.New("redaction unavailable")
 		}
-		if _, err := harness.runtime.RunPending(t.Context(), created.Request.ID, "CANARY"); err == nil || !strings.Contains(err.Error(), "redaction unavailable") {
+		if _, err := harness.runtime.RunPending(t.Context(), created.ID, "CANARY"); err == nil || !strings.Contains(err.Error(), "redaction unavailable") {
 			t.Fatalf("redaction error = %v", err)
 		}
-		persisted, err := harness.store.Get(t.Context(), created.Request.ID)
+		persisted, err := harness.store.Get(t.Context(), created.ID)
 		if err != nil || persisted.Status != StatusApprovalPending || persisted.UserNote != "" {
 			t.Fatalf("request changed after redaction failure: %#v err=%v", persisted, err)
 		}

@@ -19,7 +19,7 @@ func TestAcquireLifecycleMutationReleasesPartialAcquisition(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/", nil)
 	release, ok := acquireLifecycleMutation(response, request, func(context.Context) (func(), error) {
 		return func() { released++ }, errors.New("acquisition canceled")
-	}, "mutation was canceled")
+	}, nil, "mutation was canceled")
 	if ok || release != nil {
 		t.Fatalf("acquisition unexpectedly succeeded: ok=%t release=%v", ok, release != nil)
 	}

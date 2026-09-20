@@ -16,6 +16,7 @@ func (component *ConnectorPortsOwner) connectorWorkspace(handle *WorkspaceHandle
 		capability.Scopes,
 		capability.Database,
 		capability.Delivery.AcquireDelivery,
+		capability.Delivery.AdmissionIdentity(),
 	)
 	workspace.Principal = ports.Principal
 	workspace.Actions = ports.Actions

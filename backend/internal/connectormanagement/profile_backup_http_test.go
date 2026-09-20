@@ -27,12 +27,16 @@ type profileBackupTestConnector struct {
 	restoreErr    error
 	restoreResult connectors.ActionResult
 	cancelRestore context.CancelFunc
+	backupCheck   func()
 	restoreCheck  func()
 }
 
 func (*profileBackupTestConnector) Kind() string { return profileBackupTestKind }
 
-func (*profileBackupTestConnector) Backup(context.Context, connectors.RuntimeContext, connectors.BackupRequest) (connectors.BackupArtifact, error) {
+func (c *profileBackupTestConnector) Backup(context.Context, connectors.RuntimeContext, connectors.BackupRequest) (connectors.BackupArtifact, error) {
+	if c.backupCheck != nil {
+		c.backupCheck()
+	}
 	return connectors.BackupArtifact{Filename: "database.sql", ContentType: "application/sql", Data: []byte("select 1;\n")}, nil
 }
 
@@ -86,14 +90,22 @@ func TestProfileBackupHTTPHandlerOwnsDownloadAndConfirmedRestore(t *testing.T) {
 	var redactErr error
 	exclusiveHeld := false
 	exclusiveAcquires := 0
+	deliveryHeld := false
+	deliveryAcquires := 0
 	handler := NewProfileBackupHTTPHandler(func(http.ResponseWriter) (ProfileBackupScope, bool) {
 		return ProfileBackupScope{
 			Database: fixture.database, Registry: registry,
+			AcquireDelivery: func(context.Context) (func(), error) {
+				deliveryAcquires++
+				deliveryHeld = true
+				return func() { deliveryHeld = false }, nil
+			},
 			AcquireExclusive: func(context.Context) (func(), error) {
 				exclusiveAcquires++
 				exclusiveHeld = true
 				return func() { exclusiveHeld = false }, nil
 			},
+			Admission: managementTestDeliveryAdmission,
 			Runtime: CredentialRuntimePorts{
 				DecryptSecret: func(context.Context, int64, string) (map[string]any, error) { return map[string]any{}, nil },
 				RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, _ map[string]any, _ CredentialBoundary) connectors.RuntimeContext {
@@ -133,6 +145,11 @@ func TestProfileBackupHTTPHandlerOwnsDownloadAndConfirmedRestore(t *testing.T) {
 			},
 		}, true
 	})
+	connector.backupCheck = func() {
+		if !deliveryHeld {
+			t.Fatal("backup executed without the shared workspace delivery gate")
+		}
+	}
 	connector.restoreCheck = func() {
 		if !exclusiveHeld {
 			t.Fatal("restore executed without the exclusive workspace gate")
@@ -145,6 +162,9 @@ func TestProfileBackupHTTPHandlerOwnsDownloadAndConfirmedRestore(t *testing.T) {
 	basePath := "/targets/" + strconv.FormatInt(target.ID, 10) + "/profiles/" + strconv.FormatInt(profile.ID, 10)
 
 	assertProfileBackupAndReplayFromTombstone(t, mux, basePath, target, connector, fixture.database, &observed, &audited)
+	if deliveryHeld || deliveryAcquires != 1 {
+		t.Fatalf("backup delivery held=%v acquires=%d", deliveryHeld, deliveryAcquires)
+	}
 	if len(auditActors) != 1 || auditActors[0] != "user" {
 		t.Fatalf("live restore audit actors = %v", auditActors)
 	}

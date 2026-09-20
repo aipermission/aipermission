@@ -37,6 +37,7 @@ type ProvisioningScope struct {
 	Registry              connectors.Catalog
 	Runtime               CredentialRuntimePorts
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	EncryptSecret         func(context.Context, int64, json.RawMessage) (string, error)
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
@@ -82,7 +83,7 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, "connector credential provisioning was canceled")
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential provisioning was canceled")
 	if !ok {
 		return
 	}

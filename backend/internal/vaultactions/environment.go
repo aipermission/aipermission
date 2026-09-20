@@ -177,13 +177,13 @@ func (r *Runtime) environmentPreparer(
 	selections []projectvault.SessionSelection,
 	authorize func(context.Context) error,
 	finalize func(context.Context, EnvironmentSessionHandle) error,
-	admission *deliveryAdmission,
+	startupAdmissionRelease func(),
 ) EnvironmentPreparer {
 	return func(ctx context.Context, actualPeerIdentity string) (EnvironmentPreparation, error) {
 		var release func()
 		var err error
-		if admission != nil {
-			release, err = admission.claim()
+		if startupAdmissionRelease != nil {
+			release = startupAdmissionRelease
 		} else {
 			release, err = r.delivery.AcquireDelivery(ctx)
 		}

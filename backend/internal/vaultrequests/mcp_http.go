@@ -160,14 +160,18 @@ func (h *MCPHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	view, err := owner.Call(r.Context(), CallInput{
+	item, err := owner.Call(r.Context(), CallInput{
 		TokenID: scope.TokenID, ProjectRef: input.ProjectRef, ActionName: input.ActionName,
 		Input: input.Input, Reason: input.Reason, IdempotencyKey: input.IdempotencyKey,
 	})
 	if writeMCPCallError(w, err) {
 		return
 	}
-	writeMCPResponse(w, view)
+	if err := owner.DeliverCallResult(r.Context(), item.ID, scope.TokenID, func(view RequestView) {
+		writeMCPResponse(w, view)
+	}); err != nil {
+		writeMCPCallError(w, err)
+	}
 }
 
 func (h *MCPHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +187,11 @@ func (h *MCPHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	view, err := owner.GetOwned(r.Context(), id, scope.TokenID)
+	wrote := false
+	err := owner.DeliverOwned(r.Context(), id, scope.TokenID, func(view RequestView) {
+		wrote = true
+		writeMCPResponse(w, view)
+	})
 	if errors.Is(err, ErrNotFound) {
 		httptransport.WriteError(w, http.StatusNotFound, "Vault action request not found")
 		return
@@ -192,7 +200,9 @@ func (h *MCPHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	writeMCPResponse(w, view)
+	if !wrote {
+		httptransport.WriteInternalError(w)
+	}
 }
 
 func (h *MCPHTTPHandlers) CancelRequest(w http.ResponseWriter, r *http.Request) {

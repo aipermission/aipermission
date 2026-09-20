@@ -56,8 +56,9 @@ type VaultRequestApplication interface {
 	Get(context.Context, int64) (vaultrequests.Request, error)
 	RunPending(context.Context, int64, string) (vaultrequests.WorkflowResult, error)
 	DeclinePending(context.Context, int64, string) (vaultrequests.Request, error)
-	Call(context.Context, vaultrequests.CallInput) (vaultrequests.RequestView, error)
-	GetOwned(context.Context, int64, int64) (vaultrequests.RequestView, error)
+	Call(context.Context, vaultrequests.CallInput) (vaultrequests.Request, error)
+	DeliverCallResult(context.Context, int64, int64, func(vaultrequests.RequestView)) error
+	DeliverOwned(context.Context, int64, int64, func(vaultrequests.RequestView)) error
 	CancelOwned(context.Context, int64, int64) (vaultrequests.Request, error)
 	StalePendingForContext(context.Context, int64, int64, string) error
 	StalePendingForProject(context.Context, int64, string) error

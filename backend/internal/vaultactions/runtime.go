@@ -41,6 +41,7 @@ type PeerIdentityExpectation struct {
 type DeliveryGate interface {
 	AcquireDelivery(context.Context) (func(), error)
 	AcquireExclusive(context.Context) (func(), error)
+	WithAdmission(context.Context) context.Context
 }
 
 type Project struct {
@@ -69,6 +70,8 @@ type ItemMutationPort interface {
 
 type SessionPort interface {
 	ActiveRecord(context.Context, int64) (console.Record, error)
+	// ReplaceIfCurrent consumes every request-owned sensitive resource and
+	// startup admission release callback, including on error.
 	ReplaceIfCurrent(context.Context, executionprincipal.Principal, console.SessionHandle, console.CreateRequest) (console.Record, error)
 	Close(context.Context, executionprincipal.Principal, int64) error
 }
