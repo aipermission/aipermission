@@ -12,11 +12,13 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 const remoteUploadCleanupTimeout = 10 * time.Second
@@ -63,7 +65,20 @@ func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) 
 	stopContextClose := closeOnContext(ctx, sshClient)
 	defer stopContextClose()
 
-	entries, err := client.ReadDir(remotePath)
+	return listRemoteDirectoryWithClient(client, remotePath)
+}
+
+type remoteDirectoryClient interface {
+	RealPath(string) (string, error)
+	ReadDir(string) ([]os.FileInfo, error)
+}
+
+func listRemoteDirectoryWithClient(client remoteDirectoryClient, remotePath string) ([]RemoteFileEntry, error) {
+	resolvedPath, err := resolveRemoteDirectoryPath(client, remotePath)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := client.ReadDir(resolvedPath)
 	if err != nil {
 		return nil, fmt.Errorf("read remote directory: %w", err)
 	}
@@ -73,8 +88,8 @@ func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) 
 		if name == "." || name == ".." {
 			continue
 		}
-		entryPath := path.Join(remotePath, name)
-		if remotePath == "/" {
+		entryPath := path.Join(resolvedPath, name)
+		if resolvedPath == "/" {
 			entryPath = "/" + name
 		}
 		entryType := "file"
@@ -101,6 +116,28 @@ func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) 
 		return items[i].Name < items[j].Name
 	})
 	return items, nil
+}
+
+func resolveRemoteDirectoryPath(client remoteDirectoryClient, remotePath string) (string, error) {
+	if remotePath == "" || remotePath == "~" {
+		remotePath = "."
+	} else if strings.HasPrefix(remotePath, "~/") {
+		home, err := client.RealPath(".")
+		if err != nil {
+			return "", fmt.Errorf("resolve remote home directory: %w", err)
+		}
+		remotePath = path.Join(home, strings.TrimPrefix(remotePath, "~/"))
+	} else if strings.HasPrefix(remotePath, "~") {
+		return "", fmt.Errorf("remote home paths must use ~ or ~/<path>")
+	}
+	resolved, err := client.RealPath(remotePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve remote directory: %w", err)
+	}
+	if !path.IsAbs(resolved) {
+		return "", fmt.Errorf("resolve remote directory: server returned a non-absolute path")
+	}
+	return path.Clean(resolved), nil
 }
 
 func UploadFile(ctx context.Context, target Target, localPath string, remotePath string, overwrite bool, progress TransferProgress) (TransferResult, error) {
@@ -201,7 +238,8 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 			return TransferResult{}, err
 		}
 	}
-	if err := commitRemoteUpload(client, tempPath, remotePath, overwrite); err != nil {
+	committer := &authenticatedUploadCommitter{Client: client, ssh: sshClient}
+	if err := commitRemoteUpload(committer, tempPath, remotePath, overwrite); err != nil {
 		return TransferResult{
 			Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
 			DurationMS: time.Since(started).Milliseconds(),
@@ -243,6 +281,7 @@ type remoteUploadClient interface {
 	Stat(string) (os.FileInfo, error)
 	Mkdir(string) error
 	OpenFile(string, int) (*sftp.File, error)
+	Chmod(string, os.FileMode) error
 	Link(string, string) error
 	PosixRename(string, string) error
 	Remove(string) error
@@ -250,10 +289,85 @@ type remoteUploadClient interface {
 }
 
 type remoteUploadCommitter interface {
-	Stat(string) (os.FileInfo, error)
+	Lstat(string) (os.FileInfo, error)
+	CompleteMetadata(string) (remoteFileMetadata, error)
+	Chmod(string, os.FileMode) error
 	Link(string, string) error
 	PosixRename(string, string) error
 	Remove(string) error
+}
+
+type remoteFileMetadata struct {
+	Mode os.FileMode
+	UID  uint32
+	GID  uint32
+}
+
+type authenticatedUploadCommitter struct {
+	*sftp.Client
+	ssh *ssh.Client
+}
+
+func (client *authenticatedUploadCommitter) CompleteMetadata(remotePath string) (remoteFileMetadata, error) {
+	if client == nil || client.ssh == nil {
+		return remoteFileMetadata{}, fmt.Errorf("complete remote metadata is unavailable")
+	}
+	session, err := client.ssh.NewSession()
+	if err != nil {
+		return remoteFileMetadata{}, fmt.Errorf("open remote metadata session: %w", err)
+	}
+	defer session.Close()
+	command := remoteMetadataCommand(remotePath)
+	output, err := session.Output(command)
+	if err != nil {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: %w", err)
+	}
+	return parseRemoteFileMetadata(string(output))
+}
+
+func parseRemoteFileMetadata(output string) (remoteFileMetadata, error) {
+	fields := strings.Fields(output)
+	if len(fields) != 4 {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: unexpected stat response")
+	}
+	modeBase := 0
+	switch fields[0] {
+	case "gnu":
+		modeBase = 16
+	case "bsd":
+		modeBase = 8
+	default:
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: unknown stat response")
+	}
+	rawMode, err := strconv.ParseUint(fields[1], modeBase, 32)
+	if err != nil {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata mode: %w", err)
+	}
+	uid, err := strconv.ParseUint(fields[2], 10, 32)
+	if err != nil {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata owner: %w", err)
+	}
+	gid, err := strconv.ParseUint(fields[3], 10, 32)
+	if err != nil {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata group: %w", err)
+	}
+	mode := (&sftp.FileStat{Mode: uint32(rawMode)}).FileMode()
+	return remoteFileMetadata{Mode: mode, UID: uint32(uid), GID: uint32(gid)}, nil
+}
+
+func remoteMetadataCommand(remotePath string) string {
+	if strings.HasPrefix(remotePath, "-") {
+		remotePath = "./" + remotePath
+	}
+	quotedPath := quoteRemoteShellArg(remotePath)
+	return "if aip_stat=$(LC_ALL=C stat -c '%f %u %g' " + quotedPath + " 2>/dev/null); then " +
+		"printf 'gnu %s\\n' \"$aip_stat\"; " +
+		"elif aip_stat=$(LC_ALL=C stat -f '%p %u %g' " + quotedPath + " 2>/dev/null); then " +
+		"printf 'bsd %s\\n' \"$aip_stat\"; else exit 1; fi"
+}
+
+func quoteRemoteShellArg(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func createRemoteUploadTemp(ctx context.Context, client remoteUploadClient, remotePath string, options TransferOptions) (string, *sftp.File, bool, error) {
@@ -267,6 +381,13 @@ func createRemoteUploadTemp(ctx context.Context, client remoteUploadClient, remo
 				continue
 			}
 			return "", nil, false, fmt.Errorf("create owned remote staging directory: %w", err)
+		}
+		if err := client.Chmod(stagingDir, 0o700); err != nil {
+			cleanupErr := client.RemoveDirectory(stagingDir)
+			if cleanupErr != nil && !os.IsNotExist(cleanupErr) {
+				err = errors.Join(err, fmt.Errorf("remove insecure staging directory: %w", cleanupErr))
+			}
+			return "", nil, false, fmt.Errorf("secure remote staging directory: %w", err)
 		}
 		recorded := false
 		if options.RecordStaging != nil {
@@ -282,6 +403,13 @@ func createRemoteUploadTemp(ctx context.Context, client remoteUploadClient, remo
 		remote, err := client.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 		if err != nil {
 			return tempPath, nil, recorded, fmt.Errorf("create remote temporary file: %w", err)
+		}
+		if err := client.Chmod(tempPath, 0o600); err != nil {
+			closeErr := remote.Close()
+			if closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close insecure remote temporary file: %w", closeErr))
+			}
+			return tempPath, nil, recorded, fmt.Errorf("secure remote temporary file: %w", err)
 		}
 		return tempPath, remote, recorded, nil
 	}
@@ -304,13 +432,30 @@ func remoteUploadTempPaths(remotePath string, attempt int) (string, string, erro
 }
 
 func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool) error {
-	_, statErr := client.Stat(remotePath)
+	_, statErr := client.Lstat(remotePath)
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return fmt.Errorf("stat remote file before commit: %w", statErr)
 	}
 	if statErr == nil {
 		if !overwrite {
 			return fmt.Errorf("remote file already exists")
+		}
+		existingMetadata, err := client.CompleteMetadata(remotePath)
+		if err != nil {
+			return fmt.Errorf("preserve remote destination metadata: %w", err)
+		}
+		if !existingMetadata.Mode.IsRegular() {
+			return fmt.Errorf("remote destination is not a regular file")
+		}
+		stagedMetadata, err := client.CompleteMetadata(tempPath)
+		if err != nil {
+			return fmt.Errorf("preserve remote staging metadata: %w", err)
+		}
+		if err := requireMatchingRemoteOwnership(existingMetadata, stagedMetadata); err != nil {
+			return err
+		}
+		if err := client.Chmod(tempPath, preservedPermissionMode(existingMetadata.Mode)); err != nil {
+			return fmt.Errorf("preserve remote destination permissions: %w", err)
 		}
 		if err := client.PosixRename(tempPath, remotePath); err == nil {
 			return nil
@@ -339,6 +484,17 @@ func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePat
 		return connectors.ClassifyOutcomeUnknown("hardlink_cleanup", map[string]any{
 			"recovery_hint": "The destination was created; remove the remote staging link after inspection.",
 		}, fmt.Errorf("remove committed remote staging link: %w", err))
+	}
+	return nil
+}
+
+func preservedPermissionMode(mode os.FileMode) os.FileMode {
+	return mode.Perm() | mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)
+}
+
+func requireMatchingRemoteOwnership(existing remoteFileMetadata, staged remoteFileMetadata) error {
+	if existing.UID != staged.UID || existing.GID != staged.GID {
+		return fmt.Errorf("preserve remote destination ownership: staging owner differs from destination")
 	}
 	return nil
 }
@@ -572,7 +728,7 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 	return copied, hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func sftpClient(ctx context.Context, target Target) (*sftp.Client, interface{ Close() error }, error) {
+func sftpClient(ctx context.Context, target Target) (*sftp.Client, *ssh.Client, error) {
 	sshClient, err := DialSSH(ctx, target)
 	if err != nil {
 		return nil, nil, err

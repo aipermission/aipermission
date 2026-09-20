@@ -667,10 +667,12 @@ staging artifact until its normal private-temp TTL expires and records the
 expected SHA-256 and byte count for reconciliation.
 Uploads do not overwrite an existing remote file unless `overwrite=true` is
 sent after an explicit local UI confirmation. SSH overwrite additionally
-requires the remote SFTP server's atomic POSIX rename extension. When that
-extension is unavailable, the upload fails closed and leaves the destination
-unchanged instead of deleting it before replacement. A lost atomic-rename reply
-is recorded as `outcome_unknown`; inspect the destination before retrying.
+requires the remote SFTP server's atomic POSIX rename extension and a complete
+GNU/BSD `stat` metadata probe over an SSH exec channel so destination ownership
+and permissions can be preserved. SFTP-only accounts, incomplete metadata, or
+servers without that extension fail closed and leave the destination unchanged
+instead of deleting it before replacement. A lost atomic-rename reply is
+recorded as `outcome_unknown`; inspect the destination before retrying.
 SSH no-overwrite publication requires the OpenSSH hardlink SFTP extension so
 the target can be created atomically without replacing a concurrent file. A
 server without that extension returns `atomic_create_unsupported`; the gateway
