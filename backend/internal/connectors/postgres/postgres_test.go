@@ -451,6 +451,74 @@ func TestProvisionRoleStatementsRejectsColumnScopedWrites(t *testing.T) {
 	}
 }
 
+func TestProvisionRoleStatementsGrantOnlyOwnedSequencesForWritableScopes(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		scope     provisionScope
+		wantScope string
+	}{
+		{
+			name:      "all user schemas",
+			scope:     provisionScope{AllSchemas: true},
+			wantScope: "ns.nspname NOT LIKE 'pg_%' AND ns.nspname <> 'information_schema'",
+		},
+		{
+			name:      "one schema",
+			scope:     provisionScope{Schemas: []provisionSchemaScope{{Schema: "public", AllTables: true}}},
+			wantScope: "ns.nspname = 'public'",
+		},
+		{
+			name: "one table",
+			scope: provisionScope{Schemas: []provisionSchemaScope{{
+				Schema: "public", Tables: []provisionTableScope{{Table: "orders", AllColumns: true}},
+			}}},
+			wantScope: "ns.nspname = 'public' AND tbl.relname = 'orders'",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			statements, summary, err := provisionRoleStatements(
+				connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
+				"app_writer", "secret-value", "read_write", testCase.scope,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			joined := strings.Join(statements, "\n")
+			for _, want := range []string{
+				"pg_get_serial_sequence",
+				"GRANT USAGE ON SEQUENCE %s TO %I",
+				testCase.wantScope,
+			} {
+				if !strings.Contains(joined, want) {
+					t.Fatalf("statements missing %q:\n%s", want, joined)
+				}
+			}
+			if strings.Contains(joined, "ON ALL SEQUENCES") {
+				t.Fatalf("writable scope granted unrelated sequences:\n%s", joined)
+			}
+			if summary["sequence_privileges"] != "usage_on_sequences_owned_by_writable_tables" {
+				t.Fatalf("summary = %#v", summary)
+			}
+		})
+	}
+}
+
+func TestProvisionRoleStatementsDoNotGrantSequencesToReadonlyRoles(t *testing.T) {
+	statements, summary, err := provisionRoleStatements(
+		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
+		"app_reader", "secret-value", "read_only", provisionScope{AllSchemas: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(statements, "\n"); strings.Contains(joined, "GRANT USAGE ON SEQUENCE") {
+		t.Fatalf("read-only role received sequence usage:\n%s", joined)
+	}
+	if _, ok := summary["sequence_privileges"]; ok {
+		t.Fatalf("read-only summary advertises sequence privileges: %#v", summary)
+	}
+}
+
 func TestPrepareReadonlyQueryIgnoresUnsafeWordsInsideNonCodeSQL(t *testing.T) {
 	for _, sql := range []string{
 		"select 'drop table users; update accounts' as message",
