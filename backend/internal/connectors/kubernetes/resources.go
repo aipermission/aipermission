@@ -120,16 +120,25 @@ func workloadSummaryFromItem(item map[string]any) WorkloadSummary {
 	metadata := mapValue(item, "metadata")
 	spec := mapValue(item, "spec")
 	status := mapValue(item, "status")
+	kind := stringValue(item, "kind")
+	desired, ready, available := workloadReplicaCounts(kind, spec, status)
 	return WorkloadSummary{
-		Kind:      stringValue(item, "kind"),
+		Kind:      kind,
 		Namespace: stringValue(metadata, "namespace"),
 		Name:      stringValue(metadata, "name"),
-		Ready:     fmt.Sprintf("%d/%d", intValue(status, "readyReplicas"), intValue(spec, "replicas")),
-		Replicas:  intValue(spec, "replicas"),
-		Available: intValue(status, "availableReplicas"),
+		Ready:     fmt.Sprintf("%d/%d", ready, desired),
+		Replicas:  desired,
+		Available: available,
 		Image:     firstContainerImage(item),
 		Age:       ageText(stringValue(metadata, "creationTimestamp")),
 	}
+}
+
+func workloadReplicaCounts(kind string, spec map[string]any, status map[string]any) (desired int, ready int, available int) {
+	if kind == "DaemonSet" {
+		return intValue(status, "desiredNumberScheduled"), intValue(status, "numberReady"), intValue(status, "numberAvailable")
+	}
+	return intValue(spec, "replicas"), intValue(status, "readyReplicas"), intValue(status, "availableReplicas")
 }
 
 func podSummaryFromItem(item map[string]any) PodSummary {
