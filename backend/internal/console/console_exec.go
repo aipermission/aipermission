@@ -25,10 +25,12 @@ func (s *managedConsoleSession) execCommand(
 		return ExecResult{}, err
 	}
 
+	s.inputMu.Lock()
 	if active := s.activeCommand(); active != nil {
 		output, exitCode, completed, err := s.checkCommandResult(active.StartOffset, active.Marker)
+		s.inputMu.Unlock()
 		if err != nil {
-			s.clearActiveCommand(active.Marker)
+			s.clearActiveCommandWithInputAdmission(active.Marker)
 			return ExecResult{}, err
 		}
 		if completed {
@@ -66,8 +68,11 @@ func (s *managedConsoleSession) execCommand(
 		StartOffset: startOffset,
 		Started:     started,
 	})
+	s.inputMu.Unlock()
 
 	writeCommand := func() error {
+		s.inputMu.Lock()
+		defer s.inputMu.Unlock()
 		if err := s.writeInput(consoleExecPrelude()); err != nil {
 			return err
 		}
@@ -81,7 +86,7 @@ func (s *managedConsoleSession) execCommand(
 		writeErr = writeCommand()
 	}
 	if writeErr != nil {
-		s.clearActiveCommand(marker)
+		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, writeErr
 	}
 	s.appendDisplayOutput(terminaltext.FormatAutomationCommand(command))
@@ -98,11 +103,10 @@ func (s *managedConsoleSession) execCommand(
 				DurationMS: time.Since(started).Milliseconds(),
 			}, nil
 		}
-		s.clearActiveCommand(marker)
+		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, err
 	}
-	s.clearActiveCommand(marker)
-	s.restoreTerminalInput()
+	s.restoreTerminalInputAndClear(marker)
 
 	return ExecResult{
 		SessionID:  s.id,
@@ -123,8 +127,7 @@ func (s *managedConsoleSession) waitActiveCommand(ctx context.Context) (ExecResu
 	if err != nil {
 		return ExecResult{}, err
 	}
-	s.clearActiveCommand(active.Marker)
-	s.restoreTerminalInput()
+	s.restoreTerminalInputAndClear(active.Marker)
 	return ExecResult{
 		SessionID:  s.id,
 		Generation: s.generation,
@@ -136,6 +139,8 @@ func (s *managedConsoleSession) waitActiveCommand(ctx context.Context) (ExecResu
 }
 
 func (s *managedConsoleSession) interruptActiveCommand(ctx context.Context) error {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
 	active := s.activeCommand()
 	if active == nil {
 		return nil
@@ -148,13 +153,32 @@ func (s *managedConsoleSession) interruptActiveCommand(ctx context.Context) erro
 		return ctx.Err()
 	case <-time.After(250 * time.Millisecond):
 	}
+	s.restoreTerminalInputLocked()
 	s.clearActiveCommand(active.Marker)
-	s.restoreTerminalInput()
 	return nil
 }
 
 func (s *managedConsoleSession) restoreTerminalInput() {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.restoreTerminalInputLocked()
+}
+
+func (s *managedConsoleSession) restoreTerminalInputLocked() {
 	_ = s.writeInput(restoreTerminalInputCommand)
+}
+
+func (s *managedConsoleSession) restoreTerminalInputAndClear(marker string) {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.restoreTerminalInputLocked()
+	s.clearActiveCommand(marker)
+}
+
+func (s *managedConsoleSession) clearActiveCommandWithInputAdmission(marker string) {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.clearActiveCommand(marker)
 }
 
 func (s *managedConsoleSession) activeCommand() *consoleSessionActiveExec {

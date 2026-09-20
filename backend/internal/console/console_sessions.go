@@ -246,25 +246,25 @@ type managedConsoleSession struct {
 	persisted  bool
 	hookDone   bool
 
-	mu            sync.Mutex
-	execMu        sync.Mutex
-	status        string
-	closing       bool
-	transcript    string
-	rawTranscript string
-	rawBaseOffset int64
-	pendingOutput string
-	errText       string
-	stdin         io.WriteCloser
-	runtime       *RuntimeSession
-	clients       map[*websocket.Conn]*sync.Mutex
-	activeExec    *consoleSessionActiveExec
-	manualInput   manualInputCapture
-	manualActive  *consoleSessionManualCapture
-	manualPause   *consoleSessionManualPause
-	filterUntil   time.Time
-	persistTimer  *time.Timer
-	startErr      error
-	finalStatus   string
-	finalMessage  string
+	mu              sync.Mutex
+	execMu, inputMu sync.Mutex
+	status          string
+	closing         bool
+	transcript      string
+	rawTranscript   string
+	rawBaseOffset   int64
+	pendingOutput   string
+	errText         string
+	stdin           io.WriteCloser
+	runtime         *RuntimeSession
+	clients         map[*websocket.Conn]*sync.Mutex
+	activeExec      *consoleSessionActiveExec
+	manualInput     manualInputCapture
+	manualActive    *consoleSessionManualCapture
+	manualPause     *consoleSessionManualPause
+	filterUntil     time.Time
+	persistTimer    *time.Timer
+	startErr        error
+	finalStatus     string
+	finalMessage    string
 }

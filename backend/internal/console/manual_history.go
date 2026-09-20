@@ -82,3 +82,17 @@ func (s *managedConsoleSession) persistManualInput(commands []manualCommandRecor
 func (s *managedConsoleSession) recordManualInput(data string) {
 	s.persistManualInput(s.prepareManualInput(data))
 }
+
+func (s *managedConsoleSession) submitManualInput(data string) error {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	if s.activeCommand() != nil {
+		return ErrCommandActive
+	}
+	commands := s.prepareManualInput(data)
+	if err := s.writeInput(data); err != nil {
+		return err
+	}
+	s.persistManualInput(commands)
+	return nil
+}

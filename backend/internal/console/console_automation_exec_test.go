@@ -102,6 +102,52 @@ func TestManagedConsoleSessionWaitActiveDoesNotBlockConcurrentExec(t *testing.T)
 	}
 }
 
+func TestManagedConsoleSessionRejectsManualInputBetweenAutomationFrames(t *testing.T) {
+	sessionCtx, sessionCancel := context.WithCancel(context.Background())
+	defer sessionCancel()
+	writes := make(chan string, 3)
+	releasePrelude := make(chan struct{})
+	session := &managedConsoleSession{
+		id:     7,
+		ctx:    sessionCtx,
+		status: "connected",
+		stdin:  &sequencedWriteCloser{writes: writes, releaseFirst: releasePrelude},
+	}
+	execCtx, cancelExec := context.WithCancel(context.Background())
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := session.execCommand(execCtx, "printf safe", nil)
+		execDone <- err
+	}()
+
+	if first := <-writes; first != consoleExecPrelude() {
+		t.Fatalf("first automation frame = %q", first)
+	}
+	manualDone := make(chan error, 1)
+	go func() { manualDone <- session.submitManualInput("printf unsafe\n") }()
+	select {
+	case err := <-manualDone:
+		t.Fatalf("manual input completed inside the automation prelude gap: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(releasePrelude)
+	if payload := <-writes; !strings.Contains(payload, "printf safe") {
+		t.Fatalf("automation payload = %q", payload)
+	}
+	if err := <-manualDone; !errors.Is(err, ErrCommandActive) {
+		t.Fatalf("manual input error = %v, want ErrCommandActive", err)
+	}
+	select {
+	case extra := <-writes:
+		t.Fatalf("manual input reached the terminal: %q", extra)
+	case <-time.After(25 * time.Millisecond):
+	}
+	cancelExec()
+	if err := <-execDone; err != nil {
+		t.Fatalf("automation completion = %v", err)
+	}
+}
+
 func TestConsoleExecPayloadAvoidsBase64BashAndMktemp(t *testing.T) {
 	payload := consoleExecPayload("printf 'hello\\n'\n", "__AIPERMISSION_EXIT_TEST__")
 	for _, forbidden := range []string{"base64", "mktemp", "bash "} {

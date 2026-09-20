@@ -176,7 +176,7 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 		destroyCreateEnvironment(request)
 		return Record{}, nil, ErrManagerClosed
 	}
-	if !request.CloseExisting && m.activeSessionCountLocked() >= maxActiveConsoleSessions {
+	if m.activeSessionCountLocked() >= maxActiveConsoleSessions {
 		m.mu.Unlock()
 		destroyCreateEnvironment(request)
 		return Record{}, nil, ErrSessionLimit
@@ -375,12 +375,7 @@ func (m *Manager) Input(ctx context.Context, principal executionprincipal.Princi
 		return fmt.Errorf("console session is not active")
 	}
 	return m.authorizeOperation(ctx, principal, session, OperationInput, func() error {
-		manualCommands := session.prepareManualInput(data)
-		if err := session.writeInput(data); err != nil {
-			return err
-		}
-		session.persistManualInput(manualCommands)
-		return nil
+		return session.submitManualInput(data)
 	})
 }
 

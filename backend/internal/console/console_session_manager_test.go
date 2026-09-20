@@ -227,6 +227,37 @@ func TestConsoleSessionManagerSerializesGlobalSessionAdmission(t *testing.T) {
 	}
 }
 
+func TestConsoleSessionManagerCloseExistingCannotBypassGlobalLimit(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-close-existing-limit", "127.0.0.1", 22)
+	manager := NewManager(database, nil, nil)
+	for index := 0; index < maxActiveConsoleSessions; index++ {
+		id := int64(index + 20_000)
+		manager.sessions[id] = &managedConsoleSession{id: id, runtimeID: id, status: "connected"}
+	}
+
+	_, err = manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Principal: testExecutionPrincipal(), CloseExisting: true,
+	})
+	if !errors.Is(err, ErrSessionLimit) {
+		t.Fatalf("create error = %v, want %v", err, ErrSessionLimit)
+	}
+	if manager.activeSessionCount() != maxActiveConsoleSessions {
+		t.Fatalf("active sessions = %d", manager.activeSessionCount())
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id = ?`, runtimeID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("persisted bypass sessions = %d", rows)
+	}
+}
+
 func TestConsoleSessionCloseDoesNotWaitForTransportCompletionSignal(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {

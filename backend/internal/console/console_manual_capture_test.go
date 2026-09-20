@@ -920,6 +920,49 @@ func (r *recordingWriteCloser) Close() error {
 	return nil
 }
 
+func TestManagedConsoleSessionSerializesManualInputSubmission(t *testing.T) {
+	writes := make(chan string, 2)
+	releaseFirst := make(chan struct{})
+	stdin := &sequencedWriteCloser{writes: writes, releaseFirst: releaseFirst}
+	session := &managedConsoleSession{status: "connected", stdin: stdin}
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+	go func() { firstDone <- session.submitManualInput("first\n") }()
+	if value := <-writes; value != "first\n" {
+		t.Fatalf("first write = %q", value)
+	}
+	go func() { secondDone <- session.submitManualInput("second\n") }()
+	select {
+	case value := <-writes:
+		t.Fatalf("second input overtook the first write: %q", value)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if value := <-writes; value != "second\n" {
+		t.Fatalf("second write = %q", value)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+type sequencedWriteCloser struct {
+	writes       chan<- string
+	releaseFirst <-chan struct{}
+	once         sync.Once
+}
+
+func (w *sequencedWriteCloser) Write(data []byte) (int, error) {
+	w.writes <- string(data)
+	w.once.Do(func() { <-w.releaseFirst })
+	return len(data), nil
+}
+
+func (w *sequencedWriteCloser) Close() error { return nil }
+
 type blockingWriteCloser struct {
 	started chan struct{}
 	proceed chan struct{}

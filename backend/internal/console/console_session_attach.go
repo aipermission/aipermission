@@ -73,12 +73,7 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 				continue
 			}
 			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput, func() error {
-				manualCommands := session.prepareManualInput(message.Data)
-				if err := session.writeInput(message.Data); err != nil {
-					return err
-				}
-				session.persistManualInput(manualCommands)
-				return nil
+				return session.submitManualInput(message.Data)
 			}); err != nil {
 				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: err.Error(), SessionID: session.id})
 			}
