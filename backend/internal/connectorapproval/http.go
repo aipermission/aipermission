@@ -309,6 +309,16 @@ func writeKnownError(w http.ResponseWriter, err error) bool {
 		httptransport.WriteErrorCode(w, http.StatusConflict, "connector action request is no longer pending", approvalNotPendingCode)
 		return true
 	}
+	if errors.Is(err, connectortargets.ErrActionRequestCapacity) {
+		w.Header().Set("Retry-After", "60")
+		httptransport.WriteErrorCode(
+			w,
+			http.StatusTooManyRequests,
+			"connector action capacity is temporarily exhausted",
+			"connector_action_backpressure",
+		)
+		return true
+	}
 	var persistenceErr *actions.TerminalPersistenceError
 	if !errors.As(err, &persistenceErr) {
 		return false

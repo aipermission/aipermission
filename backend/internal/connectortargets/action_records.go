@@ -941,7 +941,7 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64, owner st
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
 	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
-		return executor.ExecContext(ctx, `
+		result, updateErr := executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
 			SET status = ?, error = '', execution_owner = ?, execution_lease_expires_at = ?, dispatch_started_at = ''
 			WHERE id = ? AND status = ?
@@ -954,6 +954,21 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64, owner st
 			id,
 			string(connectors.ResultApprovalPending),
 		)
+		if updateErr != nil {
+			return nil, updateErr
+		}
+		updated, rowsErr := result.RowsAffected()
+		if rowsErr != nil || updated != 1 {
+			return result, rowsErr
+		}
+		current, readErr := getActionRequestWithExecutor(ctx, executor, id)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if err := enforceActionRequestTokenCapacity(ctx, executor, current.TokenID, id); err != nil {
+			return nil, err
+		}
+		return result, nil
 	})
 	if err != nil {
 		return ActionRequest{}, err

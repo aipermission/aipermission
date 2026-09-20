@@ -203,6 +203,42 @@ func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T
 	}
 }
 
+func TestApprovalCannotExceedRunningActionCapacity(t *testing.T) {
+	database := openTargetTestDB(t)
+	store := NewStore(database)
+	ctx := t.Context()
+	tokenID := insertConnectorTestToken(t, database)
+	target, profile := createPostgresTargetProfile(t, ctx, store)
+	for index := int64(0); index < maxTokenRunningActionRequests; index++ {
+		if _, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+			ActionName: "query_readonly", Input: map[string]any{"index": index}, Status: connectors.ResultRunning,
+			EnforceTokenCapacity: true,
+		}); err != nil {
+			t.Fatalf("insert running request %d: %v", index, err)
+		}
+	}
+	pending, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
+		ActionName: "query_readonly", Input: map[string]any{"pending": true}, Status: connectors.ResultApprovalPending,
+		EncryptedPayloadJSON: "encrypted", ApprovalContext: `{}`, ApprovalContextHash: "approval-hash",
+		EnforceTokenCapacity: true,
+	})
+	if err != nil {
+		t.Fatalf("insert pending request: %v", err)
+	}
+	if _, err := store.MarkActionRequestRunning(ctx, pending.ID, "test-owner", time.Now().Add(time.Minute)); !errors.Is(err, ErrActionRequestCapacity) {
+		t.Fatalf("approve at capacity error = %v", err)
+	}
+	stored, err := store.GetActionRequest(ctx, pending.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != connectors.ResultApprovalPending {
+		t.Fatalf("capacity failure changed pending request: %#v", stored)
+	}
+}
+
 func TestStoreActionRequestIdempotency(t *testing.T) {
 	database := openTargetTestDB(t)
 	store := NewStore(database)

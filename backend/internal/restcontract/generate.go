@@ -195,6 +195,9 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 			contractLevel = "typed-response"
 			for status, schema := range contract.AdditionalResponses {
 				responses[status] = responseWithSchema("Documented error response", schema)
+				if headers := contract.ResponseHeaders[status]; len(headers) > 0 {
+					responses[status].(map[string]any)["headers"] = headers
+				}
 			}
 		}
 		operation := map[string]any{

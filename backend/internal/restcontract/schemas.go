@@ -12,6 +12,7 @@ type operationContract struct {
 	RequestSchema       map[string]any
 	ResponseSchema      map[string]any
 	AdditionalResponses map[string]map[string]any
+	ResponseHeaders     map[string]map[string]map[string]any
 }
 
 func sharedSchemas() map[string]any {
@@ -22,6 +23,10 @@ func sharedSchemas() map[string]any {
 			"error": stringSchema(),
 			"code":  stringSchema(),
 		}, []string{"error"}),
+		"ConnectorActionBackpressure": objectSchema(map[string]any{
+			"error": nonBlankStringSchema(),
+			"code":  enumSchema("connector_action_backpressure"),
+		}, []string{"error", "code"}),
 		"ConnectorActionDefinition": connectorActionDefinitionSchema(stringMap),
 		"ConnectorCredentialProfile": objectSchema(map[string]any{
 			"id":                      integerSchema(),
@@ -220,7 +225,16 @@ func typedOperationContracts() map[Route]operationContract {
 				"400": refSchema("Error"),
 				"404": refSchema("Error"),
 				"409": refSchema("Error"),
+				"429": refSchema("ConnectorActionBackpressure"),
 				"503": refSchema("ConnectorActionOutcomeUnknown"),
+			},
+			ResponseHeaders: map[string]map[string]map[string]any{
+				"429": {
+					"Retry-After": {
+						"description": "Seconds before retrying after connector action capacity is exhausted.",
+						"schema":      integerSchema(),
+					},
+				},
 			},
 		},
 		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}: {

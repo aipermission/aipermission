@@ -264,6 +264,15 @@ func Register() { mux.HandleFunc("POST /api/connector-action-approvals/{id}/run"
 			t.Fatalf("approval run response %s missing: %#v", status, responses)
 		}
 	}
+	backpressure := responses["429"].(map[string]any)
+	retryAfter := backpressure["headers"].(map[string]any)["Retry-After"].(map[string]any)
+	if retryAfter["schema"].(map[string]any)["type"] != "integer" {
+		t.Fatalf("approval backpressure Retry-After contract = %#v", retryAfter)
+	}
+	schema := backpressure["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	if schema["$ref"] != "#/components/schemas/ConnectorActionBackpressure" {
+		t.Fatalf("approval backpressure body contract = %#v", schema)
+	}
 }
 
 func TestGenerateTypesSecuritySettingsAndVaultApprovalMutations(t *testing.T) {

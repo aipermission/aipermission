@@ -180,3 +180,22 @@ func TestKnownPendingConflictUsesStableErrorCode(t *testing.T) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
+
+func TestKnownCapacityErrorUsesRetryableBackpressureContract(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeKnownError(response, connectortargets.ErrActionRequestCapacity) {
+		t.Fatal("capacity error was not handled")
+	}
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "60" ||
+		!strings.Contains(response.Body.String(), `"code":"connector_action_backpressure"`) {
+		t.Fatalf("response = %d retry=%q body=%s", response.Code, response.Header().Get("Retry-After"), response.Body.String())
+	}
+	if err := restcontract.ValidateTypedResponse(
+		http.MethodPost,
+		"/api/connector-action-approvals/{id}/run",
+		response.Code,
+		response.Body.Bytes(),
+	); err != nil {
+		t.Fatalf("backpressure contract: %v", err)
+	}
+}

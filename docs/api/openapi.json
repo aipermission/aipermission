@@ -461,6 +461,27 @@
         ],
         "type": "object"
       },
+      "ConnectorActionBackpressure": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "connector_action_backpressure"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "code"
+        ],
+        "type": "object"
+      },
       "ConnectorActionDefinition": {
         "additionalProperties": false,
         "properties": {
@@ -3067,6 +3088,25 @@
               }
             },
             "description": "Documented error response"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionBackpressure"
+                }
+              }
+            },
+            "description": "Documented error response",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying after connector action capacity is exhausted.",
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
