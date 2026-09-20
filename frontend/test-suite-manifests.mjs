@@ -16,6 +16,7 @@ export const asyncStateOwnerTests = {
   "src/components/file-transfer/use-transfer-batch.js": ["src/components/file-transfer/use-transfer-batch.component.test.jsx"],
   "src/components/file-transfer/use-transfer-download.js": ["src/components/file-transfer/use-transfer-download.component.test.jsx"],
   "src/components/file-transfer/use-transfer-queues.js": ["src/components/file-transfer/use-transfer-queues.component.test.jsx"],
+  "src/components/history/history-components.jsx": ["src/components/history/history-components.component.test.jsx"],
   "src/components/settings/maintenance-console-panel.jsx": ["src/components/settings/maintenance-console-panel.component.test.jsx"],
   "src/components/settings/backup-retention-panel.jsx": ["src/components/settings/async-owner-settings.component.test.jsx"],
   "src/components/settings/database-settings-panel.jsx": ["src/components/settings/async-owner-settings.component.test.jsx"],

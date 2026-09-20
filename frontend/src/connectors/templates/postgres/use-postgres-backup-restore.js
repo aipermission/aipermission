@@ -42,6 +42,7 @@ export function usePostgresBackupRestore(value) {
     try {
       const result = await apiDownload(`${endpoint}/backup`, `${safeBackupFilename(targetName || "postgres")}.sql`, {
         picker: true,
+        requireStreaming: true,
         signal: request.signal,
       });
       if (!request.isCurrent()) return;

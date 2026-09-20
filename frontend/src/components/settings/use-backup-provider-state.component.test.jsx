@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiDownload, apiGet, apiPost } from "../../lib/api";
 import { useBackupProviderState } from "./use-backup-provider-state";
 
 vi.mock("../../lib/api", () => ({
@@ -27,12 +27,42 @@ function renderBackupState() {
 
 describe("useBackupProviderState", () => {
   beforeEach(() => {
+    apiDownload.mockReset();
     apiGet.mockImplementation(async (path) => {
       if (path === "/api/backup/providers/catalog")
         return { items: [{ provider_type: "aipermission_backup", label: "AIPermission Backup" }] };
       if (path === "/api/backup/providers") return { items: [] };
       throw new Error(`Unexpected GET ${path}`);
     });
+  });
+
+  it("streams database and provider-record downloads without reporting canceled saves as successful", async () => {
+    apiDownload
+      .mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" })
+      .mockResolvedValueOnce({ saved: true, method: "picker" })
+      .mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" })
+      .mockResolvedValueOnce({ saved: true, method: "picker" });
+    const { result } = renderBackupState();
+    await waitFor(() => expect(result.current.backupProviderCatalog.state).toBe("ready"));
+
+    await act(async () => result.current.downloadDatabase());
+    expect(apiDownload).toHaveBeenLastCalledWith("/api/backup/download", expect.stringMatching(/^Default-.*\.aipdb$/), {
+      picker: true,
+      requireStreaming: true,
+    });
+    expect(result.current.backupState).toEqual({ state: "idle", error: null, message: null });
+    await act(async () => result.current.downloadDatabase());
+    expect(result.current.backupState.message).toBe("Encrypted database downloaded.");
+
+    await act(async () => result.current.openBackupRecordsDialog({ id: 7, name: "Remote" }));
+    await act(async () => result.current.downloadBackupRecord({ id: "record-1", filename: "remote.aipdb" }));
+    expect(apiDownload).toHaveBeenLastCalledWith("/api/backup/providers/7/records/record-1/download", "remote.aipdb", {
+      picker: true,
+      requireStreaming: true,
+    });
+    expect(result.current.backupProviderState).toEqual({ state: "idle", error: null, message: null });
+    await act(async () => result.current.downloadBackupRecord({ id: "record-1", filename: "remote.aipdb" }));
+    expect(result.current.backupProviderState.message).toBe("Downloaded remote.aipdb.");
   });
 
   it("clears provider tokens when the editor closes or saves", async () => {

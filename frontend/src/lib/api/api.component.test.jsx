@@ -139,6 +139,49 @@ it("binds retry storage and mutation headers to the same tab workspace", async (
   await apiPost("/api/databases/switch", { database_id: "browser-retry-test" });
 });
 
+it("binds a picker download to the workspace selected before the dialog opens", async () => {
+  const writable = {};
+  window.showSaveFilePicker = vi.fn(async () => {
+    document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
+    return { createWritable: async () => writable };
+  });
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "workspace-a",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    )
+    .mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ "X-AIPermission-Workspace": "workspace-a" }),
+      body: { pipeTo: vi.fn().mockResolvedValue(undefined) },
+    })
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ state: "unlocked" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": "browser-retry-test",
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+    );
+  vi.stubGlobal("fetch", fetch);
+
+  await apiPost("/api/databases/switch", { database_id: "workspace-a" });
+  await apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true });
+  expect(fetch.mock.calls[1][1].headers["X-AIPermission-Workspace"]).toBe("workspace-a");
+
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=browser-retry-test; path=/`;
+  await apiPost("/api/databases/switch", { database_id: "browser-retry-test" });
+});
+
 it("rotates the browser retry identity after an acknowledged action", async () => {
   const keys = [];
   const body = { target_ref: "fixture:1:1", action_name: "inspect", input: {}, reason: "coverage" };
@@ -296,6 +339,56 @@ it("retains a backup retry identity when the gateway acknowledgement is malforme
 
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
+});
+
+it("rotates an expired remote backup upload identity", async () => {
+  const keys = [];
+  let calls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, options) => {
+      keys.push(JSON.parse(options.body).idempotency_key);
+      calls += 1;
+      if (calls === 1) {
+        return jsonResponse({ error: "upload identity expired", code: "operation_expired" }, 410);
+      }
+      return jsonResponse({ id: 2, provider_file_id: "backup-2" });
+    }),
+  );
+  const body = { database_id: "fixture", reason: "coverage" };
+
+  await expect(apiPost("/api/backup/providers/7/upload", body)).rejects.toMatchObject({
+    status: 410,
+    code: "operation_expired",
+  });
+  await apiPost("/api/backup/providers/7/upload", body);
+
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).not.toBe(keys[1]);
+});
+
+it("persists an outcome-unknown HTTP failure for explicit reconciliation", async () => {
+  const body = { target_ref: "fixture:unknown:1", action_name: "mutate", input: {}, reason: "coverage" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      jsonResponse(
+        {
+          error: "transport outcome is unknown",
+          status: "outcome_unknown",
+          request_id: 92,
+          assistant_hint: "Inspect target state.",
+        },
+        503,
+      ),
+    ),
+  );
+
+  await expect(apiPost("/api/connector-actions/local-run", body)).rejects.toMatchObject({ status: 503 });
+
+  await expect(listLocalActionRetryEntries()).resolves.toEqual([
+    expect.objectContaining({ state: "outcome_unknown", request_id: 92, assistant_hint: "Inspect target state." }),
+  ]);
 });
 
 it("preserves a caller-provided idempotency key without opening a browser retry entry", async () => {

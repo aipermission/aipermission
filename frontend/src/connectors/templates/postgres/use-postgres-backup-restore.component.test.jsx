@@ -45,7 +45,7 @@ it("downloads a safe filename and keeps canceled pickers idle", async () => {
   expect(apiDownload).toHaveBeenCalledWith(
     "/api/connector-targets/1/profiles/10/backup",
     "main-db-1.sql",
-    expect.objectContaining({ picker: true, signal: expect.any(AbortSignal) }),
+    expect.objectContaining({ picker: true, requireStreaming: true, signal: expect.any(AbortSignal) }),
   );
   expect(result.current.backupState).toEqual({ state: "idle", error: "", message: "" });
 });

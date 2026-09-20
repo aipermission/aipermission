@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const (
@@ -141,8 +143,8 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		boundary.writeError(w, http.StatusForbidden, "csrf token required")
 		return
 	}
-	if unlocked && boundary.RequiresCSRF != nil && boundary.RequiresCSRF(r.Method, r.URL.Path) &&
-		!boundary.hasCurrentWorkspace(r) {
+	requiresMutationBinding := boundary.RequiresCSRF != nil && boundary.RequiresCSRF(r.Method, r.URL.Path)
+	if unlocked && (requiresMutationBinding || IsWorkspaceBoundRead(r.Method, r.URL.Path)) && !boundary.hasCurrentWorkspace(r) {
 		boundary.writeError(w, http.StatusConflict, "workspace changed; refresh before making changes")
 		return
 	}
@@ -264,6 +266,12 @@ func looksLikeBrowserMutation(r *http.Request) bool {
 
 func IsStateChangingMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
+}
+
+// IsWorkspaceBoundRead exposes the shared transport contract through the API
+// boundary package so API composition does not depend on transport internals.
+func IsWorkspaceBoundRead(method, path string) bool {
+	return transportcontract.IsWorkspaceBoundRead(method, path)
 }
 
 func IsLifecycleMutation(path string) bool {

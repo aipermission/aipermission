@@ -352,6 +352,20 @@ func Register() { mux.HandleFunc("POST /api/backup/import", restore) }`))
 	assertWorkspaceHeaderParameter(t, operation, false)
 }
 
+func TestGenerateDocumentsRequiredWorkspaceHeaderForBoundDownload(t *testing.T) {
+	output, err := Generate([]byte(`package api
+func Register() { mux.HandleFunc("GET /api/settings/diagnostics", download) }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	operation := document["paths"].(map[string]any)["/api/settings/diagnostics"].(map[string]any)["get"].(map[string]any)
+	assertWorkspaceHeaderParameter(t, operation, true)
+}
+
 func assertWorkspaceHeaderParameter(t *testing.T, operation map[string]any, required bool) {
 	t.Helper()
 	parameters, _ := operation["parameters"].([]any)

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	apihttp "github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
@@ -100,6 +101,12 @@ func TestUISessionCookiesAreScopedByFrontendPort(t *testing.T) {
 	}
 	if !second.hasValidUISession(firstRequest) {
 		t.Fatal("second instance should accept its own session cookie without displacing the first")
+	}
+	firstRequest.URL.Path = "/api/backup/download"
+	firstRequest.Header.Set(apihttp.WorkspaceHeaderName, secondWorkspace.Value)
+	staleDownload := httptest.NewRecorder()
+	if first.authorizeBackupOperation(staleDownload, firstRequest) || staleDownload.Code != http.StatusConflict {
+		t.Fatalf("stale download authorization = %d, want %d", staleDownload.Code, http.StatusConflict)
 	}
 
 	firstCSRF := firstCookies["aipermission_csrf_3210"]

@@ -49,3 +49,27 @@ func TestDecodeJSONAcceptsOneStrictObject(t *testing.T) {
 		t.Fatalf("decoded target = %#v, response = %s", target, response.Body.String())
 	}
 }
+
+func TestWorkspaceBoundReadCatalog(t *testing.T) {
+	for _, path := range []string{
+		"/api/backup/download",
+		"/api/settings/diagnostics",
+		"/api/backup/providers/3/records/9/download",
+		"/api/file-transfers/4/download",
+		"/api/file-transfer-batches/4/download",
+		"/api/connector-targets/1/profiles/2/backup",
+	} {
+		if !IsWorkspaceBoundRead(http.MethodGet, path) {
+			t.Errorf("download route %s is not workspace-bound", path)
+		}
+	}
+	for _, request := range []struct{ method, path string }{
+		{http.MethodPost, "/api/backup/download"},
+		{http.MethodGet, "/api/status"},
+		{http.MethodGet, "/api/backup/providers/3/records"},
+	} {
+		if IsWorkspaceBoundRead(request.method, request.path) {
+			t.Errorf("ordinary route %s %s is workspace-bound", request.method, request.path)
+		}
+	}
+}

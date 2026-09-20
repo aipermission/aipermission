@@ -179,9 +179,14 @@ export async function apiDelete(path, options = {}) {
 }
 
 export async function apiDownload(path, filename, options = {}) {
+  const requestWorkspace = currentWorkspaceBinding();
   const safeFilename = filename.replaceAll(":", "-");
   let saveHandle = null;
-  if (options.picker && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+  const pickerAvailable = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+  if (options.requireStreaming && !pickerAvailable) {
+    throw new Error("This download requires a browser with a streaming Save dialog.");
+  }
+  if ((options.picker || options.requireStreaming) && pickerAvailable) {
     try {
       saveHandle = await window.showSaveFilePicker({ suggestedName: safeFilename });
     } catch (error) {
@@ -191,23 +196,61 @@ export async function apiDownload(path, filename, options = {}) {
       throw error;
     }
   }
-  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
+  const response = await fetch(`${apiUrl}${path}`, {
+    headers: workspaceHeaders({}, requestWorkspace),
+    signal: options.signal,
+    credentials: "include",
+  });
   if (!response.ok) {
-    return readResponse(response);
+    return readResponse(response, { captureWorkspace: false });
   }
+  captureWorkspaceBinding(response);
   if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
-    const writable = await saveHandle.createWritable();
-    await response.body.pipeTo(writable, { signal: options.signal });
-    return { saved: true, method: "picker" };
+    let writable = null;
+    try {
+      writable = await saveHandle.createWritable();
+      await response.body.pipeTo(writable, { signal: options.signal });
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      await abortDownloadResources(response.body, writable, error);
+      throw error;
+    }
+  }
+  if (options.requireStreaming) {
+    try {
+      await response.body?.cancel?.();
+    } catch {
+      // Preserve the actionable compatibility error when response cancellation fails.
+    }
+    throw new Error("This browser cannot stream this download to the selected file. Try a current Chromium-based browser.");
   }
   const blob = await readBufferedDownload(response);
   if (saveHandle) {
-    const writable = await saveHandle.createWritable();
-    await writable.write(blob);
-    await writable.close();
-    return { saved: true, method: "picker" };
+    let writable = null;
+    try {
+      writable = await saveHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      await abortDownloadResources(null, writable, error);
+      throw error;
+    }
   }
   return saveBlob(blob, safeFilename, { ...options, picker: false });
+}
+
+async function abortDownloadResources(body, writable, reason) {
+  try {
+    await writable?.abort?.(reason);
+  } catch {
+    // Keep the original download failure.
+  }
+  try {
+    await body?.cancel?.(reason);
+  } catch {
+    // The stream may already be closed or locked by pipeTo.
+  }
 }
 
 async function readResponse(response, options = {}) {
@@ -291,7 +334,11 @@ function csrfHeaders(base = {}) {
 }
 
 function mutationHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
-  const headers = csrfHeaders(base);
+  return workspaceHeaders(csrfHeaders(base), requestWorkspace);
+}
+
+function workspaceHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+  const headers = base;
   if (!requestWorkspace) return headers;
   return { ...headers, [workspaceHeaderName]: requestWorkspace };
 }

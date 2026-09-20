@@ -2031,6 +2031,19 @@
     "/api/backup/download": {
       "get": {
         "operationId": "getApiBackupDownload",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2075,7 +2088,7 @@
         "operationId": "postApiBackupImport",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": false,
@@ -2128,7 +2141,7 @@
         "operationId": "postApiBackupProviders",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2191,7 +2204,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2231,7 +2244,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2273,7 +2286,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2315,7 +2328,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2388,7 +2401,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2436,6 +2449,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2477,7 +2501,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2548,7 +2572,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2590,7 +2614,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2663,7 +2687,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2705,7 +2729,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2739,7 +2763,7 @@
         "operationId": "postApiBackupRemoteList",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": false,
@@ -2773,7 +2797,7 @@
         "operationId": "postApiBackupRemoteRestore",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": false,
@@ -2890,7 +2914,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -2982,7 +3006,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3076,7 +3100,7 @@
         "operationId": "postApiConnectorActionsLocalRun",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3191,7 +3215,7 @@
         "operationId": "postApiConnectorTargets",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3246,7 +3270,7 @@
         "operationId": "postApiConnectorTargetsPing",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3280,7 +3304,7 @@
         "operationId": "postApiConnectorTargetsTest",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3314,7 +3338,7 @@
         "operationId": "postApiConnectorTargetsWithProfile",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3356,7 +3380,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3435,7 +3459,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3485,7 +3509,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3578,7 +3602,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3628,7 +3652,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3676,7 +3700,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3785,6 +3809,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3826,7 +3861,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3876,7 +3911,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3926,7 +3961,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -3976,7 +4011,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4052,7 +4087,7 @@
         "operationId": "postApiConnectorsSshConfigParse",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4086,7 +4121,7 @@
         "operationId": "postApiConnectorsSshHostKeysApprove",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4188,7 +4223,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4230,7 +4265,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4280,7 +4315,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4365,7 +4400,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4399,7 +4434,7 @@
         "operationId": "postApiConsoleBulkExec",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4472,7 +4507,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4525,7 +4560,7 @@
         "operationId": "postApiConsoleSessions",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4629,7 +4664,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4671,7 +4706,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4713,7 +4748,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4747,7 +4782,7 @@
         "operationId": "postApiDatabasesChangePassword",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4781,7 +4816,7 @@
         "operationId": "postApiDatabasesDelete",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4815,7 +4850,7 @@
         "operationId": "postApiDatabasesDeleteLocked",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": false,
@@ -4849,7 +4884,7 @@
         "operationId": "postApiDatabasesRename",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4883,7 +4918,7 @@
         "operationId": "postApiDatabasesSwitch",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -4977,7 +5012,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5019,7 +5054,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5061,7 +5096,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5101,6 +5136,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5134,7 +5180,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5176,7 +5222,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5218,7 +5264,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5273,7 +5319,7 @@
         "operationId": "postApiFileTransfersBrowse",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5307,7 +5353,7 @@
         "operationId": "postApiFileTransfersDownload",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5341,7 +5387,7 @@
         "operationId": "postApiFileTransfersDownloadBatch",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5375,7 +5421,7 @@
         "operationId": "postApiFileTransfersExpand",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5409,7 +5455,7 @@
         "operationId": "postApiFileTransfersUpload",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5443,7 +5489,7 @@
         "operationId": "postApiFileTransfersUploadBatch",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5516,7 +5562,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5555,6 +5601,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5631,7 +5688,7 @@
         "operationId": "postApiHistoryLabels",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5673,7 +5730,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5777,7 +5834,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5827,7 +5884,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -5861,7 +5918,7 @@
         "operationId": "postApiLock",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6133,7 +6190,7 @@
         "operationId": "postApiMessages",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6167,7 +6224,7 @@
         "operationId": "postApiMessagesRead",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6220,7 +6277,7 @@
         "operationId": "postApiProjects",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6262,7 +6319,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6302,7 +6359,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6334,6 +6391,19 @@
     "/api/settings/diagnostics": {
       "get": {
         "operationId": "getApiSettingsDiagnostics",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6388,7 +6458,7 @@
         "operationId": "postApiSettingsMaintenanceConsoleClose",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6422,7 +6492,7 @@
         "operationId": "postApiSettingsMaintenanceConsoleOpen",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6496,7 +6566,7 @@
         "operationId": "putApiSettingsMcpRuntime",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6549,7 +6619,7 @@
         "operationId": "postApiSettingsRedactionRules",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6591,7 +6661,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6631,7 +6701,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6684,7 +6754,7 @@
         "operationId": "putApiSettingsRetention",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6718,7 +6788,7 @@
         "operationId": "postApiSettingsRetentionPurge",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6781,7 +6851,7 @@
         "operationId": "putApiSettingsSecurity",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -6938,7 +7008,7 @@
         "operationId": "postApiTokens",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7009,7 +7079,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7080,7 +7150,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7151,7 +7221,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7193,7 +7263,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7248,7 +7318,7 @@
         "operationId": "postApiUnlockSetup",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": false,
@@ -7386,7 +7456,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7478,7 +7548,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7581,7 +7651,7 @@
         "operationId": "putApiVaultDefaultBindings",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7623,7 +7693,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7676,7 +7746,7 @@
         "operationId": "postApiVaultItems",
         "parameters": [
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7747,7 +7817,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7789,7 +7859,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7831,7 +7901,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7873,7 +7943,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,
@@ -7915,7 +7985,7 @@
             }
           },
           {
-            "description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
             "in": "header",
             "name": "X-AIPermission-Workspace",
             "required": true,

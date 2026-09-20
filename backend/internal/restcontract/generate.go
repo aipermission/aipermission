@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type Route struct {
@@ -246,12 +248,14 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 }
 
 func workspaceHeaderParameter(route Route) map[string]any {
-	if !isMutationMethod(route.Method) || !strings.HasPrefix(route.Path, "/api/") || strings.HasPrefix(route.Path, "/api/mcp/") || route.Path == "/api/unlock" {
+	mutation := isMutationMethod(route.Method) && strings.HasPrefix(route.Path, "/api/") && !strings.HasPrefix(route.Path, "/api/mcp/") && route.Path != "/api/unlock"
+	boundRead := transportcontract.IsWorkspaceBoundRead(route.Method, route.Path)
+	if !mutation && !boundRead {
 		return nil
 	}
 	return map[string]any{
-		"name": "X-AIPermission-Workspace", "in": "header", "required": !workspaceHeaderIsConditional(route.Path),
-		"description": "Binds an authenticated browser mutation to the workspace observed by that browser tab. Required after unlock.",
+		"name": "X-AIPermission-Workspace", "in": "header", "required": boundRead || !workspaceHeaderIsConditional(route.Path),
+		"description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
 		"schema":      nonBlankStringSchema(),
 	}
 }

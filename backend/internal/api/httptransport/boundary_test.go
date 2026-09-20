@@ -80,6 +80,23 @@ func TestBoundaryRejectsStaleWorkspaceMutation(t *testing.T) {
 	}
 }
 
+func TestBoundaryRejectsStaleWorkspaceDownload(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/file-transfers/4/download", nil)
+	request.Header.Set(WorkspaceHeaderName, "workspace-a")
+	response := httptest.NewRecorder()
+	HTTPBoundary{
+		Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("stale download reached routes") }),
+		Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		RequiresCSRF: func(string, string) bool { return false }, CurrentWorkspace: func() string { return "workspace-b" },
+	}.serveHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusConflict)
+	}
+	if response.Header().Get(WorkspaceChangedHeaderName) != "true" {
+		t.Fatal("rejected stale download did not publish the authoritative workspace")
+	}
+}
+
 func TestBoundaryRejectsCSRFOnlyMutationWithoutWorkspace(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/tokens", nil)
 	response := httptest.NewRecorder()

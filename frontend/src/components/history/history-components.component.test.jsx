@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { apiDownload } from "../../lib/api";
 import { HistoryDialog, StatusBadge, retryPolicyGuidance } from "./history-components";
+
+vi.mock("../../lib/api", () => ({ apiDownload: vi.fn() }));
 
 describe("history outcome uncertainty", () => {
   it("uses a visible warning status and persisted retry guidance", () => {
@@ -100,6 +103,106 @@ it("cancels pending history label timers when the dialog unmounts", () => {
 
   expect(clearTimeoutSpy).toHaveBeenCalled();
   clearTimeoutSpy.mockRestore();
+});
+
+it("streams completed transfer downloads from History", async () => {
+  apiDownload.mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" });
+  render(
+    <HistoryDialog
+      item={{
+        id: 45,
+        status: "completed",
+        activity_type: "file_transfer",
+        action_name: "download",
+        source_ref_id: 91,
+        summary: "/var/log/app.log",
+        target_name: "Test target",
+        created_at: "2026-09-01T00:00:00Z",
+      }}
+      onClose={vi.fn()}
+      onAttachLabel={vi.fn()}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Save download" }));
+
+  await waitFor(() =>
+    expect(apiDownload).toHaveBeenCalledWith(
+      "/api/file-transfers/91/download",
+      "app.log",
+      expect.objectContaining({
+        picker: true,
+        requireStreaming: true,
+        signal: expect.any(AbortSignal),
+      }),
+    ),
+  );
+  expect(screen.queryByText(/downloaded|saved/i)).not.toBeInTheDocument();
+});
+
+it("aborts and ignores a stale History download when the selected item changes", async () => {
+  let rejectFirst;
+  apiDownload.mockImplementationOnce(
+    (_path, _name, options) =>
+      new Promise((_resolve, reject) => {
+        rejectFirst = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        options.signal.addEventListener("abort", rejectFirst, { once: true });
+      }),
+  );
+  const first = {
+    id: 45,
+    status: "completed",
+    activity_type: "file_transfer",
+    action_name: "download",
+    source_ref_id: 91,
+    summary: "/var/log/first.log",
+    target_name: "Test target",
+    created_at: "2026-09-01T00:00:00Z",
+  };
+  const { rerender } = render(<HistoryDialog item={first} onClose={vi.fn()} onAttachLabel={vi.fn()} onDetachLabel={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "Save download" }));
+  const signal = apiDownload.mock.calls.at(-1)[2].signal;
+
+  rerender(
+    <HistoryDialog
+      item={{ ...first, id: 46, source_ref_id: 92, summary: "/var/log/second.log" }}
+      onClose={vi.fn()}
+      onAttachLabel={vi.fn()}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  await waitFor(() => expect(signal.aborted).toBe(true));
+  expect(rejectFirst).toBeTypeOf("function");
+  expect(screen.queryByText("aborted")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save download" })).toBeEnabled();
+});
+
+it("surfaces a current History download failure and allows another attempt", async () => {
+  apiDownload.mockRejectedValueOnce(new Error("stream failed"));
+  render(
+    <HistoryDialog
+      item={{
+        id: 47,
+        status: "completed",
+        activity_type: "file_transfer",
+        action_name: "download",
+        source_ref_id: 93,
+        summary: "/var/log/failed.log",
+        target_name: "Test target",
+        created_at: "2026-09-01T00:00:00Z",
+      }}
+      onClose={vi.fn()}
+      onAttachLabel={vi.fn()}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Save download" }));
+
+  expect(await screen.findByText("stream failed")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save download" })).toBeEnabled();
 });
 
 it("keeps reopened label suggestions visible and closes them after the next blur delay", async () => {

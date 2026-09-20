@@ -43,11 +43,14 @@ func (s *Server) authorizeBackupOperation(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusUnauthorized, "ui session required")
 		return false
 	}
-	if apihttp.IsStateChangingMethod(r.Method) {
+	mutation := apihttp.IsStateChangingMethod(r.Method)
+	if mutation {
 		if !s.hasValidUICSRF(r) {
 			writeError(w, http.StatusForbidden, "csrf token required")
 			return false
 		}
+	}
+	if mutation || apihttp.IsWorkspaceBoundRead(r.Method, r.URL.Path) {
 		requested := strings.TrimSpace(r.Header.Get(apihttp.WorkspaceHeaderName))
 		if current := strings.TrimSpace(s.currentUIWorkspaceBinding()); current == "" || requested != current {
 			writeError(w, http.StatusConflict, "workspace changed; refresh before continuing")

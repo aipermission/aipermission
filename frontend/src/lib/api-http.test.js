@@ -27,6 +27,36 @@ test("all API helpers forward the caller AbortSignal", async () => {
   }
 });
 
+test("a rejected stale download cannot adopt another workspace for retry", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const requestBindings = [];
+  globalThis.window = { location: { protocol: "http:", port: "3210" } };
+  globalThis.document = { cookie: "aipermission_workspace_3210=workspace-a" };
+  globalThis.fetch = async (_url, options = {}) => {
+    requestBindings.push(options.headers?.["X-AIPermission-Workspace"]);
+    return new Response(JSON.stringify({ error: "workspace changed" }), {
+      status: 409,
+      headers: {
+        "Content-Type": "application/json",
+        "X-AIPermission-Workspace": "workspace-b",
+        "X-AIPermission-Workspace-Changed": "true",
+      },
+    });
+  };
+  try {
+    await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb"), /workspace changed/);
+    await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb"), /workspace changed/);
+    assert.deepEqual(requestBindings, ["workspace-a", "workspace-a"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
+});
+
 test("bounded GET requests abort delayed reads without changing mutation behavior", async (t) => {
   t.mock.method(
     globalThis,
@@ -169,6 +199,114 @@ test("picker downloads reject unavailable response streams without buffering", a
   });
   try {
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { picker: true }), /streaming Save dialog/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
+
+test("picker downloads cancel the response when opening the destination fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let cancelCalls = 0;
+  const cancel = async () => {
+    cancelCalls += 1;
+  };
+  globalThis.window = {
+    showSaveFilePicker: async () => ({
+      createWritable: async () => {
+        throw new Error("destination unavailable");
+      },
+    }),
+  };
+  globalThis.fetch = async () => ({ ok: true, body: { pipeTo: async () => {}, cancel } });
+  try {
+    await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }), /destination unavailable/);
+    assert.equal(cancelCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
+
+test("picker downloads abort the destination after a streaming write failure", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let abortCalls = 0;
+  let cancelCalls = 0;
+  const abort = async () => {
+    abortCalls += 1;
+  };
+  const cancel = async () => {
+    cancelCalls += 1;
+  };
+  globalThis.window = {
+    showSaveFilePicker: async () => ({ createWritable: async () => ({ abort }) }),
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: {
+      async pipeTo() {
+        throw new Error("stream write failed");
+      },
+      cancel,
+    },
+  });
+  try {
+    await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }), /stream write failed/);
+    assert.equal(abortCalls, 1);
+    assert.equal(cancelCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
+
+test("required streaming downloads fail before fetching when the native picker is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const fetchCalls = [];
+  globalThis.window = {};
+  globalThis.fetch = async (...args) => {
+    fetchCalls.push(args);
+    throw new Error("fetch must not start");
+  };
+  try {
+    await assert.rejects(
+      () => apiDownload("/api/backup/download", "backup.aipdb", { picker: true, requireStreaming: true }),
+      /requires a browser with a streaming Save dialog/,
+    );
+    assert.equal(fetchCalls.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreWindow(originalWindow);
+  }
+});
+
+test("required streaming implies picker use and preserves compatibility errors when cancellation fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let pickerCalls = 0;
+  globalThis.window = {
+    showSaveFilePicker: async () => {
+      pickerCalls += 1;
+      return { createWritable: async () => ({}) };
+    },
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    body: {
+      async cancel() {
+        throw new Error("cancel failed");
+      },
+    },
+  });
+  try {
+    await assert.rejects(
+      () => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }),
+      /cannot stream this download/,
+    );
+    assert.equal(pickerCalls, 1);
   } finally {
     globalThis.fetch = originalFetch;
     restoreWindow(originalWindow);

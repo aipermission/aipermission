@@ -30,6 +30,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   const labelInputRef = useRef(null);
   const blurTimerRef = useRef(null);
   const focusTimerRef = useRef(null);
+  const downloadTransfer = useTransferDownload(item, setState);
 
   function cancelTimer(timerRef) {
     if (timerRef.current === null) return;
@@ -134,16 +135,6 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
     if (event.key === "Enter" || event.key === ",") {
       event.preventDefault();
       void addLabel(showSuggestions ? suggestions[activeSuggestion]?.name : labelName);
-    }
-  }
-
-  async function downloadTransfer() {
-    setState({ state: "downloading", error: null });
-    try {
-      await apiDownload(`/api/file-transfers/${item.source_ref_id}/download`, transferFileName(item));
-      setState({ state: "idle", error: null });
-    } catch (error) {
-      setState({ state: "error", error: error.message });
     }
   }
 
@@ -277,6 +268,42 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
       </div>
     </Dialog>
   );
+}
+
+function useTransferDownload(item, setState) {
+  const downloadRef = useRef({ generation: 0, controller: null });
+  useEffect(() => {
+    downloadRef.current.generation += 1;
+    downloadRef.current.controller?.abort();
+    downloadRef.current.controller = null;
+    return () => {
+      downloadRef.current.generation += 1;
+      downloadRef.current.controller?.abort();
+      downloadRef.current.controller = null;
+    };
+  }, [item?.id]);
+
+  return async function downloadTransfer() {
+    downloadRef.current.controller?.abort();
+    const controller = new AbortController();
+    const generation = downloadRef.current.generation + 1;
+    downloadRef.current = { generation, controller };
+    setState({ state: "downloading", error: null });
+    try {
+      await apiDownload(`/api/file-transfers/${item.source_ref_id}/download`, transferFileName(item), {
+        picker: true,
+        requireStreaming: true,
+        signal: controller.signal,
+      });
+      if (downloadRef.current.generation === generation) setState({ state: "idle", error: null });
+    } catch (error) {
+      if (downloadRef.current.generation === generation && error?.name !== "AbortError") {
+        setState({ state: "error", error: error.message });
+      }
+    } finally {
+      if (downloadRef.current.generation === generation) downloadRef.current.controller = null;
+    }
+  };
 }
 
 function TransferDetail({ item }) {
