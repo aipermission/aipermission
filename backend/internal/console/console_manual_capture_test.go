@@ -8,6 +8,38 @@ import (
 	"time"
 )
 
+func TestManualCaptureCompletesAfterTranscriptTrimming(t *testing.T) {
+	session := &managedConsoleSession{rawTranscript: strings.Repeat("x", maxConsoleTranscriptLength)}
+	startOffset := session.rawStreamPositionLocked()
+	session.appendSafeOutput(strings.Repeat("y", maxConsoleTranscriptLength+32) + "\nresult\nroot@worker:~# ")
+	session.manualActive = &consoleSessionManualCapture{
+		RequestID:    1,
+		Command:      "pwd",
+		StartOffset:  startOffset,
+		ResumePrompt: "root@worker:~# ",
+	}
+
+	completion := session.manualOutputCompletionLocked()
+	if completion == nil || !completion.OutputTruncated || !strings.Contains(completion.Stdout, "result") {
+		t.Fatalf("unexpected trimmed manual completion: %#v", completion)
+	}
+}
+
+func TestManualPauseRecoversAfterTranscriptTrimming(t *testing.T) {
+	session := &managedConsoleSession{rawTranscript: strings.Repeat("x", maxConsoleTranscriptLength)}
+	startOffset := session.rawStreamPositionLocked()
+	session.appendSafeOutput(strings.Repeat("y", maxConsoleTranscriptLength+32) + "\nroot@worker:~# ")
+	session.manualPause = &consoleSessionManualPause{
+		Prompt:      "root@worker:~# ",
+		StartOffset: startOffset,
+	}
+
+	session.clearManualPauseIfPromptReturnedLocked()
+	if session.manualPause != nil {
+		t.Fatalf("manual pause should clear after the original prompt returns")
+	}
+}
+
 func TestManualInputCreatesUntrackedHistoryRow(t *testing.T) {
 	database, _, session := newManualHistoryTestSession(t)
 

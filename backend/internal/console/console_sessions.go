@@ -141,14 +141,14 @@ type RuntimeSession struct {
 type consoleSessionActiveExec struct {
 	Command     string
 	Marker      string
-	StartOffset int
+	StartOffset int64
 	Started     time.Time
 }
 
 type consoleSessionManualCapture struct {
 	RequestID                int64
 	Command                  string
-	StartOffset              int
+	StartOffset              int64
 	ResumePrompt             string
 	Started                  time.Time
 	CompletionTrackingReason string
@@ -157,7 +157,7 @@ type consoleSessionManualCapture struct {
 type consoleSessionManualPause struct {
 	Prompt      string
 	Reason      string
-	StartOffset int
+	StartOffset int64
 }
 
 type Manager struct {
@@ -252,6 +252,7 @@ type managedConsoleSession struct {
 	closing       bool
 	transcript    string
 	rawTranscript string
+	rawBaseOffset int64
 	pendingOutput string
 	errText       string
 	stdin         io.WriteCloser

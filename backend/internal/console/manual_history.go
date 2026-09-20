@@ -39,7 +39,7 @@ func (s *managedConsoleSession) prepareManualInput(data string) []manualCommandR
 		completion = s.manualOutputCompletionLocked()
 	}
 	if activeUpdate == nil {
-		startOffset := len(s.rawTranscript)
+		startOffset := s.rawStreamPositionLocked()
 		resumePrompt := lastManualShellPrompt(s.rawTranscript)
 		for _, command := range s.manualInput.consume(data) {
 			if command.Command != "" {

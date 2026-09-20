@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
@@ -303,6 +305,94 @@ func TestAppendOutputKeepsPromptAfterMarkerWhileAutomationStillActive(t *testing
 	}
 	if strings.Contains(session.transcript, "__AIPERMISSION_EXIT") {
 		t.Fatalf("display transcript should still hide internal marker: %q", session.transcript)
+	}
+}
+
+func TestAutomationCompletionSurvivesTranscriptTrimming(t *testing.T) {
+	marker := "__AIPERMISSION_EXIT_TRIMMED__"
+	session := &managedConsoleSession{
+		status:        "connected",
+		rawTranscript: strings.Repeat("x", maxConsoleTranscriptLength),
+	}
+	startOffset := session.rawStreamPositionLocked()
+	session.activeExec = &consoleSessionActiveExec{Marker: marker, StartOffset: startOffset, Started: time.Now()}
+
+	session.appendSafeOutput("\n" + strings.Repeat("y", maxConsoleTranscriptLength+17))
+	session.appendSafeOutput("\nuseful output\n" + marker + ":42\n")
+
+	output, exitCode, completed, err := session.checkCommandResult(startOffset, marker)
+	if err != nil {
+		t.Fatalf("check command result: %v", err)
+	}
+	if !completed || exitCode != 42 {
+		t.Fatalf("expected completed exit 42, got completed=%v exit=%d", completed, exitCode)
+	}
+	if !strings.Contains(output, "useful output") {
+		t.Fatalf("expected retained command output, got %q", output)
+	}
+}
+
+func TestAutomationCompletionWaitsForEntireExitMarkerFrame(t *testing.T) {
+	marker := "__AIPERMISSION_EXIT_FRAGMENTED__"
+	frame := "\ncommand output\n" + marker + ":123\n"
+	for split := 0; split < len(frame); split++ {
+		t.Run(strconv.Itoa(split), func(t *testing.T) {
+			session := &managedConsoleSession{status: "connected"}
+			session.appendSafeOutput(frame[:split])
+			_, _, completed, err := session.checkCommandResult(0, marker)
+			if err != nil {
+				t.Fatalf("partial frame returned error: %v", err)
+			}
+			if completed {
+				t.Fatalf("partial frame completed at byte %d", split)
+			}
+
+			session.appendSafeOutput(frame[split:])
+			output, exitCode, completed, err := session.checkCommandResult(0, marker)
+			if err != nil {
+				t.Fatalf("complete frame returned error: %v", err)
+			}
+			if !completed || exitCode != 123 || strings.TrimSpace(output) != "command output" {
+				t.Fatalf("unexpected result completed=%v exit=%d output=%q", completed, exitCode, output)
+			}
+		})
+	}
+}
+
+func TestAutomationTranscriptOffsetsPreserveUTF8Boundaries(t *testing.T) {
+	session := &managedConsoleSession{status: "connected"}
+	session.appendSafeOutput(strings.Repeat("a", maxConsoleTranscriptLength-1) + "€")
+	if !utf8.ValidString(session.rawTranscript) {
+		t.Fatalf("trimmed transcript is not valid UTF-8")
+	}
+	startOffset := session.rawStreamPositionLocked()
+	marker := "__AIPERMISSION_EXIT_UTF8__"
+	session.appendSafeOutput("\nçalıştı\n" + marker + ":0\n")
+	output, exitCode, completed, err := session.checkCommandResult(startOffset, marker)
+	if err != nil || !completed || exitCode != 0 || strings.TrimSpace(output) != "çalıştı" {
+		t.Fatalf("unexpected UTF-8 result completed=%v exit=%d output=%q err=%v", completed, exitCode, output, err)
+	}
+}
+
+func TestAutomationCompletionAcceptsMarkerAtTrimmedBufferBoundary(t *testing.T) {
+	marker := "__AIPERMISSION_EXIT_BOUNDARY__"
+	session := &managedConsoleSession{
+		status:        "connected",
+		rawTranscript: marker + ":0\n",
+		rawBaseOffset: 25,
+	}
+	output, exitCode, completed, err := session.checkCommandResult(0, marker)
+	if err != nil || !completed || exitCode != 0 || output != "" {
+		t.Fatalf("unexpected boundary result completed=%v exit=%d output=%q err=%v", completed, exitCode, output, err)
+	}
+}
+
+func TestAutomationCompletionRejectsMalformedTerminatedExitMarker(t *testing.T) {
+	marker := "__AIPERMISSION_EXIT_MALFORMED__"
+	session := &managedConsoleSession{status: "connected", rawTranscript: "\n" + marker + ":nope\n"}
+	_, _, completed, err := session.checkCommandResult(0, marker)
+	if err == nil || completed {
+		t.Fatalf("malformed marker should fail without completing: completed=%v err=%v", completed, err)
 	}
 }
 

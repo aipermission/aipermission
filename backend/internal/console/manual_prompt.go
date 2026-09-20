@@ -11,10 +11,8 @@ func (s *managedConsoleSession) clearManualPauseIfPromptReturnedLocked() {
 		return
 	}
 	startOffset := s.manualPause.StartOffset
-	if startOffset < 0 || startOffset > len(s.rawTranscript) {
-		startOffset = 0
-	}
-	if startOffset < len(s.rawTranscript) && manualTranscriptEndsWithPrompt(s.rawTranscript[startOffset:], s.manualPause.Prompt) {
+	segment, _ := s.rawSegmentLocked(startOffset)
+	if segment != "" && manualTranscriptEndsWithPrompt(segment, s.manualPause.Prompt) {
 		s.manualPause = nil
 		s.manualInput.reset()
 	}

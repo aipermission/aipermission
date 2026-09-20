@@ -483,14 +483,14 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	automationActive := s.activeExec != nil
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
 	keepShellPrompt := postAutomationFilter
-	s.rawTranscript = terminaltext.TailStringByBytes(s.rawTranscript+data, maxConsoleTranscriptLength)
+	combinedRaw := s.rawTranscript + data
+	retainedRaw := terminaltext.TailStringByBytes(combinedRaw, maxConsoleTranscriptLength)
+	s.rawBaseOffset += int64(len(combinedRaw) - len(retainedRaw))
+	s.rawTranscript = retainedRaw
 	if automationActive {
 		active := s.activeExec
-		startOffset := active.StartOffset
-		if startOffset > len(s.rawTranscript) {
-			startOffset = 0
-		}
-		if strings.Contains(s.rawTranscript[startOffset:], "\n"+active.Marker+":") {
+		segment, _ := s.rawSegmentLocked(active.StartOffset)
+		if strings.Contains(segment, "\n"+active.Marker+":") {
 			keepShellPrompt = true
 		}
 	}
@@ -520,6 +520,25 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	if displayData != "" {
 		s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
 	}
+}
+
+func (s *managedConsoleSession) rawStreamPositionLocked() int64 {
+	return s.rawBaseOffset + int64(len(s.rawTranscript))
+}
+
+func (s *managedConsoleSession) rawSegmentLocked(startOffset int64) (string, bool) {
+	return rawTranscriptSegment(s.rawTranscript, s.rawBaseOffset, startOffset)
+}
+
+func rawTranscriptSegment(transcript string, baseOffset int64, startOffset int64) (string, bool) {
+	endOffset := baseOffset + int64(len(transcript))
+	if startOffset < baseOffset {
+		return transcript, true
+	}
+	if startOffset > endOffset {
+		return "", true
+	}
+	return transcript[int(startOffset-baseOffset):], false
 }
 
 func (s *managedConsoleSession) appendDisplayOutput(data string) {

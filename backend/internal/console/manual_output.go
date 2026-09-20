@@ -149,13 +149,7 @@ func (s *managedConsoleSession) manualOutputCompletionLocked() *manualOutputComp
 		return nil
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	truncated := false
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-		truncated = true
-	}
-	segment := s.rawTranscript[startOffset:]
+	segment, truncated := s.rawSegmentLocked(active.StartOffset)
 	if !manualSegmentHasPrompt(segment) {
 		return nil
 	}
@@ -190,11 +184,8 @@ func (s *managedConsoleSession) manualActiveHasOutputLocked() bool {
 		return false
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-	}
-	stdout, _ := manualCapturedOutput(s.rawTranscript[startOffset:], active.Command)
+	segment, _ := s.rawSegmentLocked(active.StartOffset)
+	stdout, _ := manualCapturedOutput(segment, active.Command)
 	return strings.TrimSpace(terminaltext.PlainOutput(stdout)) != ""
 }
 
@@ -203,16 +194,11 @@ func (s *managedConsoleSession) downgradeManualOutputCaptureLocked(reason string
 		return nil
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	truncated := false
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-		truncated = true
-	}
+	segment, truncated := s.rawSegmentLocked(active.StartOffset)
 	stdout := ""
 	outputTruncated := false
 	if captureOutput {
-		stdout, outputTruncated = manualCapturedOutput(s.rawTranscript[startOffset:], active.Command)
+		stdout, outputTruncated = manualCapturedOutput(segment, active.Command)
 	}
 	s.manualActive = nil
 	return &manualOutputCompletion{

@@ -9,7 +9,7 @@ type manualCommandRecord struct {
 	Command                  string
 	TrackingReason           string
 	TrackOutput              bool
-	StartOffset              int
+	StartOffset              int64
 	ResumePrompt             string
 	CompletionTrackingReason string
 }

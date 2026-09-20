@@ -57,7 +57,7 @@ func (s *managedConsoleSession) execCommand(
 	started := time.Now()
 	marker := fmt.Sprintf("__AIPERMISSION_EXIT_%d_%d__", s.id, started.UnixNano())
 	s.mu.Lock()
-	startOffset := len(s.rawTranscript)
+	startOffset := s.rawStreamPositionLocked()
 	s.mu.Unlock()
 
 	s.setActiveCommand(consoleSessionActiveExec{
@@ -209,7 +209,7 @@ func (s *managedConsoleSession) waitReady(ctx context.Context) error {
 	}
 }
 
-func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startOffset int, marker string) (string, int, error) {
+func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startOffset int64, marker string) (string, int, error) {
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -230,30 +230,38 @@ func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startO
 	}
 }
 
-func (s *managedConsoleSession) checkCommandResult(startOffset int, marker string) (string, int, bool, error) {
+func (s *managedConsoleSession) checkCommandResult(startOffset int64, marker string) (string, int, bool, error) {
 	s.mu.Lock()
 	transcript := s.rawTranscript
+	baseOffset := s.rawBaseOffset
 	status := s.status
 	errText := s.errText
 	s.mu.Unlock()
-	if startOffset > len(transcript) {
-		startOffset = 0
-	}
-	segment := transcript[startOffset:]
+	segment, truncated := rawTranscriptSegment(transcript, baseOffset, startOffset)
 	markerNeedle := "\n" + marker + ":"
 	markerIndex := strings.Index(segment, markerNeedle)
+	markerLength := len(markerNeedle)
+	if markerIndex < 0 && truncated && strings.HasPrefix(segment, marker+":") {
+		markerIndex = 0
+		markerLength = len(marker) + 1
+	}
 	if markerIndex >= 0 {
-		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
-		afterMarker := segment[markerIndex+len(markerNeedle):]
+		afterMarker := segment[markerIndex+markerLength:]
 		lineEnd := strings.IndexAny(afterMarker, "\r\n")
-		exitText := afterMarker
-		if lineEnd >= 0 {
-			exitText = afterMarker[:lineEnd]
+		if lineEnd < 0 {
+			return segment, 1, false, nil
 		}
-		exitCode, err := strconv.Atoi(strings.TrimSpace(exitText))
+		exitText := afterMarker[:lineEnd]
+		if exitText == "" || strings.IndexFunc(exitText, func(value rune) bool {
+			return value < '0' || value > '9'
+		}) >= 0 {
+			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("invalid console command exit marker")
+		}
+		exitCode, err := strconv.Atoi(exitText)
 		if err != nil {
-			exitCode = 1
+			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("parse console command exit status: %w", err)
 		}
+		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
 		return output, exitCode, true, nil
 	}
 	if status == "error" || status == "closed" {
