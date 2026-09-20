@@ -190,6 +190,10 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 			req.Header.Add(name, value)
 		}
 	}
+	// Preserve object bytes exactly. Leaving this header implicit lets Go add
+	// gzip and transparently decode a stored compressed object before limits,
+	// checksums, or base64 projection see it.
+	req.Header.Set("Accept-Encoding", "identity")
 	client.Sign(req, payload)
 	req, requestDispatched := connectors.TrackHTTPRequestDispatch(req)
 	resp, err := client.httpClient.Do(req)

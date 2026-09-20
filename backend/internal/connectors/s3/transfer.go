@@ -292,6 +292,7 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 	if err != nil {
 		return TransferResult{}, err
 	}
+	req.Header.Set("Accept-Encoding", "identity")
 	client.Sign(req, nil)
 	response, err := client.httpClient.Do(req)
 	if err != nil {
