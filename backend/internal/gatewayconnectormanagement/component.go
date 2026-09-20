@@ -278,8 +278,9 @@ func (component *Component) ProvisioningScope(w http.ResponseWriter) (connectorm
 	}
 	return connectormanagement.ProvisioningScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
-		EncryptSecret:   workspace.Storage.EncryptSecret,
-		WithTransaction: adaptTransaction(workspace.Storage.Transaction),
+		AcquireExclusive: workspace.Storage.AcquireExclusive,
+		EncryptSecret:    workspace.Storage.EncryptSecret,
+		WithTransaction:  adaptTransaction(workspace.Storage.Transaction),
 		EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
 			return component.ensureRuntimeSurfaces(ctx, store, target, profile)
 		},

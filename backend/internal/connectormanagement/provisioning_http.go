@@ -36,6 +36,7 @@ type ProvisioningScope struct {
 	Database              *sql.DB
 	Registry              connectors.Catalog
 	Runtime               CredentialRuntimePorts
+	AcquireExclusive      func(context.Context) (func(), error)
 	EncryptSecret         func(context.Context, int64, json.RawMessage) (string, error)
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
@@ -81,6 +82,17 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
+	release, err := scope.AcquireExclusive(r.Context())
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "connector credential provisioning was canceled")
+		return
+	}
+	if release == nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	defer release()
+
 	store := connectortargets.NewStore(scope.Database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
@@ -194,7 +206,7 @@ func (h *ProvisioningHTTPHandler) failProvisioned(
 	cause error,
 	response provisionFailureResponse,
 ) {
-	outcome := compensateProvisioned(scope, provisioner, target, adminProfile, secrets, provisioned, stage, cause)
+	outcome := compensateProvisioned(ctx, scope, provisioner, target, adminProfile, secrets, provisioned, stage, cause)
 	if outcome.cleanupErr != nil {
 		log.Printf("credential provisioning compensation failed connector=%q target_id=%d stage=%q", target.ConnectorKind, target.ID, stage)
 		writeProvisioningStateError(w,
@@ -220,6 +232,7 @@ func (h *ProvisioningHTTPHandler) failProvisioned(
 }
 
 func compensateProvisioned(
+	requestCtx context.Context,
 	scope ProvisioningScope,
 	provisioner connectors.CredentialProvisioner,
 	target connectortargets.Target,
@@ -232,7 +245,7 @@ func compensateProvisioned(
 	if provisioner == nil {
 		return provisionCompensationOutcome{cleanupErr: errors.New("credential provisioner is unavailable")}
 	}
-	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), provisionCompensationTimeout)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(requestCtx), provisionCompensationTimeout)
 	boundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
 	cleanupResult, cleanupErr := provisioner.CleanupProvisionedCredentialProfile(
 		cleanupCtx,
@@ -251,7 +264,7 @@ func compensateProvisioned(
 		action = "connector.profile.provisioning_reconciliation_required"
 		cleanupStatus = "failed"
 	}
-	auditCtx, auditCancel := context.WithTimeout(context.Background(), provisionAuditTimeout)
+	auditCtx, auditCancel := context.WithTimeout(context.WithoutCancel(requestCtx), provisionAuditTimeout)
 	auditErr := scope.AuditRequired(auditCtx, action, map[string]any{
 		"target_id": target.ID, "admin_profile_id": adminProfile.ID,
 		"connector_kind": target.ConnectorKind, "kind": provisioned.Kind, "label": provisioned.Label,
@@ -345,7 +358,7 @@ func (h *ProvisioningHTTPHandler) resolve(w http.ResponseWriter) (ProvisioningSc
 	if !ok {
 		return ProvisioningScope{}, false
 	}
-	valid := scope.Database != nil && scope.Registry != nil && scope.Runtime.valid() && scope.EncryptSecret != nil &&
+	valid := scope.Database != nil && scope.Registry != nil && scope.Runtime.valid() && scope.AcquireExclusive != nil && scope.EncryptSecret != nil &&
 		scope.WithTransaction != nil && scope.EnsureRuntimeSurfaces != nil && scope.AuditRequired != nil
 	if !valid {
 		httptransport.WriteInternalError(w)

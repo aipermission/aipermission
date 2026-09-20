@@ -17,6 +17,43 @@ import (
 
 type failedCleanupProvisioningConnector struct{ managementTestConnector }
 
+type admissionAwareCleanupConnector struct {
+	managementTestConnector
+	identity *connectors.DeliveryAdmissionIdentity
+	called   *bool
+}
+
+func (connector admissionAwareCleanupConnector) CleanupProvisionedCredentialProfile(
+	ctx context.Context,
+	_ connectors.RuntimeContext,
+	_ connectors.CredentialProfileView,
+) (connectors.ActionResult, error) {
+	if err := ctx.Err(); err != nil {
+		return connectors.ActionResult{}, errors.New("cleanup inherited request cancellation")
+	}
+	if !connectors.DeliveryAdmissionHeld(ctx, connector.identity) {
+		return connectors.ActionResult{}, errors.New("cleanup lost lifecycle admission identity")
+	}
+	*connector.called = true
+	return connectors.ActionResult{Status: connectors.ResultCompleted}, nil
+}
+
+type exclusiveProvisioningConnector struct {
+	managementTestConnector
+	held *bool
+}
+
+func (connector exclusiveProvisioningConnector) ProvisionCredentialProfile(
+	ctx context.Context,
+	runtime connectors.RuntimeContext,
+	input map[string]any,
+) (connectors.ProvisionedCredentialProfile, error) {
+	if connector.held == nil || !*connector.held {
+		return connectors.ProvisionedCredentialProfile{}, errors.New("provisioning ran outside the exclusive lifecycle gate")
+	}
+	return connector.managementTestConnector.ProvisionCredentialProfile(ctx, runtime, input)
+}
+
 func (failedCleanupProvisioningConnector) CleanupProvisionedCredentialProfile(
 	context.Context,
 	connectors.RuntimeContext,
@@ -122,6 +159,23 @@ func TestProvisioningHandlerPersistsEncryptedProfileAndAudit(t *testing.T) {
 	}
 }
 
+func TestProvisioningHandlerHoldsExclusiveLifecycleGate(t *testing.T) {
+	fixture := newManagementHTTPFixture(t)
+	state := &provisioningHTTPTestState{}
+	registry := connectors.NewRegistry()
+	if err := registry.Register(exclusiveProvisioningConnector{held: &state.exclusiveHeld}); err != nil {
+		t.Fatal(err)
+	}
+	state.registry = registry
+	response := performProvisioningRequest(t, fixture, state)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("response=%d %s", response.Code, response.Body.String())
+	}
+	if state.exclusiveAcquires != 1 || state.exclusiveHeld || state.exclusiveReleases != 1 {
+		t.Fatalf("exclusive acquires=%d releases=%d held=%t", state.exclusiveAcquires, state.exclusiveReleases, state.exclusiveHeld)
+	}
+}
+
 func TestProvisioningHandlerCompensatesDuplicateProfileWithoutLeakingSecrets(t *testing.T) {
 	fixture := newManagementHTTPFixture(t)
 	createDuplicateProvisioningProfile(t, fixture)
@@ -135,6 +189,47 @@ func TestProvisioningHandlerCompensatesDuplicateProfileWithoutLeakingSecrets(t *
 	}
 	if state.ensuredProfileID != 0 {
 		t.Fatalf("duplicate profile reached persistence: %d", state.ensuredProfileID)
+	}
+}
+
+func TestProvisioningCompensationPreservesAdmissionAfterRequestCancellation(t *testing.T) {
+	identity := &connectors.DeliveryAdmissionIdentity{}
+	requestCtx, cancelRequest := context.WithCancel(connectors.WithDeliveryAdmission(t.Context(), identity))
+	cancelRequest()
+	cleanupCalled := false
+	auditCalled := false
+	connector := admissionAwareCleanupConnector{
+		identity: identity,
+		called:   &cleanupCalled,
+	}
+	outcome := compensateProvisioned(
+		requestCtx,
+		ProvisioningScope{
+			Runtime: managementCredentialRuntimePorts(),
+			AuditRequired: func(ctx context.Context, _ string, _ any) error {
+				if err := ctx.Err(); err != nil {
+					t.Fatalf("audit inherited request cancellation: %v", err)
+				}
+				if !connectors.DeliveryAdmissionHeld(ctx, identity) {
+					t.Fatal("audit lost lifecycle admission identity")
+				}
+				auditCalled = true
+				return nil
+			},
+		},
+		connector,
+		connectortargets.Target{ID: 4, ConnectorKind: managementTestConnectorKind},
+		connectortargets.CredentialProfile{ID: 7, TargetID: 4, ConnectorKind: managementTestConnectorKind},
+		map[string]any{},
+		connectors.ProvisionedCredentialProfile{Kind: "operator", Label: "managed"},
+		"duplicate_profile_label",
+		errors.New("duplicate"),
+	)
+	if outcome.cleanupErr != nil || outcome.auditErr != nil {
+		t.Fatalf("compensation outcome = %#v", outcome)
+	}
+	if !cleanupCalled || !auditCalled {
+		t.Fatalf("cleanup=%t audit=%t", cleanupCalled, auditCalled)
 	}
 }
 
@@ -192,10 +287,13 @@ func createDuplicateProvisioningProfile(t *testing.T, fixture *managementHTTPFix
 }
 
 type provisioningHTTPTestState struct {
-	auditActions     []string
-	ensuredProfileID int64
-	registry         *connectors.Registry
-	auditErr         error
+	auditActions      []string
+	ensuredProfileID  int64
+	registry          *connectors.Registry
+	auditErr          error
+	exclusiveHeld     bool
+	exclusiveAcquires int
+	exclusiveReleases int
 }
 
 func performProvisioningRequest(
@@ -211,13 +309,26 @@ func performProvisioningRequest(
 		}
 		return ProvisioningScope{
 			Database: fixture.database, Registry: registry, Runtime: managementCredentialRuntimePorts(),
+			AcquireExclusive: func(context.Context) (func(), error) {
+				if state.exclusiveHeld {
+					t.Fatal("exclusive lifecycle gate acquired twice")
+				}
+				state.exclusiveAcquires++
+				state.exclusiveHeld = true
+				return func() {
+					state.exclusiveHeld = false
+					state.exclusiveReleases++
+				}, nil
+			},
 			EncryptSecret: func(_ context.Context, profileID int64, payload json.RawMessage) (string, error) {
+				state.requireExclusive(t)
 				if profileID < 1 || !strings.Contains(string(payload), "managed-secret") {
 					t.Fatalf("encrypt input profile=%d payload=%s", profileID, payload)
 				}
 				return "encrypted-managed-secret", nil
 			},
 			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
+				state.requireExclusive(t)
 				tx, err := fixture.database.BeginTx(ctx, nil)
 				if err != nil {
 					return err
@@ -233,10 +344,12 @@ func performProvisioningRequest(
 				return tx.Commit()
 			},
 			EnsureRuntimeSurfaces: func(_ context.Context, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+				state.requireExclusive(t)
 				state.ensuredProfileID = profile.ID
 				return nil
 			},
 			AuditRequired: func(_ context.Context, action string, _ any) error {
+				state.requireExclusive(t)
 				state.auditActions = append(state.auditActions, action)
 				return state.auditErr
 			},
@@ -251,4 +364,11 @@ func performProvisioningRequest(
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 	return response
+}
+
+func (state *provisioningHTTPTestState) requireExclusive(t *testing.T) {
+	t.Helper()
+	if !state.exclusiveHeld {
+		t.Fatal("provisioning lifecycle work ran outside the exclusive gate")
+	}
 }
