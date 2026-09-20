@@ -246,6 +246,9 @@ func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader)
 	if restrictToken != "" {
 		return total, false, fmt.Errorf("restore SQL file contains an unmatched psql restriction marker")
 	}
+	if !lexical.empty() {
+		return total, false, fmt.Errorf("restore SQL file contains an unterminated quoted or commented section")
+	}
 	return total, lexical.controlsTransaction, nil
 }
 
@@ -276,7 +279,6 @@ type postgresRestoreLexicalState struct {
 	inSingleQuote       bool
 	singleEscapes       bool
 	inDoubleQuote       bool
-	doubleEscapes       bool
 	blockCommentDepth   int
 	dollarQuote         string
 	statementStart      bool
@@ -331,17 +333,12 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			continue
 		}
 		if state.inDoubleQuote {
-			if state.doubleEscapes && line[index] == '\\' && index+1 < len(line) {
-				index += 2
-				continue
-			}
 			if line[index] == '"' {
 				if index+1 < len(line) && line[index+1] == '"' {
 					index += 2
 					continue
 				}
 				state.inDoubleQuote = false
-				state.doubleEscapes = false
 			}
 			index++
 			continue
@@ -360,9 +357,11 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			state.singleEscapes = postgresEscapeStringPrefix(line, index)
 			index++
 		case line[index] == '"':
+			if postgresUnicodeIdentifierPrefix(line, index) {
+				return fmt.Errorf("restore SQL file contains an unsupported Unicode escaped identifier")
+			}
 			state.finishStatementPrefix()
 			state.inDoubleQuote = true
-			state.doubleEscapes = postgresUnicodeIdentifierPrefix(line, index)
 			index++
 		case line[index] == '\\':
 			return fmt.Errorf("restore SQL file contains an unsupported inline psql meta-command")

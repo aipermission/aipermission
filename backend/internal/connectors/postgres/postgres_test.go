@@ -678,6 +678,11 @@ func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
 		`\restrict token extra`, "\\restrict\ttoken", `\unrestrict token`,
 		"\\restrict token\n\\unrestrict other",
 		"\\restrict token\n\\unrestrict token\n\\restrict token",
+		"SELECT U&\"unsafe\\0061\";\n\\echo must-not-run",
+		"SELECT 'unterminated",
+		"SELECT \"unterminated",
+		"SELECT $tag$unterminated",
+		"SELECT 1; /* unterminated",
 	} {
 		t.Run(command, func(t *testing.T) {
 			directory := t.TempDir()
