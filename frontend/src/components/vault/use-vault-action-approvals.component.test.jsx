@@ -34,6 +34,18 @@ const pendingApproval = {
   source: "mcp",
   input: {},
   reason: "coverage",
+  approval_context: {
+    schema: "vault-action-v3",
+    action_name: "generate_item",
+    token_id: 7,
+    project_id: 3,
+    workspace_id: "fixture-workspace",
+    runtime_instance_id: "fixture-runtime",
+    capability_name: "vault_item_generate",
+    execution_rule: "prompt",
+    input_hash: "input-hash",
+    project_scope_hash: "scope-hash",
+  },
   approval_context_hash: "context-hash",
   idempotency_key: "fixture-key",
   created_at: "2026-09-16T00:00:00Z",
@@ -66,6 +78,22 @@ describe("useVaultActionApprovals", () => {
 
     expect(result.current.approvals.data).toEqual([pendingApproval]);
     expect(result.current.dialog.approval).toEqual(pendingApproval);
+  });
+
+  it("ignores an older approval load failure after a newer load completes", async () => {
+    const older = deferred();
+    apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce([pendingApproval]);
+    const { result } = renderApprovals();
+
+    let olderLoad;
+    await act(async () => {
+      olderLoad = result.current.load();
+      await result.current.load();
+    });
+    await act(async () => older.reject(new Error("late failure")));
+    await olderLoad;
+
+    expect(result.current.approvals).toEqual({ state: "ready", data: [pendingApproval], error: null });
   });
 
   it("rejects malformed approval data without opening an approval dialog", async () => {
@@ -205,15 +233,68 @@ describe("useVaultActionApprovals", () => {
   });
 
   it("reloads and makes a stale decline conflict acknowledgement-only", async () => {
-    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce(decisionApproval("stale")).mockResolvedValueOnce([]);
     apiPost.mockRejectedValue(new APIError("Approval changed.", { code: "approval_not_pending" }));
     const { result } = renderApprovals();
     await act(async () => result.current.load());
 
     await act(async () => result.current.decline());
 
-    expect(apiGet).toHaveBeenCalledTimes(2);
-    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "stale" });
+    expect(apiGet).toHaveBeenCalledTimes(3);
+    expect(result.current.dialog).toMatchObject({ approval: { id: 42, status: "stale" }, state: "stale" });
+  });
+
+  it("allows a fresh decline decision when reconciliation still shows the request pending", async () => {
+    const refreshed = { ...pendingApproval, approval_context_hash: "new-context-hash" };
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce(refreshed).mockResolvedValueOnce([refreshed]);
+    apiPost.mockRejectedValue(new APIError("Approval changed.", { code: "approval_context_changed" }));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.dialog).toMatchObject({ approval: refreshed, state: "error", error: "Approval changed." });
+  });
+
+  it("makes a lost successful decline response acknowledgement-only when the request disappeared", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce(decisionApproval("declined")).mockResolvedValueOnce([]);
+    apiPost.mockRejectedValue(new Error("Response was lost."));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+    act(() => result.current.setNote("Reviewed locally"));
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.dialog).toMatchObject({
+      approval: { id: 42, status: "declined" },
+      note: "Reviewed locally",
+      state: "stale",
+      error: expect.stringContaining("already"),
+    });
+  });
+
+  it("reconciles a lost successful run response through the exact request", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce(decisionApproval("completed")).mockResolvedValueOnce([]);
+    apiPost.mockRejectedValue(new Error("Response was lost."));
+    const { result, refreshConsoleSessions } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.run());
+
+    expect(apiGet).toHaveBeenNthCalledWith(2, "/api/vault-action-approvals/42", expect.any(Object));
+    expect(refreshConsoleSessions).toHaveBeenCalledTimes(1);
+    expect(result.current.dialog).toMatchObject({ approval: { id: 42, status: "completed" }, state: "stale" });
+  });
+
+  it("does not infer a terminal decline from an absent capped-list entry", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce(pendingApproval).mockResolvedValueOnce([]);
+    apiPost.mockRejectedValue(new Error("Decline response was lost."));
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "error", error: "Decline response was lost." });
   });
 
   it("does not open a review when no pending approval exists", async () => {
@@ -224,6 +305,15 @@ describe("useVaultActionApprovals", () => {
     act(() => result.current.openPending());
 
     expect(result.current.dialog.approval).toBeNull();
+  });
+
+  it("does not decline before a pending approval is loaded", async () => {
+    const { result } = renderApprovals();
+
+    await act(async () => result.current.decline());
+
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
   });
 
   it("submits the local note and refreshes after declining", async () => {

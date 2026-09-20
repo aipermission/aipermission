@@ -125,6 +125,36 @@ describe("useConnectorApprovalDialog", () => {
     expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("changed") });
   });
 
+  it("treats a lost successful decline response as acknowledgement-only", async () => {
+    const declineApproval = vi.fn().mockRejectedValue(new Error("Response was lost."));
+    apiGet
+      .mockResolvedValueOnce(approval(7))
+      .mockResolvedValueOnce({ ...approval(7), status: "declined", approval_context_hash: undefined });
+    const { result } = renderDialog({ approvals: [approval(7)], declineApproval });
+    await act(async () => {});
+    act(() => result.current.setNote("Reviewed locally"));
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "declined" });
+    expect(result.current.note).toBe("Reviewed locally");
+    expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("already") });
+  });
+
+  it("preserves the reviewed decline context when reconciliation also fails", async () => {
+    const declineApproval = vi.fn().mockRejectedValue(new Error("Decline failed."));
+    apiGet.mockResolvedValueOnce(approval(7)).mockRejectedValueOnce(new Error("Refresh failed."));
+    const { result } = renderDialog({ approvals: [approval(7)], declineApproval });
+    await act(async () => {});
+    act(() => result.current.setNote("Keep this note"));
+
+    await act(async () => result.current.decline());
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "approval_pending" });
+    expect(result.current.note).toBe("Keep this note");
+    expect(result.current.action).toEqual({ state: "error", error: "Decline failed." });
+  });
+
   it("keeps non-success run outcomes visible instead of closing the decision", async () => {
     const runApproval = vi.fn().mockResolvedValue({ ...approval(7), status: "outcome_unknown", error: "Inspect target state." });
     apiGet.mockResolvedValue(approval(7));
@@ -135,5 +165,54 @@ describe("useConnectorApprovalDialog", () => {
 
     expect(result.current.activeApproval).toMatchObject({ id: 7, status: "outcome_unknown" });
     expect(result.current.action).toEqual({ state: "failed", error: "Inspect target state." });
+  });
+
+  it("makes an HTTP outcome-unknown run acknowledgement-only", async () => {
+    const runApproval = vi.fn().mockRejectedValue(
+      new APIError("Persistence outcome is unknown.", {
+        status: 503,
+        data: {
+          status: "outcome_unknown",
+          request_id: 7,
+          error: "Persistence outcome is unknown.",
+          assistant_hint: "Inspect the request before retrying.",
+        },
+      }),
+    );
+    apiGet.mockResolvedValue(approval(7));
+    const { result } = renderDialog({ approvals: [approval(7)], runApproval });
+    await act(async () => {});
+
+    await act(async () => result.current.approve());
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "outcome_unknown", request_id: 7 });
+    expect(result.current.action).toEqual({ state: "failed", error: "Inspect the request before retrying." });
+  });
+
+  it("reconciles a lost successful run response as acknowledgement-only", async () => {
+    const runApproval = vi.fn().mockRejectedValue(new Error("Response was lost."));
+    apiGet
+      .mockResolvedValueOnce(approval(7))
+      .mockResolvedValueOnce({ ...approval(7), status: "completed", approval_context_hash: undefined });
+    const { result } = renderDialog({ approvals: [approval(7)], runApproval });
+    await act(async () => {});
+
+    await act(async () => result.current.approve());
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "completed" });
+    expect(result.current.action).toMatchObject({ state: "stale", error: expect.stringContaining("may have been lost") });
+  });
+
+  it("blocks retry when a lost run response cannot be reconciled", async () => {
+    const runApproval = vi.fn().mockRejectedValue(new Error("Response was lost."));
+    apiGet.mockResolvedValueOnce(approval(7)).mockRejectedValueOnce(new Error("Gateway unavailable."));
+    const { result } = renderDialog({ approvals: [approval(7)], runApproval });
+    await act(async () => {});
+
+    await act(async () => result.current.approve());
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "approval_pending" });
+    expect(result.current.action).toMatchObject({ state: "failed", error: expect.stringContaining("do not retry") });
   });
 });

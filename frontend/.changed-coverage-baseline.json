@@ -154,10 +154,10 @@
       "lines": 100
     },
     "src/components/console/use-connector-approval-dialog.js": {
-      "statements": 83.01,
-      "branches": 71.69,
-      "functions": 80,
-      "lines": 90.69
+      "statements": 85.71,
+      "branches": 76.54,
+      "functions": 81.81,
+      "lines": 92.85
     },
     "src/components/console/use-connector-token-permission-state.js": {
       "statements": 94.03,
@@ -322,10 +322,10 @@
       "lines": 75
     },
     "src/components/security/security-settings-panels.jsx": {
-      "statements": 73.22,
-      "branches": 77.27,
-      "functions": 59.33,
-      "lines": 71.58
+      "statements": 88.88,
+      "branches": 81.81,
+      "functions": 83.33,
+      "lines": 88.23
     },
     "src/components/settings/backup-provider-dialogs.jsx": {
       "statements": 0,
@@ -568,8 +568,8 @@
       "lines": 100
     },
     "src/components/vault/use-vault-action-approvals.js": {
-      "statements": 90.47,
-      "branches": 80.43,
+      "statements": 91,
+      "branches": 84.93,
       "functions": 100,
       "lines": 100
     },
@@ -1726,8 +1726,8 @@
       "lines": 100
     },
     "src/lib/gateway-contracts/security-contracts.ts": {
-      "statements": 98.24,
-      "branches": 99.07,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1966,10 +1966,10 @@
       "lines": 90.59
     },
     "src/pages/use-security-page-state.js": {
-      "statements": 84.61,
-      "branches": 76.47,
-      "functions": 75,
-      "lines": 85.71
+      "statements": 96.15,
+      "branches": 82.35,
+      "functions": 100,
+      "lines": 97.95
     },
     "src/pages/use-unlock-lifecycle-mutation.js": {
       "statements": 95.23,

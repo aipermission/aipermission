@@ -32,6 +32,24 @@ func TestHTTPHandlersListAndRunPendingRequest(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlersGetExactRequest(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	created := harness.call(t, "http-get")
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
+		return testApprovalHTTPScope(harness), true
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/vault-action-approvals/1", nil)
+	request.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	response := httptest.NewRecorder()
+
+	handlers.Get(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":`+strconv.FormatInt(created.Request.ID, 10)) ||
+		!strings.Contains(response.Body.String(), `"approval_context_hash":"`+created.Request.ApprovalContextHash+`"`) {
+		t.Fatalf("get response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestHTTPHandlersPreserveStoppedMCPPrecedence(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	harness.mcpStarted = false

@@ -67,6 +67,31 @@ func (h *HTTPHandlers) List(w http.ResponseWriter, r *http.Request) {
 	httptransport.WriteJSON(w, http.StatusOK, items)
 }
 
+func (h *HTTPHandlers) Get(w http.ResponseWriter, r *http.Request) {
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
+	if !ok {
+		return
+	}
+	scope, ok := h.resolve(w)
+	if !ok {
+		return
+	}
+	runtime, ok := resolveHTTPRuntime(w, r, scope)
+	if !ok {
+		return
+	}
+	item, err := runtime.Get(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		httptransport.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
+		return
+	}
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, item)
+}
+
 func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
