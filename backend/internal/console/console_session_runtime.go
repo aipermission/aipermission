@@ -14,6 +14,7 @@ import (
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 	"github.com/gorilla/websocket"
 )
 
@@ -272,7 +273,7 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 	if runtime != nil && runtime.Resize != nil {
 		_ = runtime.Resize(cols, rows)
 	}
-	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET cols = ?, rows = ?, updated_at = ? WHERE id = ?`, cols, rows, time.Now().UTC().Format(time.RFC3339), s.id); err != nil {
+	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET cols = ?, rows = ?, updated_at = ? WHERE id = ?`, cols, rows, timeformat.Now(), s.id); err != nil {
 		logConsolePersistError("resize", s.id, err)
 	}
 }
@@ -436,7 +437,7 @@ func (s *managedConsoleSession) waitDone(ctx context.Context) error {
 }
 
 func (s *managedConsoleSession) setStatus(status string, message string) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	persistedMessage := s.manager.redactText(message)
 	s.mu.Lock()
 	s.status = status
@@ -591,7 +592,7 @@ func (s *managedConsoleSession) flushTranscriptContext(ctx context.Context) erro
 	}
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	s.mu.Lock()
 	if s.persistTimer != nil {
 		s.persistTimer.Stop()
@@ -640,7 +641,7 @@ func (s *managedConsoleSession) finalize(ctx context.Context) error {
 			status, message = s.status, s.errText
 		}
 		s.mu.Unlock()
-		now := time.Now().UTC().Format(time.RFC3339)
+		now := timeformat.Now()
 		persist := s.manager.persistStatus
 		if persist == nil {
 			persist = consolepersistence.PersistTerminalStatus

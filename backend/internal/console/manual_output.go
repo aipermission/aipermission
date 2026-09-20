@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 type manualOutputCompletion struct {
@@ -104,7 +104,7 @@ func (s *managedConsoleSession) updateManualActiveCommand(update *manualActiveCo
 	command := s.redactForPersistence(update.Command)
 	trackingReason := s.redactForPersistence(update.TrackingReason)
 	if update.Downgrade {
-		now := time.Now().UTC().Format(time.RFC3339)
+		now := timeformat.Now()
 		err := s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
 			if _, err := tx.ExecContext(context.Background(), `
 					UPDATE command_requests
@@ -228,7 +228,7 @@ func (s *managedConsoleSession) finishManualOutputCapture(completion *manualOutp
 	if completion == nil || s == nil || s.manager == nil || s.manager.db == nil {
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	stdout := s.redactForPersistence(terminaltext.PlainOutput(completion.Stdout))
 	errorText := s.redactForPersistence(completion.Error)
 	trackingReason := s.redactForPersistence(completion.TrackingReason)
@@ -283,7 +283,7 @@ func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reas
 	if reason == "" {
 		reason = manualCaptureSuperseded
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	return s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(context.Background(), `
 				SELECT id

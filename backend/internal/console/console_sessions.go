@@ -194,9 +194,7 @@ const (
 	OperationClose     SessionOperation = "close"
 )
 
-// SessionAuthorizer must invoke run only while the authorization decision
-// remains valid. This keeps permission mutations from crossing the boundary
-// between a successful check and the protected console operation.
+// SessionAuthorizer runs the operation only while its authorization decision remains valid.
 type SessionAuthorizer func(
 	context.Context,
 	executionprincipal.Principal,

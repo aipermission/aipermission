@@ -71,7 +71,7 @@ func (s *Store) CreateTarget(ctx context.Context, input CreateTargetInput) (Targ
 	if err != nil {
 		return Target{}, err
 	}
-	now := nowString()
+	now := nowRevisionString()
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, 'active', ?, ?)`,
@@ -122,7 +122,7 @@ func (s *Store) UpdateTarget(ctx context.Context, input UpdateTargetInput) (Targ
 		projectID,
 		name,
 		configJSON,
-		nowString(),
+		nowRevisionString(),
 		input.ID,
 	}
 	if strings.TrimSpace(input.ExpectedUpdatedAt) != "" {
@@ -164,7 +164,7 @@ func (s *Store) DeleteTarget(ctx context.Context, id int64) error {
 		return fmt.Errorf("begin connector target archive: %w", err)
 	}
 	defer rollback()
-	now := nowString()
+	now := nowRevisionString()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE connector_targets
 		SET status = ?, updated_at = ?

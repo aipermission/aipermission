@@ -83,7 +83,7 @@ func (s *Store) CreateCredentialProfile(ctx context.Context, input CreateCredent
 	if err != nil {
 		return CredentialProfile{}, ValidationError("profile public metadata must be a JSON object")
 	}
-	now := nowString()
+	now := nowRevisionString()
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_credential_profiles (
 			target_id, connector_kind, kind, label, public_json, encrypted_secret_json,
@@ -175,7 +175,7 @@ func (s *Store) UpdateCredentialProfile(ctx context.Context, input UpdateCredent
 	if existingKind != input.Kind && input.EncryptedSecretJSON == nil {
 		return CredentialProfile{}, ValidationError("credential kind change requires secret material")
 	}
-	now := nowString()
+	now := nowRevisionString()
 	var result sql.Result
 	if input.EncryptedSecretJSON == nil {
 		result, err = s.db.ExecContext(ctx, `
@@ -296,7 +296,7 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 		SET status = ?, updated_at = ?
 		WHERE id = ? AND target_id = ? AND status = ?`+profileMutationRemoteCleanupGuard,
 		TargetStatusArchived,
-		nowString(),
+		nowRevisionString(),
 		profileID,
 		targetID,
 		TargetStatusActive,
@@ -319,7 +319,7 @@ func (s *Store) DeleteCredentialProfile(ctx context.Context, targetID int64, pro
 		SET status = ?, updated_at = ?
 		WHERE target_id = ? AND profile_id = ? AND status = ?`,
 		TargetStatusArchived,
-		nowString(),
+		nowRevisionString(),
 		targetID,
 		profileID,
 		TargetStatusActive,

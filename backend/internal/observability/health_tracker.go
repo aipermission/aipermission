@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const pendingGracePeriod = 30 * time.Second
@@ -35,7 +37,7 @@ func (t *HealthTracker) RecordFailure(now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.failureCount++
-	t.lastFailureAt = now.UTC().Format(time.RFC3339Nano)
+	t.lastFailureAt = timeformat.UTC(now)
 }
 
 func (t *HealthTracker) Snapshot(ctx context.Context, database *sql.DB) HealthSnapshot {

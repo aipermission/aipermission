@@ -9,6 +9,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 type RunningActionIdentity struct {
@@ -66,7 +67,7 @@ func (s *Store) MarkRunningOutcomeUnknown(ctx context.Context, message string, c
 		return nil, err
 	}
 
-	finishedAt := completedAt.UTC().Format(time.RFC3339Nano)
+	finishedAt := timeformat.UTC(completedAt)
 	identities := make([]RunningActionIdentity, 0, len(stored))
 	for _, item := range stored {
 		result, err := s.db.ExecContext(ctx, `

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 var (
@@ -79,7 +80,7 @@ func (s *Store) InsertWithExecutor(
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableTokenID(request.insert.TokenID), request.insert.RuntimeID, request.insert.Source,
 		request.storedCommand, "", request.storedReason, request.insert.Status,
-		time.Now().UTC().Format(time.RFC3339),
+		timeformat.UTC(time.Now()),
 	)
 	if err != nil {
 		return 0, err
@@ -147,7 +148,7 @@ func (s *Store) Finish(ctx context.Context, projection Projection, completion Co
 			SET status = ?, session_id = NULLIF(?, 0), stdout = ?, stderr = ?, exit_code = ?, error = ?, completed_at = ?
 			WHERE id = ? AND status = 'running'`,
 			completion.Status, completion.SessionID, completion.Stdout, completion.Stderr,
-			completion.ExitCode, completion.Error, time.Now().UTC().Format(time.RFC3339), completion.ID,
+			completion.ExitCode, completion.Error, timeformat.UTC(time.Now()), completion.ID,
 		)
 		if err != nil {
 			return nil, err
@@ -211,7 +212,7 @@ func (s *Store) CancelRunningForRuntime(
 			UPDATE command_requests
 			SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
 			WHERE status = 'running' AND runtime_id = ?`,
-			errorText, time.Now().UTC().Format(time.RFC3339), runtimeID,
+			errorText, timeformat.UTC(time.Now()), runtimeID,
 		)
 		if err != nil {
 			return nil, err
@@ -237,7 +238,7 @@ func (s *Store) cancel(
 		query := `UPDATE command_requests
 			SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
 			WHERE ` + where
-		_, err = executor.ExecContext(ctx, query, append([]any{errorText, time.Now().UTC().Format(time.RFC3339)}, args...)...)
+		_, err = executor.ExecContext(ctx, query, append([]any{errorText, timeformat.UTC(time.Now())}, args...)...)
 		return ids, err
 	})
 }
@@ -252,7 +253,7 @@ func (s *Store) finishRunning(ctx context.Context, projection Projection, status
 			UPDATE command_requests
 			SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?)
 			WHERE status = 'running'`,
-			status, errorText, time.Now().UTC().Format(time.RFC3339),
+			status, errorText, timeformat.UTC(time.Now()),
 		)
 		return ids, err
 	})

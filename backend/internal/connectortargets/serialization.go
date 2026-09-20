@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 var (
@@ -407,7 +408,11 @@ func cloneMap(value map[string]any) map[string]any {
 }
 
 func nowString() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
+	return timeformat.UTC(time.Now())
+}
+
+func nowRevisionString() string {
+	return timeformat.PreciseUTC(time.Now())
 }
 
 func isUniqueConstraintError(err error) bool {

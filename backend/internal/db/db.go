@@ -18,7 +18,7 @@ import (
 var ErrPublishTargetExists = errors.New("publish target already exists")
 
 const (
-	currentSchemaVersion     = 34
+	currentSchemaVersion     = 35
 	expectedSQLCipherVersion = "4.16.0"
 	expectedSQLiteVersion    = "3.53.1"
 	expectedKDFIterations    = 256000

@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const (
@@ -145,7 +146,7 @@ func (r *Runtime) insertPreparedRequest(
 			return connectortargets.ActionRequest{}, false, identityErr
 		}
 		insert.ExecutionOwner = runtimeInstanceID
-		insert.ExecutionLeaseExpiresAt = LeaseExpiry(r.now().UTC()).Format(time.RFC3339Nano)
+		insert.ExecutionLeaseExpiresAt = timeformat.UTC(LeaseExpiry(r.now()))
 	}
 	var request connectortargets.ActionRequest
 	created := false

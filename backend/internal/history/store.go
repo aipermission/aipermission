@@ -69,7 +69,7 @@ func SyncCommandRequestWithExecutor(ctx context.Context, executor CommandProject
 			cr.created_at,
 			NULL,
 			cr.completed_at,
-			COALESCE(cr.completed_at, datetime('now'))
+			COALESCE(cr.completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now'))
 		FROM command_requests cr
 		LEFT JOIN connector_runtime_surfaces rs ON rs.id = cr.runtime_id
 		LEFT JOIN connector_credential_profiles cp ON cp.id = rs.profile_id AND cp.target_id = rs.target_id AND cp.connector_kind = rs.connector_kind
@@ -267,7 +267,7 @@ func SyncConnectorActionRequestWithExecutor(ctx context.Context, executor projec
 			COALESCE(NULLIF(r.summary, ''), r.reason), r.preview_json,
 			r.input_json, r.display_text, r.output_json, r.error, r.retry_policy_json,
 			CASE WHEN r.status = 'approval_pending' THEN 1 ELSE 0 END,
-			r.created_at, r.completed_at, COALESCE(r.completed_at, datetime('now'))
+			r.created_at, r.completed_at, COALESCE(r.completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now'))
 		FROM connector_action_requests r
 		JOIN connector_targets t ON t.id = r.target_id
 		JOIN connector_credential_profiles p ON p.id = r.profile_id AND p.target_id = r.target_id AND p.connector_kind = r.connector_kind

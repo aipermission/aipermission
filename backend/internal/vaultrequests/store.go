@@ -11,22 +11,22 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const (
 	ActionGenerateItem   = "generate_item"
 	ActionRestartSession = "restart_session_with_environment"
 
-	ApprovalTTL            = 15 * time.Minute
-	StatusApprovalPending  = "approval_pending"
-	StatusRunning          = "running"
-	StatusCompleted        = "completed"
-	StatusFailed           = "failed"
-	StatusDeclined         = "declined"
-	StatusStale            = "stale"
-	StatusCanceled         = "canceled"
-	StatusExpired          = "expired"
-	requestTimestampLayout = "2006-01-02T15:04:05.000000000Z07:00"
+	ApprovalTTL           = 15 * time.Minute
+	StatusApprovalPending = "approval_pending"
+	StatusRunning         = "running"
+	StatusCompleted       = "completed"
+	StatusFailed          = "failed"
+	StatusDeclined        = "declined"
+	StatusStale           = "stale"
+	StatusCanceled        = "canceled"
+	StatusExpired         = "expired"
 )
 
 var (
@@ -614,7 +614,7 @@ func (s *Store) mutateAndSync(
 }
 
 func formatTimestamp(value time.Time) string {
-	return value.UTC().Format(requestTimestampLayout)
+	return timeformat.UTC(value)
 }
 
 const requestSelect = `

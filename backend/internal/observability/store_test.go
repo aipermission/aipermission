@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/observability"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 func TestAppendPersistsCanonicalEvent(t *testing.T) {
@@ -29,12 +30,17 @@ func TestAppendPersistsCanonicalEvent(t *testing.T) {
 		t.Fatalf("unexpected event identity: %#v", event)
 	}
 
-	var eventID, action, payload string
-	if err := database.QueryRow(`SELECT event_id, action, payload_json FROM audit_outbox`).Scan(&eventID, &action, &payload); err != nil {
+	var eventID, action, payload, occurredAt, createdAt string
+	if err := database.QueryRow(`SELECT event_id, action, payload_json, occurred_at, created_at FROM audit_outbox`).Scan(&eventID, &action, &payload, &occurredAt, &createdAt); err != nil {
 		t.Fatal(err)
 	}
 	if eventID != event.EventID || action != "project.created" || payload != `{"project_id":1}` {
 		t.Fatalf("unexpected persisted event: %q %q %q", eventID, action, payload)
+	}
+	for _, value := range []string{occurredAt, createdAt} {
+		if len(value) != len(timeformat.UTC(event.OccurredAt)) {
+			t.Fatalf("audit timestamp is not fixed-width: %q", value)
+		}
 	}
 }
 

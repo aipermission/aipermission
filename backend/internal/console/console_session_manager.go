@@ -14,6 +14,7 @@ import (
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 	"github.com/gorilla/websocket"
 )
 
@@ -173,7 +174,7 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 	}
 
 	var err error
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -518,7 +519,7 @@ func (m *Manager) Close(ctx context.Context, principal executionprincipal.Princi
 	if err := principal.Validate(); err != nil || !principal.IsLocalOperator() {
 		return ErrUnauthorized
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE id = ?`, now, now, id)
 	return err
 }
@@ -533,8 +534,7 @@ func (m *Manager) CloseRuntime(ctx context.Context, principal executionprincipal
 	return m.closeRuntimeLocked(ctx, principal, runtimeID)
 }
 
-// RecoverRuntime closes stale-lease runtimes. MCP callers may recover only Vault
-// sessions from the same token; beforeClose runs after auth under the lifecycle lock.
+// RecoverRuntime closes stale-lease runtimes; MCP callers may recover only same-token Vault sessions, with beforeClose after auth under the lifecycle lock.
 func (m *Manager) RecoverRuntime(ctx context.Context, principal executionprincipal.Principal, runtimeID int64, beforeClose func() error) ([]int64, error) {
 	if err := principal.Validate(); err != nil {
 		return nil, err
@@ -596,7 +596,7 @@ func (m *Manager) closeRuntimeSessions(ctx context.Context, runtimeID int64, ses
 			return err
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	_, err := m.db.ExecContext(ctx, `UPDATE console_sessions SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ? WHERE runtime_id = ? AND status IN ('connecting', 'connected')`, now, now, runtimeID)
 	return err
 }
@@ -627,7 +627,7 @@ func (m *Manager) closeSessionLocked(ctx context.Context, principal executionpri
 	if err := session.waitDone(ctx); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	_, err := m.db.ExecContext(ctx, `
 		UPDATE console_sessions
 		SET status = 'closed', closed_at = COALESCE(closed_at, ?), updated_at = ?

@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 func (s *managedConsoleSession) insertManualCommand(command manualCommandRecord) error {
 	if command.Command == "" {
 		return nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	storedCommand := s.redactForPersistence(command.Command)
 	storedReason := s.redactForPersistence(manualCommandReason)
 	status := "untracked"

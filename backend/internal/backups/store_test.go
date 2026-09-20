@@ -94,6 +94,44 @@ func TestUpsertRecordKeepsOneLocalRecordPerRemoteVersion(t *testing.T) {
 	}
 }
 
+func TestListRecordsOrdersCanonicalBackupTimestampsChronologically(t *testing.T) {
+	database := openStoreDatabase(t)
+	store := backups.NewStore(database)
+	provider, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
+		ProviderType: backups.ServiceProviderType,
+		Name:         "Self-hosted backups",
+		Encrypted:    "encrypted-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		id        string
+		createdAt string
+	}{
+		{id: "earlier", createdAt: "2026-07-31T10:00:00.1Z"},
+		{id: "later", createdAt: "2026-07-31T10:00:00.11Z"},
+	} {
+		if _, err := store.UpsertRecord(context.Background(), backups.CreateRecordRequest{
+			ProviderID: provider.ID, DatabaseID: "database-a", DatabaseName: "Database A",
+			ProviderFileID: item.id, Filename: item.id + ".aipdb", SizeBytes: 100,
+			BackupCreatedAt: item.createdAt, UploadedAt: item.createdAt,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := store.ListRecords(context.Background(), backups.ListRecordsFilter{ProviderID: provider.ID})
+	if err != nil || len(records) != 2 {
+		t.Fatalf("records=%#v err=%v", records, err)
+	}
+	if records[0].ProviderFileID != "later" || records[1].ProviderFileID != "earlier" {
+		t.Fatalf("record order = %q, %q", records[0].ProviderFileID, records[1].ProviderFileID)
+	}
+	if records[0].BackupCreatedAt != "2026-07-31T10:00:00.110000000Z" || records[1].BackupCreatedAt != "2026-07-31T10:00:00.100000000Z" {
+		t.Fatalf("canonical timestamps = %q, %q", records[0].BackupCreatedAt, records[1].BackupCreatedAt)
+	}
+}
+
 func TestMarkMissingProviderRecordsDeletedReconcilesRemotePrune(t *testing.T) {
 	database := openStoreDatabase(t)
 	store := backups.NewStore(database)
