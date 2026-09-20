@@ -334,6 +334,35 @@ func TestNormalizeIdentitiesDropsEmptyAndDuplicateValues(t *testing.T) {
 	}
 }
 
+func TestDeliveryAdmissionReleasesExactlyOnceForCallerAndPreparerOwnership(t *testing.T) {
+	callerReleases := 0
+	callerOwned := newDeliveryAdmission(func() { callerReleases++ })
+	callerOwned.releaseIfUnclaimed()
+	callerOwned.releaseIfUnclaimed()
+	if callerReleases != 1 {
+		t.Fatalf("unclaimed delivery releases = %d, want 1", callerReleases)
+	}
+	if _, err := callerOwned.claim(); err == nil {
+		t.Fatal("released delivery admission was claimed")
+	}
+
+	preparerReleases := 0
+	preparerOwned := newDeliveryAdmission(func() { preparerReleases++ })
+	release, err := preparerOwned.claim()
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparerOwned.releaseIfUnclaimed()
+	if preparerReleases != 0 {
+		t.Fatal("caller released a delivery admission after the preparer claimed it")
+	}
+	release()
+	release()
+	if preparerReleases != 1 {
+		t.Fatalf("claimed delivery releases = %d, want 1", preparerReleases)
+	}
+}
+
 func TestRuntimeRejectsIncompleteDependencies(t *testing.T) {
 	if _, err := NewRuntime(Dependencies{}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("NewRuntime() error = %v", err)

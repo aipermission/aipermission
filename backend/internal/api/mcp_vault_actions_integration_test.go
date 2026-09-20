@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -625,8 +627,26 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
+	firstOpenEntered := make(chan struct{})
+	releaseFirstOpen := make(chan struct{})
+	defer func() {
+		select {
+		case <-releaseFirstOpen:
+		default:
+			close(releaseFirstOpen)
+		}
+	}()
+	var openCount atomic.Int64
 	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
+		if openCount.Add(1) == 1 {
+			close(firstOpenEntered)
+			select {
+			case <-releaseFirstOpen:
+			case <-openCtx.Done():
+				return nil, openCtx.Err()
+			}
+		}
 		done := make(chan error, 1)
 		go func() {
 			<-openCtx.Done()
@@ -664,7 +684,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		Reason: "Start the approved session with its Vault environment.",
 	}
 	callBody.IdempotencyKey = "vault-session-e2e-always"
-	always := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
+	always := runVaultSessionApplyAgainstConcurrentProjectArchive(
+		t, fixture, token.TokenValue, callBody, firstOpenEntered, releaseFirstOpen,
+	)
 	if always.Code != http.StatusOK || !strings.Contains(always.Body.String(), `"status":"completed"`) {
 		t.Fatalf("Always session apply: %d %s", always.Code, always.Body.String())
 	}
@@ -750,6 +772,57 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		strings.Contains(run.Body.String(), secretValue) {
 		t.Fatal("Vault secret leaked into a persisted or MCP response surface")
 	}
+}
+
+func runVaultSessionApplyAgainstConcurrentProjectArchive(
+	t *testing.T,
+	fixture apiTestFixture,
+	tokenValue string,
+	callBody mcpVaultActionCallRequest,
+	firstOpenEntered <-chan struct{},
+	releaseFirstOpen chan<- struct{},
+) *httptest.ResponseRecorder {
+	t.Helper()
+	project, err := projectstore.NewStore(fixture.db).Create(t.Context(), "Concurrent Vault Mutation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actionResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		actionResult <- performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", tokenValue, callBody)
+	}()
+	select {
+	case <-firstOpenEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Vault session replacement did not reach the console transport")
+	}
+	mutationResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		mutationResult <- performJSON(
+			fixture.server.Handler(), http.MethodDelete, "/api/projects/"+strconv.FormatInt(project.ID, 10), "", nil,
+		)
+	}()
+	select {
+	case mutation := <-mutationResult:
+		t.Fatalf("exclusive Vault mutation crossed an admitted session replacement: %d %s", mutation.Code, mutation.Body.String())
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseFirstOpen)
+	var action *httptest.ResponseRecorder
+	select {
+	case action = <-actionResult:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Vault session replacement deadlocked behind the waiting exclusive mutation")
+	}
+	select {
+	case mutation := <-mutationResult:
+		if mutation.Code != http.StatusNoContent {
+			t.Fatalf("exclusive Vault mutation after delivery: %d %s", mutation.Code, mutation.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("exclusive Vault mutation remained blocked after session finalization")
+	}
+	return action
 }
 
 func closedTerminalOutput() <-chan console.RuntimeOutput {

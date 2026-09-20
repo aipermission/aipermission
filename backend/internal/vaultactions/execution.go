@@ -189,6 +189,15 @@ func (r *Runtime) executeSessionApply(
 		_, authorizeErr := r.validateAuthorization(authorizeCtx, request, approval)
 		return authorizeErr
 	}
+	releaseDelivery, err := r.delivery.AcquireDelivery(ctx)
+	if err != nil {
+		return nil, err
+	}
+	admission := newDeliveryAdmission(releaseDelivery)
+	defer admission.releaseIfUnclaimed()
+	if err := authorize(ctx); err != nil {
+		return nil, err
+	}
 	expiresAt, err := r.sessionLeaseExpiry(ctx, request, approval, capability)
 	if err != nil {
 		return nil, err
@@ -240,7 +249,7 @@ func (r *Runtime) executeSessionApply(
 	createRequest := console.CreateRequest{
 		RuntimeID: approval.RuntimeID, Name: fmt.Sprintf("Vault session for %s", request.ProjectName),
 		CloseExisting: false, Cols: cols, Rows: rows, WaitForStart: true, Principal: principal,
-		PrepareEnvironment:     consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize)),
+		PrepareEnvironment:     consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize, admission)),
 		EnvironmentContentHash: approval.EnvironmentContentHash,
 		ApprovalContextHash:    request.ApprovalContextHash,
 	}

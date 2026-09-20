@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
@@ -44,6 +45,66 @@ type EnvironmentPreparation struct {
 
 type EnvironmentPreparer func(context.Context, string) (EnvironmentPreparation, error)
 
+type deliveryAdmission struct {
+	mu       sync.Mutex
+	release  func()
+	claimed  bool
+	released bool
+}
+
+func newDeliveryAdmission(release func()) *deliveryAdmission {
+	return &deliveryAdmission{release: release}
+}
+
+func (a *deliveryAdmission) claim() (func(), error) {
+	if a == nil {
+		return nil, errors.New("Vault delivery admission is unavailable")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.claimed || a.released || a.release == nil {
+		return nil, errors.New("Vault delivery admission is no longer available")
+	}
+	a.claimed = true
+	return a.finish, nil
+}
+
+func (a *deliveryAdmission) finish() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.released {
+		a.mu.Unlock()
+		return
+	}
+	a.released = true
+	release := a.release
+	a.release = nil
+	a.mu.Unlock()
+	if release != nil {
+		release()
+	}
+}
+
+func (a *deliveryAdmission) releaseIfUnclaimed() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.claimed || a.released {
+		a.mu.Unlock()
+		return
+	}
+	a.released = true
+	release := a.release
+	a.release = nil
+	a.mu.Unlock()
+	if release != nil {
+		release()
+	}
+}
+
 func (r *Runtime) BuildEnvironmentPlan(
 	ctx context.Context,
 	runtimeID int64,
@@ -65,7 +126,7 @@ func (r *Runtime) BuildEnvironmentPlan(
 	return EnvironmentPlan{
 		Items:                  append([]projectvault.SessionItem(nil), snapshot.Items...),
 		EnvironmentContentHash: snapshot.EnvironmentContentHash,
-		Prepare:                r.environmentPreparer(snapshot, selections, nil, finalize),
+		Prepare:                r.environmentPreparer(snapshot, selections, nil, finalize, nil),
 	}, nil
 }
 
@@ -116,9 +177,16 @@ func (r *Runtime) environmentPreparer(
 	selections []projectvault.SessionSelection,
 	authorize func(context.Context) error,
 	finalize func(context.Context, EnvironmentSessionHandle) error,
+	admission *deliveryAdmission,
 ) EnvironmentPreparer {
 	return func(ctx context.Context, actualPeerIdentity string) (EnvironmentPreparation, error) {
-		release, err := r.delivery.AcquireDelivery(ctx)
+		var release func()
+		var err error
+		if admission != nil {
+			release, err = admission.claim()
+		} else {
+			release, err = r.delivery.AcquireDelivery(ctx)
+		}
 		if err != nil {
 			return EnvironmentPreparation{}, err
 		}
