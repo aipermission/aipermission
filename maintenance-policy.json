@@ -180,6 +180,14 @@
     {
       "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
       "name": "TestWindowsMoveAndDeleteDatabaseEndToEnd"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+      "name": "TestKnownHostsAtomicReplacementWindowsContract"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+      "name": "TestWindowsKnownHostsReplacementFailuresAreReported"
     }
   ],
   "darwinRuntimeTests": [
@@ -220,6 +228,21 @@
         {
           "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
           "name": "TestDarwinMoveFileFailuresAreReported"
+        }
+      ]
+    },
+    "internal/connectors/ssh/execution/hostkeys_file_windows.go": {
+      "platform": "windows",
+      "buildConstraint": "windows",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+          "name": "TestKnownHostsAtomicReplacementWindowsContract"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+          "name": "TestWindowsKnownHostsReplacementFailuresAreReported"
         }
       ]
     },

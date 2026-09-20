@@ -21,6 +21,13 @@ import (
 
 var knownHostsMu sync.Mutex
 
+var errKnownHostsTrustStateIndeterminate = errors.New("SSH known_hosts trust state is indeterminate")
+
+type knownHostsFileOps struct {
+	rename  func(string, string) error
+	syncDir func(string) error
+}
+
 type UnknownHostKeyError struct {
 	Hostname          string `json:"hostname"`
 	KeyType           string `json:"key_type"`
@@ -302,41 +309,81 @@ func replaceKnownHostData(data []byte, hostname, replacement string) []byte {
 }
 
 func writeKnownHostsAtomically(path string, data []byte, mode os.FileMode, validate func(string) error) (err error) {
+	return writeKnownHostsAtomicallyWithOps(path, data, mode, validate, knownHostsFileOps{
+		rename:  renameKnownHostsFile,
+		syncDir: syncKnownHostsDirectory,
+	})
+}
+
+func writeKnownHostsAtomicallyWithOps(path string, data []byte, mode os.FileMode, validate func(string) error, ops knownHostsFileOps) (err error) {
 	dir := filepath.Dir(path)
-	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	original, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("create known_hosts replacement: %w", err)
+		return fmt.Errorf("read known_hosts before replacement: %w", err)
 	}
-	tempPath := file.Name()
-	defer func() {
-		if file != nil {
-			_ = file.Close()
-		}
-		if err != nil {
-			_ = os.Remove(tempPath)
-		}
-	}()
-	if err = file.Chmod(mode); err != nil {
-		return fmt.Errorf("set known_hosts replacement permissions: %w", err)
+	rollbackPath, err := writeKnownHostsCandidate(dir, "."+filepath.Base(path)+".rollback-*", original, mode)
+	if err != nil {
+		return fmt.Errorf("prepare known_hosts rollback: %w", err)
 	}
-	if _, err = file.Write(data); err != nil {
-		return fmt.Errorf("write known_hosts replacement: %w", err)
+	defer os.Remove(rollbackPath)
+
+	tempPath, err := writeKnownHostsCandidate(dir, "."+filepath.Base(path)+".tmp-*", data, mode)
+	if err != nil {
+		return fmt.Errorf("prepare known_hosts replacement: %w", err)
 	}
-	if err = file.Sync(); err != nil {
-		return fmt.Errorf("sync known_hosts replacement: %w", err)
-	}
-	if err = file.Close(); err != nil {
-		file = nil
-		return fmt.Errorf("close known_hosts replacement: %w", err)
-	}
-	file = nil
+	defer os.Remove(tempPath)
 	if validate != nil {
 		if err = validate(tempPath); err != nil {
 			return err
 		}
 	}
-	if err = os.Rename(tempPath, path); err != nil {
+	if err = ops.rename(tempPath, path); err != nil {
 		return fmt.Errorf("replace known_hosts: %w", err)
+	}
+	if err = ops.syncDir(dir); err != nil {
+		syncErr := fmt.Errorf("sync known_hosts directory: %w", err)
+		if rollbackErr := restoreKnownHostsReplacement(path, rollbackPath, dir, ops); rollbackErr != nil {
+			return errors.Join(errKnownHostsTrustStateIndeterminate, syncErr, rollbackErr)
+		}
+		return syncErr
+	}
+	return nil
+}
+
+func writeKnownHostsCandidate(dir, pattern string, data []byte, mode os.FileMode) (path string, err error) {
+	file, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
+	path = file.Name()
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+		if err != nil {
+			_ = os.Remove(path)
+		}
+	}()
+	if err = file.Chmod(mode); err != nil {
+		return "", err
+	}
+	if _, err = file.Write(data); err != nil {
+		return "", err
+	}
+	if err = file.Sync(); err != nil {
+		return "", err
+	}
+	err = file.Close()
+	file = nil
+	return path, err
+}
+
+func restoreKnownHostsReplacement(path, rollbackPath, dir string, ops knownHostsFileOps) error {
+	if err := ops.rename(rollbackPath, path); err != nil {
+		return fmt.Errorf("restore previous known_hosts: %w", err)
+	}
+	if err := ops.syncDir(dir); err != nil {
+		return fmt.Errorf("sync restored known_hosts directory: %w", err)
 	}
 	return nil
 }

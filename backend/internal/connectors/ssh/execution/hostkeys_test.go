@@ -108,6 +108,87 @@ func TestHostKeyReplacementValidatesBeforeChangingTrustFile(t *testing.T) {
 	}
 }
 
+func TestKnownHostsAtomicReplacementSyncsParentAfterRename(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "known_hosts")
+	if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	events := []string{}
+	err := writeKnownHostsAtomicallyWithOps(path, []byte("replacement\n"), 0o600, nil, knownHostsFileOps{
+		rename: func(from, to string) error {
+			events = append(events, "rename")
+			return os.Rename(from, to)
+		},
+		syncDir: func(got string) error {
+			events = append(events, "sync")
+			if got != directory {
+				t.Fatalf("synced directory = %q, want %q", got, directory)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(events, ",") != "rename,sync" {
+		t.Fatalf("durability operations = %v, want rename then sync", events)
+	}
+}
+
+func TestKnownHostsAtomicReplacementReportsDirectorySyncFailure(t *testing.T) {
+	syncErr := errors.New("directory sync failed")
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	syncCalls := 0
+	err := writeKnownHostsAtomicallyWithOps(path, []byte("replacement\n"), 0o600, nil, knownHostsFileOps{
+		rename: os.Rename,
+		syncDir: func(string) error {
+			syncCalls++
+			if syncCalls == 1 {
+				return syncErr
+			}
+			return nil
+		},
+	})
+	if !errors.Is(err, syncErr) {
+		t.Fatalf("replacement error = %v, want directory sync failure", err)
+	}
+	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "original\n" {
+		t.Fatalf("known_hosts after rollback = %q err=%v", content, readErr)
+	}
+	if errors.Is(err, errKnownHostsTrustStateIndeterminate) {
+		t.Fatalf("successful rollback reported indeterminate trust state: %v", err)
+	}
+}
+
+func TestKnownHostsAtomicReplacementReportsIndeterminateRollback(t *testing.T) {
+	syncErr := errors.New("directory sync failed")
+	rollbackErr := errors.New("rollback failed")
+	path := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	renames := 0
+	err := writeKnownHostsAtomicallyWithOps(path, []byte("replacement\n"), 0o600, nil, knownHostsFileOps{
+		rename: func(from, to string) error {
+			renames++
+			if renames == 2 {
+				return rollbackErr
+			}
+			return os.Rename(from, to)
+		},
+		syncDir: func(string) error { return syncErr },
+	})
+	for _, want := range []error{syncErr, rollbackErr, errKnownHostsTrustStateIndeterminate} {
+		if !errors.Is(err, want) {
+			t.Fatalf("replacement error = %v, want %v", err, want)
+		}
+	}
+}
+
 func TestReplaceHostKeyNormalizesRouteAddresses(t *testing.T) {
 	firstKey := generateHostKey(t)
 	secondKey := generateHostKey(t)
