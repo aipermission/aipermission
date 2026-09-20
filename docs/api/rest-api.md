@@ -1173,6 +1173,15 @@ filename, size, checksum, source installation, and timestamps. The service
 receives the encrypted database bytes and its own bearer token, but never the
 database password.
 
+Uploads use a durable idempotency identity. If the backup service has retained
+that identity after its immutable version was removed, it returns `410` with
+the machine-readable code `operation_expired`. The service is authoritative for
+that replay window; the gateway does not expire unresolved operations from its
+earlier local claim timestamp. After the service response, the gateway
+terminalizes the local operation and later retries of that identity stop before
+another snapshot is created. A new intentional upload must use a new
+idempotency key.
+
 `GET /api/backup/providers/{id}/storage` returns service-reported storage usage,
 quota, remaining capacity, backup/stream counts, and pending remote deletions.
 A failed service check is returned as an error; clients must not render it as

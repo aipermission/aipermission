@@ -7,10 +7,11 @@ import (
 )
 
 func (h *HTTPHandlers) BackupProviderStorage(w http.ResponseWriter, r *http.Request) {
-	_, _, client, ok := h.activeBackupServiceProvider(w, r, 0)
+	_, _, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, 0)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	usage, err := client.StorageUsage(r.Context())
 	if err != nil {
 		handleBackupServiceError(w, err)
@@ -20,10 +21,11 @@ func (h *HTTPHandlers) BackupProviderStorage(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *HTTPHandlers) BackupProviderRetention(w http.ResponseWriter, r *http.Request) {
-	_, provider, client, ok := h.activeBackupServiceProvider(w, r, 0)
+	_, provider, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, 0)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	policy, err := client.GetRetentionPolicy(r.Context(), stringFromMap(provider.Public, "stream_id"))
 	if err != nil {
 		handleBackupServiceError(w, err)
@@ -33,10 +35,11 @@ func (h *HTTPHandlers) BackupProviderRetention(w http.ResponseWriter, r *http.Re
 }
 
 func (h *HTTPHandlers) PreviewBackupProviderRetention(w http.ResponseWriter, r *http.Request) {
-	_, provider, client, ok := h.activeBackupServiceProvider(w, r, 0)
+	_, provider, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, 0)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	var request pruneBackupProviderRequest
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
@@ -54,10 +57,11 @@ func (h *HTTPHandlers) PreviewBackupProviderRetention(w http.ResponseWriter, r *
 }
 
 func (h *HTTPHandlers) UpdateBackupProviderRetention(w http.ResponseWriter, r *http.Request) {
-	runtime, provider, client, ok := h.activeBackupServiceProvider(w, r, requireRequiredAudit|requireObservation)
+	runtime, provider, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, requireRequiredAudit|requireObservation)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	var request updateBackupRetentionRequest
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return

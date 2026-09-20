@@ -11,6 +11,7 @@ import {
   releaseLocalActionRetryAttempt,
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
+  retireLocalActionRetryAttempt,
 } from "../local-action-retry";
 import { scopedUICookieName } from "../ui-cookie";
 
@@ -580,6 +581,20 @@ it("can release an unfinished attempt without deleting its retry identity", asyn
 
   await expect(releaseLocalActionRetryAttempt(prepared)).resolves.toBeUndefined();
   expect(await listLocalActionRetryEntries()).toHaveLength(1);
+});
+
+it("retires an unfinished attempt and tolerates absent retry metadata", async () => {
+  const prepared = await prepareLocalActionRetry({
+    target_ref: "fixture:retire:1",
+    action_name: "mutate",
+    input: {},
+    reason: "coverage",
+  });
+
+  await expect(retireLocalActionRetryAttempt(prepared)).resolves.toBe(true);
+  await expect(retireLocalActionRetryAttempt(null)).resolves.toBeUndefined();
+  await expect(releaseLocalActionRetryAttempt(null)).resolves.toBeUndefined();
+  expect(await listLocalActionRetryEntries()).toEqual([]);
 });
 
 it("fails closed before reserving a retry identity when secure hashing is unavailable", async () => {

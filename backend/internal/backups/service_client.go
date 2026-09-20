@@ -25,13 +25,14 @@ import (
 
 const (
 	ServiceProviderType = "aipermission_backup"
-	ServiceProtocol     = "3"
+	ServiceProtocol     = "4"
 	maxServiceJSONBytes = 1 << 20
 )
 
 var requiredServiceCapabilities = []string{
 	"immutable_upload",
 	"idempotent_upload",
+	"upload_operation_tombstones",
 	"list_streams",
 	"list_versions",
 	"download",

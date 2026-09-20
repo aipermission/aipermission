@@ -78,6 +78,7 @@ func migrations() []migration {
 		vaultActionRequestEnvelopeMigration(),
 		projectScopeRevisionMigration(),
 		chronologicalTimestampMigration(),
+		backupUploadExpiryMigration(),
 	)
 }
 

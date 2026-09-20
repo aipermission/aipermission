@@ -22,6 +22,11 @@ func (h *HTTPHandlers) ListProviderRecords(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	store := NewStore(runtime.Database)
+	releaseProvider, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return
+	}
+	defer releaseProvider()
 	provider, err := store.GetProvider(r.Context(), id)
 	if err != nil {
 		handleBackupProviderError(w, err)
@@ -29,7 +34,7 @@ func (h *HTTPHandlers) ListProviderRecords(w http.ResponseWriter, r *http.Reques
 	}
 	var syncResult backupSyncResult
 	if provider.Status == "active" {
-		if syncResult, err = syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
+		if syncResult, err = syncBackupServiceRecordsUnlocked(r.Context(), runtime, store, provider); err != nil {
 			handleBackupServiceError(w, err)
 			return
 		}
@@ -63,7 +68,7 @@ func (h *HTTPHandlers) BackupFreshness(w http.ResponseWriter, r *http.Request) {
 		if provider.Status != "active" || provider.ProviderType != ServiceProviderType {
 			continue
 		}
-		result, syncErr := syncBackupServiceRecords(r.Context(), runtime, store, provider)
+		result, syncErr := h.syncBackupServiceRecords(r.Context(), runtime, store, provider)
 		if syncErr != nil {
 			checkErrors = append(checkErrors, map[string]any{"provider_id": provider.ID, "provider_name": provider.Name})
 			continue
@@ -82,10 +87,11 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer releaseBackup()
-	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
+	provider, client, releaseProvider, ok := h.activeBackupServiceProviderFromScope(w, r, runtime)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	var request struct {
 		IdempotencyKey string `json:"idempotency_key"`
 	}
@@ -109,9 +115,13 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if operation.Status == "completed" {
+		if _, err := syncBackupServiceRecordsUnlocked(r.Context(), runtime, store, provider); err != nil {
+			handleBackupServiceError(w, err)
+			return
+		}
 		record, recordErr := store.GetRecordByProviderFileID(r.Context(), provider.ID, operation.ProviderFileID)
 		if errors.Is(recordErr, ErrUploadResultExpired) {
-			httptransport.WriteError(w, http.StatusGone, recordErr.Error())
+			httptransport.WriteErrorCode(w, http.StatusGone, recordErr.Error(), "operation_expired")
 			return
 		}
 		if recordErr != nil {
@@ -119,6 +129,14 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		httptransport.WriteJSON(w, http.StatusOK, RecordToResponse(record))
+		return
+	}
+	if operation.Status == "expired" {
+		httptransport.WriteErrorCode(w, http.StatusGone, "the original backup upload result is no longer available", "operation_expired")
+		return
+	}
+	if _, err := client.Info(r.Context()); err != nil {
+		handleBackupServiceError(w, err)
 		return
 	}
 	snapshot, err := runtime.CreateSnapshot(r.Context())
@@ -140,6 +158,14 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 	}
 	backup, _, err := client.Upload(r.Context(), streamID, remoteName, sourceInstallationID, request.IdempotencyKey, snapshot.Path)
 	if err != nil {
+		if backupUploadOperationExpired(err) {
+			if expireErr := store.MarkUploadExpired(r.Context(), request.IdempotencyKey); expireErr != nil {
+				handleBackupProviderError(w, expireErr)
+				return
+			}
+			handleBackupServiceError(w, err)
+			return
+		}
 		markBackupUploadOutcomeUnknown(runtime.Database, request.IdempotencyKey, err)
 		handleBackupServiceError(w, err)
 		return
@@ -171,6 +197,11 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 	httptransport.WriteJSON(w, http.StatusCreated, RecordToResponse(record))
 }
 
+func backupUploadOperationExpired(err error) bool {
+	var serviceError ServiceError
+	return errors.As(err, &serviceError) && serviceError.StatusCode == http.StatusGone && serviceError.Code == "operation_expired"
+}
+
 func markBackupUploadOutcomeUnknown(database *sql.DB, key string, operationErr error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -178,10 +209,11 @@ func markBackupUploadOutcomeUnknown(database *sql.DB, key string, operationErr e
 }
 
 func (h *HTTPHandlers) PruneProviderBackups(w http.ResponseWriter, r *http.Request) {
-	runtime, provider, client, ok := h.activeBackupServiceProvider(w, r, requireDatabaseID|requireRequiredAudit|requireObservation)
+	runtime, provider, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, requireDatabaseID|requireRequiredAudit|requireObservation)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	var request pruneBackupProviderRequest
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
@@ -204,7 +236,7 @@ func (h *HTTPHandlers) PruneProviderBackups(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	store := NewStore(runtime.Database)
-	if _, err := syncBackupServiceRecords(r.Context(), runtime, store, provider); err != nil {
+	if _, err := syncBackupServiceRecordsUnlocked(r.Context(), runtime, store, provider); err != nil {
 		handleBackupServiceError(w, err)
 		return
 	}
@@ -216,10 +248,11 @@ func (h *HTTPHandlers) PruneProviderBackups(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *HTTPHandlers) DeleteProviderBackupRecords(w http.ResponseWriter, r *http.Request) {
-	runtime, provider, client, ok := h.activeBackupServiceProvider(w, r, requireMutation|requireRequiredAudit)
+	runtime, provider, client, releaseProvider, ok := h.activeBackupServiceProvider(w, r, requireMutation|requireRequiredAudit)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	var request deleteBackupRecordsRequest
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
@@ -287,10 +320,11 @@ func (h *HTTPHandlers) DownloadProviderRecord(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer releaseBackup()
-	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
+	provider, client, releaseProvider, ok := h.activeBackupServiceProviderFromScope(w, r, runtime)
 	if !ok {
 		return
 	}
+	defer releaseProvider()
 	record, ok := resolveBackupServiceRecordFromScope(w, r, runtime, provider)
 	if !ok {
 		return

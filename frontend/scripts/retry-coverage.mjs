@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const retryCoverageTests = ["src/lib/api.test.js", "src/lib/api-backup-retry.test.js"];
 
 export function retryCoverageFiles(root = frontendRoot) {
   const files = [join(root, "src/lib/local-action-retry.js")];
@@ -27,7 +28,7 @@ export function runRetryCoverage({ root = frontendRoot, spawn = spawnSync, log =
         "--test-coverage-functions=70",
         "--test-coverage-branches=60",
         "--test",
-        "src/lib/api.test.js",
+        ...retryCoverageTests,
       ],
       { cwd: root, encoding: "utf8" },
     );

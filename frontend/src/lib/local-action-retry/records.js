@@ -56,7 +56,7 @@ export function validRetryEntry(entry, scope, signature = "") {
     typeof entry.key === "string" &&
     entry.key.length > 0 &&
     entry.key.length <= 128 &&
-    (entry.state === "pending" || entry.state === "outcome_unknown") &&
+    (entry.state === "pending" || entry.state === "outcome_unknown" || entry.state === "retired") &&
     Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&

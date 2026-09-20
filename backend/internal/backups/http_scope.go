@@ -6,13 +6,11 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
+	"github.com/aipermission/aipermission/backend/internal/backups/providerlock"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-const MaxDatabaseTransferBytes int64 = 256 << 20
-
-// ProviderSecretCodec keeps encrypted provider credentials behind the
-// workspace-owned Vault boundary.
+// ProviderSecretCodec keeps encrypted provider credentials behind the workspace-owned Vault boundary.
 type ProviderSecretCodec interface {
 	EncryptProviderSecret(int64, map[string]any) (string, error)
 	DecryptProviderSecret(Provider) (map[string]any, error)
@@ -52,16 +50,27 @@ type OperationHTTPScopeProvider func(http.ResponseWriter, *http.Request) (HTTPSc
 type HTTPHandlers struct {
 	scope          HTTPScopeProvider
 	operationScope OperationHTTPScopeProvider
+	providerOps    providerlock.Manager
 }
 
 func NewHTTPHandlers(scope HTTPScopeProvider, operationScope OperationHTTPScopeProvider) *HTTPHandlers {
 	return &HTTPHandlers{scope: scope, operationScope: operationScope}
 }
 
+func (h *HTTPHandlers) acquireProviderOperation(w http.ResponseWriter, ctx context.Context, database *sql.DB, providerID int64) (func(), bool) {
+	release, err := h.providerOps.Acquire(ctx, database, providerID)
+	if err != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "backup provider operation was canceled")
+		return nil, false
+	}
+	return release, true
+}
+
 type scopeRequirements uint16
 
 const (
-	requireDatabase scopeRequirements = 1 << iota
+	MaxDatabaseTransferBytes int64             = 256 << 20
+	requireDatabase          scopeRequirements = 1 << iota
 	requireProviderIdentity
 	requireDatabaseID
 	requireDatabasePath

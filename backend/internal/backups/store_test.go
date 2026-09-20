@@ -152,12 +152,25 @@ func TestMarkMissingProviderRecordsDeletedReconcilesRemotePrune(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, _, err := store.ClaimUploadOperation(context.Background(), backups.ClaimUploadOperationRequest{
+		IdempotencyKey: "removed-upload", ProviderID: provider.ID, DatabaseID: "database-a",
+		StreamID: "stream-a", SourceInstallationID: "install-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteUploadOperation(context.Background(), "removed-upload", "bkp_remove"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.MarkMissingProviderRecordsDeleted(context.Background(), provider.ID, []string{"bkp_keep"}); err != nil {
 		t.Fatal(err)
 	}
 	records, err := store.ListRecords(context.Background(), backups.ListRecordsFilter{ProviderID: provider.ID})
 	if err != nil || len(records) != 1 || records[0].ProviderFileID != "bkp_keep" {
 		t.Fatalf("unexpected reconciled records: %#v err=%v", records, err)
+	}
+	operation, err := store.GetUploadOperation(context.Background(), "removed-upload")
+	if err != nil || operation.Status != "expired" {
+		t.Fatalf("missing remote upload operation = %#v, err=%v", operation, err)
 	}
 }
 
@@ -181,6 +194,15 @@ func TestMarkProviderRecordsDeletedMarksExactVersions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, _, err := store.ClaimUploadOperation(context.Background(), backups.ClaimUploadOperationRequest{
+		IdempotencyKey: "explicitly-removed-upload", ProviderID: provider.ID, DatabaseID: "database-a",
+		StreamID: "stream-a", SourceInstallationID: "install-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteUploadOperation(context.Background(), "explicitly-removed-upload", "bkp_remove_a"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.MarkProviderRecordsDeleted(context.Background(), provider.ID, []string{"bkp_remove_a", "bkp_remove_b"}); err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +212,10 @@ func TestMarkProviderRecordsDeletedMarksExactVersions(t *testing.T) {
 	}
 	if err := store.MarkProviderRecordsDeleted(context.Background(), provider.ID, []string{"duplicate", "duplicate"}); err == nil {
 		t.Fatal("duplicate provider file ids were accepted")
+	}
+	operation, err := store.GetUploadOperation(context.Background(), "explicitly-removed-upload")
+	if err != nil || operation.Status != "expired" {
+		t.Fatalf("explicitly deleted upload operation = %#v, err=%v", operation, err)
 	}
 }
 

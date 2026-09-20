@@ -119,6 +119,12 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 	if created.Status != "disabled" || !created.HasSecret {
 		t.Fatalf("created provider=%#v", created)
 	}
+	disabledRecords := performBackupJSON(t, handlers.ListProviderRecords, http.MethodGet, "/", map[string]string{
+		"id": strconv.FormatInt(created.ID, 10),
+	}, nil)
+	if disabledRecords.Code != http.StatusOK || !strings.Contains(disabledRecords.Body.String(), `"remote_sync":false`) {
+		t.Fatalf("disabled records response=%d %s", disabledRecords.Code, disabledRecords.Body.String())
+	}
 
 	listResponse := httptest.NewRecorder()
 	handlers.ListProviders(listResponse, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -154,13 +160,28 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 		t.Fatalf("enable response=%d %s", enableResponse.Code, enableResponse.Body.String())
 	}
 
+	store := NewStore(database)
+	if _, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
+		IdempotencyKey: "service-url-change", ProviderID: created.ID, DatabaseID: "db-test",
+		StreamID: "workspace-test", SourceInstallationID: "install-test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkUploadDispatched(t.Context(), "service-url-change"); err != nil {
+		t.Fatal(err)
+	}
+	replacementService := newBackupHTTPServiceFixture(t)
 	activeUpdate = performBackupJSON(t, handlers.UpdateProvider, http.MethodPut, "/", map[string]string{
 		"id": strconv.FormatInt(created.ID, 10),
 	}, backupProviderRequest{Name: "Active remote backup", Status: "active", Public: map[string]any{
-		"base_url": service.server.URL,
+		"base_url": replacementService.server.URL,
 	}})
 	if activeUpdate.Code != http.StatusOK {
 		t.Fatalf("active update response=%d %s", activeUpdate.Code, activeUpdate.Body.String())
+	}
+	operation, err := store.GetUploadOperation(t.Context(), "service-url-change")
+	if err != nil || operation.Status != "expired" || operation.CompletedAt == nil || !strings.Contains(operation.LastError, "service identity changed") {
+		t.Fatalf("operation after service URL change=%#v err=%v", operation, err)
 	}
 
 	deleteResponse := performBackupJSON(t, handlers.DeleteProvider, http.MethodDelete, "/", map[string]string{

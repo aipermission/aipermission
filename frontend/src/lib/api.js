@@ -4,6 +4,7 @@ import {
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
   releaseLocalActionRetryAttempt,
+  retireLocalActionRetryAttempt,
 } from "./local-action-retry.js";
 import { APIError } from "./errors.js";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
@@ -48,16 +49,7 @@ export async function apiPost(path, body, options = {}) {
     try {
       data = await readResponse(response);
     } catch (error) {
-      if (prepared.retry && error?.data?.status === "outcome_unknown") {
-        await markLocalActionRetryOutcome(prepared.retry, error.data);
-        finalized = true;
-      } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
-        // A gateway 4xx is a definitive pre-dispatch rejection unless the
-        // key predates this attempt. Another active attempt still keeps the
-        // shared identity protected.
-        await completeLocalActionRetry(prepared.retry);
-        finalized = true;
-      }
+      finalized = await finalizePostError(prepared, error, response);
       throw error;
     }
     if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
@@ -80,6 +72,25 @@ export async function apiPost(path, body, options = {}) {
   }
 }
 
+async function finalizePostError(prepared, error, response) {
+  const retry = prepared.retry;
+  if (!retry) return false;
+  if (prepared.retireOnError?.(error)) {
+    await retireLocalActionRetryAttempt(retry);
+    return true;
+  }
+  if (error?.data?.status === "outcome_unknown") {
+    await markLocalActionRetryOutcome(retry, error.data);
+    return true;
+  }
+  if (!retry.reused && response.status >= 400 && response.status < 500) {
+    // A fresh gateway 4xx is definitive unless another attempt already owns the identity.
+    await completeLocalActionRetry(retry);
+    return true;
+  }
+  return false;
+}
+
 async function preserveRetryAfterFailure(retry, finalized) {
   if (!retry || finalized) return finalized;
   await preserveLocalActionRetryAttempt(retry);
@@ -97,7 +108,7 @@ function isAcknowledgedLocalActionResponse(data, body) {
 
 async function preparePostBody(path, body, workspaceID) {
   const policy = idempotentPostPolicy(path, body);
-  if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
+  if (!policy) return { body, retry: null, acknowledged: null, retireOnError: null, invalidResponseMessage: "" };
   if (body?.idempotency_key) return { body, retry: null, ...policy };
   const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID });
   return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
@@ -114,7 +125,11 @@ function idempotentPostPolicy(path, body) {
     return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };
   }
   if (/^\/api\/backup\/providers\/\d+\/upload$/.test(path)) {
-    return { acknowledged: isAcknowledgedBackupUploadResponse, invalidResponseMessage: "Invalid backup upload response from gateway." };
+    return {
+      acknowledged: isAcknowledgedBackupUploadResponse,
+      retireOnError: (error) => error?.status === 410 && error?.code === "operation_expired",
+      invalidResponseMessage: "Invalid backup upload response from gateway.",
+    };
   }
   return null;
 }

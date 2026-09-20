@@ -7,6 +7,7 @@ import {
   replaceReconciledEntry,
   releaseEntryAttempt,
   reserveEntry,
+  retireEntryAttempt,
   updateEntryIfMatching,
 } from "./local-action-retry/entries.js";
 import { retryIdentityChangedError } from "./local-action-retry/errors.js";
@@ -94,7 +95,12 @@ export async function completeLocalActionRetry(prepared) {
 
 export async function releaseLocalActionRetryAttempt(prepared) {
   if (!prepared?.scope || !prepared.signature) return;
-  return releaseEntryAttempt(prepared);
+  await releaseEntryAttempt(prepared);
+}
+
+export async function retireLocalActionRetryAttempt(prepared) {
+  if (!prepared?.scope || !prepared.signature) return;
+  return retireEntryAttempt(prepared);
 }
 
 export async function preserveLocalActionRetryAttempt(prepared) {
