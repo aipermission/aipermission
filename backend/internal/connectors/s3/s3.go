@@ -16,7 +16,7 @@ import (
 const (
 	Kind    = "s3"
 	Label   = "S3"
-	Version = "0.3"
+	Version = "0.4"
 
 	ActionBucketInfo        = "bucket_info"
 	ActionListObjects       = "list_objects"

@@ -12,7 +12,7 @@ import (
 const (
 	Kind    = "kafka"
 	Label   = "Kafka / Redpanda"
-	Version = "0.3"
+	Version = "0.4"
 
 	ActionClusterInfo            = "cluster_info"
 	ActionListTopics             = "list_topics"

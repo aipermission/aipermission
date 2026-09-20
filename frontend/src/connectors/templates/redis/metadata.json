@@ -2,7 +2,7 @@
   "kind": "redis",
   "label": "Redis / Valkey",
   "summary": "Redis-compatible key browsing, bounded reads, string writes, TTL updates, and destructive deletes through encrypted credential profiles.",
-  "version": "0.2",
+  "version": "0.3",
   "icon": "database",
   "badge_tone": "warn",
   "profile_lifecycle": "standard"

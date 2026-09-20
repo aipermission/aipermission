@@ -26,7 +26,7 @@ import (
 const (
 	Kind    = "clickhouse"
 	Label   = "ClickHouse"
-	Version = "0.1"
+	Version = "0.2"
 
 	ActionGetDatabases  = "get_databases"
 	ActionGetTables     = "get_tables"
