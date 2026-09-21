@@ -22,10 +22,10 @@
       "lines": 75
     },
     "src/components/app-shell-runtime.js": {
-      "statements": 63.88,
-      "branches": 54.05,
-      "functions": 62.5,
-      "lines": 68.75
+      "statements": 81.08,
+      "branches": 64.86,
+      "functions": 87.5,
+      "lines": 87.87
     },
     "src/components/app-shell.jsx": {
       "statements": 85.45,
@@ -310,10 +310,10 @@
       "lines": 81.52
     },
     "src/components/history/history-components.jsx": {
-      "statements": 80.66,
-      "branches": 73.29,
-      "functions": 90,
-      "lines": 85.62
+      "statements": 83,
+      "branches": 73.86,
+      "functions": 90.56,
+      "lines": 87.57
     },
     "src/components/local-action-reconciliation-dialog.jsx": {
       "statements": 75,
@@ -388,10 +388,10 @@
       "lines": 78.04
     },
     "src/components/settings/maintenance-console-panel.jsx": {
-      "statements": 76.5,
-      "branches": 51,
-      "functions": 66.66,
-      "lines": 82.96
+      "statements": 90.41,
+      "branches": 73.63,
+      "functions": 86.66,
+      "lines": 96.32
     },
     "src/components/settings/password-settings-panel.jsx": {
       "statements": 100,
@@ -1654,10 +1654,10 @@
       "lines": 100
     },
     "src/lib/api.js": {
-      "statements": 90.95,
-      "branches": 85.62,
+      "statements": 94.22,
+      "branches": 85.63,
       "functions": 100,
-      "lines": 91.8
+      "lines": 95.16
     },
     "src/lib/async-resource.js": {
       "statements": 100,
@@ -1744,10 +1744,10 @@
       "lines": 85.71
     },
     "src/lib/local-action-retry.js": {
-      "statements": 78.48,
-      "branches": 74.19,
+      "statements": 80.48,
+      "branches": 77.27,
       "functions": 100,
-      "lines": 83.33
+      "lines": 83.82
     },
     "src/lib/mcp-package.js": {
       "statements": 100,
