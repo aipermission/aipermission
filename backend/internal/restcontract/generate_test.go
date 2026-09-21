@@ -482,6 +482,30 @@ func TestValidateTypedResponseEnforcesPendingApprovalContextHash(t *testing.T) {
 	}
 }
 
+func TestValidateTypedResponseClosesVaultActionOutput(t *testing.T) {
+	const fields = `"id":1,"token_id":2,"token_name":"codex","project_id":3,"project_name":"My Project","project_slug":"my-project","action_name":"generate_item","source":"mcp","input":{},"reason":"Generate a scoped token.","status":"completed","approval_context_hash":"hash","idempotency_key":"idem","created_at":"2026-09-21T01:00:00Z","expires_at":"2026-09-21T01:15:00Z","updated_at":"2026-09-21T01:01:00Z"`
+	generated := `{"item":{"vault_ref":"vault:4","item_id":4,"project_id":3,"name":"PROJECT_TOKEN","secret_type":"api_key","status":"active","expires_at":"","value_version":1,"metadata_revision":1},"secret_returned":false}`
+	session := `{"session_id":5,"session_generation":1,"runtime_id":6,"status":"active","environment_names":["PROJECT_TOKEN"],"expires_at":"2026-09-21T02:00:00Z"}`
+	for _, output := range []string{generated, session} {
+		body := []byte(`[{` + fields + `,"output":` + output + `}]`)
+		if err := ValidateTypedResponse("GET", "/api/vault-action-approvals", 200, body); err != nil {
+			t.Fatalf("valid Vault output rejected: %v", err)
+		}
+	}
+
+	invalid := []string{
+		`{"value":"must-not-escape"}`,
+		`"not-an-object"`,
+		`{"item":{"vault_ref":"vault:4","item_id":4,"project_id":3,"name":"PROJECT_TOKEN","secret_type":"api_key","status":"active","expires_at":"","value_version":1,"metadata_revision":1},"secret_returned":false,"session_id":5}`,
+	}
+	for _, output := range invalid {
+		body := []byte(`[{` + fields + `,"output":` + output + `}]`)
+		if err := ValidateTypedResponse("GET", "/api/vault-action-approvals", 200, body); err == nil {
+			t.Fatalf("unsafe Vault output passed: %s", output)
+		}
+	}
+}
+
 func TestValidateTypedResponseRejectsUndocumentedAndInvalidFields(t *testing.T) {
 	valid := []byte(`{"items":[],"limit":50,"has_more":false}`)
 	if err := ValidateTypedResponse("GET", "/api/history", 200, valid); err != nil {

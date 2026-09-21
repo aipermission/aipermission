@@ -1521,6 +1521,16 @@
         ],
         "type": "object"
       },
+      "VaultActionOutput": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/VaultGeneratedOutput"
+          },
+          {
+            "$ref": "#/components/schemas/VaultSessionOutput"
+          }
+        ]
+      },
       "VaultActionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1562,7 +1572,9 @@
             "properties": {},
             "type": "object"
           },
-          "output": {},
+          "output": {
+            "$ref": "#/components/schemas/VaultActionOutput"
+          },
           "project_id": {
             "format": "int64",
             "type": "integer"
@@ -1775,6 +1787,79 @@
         },
         "type": "object"
       },
+      "VaultGeneratedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "type": "string"
+          },
+          "item_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "metadata_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "secret_type": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "status": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "value_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vault_ref": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vault_ref",
+          "item_id",
+          "project_id",
+          "name",
+          "secret_type",
+          "status",
+          "expires_at",
+          "value_version",
+          "metadata_revision"
+        ],
+        "type": "object"
+      },
+      "VaultGeneratedOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/VaultGeneratedItem"
+          },
+          "secret_returned": {
+            "const": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item",
+          "secret_returned"
+        ],
+        "type": "object"
+      },
       "VaultSessionItem": {
         "additionalProperties": false,
         "properties": {
@@ -1818,6 +1903,47 @@
           "value_version",
           "metadata_revision",
           "replace_existing"
+        ],
+        "type": "object"
+      },
+      "VaultSessionOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "environment_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "session_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "session_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "session_generation",
+          "runtime_id",
+          "status",
+          "environment_names",
+          "expires_at"
         ],
         "type": "object"
       }
