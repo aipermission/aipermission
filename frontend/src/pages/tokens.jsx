@@ -30,15 +30,13 @@ const tokenExpiryOptions = [
 const emptyForm = { name: "cursor-maintenance", expires_in: "never" };
 export function TokensPage() {
   const { tokens, loadTokens, loadTargets } = useGateway();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [createdToken, setCreatedToken] = useState(null);
+  const issuance = useTokenIssuance(loadTokens);
+  const state = issuance.actionState;
   const [connectorPermissionDialog, setConnectorPermissionDialog] = useState(null);
   const [vaultPermissionDialog, setVaultPermissionDialog] = useState(null);
   const { connectorPermissionState, loadAllConnectorPermissions } = useConnectorPermissions(tokens.data);
   const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
   const [revokeDialog, setRevokeDialog] = useState(null);
-  const { actionState: state, runAction } = useAsyncAction();
   const { actionState: revokeState, runAction: runRevokeAction, resetAction: resetRevokeAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
   const loadPermissionsForEffect = useEffectEvent(() => loadAllConnectorPermissions(tokens.data));
@@ -73,31 +71,17 @@ export function TokensPage() {
     await Promise.all([loadTargets(), loadAllConnectorPermissions(tokenItems)]);
   }
 
-  async function createToken(event) {
-    event.preventDefault();
-    await runAction({
-      pending: "saving",
-      successMessage: "Token created.",
-      action: async () => {
-        const token = await apiPost("/api/tokens", tokenCreatePayload(form));
-        setCreatedToken(token);
-        setForm(emptyForm);
-        setDrawerOpen(false);
-        await loadTokens();
-      },
-    });
-  }
-
   async function revokeToken(token) {
-    await runRevokeAction({
+    const revoked = await runRevokeAction({
       pending: "revoking",
       successMessage: `${token.name} revoked.`,
       action: async () => {
         await apiPost(`/api/tokens/${token.id}/revoke`, {});
         await loadTokens();
-        setRevokeDialog(null);
+        return true;
       },
     });
+    if (revoked === true) setRevokeDialog(null);
   }
 
   function openRevokeDialog(token) {
@@ -112,10 +96,10 @@ export function TokensPage() {
 
   return (
     <section className="mx-auto grid w-full max-w-7xl gap-5">
-      <TokenPageHeader onRefresh={refreshTokensAndPermissions} onAdd={() => setDrawerOpen(true)} />
+      <TokenPageHeader onRefresh={refreshTokensAndPermissions} onAdd={issuance.openDrawer} />
       <TokenStats stats={stats} filter={tokenFilter} onFilter={setTokenFilter} />
 
-      <CreatedTokenNotice token={createdToken} onDismiss={() => setCreatedToken(null)} />
+      <CreatedTokenNotice token={issuance.createdToken} onDismiss={issuance.dismissCreatedToken} />
       {state.message ? <Notice tone="good">{state.message}</Notice> : null}
       {revokeState.message ? <Notice tone="good">{revokeState.message}</Notice> : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
@@ -256,12 +240,12 @@ export function TokensPage() {
       </div>
 
       <TokenCreateDrawer
-        open={drawerOpen}
-        form={form}
-        setForm={setForm}
+        open={issuance.drawerOpen}
+        form={issuance.form}
+        setForm={issuance.setForm}
         state={state}
-        onClose={() => setDrawerOpen(false)}
-        onSubmit={createToken}
+        onClose={issuance.closeDrawer}
+        onSubmit={issuance.createToken}
       />
 
       <ConnectorPermissionDialog
@@ -290,6 +274,48 @@ export function TokensPage() {
       />
     </section>
   );
+}
+
+function useTokenIssuance(loadTokens) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [createdToken, setCreatedToken] = useState(null);
+  const { actionState, runAction, resetAction } = useAsyncAction();
+
+  async function createToken(event) {
+    event.preventDefault();
+    const token = await runAction({
+      pending: "saving",
+      successMessage: "Token created.",
+      action: async () => {
+        const created = await apiPost("/api/tokens", tokenCreatePayload(form));
+        await loadTokens();
+        return created;
+      },
+    });
+    if (!token) return;
+    setCreatedToken(token);
+    setForm(emptyForm);
+    setDrawerOpen(false);
+  }
+
+  function setDrawer(open) {
+    if (actionState.state === "saving") return;
+    resetAction();
+    setDrawerOpen(open);
+  }
+
+  return {
+    actionState,
+    closeDrawer: () => setDrawer(false),
+    createToken,
+    createdToken,
+    dismissCreatedToken: () => setCreatedToken(null),
+    drawerOpen,
+    form,
+    openDrawer: () => setDrawer(true),
+    setForm,
+  };
 }
 
 function TokenPageHeader({ onRefresh, onAdd }) {
@@ -352,6 +378,7 @@ function TokenCreateDrawer({ open, form, setForm, state, onClose, onSubmit }) {
       title="Add API token"
       description="Use one token per AI client, laptop, or temporary maintenance session."
       onClose={onClose}
+      closeDisabled={state.state === "saving"}
     >
       <form className="grid gap-4" onSubmit={onSubmit}>
         <Field>

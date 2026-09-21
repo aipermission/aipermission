@@ -23,6 +23,14 @@ vi.mock("../lib/use-connector-permissions", () => ({
   }),
 }));
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 describe("TokensPage", () => {
   beforeEach(() => {
     apiPost.mockReset();
@@ -85,6 +93,29 @@ describe("TokensPage", () => {
     expect(screen.queryByText("short-lived")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Expired 1/ })).toBeVisible();
   });
+
+  it("keeps an in-flight token drawer open and surfaces the show-once token", async () => {
+    const user = userEvent.setup();
+    const creation = deferred();
+    apiPost.mockReturnValueOnce(creation.promise);
+    render(<TokensPage />);
+
+    await user.click(screen.getByRole("button", { name: "Add token" }));
+    const oldName = screen.getByLabelText("Name");
+    await user.clear(oldName);
+    await user.type(oldName, "old-agent");
+    await user.click(screen.getByRole("button", { name: "Create token" }));
+    expect(screen.getByRole("button", { name: "Close drawer" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("heading", { name: "Add API token" })).toBeVisible();
+    await act(async () => creation.resolve({ id: 8, name: "old-agent", token: "aip_old_secret" }));
+
+    expect(screen.queryByRole("heading", { name: "Add API token" })).not.toBeInTheDocument();
+    expect(screen.getByText("old-agent token created.")).toBeVisible();
+    expect(screen.getByDisplayValue("aip_old_secret")).toBeVisible();
+    expect(screen.getByText("Token created.")).toBeVisible();
+  });
+
   it("filters expired and revoked tokens without enabling their actions", async () => {
     const user = userEvent.setup();
     gateway.tokens.data = [
