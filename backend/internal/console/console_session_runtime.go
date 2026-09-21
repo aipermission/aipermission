@@ -215,18 +215,23 @@ func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
 	s.finish("closed", "")
 }
 
-func (s *managedConsoleSession) addClient(ws *websocket.Conn) (*sync.Mutex, error) {
+// addClientWithSnapshot returns with writeMu locked. The caller must send the
+// snapshot before unlocking it so later broadcasts cannot overtake it.
+func (s *managedConsoleSession) addClientWithSnapshot(ws *websocket.Conn) (*sync.Mutex, string, string, error) {
 	writeMu := &sync.Mutex{}
+	writeMu.Lock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
-		return nil, ErrSessionClosing
+		writeMu.Unlock()
+		return nil, "", "", ErrSessionClosing
 	}
 	if len(s.clients) >= maxConsoleClientsPerSession {
-		return nil, ErrClientLimit
+		writeMu.Unlock()
+		return nil, "", "", ErrClientLimit
 	}
 	s.clients[ws] = writeMu
-	return writeMu, nil
+	return writeMu, s.status, s.transcript, nil
 }
 
 func (s *managedConsoleSession) removeClient(ws *websocket.Conn) {
@@ -252,13 +257,15 @@ func (s *managedConsoleSession) writeInput(data string) error {
 		return nil
 	}
 	s.mu.Lock()
-	stdin := s.stdin
-	status := s.status
-	s.mu.Unlock()
-	if stdin == nil || status != "connected" {
+	defer s.mu.Unlock()
+	return s.writeInputLocked(data)
+}
+
+func (s *managedConsoleSession) writeInputLocked(data string) error {
+	if s.stdin == nil || s.status != "connected" {
 		return fmt.Errorf("console session is not ready")
 	}
-	_, err := io.WriteString(stdin, data)
+	_, err := io.WriteString(s.stdin, data)
 	return err
 }
 

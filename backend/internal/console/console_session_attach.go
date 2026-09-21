@@ -3,6 +3,7 @@ package console
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -34,23 +35,29 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 		return ws.SetReadDeadline(time.Now().Add(ptyPongWait))
 	})
 
-	writeMu, err := session.addClient(ws)
-	if err != nil {
+	var writeMu *sync.Mutex
+	if err := m.authorizeOperation(r.Context(), principal, session, OperationObserve, func() error {
+		var snapshotStatus, transcript string
+		var registerErr error
+		writeMu, snapshotStatus, transcript, registerErr = session.addClientWithSnapshot(ws)
+		if registerErr != nil {
+			return registerErr
+		}
+		writeErr := ws.WriteJSON(ptyServerMessage{
+			Type: "snapshot", Status: snapshotStatus, Data: transcript, SessionID: session.id,
+		})
+		writeMu.Unlock()
+		return writeErr
+	}); err != nil {
+		if writeMu != nil {
+			session.removeClient(ws)
+		}
 		return err
 	}
 	defer session.removeClient(ws)
 	stopPing := make(chan struct{})
 	defer close(stopPing)
 	go keepPTYAlive(ws, writeMu, stopPing)
-
-	if err := m.authorizeOperation(r.Context(), principal, session, OperationObserve, func() error {
-		snapshotStatus, transcript := session.snapshot()
-		return writePTYMessage(ws, writeMu, ptyServerMessage{
-			Type: "snapshot", Status: snapshotStatus, Data: transcript, SessionID: session.id,
-		})
-	}); err != nil {
-		return err
-	}
 
 	inputLimiter := newConsoleIntervalLimiter(ptyInputMinInterval)
 	resizeLimiter := newConsoleIntervalLimiter(ptyResizeMinInterval)
@@ -69,8 +76,8 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: ErrInputTooLarge.Error(), SessionID: session.id})
 				continue
 			}
-			if !inputLimiter.allow() {
-				continue
+			if err := inputLimiter.wait(r.Context()); err != nil {
+				return nil
 			}
 			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput, func() error {
 				return session.submitManualInput(message.Data)

@@ -949,6 +949,26 @@ func TestManagedConsoleSessionSerializesManualInputSubmission(t *testing.T) {
 	}
 }
 
+func TestManagedConsoleSessionDoesNotAdvanceManualParserWhenInputWriteFails(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	session.stdin = &recordingWriteCloser{}
+	session.status = "connecting"
+	manager.sessions[session.id] = session
+
+	if err := session.submitManualInput("echo stale"); err == nil {
+		t.Fatal("expected input while connecting to fail")
+	}
+	if session.manualInput.line != "" {
+		t.Fatalf("failed input advanced parser state: %q", session.manualInput.line)
+	}
+
+	session.status = "connected"
+	if err := session.submitManualInput("\n"); err != nil {
+		t.Fatalf("submit connected newline: %v", err)
+	}
+	assertManualHistoryCount(t, database, 0)
+}
+
 type sequencedWriteCloser struct {
 	writes       chan<- string
 	releaseFirst <-chan struct{}

@@ -1,6 +1,8 @@
 package console
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -14,6 +16,26 @@ func TestParsePositiveInt(t *testing.T) {
 	}
 	if got := parsePositiveInt("bad", 80); got != 80 {
 		t.Fatalf("expected fallback for bad input, got %d", got)
+	}
+}
+
+func TestConsoleIntervalLimiterWaitPreservesAcceptedInput(t *testing.T) {
+	limiter := newConsoleIntervalLimiter(20 * time.Millisecond)
+	if err := limiter.wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if err := limiter.wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed < 15*time.Millisecond {
+		t.Fatalf("second accepted input was not delayed: %v", elapsed)
+	}
+
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := limiter.wait(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled wait = %v", err)
 	}
 }
 

@@ -130,6 +130,39 @@ describe("useConsoleConnections", () => {
     expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
   });
 
+  it("queues connecting input and flushes it in order without HTTP fallback", () => {
+    const { result } = renderHook(() => useHarness());
+
+    act(() => {
+      result.current.connections.sendInput(7, "echo first\n");
+      result.current.connections.sendInput(7, "echo second\n");
+    });
+    const socket = FakeWebSocket.instances[0];
+    expect(socket.send).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+
+    act(() => {
+      socket.readyState = FakeWebSocket.OPEN;
+      socket.onopen();
+    });
+
+    expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "input", data: "echo first\n" }));
+    expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "input", data: "echo second\n" }));
+  });
+
+  it("bounds input queued while the console socket connects", () => {
+    const { result } = renderHook(() => useHarness());
+
+    act(() => result.current.connections.sendInput(7, "x".repeat(64 * 1024 + 1)));
+
+    expect(result.current.sessions.data[0]).toMatchObject({
+      status: "error",
+      error: "Console input queue is full. Wait for the connection before sending more input.",
+    });
+    expect(FakeWebSocket.instances[0].send).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
   it("ignores the replaced socket close while forcing a reconnect", () => {
     const { result } = renderHook(() => useHarness());
 

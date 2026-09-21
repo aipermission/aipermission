@@ -625,12 +625,46 @@ func TestConsoleSessionManagerEnforcesActiveSessionLimit(t *testing.T) {
 func TestManagedConsoleSessionEnforcesClientLimit(t *testing.T) {
 	session := &managedConsoleSession{clients: map[*websocket.Conn]*sync.Mutex{}}
 	for i := 0; i < maxConsoleClientsPerSession; i++ {
-		if _, err := session.addClient(&websocket.Conn{}); err != nil {
+		writeMu, _, _, err := session.addClientWithSnapshot(&websocket.Conn{})
+		if err != nil {
 			t.Fatalf("add client %d: %v", i, err)
 		}
+		writeMu.Unlock()
 	}
-	if _, err := session.addClient(&websocket.Conn{}); !errors.Is(err, ErrClientLimit) {
+	if _, _, _, err := session.addClientWithSnapshot(&websocket.Conn{}); !errors.Is(err, ErrClientLimit) {
 		t.Fatalf("expected client limit error, got %v", err)
+	}
+}
+
+func TestManagedConsoleSessionGatesBroadcastsBehindInitialSnapshot(t *testing.T) {
+	session := &managedConsoleSession{
+		status: "connected", transcript: "initial transcript",
+		clients: map[*websocket.Conn]*sync.Mutex{},
+	}
+	writeMu, status, transcript, err := session.addClientWithSnapshot(&websocket.Conn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != "connected" || transcript != "initial transcript" {
+		t.Fatalf("snapshot = (%q, %q)", status, transcript)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		writeMu.Lock()
+		close(acquired)
+		writeMu.Unlock()
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("later writer overtook the initial snapshot gate")
+	case <-time.After(20 * time.Millisecond):
+	}
+	writeMu.Unlock()
+	select {
+	case <-acquired:
+	case <-time.After(time.Second):
+		t.Fatal("later writer did not resume after the snapshot gate")
 	}
 }
 

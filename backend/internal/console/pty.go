@@ -1,6 +1,7 @@
 package console
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"time"
@@ -72,6 +73,23 @@ func (l *consoleIntervalLimiter) allow() bool {
 	}
 	l.last = now
 	return true
+}
+
+func (l *consoleIntervalLimiter) wait(ctx context.Context) error {
+	if l == nil || l.minInterval <= 0 {
+		return nil
+	}
+	if delay := time.Until(l.last.Add(l.minInterval)); delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	l.last = time.Now()
+	return nil
 }
 
 func parsePositiveInt(value string, fallback int) int {

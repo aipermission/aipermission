@@ -3,10 +3,13 @@ import { apiPost } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import { consoleSessionAttachUrl, limitTranscript, parseConsoleSocketMessage } from "../app-shell-runtime";
 
+const maxPendingConsoleInputBytes = 64 * 1024;
+
 export function useConsoleConnections({ setConsoleSessions }) {
   const connectionsRef = useRef({});
   const expectedClosuresRef = useRef(new WeakSet());
   const pendingClosuresRef = useRef(new WeakSet());
+  const pendingInputRef = useRef({});
 
   const closeExpected = useCallback((connection) => {
     if (!connection) return;
@@ -30,6 +33,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
   const disconnectAll = useCallback(() => {
     Object.values(connectionsRef.current).forEach(closeExpected);
     connectionsRef.current = {};
+    pendingInputRef.current = {};
   }, [closeExpected]);
 
   const disconnectSessions = useCallback(
@@ -39,6 +43,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
         if (!connection) continue;
         closeExpected(connection);
         delete connectionsRef.current[sessionID];
+        delete pendingInputRef.current[sessionID];
       }
     },
     [closeExpected],
@@ -50,6 +55,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
       if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
         if (!options.force) return;
         closeExpected(existing);
+        delete pendingInputRef.current[sessionID];
       }
       if (existing && (existing.readyState === WebSocket.CLOSING || existing.readyState === WebSocket.CLOSED)) {
         delete connectionsRef.current[sessionID];
@@ -61,6 +67,12 @@ export function useConsoleConnections({ setConsoleSessions }) {
 
       socket.onopen = () => {
         if (connectionsRef.current[sessionID] !== socket) return;
+        const pending = pendingInputRef.current[sessionID];
+        if (!pending || pending.socket !== socket) return;
+        delete pendingInputRef.current[sessionID];
+        for (const data of pending.items) {
+          socket.send(JSON.stringify({ type: "input", data }));
+        }
       };
       socket.onmessage = (event) => {
         if (connectionsRef.current[sessionID] !== socket) return;
@@ -115,6 +127,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
       socket.onclose = () => {
         if (connectionsRef.current[sessionID] !== socket) return;
         delete connectionsRef.current[sessionID];
+        if (pendingInputRef.current[sessionID]?.socket === socket) delete pendingInputRef.current[sessionID];
         if (expectedClosuresRef.current.has(socket)) return;
         if (pendingClosuresRef.current.has(socket)) return;
         patchSession(sessionID, (session) => ({
@@ -128,15 +141,32 @@ export function useConsoleConnections({ setConsoleSessions }) {
 
   const sendInput = useCallback(
     (sessionID, data) => {
-      const socket = connectionsRef.current[sessionID];
+      let socket = connectionsRef.current[sessionID];
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "input", data }));
         return;
       }
-      attachSession(sessionID);
-      void apiPost(`/api/console/sessions/${sessionID}/input`, { data }).catch((error) => {
-        patchSession(sessionID, () => ({ status: "error", error: error.message }));
-      });
+      if (!socket || socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
+        attachSession(sessionID);
+        socket = connectionsRef.current[sessionID];
+      }
+      if (socket?.readyState !== WebSocket.CONNECTING) {
+        patchSession(sessionID, () => ({ status: "error", error: "Console connection is not ready for input." }));
+        return;
+      }
+      const encodedBytes = new TextEncoder().encode(data).byteLength;
+      const current = pendingInputRef.current[sessionID];
+      const pending = current?.socket === socket ? current : { socket, items: [], bytes: 0 };
+      if (pending.bytes + encodedBytes > maxPendingConsoleInputBytes) {
+        patchSession(sessionID, () => ({
+          status: "error",
+          error: "Console input queue is full. Wait for the connection before sending more input.",
+        }));
+        return;
+      }
+      pending.items.push(data);
+      pending.bytes += encodedBytes;
+      pendingInputRef.current[sessionID] = pending;
     },
     [attachSession, patchSession],
   );
@@ -173,6 +203,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
         closeExpected(connection);
         delete connectionsRef.current[sessionID];
       }
+      delete pendingInputRef.current[sessionID];
       patchSession(sessionID, () => ({ status: "closed" }));
     },
     [closeExpected, patchSession],
