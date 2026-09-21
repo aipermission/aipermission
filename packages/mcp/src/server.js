@@ -113,7 +113,7 @@ server.tool(
           },
           { signal },
         ),
-      (value) => projectGatewaySuccess(responseContracts.connectorActionCall, value),
+      (value) => projectGatewaySuccess(responseContracts.connectorActionCall, value, { target_ref, action_name }),
       { idempotencyKey: idempotency_key },
     );
   },
@@ -129,7 +129,7 @@ server.tool(
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiGet(`/api/mcp/connector-action-requests/${request_id}`, { signal }),
-      (value) => projectGatewaySuccess(responseContracts.connectorActionRequest, value),
+      (value) => projectGatewaySuccess(responseContracts.connectorActionRequest, value, { request_id }),
     );
   },
 );
@@ -171,7 +171,7 @@ server.tool(
           },
           { signal },
         ),
-      (value) => projectGatewaySuccess(responseContracts.vaultAction, value),
+      (value) => projectGatewaySuccess(responseContracts.vaultAction, value, { project_ref, action_name }),
       { idempotencyKey: idempotency_key },
     );
   },
@@ -185,7 +185,7 @@ server.tool(
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiGet(`/api/mcp/vault-action-requests/${request_id}`, { signal }),
-      (value) => projectGatewaySuccess(responseContracts.vaultAction, value),
+      (value) => projectGatewaySuccess(responseContracts.vaultAction, value, { request_id }),
     );
   },
 );
@@ -198,7 +198,7 @@ server.tool(
   async ({ request_id }, { signal }) => {
     return jsonToolResult(
       () => apiPost(`/api/mcp/vault-action-requests/${request_id}/cancel`, {}, { requestID: request_id, signal }),
-      (value) => projectGatewaySuccess(responseContracts.vaultAction, value),
+      (value) => projectGatewaySuccess(responseContracts.vaultAction, value, { request_id, status: "canceled" }),
       { requestID: request_id },
     );
   },

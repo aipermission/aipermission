@@ -89,3 +89,87 @@ test("Vault contracts reject raw value fields in otherwise valid responses", () 
     /contract validation/,
   );
 });
+
+test("Vault action lifecycle requires recorded identity and mutually exclusive output", () => {
+  const response = {
+    status: "completed",
+    request_id: 9,
+    project_ref: "my-project",
+    action_name: "generate_item",
+    secret_values_returned: false,
+  };
+  assert.doesNotThrow(() => projectGatewaySuccess(responseContracts.vaultAction, response));
+  assert.doesNotThrow(() =>
+    projectGatewaySuccess(responseContracts.vaultAction, { status: "stopped", error: "Start MCP from the web UI." }),
+  );
+  for (const invalid of [
+    { ...response, status: "invented" },
+    { ...response, request_id: undefined },
+    { ...response, project_ref: undefined },
+    { ...response, action_name: undefined },
+    { ...response, secret_values_returned: undefined },
+    { ...response, output_withheld: true, output: { item: {} } },
+  ]) {
+    assert.throws(() => projectGatewaySuccess(responseContracts.vaultAction, invalid), /contract validation/);
+  }
+});
+
+test("action contracts bind successful responses to the requested identity", () => {
+  assert.doesNotThrow(() =>
+    projectGatewaySuccess(responseContracts.connectorActionCall, connectorActionResponse, {
+      target_ref: connectorActionResponse.target_ref,
+      action_name: connectorActionResponse.action_name,
+    }),
+  );
+  assert.throws(
+    () => projectGatewaySuccess(responseContracts.connectorActionCall, connectorActionResponse, { target_ref: "redis:2:1" }),
+    /contract validation/,
+  );
+  assert.throws(
+    () => projectGatewaySuccess(responseContracts.connectorActionRequest, connectorActionResponse, { request_id: 99 }),
+    /contract validation/,
+  );
+
+  const vaultResponse = vaultActionResponse();
+  assert.doesNotThrow(() =>
+    projectGatewaySuccess(responseContracts.vaultAction, vaultResponse, {
+      request_id: vaultResponse.request_id,
+      project_ref: vaultResponse.project_ref,
+      action_name: vaultResponse.action_name,
+    }),
+  );
+  assert.throws(
+    () => projectGatewaySuccess(responseContracts.vaultAction, vaultResponse, { request_id: vaultResponse.request_id + 1 }),
+    /contract validation/,
+  );
+  assert.throws(
+    () => projectGatewaySuccess(responseContracts.vaultAction, vaultResponse, { request_id: vaultResponse.request_id, status: "canceled" }),
+    /contract validation/,
+  );
+});
+
+test("Vault action contracts keep input and output bound to their action", () => {
+  const generated = vaultActionResponse({
+    action_name: "generate_item",
+    input: { target_ref: "ssh:1:1", items: [{ item_id: 1, source_project_id: 1 }] },
+  });
+  const restarted = vaultActionResponse({
+    action_name: "restart_session_with_environment",
+    output: {
+      item: {
+        vault_ref: "vault:3",
+        item_id: 3,
+        project_id: 1,
+        name: "PROJECT_TOKEN",
+        secret_type: "api_key",
+        status: "active",
+        expires_at: "",
+        value_version: 1,
+        metadata_revision: 1,
+      },
+      secret_returned: false,
+    },
+  });
+  assert.throws(() => projectGatewaySuccess(responseContracts.vaultAction, generated), /contract validation/);
+  assert.throws(() => projectGatewaySuccess(responseContracts.vaultAction, restarted), /contract validation/);
+});
