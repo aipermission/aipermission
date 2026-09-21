@@ -1,4 +1,4 @@
-package api
+package architecture_test
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
-	apiDir := filepath.Dir(filename)
+	apiDir := filepath.Dir(filepath.Dir(filename))
 	targetFiles, err := filepath.Glob(filepath.Join(apiDir, "connector_target_*.go"))
 	if err != nil {
 		t.Fatalf("find connector target handlers: %v", err)
@@ -57,7 +57,7 @@ func TestSSHSpecificAPIReferencesStayInsideConnectorAdapters(t *testing.T) {
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
-	apiDir := filepath.Dir(filename)
+	apiDir := filepath.Dir(filepath.Dir(filename))
 	disallowed := []string{
 		"connectors/ssh",
 		"sshconnector",
@@ -97,7 +97,7 @@ func TestProvisionedCredentialMetadataStaysInsideConnectors(t *testing.T) {
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
-	apiDir := filepath.Dir(filename)
+	apiDir := filepath.Dir(filepath.Dir(filename))
 	disallowed := []string{
 		"managed_by_aipermission",
 		"managed_role_name",

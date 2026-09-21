@@ -2,26 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { projectGatewaySuccess, responseContracts } from "../src/response-contracts.js";
-
-const actionResponse = {
-  status: "completed",
-  request_id: 7,
-  target_ref: "redis:1:1",
-  connector_kind: "redis",
-  action_name: "get_string",
-  retry_policy: { class: "read_only", guidance: "Read again if needed." },
-};
+import { connectorActionResponse, connectorTargetResponse, vaultActionResponse } from "./support/response-fixtures.js";
 
 test("connector action contracts reject unexpected envelope fields without constraining opaque output", () => {
   const projected = projectGatewaySuccess(responseContracts.connectorActionRequest, {
-    ...actionResponse,
+    ...connectorActionResponse,
     output: { password: "domain data", rows: [{ arbitrary_connector_field: true }] },
   });
   assert.deepEqual(projected.output, { password: "domain data", rows: [{ arbitrary_connector_field: true }] });
   assert.throws(() => {
     try {
       projectGatewaySuccess(responseContracts.connectorActionRequest, {
-        ...actionResponse,
+        ...connectorActionResponse,
         output: { arbitrary_connector_field: true },
         provider_secret: "must-not-escape",
       });
@@ -33,41 +25,28 @@ test("connector action contracts reject unexpected envelope fields without const
 });
 
 test("connector target contracts reject secret-bearing metadata keys", () => {
-  const target = {
-    target_ref: "ssh:1:1",
-    project_id: 1,
-    project_name: "My Project",
-    project_slug: "my-project",
-    target_id: 1,
-    target_name: "server",
-    connector_kind: "ssh",
-    profile_id: 1,
-    profile_label: "admin",
-    profile_kind: "private_key",
-    actions: [],
-  };
-  assert.doesNotThrow(() => projectGatewaySuccess(responseContracts.connectorTargets, [{ ...target, metadata: { host: "127.0.0.1" } }]));
+  assert.doesNotThrow(() =>
+    projectGatewaySuccess(responseContracts.connectorTargets, [{ ...connectorTargetResponse, metadata: { host: "127.0.0.1" } }]),
+  );
   for (const metadata of [
     { nested: { private_key: "nope" } },
     { nested: { privateKey: "nope" } },
     { "api-token": "nope" },
     { accessKey: "nope" },
   ]) {
-    assert.throws(() => projectGatewaySuccess(responseContracts.connectorTargets, [{ ...target, metadata }]), /contract validation/);
+    assert.throws(
+      () => projectGatewaySuccess(responseContracts.connectorTargets, [{ ...connectorTargetResponse, metadata }]),
+      /contract validation/,
+    );
   }
 });
 
 test("Vault contracts reject raw value fields in otherwise valid responses", () => {
-  const response = {
-    status: "completed",
-    request_id: 9,
-    project_ref: "my-project",
-    action_name: "generate_item",
+  const response = vaultActionResponse({
     input: { name: "PROJECT_TOKEN", generator_kind: "random_token" },
     reason: "Create a scoped token.",
     created_at: "2026-09-17T10:00:00Z",
     expires_at: "2026-09-17T10:15:00Z",
-    secret_values_returned: false,
     output: {
       item: {
         vault_ref: "vault:3",
@@ -82,7 +61,7 @@ test("Vault contracts reject raw value fields in otherwise valid responses", () 
       },
       secret_returned: false,
     },
-  };
+  });
   assert.doesNotThrow(() => projectGatewaySuccess(responseContracts.vaultAction, response));
   assert.throws(
     () => projectGatewaySuccess(responseContracts.vaultAction, { ...response, output: { ...response.output, value: "must-not-escape" } }),
@@ -91,13 +70,7 @@ test("Vault contracts reject raw value fields in otherwise valid responses", () 
 });
 
 test("Vault action lifecycle requires recorded identity and mutually exclusive output", () => {
-  const response = {
-    status: "completed",
-    request_id: 9,
-    project_ref: "my-project",
-    action_name: "generate_item",
-    secret_values_returned: false,
-  };
+  const response = vaultActionResponse();
   assert.doesNotThrow(() => projectGatewaySuccess(responseContracts.vaultAction, response));
   assert.doesNotThrow(() =>
     projectGatewaySuccess(responseContracts.vaultAction, { status: "stopped", error: "Start MCP from the web UI." }),
