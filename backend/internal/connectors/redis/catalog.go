@@ -188,7 +188,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
-				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Required: true},
+				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, PreserveWhitespace: true, Required: true},
 				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldInteger, Description: "Optional positive TTL."},
 			}},
 			SensitiveInputFields: []string{"value"},
