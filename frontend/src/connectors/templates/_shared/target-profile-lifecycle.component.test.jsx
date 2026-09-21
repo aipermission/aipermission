@@ -119,4 +119,24 @@ describe("createTargetProfileLifecycle", () => {
     await result;
     expect(api.post).toHaveBeenCalledOnce();
   });
+
+  it("composes functional credential form updates without dropping sibling state", () => {
+    let state = { form: { first: true, second: true }, auxiliary: "preserved" };
+    const props = lifecycle().credentialFormProps({
+      targets: [],
+      formState: state,
+      setFormState(update) {
+        state = typeof update === "function" ? update(state) : update;
+      },
+      formMode: "edit",
+      state: { state: "idle" },
+      onSubmit: vi.fn(),
+    });
+
+    props.onChange((current) => ({ ...current, first: false }));
+    props.onChange((current) => ({ ...current, second: false }));
+    props.onChange({ first: "literal", second: false });
+
+    expect(state).toEqual({ form: { first: "literal", second: false }, auxiliary: "preserved" });
+  });
 });

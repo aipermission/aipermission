@@ -31,7 +31,11 @@ export function MailCredentialFormTemplate({ targets, form, formMode = "create",
           ))}
         </Select>
       </Field>
-      <MailCredentialFields form={form} editing={editing} onChange={(field, value) => onChange({ ...form, [field]: value })} />
+      <MailCredentialFields
+        form={form}
+        editing={editing}
+        onChange={(field, value) => onChange((current) => ({ ...current, [field]: value }))}
+      />
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={state.state === "saving" || mailTargets.length === 0 || !mailProtocolsEnabled(form)}>
         <Mail className="h-4 w-4" />

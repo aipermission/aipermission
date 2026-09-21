@@ -29,3 +29,28 @@ test("shared lifecycle identity cannot be replaced by lookalike functions", () =
   assert.equal(usesStandardTargetProfileLifecycle(lifecycle), true);
   assert.equal(usesStandardTargetProfileLifecycle({ ...lifecycle, save: async () => {} }), false);
 });
+
+test("credential form updates compose from the latest form state", () => {
+  const lifecycle = createTargetProfileLifecycle({
+    connectorKind: "example",
+    connectorLabel: "Example",
+    targetPayload: () => ({}),
+    profilePayload: () => ({}),
+  });
+  let state = { form: { first: true, second: true }, auxiliary: "preserved" };
+  const props = lifecycle.credentialFormProps({
+    targets: [],
+    formState: state,
+    setFormState(update) {
+      state = typeof update === "function" ? update(state) : update;
+    },
+    formMode: "edit",
+    state: { state: "idle" },
+    onSubmit() {},
+  });
+
+  props.onChange((current) => ({ ...current, first: false }));
+  props.onChange((current) => ({ ...current, second: false }));
+
+  assert.deepEqual(state, { form: { first: false, second: false }, auxiliary: "preserved" });
+});
