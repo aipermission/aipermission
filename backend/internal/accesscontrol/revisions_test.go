@@ -23,6 +23,15 @@ func TestAuthorizationRevisionsIgnorePresentationOrder(t *testing.T) {
 	scopeFirst, scopeFirstErr := projectScopesRevision(scopeItems)
 	scopeSecond, scopeSecondErr := projectScopesRevision(scopeReverse)
 	assertSameRevision(t, scopeFirst, scopeFirstErr, scopeSecond, scopeSecondErr)
+	scopeChanged := append([]projects.TokenScope(nil), scopeItems...)
+	scopeChanged[0].Revision++
+	changedRevision, changedErr := projectScopesRevision(scopeChanged)
+	if changedErr != nil {
+		t.Fatal(changedErr)
+	}
+	if scopeFirst == changedRevision {
+		t.Fatal("project scope revision ignored the monotonic record revision")
+	}
 
 	capabilityItems := []Capability{
 		{ProjectID: 2, Name: "write"},

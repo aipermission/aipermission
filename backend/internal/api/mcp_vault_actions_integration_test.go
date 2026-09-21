@@ -958,6 +958,21 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 	}, promptApproval); !vaultactions.IsStale(err) {
 		t.Fatalf("project scope drift should stale the approval, got %v", err)
 	}
+	reenabled := performJSON(
+		fixture.server.Handler(),
+		http.MethodPut,
+		scopePath,
+		"",
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
+	)
+	if reenabled.Code != http.StatusOK {
+		t.Fatalf("restore Vault source project: %d %s", reenabled.Code, reenabled.Body.String())
+	}
+	if err := actions.ValidateAuthorization(ctx, vaultrequests.Request{
+		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
+	}, promptApproval); !vaultactions.IsStale(err) {
+		t.Fatalf("project scope ABA should keep the old approval stale, got %v", err)
+	}
 }
 
 func TestVaultActionCompensationRemovesGeneratedItemAndSession(t *testing.T) {

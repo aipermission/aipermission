@@ -76,6 +76,7 @@ func migrations() []migration {
 		fileTransferRecoveryMigration(),
 		profileRestoreIdempotencyMigration(),
 		vaultActionRequestEnvelopeMigration(),
+		projectScopeRevisionMigration(),
 	)
 }
 

@@ -99,6 +99,46 @@ func TestReplaceTokenScopesReportsNoOp(t *testing.T) {
 	}
 }
 
+func TestReplaceTokenScopesUsesMonotonicRevisions(t *testing.T) {
+	database := openProjectTestDB(t)
+	ctx := t.Context()
+	store := NewStore(database)
+	project, err := store.Create(ctx, "Revision Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.NewStore(database).Create(ctx, tokens.CreateRequest{Name: "revision-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initial := scopeForProject(t, store, token.ID, project.ID)
+	if !initial.Enabled || initial.Revision != 1 {
+		t.Fatalf("initial scope = %#v", initial)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	disabled := scopeForProject(t, store, token.ID, project.ID)
+	if disabled.Enabled || disabled.Revision != initial.Revision+1 {
+		t.Fatalf("disabled scope = %#v, initial = %#v", disabled, initial)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatal(err)
+	}
+	reenabled := scopeForProject(t, store, token.ID, project.ID)
+	if !reenabled.Enabled || reenabled.Revision != disabled.Revision+1 {
+		t.Fatalf("re-enabled scope = %#v, disabled = %#v", reenabled, disabled)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatal(err)
+	}
+	unchanged := scopeForProject(t, store, token.ID, project.ID)
+	if unchanged.Revision != reenabled.Revision {
+		t.Fatalf("no-op revision = %d, want %d", unchanged.Revision, reenabled.Revision)
+	}
+}
+
 func TestResolveRefAcceptsActiveIDOrSlug(t *testing.T) {
 	database := openProjectTestDB(t)
 	store := NewStore(database)
@@ -155,4 +195,19 @@ func scopeEnabled(scopes []TokenScope, projectID int64) bool {
 		}
 	}
 	return false
+}
+
+func scopeForProject(t *testing.T, store *Store, tokenID, projectID int64) TokenScope {
+	t.Helper()
+	scopes, err := store.ListTokenScopes(t.Context(), tokenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range scopes {
+		if scope.ProjectID == projectID {
+			return scope
+		}
+	}
+	t.Fatalf("scope for project %d not found", projectID)
+	return TokenScope{}
 }
