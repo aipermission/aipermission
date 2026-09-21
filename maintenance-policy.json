@@ -188,6 +188,10 @@
     {
       "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
       "name": "TestWindowsKnownHostsReplacementFailuresAreReported"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/docker",
+      "name": "TestDockerCommandUsesRemotePOSIXPathRulesOnWindows"
     }
   ],
   "darwinRuntimeTests": [

@@ -3,7 +3,6 @@ package dockerconnector
 import (
 	"fmt"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -130,7 +129,7 @@ func DockerCommand(target connectors.TargetView) (string, error) {
 	if command == defaultDockerCommand {
 		return command, nil
 	}
-	if len(command) > 1024 || !filepath.IsAbs(command) || !dockerAbsoluteCommandPattern.MatchString(command) || strings.Contains(command, "/../") || strings.HasSuffix(command, "/..") {
+	if len(command) > 1024 || !path.IsAbs(command) || !dockerAbsoluteCommandPattern.MatchString(command) || strings.Contains(command, "/../") || strings.HasSuffix(command, "/..") {
 		return "", fmt.Errorf("%w: docker_command must be docker or an absolute wrapper path without arguments; replace legacy values such as 'sudo docker' or 'docker --context ...' with a wrapper script path", ErrInvalidConfig)
 	}
 	return command, nil
