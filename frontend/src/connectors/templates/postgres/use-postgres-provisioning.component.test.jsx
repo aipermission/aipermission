@@ -74,6 +74,47 @@ describe("usePostgresProvisioning", () => {
     expect(onOperationComplete).toHaveBeenCalledWith({ message: "Managed Postgres credential created." }, operation());
   });
 
+  it("blocks read and change until selected tables explicitly include all columns", async () => {
+    const { result } = renderProvisioning();
+    await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
+    act(() => {
+      result.current.setScope({
+        all_schemas: false,
+        schemas: {
+          public: {
+            selected: true,
+            all_tables: false,
+            tables: { users: { selected: true, all_columns: false, columns: { id: true } } },
+          },
+        },
+      });
+      result.current.updateForm("role_name", "app_writer");
+    });
+
+    act(() => result.current.updateForm("preset", "read_write"));
+    expect(result.current.form.preset).toBe("read_only");
+    expect(result.current.state.error).toMatch(/requires all columns/i);
+
+    act(() => {
+      result.current.setScope((current) => ({
+        ...current,
+        schemas: {
+          ...current.schemas,
+          public: {
+            ...current.schemas.public,
+            tables: { ...current.schemas.public.tables, users: { ...current.schemas.public.tables.users, all_columns: true } },
+          },
+        },
+      }));
+    });
+    act(() => result.current.updateForm("preset", "read_write"));
+
+    expect(result.current.form.preset).toBe("read_write");
+    expect(result.current.state.error).toBe("");
+    expect(result.current.selectedScope.schemas[0].tables[0]).toEqual({ table: "users", all_columns: true });
+    expect(result.current.canSubmit).toBe(true);
+  });
+
   it("does not report a created credential as failed when inventory refresh fails", async () => {
     const { result } = renderProvisioning({ onOperationComplete: vi.fn().mockRejectedValue(null) });
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));

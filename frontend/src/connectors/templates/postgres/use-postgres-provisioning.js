@@ -9,12 +9,14 @@ import {
   defaultProvisionForm,
   groupMetadataRows,
   metadataSQL,
+  provisionScopeSupportsPreset,
   readableScopeSummary,
 } from "./provisioning";
 
 const emptyMetadata = { state: "idle", error: "", schemas: [] };
 const emptyScope = { all_schemas: true, schemas: {} };
 const emptyState = { state: "idle", error: "", result: null };
+const readWriteScopeError = "Read and change requires all columns on every selected table. Select All columns before changing the preset.";
 
 export function usePostgresProvisioning({ value, onOperationComplete }) {
   const [form, setForm] = useState(defaultProvisionForm);
@@ -112,9 +114,23 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
     }
   }
 
+  function updateForm(field, nextValue) {
+    if (field === "preset" && !provisionScopeSupportsPreset(selectedScope, nextValue)) {
+      setState({ state: "error", error: readWriteScopeError, result: null });
+      return false;
+    }
+    setForm((current) => ({ ...current, [field]: nextValue }));
+    if (field === "preset") {
+      setState((current) =>
+        current.error === readWriteScopeError ? { ...current, state: current.result ? "ready" : "idle", error: "" } : current,
+      );
+    }
+    return true;
+  }
+
   return {
     form,
-    updateForm: (field, nextValue) => setForm((current) => ({ ...current, [field]: nextValue })),
+    updateForm,
     metadata,
     scope,
     setScope,
@@ -130,5 +146,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
 }
 
 function canSubmit(targetID, profileID, form, selectedScope) {
-  return Boolean(targetID && profileID && form.role_name.trim() && selectedScope);
+  return Boolean(
+    targetID && profileID && form.role_name.trim() && selectedScope && provisionScopeSupportsPreset(selectedScope, form.preset),
+  );
 }

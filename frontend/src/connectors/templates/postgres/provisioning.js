@@ -59,6 +59,11 @@ export function buildProvisionScope(scope) {
   return schemas.length === 0 ? null : { all_schemas: false, schemas };
 }
 
+export function provisionScopeSupportsPreset(scope, preset) {
+  if (preset !== "read_write" || !scope || scope.all_schemas) return true;
+  return (scope.schemas || []).every((schema) => schema.all_tables || (schema.tables || []).every((table) => table.all_columns));
+}
+
 export function toggleSchema(scope, schemaName, selected) {
   return updateScopeSchema(scope, schemaName, (current) => ({ ...current, selected, all_tables: current.all_tables ?? true }));
 }
