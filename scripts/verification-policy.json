@@ -119,8 +119,14 @@
     {
       "target": "$makefile",
       "from": "e61649a3914b4a42b5902fed6be24ee8e01f14e060b57cf37beb4cd72e7d8f19",
-      "to": "6d711dd1e91c9845578637d821e7dbb609d0e7f4caea48c2b1e4ea2f2a0321bc",
-      "reason": "Add the required macOS source cross-build to the local release gate so it mirrors CI."
+      "to": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de",
+      "reason": "Add the required macOS source cross-build and pin local vulnerability scanning so the release gate mirrors CI."
+    },
+    {
+      "target": "backend-vuln",
+      "from": "6d59ee88aaa2c15a161440929230ab50d861816621974a742a5f981c64028860",
+      "to": "63f3a478cbd1ce7e64c9ee2f7320b0630e6019f2bb0aec66de9dbe686091e854",
+      "reason": "Run the exact govulncheck v1.3.0 toolchain locally instead of trusting a mutable executable from PATH."
     }
   ],
   "local_release_targets": [
