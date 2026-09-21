@@ -836,8 +836,10 @@ Transfer queue state is visible in the local Transfer Center UI.
 }
 ```
 
-Connector responses never include file contents, local temporary paths, or
-archive staging paths.
+File-transfer queue and status responses do not include transferred file bytes,
+local temporary paths, or archive staging paths. Explicitly authorized connector
+read actions may return bounded content, such as S3 `download_object`
+`content_base64` or SSH command output; treat it as sensitive target data.
 
 ## Connector Credential Resources
 

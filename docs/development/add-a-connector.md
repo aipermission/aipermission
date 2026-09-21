@@ -166,8 +166,12 @@ The local `idempotency_key` prevents duplicate gateway request creation, not
 duplicate remote execution after `outcome_unknown`.
 For local UI actions, the browser retains an uncertain attempt's generated key
 across reloads until the gateway returns a recognized request id and status.
-Only a SHA-256 request fingerprint and the generated key enter browser storage;
-action input and credentials do not.
+The browser signs the canonical request fingerprint with HMAC-SHA-256 using a
+non-extractable, origin-local signing key scoped to the database installation.
+Its bounded IndexedDB ledger stores that signing key, the generated idempotency
+key, keyed signature, and reservation/revision metadata; raw action input and
+credential values do not enter browser storage. See the canonical
+[browser retry ledger contract](../api/rest-api.md#history-and-connector-approvals).
 
 `ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
 JSON marshaler, but it must encode as JSON. Before persistence or external

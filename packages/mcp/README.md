@@ -234,9 +234,12 @@ gateway control result, not a recorded request. `outcome_unknown` is terminal
 and means the gateway could not prove the remote outcome after interruption;
 inspect target state or ask the operator
 before retrying. Gateway API errors with that status retain their request id,
-assistant hint, and bounded retry delay in the MCP error envelope. MCP tool
-responses never include file contents, gateway
-temporary paths, archive staging paths, or local upload contents.
+assistant hint, and bounded retry delay in the MCP error envelope. File-transfer
+queue and status responses do not include transferred file bytes, gateway
+temporary paths, archive staging paths, or local upload contents. Explicitly
+authorized connector read actions may return bounded content, such as S3
+`download_object` `content_base64` or SSH command output; treat it as sensitive
+target data.
 
 ## Operator Skill
 

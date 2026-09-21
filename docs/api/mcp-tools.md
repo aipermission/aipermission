@@ -638,5 +638,8 @@ tail -n 100 /path/to/log
 Avoid commands that wait for interactive stdin. Use the web console for
 interactive work.
 
-MCP connector responses never include file contents, gateway temporary paths,
-archive staging paths, or local upload contents.
+File-transfer queue and status responses do not include transferred file bytes,
+gateway temporary paths, archive staging paths, or local upload contents.
+Explicitly authorized connector read actions may return bounded content, such
+as S3 `download_object` `content_base64` or SSH command output; treat it as
+sensitive target data.
