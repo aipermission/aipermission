@@ -42,7 +42,7 @@ export function useRedisMutations(options) {
 
   function saveStringValue(event) {
     event?.preventDefault?.();
-    const key = activeKey || newKey.trim();
+    const key = activeKey || newKey;
     const value = activeKey ? valueDraft : newValue;
     const validationError = validateStringWrite({ key, value });
     if (validationError) {

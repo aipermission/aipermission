@@ -1,13 +1,31 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api";
+import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { useRedisBrowser } from "./use-redis-browser";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../_shared/action-runner", () => ({ runGuardedConnectorAction: vi.fn() }));
+
+let actionImplementation;
 
 beforeEach(() => {
-  apiPost.mockReset();
-  apiPost.mockImplementation(async (_path, payload) => completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  actionImplementation = async ({ actionName, input }) => completed(actionName, responseFor(actionName, input));
+  runGuardedConnectorAction.mockReset();
+  runGuardedConnectorAction.mockImplementation(async (options) => {
+    const request = options.requestGuard.begin(options.channel || options.actionName);
+    const visibility = options.requestGuard.claimVisibility();
+    options.setState({ state: options.busy, error: "", message: "" });
+    try {
+      const item = await actionImplementation(options);
+      if (!request.isCurrent()) return null;
+      if (visibility.isCurrent()) options.setState({ state: "idle", error: "", message: "" });
+      return item;
+    } catch (error) {
+      if (request.isCurrent() && visibility.isCurrent()) options.setState({ state: "error", error: error.message, message: "" });
+      throw error;
+    } finally {
+      request.complete();
+    }
+  });
 });
 
 function renderBrowser({ active = false } = {}) {
@@ -39,11 +57,10 @@ describe("useRedisBrowser", () => {
 
   it("scans an active session and ignores a superseded key read", async () => {
     const pending = new Map();
-    apiPost.mockImplementation((_path, payload) => {
-      if (payload.action_name !== "get_key")
-        return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
-      return new Promise((resolve) => pending.set(payload.input.key, resolve));
-    });
+    actionImplementation = ({ actionName, input }) => {
+      if (actionName !== "get_key") return Promise.resolve(completed(actionName, responseFor(actionName, input)));
+      return new Promise((resolve) => pending.set(input.key, resolve));
+    };
     const { result } = renderBrowser({ active: true });
     await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
 
@@ -60,7 +77,9 @@ describe("useRedisBrowser", () => {
   });
 
   it("owns read failures in browser state without rejecting the UI event", async () => {
-    apiPost.mockRejectedValue(new Error("Redis is unavailable"));
+    actionImplementation = async () => {
+      throw new Error("Redis is unavailable");
+    };
     const { result } = renderBrowser({ active: true });
 
     await waitFor(() => expect(result.current.state.error).toBe("Redis is unavailable"));
@@ -70,21 +89,40 @@ describe("useRedisBrowser", () => {
   it("validates writes before confirmation and binds an approved write to its captured key", async () => {
     const { result } = renderBrowser({ active: true });
     await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
-    apiPost.mockClear();
+    runGuardedConnectorAction.mockClear();
     act(() => result.current.saveStringValue());
     expect(result.current.state.error).toBe("Key is required.");
     expect(result.current.confirmDialog.open).toBe(false);
-    expect(apiPost).not.toHaveBeenCalled();
+    expect(runGuardedConnectorAction).not.toHaveBeenCalled();
 
     await act(async () => result.current.loadKey("alpha"));
     act(() => result.current.setValueDraft("replacement"));
     act(() => result.current.saveStringValue());
     await act(async () => result.current.loadKey("beta"));
-    apiPost.mockClear();
+    runGuardedConnectorAction.mockClear();
     await act(async () => result.current.confirmPendingAction());
 
-    const write = apiPost.mock.calls.find(([, payload]) => payload.action_name === "set_string")?.[1];
+    const write = runGuardedConnectorAction.mock.calls.find(([options]) => options.actionName === "set_string")?.[0];
     expect(write.input).toEqual({ key: "alpha", value: "replacement", ttl_seconds: 0 });
+  });
+
+  it("preserves whitespace in Redis key and string value identities", async () => {
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+    runGuardedConnectorAction.mockClear();
+
+    act(() => {
+      result.current.startNewKey();
+      result.current.setNewKey(" padded key ");
+      result.current.setNewValue("   ");
+    });
+    expect(result.current.canSaveString).toBe(true);
+    act(() => result.current.saveStringValue());
+    expect(result.current.confirmDialog.details).toContainEqual({ label: "Key", value: " padded key " });
+    await act(async () => result.current.confirmPendingAction());
+
+    const write = runGuardedConnectorAction.mock.calls.find(([options]) => options.actionName === "set_string")?.[0];
+    expect(write.input).toEqual({ key: " padded key ", value: "   ", ttl_seconds: 0 });
   });
 });
 

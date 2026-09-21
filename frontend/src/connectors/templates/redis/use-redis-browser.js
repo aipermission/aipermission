@@ -164,7 +164,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     resultMode,
     setResultMode,
     latestAction,
-    canSaveString: mutations.creatingKey ? Boolean(newKey.trim()) : keyResult?.type === "string",
+    canSaveString: mutations.creatingKey ? newKey !== "" : keyResult?.type === "string",
     canUpdateTTL: Boolean(activeKey && keyResult && keyResult.type !== "none") && state.state === "idle",
     scanKeys,
     startNewKey,
