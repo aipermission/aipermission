@@ -214,13 +214,16 @@ func (r *Runtime) deliverOwned(ctx context.Context, id, tokenID int64, stalePend
 		return err
 	}
 	exact, openErr := r.exactRequest(item)
-	authorized := openErr == nil && r.authorizeOutput(ctx, exact)
-	if stalePending && item.Status == StatusApprovalPending && !authorized {
+	authorization := OutputWithheld
+	if openErr == nil {
+		authorization = r.authorizeOutput(ctx, exact)
+	}
+	if stalePending && item.Status == StatusApprovalPending && authorization == OutputContextStale {
 		if stale, staleErr := r.store.StalePending(ctx, item.ID, "Vault approval context changed; send a fresh request"); staleErr == nil {
 			item = stale
 		}
 	}
-	deliver(RequestView{Request: item, OutputAuthorized: authorized})
+	deliver(RequestView{Request: item, OutputAuthorized: authorization.Authorized()})
 	return nil
 }
 

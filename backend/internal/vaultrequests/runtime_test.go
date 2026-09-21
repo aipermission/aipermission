@@ -119,7 +119,8 @@ type runtimeHarness struct {
 	executeCalls         int
 	executedWithDelivery bool
 	compensations        int
-	authorized           bool
+	authorization        OutputAuthorization
+	openErr              error
 	allowRequest         bool
 	mcpStarted           bool
 	runAlways            bool
@@ -151,7 +152,7 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 		mutations: &runtimeTestMutation{database: database, delivery: delivery}, delivery: delivery,
 		tokenID: token.ID, otherTokenID: otherToken.ID,
 		projectID: project.ID, projectRef: strconv.FormatInt(project.ID, 10),
-		authorized: true, allowRequest: true, mcpStarted: true,
+		authorization: OutputAuthorized, allowRequest: true, mcpStarted: true,
 	}
 	runtime, err := NewRuntime(RuntimeDependencies{
 		Store: harness.store, Mutations: harness.mutations,
@@ -179,8 +180,13 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 				ApprovalContextHash: "approval-hash", RunImmediately: harness.runAlways,
 			}, nil
 		},
-		AuthorizeOutput: func(context.Context, Request) bool { return harness.authorized },
-		AllowRequest:    func(int64) bool { return harness.allowRequest },
+		AuthorizeOutput: func(context.Context, Request) OutputAuthorization {
+			if !harness.mcpStarted {
+				return OutputWithheld
+			}
+			return harness.authorization
+		},
+		AllowRequest: func(int64) bool { return harness.allowRequest },
 		Execute: func(_ context.Context, request Request) (any, error) {
 			harness.executeCalls++
 			harness.executedWithDelivery = delivery.held()
@@ -207,6 +213,9 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 			return string(sealed), err
 		},
 		OpenRequest: func(_ int64, sealed string) (ExecutionEnvelope, error) {
+			if harness.openErr != nil {
+				return ExecutionEnvelope{}, harness.openErr
+			}
 			var wrapper struct {
 				Ciphertext string `json:"ciphertext"`
 			}
@@ -380,7 +389,7 @@ func TestRuntimeGetOwnedConcealsTokensAndStalesDriftedApproval(t *testing.T) {
 	if err := harness.runtime.DeliverOwned(t.Context(), created.ID, harness.otherTokenID, func(RequestView) {}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other token error = %v", err)
 	}
-	harness.authorized = false
+	harness.authorization = OutputContextStale
 	var callView RequestView
 	if err := harness.runtime.DeliverCallResult(t.Context(), created.ID, harness.tokenID, func(delivered RequestView) {
 		callView = delivered
@@ -399,6 +408,33 @@ func TestRuntimeGetOwnedConcealsTokensAndStalesDriftedApproval(t *testing.T) {
 	}
 	if view.OutputAuthorized || view.Request.Status != StatusStale {
 		t.Fatalf("drifted request = %#v", view)
+	}
+}
+
+func TestRuntimeGetOwnedPreservesPendingApprovalForTemporaryOutputWithholding(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*runtimeHarness)
+	}{
+		{name: "MCP stopped", apply: func(harness *runtimeHarness) { harness.mcpStarted = false }},
+		{name: "authorization unavailable", apply: func(harness *runtimeHarness) { harness.authorization = OutputWithheld }},
+		{name: "sealed request unavailable", apply: func(harness *runtimeHarness) { harness.openErr = errors.New("temporary decrypt failure") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newRuntimeHarness(t)
+			created := harness.call(t, "temporary-withholding-"+strings.ReplaceAll(test.name, " ", "-"))
+			test.apply(harness)
+			var view RequestView
+			if err := harness.runtime.DeliverOwned(t.Context(), created.ID, harness.tokenID, func(delivered RequestView) {
+				view = delivered
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if view.OutputAuthorized || view.Request.Status != StatusApprovalPending {
+				t.Fatalf("temporary withholding consumed pending approval: %#v", view)
+			}
+		})
 	}
 }
 

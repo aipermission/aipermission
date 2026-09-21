@@ -128,11 +128,12 @@ func (reader testTokenReader) Get(ctx context.Context, id int64) (TokenState, er
 }
 
 type runtimeFixture struct {
-	runtime   *Runtime
-	database  *sql.DB
-	tokenID   int64
-	projectID int64
-	project   projectstore.Project
+	runtime    *Runtime
+	database   *sql.DB
+	tokenID    int64
+	projectID  int64
+	project    projectstore.Project
+	mcpStarted *bool
 }
 
 func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
@@ -164,6 +165,7 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 		t.Fatal(err)
 	}
 	itemStore := mustProjectVaultStore(t, database, secretVault)
+	mcpStarted := true
 	runtime, err := NewRuntime(Dependencies{
 		Database: database, Tokens: testTokenReader{store: tokenStore},
 		Projects:      testProjectPort{store: projectstore.NewStore(database)},
@@ -171,13 +173,13 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 		ItemMutations: testItemPort{store: itemStore},
 		Sessions:      testSessions{}, Leases: testLeases{}, PersistedLeases: testLeasePersistence{},
 		Connector: testConnectorPort{}, Delivery: testDeliveryGate{},
-		WorkspaceID: "workspace", RuntimeInstanceID: "runtime", MCPStarted: func() bool { return true },
+		WorkspaceID: "workspace", RuntimeInstanceID: "runtime", MCPStarted: func() bool { return mcpStarted },
 		AllowGenerate: func(int64) bool { return true },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return runtimeFixture{runtime: runtime, database: database, tokenID: token.ID, projectID: project.ID, project: project}
+	return runtimeFixture{runtime: runtime, database: database, tokenID: token.ID, projectID: project.ID, project: project, mcpStarted: &mcpStarted}
 }
 
 func mustProjectVaultStore(t *testing.T, database *sql.DB, secretVault *vault.Vault) *projectvault.Store {
@@ -220,6 +222,54 @@ func TestPrepareSnapshotsGenerateAuthorizationAndExecutionRule(t *testing.T) {
 	if err := fixture.runtime.ValidateAuthorization(t.Context(), request, prepared.ApprovalContext); !IsStale(err) {
 		t.Fatalf("changed capability error = %v", err)
 	}
+}
+
+func TestAuthorizeOutputDistinguishesTemporaryWithholdingFromContextDrift(t *testing.T) {
+	t.Run("MCP stopped", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		*fixture.mcpStarted = false
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputWithheld {
+			t.Fatalf("stopped authorization = %v", got)
+		}
+	})
+
+	t.Run("capability drift", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := accesscontrol.NewCapabilityStore(fixture.database).Replace(t.Context(), fixture.tokenID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputContextStale {
+			t.Fatalf("drift authorization = %v", got)
+		}
+	})
+
+	t.Run("storage unavailable", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fixture.database.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputWithheld {
+			t.Fatalf("transient authorization = %v", got)
+		}
+	})
 }
 
 func TestPrepareValidatesGenerateMetadataBeforeApproval(t *testing.T) {
@@ -327,7 +377,7 @@ func TestExecuteGenerateRejectsTamperingAndCompensatesCreatedItem(t *testing.T) 
 	if !ok || jsonInt(item["item_id"]) < 1 {
 		t.Fatalf("generated item output = %#v", payload["item"])
 	}
-	if !fixture.runtime.AuthorizeOutput(t.Context(), request) {
+	if !fixture.runtime.AuthorizeOutput(t.Context(), request).Authorized() {
 		t.Fatal("unchanged generate request output was not authorized")
 	}
 	if err := fixture.runtime.Compensate(t.Context(), request, output); err != nil {

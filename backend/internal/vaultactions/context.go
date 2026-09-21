@@ -17,6 +17,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
+var errProjectVisibilityDenied = errors.New("token cannot access one or more Vault source projects")
+
 func (r *Runtime) buildApprovalContext(
 	ctx context.Context,
 	tokenID int64,
@@ -191,7 +193,7 @@ func (r *Runtime) requireProjectVisibility(ctx context.Context, tokenID int64, p
 			return err
 		}
 		if !allowed {
-			return errors.New("token cannot access one or more Vault source projects")
+			return errProjectVisibilityDenied
 		}
 	}
 	return nil

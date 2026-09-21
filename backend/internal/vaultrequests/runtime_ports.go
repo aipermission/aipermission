@@ -50,7 +50,20 @@ type PreparedAction struct {
 
 type ActionPreparer func(context.Context, int64, string, string, map[string]any) (PreparedAction, error)
 type ProjectResolver func(context.Context, string) (int64, error)
-type OutputAuthorizer func(context.Context, Request) bool
+
+type OutputAuthorization uint8
+
+const (
+	OutputWithheld OutputAuthorization = iota
+	OutputAuthorized
+	OutputContextStale
+)
+
+func (authorization OutputAuthorization) Authorized() bool {
+	return authorization == OutputAuthorized
+}
+
+type OutputAuthorizer func(context.Context, Request) OutputAuthorization
 type RequestLimiter func(int64) bool
 type EffectExecutor func(context.Context, Request) (any, error)
 type AtomicEffectExecutor func(context.Context, Request, string, string, string) (WorkflowResult, bool, error)

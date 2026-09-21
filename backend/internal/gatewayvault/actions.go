@@ -83,7 +83,7 @@ type EnvironmentPlan struct {
 type VaultActionApplication interface {
 	BuildEnvironmentPlan(context.Context, int64, []SessionSelection) (EnvironmentPlan, error)
 	Prepare(context.Context, int64, string, string, map[string]any) (vaultrequests.PreparedAction, error)
-	AuthorizeOutput(context.Context, vaultrequests.Request) bool
+	AuthorizeOutput(context.Context, vaultrequests.Request) vaultrequests.OutputAuthorization
 	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
 	Execute(context.Context, vaultrequests.Request) (any, error)
 	PrepareTransactional(context.Context, vaultrequests.Request) (vaultactions.TransactionalExecution, bool, error)
