@@ -58,6 +58,8 @@ func TestWorkspaceBoundReadCatalog(t *testing.T) {
 		"/api/file-transfers/4/download",
 		"/api/file-transfer-batches/4/download",
 		"/api/connector-targets/1/profiles/2/backup",
+		"/api/console/sessions/4/attach",
+		"/api/settings/maintenance-console/attach",
 	} {
 		if !IsWorkspaceBoundRead(http.MethodGet, path) {
 			t.Errorf("download route %s is not workspace-bound", path)
@@ -70,6 +72,26 @@ func TestWorkspaceBoundReadCatalog(t *testing.T) {
 	} {
 		if IsWorkspaceBoundRead(request.method, request.path) {
 			t.Errorf("ordinary route %s %s is workspace-bound", request.method, request.path)
+		}
+	}
+}
+
+func TestWorkspaceSocketRouteCatalog(t *testing.T) {
+	for _, path := range []string{
+		"/api/settings/maintenance-console/attach",
+		"/api/console/sessions/12/attach",
+	} {
+		if !IsWorkspaceSocketRoute(path) {
+			t.Fatalf("workspace socket route %q was not recognized", path)
+		}
+	}
+	for _, path := range []string{
+		"/api/settings/maintenance-console/status",
+		"/api/console/sessions/12",
+		"/api/console/sessions/12/attach/extra",
+	} {
+		if IsWorkspaceSocketRoute(path) {
+			t.Fatalf("ordinary route %q was classified as a workspace socket", path)
 		}
 	}
 }

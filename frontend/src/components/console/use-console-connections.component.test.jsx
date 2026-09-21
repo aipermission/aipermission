@@ -7,6 +7,7 @@ import { useConsoleConnections } from "./use-console-connections";
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...(await importOriginal()),
   apiPost: vi.fn(),
+  currentWorkspaceBinding: vi.fn(() => "workspace-a"),
 }));
 
 class FakeWebSocket {
@@ -55,6 +56,7 @@ describe("useConsoleConnections", () => {
 
     act(() => result.current.connections.attachSession(7));
     const socket = FakeWebSocket.instances[0];
+    expect(socket.url).toContain("/api/console/sessions/7/attach?workspace=workspace-a");
     act(() => socket.onmessage({ data: "{" }));
 
     expect(result.current.sessions.data[0]).toMatchObject({

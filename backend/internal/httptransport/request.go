@@ -21,6 +21,9 @@ func IsWorkspaceBoundRead(method, path string) bool {
 	if path == "/api/backup/download" || path == "/api/settings/diagnostics" {
 		return true
 	}
+	if IsWorkspaceSocketRoute(path) {
+		return true
+	}
 	if strings.HasPrefix(path, "/api/backup/providers/") && strings.HasSuffix(path, "/download") {
 		return true
 	}
@@ -29,6 +32,14 @@ func IsWorkspaceBoundRead(method, path string) bool {
 		return true
 	}
 	return strings.HasPrefix(path, "/api/connector-targets/") && strings.HasSuffix(path, "/backup")
+}
+
+// IsWorkspaceSocketRoute identifies browser WebSocket upgrades that carry the
+// workspace binding in a query parameter because the WebSocket API cannot set
+// custom request headers.
+func IsWorkspaceSocketRoute(path string) bool {
+	return path == "/api/settings/maintenance-console/attach" ||
+		strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
 }
 
 func DecodeJSON(w http.ResponseWriter, r *http.Request, target any, maxBytes int64) bool {

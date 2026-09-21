@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -21,6 +22,7 @@ const (
 	ConnectorActionRequestTimeout = 90 * time.Second
 	WorkspaceHeaderName           = "X-AIPermission-Workspace"
 	WorkspaceChangedHeaderName    = "X-AIPermission-Workspace-Changed"
+	WorkspaceQueryName            = "workspace"
 )
 
 type Lifecycle interface {
@@ -96,17 +98,19 @@ func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 }
 
 func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	w = &workspaceResponseWriter{
+	workspaceWriter := &workspaceResponseWriter{
 		ResponseWriter: w,
 		current:        boundary.CurrentWorkspace,
-		requested:      strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)),
+		requested:      requestedWorkspace(r),
 	}
+	w = workspaceWriter
 	if IsStateChangingMethod(r.Method) && !boundary.safeBrowserMutationSource(r) {
 		boundary.writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
 	}
 	streaming, managesLifecycle := IsStreamingRoute(r.URL.Path), ManagesLifecycleLock(r.URL.Path)
-	if !streaming && !managesLifecycle {
+	upgradeLease := isWorkspaceSocketRoute(r.URL.Path)
+	if (!streaming || upgradeLease) && !managesLifecycle {
 		var release func()
 		var err error
 		if IsLifecycleMutation(r.URL.Path) {
@@ -122,7 +126,12 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		defer release()
+		if upgradeLease {
+			workspaceWriter.release = release
+			defer workspaceWriter.releaseLease()
+		} else {
+			defer release()
+		}
 	}
 	unlocked := boundary.IsUnlocked != nil && boundary.IsUnlocked()
 	if !unlocked && !isAllowedWhileLocked(r.URL.Path) {
@@ -156,7 +165,20 @@ func (boundary HTTPBoundary) hasCurrentWorkspace(r *http.Request) bool {
 		return false
 	}
 	want := strings.TrimSpace(boundary.CurrentWorkspace())
-	return want != "" && strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)) == want
+	return want != "" && requestedWorkspace(r) == want
+}
+
+func requestedWorkspace(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)); value != "" {
+		return value
+	}
+	if isWorkspaceSocketRoute(r.URL.Path) {
+		return strings.TrimSpace(r.URL.Query().Get(WorkspaceQueryName))
+	}
+	return ""
 }
 
 type workspaceResponseWriter struct {
@@ -164,6 +186,8 @@ type workspaceResponseWriter struct {
 	current   func() string
 	requested string
 	wrote     bool
+	release   func()
+	releaseMu sync.Once
 }
 
 func (w *workspaceResponseWriter) WriteHeader(status int) {
@@ -205,10 +229,21 @@ func (w *workspaceResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) 
 		return nil, nil, fmt.Errorf("response writer does not support hijacking")
 	}
 	w.applyHeader()
-	return hijacker.Hijack()
+	connection, buffer, err := hijacker.Hijack()
+	if err == nil {
+		w.releaseLease()
+	}
+	return connection, buffer, err
 }
 
 func (w *workspaceResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *workspaceResponseWriter) releaseLease() {
+	if w == nil || w.release == nil {
+		return
+	}
+	w.releaseMu.Do(w.release)
+}
 
 func (w *workspaceResponseWriter) applyHeader() {
 	if w.wrote {
@@ -288,7 +323,11 @@ func IsLifecycleMutation(path string) bool {
 }
 
 func IsStreamingRoute(path string) bool {
-	return path == "/api/settings/maintenance-console/attach" || strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
+	return isWorkspaceSocketRoute(path)
+}
+
+func isWorkspaceSocketRoute(path string) bool {
+	return transportcontract.IsWorkspaceSocketRoute(path)
 }
 
 func IsUnboundedRequestRoute(path string) bool {

@@ -375,6 +375,39 @@ func Register() { mux.HandleFunc("GET /api/settings/diagnostics", download) }`))
 	assertWorkspaceHeaderParameter(t, operation, true)
 }
 
+func TestGenerateDocumentsWorkspaceQueryForBrowserWebSockets(t *testing.T) {
+	output, err := Generate([]byte(`package api
+func Register() {
+	mux.HandleFunc("GET /api/console/sessions/{id}/attach", attachConsole)
+	mux.HandleFunc("GET /api/settings/maintenance-console/attach", attachMaintenance)
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(output, &document); err != nil {
+		t.Fatal(err)
+	}
+	paths := document["paths"].(map[string]any)
+	for _, path := range []string{"/api/console/sessions/{id}/attach", "/api/settings/maintenance-console/attach"} {
+		operation := paths[path].(map[string]any)["get"].(map[string]any)
+		parameters := operation["parameters"].([]any)
+		found := false
+		for _, raw := range parameters {
+			parameter := raw.(map[string]any)
+			if parameter["name"] == "X-AIPermission-Workspace" {
+				t.Fatalf("%s documents an unusable WebSocket header: %#v", path, parameter)
+			}
+			if parameter["name"] == "workspace" && parameter["in"] == "query" && parameter["required"] == true {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s workspace query parameter missing: %#v", path, parameters)
+		}
+	}
+}
+
 func assertWorkspaceHeaderParameter(t *testing.T, operation map[string]any, required bool) {
 	t.Helper()
 	parameters, _ := operation["parameters"].([]any)

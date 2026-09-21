@@ -1,6 +1,6 @@
 import { Terminal } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { apiPost, apiUrl } from "../../lib/api";
+import { apiPost, apiUrl, currentWorkspaceBinding } from "../../lib/api";
 import { limitTranscript } from "../app-shell-runtime";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -274,5 +274,6 @@ function maintenanceConsoleAttachUrl() {
   const url = new URL(apiUrl, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/api/settings/maintenance-console/attach";
+  url.searchParams.set("workspace", currentWorkspaceBinding());
   return url.toString();
 }

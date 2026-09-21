@@ -4671,6 +4671,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6475,6 +6486,19 @@
     "/api/settings/maintenance-console/attach": {
       "get": {
         "operationId": "getApiSettingsMaintenanceConsoleAttach",
+        "parameters": [
+          {
+            "description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {

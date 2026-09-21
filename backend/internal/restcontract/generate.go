@@ -207,7 +207,7 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 			"x-aipermission-contract-level": contractLevel,
 		}
 		parameters := pathParameters(route.Path)
-		if parameter := workspaceHeaderParameter(route); parameter != nil {
+		if parameter := workspaceBindingParameter(route); parameter != nil {
 			parameters = append(parameters, parameter)
 		}
 		if len(parameters) > 0 {
@@ -250,11 +250,18 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func workspaceHeaderParameter(route Route) map[string]any {
+func workspaceBindingParameter(route Route) map[string]any {
 	mutation := isMutationMethod(route.Method) && strings.HasPrefix(route.Path, "/api/") && !strings.HasPrefix(route.Path, "/api/mcp/") && route.Path != "/api/unlock"
 	boundRead := transportcontract.IsWorkspaceBoundRead(route.Method, route.Path)
 	if !mutation && !boundRead {
 		return nil
+	}
+	if transportcontract.IsWorkspaceSocketRoute(route.Path) {
+		return map[string]any{
+			"name": "workspace", "in": "query", "required": true,
+			"description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+			"schema":      nonBlankStringSchema(),
+		}
 	}
 	return map[string]any{
 		"name": "X-AIPermission-Workspace", "in": "header", "required": boundRead || !workspaceHeaderIsConditional(route.Path),

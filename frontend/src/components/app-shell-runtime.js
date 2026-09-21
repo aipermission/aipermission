@@ -1,4 +1,4 @@
-import { apiUrl } from "../lib/api.js";
+import { apiUrl, currentWorkspaceBinding } from "../lib/api.js";
 import { isLiveConsoleSession } from "./console/helpers.js";
 
 export function normalizeCredentialResources(connectorKind, items) {
@@ -21,6 +21,7 @@ export function consoleSessionAttachUrl(sessionID) {
   const url = new URL(apiUrl, window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/api/console/sessions/${sessionID}/attach`;
+  url.searchParams.set("workspace", currentWorkspaceBinding());
   return url.toString();
 }
 

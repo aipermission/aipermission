@@ -1,8 +1,10 @@
 package httptransport
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,6 +28,29 @@ type openLifecycle struct{}
 
 func (openLifecycle) AcquireMutationContext(context.Context) (func(), error) { return func() {}, nil }
 func (openLifecycle) AcquireReadContext(context.Context) (func(), error)     { return func() {}, nil }
+
+type trackedLifecycle struct {
+	released bool
+}
+
+func (l *trackedLifecycle) AcquireMutationContext(context.Context) (func(), error) {
+	return func() { l.released = true }, nil
+}
+
+func (l *trackedLifecycle) AcquireReadContext(context.Context) (func(), error) {
+	return func() { l.released = true }, nil
+}
+
+type hijackRecorder struct {
+	*httptest.ResponseRecorder
+	peer net.Conn
+}
+
+func (w *hijackRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	connection, peer := net.Pipe()
+	w.peer = peer
+	return connection, bufio.NewReadWriter(bufio.NewReader(connection), bufio.NewWriter(connection)), nil
+}
 
 func TestBoundaryDistinguishesLifecycleFailureFromRequestExpiry(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -94,6 +119,52 @@ func TestBoundaryRejectsStaleWorkspaceDownload(t *testing.T) {
 	}
 	if response.Header().Get(WorkspaceChangedHeaderName) != "true" {
 		t.Fatal("rejected stale download did not publish the authoritative workspace")
+	}
+}
+
+func TestBoundaryBindsWebSocketAttachAndReleasesLeaseAfterUpgrade(t *testing.T) {
+	lifecycle := &trackedLifecycle{}
+	request := httptest.NewRequest(http.MethodGet, "/api/console/sessions/4/attach?workspace=workspace-a", nil)
+	response := &hijackRecorder{ResponseRecorder: httptest.NewRecorder()}
+	defer func() {
+		if response.peer != nil {
+			_ = response.peer.Close()
+		}
+	}()
+	HTTPBoundary{
+		Routes: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if lifecycle.released {
+				t.Fatal("workspace lease released before websocket upgrade")
+			}
+			connection, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Fatalf("hijack: %v", err)
+			}
+			defer connection.Close()
+			if !lifecycle.released {
+				t.Fatal("workspace lease remained held after websocket upgrade")
+			}
+		}),
+		Lifecycle: lifecycle, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+		RequiresCSRF: func(string, string) bool { return false }, CurrentWorkspace: func() string { return "workspace-a" },
+	}.serveHTTP(response, request)
+}
+
+func TestBoundaryRejectsStaleWorkspaceWebSocketAttach(t *testing.T) {
+	for _, path := range []string{
+		"/api/console/sessions/4/attach?workspace=workspace-a",
+		"/api/settings/maintenance-console/attach?workspace=workspace-a",
+	} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		HTTPBoundary{
+			Routes:    http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("stale websocket reached routes") }),
+			Lifecycle: openLifecycle{}, IsUnlocked: func() bool { return true }, HasSession: func(*http.Request) bool { return true },
+			RequiresCSRF: func(string, string) bool { return false }, CurrentWorkspace: func() string { return "workspace-b" },
+		}.serveHTTP(response, request)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("%s status = %d, want %d", path, response.Code, http.StatusConflict)
+		}
 	}
 }
 
