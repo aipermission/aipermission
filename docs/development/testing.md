@@ -120,9 +120,10 @@ coverage gate fails even while its package remains listed as an exclusion.
 Executable Windows and macOS files must be mapped in
 `backendCoveragePlatformFiles` with their exact `//go:build` constraint, native
 required tests, and coverage floor instead of disappearing from coverage
-silently. Platform mappings and command exclusions
-are one-time ratcheted exceptions: adding another one requires a separately
-reviewed policy baseline.
+silently. Platform mappings and command exclusions are one-time ratcheted
+exceptions. A new platform mapping is accepted only when the same reviewed
+policy change registers exact native runtime evidence, requires 100% coverage
+for the mapped source, and leaves every other exception budget unchanged.
 Keep all checks required: platform-tagged ownership behavior must not be
 represented as Linux coverage, and `go test -exec=true` alone is rejected as
 behavior evidence.

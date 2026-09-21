@@ -1508,8 +1508,12 @@ decrypts the stored payload and executes the connector. It requires a JSON body
 with the exact `approval_context_hash` returned by the reviewed detail response;
 `user_note` is optional and, when provided, is delivered to the matching MCP
 token through the message queue. Missing or malformed decision input returns
-`400`, a missing request returns `404`, and changed context returns `409`. The request later becomes `completed`,
-`failed`, `error`, or `stale`.
+`400`, a missing request returns `404`, and changed context returns `409`.
+When the bounded action runner is at capacity, Run returns `429 Too Many
+Requests` with `code: connector_action_backpressure` and a bounded
+`Retry-After` header. The approval remains `approval_pending`; wait for that
+interval and re-read the same request before trying Run again. An admitted
+request later becomes `completed`, `failed`, `error`, or `stale`.
 
 If the token, connector action permission, target/profile context, credential
 profile revision, connector action definition, MCP tool metadata, or prepared
