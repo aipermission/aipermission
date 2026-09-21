@@ -7,11 +7,13 @@ import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { apiPost } from "../../../lib/api";
+import { useRequestGuard } from "../../../lib/request-guard";
 import { InstallCommandPanel } from "../common";
 import * as model from "./model";
 
 export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onOperationComplete }) {
   const operation = value?.connector_kind === "ssh" ? value : { open: false };
+  const requests = useRequestGuard("ssh-operations");
   const checkDockerForEffect = useEffectEvent(() => checkDocker(operation.target, operation.profile));
 
   useEffect(() => {
@@ -21,16 +23,20 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
   }, [operation.open, operation.type, operation.state, operation.target?.id, operation.profile?.id]);
 
   function close() {
+    requests.invalidate("operation");
     onChange({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   }
 
   async function checkDocker(target = operation.target, profile = operation.profile) {
     if (!target || !profile) return;
+    const request = requests.begin("operation");
     onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "loading", data: null, error: null });
     try {
-      const data = await model.checkDocker({ target, profile });
+      const data = await model.checkDocker({ target, profile, signal: request.signal });
+      if (!request.isCurrent()) return;
       onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "ready", data, error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       const action = model.hostKeyActionFromError(error, { operation: "docker-check", target, profile });
       if (action) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
@@ -46,11 +52,14 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         data: null,
         error: error.message,
       });
+    } finally {
+      request.complete();
     }
   }
 
   async function readDockerLogs(target, container, tail = 300, profile = operation.profile) {
     if (!target || !profile || !container) return;
+    const request = requests.begin("operation");
     onChange((current) => ({
       open: true,
       connector_kind: "ssh",
@@ -63,9 +72,11 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
       error: null,
     }));
     try {
-      const data = await model.readDockerLogs({ target, profile, container, tail });
+      const data = await model.readDockerLogs({ target, profile, container, tail, signal: request.signal });
+      if (!request.isCurrent()) return;
       onChange({ open: true, connector_kind: "ssh", type: "docker-logs", target, profile, container, state: "ready", data, error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       const action = model.hostKeyActionFromError(error, { operation: "docker-logs", target, profile, container });
       if (action) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
@@ -82,31 +93,44 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         data: current?.data,
         error: error.message,
       }));
+    } finally {
+      request.complete();
     }
   }
 
   async function approveHostKey() {
     const { hostKey, action } = operation;
     if (!hostKey || !action) return;
+    const request = requests.begin("operation");
     onChange((current) => ({ ...current, state: "approving", error: null }));
     try {
-      await apiPost("/api/connectors/ssh/host-keys/approve", {
-        host: hostKey.host,
-        port: hostKey.port,
-        public_key: hostKey.public_key,
-        replace: Boolean(hostKey.changed),
-      });
+      await apiPost(
+        "/api/connectors/ssh/host-keys/approve",
+        {
+          host: hostKey.host,
+          port: hostKey.port,
+          public_key: hostKey.public_key,
+          replace: Boolean(hostKey.changed),
+        },
+        { signal: request.signal },
+      );
+      if (!request.isCurrent()) return;
       if (action.type === "docker-check") {
         await checkDocker(action.target, action.profile);
       } else if (action.type === "docker-logs") {
         await readDockerLogs(action.target, action.container, undefined, action.profile);
       } else {
         const result = await model.resumeHostKeyAction(action);
+        if (!request.isCurrent()) return;
         await onOperationComplete?.(result, { connector_kind: action.kind, ...action });
+        if (!request.isCurrent()) return;
         close();
       }
     } catch (error) {
+      if (!request.isCurrent()) return;
       onChange((current) => ({ ...current, state: "error", error: error.message }));
+    } finally {
+      request.complete();
     }
   }
 

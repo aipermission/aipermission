@@ -411,18 +411,22 @@ async function saveFromPayload({ targetID, projectID, payload, setupLater, previ
   });
 }
 
-export async function checkDocker({ target, profile }) {
+export async function checkDocker({ target, profile, signal }) {
   if (!target || !profile) throw new Error("SSH connector target profile is not loaded.");
-  return apiPost(`/api/connector-targets/${target.id}/operations/docker-check`, { profile_id: Number(profile.id) });
+  return apiPost(`/api/connector-targets/${target.id}/operations/docker-check`, { profile_id: Number(profile.id) }, { signal });
 }
 
-export async function readDockerLogs({ target, profile, container, tail = 300 }) {
+export async function readDockerLogs({ target, profile, container, tail = 300, signal }) {
   if (!target || !profile || !container) throw new Error("SSH connector target profile is not loaded.");
-  return apiPost(`/api/connector-targets/${target.id}/operations/docker-logs`, {
-    profile_id: Number(profile.id),
-    container_ref: container.id || container.name,
-    tail: Number(tail) || 300,
-  });
+  return apiPost(
+    `/api/connector-targets/${target.id}/operations/docker-logs`,
+    {
+      profile_id: Number(profile.id),
+      container_ref: container.id || container.name,
+      tail: Number(tail) || 300,
+    },
+    { signal },
+  );
 }
 
 function payloadFromForm(form) {

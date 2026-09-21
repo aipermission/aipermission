@@ -134,6 +134,11 @@ export function AuditLogsPage() {
     }
   }
 
+  function closeAuditItem() {
+    requests.invalidate("detail");
+    setSelected(null);
+  }
+
   const pageStart = state.total === 0 ? 0 : state.offset + 1;
   const pageEnd = Math.min(state.offset + state.data.length, state.total);
 
@@ -239,7 +244,7 @@ export function AuditLogsPage() {
         hasNext={state.next_offset !== null && state.next_offset !== undefined}
       />
 
-      <AuditDialog item={selected} onClose={() => setSelected(null)} />
+      <AuditDialog item={selected} onClose={closeAuditItem} />
     </section>
   );
 }

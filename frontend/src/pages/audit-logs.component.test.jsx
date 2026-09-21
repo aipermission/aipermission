@@ -8,10 +8,12 @@ vi.mock("../lib/gateway-context", () => ({ useGateway: () => ({ targets: { state
 
 function deferred() {
   let resolve;
-  const promise = new Promise((next) => {
+  let reject;
+  const promise = new Promise((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -94,6 +96,27 @@ it("opens audit details from the whole row", async () => {
   fireEvent.click(row.cells[0]);
 
   expect(screen.getByRole("dialog", { name: "Audit #opened" })).toBeVisible();
+});
+
+it.each([
+  ["success", (pending) => pending.resolve(auditResponse("opened").items[0])],
+  ["failure", (pending) => pending.reject(new Error("detail unavailable"))],
+])("keeps a dismissed audit dialog closed after late detail %s", async (_outcome, settle) => {
+  const detail = deferred();
+  apiGet.mockImplementation((path) => {
+    if (path === "/api/projects") return Promise.resolve({ items: [] });
+    if (path === "/api/audit-logs/opened") return detail.promise;
+    return Promise.resolve(auditResponse("opened"));
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+
+  fireEvent.click(screen.getByText("opened").closest("tr"));
+  fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+  expect(screen.queryByRole("dialog", { name: "Audit #opened" })).not.toBeInTheDocument();
+  await act(async () => settle(detail));
+
+  expect(screen.queryByRole("dialog", { name: "Audit #opened" })).not.toBeInTheDocument();
 });
 
 it("serializes project, actor, connector type, and runtime target filters", async () => {
