@@ -1,7 +1,12 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { APIError } from "../../../lib/errors";
-import { listLocalActionRetryEntries, prepareLocalActionRetry, resetLocalActionRetryLedger } from "../../../lib/local-action-retry";
+import {
+  completeLocalActionRetry,
+  listLocalActionRetryEntries,
+  prepareLocalActionRetry,
+  resetLocalActionRetryLedger,
+} from "../../../lib/local-action-retry";
 import { scopedUICookieName } from "../../../lib/ui-cookie";
 import { settleRestoreRetryFailure } from "./use-postgres-backup-restore";
 
@@ -20,7 +25,7 @@ afterEach(async () => {
 function restoreIdentity() {
   return {
     path: "/api/connector-targets/1/profiles/2/restore",
-    body: { confirm_target: "Main DB", filename: "backup.sql", size: 9, last_modified: 7 },
+    body: { confirm_target: "Main DB", filename: "backup.sql", size: 9, artifact_sha256: "content-sha256" },
   };
 }
 
@@ -57,5 +62,19 @@ it("retires a terminal connector failure even when the gateway returns 502", asy
     }),
   );
 
+  await expect(listLocalActionRetryEntries()).resolves.toEqual([]);
+});
+
+it("preserves a reused restore identity across unrelated pre-dispatch 4xx failures", async () => {
+  const first = await prepareLocalActionRetry(restoreIdentity());
+  await settleRestoreRetryFailure(first, new Error("restore response was lost"));
+
+  const reconciliation = await prepareLocalActionRetry(restoreIdentity());
+  expect(reconciliation).toMatchObject({ idempotencyKey: first.idempotencyKey, reused: true });
+  await settleRestoreRetryFailure(reconciliation, new APIError("lifecycle gate timed out", { status: 408, code: "request_timeout" }));
+
+  const replay = await prepareLocalActionRetry(restoreIdentity());
+  expect(replay).toMatchObject({ idempotencyKey: first.idempotencyKey, reused: true });
+  await completeLocalActionRetry(replay);
   await expect(listLocalActionRetryEntries()).resolves.toEqual([]);
 });

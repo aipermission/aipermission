@@ -8,6 +8,7 @@ import {
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
+import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
 import { usePostgresBackupRestore } from "./use-postgres-backup-restore";
 
 vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn(), currentWorkspaceBinding: vi.fn() }));
@@ -157,6 +158,21 @@ it("reuses one restore identity after an uncertain client failure", async () => 
   expect(result.current.restoreState).toEqual({ state: "ready", error: "", message: "Restore completed." });
   expect(result.current.file).toBeNull();
   expect(result.current.confirmTarget).toBe("");
+});
+
+it("derives restore retry identity from content instead of mutable file metadata", async () => {
+  const first = new File(["SELECT 1;"], "backup.sql", { lastModified: 7 });
+  const touched = new File(["SELECT 1;"], "backup.sql", { lastModified: 8 });
+  const changed = new File(["SELECT 2;"], "backup.sql", { lastModified: 7 });
+
+  const firstIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", first);
+  const touchedIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", touched);
+  const changedIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", changed);
+
+  expect(touchedIdentity).toEqual(firstIdentity);
+  expect(changedIdentity.body).toMatchObject({ filename: first.name, size: first.size });
+  expect(changedIdentity.body.artifact_sha256).not.toBe(firstIdentity.body.artifact_sha256);
+  expect(firstIdentity.body).not.toHaveProperty("last_modified");
 });
 
 it("records an explicitly uncertain restore without preserving it as a normal retry", async () => {

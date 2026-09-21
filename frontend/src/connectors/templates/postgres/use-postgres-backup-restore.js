@@ -8,6 +8,7 @@ import {
   preserveLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
 import { safeBackupFilename } from "./provisioning";
 
 const emptyActionState = { state: "idle", error: "", message: "" };
@@ -67,18 +68,9 @@ export function usePostgresBackupRestore(value) {
     try {
       const formData = new FormData();
       const workspaceID = currentWorkspaceBinding();
-      retry = await prepareLocalActionRetry(
-        {
-          path: `${endpoint}/restore`,
-          body: {
-            confirm_target: capturedConfirmation,
-            filename: capturedFile.name,
-            size: capturedFile.size,
-            last_modified: capturedFile.lastModified || 0,
-          },
-        },
-        { workspaceID },
-      );
+      const retryIdentity = await postgresRestoreRetryIdentity(`${endpoint}/restore`, capturedConfirmation, capturedFile, request.signal);
+      if (!request.isCurrent()) return;
+      retry = await prepareLocalActionRetry(retryIdentity, { workspaceID });
       formData.append("dump", capturedFile);
       formData.append("confirm_target", capturedConfirmation);
       formData.append("idempotency_key", retry.idempotencyKey);
@@ -155,7 +147,7 @@ export async function settleRestoreRetryFailure(retry, error) {
     await completeLocalActionRetry(retry);
     return;
   }
-  if (error instanceof APIError && error.status >= 400 && error.status < 500 && error.code !== "restore_in_progress") {
+  if (!retry.reused && error instanceof APIError && error.status >= 400 && error.status < 500 && error.code !== "restore_in_progress") {
     await completeLocalActionRetry(retry);
     return;
   }
