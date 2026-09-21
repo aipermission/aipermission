@@ -39,6 +39,13 @@ describe("typed untrusted gateway contracts", () => {
       connectorActionResponse(action({ retry_policy: { class: "read_only", guidance: "Safe to retry.", precondition_fields: [1] } })),
     ).toThrow(/Invalid connector/);
     expect(() => connectorActionResponse(action({ retry_policy: undefined }))).toThrow(/Invalid connector/);
+    expect(() => connectorActionResponse(action({ value: "secret" }))).toThrow(/Invalid connector/);
+    expect(() => connectorActionResponse(action({ password: "secret" }))).toThrow(/Invalid connector/);
+    expect(() => connectorActionResponse(action({ output_withheld: true, output: { value: "secret" } }))).toThrow(/Invalid connector/);
+    expect(() => connectorActionResponse(action({ output_withheld: true, input: { command: "secret" } }))).toThrow(/Invalid connector/);
+    expect(() =>
+      connectorActionResponse(action({ retry_policy: { class: "read_only", guidance: "Safe to retry.", secret: "value" } })),
+    ).toThrow(/Invalid connector/);
     expect(() => connectorActionResponse(action(), { targetRef: "other:1:1", actionName: "list_items" })).toThrow(/Invalid connector/);
     expect(connectorActionResponse(action({ output: [1, "two", null] }))).toMatchObject({ status: "completed", output: [1, "two", null] });
     expect(
@@ -85,6 +92,8 @@ describe("typed untrusted gateway contracts", () => {
     expect(() => parseConnectorApproval(connectorApproval({ status: "completed", approval_context_hash: 7 }))).toThrow(
       /Invalid connector approval/,
     );
+    expect(() => parseConnectorApproval(connectorApproval({ value: "secret" }))).toThrow(/Invalid connector approval/);
+    expect(() => parseConnectorApproval(connectorApproval({ password: "secret" }))).toThrow(/Invalid connector approval/);
   });
 
   it("rejects malformed optional connector approval display fields", () => {
@@ -222,6 +231,8 @@ describe("typed untrusted gateway contracts", () => {
     for (const overrides of invalid) {
       expect(() => parseVaultApproval(vaultApproval(overrides))).toThrow(/Invalid Vault approval/);
     }
+    expect(() => parseVaultApproval(vaultApproval({ value: "secret" }))).toThrow(/Invalid Vault approval/);
+    expect(() => parseVaultApproval(vaultApproval({ password: "secret" }))).toThrow(/Invalid Vault approval/);
     expect(
       parseVaultApproval(vaultApproval({ status: "completed", approval_context_hash: "", reason: undefined }), {
         id: 1,

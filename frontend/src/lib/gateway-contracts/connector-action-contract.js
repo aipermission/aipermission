@@ -2,10 +2,30 @@ import { connectorActionResponseRequiredFields, connectorActionStatuses, connect
 
 const connectorActionStatusSet = new Set(connectorActionStatuses);
 const connectorRetryClassSet = new Set(connectorRetryClasses);
+const connectorActionResponseFields = new Set([
+  "status",
+  "request_id",
+  "target_ref",
+  "target_name",
+  "connector_kind",
+  "profile_label",
+  "action_name",
+  "input",
+  "output",
+  "display_text",
+  "error",
+  "retry_policy",
+  "retry_after_seconds",
+  "assistant_hint",
+  "output_withheld",
+  "replayed",
+]);
+const connectorRetryPolicyFields = new Set(["class", "guidance", "precondition_fields"]);
 
 export function assertConnectorActionResponse(value, expected) {
   const item = record(value);
   if (
+    !hasOnlyKeys(item, connectorActionResponseFields) ||
     !connectorActionResponseRequiredFields.every((field) => Object.hasOwn(item, field)) ||
     !isConnectorActionStatus(item.status) ||
     !positiveID(item.request_id) ||
@@ -22,6 +42,7 @@ export function assertConnectorActionResponse(value, expected) {
     !optionalString(item.assistant_hint) ||
     !optionalBoolean(item.output_withheld) ||
     !optionalBoolean(item.replayed) ||
+    (item.output_withheld === true && ["input", "output", "display_text", "error"].some((field) => Object.hasOwn(item, field))) ||
     (expected && (item.target_ref !== expected.targetRef || item.action_name !== expected.actionName))
   ) {
     throw new Error("Invalid connector action response from gateway.");
@@ -36,12 +57,17 @@ export function isConnectorActionStatus(value) {
 export function isConnectorRetryPolicy(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return (
+    hasOnlyKeys(value, connectorRetryPolicyFields) &&
     typeof value.class === "string" &&
     connectorRetryClassSet.has(value.class) &&
     typeof value.guidance === "string" &&
     (value.precondition_fields === undefined ||
       (Array.isArray(value.precondition_fields) && value.precondition_fields.every((field) => typeof field === "string")))
   );
+}
+
+function hasOnlyKeys(value, allowed) {
+  return Object.keys(value).every((field) => allowed.has(field));
 }
 
 function record(value) {

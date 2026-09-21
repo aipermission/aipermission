@@ -24,7 +24,6 @@ export type ConnectorActionResponse = Record<string, unknown> & {
   target_ref: string;
   connector_kind: string;
   action_name: string;
-  approval_context_hash?: string;
   retry_policy: ConnectorRetryPolicy;
   target_name?: string;
   profile_label?: string;
@@ -61,6 +60,7 @@ export type ConnectorApproval = Record<string, unknown> & {
   summary?: string;
   preview?: Record<string, unknown>;
   input?: Record<string, unknown>;
+  output?: unknown;
   reason?: string;
   display_text?: string;
   error?: string;
@@ -80,6 +80,7 @@ export type VaultApproval = Record<string, unknown> & {
   project_id: number;
   project_name: string;
   project_slug: string;
+  runtime_id?: number;
   action_name: string;
   source: string;
   input: Record<string, unknown>;
@@ -87,8 +88,12 @@ export type VaultApproval = Record<string, unknown> & {
   approval_context?: VaultApprovalContext;
   approval_context_hash: string;
   idempotency_key: string;
+  error?: string;
+  output?: unknown;
+  user_note?: string;
   created_at: string;
   expires_at: string;
+  completed_at?: string;
   updated_at: string;
 };
 
@@ -171,6 +176,10 @@ function requiredRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((field) => allowed.has(field));
+}
+
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
@@ -205,8 +214,37 @@ type ExpectedConnectorApproval = {
   statuses?: readonly ConnectorActionStatus[];
 };
 
+const connectorApprovalFields: ReadonlySet<string> = new Set([
+  "id",
+  "token_id",
+  "token_name",
+  "target_id",
+  "target_name",
+  "target_ref",
+  "profile_id",
+  "profile_label",
+  "connector_kind",
+  "action_name",
+  "title",
+  "summary",
+  "preview",
+  "input",
+  "reason",
+  "status",
+  "output",
+  "display_text",
+  "error",
+  "retry_policy",
+  "approval_context_hash",
+  "created_at",
+  "completed_at",
+  "retry_after_seconds",
+  "assistant_hint",
+]);
+
 function validConnectorApprovalFields(item: Record<string, unknown>): boolean {
   return (
+    hasOnlyKeys(item, connectorApprovalFields) &&
     positiveID(item.id) &&
     isConnectorActionStatus(item.status) &&
     optionalPositiveID(item.token_id) &&
@@ -253,6 +291,30 @@ export function connectorApproval(value: unknown, expected?: ExpectedConnectorAp
 }
 
 const vaultApprovalStatuses = new Set(["approval_pending", "running", "completed", "failed", "declined", "stale", "canceled", "expired"]);
+const vaultApprovalFields: ReadonlySet<string> = new Set([
+  "id",
+  "token_id",
+  "token_name",
+  "project_id",
+  "project_name",
+  "project_slug",
+  "runtime_id",
+  "action_name",
+  "source",
+  "input",
+  "reason",
+  "status",
+  "approval_context",
+  "approval_context_hash",
+  "idempotency_key",
+  "error",
+  "output",
+  "user_note",
+  "created_at",
+  "expires_at",
+  "completed_at",
+  "updated_at",
+]);
 
 export function vaultApprovals(value: unknown, context = "Vault approvals"): VaultApproval[] {
   return array(value, context).map((entry) => vaultApproval(entry, undefined, context));
@@ -260,30 +322,46 @@ export function vaultApprovals(value: unknown, context = "Vault approvals"): Vau
 
 export function vaultApproval(value: unknown, expected?: ExpectedVaultApproval, context = "Vault approval"): VaultApproval {
   const item = record(value, context);
-  if (
-    !positiveID(item.id) ||
-    typeof item.status !== "string" ||
-    !vaultApprovalStatuses.has(item.status) ||
-    !positiveID(item.token_id) ||
-    !nonEmptyString(item.token_name) ||
-    !positiveID(item.project_id) ||
-    !nonEmptyString(item.project_name) ||
-    !nonEmptyString(item.project_slug) ||
-    !nonEmptyString(item.action_name) ||
-    !nonEmptyString(item.source) ||
-    !requiredRecord(item.input) ||
-    !optionalString(item.reason) ||
-    !validVaultApprovalContext(item) ||
-    !approvalContextHash(item.status, item.approval_context_hash, true) ||
-    !nonEmptyString(item.idempotency_key) ||
-    !nonEmptyString(item.created_at) ||
-    !nonEmptyString(item.expires_at) ||
-    !nonEmptyString(item.updated_at) ||
-    !matchesExpectedVaultApproval(item, expected)
-  ) {
+  if (!validVaultApprovalFields(item) || !matchesExpectedVaultApproval(item, expected)) {
     throw new Error(`Invalid ${context} response from gateway.`);
   }
   return item as VaultApproval;
+}
+
+function validVaultApprovalFields(item: Record<string, unknown>): boolean {
+  return hasOnlyKeys(item, vaultApprovalFields) && validVaultApprovalIdentity(item) && validVaultApprovalLifecycle(item);
+}
+
+function validVaultApprovalIdentity(item: Record<string, unknown>): boolean {
+  return (
+    positiveID(item.id) &&
+    positiveID(item.token_id) &&
+    nonEmptyString(item.token_name) &&
+    positiveID(item.project_id) &&
+    nonEmptyString(item.project_name) &&
+    nonEmptyString(item.project_slug) &&
+    optionalPositiveID(item.runtime_id) &&
+    nonEmptyString(item.action_name) &&
+    nonEmptyString(item.source)
+  );
+}
+
+function validVaultApprovalLifecycle(item: Record<string, unknown>): boolean {
+  return (
+    typeof item.status === "string" &&
+    vaultApprovalStatuses.has(item.status) &&
+    requiredRecord(item.input) &&
+    optionalString(item.reason) &&
+    validVaultApprovalContext(item) &&
+    approvalContextHash(item.status, item.approval_context_hash, true) &&
+    nonEmptyString(item.idempotency_key) &&
+    optionalString(item.error) &&
+    optionalString(item.user_note) &&
+    nonEmptyString(item.created_at) &&
+    nonEmptyString(item.expires_at) &&
+    optionalNonEmptyString(item.completed_at) &&
+    nonEmptyString(item.updated_at)
+  );
 }
 
 function matchesExpectedVaultApproval(item: Record<string, unknown>, expected?: ExpectedVaultApproval): boolean {
