@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
@@ -72,8 +73,8 @@ func clearStrings(values ...*string) {
 
 func writeUnlockError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, db.ErrDatabaseInUse):
-		httptransport.WriteError(w, http.StatusConflict, db.ErrDatabaseInUse.Error())
+	case errors.Is(err, databaseownership.ErrDatabaseInUse):
+		httptransport.WriteError(w, http.StatusConflict, databaseownership.ErrDatabaseInUse.Error())
 	case errors.Is(err, workspacelifecycle.ErrCredential), errors.Is(err, workspacelifecycle.ErrAuthentication):
 		httptransport.WriteError(w, http.StatusUnauthorized, "invalid unlock password or database")
 	case db.UnsupportedSchemaMessage(err) != "":

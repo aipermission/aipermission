@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
-	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/workspacelifecycle"
 )
 
@@ -164,7 +164,7 @@ func TestUnlockErrorsAndAttemptsAreClassifiedAtTheWorkspaceBoundary(t *testing.T
 		wantSuccess  int
 	}{
 		{
-			name: "database already owned", err: db.ErrDatabaseInUse,
+			name: "database already owned", err: databaseownership.ErrDatabaseInUse,
 			wantStatus: http.StatusConflict, wantBody: "database is in use by another AIPermission process", wantSuccess: 1,
 		},
 		{

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -120,12 +121,12 @@ func MigrateLegacy010To020(ctx context.Context, request Legacy010To020Request) (
 	if db.Exists(targetPath) {
 		return Legacy010To020Result{}, ErrTargetExists
 	}
-	sourceOwnership, err := db.AcquireDatabaseOwnership(sourcePath)
+	sourceOwnership, err := databaseownership.Acquire(sourcePath)
 	if err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("claim source database: %w", err)
 	}
 	defer sourceOwnership.Close()
-	targetOwnership, err := db.AcquireDatabaseOwnership(targetPath)
+	targetOwnership, err := databaseownership.Acquire(targetPath)
 	if err != nil {
 		return Legacy010To020Result{}, fmt.Errorf("claim target database: %w", err)
 	}

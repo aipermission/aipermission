@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 )
 
-func acquireDatabaseOwnershipSet(paths ...string) ([]*db.DatabaseOwnership, error) {
+func acquireDatabaseOwnershipSet(paths ...string) ([]*databaseownership.Ownership, error) {
 	unique := make(map[string]struct{}, len(paths))
 	ordered := make([]string, 0, len(paths))
 	for _, path := range paths {
@@ -23,9 +23,9 @@ func acquireDatabaseOwnershipSet(paths ...string) ([]*db.DatabaseOwnership, erro
 		ordered = append(ordered, absolutePath)
 	}
 	sort.Strings(ordered)
-	ownerships := make([]*db.DatabaseOwnership, 0, len(ordered))
+	ownerships := make([]*databaseownership.Ownership, 0, len(ordered))
 	for _, path := range ordered {
-		ownership, err := db.AcquireDatabaseOwnership(path)
+		ownership, err := databaseownership.Acquire(path)
 		if err != nil {
 			closeDatabaseOwnershipSet(ownerships)
 			return nil, err
@@ -35,7 +35,7 @@ func acquireDatabaseOwnershipSet(paths ...string) ([]*db.DatabaseOwnership, erro
 	return ownerships, nil
 }
 
-func closeDatabaseOwnershipSet(ownerships []*db.DatabaseOwnership) {
+func closeDatabaseOwnershipSet(ownerships []*databaseownership.Ownership) {
 	for index := len(ownerships) - 1; index >= 0; index-- {
 		_ = ownerships[index].Close()
 	}

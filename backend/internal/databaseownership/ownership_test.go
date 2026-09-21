@@ -1,4 +1,4 @@
-package db
+package databaseownership
 
 import (
 	"errors"
@@ -11,19 +11,19 @@ import (
 
 func TestDatabaseOwnershipIsExclusiveAndReleased(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "workspace.db")
-	first, err := AcquireDatabaseOwnership(path)
+	first, err := Acquire(path)
 	if err != nil {
 		t.Fatalf("acquire first ownership: %v", err)
 	}
 
-	if _, err := AcquireDatabaseOwnership(path); !errors.Is(err, ErrDatabaseInUse) {
+	if _, err := Acquire(path); !errors.Is(err, ErrDatabaseInUse) {
 		t.Fatalf("second ownership error = %v, want ErrDatabaseInUse", err)
 	}
 	if err := first.Close(); err != nil {
 		t.Fatalf("release first ownership: %v", err)
 	}
 
-	second, err := AcquireDatabaseOwnership(path)
+	second, err := Acquire(path)
 	if err != nil {
 		t.Fatalf("reacquire released ownership: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDatabaseOwnershipIsExclusiveAndReleased(t *testing.T) {
 
 func TestDatabaseOwnershipIsExclusiveAcrossProcesses(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "workspace.db")
-	ownership, err := AcquireDatabaseOwnership(path)
+	ownership, err := Acquire(path)
 	if err != nil {
 		t.Fatalf("acquire parent ownership: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestDatabaseOwnershipHelperProcess(t *testing.T) {
 	}
 	path := os.Getenv("AIPERMISSION_OWNERSHIP_PATH")
 	wantConflict := os.Getenv("AIPERMISSION_OWNERSHIP_CONFLICT") == "1"
-	ownership, err := AcquireDatabaseOwnership(path)
+	ownership, err := Acquire(path)
 	if wantConflict {
 		if !errors.Is(err, ErrDatabaseInUse) {
 			t.Fatalf("child ownership error = %v, want ErrDatabaseInUse", err)

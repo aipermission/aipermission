@@ -1,6 +1,6 @@
 //go:build windows
 
-package db
+package databaseownership
 
 import (
 	"errors"

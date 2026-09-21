@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/db"
 )
 
@@ -290,7 +291,7 @@ func DeleteDatabase(path string) error {
 	if pending {
 		return fmt.Errorf("database delete recovery is still pending")
 	}
-	ownership, err := db.AcquireDatabaseOwnership(path)
+	ownership, err := databaseownership.Acquire(path)
 	if err != nil {
 		return err
 	}
@@ -560,8 +561,8 @@ func recoverDatabaseDeleteQuarantine(dir, quarantineDir string, publish func(str
 	if databasePath == "" {
 		return fmt.Errorf("incomplete database delete quarantine has no database file")
 	}
-	ownership, err := db.AcquireDatabaseOwnership(databasePath)
-	if errors.Is(err, db.ErrDatabaseInUse) {
+	ownership, err := databaseownership.Acquire(databasePath)
+	if errors.Is(err, databaseownership.ErrDatabaseInUse) {
 		return nil
 	}
 	if err != nil {

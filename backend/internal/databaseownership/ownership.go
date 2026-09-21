@@ -1,4 +1,4 @@
-package db
+package databaseownership
 
 import (
 	"errors"
@@ -10,12 +10,12 @@ import (
 
 var ErrDatabaseInUse = errors.New("database is in use by another AIPermission process")
 
-type DatabaseOwnership struct {
+type Ownership struct {
 	mu   sync.Mutex
 	file *os.File
 }
 
-func AcquireDatabaseOwnership(databasePath string) (*DatabaseOwnership, error) {
+func Acquire(databasePath string) (*Ownership, error) {
 	absolutePath, err := filepath.Abs(filepath.Clean(databasePath))
 	if err != nil {
 		return nil, fmt.Errorf("resolve database ownership path: %w", err)
@@ -34,17 +34,17 @@ func AcquireDatabaseOwnership(databasePath string) (*DatabaseOwnership, error) {
 		}
 		return nil, fmt.Errorf("lock database ownership: %w", err)
 	}
-	return &DatabaseOwnership{file: file}, nil
+	return &Ownership{file: file}, nil
 }
 
-func (ownership *DatabaseOwnership) Close() error {
+func (ownership *Ownership) Close() error {
 	_, err := ownership.Release()
 	return err
 }
 
 // Release reports whether the OS lock was conclusively released. A failed
 // unlock retains the handle so a later shutdown attempt can retry it.
-func (ownership *DatabaseOwnership) Release() (bool, error) {
+func (ownership *Ownership) Release() (bool, error) {
 	if ownership == nil {
 		return true, nil
 	}

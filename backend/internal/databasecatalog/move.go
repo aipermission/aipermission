@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 )
 
 const (
@@ -248,7 +248,7 @@ func recoverDatabaseMoveJournals(root string) error {
 			return err
 		}
 		ownerships, err := acquireDatabaseOwnershipSet(manifest.SourceBase, manifest.TargetBase)
-		if errors.Is(err, db.ErrDatabaseInUse) {
+		if errors.Is(err, databaseownership.ErrDatabaseInUse) {
 			continue
 		}
 		if err != nil {

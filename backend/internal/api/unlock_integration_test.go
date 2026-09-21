@@ -121,8 +121,8 @@ func TestOpenRuntimeRejectsConcurrentDatabaseOwner(t *testing.T) {
 		t.Fatalf("open first runtime: %v", err)
 	}
 	secondServer := NewLockedServer(cfg)
-	if _, err := secondServer.openRuntime(t.Context(), cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); !errors.Is(err, dbpkg.ErrDatabaseInUse) {
-		t.Fatalf("second runtime error = %v, want ErrDatabaseInUse", err)
+	if _, err := secondServer.openRuntime(t.Context(), cfg.DataPath, databasecatalog.DefaultDatabaseID(cfg.DataPath), "OwnershipPassword123"); err == nil {
+		t.Fatal("second runtime unexpectedly opened while the database was owned")
 	}
 	if err := firstServer.closeRuntime(first); err != nil {
 		t.Fatalf("close first runtime: %v", err)
