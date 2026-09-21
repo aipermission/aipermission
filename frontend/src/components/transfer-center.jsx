@@ -81,14 +81,26 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   const [note, setNote] = useState("");
   const [decision, setDecision] = useState({ state: "idle", error: "" });
   const [control, setControl] = useState({ state: "idle", error: "" });
+  const decisionOwner = useRef({ generation: 0, pendingGeneration: null });
   const controlGeneration = useRef(0);
   const controlPending = useRef(false);
 
   useEffect(() => {
     setSelectedItems(new Set(JSON.parse(pendingItemIDsJSON)));
-    setNote("");
-    setDecision({ state: "idle", error: "" });
+    decisionOwner.current.generation += 1;
+    if (decisionOwner.current.pendingGeneration === null) {
+      setNote("");
+      setDecision({ state: "idle", error: "" });
+    }
   }, [batch.id, pendingItemIDsJSON]);
+
+  useEffect(() => {
+    decisionOwner.current = {
+      generation: decisionOwner.current.generation + 1,
+      pendingGeneration: null,
+    };
+    setDecision({ state: "idle", error: "" });
+  }, [batch.id, batch.status]);
 
   useEffect(() => {
     controlGeneration.current += 1;
@@ -112,26 +124,32 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     });
   }
 
-  async function approveSelected() {
-    if (decision.state === "pending") return;
+  async function runDecision(callback, fallback) {
+    if (decisionOwner.current.pendingGeneration !== null) return;
+    const generation = decisionOwner.current.generation + 1;
+    decisionOwner.current = { generation, pendingGeneration: generation };
     setDecision({ state: "pending", error: "" });
     try {
-      await onApprove?.(batch.id, Array.from(selectedItems), note);
-      setDecision({ state: "idle", error: "" });
+      await callback?.();
+      settleDecision(generation, null);
     } catch (error) {
-      setDecision({ state: "error", error: error?.message || "Could not approve this transfer." });
+      settleDecision(generation, error?.message || fallback);
     }
   }
 
-  async function declineAll() {
-    if (decision.state === "pending") return;
-    setDecision({ state: "pending", error: "" });
-    try {
-      await onDecline?.(batch.id, note);
-      setDecision({ state: "idle", error: "" });
-    } catch (error) {
-      setDecision({ state: "error", error: error?.message || "Could not decline this transfer." });
-    }
+  function settleDecision(generation, error) {
+    if (decisionOwner.current.pendingGeneration !== generation) return;
+    const contextIsCurrent = decisionOwner.current.generation === generation;
+    decisionOwner.current.pendingGeneration = null;
+    setDecision(contextIsCurrent && error ? { state: "error", error } : { state: "idle", error: "" });
+  }
+
+  function approveSelected() {
+    return runDecision(() => onApprove?.(batch.id, Array.from(selectedItems), note), "Could not approve this transfer.");
+  }
+
+  function declineAll() {
+    return runDecision(() => onDecline?.(batch.id, note), "Could not decline this transfer.");
   }
 
   async function runControl(callback, fallback) {

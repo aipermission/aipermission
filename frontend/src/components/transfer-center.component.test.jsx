@@ -64,6 +64,28 @@ it("declines a batch with its note without calling approval", async () => {
   expect(onApprove).not.toHaveBeenCalled();
 });
 
+it("keeps an in-flight approval fenced when polling changes pending items", async () => {
+  const approval = deferred();
+  const onApprove = vi.fn(() => approval.promise);
+  const view = render(<TransferCenter open batches={[batch]} state="ready" onApprove={onApprove} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Approve selected (2)" }));
+  const updated = {
+    ...batch,
+    items: [...batch.items, { id: 103, status: "pending_approval", remote_path: "/tmp/three", size_bytes: 30 }],
+  };
+  view.rerender(<TransferCenter open batches={[updated]} state="ready" onApprove={onApprove} />);
+
+  const approve = screen.getByRole("button", { name: "Approve selected (3)" });
+  expect(approve).toBeDisabled();
+  fireEvent.click(approve);
+  expect(onApprove).toHaveBeenCalledOnce();
+
+  approval.reject(new Error("retired approval failed"));
+  await waitFor(() => expect(approve).toBeEnabled());
+  expect(screen.queryByText("retired approval failed")).not.toBeInTheDocument();
+});
+
 it("routes running and paused queue controls while keeping completed batches compact", async () => {
   const user = userEvent.setup();
   const onPause = vi.fn();

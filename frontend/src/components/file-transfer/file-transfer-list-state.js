@@ -1,3 +1,5 @@
+const terminalBatchStatuses = new Set(["completed", "failed", "canceled", "declined", "stale", "error"]);
+
 export function createFileTransferListState() {
   let generation = 0;
   return {
@@ -13,7 +15,9 @@ export function createFileTransferListState() {
       const data = [...current.data];
       const index = data.findIndex((item) => Number(item.id) === Number(batch.id));
       if (index === -1) data.unshift(batch);
-      else data[index] = { ...data[index], ...batch };
+      else if (!terminalBatchStatuses.has(data[index].status) || terminalBatchStatuses.has(batch.status)) {
+        data[index] = { ...data[index], ...batch };
+      }
       return { state: "ready", data, error: null };
     },
   };
