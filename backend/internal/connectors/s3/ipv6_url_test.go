@@ -1,6 +1,7 @@
 package s3connector
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,6 +10,23 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
+
+func TestS3ClientRejectsVirtualHostAddressingForIPLiteralEndpoints(t *testing.T) {
+	tests := []string{
+		"http://192.0.2.10:9000",
+		"http://[2001:db8::1]:9000",
+	}
+	for _, rawURL := range tests {
+		t.Run(rawURL, func(t *testing.T) {
+			runtime := s3TestRuntime(t, rawURL)
+			runtime.Target.Config["path_style"] = false
+			_, err := newS3Client(context.Background(), runtime)
+			if err == nil || !strings.Contains(err.Error(), "enable path_style for IP endpoints") {
+				t.Fatalf("newS3Client() error = %v", err)
+			}
+		})
+	}
+}
 
 func TestS3URLPreservesHostAtDefaultAndExplicitPorts(t *testing.T) {
 	tests := []struct {

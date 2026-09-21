@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -70,6 +71,11 @@ func newS3ClientWithTimeout(ctx context.Context, runtime connectors.RuntimeConte
 	}
 	if client.bucket == "" {
 		return nil, fmt.Errorf("%w: bucket is required", ErrInvalidConfig)
+	}
+	if !client.pathStyle {
+		if _, err := netip.ParseAddr(client.host); err == nil {
+			return nil, fmt.Errorf("%w: virtual-host addressing requires a DNS endpoint; enable path_style for IP endpoints", ErrInvalidConfig)
+		}
 	}
 	request := connectors.NetworkDialRequest{
 		SourceTargetRef:    runtime.Target.Ref,
