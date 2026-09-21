@@ -26,12 +26,5 @@ export function uniqueRedisKeys(values) {
 export function valueToEditableText(output) {
   if (!output) return "";
   if (output.type !== "string") return formatRedisValue(output.value);
-  const text = String(output.value ?? "");
-  const trimmed = text.trim();
-  if (!trimmed) return text;
-  try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2);
-  } catch {
-    return text;
-  }
+  return String(output.value ?? "");
 }

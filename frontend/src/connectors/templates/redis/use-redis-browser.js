@@ -82,6 +82,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
   }
 
   function startNewKey() {
+    if (state.state !== "idle" && state.state !== "error" && state.state !== "reading") return;
     requestGuard.invalidate("get_key");
     setActiveKey("");
     setKeyResult(null);
@@ -90,11 +91,15 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     setNewValue("");
     setTTLDraft("");
     setResultMode("value");
+    if (state.state === "reading") setState({ state: "idle", error: "", message: "" });
   }
 
   async function loadKey(key) {
     if (!activeSession.active || !key) return;
     setActiveKey(key);
+    setKeyResult(null);
+    setValueDraft("");
+    setTTLDraft("");
     setResultMode("value");
     let item;
     try {
@@ -109,6 +114,10 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     }
     if (!item) return;
     const output = item.output || {};
+    if (output.key !== key) {
+      setState({ state: "error", error: `${product} returned a different key than the one requested.`, message: "" });
+      return;
+    }
     setKeyResult(output);
     setValueDraft(valueToEditableText(output));
     setTTLDraft(output.ttl_ms > 0 ? String(Math.ceil(output.ttl_ms / 1000)) : "");
@@ -139,6 +148,8 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     runAction: runRedisAction,
     loadKey,
   });
+  const activeResultIsCurrent = Boolean(activeKey && keyResult?.key === activeKey);
+  const activeStringIsEditable = activeResultIsCurrent && keyResult?.type === "string" && keyResult.truncated !== true;
 
   return {
     activeSession,
@@ -164,8 +175,10 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     resultMode,
     setResultMode,
     latestAction,
-    canSaveString: mutations.creatingKey ? newKey !== "" : keyResult?.type === "string",
-    canUpdateTTL: Boolean(activeKey && keyResult && keyResult.type !== "none") && state.state === "idle",
+    canSaveString: mutations.creatingKey ? newKey !== "" : activeStringIsEditable,
+    canUpdateTTL: activeResultIsCurrent && keyResult.type !== "none" && state.state === "idle",
+    canStartNewKey: state.state === "idle" || state.state === "error" || state.state === "reading",
+    activeStringIsEditable,
     scanKeys,
     startNewKey,
     loadKey,

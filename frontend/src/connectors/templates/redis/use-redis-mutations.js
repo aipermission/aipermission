@@ -44,6 +44,10 @@ export function useRedisMutations(options) {
     event?.preventDefault?.();
     const key = activeKey || newKey;
     const value = activeKey ? valueDraft : newValue;
+    if (activeKey && (keyResult?.key !== activeKey || keyResult.type !== "string" || keyResult.truncated === true)) {
+      setState({ state: "idle", error: "Reload the complete string value before saving it.", message: "" });
+      return;
+    }
     const validationError = validateStringWrite({ key, value });
     if (validationError) {
       setState({ state: "idle", error: validationError, message: "" });
@@ -77,7 +81,7 @@ export function useRedisMutations(options) {
   }
 
   function updateTTL() {
-    if (!activeKey) return;
+    if (!activeKey || keyResult?.key !== activeKey || keyResult.type === "none") return;
     const ttlSeconds = ttlDraft.trim() === "" ? -1 : Number(ttlDraft);
     const normalizedTTL = Number.isFinite(ttlSeconds) ? ttlSeconds : -1;
     openConfirm({
@@ -158,6 +162,6 @@ export function useRedisMutations(options) {
     deleteSelected,
     confirmPendingAction,
     creatingKey: !activeKey,
-    editableString: !activeKey || keyResult?.type === "string",
+    editableString: !activeKey || (keyResult?.key === activeKey && keyResult.type === "string" && keyResult.truncated !== true),
   };
 }

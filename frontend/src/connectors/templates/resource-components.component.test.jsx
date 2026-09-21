@@ -156,6 +156,7 @@ it("drives the split Redis key and value surfaces", async () => {
     setPattern: vi.fn(),
     scanKeys: vi.fn(),
     startNewKey: vi.fn(),
+    canStartNewKey: true,
     setSelectedKeys: vi.fn(),
     loadKey: vi.fn(),
     toggleSelection: vi.fn(),
@@ -166,20 +167,32 @@ it("drives the split Redis key and value surfaces", async () => {
     saveStringValue: vi.fn(),
     setValueDraft: vi.fn(),
   };
-  render(
+  const view = render(
     <>
       <RedisKeyBrowser browser={browser} styles={styles} />
       <RedisValueWorkspace browser={browser} styles={styles} />
     </>,
   );
   await user.click(screen.getByRole("button", { name: /user:1/ }));
+  await user.click(screen.getByRole("button", { name: "New" }));
+  await user.click(screen.getByRole("button", { name: "Refresh keys" }));
+  await user.click(screen.getByRole("button", { name: "All" }));
+  await user.type(screen.getByRole("textbox", { name: "Redis key scan pattern" }), "cache:*");
+  await user.click(screen.getByRole("button", { name: "Scan keys" }));
   await user.click(screen.getByRole("button", { name: "Raw JSON" }));
   await user.click(screen.getByRole("button", { name: "Save TTL" }));
   await user.click(screen.getByRole("button", { name: /Save string/ }));
   expect(browser.loadKey).toHaveBeenCalledWith("user:1");
+  expect(browser.startNewKey).toHaveBeenCalledOnce();
+  expect(browser.scanKeys).toHaveBeenCalledWith({ reset: true });
+  expect(browser.setSelectedKeys).toHaveBeenCalledWith(["user:1"]);
+  expect(browser.setPattern).toHaveBeenCalled();
   expect(browser.setResultMode).toHaveBeenCalledWith("json");
   expect(browser.updateTTL).toHaveBeenCalledOnce();
   expect(browser.saveStringValue).toHaveBeenCalledOnce();
+
+  view.rerender(<RedisKeyBrowser browser={{ ...browser, canStartNewKey: false }} styles={styles} />);
+  expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
 });
 
 it("renders the split S3 console empty-session contract", async () => {

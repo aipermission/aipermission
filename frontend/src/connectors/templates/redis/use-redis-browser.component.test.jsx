@@ -68,12 +68,76 @@ describe("useRedisBrowser", () => {
     await waitFor(() => expect(pending.has("alpha")).toBe(true));
     act(() => void result.current.loadKey("beta"));
     await waitFor(() => expect(pending.has("beta")).toBe(true));
-    await act(async () => pending.get("alpha")(completed("get_key", { type: "string", value: "old", ttl_ms: -1 })));
+    await act(async () => pending.get("alpha")(completed("get_key", { key: "alpha", type: "string", value: "old", ttl_ms: -1 })));
     expect(result.current.keyResult).toBeNull();
-    await act(async () => pending.get("beta")(completed("get_key", { type: "string", value: "current", ttl_ms: -1 })));
+    await act(async () => pending.get("beta")(completed("get_key", { key: "beta", type: "string", value: "current", ttl_ms: -1 })));
 
     expect(result.current.activeKey).toBe("beta");
     expect(result.current.valueDraft).toBe("current");
+  });
+
+  it("clears another key's draft when the selected key read fails", async () => {
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+    await act(async () => result.current.loadKey("alpha"));
+    expect(result.current.canSaveString).toBe(true);
+
+    apiPost.mockRejectedValueOnce(new Error("read failed"));
+    await act(async () => result.current.loadKey("beta"));
+
+    expect(result.current.activeKey).toBe("beta");
+    expect(result.current.keyResult).toBeNull();
+    expect(result.current.valueDraft).toBe("");
+    expect(result.current.canSaveString).toBe(false);
+    act(() => result.current.saveStringValue());
+    expect(result.current.confirmDialog.open).toBe(false);
+    expect(result.current.state.error).toBe("Reload the complete string value before saving it.");
+  });
+
+  it("keeps truncated string previews read-only", async () => {
+    apiPost.mockImplementation(async (_path, payload) =>
+      completed(
+        payload.action_name,
+        payload.action_name === "get_key"
+          ? { key: payload.input.key, type: "string", value: "partial...[truncated]", ttl_ms: -1, truncated: true }
+          : responseFor(payload.action_name, payload.input),
+      ),
+    );
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+    await act(async () => result.current.loadKey("alpha"));
+
+    expect(result.current.valueDraft).toBe("partial...[truncated]");
+    expect(result.current.canSaveString).toBe(false);
+    expect(result.current.editableString).toBe(false);
+    act(() => result.current.saveStringValue());
+    expect(result.current.confirmDialog.open).toBe(false);
+  });
+
+  it.each(["resolve", "reject"])("retires a pending read and restores idle state when New is selected (%s)", async (settlement) => {
+    let settleRead;
+    apiPost.mockImplementation((_path, payload) => {
+      if (payload.action_name !== "get_key")
+        return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+      return new Promise((resolve, reject) => {
+        settleRead =
+          settlement === "resolve"
+            ? () => resolve(completed("get_key", responseFor("get_key", payload.input)))
+            : () => reject(new Error("late failure"));
+      });
+    });
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+
+    act(() => void result.current.loadKey("alpha"));
+    await waitFor(() => expect(result.current.state.state).toBe("reading"));
+    act(() => result.current.startNewKey());
+    expect(result.current.state.state).toBe("idle");
+    expect(result.current.activeKey).toBe("");
+
+    await act(async () => settleRead());
+    expect(result.current.state).toEqual({ state: "idle", error: "", message: "" });
+    expect(result.current.canSaveString).toBe(false);
   });
 
   it("owns read failures in browser state without rejecting the UI event", async () => {
@@ -124,6 +188,20 @@ describe("useRedisBrowser", () => {
     const write = runGuardedConnectorAction.mock.calls.find(([options]) => options.actionName === "set_string")?.[0];
     expect(write.input).toEqual({ key: " padded key ", value: "   ", ttl_seconds: 0 });
   });
+
+  it("guards TTL updates until the selected key result is current", async () => {
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+
+    act(() => result.current.updateTTL());
+    expect(result.current.confirmDialog.open).toBe(false);
+    await act(async () => result.current.loadKey("alpha"));
+    act(() => result.current.setTTLDraft("30"));
+    act(() => result.current.updateTTL());
+    expect(result.current.confirmDialog.type).toBe("ttl");
+    act(() => result.current.closeConfirmDialog());
+    expect(result.current.confirmDialog.open).toBe(false);
+  });
 });
 
 function completed(actionName, output) {
@@ -142,7 +220,7 @@ function completed(actionName, output) {
 function responseFor(actionName, input) {
   const outputs = {
     scan_keys: { keys: ["alpha", "beta"], next_cursor: "0" },
-    get_key: { type: "string", value: input.key, ttl_ms: -1 },
+    get_key: { key: input.key, type: "string", value: input.key, ttl_ms: -1, truncated: false },
     set_string: { key: input.key },
   };
   return outputs[actionName] || {};
