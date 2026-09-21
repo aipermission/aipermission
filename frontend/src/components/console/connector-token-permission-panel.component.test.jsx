@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
@@ -31,13 +31,14 @@ function renderPanel({
   unreadMessages = [],
   onOpenMessages = vi.fn(),
   omitOptionalProps = false,
+  tokens = [{ id: 5, name: "codex", token: "aip_example" }],
 } = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
   const loadAllConnectorPermissions = vi.fn(loadPermissions || (async () => ({})));
-  const renderWithPermissions = (nextPermissions, currentTarget = target, currentProfiles = targetProfiles) => (
+  const renderWithPermissions = (nextPermissions, currentTarget = target, currentProfiles = targetProfiles, currentTokens = tokens) => (
     <ConnectorTokenPermissionPanel
-      tokens={{ state: "ready", data: [{ id: 5, name: "codex", token: "aip_example" }] }}
+      tokens={{ state: "ready", data: currentTokens }}
       selectedTarget={currentTarget}
       targets={{ state: "ready", data: currentProfiles }}
       {...(omitOptionalProps ? {} : { compact, onToggleCompact, unreadMessages })}
@@ -67,6 +68,7 @@ function renderPanel({
     rerenderPermissions: (nextPermissions) => view.rerender(renderWithPermissions(nextPermissions)),
     rerenderTarget: (nextTarget, nextProfiles = [nextTarget]) =>
       view.rerender(renderWithPermissions(permissions, nextTarget, nextProfiles)),
+    rerenderTokens: (nextTokens) => view.rerender(renderWithPermissions(permissions, target, targetProfiles, nextTokens)),
     loadAllConnectorPermissions,
   };
 }
@@ -89,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -98,6 +101,32 @@ describe("ConnectorTokenPermissionPanel modes", () => {
 
     expect(await screen.findByText("Tokens")).toBeVisible();
     expect(screen.queryByTitle("Collapse tokens")).not.toBeInTheDocument();
+  });
+
+  it("removes a token when it expires while the console remains open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+    renderPanel({
+      tokens: [{ id: 5, name: "short-lived", token: "aip_example", expires_at: "2026-09-21T12:00:01.000Z" }],
+    });
+
+    expect(screen.getByText("short-lived")).toBeVisible();
+    await act(async () => vi.advanceTimersByTimeAsync(1001));
+    expect(screen.getByText("No active tokens.")).toBeVisible();
+    expect(screen.queryByText("short-lived")).not.toBeInTheDocument();
+  });
+
+  it("classifies newly loaded token data against the current time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+    const { rerenderTokens } = renderPanel({ tokens: [{ id: 5, name: "current", token: "aip_current" }] });
+    expect(screen.getByText("current")).toBeVisible();
+
+    vi.setSystemTime(new Date("2026-09-21T13:00:00.000Z"));
+    rerenderTokens([{ id: 6, name: "already-expired", token: "aip_expired", expires_at: "2026-09-21T12:30:00.000Z" }]);
+
+    expect(screen.getByText("No active tokens.")).toBeVisible();
+    expect(screen.queryByText("already-expired")).not.toBeInTheDocument();
   });
 
   it("selects and persists a connector credential profile", async () => {

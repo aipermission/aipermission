@@ -5,6 +5,8 @@ import { useGateway } from "../lib/gateway-context";
 import { effectiveRule, maskedToken } from "../lib/permissions";
 import { useAsyncAction } from "../lib/use-async-action";
 import { useConnectorPermissions } from "../lib/use-connector-permissions";
+import { tokenStatus } from "../lib/token-status";
+import { useTokenExpiryClock } from "../lib/use-token-expiry-clock";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
@@ -40,24 +42,25 @@ export function TokensPage() {
   const { actionState: revokeState, runAction: runRevokeAction, resetAction: resetRevokeAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
   const loadPermissionsForEffect = useEffectEvent(() => loadAllConnectorPermissions(tokens.data));
+  const tokenNow = useTokenExpiryClock(tokens.data);
 
   const stats = useMemo(() => {
-    const active = tokens.data.filter((token) => tokenStatus(token) === "active").length;
-    const expired = tokens.data.filter((token) => tokenStatus(token) === "expired").length;
+    const active = tokens.data.filter((token) => tokenStatus(token, tokenNow) === "active").length;
+    const expired = tokens.data.filter((token) => tokenStatus(token, tokenNow) === "expired").length;
     return {
       total: tokens.data.length,
       active,
       expired,
       revoked: tokens.data.filter((token) => Boolean(token.revoked_at)).length,
     };
-  }, [tokens.data]);
+  }, [tokens.data, tokenNow]);
 
   const visibleTokens = useMemo(() => {
-    if (tokenFilter === "active") return tokens.data.filter((token) => tokenStatus(token) === "active");
-    if (tokenFilter === "expired") return tokens.data.filter((token) => tokenStatus(token) === "expired");
+    if (tokenFilter === "active") return tokens.data.filter((token) => tokenStatus(token, tokenNow) === "active");
+    if (tokenFilter === "expired") return tokens.data.filter((token) => tokenStatus(token, tokenNow) === "expired");
     if (tokenFilter === "revoked") return tokens.data.filter((token) => Boolean(token.revoked_at));
     return tokens.data;
-  }, [tokenFilter, tokens.data]);
+  }, [tokenFilter, tokens.data, tokenNow]);
 
   const tokenIDs = tokens.data.map((token) => token.id).join(",");
   useEffect(() => {
@@ -132,7 +135,7 @@ export function TokensPage() {
           </thead>
           <tbody className="divide-y divide-stone-200">
             {visibleTokens.map((token) => {
-              const status = tokenStatus(token);
+              const status = tokenStatus(token, tokenNow);
               const revoked = Boolean(token.revoked_at);
               const inactive = status !== "active";
               const permissions = connectorPermissionState.data[token.id] || [];
@@ -426,12 +429,6 @@ function tokenCreatePayload(form) {
     payload.expires_at = new Date(Date.now() + option.ms).toISOString();
   }
   return payload;
-}
-
-function tokenStatus(token) {
-  if (token.revoked_at) return "revoked";
-  if (token.expires_at && new Date(token.expires_at).getTime() <= Date.now()) return "expired";
-  return "active";
 }
 
 function formatDate(value) {
