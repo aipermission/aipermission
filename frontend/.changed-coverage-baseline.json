@@ -160,8 +160,8 @@
       "lines": 92.85
     },
     "src/components/console/use-connector-token-permission-state.js": {
-      "statements": 94.06,
-      "branches": 70.58,
+      "statements": 94.88,
+      "branches": 71.52,
       "functions": 100,
       "lines": 100
     },
@@ -262,8 +262,8 @@
       "lines": 34.04
     },
     "src/components/file-transfer/file-transfer-list-state.js": {
-      "statements": 96,
-      "branches": 83.33,
+      "statements": 96.29,
+      "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
@@ -304,16 +304,22 @@
       "lines": 81.25
     },
     "src/components/file-transfer/use-transfer-queues.js": {
-      "statements": 77.11,
-      "branches": 58.35,
-      "functions": 92,
-      "lines": 81.52
+      "statements": 85.21,
+      "branches": 66.17,
+      "functions": 95.65,
+      "lines": 92.3
     },
     "src/components/history/history-components.jsx": {
-      "statements": 83,
-      "branches": 73.86,
-      "functions": 90.56,
-      "lines": 87.57
+      "statements": 83.41,
+      "branches": 75.84,
+      "functions": 91.52,
+      "lines": 88.3
+    },
+    "src/components/history/use-history-transfer-download.js": {
+      "statements": 100,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/local-action-reconciliation-dialog.jsx": {
       "statements": 75,
@@ -442,10 +448,10 @@
       "lines": 87.85
     },
     "src/components/transfer-center.jsx": {
-      "statements": 85.71,
-      "branches": 80.48,
-      "functions": 89.28,
-      "lines": 90.24
+      "statements": 87.96,
+      "branches": 84.37,
+      "functions": 90.9,
+      "lines": 92.22
     },
     "src/components/ui/action-menu.jsx": {
       "statements": 91.83,
@@ -658,10 +664,10 @@
       "lines": 87.17
     },
     "src/connectors/editor/use-connector-editor.js": {
-      "statements": 68.42,
-      "branches": 34.28,
+      "statements": 71.76,
+      "branches": 41.02,
       "functions": 77.27,
-      "lines": 70.58
+      "lines": 73.68
     },
     "src/connectors/editor/use-connector-inventory.js": {
       "statements": 94.5,
@@ -754,16 +760,16 @@
       "lines": 1
     },
     "src/connectors/templates/_shared/sql-console-config.js": {
-      "statements": 30.62,
-      "branches": 31.95,
-      "functions": 21.68,
-      "lines": 35.32
+      "statements": 56.09,
+      "branches": 55.46,
+      "functions": 48.27,
+      "lines": 61.76
     },
     "src/connectors/templates/_shared/sql-console-data.js": {
-      "statements": 76.36,
-      "branches": 61.11,
-      "functions": 80.76,
-      "lines": 76.84
+      "statements": 78.57,
+      "branches": 68.38,
+      "functions": 89.28,
+      "lines": 79.38
     },
     "src/connectors/templates/_shared/sql-console-workspace.jsx": {
       "statements": 0,
@@ -779,7 +785,7 @@
     },
     "src/connectors/templates/_shared/sql-editor-completions.js": {
       "statements": 74.57,
-      "branches": 55.55,
+      "branches": 56.52,
       "functions": 100,
       "lines": 80
     },
@@ -790,10 +796,10 @@
       "lines": 6.66
     },
     "src/connectors/templates/_shared/sql-editor.jsx": {
-      "statements": 90.62,
-      "branches": 62.5,
-      "functions": 89.47,
-      "lines": 96.36
+      "statements": 98.48,
+      "branches": 79.16,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/_shared/sql-left-panel.jsx": {
       "statements": 9.09,
@@ -802,10 +808,10 @@
       "lines": 9.09
     },
     "src/connectors/templates/_shared/sql-query-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 28.57,
+      "branches": 50,
+      "functions": 16.66,
+      "lines": 28.57
     },
     "src/connectors/templates/_shared/sql-request-detail.jsx": {
       "statements": 0,
@@ -832,10 +838,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/target-profile-lifecycle.js": {
-      "statements": 79.59,
-      "branches": 72.91,
-      "functions": 80.95,
-      "lines": 85.36
+      "statements": 84,
+      "branches": 74,
+      "functions": 90.9,
+      "lines": 90.24
     },
     "src/connectors/templates/_shared/use-sql-console.js": {
       "statements": 74.35,
@@ -844,10 +850,10 @@
       "lines": 80
     },
     "src/connectors/templates/_shared/use-sql-metadata.js": {
-      "statements": 50.72,
-      "branches": 38.46,
-      "functions": 52.63,
-      "lines": 53.57
+      "statements": 78.26,
+      "branches": 61.53,
+      "functions": 84.21,
+      "lines": 83.92
     },
     "src/connectors/templates/catalog.js": {
       "statements": 93.75,
@@ -856,10 +862,10 @@
       "lines": 93.75
     },
     "src/connectors/templates/clickhouse/console.jsx": {
-      "statements": 28.57,
-      "branches": 0,
-      "functions": 0,
-      "lines": 28.57
+      "statements": 71.42,
+      "branches": 50,
+      "functions": 60,
+      "lines": 71.42
     },
     "src/connectors/templates/clickhouse/credential-form.jsx": {
       "statements": 0,
@@ -1313,7 +1319,7 @@
     },
     "src/connectors/templates/postgres/use-postgres-backup-restore.js": {
       "statements": 96.25,
-      "branches": 86.36,
+      "branches": 86.56,
       "functions": 100,
       "lines": 98.63
     },
@@ -1438,10 +1444,10 @@
       "lines": 100
     },
     "src/connectors/templates/redis/key-browser.jsx": {
-      "statements": 28.77,
-      "branches": 45.82,
-      "functions": 34.33,
-      "lines": 32.25
+      "statements": 55.55,
+      "branches": 48.27,
+      "functions": 66.66,
+      "lines": 62.5
     },
     "src/connectors/templates/redis/list-item.jsx": {
       "statements": 0,
@@ -1450,10 +1456,10 @@
       "lines": 0
     },
     "src/connectors/templates/redis/model.js": {
-      "statements": 17.46,
-      "branches": 8.33,
-      "functions": 6.89,
-      "lines": 18.51
+      "statements": 18.46,
+      "branches": 9.33,
+      "functions": 7.89,
+      "lines": 19.51
     },
     "src/connectors/templates/redis/operations.jsx": {
       "statements": 0,
@@ -1463,21 +1469,21 @@
     },
     "src/connectors/templates/redis/use-redis-browser.js": {
       "statements": 88.5,
-      "branches": 65.62,
+      "branches": 67.18,
       "functions": 71.42,
       "lines": 96
     },
     "src/connectors/templates/redis/use-redis-mutations.js": {
-      "statements": 50,
-      "branches": 39.68,
-      "functions": 45.44,
-      "lines": 56.6
+      "statements": 59.09,
+      "branches": 55.55,
+      "functions": 55.55,
+      "lines": 66.03
     },
     "src/connectors/templates/redis/value-workspace.jsx": {
-      "statements": 52.38,
-      "branches": 54.38,
-      "functions": 46.45,
-      "lines": 55
+      "statements": 66.66,
+      "branches": 71.92,
+      "functions": 63.63,
+      "lines": 70
     },
     "src/connectors/templates/registry.jsx": {
       "statements": 77.08,
@@ -1636,10 +1642,10 @@
       "lines": 0
     },
     "src/connectors/templates/ssh/model.js": {
-      "statements": 8.64,
-      "branches": 7.06,
-      "functions": 11.34,
-      "lines": 10.02
+      "statements": 10.19,
+      "branches": 9.95,
+      "functions": 13.79,
+      "lines": 12.03
     },
     "src/connectors/templates/ssh/operations.jsx": {
       "statements": 67.82,
@@ -1702,10 +1708,10 @@
       "lines": 15.78
     },
     "src/lib/file-transfer-utils.js": {
-      "statements": 53.08,
-      "branches": 43.61,
-      "functions": 56.52,
-      "lines": 57.81
+      "statements": 71.79,
+      "branches": 61.9,
+      "functions": 72.72,
+      "lines": 75.8
     },
     "src/lib/gateway-context.js": {
       "statements": 100,
@@ -1816,8 +1822,8 @@
       "lines": 95.83
     },
     "src/lib/use-async-action.js": {
-      "statements": 96.66,
-      "branches": 93.33,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1936,10 +1942,10 @@
       "lines": 0
     },
     "src/pages/tokens.jsx": {
-      "statements": 71.27,
-      "branches": 62.66,
-      "functions": 59.49,
-      "lines": 75.53
+      "statements": 81.89,
+      "branches": 77.21,
+      "functions": 68.51,
+      "lines": 81.81
     },
     "src/pages/unlock-create-panel.jsx": {
       "statements": 100,

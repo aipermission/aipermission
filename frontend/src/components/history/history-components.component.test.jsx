@@ -262,16 +262,12 @@ it("does not let a retired label completion change the replacement item", async 
     target_name: "Test target",
     created_at: "2026-09-01T00:00:00Z",
   };
-  const view = render(
-    <HistoryDialog item={{ ...base, id: 49 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />,
-  );
+  const view = render(<HistoryDialog item={{ ...base, id: 49 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />);
 
   let input = screen.getByRole("textbox", { name: "Add history label" });
   fireEvent.change(input, { target: { value: "First" } });
   fireEvent.keyDown(input, { key: "Enter" });
-  view.rerender(
-    <HistoryDialog item={{ ...base, id: 50 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />,
-  );
+  view.rerender(<HistoryDialog item={{ ...base, id: 50 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />);
   input = screen.getByRole("textbox", { name: "Add history label" });
   fireEvent.change(input, { target: { value: "Second" } });
   fireEvent.keyDown(input, { key: "Enter" });
