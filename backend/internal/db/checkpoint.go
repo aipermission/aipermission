@@ -30,8 +30,23 @@ func CheckpointFull(ctx context.Context, database *sql.DB) error {
 	if database == nil {
 		return ErrDatabaseNotOpen
 	}
+	return checkpointFullQuery(ctx, database)
+}
+
+type checkpointQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func checkpointFullConnection(ctx context.Context, connection *sql.Conn) error {
+	if connection == nil {
+		return ErrDatabaseNotOpen
+	}
+	return checkpointFullQuery(ctx, connection)
+}
+
+func checkpointFullQuery(ctx context.Context, query checkpointQuerier) error {
 	var busy, logFrames, checkpointedFrames int
-	if err := database.QueryRowContext(ctx, `PRAGMA wal_checkpoint(FULL)`).Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
+	if err := query.QueryRowContext(ctx, `PRAGMA wal_checkpoint(FULL)`).Scan(&busy, &logFrames, &checkpointedFrames); err != nil {
 		return fmt.Errorf("checkpoint database: %w", err)
 	}
 	if busy != 0 || checkpointedFrames < logFrames {

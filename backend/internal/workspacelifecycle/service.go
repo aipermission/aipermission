@@ -51,7 +51,7 @@ type Dependencies[T Runtime] struct {
 	Publish             func(sourcePath, targetPath string) error
 	GatewaySecret       func() string
 	CheckpointFull      func(context.Context, *sql.DB) error
-	Rekey               func(*sql.DB, string) error
+	Rekey               func(context.Context, *sql.DB, string) error
 }
 
 type Service[T Runtime] struct {
@@ -72,7 +72,7 @@ type Service[T Runtime] struct {
 	publish             func(sourcePath, targetPath string) error
 	gatewaySecret       func() string
 	checkpointFull      func(context.Context, *sql.DB) error
-	rekey               func(*sql.DB, string) error
+	rekey               func(context.Context, *sql.DB, string) error
 }
 
 func (s *Service[T]) AcquireReadContext(ctx context.Context) (func(), error) {
@@ -210,7 +210,7 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	}
 	rekey := dependencies.Rekey
 	if rekey == nil {
-		rekey = db.Rekey
+		rekey = db.RekeyContext
 	}
 	return &Service[T]{
 		gate:     newRequestGate(),
@@ -627,10 +627,7 @@ func (s *Service[T]) ChangePassword(ctx context.Context, currentPassword, newPas
 	if err := s.validate(identity.Path, currentPassword); err != nil {
 		return fmt.Errorf("%w: %v", ErrCredential, err)
 	}
-	if err := s.checkpointFull(ctx, runtime.WorkspaceDatabase()); err != nil {
-		return afterCredential(fmt.Errorf("checkpoint database before password change: %w", err))
-	}
-	if err := s.rekey(runtime.WorkspaceDatabase(), newPassword); err != nil {
+	if err := s.rekey(ctx, runtime.WorkspaceDatabase(), newPassword); err != nil {
 		if s.validate(identity.Path, newPassword) == nil {
 			return s.reactivateAfterPasswordChangeLocked(ctx, runtime, identity, newPassword)
 		}

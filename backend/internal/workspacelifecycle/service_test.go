@@ -289,6 +289,73 @@ func TestServiceChangePasswordReplacesRuntimeConnectionPool(t *testing.T) {
 	}
 }
 
+func TestServiceChangePasswordCancelsWhileWaitingForSoleConnection(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "aipermission.db")
+	const currentPassword = "CurrentPassword123"
+	database, err := db.OpenEncrypted(path, currentPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := database.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+
+	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
+	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
+	registry.Activate(original)
+	service, err := NewService(Dependencies[*serviceRuntime]{
+		DataPath: path,
+		Registry: registry,
+		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
+			return nil, errors.New("canceled password change must not reopen the runtime")
+		},
+		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	requestCtx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	releaseMutation, err := service.AcquireMutationContext(requestCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		defer releaseMutation()
+		result <- service.ChangePassword(requestCtx, currentPassword, "ReplacementPassword456")
+	}()
+	select {
+	case changeErr := <-result:
+		if !errors.Is(changeErr, context.DeadlineExceeded) {
+			t.Fatalf("ChangePassword() error = %v, want deadline exceeded", changeErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("password change ignored its connection acquisition deadline")
+	}
+
+	readCtx, cancelRead := context.WithTimeout(t.Context(), time.Second)
+	defer cancelRead()
+	releaseRead, err := service.AcquireReadContext(readCtx)
+	if err != nil {
+		t.Fatalf("lifecycle writer gate remained held: %v", err)
+	}
+	releaseRead()
+	if active, ok := service.Active(); !ok || active != original {
+		t.Fatal("pre-dispatch cancellation replaced the active runtime")
+	}
+	if err := db.ValidateEncrypted(path, currentPassword); err != nil {
+		t.Fatalf("pre-dispatch cancellation changed the database password: %v", err)
+	}
+}
+
 func TestServiceChangePasswordFinishesDeferredReactivationAfterRequestCancellation(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
@@ -332,7 +399,7 @@ func TestServiceChangePasswordFinishesDeferredReactivationAfterRequestCancellati
 				return ctx.Err()
 			}
 		},
-		Rekey: func(database *sql.DB, password string) error {
+		Rekey: func(_ context.Context, database *sql.DB, password string) error {
 			if err := db.Rekey(database, password); err != nil {
 				return err
 			}
@@ -385,7 +452,7 @@ func TestServiceChangePasswordRecoversWhenRekeyReportsErrorAfterApplyingNewPassw
 			return &serviceRuntime{identity: Identity{ID: id, Path: path}, database: reopened}, openErr
 		},
 		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
-		Rekey: func(database *sql.DB, password string) error {
+		Rekey: func(_ context.Context, database *sql.DB, password string) error {
 			if err := db.Rekey(database, password); err != nil {
 				return err
 			}
@@ -437,7 +504,7 @@ func TestServiceChangePasswordDetachesRuntimeWhenRekeyOutcomeCannotBeProved(t *t
 			}
 			return errors.New("credential probe unavailable")
 		},
-		Rekey: func(*sql.DB, string) error { return errors.New("ambiguous rekey failure") },
+		Rekey: func(context.Context, *sql.DB, string) error { return errors.New("ambiguous rekey failure") },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -536,7 +603,7 @@ func TestServiceChangePasswordFailureAfterRekeyLeavesWorkspaceLocked(t *testing.
 				},
 				CheckpointFull: func(ctx context.Context, database *sql.DB) error {
 					checkpointCalls++
-					if failure == "checkpoint" && checkpointCalls == 2 {
+					if failure == "checkpoint" && checkpointCalls == 1 {
 						return forced
 					}
 					return db.CheckpointFull(ctx, database)
@@ -576,7 +643,7 @@ func TestServiceChangePasswordFailureAfterRekeyLeavesWorkspaceLocked(t *testing.
 	}
 }
 
-func TestServiceChangePasswordPreflightFailureKeepsOriginalRuntime(t *testing.T) {
+func TestServiceChangePasswordRekeyPreflightFailureKeepsOriginalRuntime(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
@@ -591,14 +658,14 @@ func TestServiceChangePasswordPreflightFailureKeepsOriginalRuntime(t *testing.T)
 	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
 	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
 	registry.Activate(original)
-	forced := errors.New("forced checkpoint failure")
+	forced := errors.New("forced rekey preflight failure")
 	service, err := NewService(Dependencies[*serviceRuntime]{
 		DataPath: path, Registry: registry,
 		Open: func(context.Context, string, string, string) (*serviceRuntime, error) {
 			return nil, errors.New("unused")
 		},
-		Close:          func(runtime *serviceRuntime) error { return runtime.database.Close() },
-		CheckpointFull: func(context.Context, *sql.DB) error { return forced },
+		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		Rekey: func(context.Context, *sql.DB, string) error { return forced },
 	})
 	if err != nil {
 		t.Fatal(err)
