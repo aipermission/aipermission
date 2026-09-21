@@ -35,6 +35,7 @@ type HTTPScope struct {
 	DatabaseName         string
 	DatabasePath         string
 	WorkspaceUUID        string
+	WorkspaceInstanceID  string
 	InstallationDataPath string
 	Secrets              ProviderSecretCodec
 	Mutate               auditedmutation.Runner
@@ -101,7 +102,7 @@ func (h *HTTPHandlers) resolve(w http.ResponseWriter, requirements scopeRequirem
 
 func scopeSupports(scope HTTPScope, requirements scopeRequirements) bool {
 	valid := requirements&requireDatabase == 0 || scope.Database != nil
-	valid = valid && (requirements&requireProviderIdentity == 0 || scope.DatabaseName != "" && scope.WorkspaceUUID != "")
+	valid = valid && (requirements&requireProviderIdentity == 0 || scope.DatabaseName != "" && scope.WorkspaceUUID != "" && scope.WorkspaceInstanceID != "")
 	valid = valid && (requirements&requireDatabaseID == 0 || scope.DatabaseID != "")
 	valid = valid && (requirements&requireDatabasePath == 0 || scope.DatabasePath != "")
 	valid = valid && (requirements&requireInstallationPath == 0 || scope.InstallationDataPath != "")

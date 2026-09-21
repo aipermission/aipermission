@@ -24,11 +24,11 @@ func (s *Store) ClaimUploadOperation(ctx context.Context, request ClaimUploadOpe
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO backup_upload_operations (
-			idempotency_key, provider_id, database_id, stream_id, source_installation_id,
+			idempotency_key, provider_id, database_id, workspace_instance_id, stream_id, source_installation_id,
 			status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
 		ON CONFLICT(idempotency_key) DO NOTHING`,
-		request.IdempotencyKey, request.ProviderID, request.DatabaseID, request.StreamID,
+		request.IdempotencyKey, request.ProviderID, request.DatabaseID, request.WorkspaceInstanceID, request.StreamID,
 		request.SourceInstallationID, now, now,
 	)
 	if err != nil {
@@ -42,7 +42,8 @@ func (s *Store) ClaimUploadOperation(ctx context.Context, request ClaimUploadOpe
 	if err != nil {
 		return UploadOperation{}, false, err
 	}
-	if operation.ProviderID != request.ProviderID || operation.DatabaseID != request.DatabaseID || operation.StreamID != request.StreamID || operation.SourceInstallationID != request.SourceInstallationID {
+	if operation.ProviderID != request.ProviderID || operation.WorkspaceInstanceID != request.WorkspaceInstanceID ||
+		operation.StreamID != request.StreamID || operation.SourceInstallationID != request.SourceInstallationID {
 		return UploadOperation{}, false, ErrUploadIdempotencyConflict
 	}
 	return operation, rows == 1, nil
@@ -51,11 +52,11 @@ func (s *Store) ClaimUploadOperation(ctx context.Context, request ClaimUploadOpe
 func (s *Store) GetUploadOperation(ctx context.Context, key string) (UploadOperation, error) {
 	var operation UploadOperation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT idempotency_key, provider_id, database_id, stream_id, source_installation_id,
+		SELECT idempotency_key, provider_id, database_id, workspace_instance_id, stream_id, source_installation_id,
 		       status, provider_file_id, last_error, created_at, updated_at, completed_at
 		FROM backup_upload_operations WHERE idempotency_key = ?`, strings.TrimSpace(key)).Scan(
-		&operation.IdempotencyKey, &operation.ProviderID, &operation.DatabaseID, &operation.StreamID,
-		&operation.SourceInstallationID, &operation.Status, &operation.ProviderFileID,
+		&operation.IdempotencyKey, &operation.ProviderID, &operation.DatabaseID, &operation.WorkspaceInstanceID,
+		&operation.StreamID, &operation.SourceInstallationID, &operation.Status, &operation.ProviderFileID,
 		&operation.LastError, &operation.CreatedAt, &operation.UpdatedAt, &operation.CompletedAt,
 	)
 	if err != nil {

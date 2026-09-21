@@ -80,6 +80,7 @@ func migrations() []migration {
 		chronologicalTimestampMigration(),
 		backupUploadExpiryMigration(),
 		connectorLifecycleFinalizationMigration,
+		backupUploadWorkspaceInstanceMigration(),
 	)
 }
 

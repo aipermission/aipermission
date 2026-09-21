@@ -1,7 +1,7 @@
-package db
+package backupmigration
 
-var backupUploadIdempotencyMigration = migration{
-	version: 30, description: "backup upload idempotency", statements: []string{
+func UploadIdempotencyStatements() []string {
+	return []string{
 		`CREATE TABLE IF NOT EXISTS backup_upload_operations (
 			idempotency_key TEXT PRIMARY KEY,
 			provider_id INTEGER NOT NULL,
@@ -18,5 +18,5 @@ var backupUploadIdempotencyMigration = migration{
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_backup_upload_operations_provider_status
 			ON backup_upload_operations(provider_id, status, updated_at);`,
-	},
+	}
 }

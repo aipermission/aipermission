@@ -510,7 +510,7 @@ func TestCompletedUploadReplayExpiresAfterRemoteRetention(t *testing.T) {
 	sourceInstallationID := backupSourceInstallationID(filepath.Dir(databasePath))
 	_, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
 		IdempotencyKey: "retained-response", ProviderID: provider.ID, DatabaseID: "db-test",
-		StreamID: "workspace-test", SourceInstallationID: sourceInstallationID,
+		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: sourceInstallationID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -580,6 +580,35 @@ func TestUploadRejectsIncompatibleServiceBeforeSnapshotCreation(t *testing.T) {
 	}
 }
 
+func TestUploadRejectsInvalidOperationKeyBeforeClaimOrSnapshot(t *testing.T) {
+	service := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("invalid operation key reached backup service")
+	}))
+	t.Cleanup(service.Close)
+
+	database, databasePath := openProviderTestDatabase(t)
+	provider := createProviderTestRecord(t, database, service.URL, testOldServiceToken, "active")
+	scope := providerTestScope(database, databasePath)
+	var snapshots atomic.Int64
+	scope.CreateSnapshot = func(context.Context) (DatabaseSnapshot, error) {
+		snapshots.Add(1)
+		return DatabaseSnapshot{}, errors.New("snapshot must not be created")
+	}
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return scope, true }, providerTestOperationScope(scope, nil))
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", strings.NewReader(`{"idempotency_key":"bad/key"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.SetPathValue("id", strconv.FormatInt(provider.ID, 10))
+	response := httptest.NewRecorder()
+	handlers.UploadProviderBackup(response, request)
+
+	if response.Code != http.StatusBadRequest || snapshots.Load() != 0 {
+		t.Fatalf("response=%d %s snapshots=%d", response.Code, response.Body.String(), snapshots.Load())
+	}
+	if _, err := NewStore(database).GetUploadOperation(t.Context(), "bad/key"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("invalid operation was persisted: %v", err)
+	}
+}
+
 func TestUploadDefersStaleUncertainOperationExpiryToRemoteService(t *testing.T) {
 	var uploadCalls atomic.Int64
 	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -598,7 +627,7 @@ func TestUploadDefersStaleUncertainOperationExpiryToRemoteService(t *testing.T) 
 	store := NewStore(database)
 	_, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
 		IdempotencyKey: "stale-uncertain-upload", ProviderID: provider.ID, DatabaseID: "db-test",
-		StreamID: "workspace-test", SourceInstallationID: backupSourceInstallationID(filepath.Dir(databasePath)),
+		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: backupSourceInstallationID(filepath.Dir(databasePath)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -638,7 +667,7 @@ func TestUploadOperationCompletionIsIdempotentForTheSameRemoteBackup(t *testing.
 	store := NewStore(database)
 	_, _, err := store.ClaimUploadOperation(context.Background(), ClaimUploadOperationRequest{
 		IdempotencyKey: "completion-race", ProviderID: provider.ID, DatabaseID: "db-test",
-		StreamID: "workspace-test", SourceInstallationID: "install-test",
+		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: "install-test",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -802,11 +831,12 @@ func createProviderTestRecord(t *testing.T, database *sql.DB, baseURL, token, st
 func providerTestScope(database *sql.DB, databasePath string) HTTPScope {
 	return HTTPScope{
 		Database: database, DatabaseID: "db-test", DatabaseName: "Test Database",
-		DatabasePath: databasePath, WorkspaceUUID: "workspace-test", InstallationDataPath: filepath.Dir(databasePath),
-		Secrets:       testProviderSecretCodec{},
-		Mutate:        transactionRunner(database, nil),
-		AuditRequired: func(context.Context, string, any) error { return nil },
-		Observe:       func(context.Context, string, any) {},
+		DatabasePath: databasePath, WorkspaceUUID: "workspace-test", WorkspaceInstanceID: "instance-test",
+		InstallationDataPath: filepath.Dir(databasePath),
+		Secrets:              testProviderSecretCodec{},
+		Mutate:               transactionRunner(database, nil),
+		AuditRequired:        func(context.Context, string, any) error { return nil },
+		Observe:              func(context.Context, string, any) {},
 	}
 }
 

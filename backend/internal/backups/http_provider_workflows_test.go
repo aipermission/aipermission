@@ -163,7 +163,7 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 	store := NewStore(database)
 	if _, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
 		IdempotencyKey: "service-url-change", ProviderID: created.ID, DatabaseID: "db-test",
-		StreamID: "workspace-test", SourceInstallationID: "install-test",
+		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: "install-test",
 	}); err != nil {
 		t.Fatal(err)
 	}

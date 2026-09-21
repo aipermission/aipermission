@@ -3,6 +3,7 @@ package backups_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -154,7 +155,7 @@ func TestMarkMissingProviderRecordsDeletedReconcilesRemotePrune(t *testing.T) {
 	}
 	if _, _, err := store.ClaimUploadOperation(context.Background(), backups.ClaimUploadOperationRequest{
 		IdempotencyKey: "removed-upload", ProviderID: provider.ID, DatabaseID: "database-a",
-		StreamID: "stream-a", SourceInstallationID: "install-a",
+		WorkspaceInstanceID: "instance-a", StreamID: "stream-a", SourceInstallationID: "install-a",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestMarkProviderRecordsDeletedMarksExactVersions(t *testing.T) {
 	}
 	if _, _, err := store.ClaimUploadOperation(context.Background(), backups.ClaimUploadOperationRequest{
 		IdempotencyKey: "explicitly-removed-upload", ProviderID: provider.ID, DatabaseID: "database-a",
-		StreamID: "stream-a", SourceInstallationID: "install-a",
+		WorkspaceInstanceID: "instance-a", StreamID: "stream-a", SourceInstallationID: "install-a",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +217,56 @@ func TestMarkProviderRecordsDeletedMarksExactVersions(t *testing.T) {
 	operation, err := store.GetUploadOperation(context.Background(), "explicitly-removed-upload")
 	if err != nil || operation.Status != "expired" {
 		t.Fatalf("explicitly deleted upload operation = %#v, err=%v", operation, err)
+	}
+}
+
+func TestUploadOperationReplaySurvivesDatabaseRename(t *testing.T) {
+	database := openStoreDatabase(t)
+	store := backups.NewStore(database)
+	provider, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
+		ProviderType: backups.ServiceProviderType,
+		Name:         "Self-hosted backups",
+		Encrypted:    "encrypted-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := backups.ClaimUploadOperationRequest{
+		IdempotencyKey: "rename-safe-upload", ProviderID: provider.ID, DatabaseID: "database-before-rename",
+		WorkspaceInstanceID: "instance-a", StreamID: "stream-a", SourceInstallationID: "install-a",
+	}
+	if _, created, err := store.ClaimUploadOperation(context.Background(), request); err != nil || !created {
+		t.Fatalf("initial claim created=%v err=%v", created, err)
+	}
+	request.DatabaseID = "database-after-rename"
+	operation, created, err := store.ClaimUploadOperation(context.Background(), request)
+	if err != nil || created || operation.DatabaseID != "database-before-rename" {
+		t.Fatalf("renamed replay operation=%#v created=%v err=%v", operation, created, err)
+	}
+}
+
+func TestUploadOperationReplayRejectsRestoredWorkspaceCopy(t *testing.T) {
+	database := openStoreDatabase(t)
+	store := backups.NewStore(database)
+	provider, err := store.CreateProvider(context.Background(), backups.CreateProviderRequest{
+		ProviderType: backups.ServiceProviderType,
+		Name:         "Self-hosted backups",
+		Encrypted:    "encrypted-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := backups.ClaimUploadOperationRequest{
+		IdempotencyKey: "copy-bound-upload", ProviderID: provider.ID, DatabaseID: "database-a",
+		WorkspaceInstanceID: "instance-before-import", StreamID: "stream-a", SourceInstallationID: "install-a",
+	}
+	if _, created, err := store.ClaimUploadOperation(context.Background(), request); err != nil || !created {
+		t.Fatalf("initial claim created=%v err=%v", created, err)
+	}
+	request.DatabaseID = "restored-copy"
+	request.WorkspaceInstanceID = "instance-after-import"
+	if _, _, err := store.ClaimUploadOperation(context.Background(), request); !errors.Is(err, backups.ErrUploadIdempotencyConflict) {
+		t.Fatalf("restored workspace replay error = %v, want %v", err, backups.ErrUploadIdempotencyConflict)
 	}
 }
 

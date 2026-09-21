@@ -51,14 +51,15 @@ type PasswordAttempt interface {
 }
 
 type Runtime struct {
-	Database      *sql.DB
-	SecretVault   *vault.Vault
-	DatabaseID    string
-	DatabasePath  string
-	WorkspaceID   string
-	Mutate        func(context.Context, string, func() any, func(*sql.Tx) error) error
-	AuditRequired func(context.Context, string, any) error
-	Observe       func(context.Context, string, any)
+	Database            *sql.DB
+	SecretVault         *vault.Vault
+	DatabaseID          string
+	DatabasePath        string
+	WorkspaceID         string
+	WorkspaceInstanceID string
+	Mutate              func(context.Context, string, func() any, func(*sql.Tx) error) error
+	AuditRequired       func(context.Context, string, any) error
+	Observe             func(context.Context, string, any)
 }
 
 type Dependencies struct {

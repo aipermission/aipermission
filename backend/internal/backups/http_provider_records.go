@@ -104,7 +104,7 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 	store := NewStore(runtime.Database)
 	operation, _, err := store.ClaimUploadOperation(r.Context(), ClaimUploadOperationRequest{
 		IdempotencyKey: request.IdempotencyKey, ProviderID: provider.ID, DatabaseID: runtime.DatabaseID,
-		StreamID: streamID, SourceInstallationID: sourceInstallationID,
+		WorkspaceInstanceID: runtime.WorkspaceInstanceID, StreamID: streamID, SourceInstallationID: sourceInstallationID,
 	})
 	if errors.Is(err, ErrUploadIdempotencyConflict) {
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
@@ -114,6 +114,7 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		handleBackupProviderError(w, err)
 		return
 	}
+	operationKey := operation.IdempotencyKey
 	if operation.Status == "completed" {
 		if _, err := syncBackupServiceRecordsUnlocked(r.Context(), runtime, store, provider); err != nil {
 			handleBackupServiceError(w, err)
@@ -152,21 +153,21 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteInternalError(w)
 		return
 	}
-	if err := store.MarkUploadDispatched(r.Context(), request.IdempotencyKey); err != nil {
+	if err := store.MarkUploadDispatched(r.Context(), operationKey); err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
-	backup, _, err := client.Upload(r.Context(), streamID, remoteName, sourceInstallationID, request.IdempotencyKey, snapshot.Path)
+	backup, _, err := client.Upload(r.Context(), streamID, remoteName, sourceInstallationID, operationKey, snapshot.Path)
 	if err != nil {
 		if backupUploadOperationExpired(err) {
-			if expireErr := store.MarkUploadExpired(r.Context(), request.IdempotencyKey); expireErr != nil {
+			if expireErr := store.MarkUploadExpired(r.Context(), operationKey); expireErr != nil {
 				handleBackupProviderError(w, expireErr)
 				return
 			}
 			handleBackupServiceError(w, err)
 			return
 		}
-		markBackupUploadOutcomeUnknown(runtime.Database, request.IdempotencyKey, err)
+		markBackupUploadOutcomeUnknown(runtime.Database, operationKey, err)
 		handleBackupServiceError(w, err)
 		return
 	}
@@ -187,10 +188,10 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		if mutationErr = WriteServiceBaseline(r.Context(), tx, stringFromMap(provider.Public, "base_url"), streamID, backup); mutationErr != nil {
 			return mutationErr
 		}
-		return txStore.CompleteUploadOperation(r.Context(), request.IdempotencyKey, backup.ID)
+		return txStore.CompleteUploadOperation(r.Context(), operationKey, backup.ID)
 	})
 	if err != nil {
-		markBackupUploadOutcomeUnknown(runtime.Database, request.IdempotencyKey, err)
+		markBackupUploadOutcomeUnknown(runtime.Database, operationKey, err)
 		handleBackupProviderError(w, err)
 		return
 	}

@@ -456,6 +456,33 @@ func TestServiceClientRejectsUploadChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestServiceClientRejectsReplayedUploadFromAnotherInstallation(t *testing.T) {
+	payload := []byte("encrypted-aipdb")
+	digest := sha256.Sum256(payload)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(ServiceBackup{
+			ID: "bkp_123", StreamID: "stream-a", DatabaseName: "Project A", SourceInstallationID: "install-other",
+			Filename: "project-a.aipdb", SizeBytes: int64(len(payload)), SHA256: hex.EncodeToString(digest[:]), CreatedAt: "2026-07-31T12:00:00Z",
+		})
+	}))
+	defer server.Close()
+	client, err := NewServiceClient(server.URL, serviceTestToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(t.TempDir(), "input.aipdb")
+	if err := os.WriteFile(input, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.Upload(context.Background(), "stream-a", "Project A", "install-a", "operation-a", input); err == nil || !strings.Contains(err.Error(), "source installation") {
+		t.Fatalf("expected upload source installation rejection, got %v", err)
+	}
+}
+
 func TestServiceClientRejectsDownloadChecksumMismatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-AIPermission-SHA256", strings.Repeat("0", 64))

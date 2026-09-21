@@ -35,8 +35,9 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 	return backups.HTTPScope{
 		Database: runtime.Database, DatabaseID: runtime.DatabaseID,
 		DatabaseName: component.dependencies.CurrentDatabaseName(), DatabasePath: runtime.DatabasePath,
-		WorkspaceUUID: runtime.WorkspaceID, InstallationDataPath: component.dependencies.DataPath,
-		Secrets: providerSecretCodec{runtime: runtime},
+		WorkspaceUUID: runtime.WorkspaceID, WorkspaceInstanceID: runtime.WorkspaceInstanceID,
+		InstallationDataPath: component.dependencies.DataPath,
+		Secrets:              providerSecretCodec{runtime: runtime},
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return runtime.Mutate(ctx, action, payload, mutate)
 		},
