@@ -66,12 +66,27 @@ export function relocateUploadQueue(queue, directory, join = joinRemotePath) {
 
 export function normalizeRemoteDirectoryInput(value) {
   const text = String(value || "").trim() || "/";
-  if (!text.startsWith("/")) return `/${text}`;
-  return text.replace(/\/+$/, "") || "/";
+  const rooted = text.startsWith("/") ? text : `/${text}`;
+  return rooted.replace(/\/+$/, "") || "/";
 }
 
 export function localFileID(file) {
   return `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function mergeUploadQueue(current, additions) {
+  const next = [...(current || [])];
+  const byDestination = new Map(next.map((item, index) => [item.remote_path, index]));
+  for (const item of additions || []) {
+    const index = byDestination.get(item.remote_path);
+    if (index === undefined) {
+      byDestination.set(item.remote_path, next.length);
+      next.push(item);
+    } else {
+      next[index] = item;
+    }
+  }
+  return next;
 }
 
 export function suggestedArchiveName() {

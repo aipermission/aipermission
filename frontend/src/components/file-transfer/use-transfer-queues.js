@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { apiPost } from "../../lib/api";
-import { localFileID, relocateUploadQueue } from "../../lib/file-transfer-utils";
+import { localFileID, mergeUploadQueue, relocateUploadQueue } from "../../lib/file-transfer-utils";
 import { useRequestGuard } from "../../lib/request-guard";
 
 const maxTransferObjectBytes = 512 * 1024 * 1024;
@@ -58,8 +58,7 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
       relative_path: file.webkitRelativePath || file.name,
       remote_path: joinRemotePath(remoteDir, file.webkitRelativePath || file.name),
     }));
-    const existingIDs = new Set(uploadQueueRef.current.map((item) => item.id));
-    const next = [...uploadQueueRef.current, ...additions.filter((item) => !existingIDs.has(item.id))];
+    const next = mergeUploadQueue(uploadQueueRef.current, additions);
     const totalSize = next.reduce((total, item) => total + Number(item.size || 0), 0);
     if (next.length > maxTransferBatchItems || totalSize > maxTransferBatchBytes) {
       onNotice({ tone: "bad", message: `The upload queue cannot exceed ${maxTransferBatchItems} objects or 1 GiB total size.` });
