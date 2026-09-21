@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -22,6 +23,7 @@ import (
 )
 
 const remoteUploadCleanupTimeout = 10 * time.Second
+const maxRemoteMetadataOutputBytes = 4 << 10
 
 type TransferProgress = connectors.TransferProgress
 type TransferOptions = connectors.TransferOptions
@@ -239,7 +241,7 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 		}
 	}
 	committer := &authenticatedUploadCommitter{Client: client, ssh: sshClient}
-	if err := commitRemoteUpload(committer, tempPath, remotePath, overwrite); err != nil {
+	if err := commitRemoteUpload(ctx, committer, tempPath, remotePath, overwrite); err != nil {
 		return TransferResult{
 			Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
 			DurationMS: time.Since(started).Milliseconds(),
@@ -290,7 +292,7 @@ type remoteUploadClient interface {
 
 type remoteUploadCommitter interface {
 	Lstat(string) (os.FileInfo, error)
-	CompleteMetadata(string) (remoteFileMetadata, error)
+	CompleteMetadata(context.Context, string) (remoteFileMetadata, error)
 	Chmod(string, os.FileMode) error
 	Link(string, string) error
 	PosixRename(string, string) error
@@ -308,7 +310,7 @@ type authenticatedUploadCommitter struct {
 	ssh *ssh.Client
 }
 
-func (client *authenticatedUploadCommitter) CompleteMetadata(remotePath string) (remoteFileMetadata, error) {
+func (client *authenticatedUploadCommitter) CompleteMetadata(ctx context.Context, remotePath string) (remoteFileMetadata, error) {
 	if client == nil || client.ssh == nil {
 		return remoteFileMetadata{}, fmt.Errorf("complete remote metadata is unavailable")
 	}
@@ -316,13 +318,87 @@ func (client *authenticatedUploadCommitter) CompleteMetadata(remotePath string) 
 	if err != nil {
 		return remoteFileMetadata{}, fmt.Errorf("open remote metadata session: %w", err)
 	}
+	return readRemoteFileMetadata(ctx, sshMetadataSession{Session: session}, remoteMetadataCommand(remotePath))
+}
+
+type remoteMetadataSession interface {
+	SetStdout(io.Writer)
+	Run(string) error
+	Close() error
+}
+
+type sshMetadataSession struct{ *ssh.Session }
+
+func (session sshMetadataSession) SetStdout(output io.Writer) { session.Stdout = output }
+
+func readRemoteFileMetadata(ctx context.Context, session remoteMetadataSession, command string) (remoteFileMetadata, error) {
 	defer session.Close()
-	command := remoteMetadataCommand(remotePath)
-	output, err := session.Output(command)
-	if err != nil {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: %w", err)
+	output := newRemoteMetadataOutput(maxRemoteMetadataOutputBytes, session.Close)
+	session.SetStdout(output)
+	done := make(chan error, 1)
+	go func() { done <- session.Run(command) }()
+
+	var runErr error
+	select {
+	case runErr = <-done:
+	case <-ctx.Done():
+		_ = session.Close()
+		<-done
+		return remoteFileMetadata{}, ctx.Err()
 	}
-	return parseRemoteFileMetadata(string(output))
+	if output.Exceeded() {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: response exceeds %d bytes", maxRemoteMetadataOutputBytes)
+	}
+	if runErr != nil {
+		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: %w", runErr)
+	}
+	if err := ctx.Err(); err != nil {
+		return remoteFileMetadata{}, err
+	}
+	return parseRemoteFileMetadata(output.String())
+}
+
+type remoteMetadataOutput struct {
+	mu         sync.Mutex
+	data       []byte
+	limit      int
+	exceeded   bool
+	onExceeded func() error
+	closeOnce  sync.Once
+}
+
+func newRemoteMetadataOutput(limit int, onExceeded func() error) *remoteMetadataOutput {
+	return &remoteMetadataOutput{limit: limit, onExceeded: onExceeded}
+}
+
+func (output *remoteMetadataOutput) Write(value []byte) (int, error) {
+	output.mu.Lock()
+	remaining := output.limit - len(output.data)
+	if remaining > len(value) {
+		remaining = len(value)
+	}
+	if remaining > 0 {
+		output.data = append(output.data, value[:remaining]...)
+	}
+	exceeded := len(value) > remaining
+	output.exceeded = output.exceeded || exceeded
+	output.mu.Unlock()
+	if exceeded {
+		output.closeOnce.Do(func() { _ = output.onExceeded() })
+	}
+	return len(value), nil
+}
+
+func (output *remoteMetadataOutput) Exceeded() bool {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return output.exceeded
+}
+
+func (output *remoteMetadataOutput) String() string {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return string(output.data)
 }
 
 func parseRemoteFileMetadata(output string) (remoteFileMetadata, error) {
@@ -431,7 +507,10 @@ func remoteUploadTempPaths(remotePath string, attempt int) (string, string, erro
 	return stagingDir, path.Join(stagingDir, "payload.tmp"), nil
 }
 
-func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool) error {
+func commitRemoteUpload(ctx context.Context, client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	_, statErr := client.Lstat(remotePath)
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return fmt.Errorf("stat remote file before commit: %w", statErr)
@@ -440,18 +519,21 @@ func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePat
 		if !overwrite {
 			return fmt.Errorf("remote file already exists")
 		}
-		existingMetadata, err := client.CompleteMetadata(remotePath)
+		existingMetadata, err := client.CompleteMetadata(ctx, remotePath)
 		if err != nil {
 			return fmt.Errorf("preserve remote destination metadata: %w", err)
 		}
 		if !existingMetadata.Mode.IsRegular() {
 			return fmt.Errorf("remote destination is not a regular file")
 		}
-		stagedMetadata, err := client.CompleteMetadata(tempPath)
+		stagedMetadata, err := client.CompleteMetadata(ctx, tempPath)
 		if err != nil {
 			return fmt.Errorf("preserve remote staging metadata: %w", err)
 		}
 		if err := requireMatchingRemoteOwnership(existingMetadata, stagedMetadata); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := client.Chmod(tempPath, preservedPermissionMode(existingMetadata.Mode)); err != nil {
@@ -467,6 +549,9 @@ func commitRemoteUpload(client remoteUploadCommitter, tempPath string, remotePat
 		} else {
 			return classifyRemoteRenameError("posix_rename", err)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := client.Link(tempPath, remotePath); err != nil {
 		if isDefiniteRemoteFileExists(err) {

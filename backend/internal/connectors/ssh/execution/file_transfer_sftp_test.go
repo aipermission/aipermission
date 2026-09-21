@@ -3,6 +3,7 @@
 package execution
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -17,7 +18,7 @@ type localMetadataCommitter struct {
 	*sftp.Client
 }
 
-func (client localMetadataCommitter) CompleteMetadata(remotePath string) (remoteFileMetadata, error) {
+func (client localMetadataCommitter) CompleteMetadata(_ context.Context, remotePath string) (remoteFileMetadata, error) {
 	info, err := os.Lstat(remotePath)
 	if err != nil {
 		return remoteFileMetadata{}, err
@@ -123,7 +124,7 @@ func TestRemoteUploadStagingAndOverwritePreservePrivatePermissions(t *testing.T)
 	if err := remote.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := commitRemoteUpload(localMetadataCommitter{Client: client}, tempPath, destination, true); err != nil {
+	if err := commitRemoteUpload(t.Context(), localMetadataCommitter{Client: client}, tempPath, destination, true); err != nil {
 		t.Fatalf("commit upload: %v", err)
 	}
 	info, err := os.Stat(destination)
