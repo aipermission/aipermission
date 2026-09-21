@@ -2,7 +2,6 @@ import { Download, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { connectorBadgeTone, connectorKindLabel } from "../../connectors/templates/common";
 import { getConnectorModel } from "../../connectors/templates/registry";
-import { apiDownload } from "../../lib/api";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -11,6 +10,7 @@ import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 import { ProgressBar } from "../ui/progress-bar";
 import { TerminalBlock } from "../ui/terminal-block";
+import { useHistoryTransferDownload } from "./use-history-transfer-download";
 function HistoryStat({ label, value, tone = "neutral" }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4">
@@ -290,7 +290,7 @@ function isCurrentLabelOwner(ownerRef, owner) {
 }
 
 function HistoryDownloadAction({ item }) {
-  const { downloadTransfer, downloadState } = useTransferDownload(item);
+  const { downloadTransfer, downloadState } = useHistoryTransferDownload(item, transferFileName(item));
   if (item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed") return null;
   return (
     <div className="grid gap-2 border-t border-stone-200 px-5 py-3">
@@ -303,46 +303,6 @@ function HistoryDownloadAction({ item }) {
       </div>
     </div>
   );
-}
-
-function useTransferDownload(item) {
-  const [downloadState, setDownloadState] = useState({ state: "idle", error: null });
-  const downloadRef = useRef({ generation: 0, controller: null });
-  useEffect(() => {
-    downloadRef.current.generation += 1;
-    downloadRef.current.controller?.abort();
-    downloadRef.current.controller = null;
-    setDownloadState({ state: "idle", error: null });
-    return () => {
-      downloadRef.current.generation += 1;
-      downloadRef.current.controller?.abort();
-      downloadRef.current.controller = null;
-    };
-  }, [item?.id]);
-
-  async function downloadTransfer() {
-    downloadRef.current.controller?.abort();
-    const controller = new AbortController();
-    const generation = downloadRef.current.generation + 1;
-    downloadRef.current = { generation, controller };
-    setDownloadState({ state: "downloading", error: null });
-    try {
-      await apiDownload(`/api/file-transfers/${item.source_ref_id}/download`, transferFileName(item), {
-        picker: true,
-        requireStreaming: true,
-        signal: controller.signal,
-      });
-      if (downloadRef.current.generation === generation) setDownloadState({ state: "idle", error: null });
-    } catch (error) {
-      if (downloadRef.current.generation === generation && error?.name !== "AbortError") {
-        setDownloadState({ state: "error", error: error.message });
-      }
-    } finally {
-      if (downloadRef.current.generation === generation) downloadRef.current.controller = null;
-    }
-  }
-
-  return { downloadTransfer, downloadState };
 }
 
 function TransferDetail({ item }) {
