@@ -98,6 +98,7 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
         busy: "uploading",
       });
       if (!request.isCurrent() || !uploaded) return "";
+      setUploadDialog((current) => ({ ...current, files: current.files.filter((candidate) => candidate.id !== item.id) }));
       lastKey = item.key;
     }
     return lastKey;

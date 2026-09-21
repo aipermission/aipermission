@@ -104,6 +104,87 @@ it("validates S3 uploads before dispatch and refreshes successful text objects",
   expect(result.current.uploadDialog.open).toBe(false);
 });
 
+it.each([false, true])("retries only unfinished S3 files after a partial upload when overwrite is %s", async (overwrite) => {
+  const runAction = vi
+    .fn()
+    .mockResolvedValueOnce({ action_name: "upload_object" })
+    .mockRejectedValueOnce(new Error("temporary failure"))
+    .mockResolvedValueOnce({ action_name: "upload_object" });
+  const refreshObjects = vi.fn().mockResolvedValue([]);
+  const { result } = renderHook(() =>
+    useS3Upload({
+      scopeKey: "s3:1:1:now",
+      active: true,
+      prefix: "",
+      runAction,
+      refreshObjects,
+      readObjectMetadata: vi.fn(),
+      setState: vi.fn(),
+    }),
+  );
+  act(() => {
+    result.current.openUploadDialog();
+    result.current.addUploadFiles([new File(["a"], "a.txt"), new File(["b"], "b.txt")]);
+  });
+  if (overwrite) act(() => result.current.setUploadDialog((current) => ({ ...current, overwrite: true })));
+
+  await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
+  expect(result.current.uploadDialog).toMatchObject({ pending: false, error: "temporary failure" });
+  expect(result.current.uploadDialog.files.map((item) => item.key)).toEqual(["b.txt"]);
+
+  await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
+  expect(runAction.mock.calls.map(([options]) => options.input.key)).toEqual(["a.txt", "b.txt", "b.txt"]);
+  expect(runAction.mock.calls.every(([options]) => options.input.overwrite === overwrite)).toBe(true);
+  expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
+  expect(result.current.uploadDialog).toEqual(defaultUploadDialog);
+});
+
+it("retains an S3 file whose upload is pending approval", async () => {
+  const runAction = vi.fn().mockResolvedValueOnce({ action_name: "upload_object" }).mockResolvedValueOnce(null);
+  const { result } = renderHook(() =>
+    useS3Upload({
+      scopeKey: "s3:1:1:now",
+      active: true,
+      prefix: "",
+      runAction,
+      refreshObjects: vi.fn(),
+      readObjectMetadata: vi.fn(),
+      setState: vi.fn(),
+    }),
+  );
+  act(() => {
+    result.current.openUploadDialog();
+    result.current.addUploadFiles([new File(["a"], "a.txt"), new File(["b"], "b.txt")]);
+  });
+
+  await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
+  expect(result.current.uploadDialog).toMatchObject({ open: true, pending: false, error: "" });
+  expect(result.current.uploadDialog.files.map((item) => item.key)).toEqual(["b.txt"]);
+});
+
+it("retains the uncertain S3 file after an upload error", async () => {
+  const runAction = vi.fn().mockResolvedValueOnce({ action_name: "upload_object" }).mockRejectedValueOnce(new Error("connection lost"));
+  const { result } = renderHook(() =>
+    useS3Upload({
+      scopeKey: "s3:1:1:now",
+      active: true,
+      prefix: "",
+      runAction,
+      refreshObjects: vi.fn(),
+      readObjectMetadata: vi.fn(),
+      setState: vi.fn(),
+    }),
+  );
+  act(() => {
+    result.current.openUploadDialog();
+    result.current.addUploadFiles([new File(["a"], "a.txt"), new File(["b"], "b.txt")]);
+  });
+
+  await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
+  expect(result.current.uploadDialog).toMatchObject({ open: true, pending: false, error: "connection lost" });
+  expect(result.current.uploadDialog.files.map((item) => item.key)).toEqual(["b.txt"]);
+});
+
 it("aborts file preparation before an old S3 target can dispatch an upload", async () => {
   class PendingFileReader {
     static EMPTY = 0;
