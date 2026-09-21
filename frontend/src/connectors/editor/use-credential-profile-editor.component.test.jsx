@@ -83,6 +83,33 @@ describe("useCredentialProfileEditor", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 
+  it("does not let a retired save close or reset a replacement draft", async () => {
+    let resolveSave;
+    const pendingSave = new Promise((resolve) => {
+      resolveSave = resolve;
+    });
+    const model = { saveCredential: vi.fn(() => pendingSave) };
+    const { result, onRefresh } = renderEditor(model);
+
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "old", password: "old-secret" } }));
+    let save;
+    act(() => {
+      save = result.current.save({ preventDefault() {} }, "create");
+    });
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "replacement", password: "new-secret" } }));
+
+    await act(async () => resolveSave({ message: "Old profile saved." }));
+
+    await expect(save).resolves.toBe(false);
+    expect(result.current.drawer.open).toBe(true);
+    expect(result.current.formState.form).toEqual({ connector_kind: "example", label: "replacement", password: "new-secret" });
+    expect(result.current.actionState.state).toBe("idle");
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   it("surfaces missing connector behavior without opening an invalid editor", () => {
     const { result } = renderEditor(null);
     const row = { id: 3, connector_kind: "missing" };

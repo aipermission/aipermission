@@ -89,6 +89,33 @@ describe("useConnectorEditor", () => {
     expect(result.current.actionState.error).toMatch(/Saved successfully.*refresh unavailable/);
   });
 
+  it("does not let a retired save close or reset a replacement draft", async () => {
+    let resolveSave;
+    const pendingSave = new Promise((resolve) => {
+      resolveSave = resolve;
+    });
+    const model = { save: vi.fn(() => pendingSave), syncForm: ({ form }) => form };
+    const { result, onRefresh } = renderEditor(model);
+
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "Old draft"));
+    let save;
+    act(() => {
+      save = result.current.save({ preventDefault() {} });
+    });
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "Replacement draft"));
+
+    await act(async () => resolveSave());
+
+    await expect(save).resolves.toBe(false);
+    expect(result.current.drawer.open).toBe(true);
+    expect(result.current.form.name).toBe("Replacement draft");
+    expect(result.current.actionState.state).toBe("idle");
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   it("hands connector-owned recovery operations back to the route", async () => {
     const recovery = { open: true, connector_kind: "example", type: "trust" };
     const model = {

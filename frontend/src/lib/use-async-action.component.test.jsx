@@ -65,11 +65,13 @@ describe("useAsyncAction", () => {
     });
     const { result } = renderHook(() => useAsyncAction());
 
+    let run;
     act(() => {
-      void result.current.runAction({ successMessage: "late", action: () => action });
+      run = result.current.runAction({ successMessage: "late", action: () => action });
       result.current.resetAction();
     });
     await act(async () => resolveAction("done"));
+    await expect(run).resolves.toBeUndefined();
     expect(result.current.actionState).toEqual(idleActionState);
   });
 });
