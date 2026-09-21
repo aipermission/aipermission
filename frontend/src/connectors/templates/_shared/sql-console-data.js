@@ -48,22 +48,25 @@ export function referencedTablesFromSQL(sql) {
   const pattern = new RegExp(`\\b(?:from|join)\\s+(${identifier}(?:\\s*\\.\\s*${identifier})?)(?:\\s+(?:as\\s+)?(${identifier}))?`, "gi");
   const references = [];
   for (const match of cleaned.matchAll(pattern)) {
-    const nameParts = splitSQLQualifiedName(match[1]);
-    const alias = cleanSQLIdentifier(match[2] || "");
+    const nameParts = splitSQLQualifiedName(match[1]).map(parseSQLIdentifier);
+    const alias = parseSQLIdentifier(match[2] || "");
     const reference = {
-      schema: nameParts.length > 1 ? nameParts[0] : "",
-      table: nameParts.length > 1 ? nameParts[1] : nameParts[0],
-      alias: isSQLAlias(alias) ? alias : "",
+      schema: nameParts.length > 1 ? nameParts[0].value : "",
+      table: nameParts.length > 1 ? nameParts[1].value : nameParts[0]?.value || "",
+      alias: isSQLAlias(alias.value) ? alias.value : "",
+      schemaQuoted: nameParts.length > 1 ? nameParts[0].quoted : false,
+      tableQuoted: nameParts.length > 1 ? nameParts[1].quoted : nameParts[0]?.quoted || false,
+      aliasQuoted: isSQLAlias(alias.value) ? alias.quoted : false,
     };
     if (reference.table) references.push(reference);
   }
   return references;
 }
 
-export function pendingMetadataReferences(sql, rows, requestedKeys, limit = 4) {
+export function pendingMetadataReferences(sql, rows, requestedKeys, limit = 4, identifierPolicy = "lowercase-unquoted") {
   return referencedTablesFromSQL(sql)
-    .filter((reference) => reference.table && !metadataHasColumns(rows, reference))
-    .filter((reference) => !requestedKeys.has(tableReferenceKey(reference)))
+    .filter((reference) => reference.table && !metadataHasColumns(rows, reference, identifierPolicy))
+    .filter((reference) => !requestedKeys.has(tableReferenceKey(reference, identifierPolicy)))
     .slice(0, limit);
 }
 
@@ -73,24 +76,33 @@ export function normalizeSQLName(value) {
     .toLowerCase();
 }
 
-export function tableReferenceKey(reference) {
-  return `${normalizeSQLReferenceName(reference.schema)}.${normalizeSQLReferenceName(reference.table)}`;
+export function tableReferenceKey(reference, identifierPolicy = "lowercase-unquoted") {
+  return JSON.stringify([
+    reference.schemaQuoted || identifierPolicy === "exact" ? "exact" : "folded",
+    canonicalSQLIdentifier(reference.schema, reference.schemaQuoted, identifierPolicy),
+    reference.tableQuoted || identifierPolicy === "exact" ? "exact" : "folded",
+    canonicalSQLIdentifier(reference.table, reference.tableQuoted, identifierPolicy),
+  ]);
 }
 
-export function tableMatchesReference(item, reference) {
+export function tableMatchesReference(item, reference, identifierPolicy = "lowercase-unquoted") {
   if (!item || !reference) return false;
-  const tableMatches = normalizeSQLReferenceName(item.table) === normalizeSQLReferenceName(reference.table);
+  const tableMatches = sqlIdentifierMatches(item.table, reference.table, reference.tableQuoted, identifierPolicy);
   if (!tableMatches) return false;
-  if (reference.schema && normalizeSQLReferenceName(item.schema) !== normalizeSQLReferenceName(reference.schema)) return false;
+  if (reference.schema && !sqlIdentifierMatches(item.schema, reference.schema, reference.schemaQuoted, identifierPolicy)) return false;
   return true;
+}
+
+export function sqlIdentifierMatches(candidate, reference, quoted = false, identifierPolicy = "lowercase-unquoted") {
+  return canonicalSQLIdentifier(candidate, true, identifierPolicy) === canonicalSQLIdentifier(reference, quoted, identifierPolicy);
+}
+
+export function sqlReferenceIdentifiersMatch(left, leftQuoted, right, rightQuoted, identifierPolicy = "lowercase-unquoted") {
+  return canonicalSQLIdentifier(left, leftQuoted, identifierPolicy) === canonicalSQLIdentifier(right, rightQuoted, identifierPolicy);
 }
 
 export function sqlMetadataIdentity(value) {
   return String(value ?? "");
-}
-
-function normalizeSQLReferenceName(value) {
-  return sqlMetadataIdentity(value).toLowerCase();
 }
 
 export function cleanSQLIdentifier(value) {
@@ -130,8 +142,8 @@ function metadataColumns(row) {
     .filter((item) => item.name);
 }
 
-function metadataHasColumns(rows, reference) {
-  return (rows || []).some((item) => item.column && tableMatchesReference(item, reference));
+function metadataHasColumns(rows, reference, identifierPolicy) {
+  return (rows || []).some((item) => item.column && tableMatchesReference(item, reference, identifierPolicy));
 }
 
 function stripSQLStringsAndComments(sql) {
@@ -142,10 +154,45 @@ function stripSQLStringsAndComments(sql) {
 }
 
 function splitSQLQualifiedName(value) {
-  return String(value || "")
-    .split(".")
-    .map((part) => cleanSQLIdentifier(part))
-    .filter(Boolean);
+  const parts = [];
+  let current = "";
+  let quote = "";
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      current += character;
+      if (character !== quote) continue;
+      if (text[index + 1] === quote) {
+        current += text[index + 1];
+        index += 1;
+      } else {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "`") {
+      quote = character;
+      current += character;
+    } else if (character === ".") {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function parseSQLIdentifier(value) {
+  const trimmed = String(value || "").trim();
+  const quoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("`") && trimmed.endsWith("`"));
+  return { value: cleanSQLIdentifier(trimmed), quoted };
+}
+
+function canonicalSQLIdentifier(value, quoted, identifierPolicy) {
+  return quoted || identifierPolicy === "exact" ? String(value || "") : normalizeSQLName(value);
 }
 
 function isSQLAlias(value) {

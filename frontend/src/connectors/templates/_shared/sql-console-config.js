@@ -14,6 +14,7 @@ export function normalizeSQLConsoleConfig(config = {}) {
     manualReason: String(config.manualReason || `manual ${label} console query`),
     browserLabel: String(config.browserLabel || "Schema"),
     filenamePrefix: String(config.filenamePrefix || `${label.toLowerCase()}-result`),
+    identifierPolicy: config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted",
     keywords: [...new Set([...DEFAULT_SQL_KEYWORDS, ...(config.keywords || [])].map((item) => String(item).toLowerCase()))],
     targetEndpoint: config.targetEndpoint || ((target) => defaultTargetEndpoint(target, defaultPort, defaultDatabase)),
     tableQuery:

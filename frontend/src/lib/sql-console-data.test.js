@@ -5,16 +5,30 @@ import {
   extractTableSuggestions,
   pendingMetadataReferences,
   referencedTablesFromSQL,
+  tableMatchesReference,
   tableReferenceKey,
 } from "../connectors/templates/_shared/sql-console-data.js";
 import { filteredTableBrowserRows, normalizeSQLConsoleConfig } from "../connectors/templates/_shared/sql-console-config.js";
 import { sqlCompletionItems } from "../connectors/templates/_shared/sql-editor-completions.js";
 
 test("SQL references support ANSI and ClickHouse quoted identifiers", () => {
-  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "public"."users" AS u'), [{ schema: "public", table: "users", alias: "u" }]);
-  assert.deepEqual(referencedTablesFromSQL("SELECT * FROM `analytics`.`daily-events` e"), [
-    { schema: "analytics", table: "daily-events", alias: "e" },
+  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "public"."users" AS u'), [
+    { schema: "public", table: "users", alias: "u", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
   ]);
+  assert.deepEqual(referencedTablesFromSQL("SELECT * FROM `analytics`.`daily-events` e"), [
+    { schema: "analytics", table: "daily-events", alias: "e", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
+  ]);
+  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "tenant.one"."events.live"'), [
+    { schema: "tenant.one", table: "events.live", alias: "", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
+  ]);
+});
+
+test("quoted SQL references match metadata exactly while unquoted references fold case", () => {
+  const metadata = { schema: "public", table: "Users" };
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL('SELECT * FROM public."Users"')[0]), true);
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL('SELECT * FROM public."users"')[0]), false);
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL("SELECT * FROM PUBLIC.users")[0]), false);
+  assert.equal(tableMatchesReference({ schema: "public", table: "users" }, referencedTablesFromSQL("SELECT * FROM PUBLIC.USERS")[0]), true);
 });
 
 test("metadata requests are not reserved until the caller dispatches them", () => {

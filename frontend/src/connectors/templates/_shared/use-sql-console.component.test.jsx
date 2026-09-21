@@ -56,6 +56,49 @@ describe("useSQLConsole", () => {
     );
   });
 
+  it("uses exact identifier policy before requesting lazy ClickHouse metadata", async () => {
+    apiPost.mockImplementation(async (_path, payload) => {
+      if (payload.input.sql === config.metadataSQL) return completed(metadataOutput("Analytics", "Users"));
+      return completed(metadataOutput("unexpected", "describe"));
+    });
+    const { result } = renderConsole({ config: { ...config, identifierPolicy: "exact" } });
+    await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
+
+    act(() => result.current.setSQL("SELECT * FROM Analytics.Users"));
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 300)));
+
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(result.current.metadata.tables[0]).toMatchObject({ schema: "Analytics", table: "Users", column: "id" });
+  });
+
+  it("loads missing ClickHouse columns with the exact metadata identity", async () => {
+    apiPost.mockImplementation(async (_path, payload) => {
+      if (payload.input.sql === config.metadataSQL) {
+        return completed({ rows: [{ table_schema: "Analytics", table_name: "Users" }] });
+      }
+      return completed(metadataOutput("Analytics", "Users"));
+    });
+    const { result } = renderConsole({ config: { ...config, identifierPolicy: "exact" } });
+    await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
+
+    act(() => result.current.setSQL("SELECT * FROM Analytics.Users"));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(2));
+
+    expect(apiPost).toHaveBeenLastCalledWith(
+      "/api/connector-actions/local-run",
+      {
+        target_ref: "test-sql:1:1",
+        action_name: "describe_table",
+        input: { schema: "Analytics", table: "Users" },
+        reason: "load test metadata",
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await waitFor(() =>
+      expect(result.current.metadata.tables).toContainEqual(expect.objectContaining({ schema: "Analytics", table: "Users", column: "id" })),
+    );
+  });
+
   it("survives StrictMode effect replay without leaving metadata stuck loading", async () => {
     const wrapper = ({ children }) => <StrictMode>{children}</StrictMode>;
     const { result } = renderConsole({}, { wrapper });

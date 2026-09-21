@@ -11,7 +11,7 @@ GROUP BY database, table
 ORDER BY database, table
 `;
 
-const config = {
+export const clickHouseConsoleConfig = {
   label: "ClickHouse",
   queryAction: "query_readonly",
   describeAction: "describe_table",
@@ -24,13 +24,14 @@ const config = {
   defaultPort: 9000,
   defaultDatabase: "default",
   keywords: ["prewhere", "sample", "final", "settings", "global", "array", "tuple"],
+  identifierPolicy: "exact",
   describeInput: (reference) => ({ database: reference.schema || "", table: reference.table }),
   tableQuery: (table, maxRows) =>
     `SELECT *\nFROM ${quoteClickHouseIdentifier(table.schema)}.${quoteClickHouseIdentifier(table.table)}\nLIMIT ${maxRows};`,
 };
 
 export function ClickHouseConnectorConsoleTemplate(props) {
-  return <SQLConnectorConsole {...props} config={config} />;
+  return <SQLConnectorConsole {...props} config={clickHouseConsoleConfig} />;
 }
 
 export function ClickHouseConnectorToolbarActionsTemplate(props) {

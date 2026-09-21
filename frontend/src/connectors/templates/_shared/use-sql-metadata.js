@@ -50,7 +50,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
   useEffect(() => {
     if (!activeSession.active || !sql.trim()) return undefined;
     const requests = columnRequestsRef.current;
-    const missing = pendingMetadataReferences(sql, metadataRowsRef.current, requests, 4);
+    const missing = pendingMetadataReferences(sql, metadataRowsRef.current, requests, 4, connector.identifierPolicy);
     if (missing.length === 0) return undefined;
     const timer = window.setTimeout(() => {
       for (const reference of missing) {
@@ -64,6 +64,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
           setMetadata,
           metadataRowsRef,
           refreshActivity,
+          identifierPolicy: connector.identifierPolicy,
         });
       }
     }, 250);
@@ -83,8 +84,9 @@ function requestColumnMetadata({
   setMetadata,
   metadataRowsRef,
   refreshActivity,
+  identifierPolicy,
 }) {
-  const requestKey = tableReferenceKey(reference);
+  const requestKey = tableReferenceKey(reference, identifierPolicy);
   if (requests.has(requestKey)) return;
   requests.add(requestKey);
   const request = requestGuard.begin(`metadata:${requestKey}`);

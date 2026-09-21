@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { SQLEditor } from "./sql-editor";
+import { tableMatchesReference, tableReferenceKey } from "./sql-console-data";
 import { applySQLEditorTheme, loadSQLMonaco } from "./sql-editor-runtime";
 
 vi.mock("./sql-editor-runtime", () => ({
@@ -83,6 +84,72 @@ it("wires SQL completion, Ctrl/Cmd+Enter, changes, and editor options", async ()
   };
   const result = completionProvider.provideCompletionItems(model, { lineNumber: 1, column: 39 });
   expect(result.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ label: "id", kind: 4 })]));
+});
+
+it("keeps completion columns bound to the exact quoted table identity", async () => {
+  render(
+    <SQLEditor
+      value={'SELECT * FROM public."Users" u WHERE u.'}
+      onChange={vi.fn()}
+      onSubmit={vi.fn()}
+      focusSignal={0}
+      theme="dark"
+      tables={[
+        { schema: "public", table: "Users", column: "admin_id" },
+        { schema: "public", table: "users", column: "public_id" },
+      ]}
+      keywords={[]}
+      disabled={false}
+    />,
+  );
+
+  await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
+  const sql = 'SELECT * FROM public."Users" u WHERE u.';
+  const model = {
+    getValue: () => sql,
+    getLineContent: () => sql,
+    getWordUntilPosition: () => ({ startColumn: sql.length + 1, endColumn: sql.length + 1 }),
+  };
+  const result = completionProvider.provideCompletionItems(model, { lineNumber: 1, column: sql.length + 1 });
+
+  expect(result.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ label: "admin_id", kind: 4 })]));
+  expect(result.suggestions).not.toEqual(expect.arrayContaining([expect.objectContaining({ label: "public_id", kind: 4 })]));
+  expect(tableReferenceKey({ schema: "Analytics", table: "Users", schemaQuoted: false, tableQuoted: false }, "exact")).toBe(
+    tableReferenceKey({ schema: "Analytics", table: "Users", schemaQuoted: true, tableQuoted: true }, "exact"),
+  );
+  expect(tableMatchesReference({ schema: "Analytics", table: "Users" }, { schema: "Analytics", table: "users" }, "exact")).toBe(false);
+  expect(tableMatchesReference({ schema: "public", table: "users" }, { schema: "PUBLIC", table: "Users" })).toBe(true);
+});
+
+it("preserves unquoted ClickHouse identifier case when matching metadata", async () => {
+  render(
+    <SQLEditor
+      value="SELECT * FROM Analytics.Users u WHERE u."
+      onChange={vi.fn()}
+      onSubmit={vi.fn()}
+      focusSignal={0}
+      theme="dark"
+      tables={[
+        { schema: "Analytics", table: "Users", column: "admin_id" },
+        { schema: "Analytics", table: "users", column: "public_id" },
+      ]}
+      keywords={[]}
+      identifierPolicy="exact"
+      disabled={false}
+    />,
+  );
+
+  await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
+  const sql = "SELECT * FROM Analytics.Users u WHERE u.";
+  const model = {
+    getValue: () => sql,
+    getLineContent: () => sql,
+    getWordUntilPosition: () => ({ startColumn: sql.length + 1, endColumn: sql.length + 1 }),
+  };
+  const result = completionProvider.provideCompletionItems(model, { lineNumber: 1, column: sql.length + 1 });
+
+  expect(result.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ label: "admin_id", kind: 4 })]));
+  expect(result.suggestions).not.toEqual(expect.arrayContaining([expect.objectContaining({ label: "public_id", kind: 4 })]));
 });
 
 it("shows a bounded error when the editor chunk cannot load", async () => {
