@@ -21,11 +21,13 @@ const batch = {
 };
 
 function deferred() {
+  let resolve;
   let reject;
-  const promise = new Promise((_resolve, rejectPromise) => {
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
     reject = rejectPromise;
   });
-  return { promise, reject };
+  return { promise, resolve, reject };
 }
 
 it("awaits approval, blocks duplicate decisions, reports failure, and permits retry", async () => {
@@ -92,9 +94,97 @@ it("routes running and paused queue controls while keeping completed batches com
   expect(screen.getByText("Recent")).toBeVisible();
 });
 
+it.each([
+  ["Pause", "pause", "Pause failed"],
+  ["Resume", "resume", "Resume failed"],
+  ["Cancel", "cancel", "Cancel failed"],
+])("reports a rejected %s control and clears it after a successful retry", async (title, status, message) => {
+  const user = userEvent.setup();
+  const handler = vi.fn().mockRejectedValueOnce(new Error(message)).mockResolvedValueOnce();
+  const controlBatch = {
+    ...batch,
+    id: 61,
+    status: status === "resume" ? "paused" : "running",
+    source: "ui",
+    items: [],
+  };
+  const props = {
+    onPause: status === "pause" ? handler : vi.fn(),
+    onResume: status === "resume" ? handler : vi.fn(),
+    onCancel: status === "cancel" ? handler : vi.fn(),
+  };
+  render(<TransferCenter open batches={[controlBatch]} state="ready" {...props} />);
+
+  await user.click(screen.getByTitle(title));
+  expect(await screen.findByText(message)).toBeVisible();
+  expect(screen.getByText(/0\/2 processed, 0 completed/)).toBeVisible();
+
+  await user.click(screen.getByTitle(title));
+  await waitFor(() => expect(handler).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByText(message)).not.toBeInTheDocument());
+});
+
+it("blocks concurrent transfer controls while one action is pending", async () => {
+  const first = deferred();
+  const onPause = vi.fn().mockReturnValue(first.promise);
+  const onCancel = vi.fn();
+  const running = { ...batch, id: 62, status: "running", source: "ui", items: [] };
+  render(<TransferCenter open batches={[running]} state="ready" onPause={onPause} onCancel={onCancel} />);
+
+  fireEvent.click(screen.getByTitle("Pause"));
+  fireEvent.click(screen.getByTitle("Pause"));
+  expect(screen.getByTitle("Pause")).toBeDisabled();
+  expect(screen.getByTitle("Cancel")).toBeDisabled();
+  fireEvent.click(screen.getByTitle("Cancel"));
+  expect(onPause).toHaveBeenCalledOnce();
+  expect(onCancel).not.toHaveBeenCalled();
+
+  first.reject(new Error("Pause failed"));
+  expect(await screen.findByText("Pause failed")).toBeVisible();
+  expect(screen.getByTitle("Cancel")).toBeEnabled();
+});
+
 it("shows an empty loading state and disables refresh", () => {
   render(<TransferCenter open batches={[]} state="loading" />);
   expect(screen.getByText("Loading transfer queues...")).toBeVisible();
   expect(screen.getByText("No active transfers.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+});
+
+it("ignores a control result after the batch state changes", async () => {
+  const pending = deferred();
+  const running = { ...batch, id: 71, status: "running", source: "ui", items: [] };
+  const view = render(<TransferCenter open batches={[running]} state="ready" onPause={() => pending.promise} />);
+
+  fireEvent.click(screen.getByTitle("Pause"));
+  view.rerender(<TransferCenter open batches={[{ ...running, status: "paused" }]} state="ready" />);
+  pending.reject(new Error("late failure"));
+  await Promise.resolve();
+
+  expect(screen.queryByText("late failure")).not.toBeInTheDocument();
+  expect(screen.getByTitle("Resume")).toBeEnabled();
+  fireEvent.click(screen.getByTitle("Resume"));
+  await waitFor(() => expect(screen.getByTitle("Resume")).toBeEnabled());
+});
+
+it("ignores a successful control result after the batch state changes", async () => {
+  const pending = deferred();
+  const running = { ...batch, id: 73, status: "running", source: "ui", items: [] };
+  const view = render(<TransferCenter open batches={[running]} state="ready" onPause={() => pending.promise} />);
+
+  fireEvent.click(screen.getByTitle("Pause"));
+  view.rerender(<TransferCenter open batches={[{ ...running, status: "paused" }]} state="ready" />);
+  pending.resolve();
+  await Promise.resolve();
+
+  expect(screen.getByTitle("Resume")).toBeEnabled();
+});
+
+it("uses the control fallback when a rejection has no message", async () => {
+  const onPause = vi.fn().mockRejectedValue(null);
+  const running = { ...batch, id: 72, status: "running", source: "ui", items: [] };
+  render(<TransferCenter open batches={[running]} state="ready" onPause={onPause} />);
+
+  fireEvent.click(screen.getByTitle("Pause"));
+  expect(await screen.findByText("Could not pause this transfer.")).toBeVisible();
 });

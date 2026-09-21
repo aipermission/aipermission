@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Pause, Play, RefreshCcw, Upload, XCircle } from "lucide-react";
 import { formatBytes, formatETA, transferProgress } from "../lib/file-transfer-utils";
 import { Badge } from "./ui/badge";
@@ -80,12 +80,25 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   const [selectedItems, setSelectedItems] = useState(() => new Set(pendingItems.map((item) => item.id)));
   const [note, setNote] = useState("");
   const [decision, setDecision] = useState({ state: "idle", error: "" });
+  const [control, setControl] = useState({ state: "idle", error: "" });
+  const controlGeneration = useRef(0);
+  const controlPending = useRef(false);
 
   useEffect(() => {
     setSelectedItems(new Set(JSON.parse(pendingItemIDsJSON)));
     setNote("");
     setDecision({ state: "idle", error: "" });
   }, [batch.id, pendingItemIDsJSON]);
+
+  useEffect(() => {
+    controlGeneration.current += 1;
+    controlPending.current = false;
+    setControl({ state: "idle", error: "" });
+    return () => {
+      controlGeneration.current += 1;
+      controlPending.current = false;
+    };
+  }, [batch.id, batch.status]);
 
   function toggleItem(itemID) {
     setSelectedItems((current) => {
@@ -121,6 +134,26 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     }
   }
 
+  async function runControl(callback, fallback) {
+    if (controlPending.current) return;
+    const generation = controlGeneration.current + 1;
+    controlGeneration.current = generation;
+    controlPending.current = true;
+    setControl({ state: "pending", error: "" });
+    try {
+      await callback?.(batch.id);
+      if (controlGeneration.current === generation) {
+        controlPending.current = false;
+        setControl({ state: "idle", error: "" });
+      }
+    } catch (error) {
+      if (controlGeneration.current === generation) {
+        controlPending.current = false;
+        setControl({ state: "error", error: error?.message || fallback });
+      }
+    }
+  }
+
   return (
     <article className="grid gap-3 rounded-md border border-stone-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -140,16 +173,37 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
         {!compact && active && !approvalMode ? (
           <div className="flex shrink-0 items-center gap-1">
             {batch.status === "running" ? (
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onPause?.(batch.id)} title="Pause">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-8 px-0"
+                onClick={() => void runControl(onPause, "Could not pause this transfer.")}
+                disabled={control.state === "pending"}
+                title="Pause"
+              >
                 <Pause className="h-4 w-4" />
               </Button>
             ) : null}
             {batch.status === "paused" ? (
-              <Button type="button" variant="ghost" className="h-8 w-8 px-0" onClick={() => onResume?.(batch.id)} title="Resume">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 w-8 px-0"
+                onClick={() => void runControl(onResume, "Could not resume this transfer.")}
+                disabled={control.state === "pending"}
+                title="Resume"
+              >
                 <Play className="h-4 w-4" />
               </Button>
             ) : null}
-            <Button type="button" variant="ghost" className="h-8 w-8 px-0 text-red-700" onClick={() => onCancel?.(batch.id)} title="Cancel">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 w-8 px-0 text-red-700"
+              onClick={() => void runControl(onCancel, "Could not cancel this transfer.")}
+              disabled={control.state === "pending"}
+              title="Cancel"
+            >
               <XCircle className="h-4 w-4" />
             </Button>
           </div>
@@ -166,6 +220,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
       </div>
 
       {batch.error ? <p className="text-xs text-red-700">{batch.error}</p> : null}
+      {control.error ? <Notice tone="bad">{control.error}</Notice> : null}
       {!compact && approvalMode ? (
         <div className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3">
           <div>
