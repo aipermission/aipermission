@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api";
+import { apiPost } from "../../../lib/api.js";
 import { useKafkaBrowser } from "./use-kafka-browser";
 import { useKafkaWrites } from "./use-kafka-writes";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../../lib/api.js", () => ({ apiPost: vi.fn() }));
 
 const topics = [
   { name: "orders", partition_count: 2 },
@@ -116,7 +116,6 @@ it("rejects malformed Kafka publish headers before the mutation is dispatched", 
 
 function completed(actionName, output) {
   return {
-    id: 1,
     request_id: 1,
     status: "completed",
     target_ref: "kafka:1:1",

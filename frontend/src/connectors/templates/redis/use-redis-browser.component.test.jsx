@@ -82,7 +82,10 @@ describe("useRedisBrowser", () => {
     await act(async () => result.current.loadKey("alpha"));
     expect(result.current.canSaveString).toBe(true);
 
-    apiPost.mockRejectedValueOnce(new Error("read failed"));
+    actionImplementation = async ({ actionName, input }) => {
+      if (actionName === "get_key" && input.key === "beta") throw new Error("read failed");
+      return completed(actionName, responseFor(actionName, input));
+    };
     await act(async () => result.current.loadKey("beta"));
 
     expect(result.current.activeKey).toBe("beta");
@@ -95,14 +98,13 @@ describe("useRedisBrowser", () => {
   });
 
   it("keeps truncated string previews read-only", async () => {
-    apiPost.mockImplementation(async (_path, payload) =>
+    actionImplementation = async ({ actionName, input }) =>
       completed(
-        payload.action_name,
-        payload.action_name === "get_key"
-          ? { key: payload.input.key, type: "string", value: "partial...[truncated]", ttl_ms: -1, truncated: true }
-          : responseFor(payload.action_name, payload.input),
-      ),
-    );
+        actionName,
+        actionName === "get_key"
+          ? { key: input.key, type: "string", value: "partial...[truncated]", ttl_ms: -1, truncated: true }
+          : responseFor(actionName, input),
+      );
     const { result } = renderBrowser({ active: true });
     await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
     await act(async () => result.current.loadKey("alpha"));
@@ -116,16 +118,15 @@ describe("useRedisBrowser", () => {
 
   it.each(["resolve", "reject"])("retires a pending read and restores idle state when New is selected (%s)", async (settlement) => {
     let settleRead;
-    apiPost.mockImplementation((_path, payload) => {
-      if (payload.action_name !== "get_key")
-        return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    actionImplementation = ({ actionName, input }) => {
+      if (actionName !== "get_key") return Promise.resolve(completed(actionName, responseFor(actionName, input)));
       return new Promise((resolve, reject) => {
         settleRead =
           settlement === "resolve"
-            ? () => resolve(completed("get_key", responseFor("get_key", payload.input)))
+            ? () => resolve(completed("get_key", responseFor("get_key", input)))
             : () => reject(new Error("late failure"));
       });
-    });
+    };
     const { result } = renderBrowser({ active: true });
     await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
 
@@ -206,7 +207,6 @@ describe("useRedisBrowser", () => {
 
 function completed(actionName, output) {
   return {
-    id: 1,
     request_id: 1,
     status: "completed",
     target_ref: "redis:1:1",

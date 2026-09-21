@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api";
+import { apiPost } from "../../../lib/api.js";
 import { useKubernetesBrowser } from "./use-kubernetes-browser";
 import { useRolloutRestart } from "./use-rollout-restart";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../../lib/api.js", () => ({ apiPost: vi.fn() }));
 
 const pods = [
   { namespace: "default", name: "api-a", node: "worker-1", phase: "Running" },
@@ -164,7 +164,6 @@ it("restarts the workload captured by the confirmation dialog", async () => {
 
 function completed(actionName, output, targetRef = "kubernetes:1:1") {
   return {
-    id: 1,
     request_id: 1,
     status: "completed",
     target_ref: targetRef,

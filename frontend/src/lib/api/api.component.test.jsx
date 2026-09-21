@@ -401,14 +401,14 @@ it("preserves a caller-provided idempotency key without opening a browser retry 
     idempotency_key: "caller-owned-key",
   };
   const fetch = vi.fn(async (_url, options) =>
-    jsonResponse(actionResponse(body, { request_id: 17, echoed: JSON.parse(options.body).idempotency_key })),
+    jsonResponse(actionResponse(body, { request_id: 17, output: { echoed: JSON.parse(options.body).idempotency_key } })),
   );
   vi.stubGlobal("fetch", fetch);
 
   await expect(apiPost("/api/connector-actions/local-run", body)).resolves.toMatchObject({
     request_id: 17,
     status: "completed",
-    echoed: "caller-owned-key",
+    output: { echoed: "caller-owned-key" },
   });
 
   expect(await listLocalActionRetryEntries()).toEqual([]);
