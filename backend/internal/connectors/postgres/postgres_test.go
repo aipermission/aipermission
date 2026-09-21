@@ -751,6 +751,7 @@ func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
 		"SELECT \"unterminated",
 		"SELECT $tag$unterminated",
 		"SELECT 1; /* unterminated",
+		"CREATE TABLE public.foo$tag$ (id integer);\n\\! printf hidden-command\nSELECT $tag$;",
 	} {
 		t.Run(command, func(t *testing.T) {
 			directory := t.TempDir()
@@ -764,6 +765,19 @@ func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
 				t.Fatalf("unsafe command error=%v dispatched=%v", err, fileExists(started))
 			}
 		})
+	}
+}
+
+func TestRestoreValidatorAcceptsDollarSignsInsideUnquotedIdentifiers(t *testing.T) {
+	for _, content := range []string{
+		"CREATE TABLE public.foo$tag$ (id integer);",
+		"CREATE TABLE public.foo$$ (id integer);",
+		"CREATE TABLE public.şema$tag$ (id integer);",
+	} {
+		read, _, err := validatePostgresRestoreMetaCommands(t.Context(), strings.NewReader(content))
+		if err != nil || read != int64(len(content)) {
+			t.Fatalf("validate restore content=%q read=%d err=%v", content, read, err)
+		}
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -367,7 +368,7 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			return fmt.Errorf("restore SQL file contains an unsupported inline psql meta-command")
 		case line[index] == '$':
 			state.finishStatementPrefix()
-			if delimiter := postgresDollarQuoteDelimiter(line[index:]); delimiter != "" {
+			if delimiter := postgresDollarQuoteDelimiterAt(line, index); delimiter != "" {
 				state.dollarQuote = delimiter
 				index += len(delimiter)
 			} else {
@@ -442,6 +443,17 @@ func postgresUnicodeIdentifierPrefix(line string, quoteIndex int) bool {
 func postgresIdentifierByte(value byte) bool {
 	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
 		(value >= '0' && value <= '9') || value == '_' || value == '$'
+}
+
+func postgresDollarQuoteDelimiterAt(line string, index int) string {
+	if index > 0 && postgresIdentifierContinuationByte(line[index-1]) {
+		return ""
+	}
+	return postgresDollarQuoteDelimiter(line[index:])
+}
+
+func postgresIdentifierContinuationByte(value byte) bool {
+	return postgresIdentifierByte(value) || value >= utf8.RuneSelf
 }
 
 func postgresDollarQuoteDelimiter(value string) string {
