@@ -6,6 +6,16 @@ import { HistoryDialog, StatusBadge, retryPolicyGuidance } from "./history-compo
 
 vi.mock("../../lib/api", () => ({ apiDownload: vi.fn() }));
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("history outcome uncertainty", () => {
   it("uses a visible warning status and persisted retry guidance", () => {
     const guidance = "Inspect the object metadata before submitting another mutation.";
@@ -203,6 +213,76 @@ it("surfaces a current History download failure and allows another attempt", asy
 
   expect(await screen.findByText("stream failed")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save download" })).toBeEnabled();
+});
+
+it("keeps label and download busy states independent", async () => {
+  const label = deferred();
+  const download = deferred();
+  apiDownload.mockReturnValueOnce(download.promise);
+  render(
+    <HistoryDialog
+      item={{
+        id: 48,
+        status: "completed",
+        activity_type: "file_transfer",
+        action_name: "download",
+        source_ref_id: 94,
+        summary: "/var/log/overlap.log",
+        labels: [],
+        target_name: "Test target",
+        created_at: "2026-09-01T00:00:00Z",
+      }}
+      onClose={vi.fn()}
+      onAttachLabel={() => label.promise}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "Add history label" });
+  fireEvent.change(input, { target: { value: "Investigate" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toBeDisabled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Save download" }));
+  await download.resolve({ saved: true });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save download" })).toBeEnabled());
+  expect(input).toBeDisabled();
+
+  label.resolve();
+  await waitFor(() => expect(input).toBeEnabled());
+});
+
+it("does not let a retired label completion change the replacement item", async () => {
+  const firstAttach = deferred();
+  const secondAttach = deferred();
+  const onAttachLabel = vi.fn().mockReturnValueOnce(firstAttach.promise).mockReturnValueOnce(secondAttach.promise);
+  const base = {
+    status: "completed",
+    labels: [],
+    target_name: "Test target",
+    created_at: "2026-09-01T00:00:00Z",
+  };
+  const view = render(
+    <HistoryDialog item={{ ...base, id: 49 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />,
+  );
+
+  let input = screen.getByRole("textbox", { name: "Add history label" });
+  fireEvent.change(input, { target: { value: "First" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  view.rerender(
+    <HistoryDialog item={{ ...base, id: 50 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />,
+  );
+  input = screen.getByRole("textbox", { name: "Add history label" });
+  fireEvent.change(input, { target: { value: "Second" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+
+  firstAttach.reject(new Error("retired label failed"));
+  await Promise.resolve();
+  expect(screen.queryByText("retired label failed")).not.toBeInTheDocument();
+  expect(input).toBeDisabled();
+
+  secondAttach.resolve();
+  await waitFor(() => expect(input).toBeEnabled());
 });
 
 it("keeps reopened label suggestions visible and closes them after the next blur delay", async () => {
