@@ -138,6 +138,7 @@
     "backend-race",
     "backend-vet",
     "backend-windows-build",
+    "backend-darwin-build",
     "backend-vuln",
     "recovery-drill",
     "bounded-fuzz",
@@ -175,7 +176,8 @@
     "backend-race": "b56440758388fdb268ee328d037aec17a4b840492574c4ab32d9f31b27446b1e",
     "backend-vet": "e14a19f50ab878814f3b3e81abeaa175ffd544f71de4381a9b2ce92ae59d4604",
     "backend-windows-build": "baa047311e5624ee5b37f7209c4d077a8ba8d8fde5cc72b7d3976cc477002db0",
-    "backend-vuln": "6d59ee88aaa2c15a161440929230ab50d861816621974a742a5f981c64028860",
+    "backend-darwin-build": "3142590490c03d3fdc19098153527dde1335049df947d761112121f4717c5621",
+    "backend-vuln": "63f3a478cbd1ce7e64c9ee2f7320b0630e6019f2bb0aec66de9dbe686091e854",
     "recovery-drill": "7ebc6e5fac6ba0fb34ab495232bdc6568a867336f7e8571db18c1b70faa4d8bd",
     "bounded-fuzz": "422876afe12ff9b031fce8791e65b285f9787ce148870f1f8e03207628e64fa8",
     "connector-conformance": "df3b4d5334c0fd3f62f20d2e73e378ef95f83bda36987e1652b5cb99357b9fc5",
@@ -202,7 +204,7 @@
     "mcp-pack": "20b1b0edb68b6a7ca1427147c92515291e09fecd200ef1d79bccb9bab75fbbe8",
     "placeholder-pack": "d827715046b9eb45130cd192e6f7a7b6899d357bc5a1cef08020bcfb5aa57b58",
     "docs-hygiene": "2e5f8bae6dc3db56ee7ab91103992ec2c48f6bc7b05d685ac5f502c0d0e9b3d6",
-    "$makefile": "e61649a3914b4a42b5902fed6be24ee8e01f14e060b57cf37beb4cd72e7d8f19"
+    "$makefile": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de"
   },
   "required_checks": [
     {

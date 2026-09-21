@@ -1,4 +1,4 @@
-.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-types frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-initial-bundle frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack docs-hygiene test build audit release-check docker-up docker-ps
+.PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-darwin-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-types frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-initial-bundle frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack docs-hygiene test build audit release-check docker-up docker-ps
 
 help:
 	@printf '%s\n' \
@@ -52,8 +52,11 @@ backend-vet:
 backend-windows-build:
 	cd backend && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 
+backend-darwin-build:
+	cd backend && GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
 backend-vuln:
-	cd backend && govulncheck ./...
+	cd backend && go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
 
 recovery-drill:
 	sh scripts/run-recovery-drill.sh
@@ -161,7 +164,7 @@ build: frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-test frontend-types frontend-coverage frontend-changed-coverage frontend-build frontend-initial-bundle frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-audit mcp-pack placeholder-pack docs-hygiene
+release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-darwin-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-test frontend-types frontend-coverage frontend-changed-coverage frontend-build frontend-initial-bundle frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-audit mcp-pack placeholder-pack docs-hygiene
 
 docker-up:
 	docker compose up -d --build

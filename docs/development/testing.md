@@ -112,8 +112,8 @@ tests rather than merely cross-compiling their binaries, first compiling and
 starting the complete `_test.go` graph with an empty test selection and then
 requiring package-bound pass events for every named behavior test. Each mapped
 platform source is checked against its own native coverage floor. The Linux job
-also cross-builds the complete Windows source graph. Active host, Windows, and
-macOS source inventories are merged. The tagged `cmd/e2e` browser harness is also
+also cross-builds the complete Windows and macOS source graphs. Active host,
+Windows, and macOS source inventories are merged. The tagged `cmd/e2e` browser harness is also
 inventoried explicitly and excluded only while it belongs exclusively to the
 declared `linux-e2e` build context. If it enters the host production graph, the
 coverage gate fails even while its package remains listed as an exclusion.
