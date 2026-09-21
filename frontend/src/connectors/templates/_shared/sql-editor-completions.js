@@ -4,7 +4,7 @@ import {
   referencedTablesFromSQL,
   tableMatchesReference,
   tableReferenceKey,
-} from "./sql-console-data";
+} from "./sql-console-data.js";
 
 export function sqlCompletionItems(monaco, tables, keywords, model, position) {
   const word = model.getWordUntilPosition(position);

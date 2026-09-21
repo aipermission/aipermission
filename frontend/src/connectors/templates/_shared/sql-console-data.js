@@ -12,8 +12,8 @@ export function extractTableSuggestions(output) {
   const rows = Array.isArray(normalized?.rows) ? normalized.rows : [];
   const suggestions = [];
   for (const row of rows) {
-    const schema = cleanCompletionValue(row.table_schema || row.schema || row.database);
-    const table = cleanCompletionValue(row.table_name || row.table);
+    const schema = metadataIdentityValue(row.table_schema ?? row.schema ?? row.database);
+    const table = metadataIdentityValue(row.table_name ?? row.table);
     const type = cleanCompletionValue(row.table_type || row.type);
     if (!schema || !table) continue;
     const columns = metadataColumns(row);
@@ -21,7 +21,7 @@ export function extractTableSuggestions(output) {
       suggestions.push({
         schema,
         table,
-        column: cleanCompletionValue(row.column_name || row.column),
+        column: metadataIdentityValue(row.column_name ?? row.column),
         dataType: cleanCompletionValue(row.data_type || ""),
         position: numericPosition(row.ordinal_position || row.position),
         type,
@@ -74,15 +74,23 @@ export function normalizeSQLName(value) {
 }
 
 export function tableReferenceKey(reference) {
-  return `${normalizeSQLName(reference.schema)}.${normalizeSQLName(reference.table)}`;
+  return `${normalizeSQLReferenceName(reference.schema)}.${normalizeSQLReferenceName(reference.table)}`;
 }
 
 export function tableMatchesReference(item, reference) {
   if (!item || !reference) return false;
-  const tableMatches = normalizeSQLName(item.table) === normalizeSQLName(reference.table);
+  const tableMatches = normalizeSQLReferenceName(item.table) === normalizeSQLReferenceName(reference.table);
   if (!tableMatches) return false;
-  if (reference.schema && normalizeSQLName(item.schema) !== normalizeSQLName(reference.schema)) return false;
+  if (reference.schema && normalizeSQLReferenceName(item.schema) !== normalizeSQLReferenceName(reference.schema)) return false;
   return true;
+}
+
+export function sqlMetadataIdentity(value) {
+  return String(value ?? "");
+}
+
+function normalizeSQLReferenceName(value) {
+  return sqlMetadataIdentity(value).toLowerCase();
 }
 
 export function cleanSQLIdentifier(value) {
@@ -104,17 +112,17 @@ function metadataColumns(row) {
   return parsed
     .map((item, index) => {
       if (typeof item === "string") {
-        return { name: cleanCompletionValue(item), dataType: "", position: index + 1 };
+        return { name: metadataIdentityValue(item), dataType: "", position: index + 1 };
       }
       if (Array.isArray(item)) {
         return {
           position: numericPosition(item[0] || index + 1),
-          name: cleanCompletionValue(item[1]),
+          name: metadataIdentityValue(item[1]),
           dataType: cleanCompletionValue(item[2]),
         };
       }
       return {
-        name: cleanCompletionValue(item?.name || item?.column_name || item?.column),
+        name: metadataIdentityValue(item?.name ?? item?.column_name ?? item?.column),
         dataType: cleanCompletionValue(item?.data_type || item?.dataType || item?.type),
         position: numericPosition(item?.position || item?.ordinal_position || index + 1),
       };
@@ -163,6 +171,10 @@ function isSQLAlias(value) {
 
 function cleanCompletionValue(value) {
   return String(value || "").trim();
+}
+
+function metadataIdentityValue(value) {
+  return String(value ?? "");
 }
 
 function numericPosition(value) {
