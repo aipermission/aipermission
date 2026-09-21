@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./editor-support";
 
@@ -13,6 +13,7 @@ export function useConnectorEditor({
 }) {
   const [drawer, setDrawer] = useState({ open: false, mode: "create", kind: defaultKind, target: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, target: null });
+  const deleteOwnerRef = useRef({ generation: 0, targetID: null });
   const [form, setForm] = useState(() => emptyFormForKind(defaultKind));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
   const syncCredentialForEffect = useEffectEvent(() => {
@@ -94,16 +95,27 @@ export function useConnectorEditor({
   }
 
   function requestDelete(target) {
+    resetAction();
+    deleteOwnerRef.current = {
+      generation: deleteOwnerRef.current.generation + 1,
+      targetID: target.id,
+    };
     setDeleteDialog({ open: true, target });
   }
 
   function closeDelete() {
+    deleteOwnerRef.current = {
+      generation: deleteOwnerRef.current.generation + 1,
+      targetID: null,
+    };
+    resetAction();
     setDeleteDialog({ open: false, target: null });
   }
 
   async function remove(removeKey) {
     const target = deleteDialog.target;
     if (!target) return false;
+    const owner = { ...deleteOwnerRef.current };
     const model = modelForKind(target.connector_kind);
     if (!model?.deleteTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(target.connector_kind), message: null });
@@ -119,7 +131,9 @@ export function useConnectorEditor({
       },
     });
     if (result !== true) return false;
-    closeDelete();
+    if (deleteOwnerRef.current.generation !== owner.generation || deleteOwnerRef.current.targetID !== owner.targetID) return false;
+    deleteOwnerRef.current = { generation: owner.generation + 1, targetID: null };
+    setDeleteDialog({ open: false, target: null });
     await refreshAfterEditorMutation(onRefresh, setActionState, message);
     return true;
   }
