@@ -7,13 +7,15 @@ import test from "node:test";
 
 import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision, resolveFrontendBase } from "./coverage-git-state.mjs";
 
+const fixtureBaseBranch = "fixture-base";
+
 function git(root, ...args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
 
 function repositoryFixture() {
   const root = mkdtempSync(join(tmpdir(), "aipermission-coverage-git-"));
-  git(root, "init", "-q");
+  git(root, "init", "-q", "-b", fixtureBaseBranch);
   git(root, "config", "user.email", "fixture@example.invalid");
   git(root, "config", "user.name", "Fixture");
   mkdirSync(join(root, "frontend/src"), { recursive: true });
@@ -67,7 +69,7 @@ test("resolves the accepted bootstrap by tree after a rebase rewrites its commit
     const revision = git(root, "rev-parse", "HEAD");
     const tree = git(root, "rev-parse", "HEAD^{tree}");
 
-    git(root, "switch", "-q", "master");
+    git(root, "switch", "-q", fixtureBaseBranch);
     assert.equal(git(root, "rev-parse", "HEAD"), base);
     writeFileSync(join(root, "frontend/.changed-coverage-baseline.json"), '{"version":2}\n');
     git(root, "add", ".");
@@ -102,7 +104,7 @@ test("frontend ratchets reject HEAD and non-ancestor configured bases", () => {
     git(root, "add", ".");
     git(root, "commit", "-qm", "unrelated");
     const unrelated = git(root, "rev-parse", "HEAD");
-    git(root, "switch", "-q", "master");
+    git(root, "switch", "-q", fixtureBaseBranch);
     assert.throws(
       () => resolveFrontendBase(root, { configured: unrelated, variable: "FRONTEND_TEST_BASE", environment: localEnvironment }),
       /is not an ancestor of HEAD/,
