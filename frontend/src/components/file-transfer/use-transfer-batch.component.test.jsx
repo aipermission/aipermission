@@ -8,10 +8,12 @@ vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPostForm
 
 function deferred() {
   let resolve;
-  const promise = new Promise((done) => {
+  let reject;
+  const promise = new Promise((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
@@ -43,6 +45,12 @@ function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
       </button>
       <button type="button" onClick={() => transfer.resetBatch()}>
         Reset
+      </button>
+      <button type="button" onClick={() => transfer.clearBatch()}>
+        Clear
+      </button>
+      <button type="button" onClick={() => void transfer.refreshBatch()}>
+        Refresh
       </button>
       <p data-testid="status">{transfer.batch.item?.status || transfer.batch.state}</p>
       <p data-testid="conflicts">{transfer.overwritePrompt?.length || 0}</p>
@@ -166,6 +174,26 @@ it("ignores upload completion after the dialog batch is reset", async () => {
   expect(screen.getByTestId("status")).toHaveTextContent("starting");
   await user.click(screen.getByRole("button", { name: "Reset" }));
   pending.resolve({ id: 12, status: "running", direction: "upload", items: [] });
+
+  await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("idle"));
+});
+
+it.each([
+  ["success", (pending) => pending.resolve({ id: 12, status: "completed", direction: "upload", items: [] })],
+  ["failure", (pending) => pending.reject(new Error("refresh failed"))],
+])("does not resurrect a cleared batch after late refresh %s", async (_outcome, settle) => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPostForm.mockResolvedValue({ id: 12, status: "completed", direction: "upload", items: [] });
+  apiGet.mockReturnValue(pending.promise);
+  render(<BatchHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  expect(await screen.findByTestId("status")).toHaveTextContent("completed");
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(screen.getByTestId("status")).toHaveTextContent("completed");
+  await user.click(screen.getByRole("button", { name: "Clear" }));
+  settle(pending);
 
   await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("idle"));
 });
