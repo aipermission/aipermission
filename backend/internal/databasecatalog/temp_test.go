@@ -58,3 +58,47 @@ func TestScavengeDatabaseTempPathsRemovesOnlyStaleTemporaryFiles(t *testing.T) {
 		t.Fatalf("unowned file was removed: %v", err)
 	}
 }
+
+func TestScavengeDatabaseTempPathsPreservesPersistentWorkspaceNames(t *testing.T) {
+	root := t.TempDir()
+	defaultPath := filepath.Join(root, "aipermission.db")
+	databaseDirectory := filepath.Join(root, "databases")
+	if err := os.MkdirAll(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, name := range []string{
+		"snapshot-project.db",
+		"import-project.db",
+		"remote-backup-project.db",
+		"first-run-restore-project.db",
+	} {
+		path := filepath.Join(databaseDirectory, name)
+		want := []byte("persistent workspace " + name)
+		if err := os.WriteFile(path, want, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, now.Add(-25*time.Hour), now.Add(-25*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ScavengeTempPaths(defaultPath, now)
+
+	for _, name := range []string{
+		"snapshot-project.db",
+		"import-project.db",
+		"remote-backup-project.db",
+		"first-run-restore-project.db",
+	} {
+		path := filepath.Join(databaseDirectory, name)
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("persistent workspace %q was removed: %v", name, err)
+		}
+		want := "persistent workspace " + name
+		if string(got) != want {
+			t.Fatalf("persistent workspace %q changed: got %q want %q", name, got, want)
+		}
+	}
+}

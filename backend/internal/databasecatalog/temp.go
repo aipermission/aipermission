@@ -32,30 +32,36 @@ func ReserveTempPath(databasePath, pattern string) (string, error) {
 }
 
 func ScavengeTempPaths(defaultPath string, now time.Time) {
-	directories := []string{
-		filepath.Dir(defaultPath),
-		filepath.Join(filepath.Dir(defaultPath), "databases"),
-		filepath.Join(filepath.Dir(defaultPath), databaseTempDirectoryName),
-		filepath.Join(filepath.Dir(defaultPath), "databases", databaseTempDirectoryName),
+	type scavengerDirectory struct {
+		path    string
+		matches func(string) bool
+	}
+	root := filepath.Dir(defaultPath)
+	directories := []scavengerDirectory{
+		{path: root, matches: isLegacyDatabaseTemporaryFile},
+		{path: filepath.Join(root, "databases"), matches: isLegacyDatabaseTemporaryFile},
+		{path: filepath.Join(root, databaseTempDirectoryName), matches: isDatabaseTemporaryFile},
+		{path: filepath.Join(root, "databases", databaseTempDirectoryName), matches: isDatabaseTemporaryFile},
 	}
 	for _, directory := range directories {
-		entries, err := os.ReadDir(directory)
+		entries, err := os.ReadDir(directory.path)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				log.Printf("inspect stale database temporary files path=%q error=%v", directory, err)
+				log.Printf("inspect stale database temporary files path=%q error=%v", directory.path, err)
 			}
 			continue
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || !isDatabaseTemporaryFile(entry.Name()) {
+			if entry.IsDir() || !directory.matches(entry.Name()) {
 				continue
 			}
 			info, err := entry.Info()
 			if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < 24*time.Hour {
 				continue
 			}
-			if err := os.Remove(filepath.Join(directory, entry.Name())); err != nil && !os.IsNotExist(err) {
-				log.Printf("remove stale database temporary file path=%q error=%v", filepath.Join(directory, entry.Name()), err)
+			path := filepath.Join(directory.path, entry.Name())
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				log.Printf("remove stale database temporary file path=%q error=%v", path, err)
 			}
 		}
 	}
@@ -65,8 +71,11 @@ func isDatabaseTemporaryFile(name string) bool {
 	return strings.HasPrefix(name, "snapshot-") ||
 		strings.HasPrefix(name, "import-") ||
 		strings.HasPrefix(name, "remote-backup-") ||
-		strings.HasPrefix(name, "first-run-restore-") ||
-		strings.HasPrefix(name, ".remote-backup-") ||
-		strings.HasPrefix(name, ".first-run-restore-") ||
+		strings.HasPrefix(name, "first-run-restore-")
+}
+
+func isLegacyDatabaseTemporaryFile(name string) bool {
+	return (strings.HasPrefix(name, ".remote-backup-") && strings.HasSuffix(name, ".aipdb")) ||
+		(strings.HasPrefix(name, ".first-run-restore-") && strings.HasSuffix(name, ".aipdb")) ||
 		(strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".backup.aipdb"))
 }
