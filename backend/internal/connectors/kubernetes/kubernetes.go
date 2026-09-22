@@ -4,7 +4,9 @@ package kubernetesconnector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -40,7 +42,7 @@ var (
 	ErrInvalidConfig     = errors.New("kubernetes connector target config is invalid")
 	ErrScopeDenied       = errors.New("kubernetes namespace is outside this credential profile scope")
 
-	kubeNamePattern       = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+	kubeNamePattern       = regexp.MustCompile(`^[A-Za-z0-9._:][A-Za-z0-9._:-]*$`)
 	kubectlCommandPattern = regexp.MustCompile(`^[A-Za-z0-9_./+-]+$`)
 )
 
@@ -51,6 +53,16 @@ type Connector struct{}
 
 func New() Connector {
 	return Connector{}
+}
+
+// NormalizeObjectName validates one connector-owned kubectl identifier and
+// returns its trimmed form. Callers decide whether an empty value is optional.
+func NormalizeObjectName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || !kubeNamePattern.MatchString(value) {
+		return "", fmt.Errorf("invalid kubernetes object name: %s", value)
+	}
+	return value, nil
 }
 
 func (Connector) Kind() string {

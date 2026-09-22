@@ -146,26 +146,36 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		title = "List Kubernetes namespaces"
 		summary = "List namespaces visible to this profile."
 	case ActionListWorkloads:
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "List Kubernetes workloads"
 		summary = namespaceSummary(input)
 	case ActionListPods:
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "List Kubernetes pods"
 		summary = namespaceSummary(input)
 	case ActionListServices:
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "List Kubernetes services"
 		summary = namespaceSummary(input)
 	case ActionListIngress:
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "List Kubernetes ingress"
 		summary = namespaceSummary(input)
 	case ActionListNodes:
 		title = "List Kubernetes nodes"
 		summary = "List cluster nodes."
 	case ActionListEvents:
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		input["limit"] = boundedIntOrDefault(input, "limit", 200, 1, 1000)
 		title = "List Kubernetes events"
 		summary = namespaceSummary(input)
@@ -180,7 +190,9 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["resource_type"] = resourceType
 		input["name"] = name
-		input["namespace"] = normalizeOptionalName(input, "namespace")
+		if err := normalizeOptionalInputName(input, "namespace"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "Describe Kubernetes resource"
 		summary = resourceSummary(resourceType, stringValue(input, "namespace"), name)
 	case ActionLogs:
@@ -191,7 +203,9 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		}
 		input["namespace"] = namespace
 		input["pod"] = pod
-		input["container"] = normalizeOptionalName(input, "container")
+		if err := normalizeOptionalInputName(input, "container"); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		input["tail"] = boundedIntOrDefault(input, "tail", defaultLogTail, 1, maxLogTail)
 		title = "Read Kubernetes pod logs"
 		summary = fmt.Sprintf("%s/%s tail=%d", namespace, pod, input["tail"])
@@ -236,4 +250,13 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		prepared.RetryPolicy = connectors.ConditionalRetryPolicy("expected_resource_version")
 	}
 	return prepared, nil
+}
+
+func normalizeOptionalInputName(input map[string]any, key string) error {
+	value, err := normalizeOptionalName(input, key)
+	if err != nil {
+		return err
+	}
+	input[key] = value
+	return nil
 }
