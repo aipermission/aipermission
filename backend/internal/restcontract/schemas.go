@@ -22,17 +22,7 @@ func sharedSchemas() map[string]any {
 			"error": stringSchema(),
 			"code":  stringSchema(),
 		}, []string{"error"}),
-		"ConnectorActionDefinition": objectSchema(map[string]any{
-			"name":                   stringSchema(),
-			"label":                  stringSchema(),
-			"description":            stringSchema(),
-			"category":               stringSchema(),
-			"risk":                   enumSchema("read", "write", "destructive", "credential_sensitive"),
-			"input_schema":           stringMap,
-			"sensitive_input_fields": arraySchema(stringSchema()),
-			"output_hint":            stringMap,
-			"retry_policy":           retryPolicySchema(),
-		}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"}),
+		"ConnectorActionDefinition": connectorActionDefinitionSchema(stringMap),
 		"ConnectorCredentialProfile": objectSchema(map[string]any{
 			"id":                      integerSchema(),
 			"target_id":               integerSchema(),
@@ -197,6 +187,20 @@ func sharedSchemas() map[string]any {
 		}, []string{"connector_kind", "activity_type", "status", "category", "count"}),
 		"DiagnosticsReport": diagnosticsReportSchema(),
 	}
+}
+
+func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
+	return objectSchema(map[string]any{
+		"name":                   stringSchema(),
+		"label":                  stringSchema(),
+		"description":            stringSchema(),
+		"category":               stringSchema(),
+		"risk":                   enumSchema("read", "write", "destructive", "credential_sensitive"),
+		"input_schema":           stringMap,
+		"sensitive_input_fields": arraySchema(stringSchema()),
+		"output_hint":            stringMap,
+		"retry_policy":           retryPolicySchema(),
+	}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"})
 }
 
 func typedOperationContracts() map[Route]operationContract {
