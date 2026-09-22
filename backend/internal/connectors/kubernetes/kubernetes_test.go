@@ -24,6 +24,120 @@ func TestPrepareActionRejectsEmptyLogTarget(t *testing.T) {
 	}
 }
 
+func TestKubeNameValidationRejectsFlagLikeValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{name: "resource name", value: "api-v1", valid: true},
+		{name: "qualified name", value: "system:node", valid: true},
+		{name: "long flag", value: "--all-namespaces"},
+		{name: "short flag", value: "-A"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validKubeName(test.value); got != test.valid {
+				t.Fatalf("validKubeName(%q) = %t, want %t", test.value, got, test.valid)
+			}
+		})
+	}
+}
+
+func TestPrepareActionRejectsFlagLikeOptionalNames(t *testing.T) {
+	tests := []struct {
+		name   string
+		action string
+		input  map[string]any
+	}{
+		{
+			name:   "namespace",
+			action: ActionListPods,
+			input:  map[string]any{"namespace": "--all-namespaces"},
+		},
+		{
+			name:   "container",
+			action: ActionLogs,
+			input: map[string]any{
+				"namespace": "production",
+				"pod":       "api",
+				"container": "--help",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
+				Target:     kubeTarget(),
+				Profile:    kubeProfile("selected"),
+				ActionName: test.action,
+				Input:      test.input,
+			})
+			if err == nil || !strings.Contains(err.Error(), "invalid kubernetes object name") {
+				t.Fatalf("expected invalid object name error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestExecuteActionRejectsFlagLikeOptionalNamesBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name   string
+		action string
+		input  map[string]any
+	}{
+		{
+			name:   "namespace",
+			action: ActionListPods,
+			input:  map[string]any{"namespace": "--all-namespaces"},
+		},
+		{
+			name:   "container",
+			action: ActionLogs,
+			input: map[string]any{
+				"namespace": "production",
+				"pod":       "api",
+				"container": "--help",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeCommandTransport{}
+			_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+				Target:       kubeTarget(),
+				Profile:      kubeProfile("selected"),
+				Capabilities: fakeCapabilities{transport: transport},
+			}, connectors.PreparedAction{ActionName: test.action, Payload: test.input})
+			if err == nil || !strings.Contains(err.Error(), "invalid kubernetes object name") {
+				t.Fatalf("expected invalid object name error, got %v", err)
+			}
+			if len(transport.commands) != 0 {
+				t.Fatalf("transport commands = %#v, want none", transport.commands)
+			}
+		})
+	}
+}
+
+func TestDescribeRejectsFlagLikeResourceNameBeforeTransport(t *testing.T) {
+	transport := &fakeCommandTransport{}
+	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target:       kubeTarget(),
+		Profile:      kubeProfile("selected"),
+		Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionDescribe, Payload: map[string]any{
+		"resource_type": "deployment",
+		"namespace":     "production",
+		"name":          "--all-namespaces",
+	}})
+	if err == nil || !strings.Contains(err.Error(), "invalid kubernetes object name") {
+		t.Fatalf("expected invalid object name error, got %v", err)
+	}
+	if len(transport.commands) != 0 {
+		t.Fatalf("transport commands = %#v, want none", transport.commands)
+	}
+}
+
 func TestKubectlCommandValidation(t *testing.T) {
 	tests := []struct {
 		name    string

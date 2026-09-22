@@ -199,7 +199,20 @@ func executeListEvents(ctx context.Context, client *kubeClient, input map[string
 func executeDescribe(ctx context.Context, client *kubeClient, input map[string]any) (connectors.ActionResult, error) {
 	resourceType := normalizeResourceType(input)
 	name := normalizeRequiredName(input, "name")
-	namespace := namespaceOrDefault(client.runtime.Target, stringValue(input, "namespace"))
+	if name == "" {
+		return connectors.ActionResult{}, fmt.Errorf("invalid kubernetes object name")
+	}
+	namespace, err := normalizeOptionalName(input, "namespace")
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
+	namespace = namespaceOrDefault(client.runtime.Target, namespace)
+	if namespace != "" {
+		namespace, err = NormalizeObjectName(namespace)
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+	}
 	if resourceType != "node" {
 		if namespace == "" {
 			return connectors.ActionResult{}, fmt.Errorf("namespace is required for %s", resourceType)
@@ -229,7 +242,10 @@ func executeDescribe(ctx context.Context, client *kubeClient, input map[string]a
 func executeLogs(ctx context.Context, client *kubeClient, input map[string]any) (connectors.ActionResult, error) {
 	namespace := normalizeRequiredName(input, "namespace")
 	pod := normalizeRequiredName(input, "pod")
-	container := normalizeOptionalName(input, "container")
+	container, err := normalizeOptionalName(input, "container")
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	if namespace == "" || pod == "" {
 		return connectors.ActionResult{}, fmt.Errorf("namespace and pod are required")
 	}
@@ -338,6 +354,13 @@ func (client *kubeClient) runKubeList(ctx context.Context, command string, timeo
 }
 
 func (client *kubeClient) runNamespacedKubeList(ctx context.Context, resource string, namespace string, timeoutSeconds int) ([]map[string]any, error) {
+	var err error
+	if strings.TrimSpace(namespace) != "" {
+		namespace, err = NormalizeObjectName(namespace)
+		if err != nil {
+			return nil, err
+		}
+	}
 	namespaces, clusterWide, err := client.namespacesForQuery(namespace)
 	if err != nil {
 		return nil, err

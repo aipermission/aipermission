@@ -344,26 +344,24 @@ func normalizeResourceType(input map[string]any) string {
 }
 
 func normalizeRequiredName(input map[string]any, key string) string {
-	value := strings.TrimSpace(stringValue(input, key))
-	if !validKubeName(value) {
+	value, err := NormalizeObjectName(stringValue(input, key))
+	if err != nil {
 		return ""
 	}
 	return value
 }
 
-func normalizeOptionalName(input map[string]any, key string) string {
+func normalizeOptionalName(input map[string]any, key string) (string, error) {
 	value := strings.TrimSpace(stringValue(input, key))
 	if value == "" {
-		return ""
+		return "", nil
 	}
-	if !validKubeName(value) {
-		return ""
-	}
-	return value
+	return NormalizeObjectName(value)
 }
 
 func validKubeName(value string) bool {
-	return value != "" && kubeNamePattern.MatchString(value)
+	_, err := NormalizeObjectName(value)
+	return err == nil
 }
 
 func resourceSummary(resourceType string, namespace string, name string) string {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -13,8 +12,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
-
-var kubeConsoleNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 type adapter struct{}
 
@@ -66,9 +63,14 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	if namespace == "" || pod == "" {
 		return nil, errors.New("kubernetes namespace and pod are required")
 	}
-	for _, value := range []string{namespace, pod, container} {
-		if value != "" && !kubeConsoleNamePattern.MatchString(value) {
-			return nil, fmt.Errorf("invalid kubernetes object name: %s", value)
+	for _, value := range []string{namespace, pod} {
+		if _, err := kubernetesconnector.NormalizeObjectName(value); err != nil {
+			return nil, err
+		}
+	}
+	if container != "" {
+		if _, err := kubernetesconnector.NormalizeObjectName(container); err != nil {
+			return nil, err
 		}
 	}
 	if !kubernetesconnector.ProfileAllowsNamespace(profile, namespace) {
