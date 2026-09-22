@@ -175,6 +175,19 @@ describe("useConsoleConnections", () => {
     expect(result.current.sessions.data[0]).toMatchObject({ status: "connecting", error: null });
   });
 
+  it("disconnects only the requested sessions and permits a fresh attachment", () => {
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+    const first = FakeWebSocket.instances[0];
+
+    act(() => result.current.connections.disconnectSessions([999, 7]));
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+
+    act(() => result.current.connections.sendInput(7, "pwd\n"));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.instances[1].readyState).toBe(FakeWebSocket.CONNECTING);
+  });
+
   it("keeps a user-closed session closed when its socket closes", async () => {
     apiPost.mockResolvedValue({});
     const { result } = renderHook(() => useHarness());
