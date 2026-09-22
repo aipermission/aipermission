@@ -8,6 +8,7 @@ const idleAction = { state: "idle", error: null };
 export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runApproval, declineApproval }) {
   const [activeID, setActiveID] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
+  const [detailVerified, setDetailVerified] = useState(false);
   const [dismissedIDs, setDismissedIDs] = useState({});
   const [note, setNote] = useState("");
   const [action, setAction] = useState(idleAction);
@@ -27,6 +28,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     requests.invalidate("mutation");
     setActiveID(null);
     setSnapshot(null);
+    setDetailVerified(false);
     setNote("");
     setAction(idleAction);
   }, [requests]);
@@ -36,12 +38,14 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       const request = requests.begin("detail");
       setActiveID(approval.id);
       setSnapshot({ ...approval, preview: {}, input: {} });
+      setDetailVerified(false);
       setNote("");
       setAction({ state: "loading", error: null });
       try {
         const exact = await readExactApproval(approval, selectedTargetRefRef.current, request.signal);
         if (!request.isCurrent()) return;
         setSnapshot(exact);
+        setDetailVerified(true);
         setAction(
           exact.status === "approval_pending"
             ? idleAction
@@ -49,7 +53,6 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
         );
       } catch (error) {
         if (!request.isCurrent()) return;
-        setSnapshot(null);
         setAction({ state: "load_error", error: error.message });
       } finally {
         request.complete();
@@ -64,7 +67,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
   }, [activeID, reset]);
 
   const approve = useCallback(async () => {
-    if (!activeApproval) return;
+    if (!activeApproval || !detailVerified) return;
     const approval = activeApproval;
     const request = requests.begin("mutation");
     setAction({ state: "running", error: null });
@@ -109,10 +112,10 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     } finally {
       request.complete();
     }
-  }, [activeApproval, note, requests, reset, runApproval]);
+  }, [activeApproval, detailVerified, note, requests, reset, runApproval]);
 
   const decline = useCallback(async () => {
-    if (!activeApproval) return;
+    if (!activeApproval || !detailVerified) return;
     const approval = activeApproval;
     const request = requests.begin("mutation");
     setAction({ state: "declining", error: null });
@@ -142,7 +145,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     } finally {
       request.complete();
     }
-  }, [activeApproval, declineApproval, note, requests, reset]);
+  }, [activeApproval, declineApproval, detailVerified, note, requests, reset]);
 
   useEffect(() => reset(), [reset, selectedTargetRef]);
 
@@ -190,7 +193,7 @@ function connectorOutcomeUnknown(error, approval) {
 }
 
 function isTerminalActionState(state) {
-  return ["error", "failed", "running", "stale"].includes(state);
+  return ["declining", "error", "failed", "load_error", "running", "stale"].includes(state);
 }
 
 function withoutKey(value, key) {

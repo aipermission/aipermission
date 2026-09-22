@@ -78,7 +78,7 @@ describe("useConnectorApprovalDialog", () => {
     await act(async () => {});
     await act(async () => result.current.approve());
 
-    expect(result.current.activeApproval).toBeNull();
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "approval_pending" });
     expect(result.current.action).toMatchObject({ state: "load_error", error: expect.stringContaining("Invalid connector approval") });
     expect(runApproval).not.toHaveBeenCalled();
   });
@@ -97,6 +97,28 @@ describe("useConnectorApprovalDialog", () => {
     expect(result.current.activeApproval).toBeNull();
     expect(result.current.action.state).toBe("idle");
     expect(runApproval).toHaveBeenCalledWith(expect.objectContaining({ id: 7, approval_context_hash: "context-7" }), "");
+  });
+
+  it("keeps an in-flight decline visible when polling removes the approval", async () => {
+    const mutation = deferred();
+    const declineApproval = vi.fn(() => mutation.promise);
+    apiGet.mockResolvedValue(approval(7));
+    const { result, rerender, props } = renderDialog({ approvals: [approval(7)], declineApproval });
+    await act(async () => {});
+
+    let declining;
+    act(() => {
+      declining = result.current.decline();
+    });
+    rerender({ ...props, approvals: [] });
+
+    expect(result.current.activeApproval).toMatchObject({ id: 7, status: "approval_pending" });
+    expect(result.current.action.state).toBe("declining");
+
+    await act(async () => mutation.resolve({ status: "declined" }));
+    await declining;
+    expect(result.current.activeApproval).toBeNull();
+    expect(result.current.action.state).toBe("idle");
   });
 
   it("keeps a stale approval visible with actionable state", async () => {
