@@ -150,13 +150,13 @@ func (s *managedConsoleSession) manualOutputCompletionLocked() *manualOutputComp
 	}
 	active := *s.manualActive
 	segment, truncated := s.rawSegmentLocked(active.StartOffset)
-	if !manualSegmentHasPrompt(segment) {
+	if !terminaltext.ManualSegmentHasPrompt(segment) {
 		return nil
 	}
-	if manualActiveIsHistoryRecall(&active) && strings.TrimSpace(active.ResumePrompt) != "" && !manualTranscriptEndsWithPrompt(segment, active.ResumePrompt) {
+	if manualActiveIsHistoryRecall(&active) && strings.TrimSpace(active.ResumePrompt) != "" && !terminaltext.ManualTranscriptEndsWithPrompt(segment, active.ResumePrompt) {
 		return nil
 	}
-	stdout, outputTruncated := manualCapturedOutput(segment, active.Command)
+	stdout, outputTruncated := terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	truncated = truncated || outputTruncated
 	status := "completed"
 	errorText := ""
@@ -185,7 +185,7 @@ func (s *managedConsoleSession) manualActiveHasOutputLocked() bool {
 	}
 	active := *s.manualActive
 	segment, _ := s.rawSegmentLocked(active.StartOffset)
-	stdout, _ := manualCapturedOutput(segment, active.Command)
+	stdout, _ := terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	return strings.TrimSpace(terminaltext.PlainOutput(stdout)) != ""
 }
 
@@ -198,7 +198,7 @@ func (s *managedConsoleSession) downgradeManualOutputCaptureLocked(reason string
 	stdout := ""
 	outputTruncated := false
 	if captureOutput {
-		stdout, outputTruncated = manualCapturedOutput(segment, active.Command)
+		stdout, outputTruncated = terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	}
 	s.manualActive = nil
 	return &manualOutputCompletion{

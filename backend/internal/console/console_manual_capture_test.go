@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
@@ -712,36 +713,36 @@ func TestManualInputPausesNestedShellEvenWithoutKnownResumePrompt(t *testing.T) 
 
 func TestManualPromptPrefixUsesCommandEchoLineForResumePrompt(t *testing.T) {
 	transcript := "root@worker:~# docker exec -it f6f sh"
-	if prompt := lastManualShellPrompt(transcript); prompt != "root@worker:~#" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "root@worker:~#" {
 		t.Fatalf("expected prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "root@worker:~#") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "root@worker:~#") {
 		t.Fatalf("command echo line must not count as returned prompt")
 	}
 }
 
 func TestManualPromptPrefixSupportsBracketPathPrompts(t *testing.T) {
 	transcript := "[/] # ls"
-	if prompt := lastManualShellPrompt(transcript); prompt != "[/] #" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "[/] #" {
 		t.Fatalf("expected bracket prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "[/] #") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "[/] #") {
 		t.Fatalf("command echo line must not count as returned bracket prompt")
 	}
-	if !manualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
+	if !terminaltext.ManualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
 		t.Fatalf("bare bracket prompt should count as returned prompt")
 	}
 }
 
 func TestManualPromptPrefixSupportsKubernetesPathPrompts(t *testing.T) {
 	transcript := "/ # ls"
-	if prompt := lastManualShellPrompt(transcript); prompt != "/ #" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "/ #" {
 		t.Fatalf("expected Kubernetes path prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "/ #") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "/ #") {
 		t.Fatalf("command echo line must not count as returned path prompt")
 	}
-	if !manualTranscriptEndsWithPrompt("/app $ ", "/app $") {
+	if !terminaltext.ManualTranscriptEndsWithPrompt("/app $ ", "/app $") {
 		t.Fatalf("bare path prompt should count as returned prompt")
 	}
 }
@@ -787,7 +788,7 @@ func TestManualInputAutomationFinalizesRunningCapture(t *testing.T) {
 }
 
 func TestManualCapturedOutputDoesNotDropLinesEndingWithCommandText(t *testing.T) {
-	output, _ := manualCapturedOutput("ls\r\ntools\r\nlogs\r\nroot@worker:~# ", "ls")
+	output, _ := terminaltext.ManualCapturedOutput("ls\r\ntools\r\nlogs\r\nroot@worker:~# ", "ls", maxManualCapturedOutputBytes)
 	if output != "tools\nlogs" {
 		t.Fatalf("expected output lines ending with command text to survive, got %q", output)
 	}

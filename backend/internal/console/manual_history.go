@@ -1,6 +1,10 @@
 package console
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
+)
 
 const (
 	maxManualCommandBufferBytes  = 8192
@@ -49,7 +53,7 @@ func (s *managedConsoleSession) prepareManualInputLocked(data string) manualInpu
 	}
 	if activeUpdate == nil {
 		startOffset := s.rawStreamPositionLocked()
-		resumePrompt := lastManualShellPrompt(s.rawTranscript)
+		resumePrompt := terminaltext.LastManualShellPrompt(s.rawTranscript)
 		for _, command := range s.manualInput.consume(data) {
 			if command.Command != "" {
 				command.StartOffset = startOffset
