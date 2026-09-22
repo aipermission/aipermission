@@ -72,8 +72,6 @@ func (h *Handlers) Unlock(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, workspacelifecycle.ErrCredential) || errors.Is(err, workspacelifecycle.ErrAuthentication) {
 			attempt.Failure()
-		} else {
-			attempt.Success()
 		}
 		writeUnlockError(w, err)
 		return
