@@ -172,6 +172,17 @@ func TestLoadRejectsNonLocalBind(t *testing.T) {
 	}
 }
 
+func TestValidateLocalBindRejectsEmptyHost(t *testing.T) {
+	if err := validateLocalBind(""); err == nil {
+		t.Fatal("expected an empty host to fail closed")
+	}
+	for _, host := range []string{"localhost", "127.0.0.1", "127.0.0.2", "::1"} {
+		if err := validateLocalBind(host); err != nil {
+			t.Fatalf("loopback host %q was rejected: %v", host, err)
+		}
+	}
+}
+
 func TestLoadRejectsWeakExplicitGatewaySecret(t *testing.T) {
 	t.Setenv("AIPERMISSION_DATA_PATH", filepath.Join(t.TempDir(), "custom.db"))
 	t.Setenv("AIPERMISSION_GATEWAY_SECRET", "short")
