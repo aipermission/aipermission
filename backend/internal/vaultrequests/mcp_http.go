@@ -284,6 +284,8 @@ func writeMCPCallError(w http.ResponseWriter, err error) bool {
 		httptransport.WriteError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ErrIdempotencyConflict):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrIdempotencyExpired):
+		httptransport.WriteError(w, http.StatusGone, err.Error())
 	case errors.Is(err, ErrRequestRateLimited):
 		httptransport.WriteError(w, http.StatusTooManyRequests, err.Error())
 	default:

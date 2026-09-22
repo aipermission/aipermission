@@ -81,6 +81,8 @@ func migrations() []migration {
 		backupUploadExpiryMigration(),
 		connectorLifecycleFinalizationMigration,
 		backupUploadWorkspaceInstanceMigration(),
+		vaultActionRetentionIndexMigration,
+		vaultActionIdempotencyTombstoneMigration,
 	)
 }
 

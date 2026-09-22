@@ -130,3 +130,13 @@ func TestMCPProjectReferenceErrorsAreClientErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPExpiredIdempotencyResultIsGone(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeMCPCallError(response, ErrIdempotencyExpired) {
+		t.Fatal("expired idempotency error was not handled")
+	}
+	if response.Code != http.StatusGone {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusGone)
+	}
+}
