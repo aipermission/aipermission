@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -60,6 +62,30 @@ func TestRedactionRuleEndpointsValidateAndPersistRules(t *testing.T) {
 	}
 	if response := performJSON(handler, http.MethodGet, "/api/settings/redaction-rules", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "internal") {
 		t.Fatalf("list rules failed: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPathologicalRedactionRuleCanBeDeleted(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	handler := fixture.server.Handler()
+	response := performJSON(handler, http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
+		Name: "match everything", Pattern: `.*`, Enabled: true,
+	})
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create rule failed: %d %s", response.Code, response.Body.String())
+	}
+	var rule securitypolicy.Rule
+	if err := json.Unmarshal(response.Body.Bytes(), &rule); err != nil {
+		t.Fatalf("decode created rule: %v", err)
+	}
+
+	response = performJSON(handler, http.MethodDelete, fmt.Sprintf("/api/settings/redaction-rules/%d", rule.ID), "", nil)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete rule failed: %d %s", response.Code, response.Body.String())
+	}
+	response = performJSON(handler, http.MethodGet, "/api/settings/redaction-rules", "", nil)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "match everything") {
+		t.Fatalf("deleted rule remains: %d %s", response.Code, response.Body.String())
 	}
 }
 

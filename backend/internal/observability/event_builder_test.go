@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -90,6 +91,23 @@ func TestBuildEventPrefersExplicitMetadataAndResolvesProjectFallbacks(t *testing
 func TestBuildEventRejectsPayloadsThatCannotBeMarshaled(t *testing.T) {
 	if _, err := BuildEvent(context.Background(), nil, BuildInput{Payload: make(chan int)}); err == nil {
 		t.Fatal("expected payload marshal failure")
+	}
+}
+
+func TestBuildEventFailsClosedWhenRedactionBreaksJSON(t *testing.T) {
+	event, err := BuildEvent(context.Background(), nil, BuildInput{
+		Action:  "settings.redaction_rule.deleted",
+		Payload: map[string]any{"secret": "must-not-leak"},
+		Redact:  func(string) string { return "not valid JSON" },
+	})
+	if err != nil {
+		t.Fatalf("build event: %v", err)
+	}
+	if event.PayloadJSON != `"[REDACTED]"` || !json.Valid([]byte(event.PayloadJSON)) {
+		t.Fatalf("payload JSON = %q", event.PayloadJSON)
+	}
+	if strings.Contains(event.PayloadJSON, "must-not-leak") {
+		t.Fatalf("invalid redaction fallback leaked payload: %s", event.PayloadJSON)
 	}
 }
 
