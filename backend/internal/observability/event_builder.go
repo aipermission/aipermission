@@ -27,6 +27,9 @@ func BuildEvent(ctx context.Context, executor sqldb.Executor, input BuildInput) 
 	payloadJSON := string(payloadBytes)
 	if input.Redact != nil {
 		payloadJSON = input.Redact(payloadJSON)
+		if !json.Valid([]byte(payloadJSON)) {
+			payloadJSON = `"[REDACTED]"`
+		}
 	}
 	connectorKind, projectID, targetID, profileID, actionRequestID := connectorMetadata(input.Payload)
 	projectID = resolveProjectID(ctx, executor, projectID, connectorKind, actionRequestID, targetID, input.RuntimeID)
