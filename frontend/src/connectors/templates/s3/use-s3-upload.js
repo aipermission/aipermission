@@ -3,6 +3,8 @@ import { useRequestGuard } from "../../../lib/request-guard";
 import { defaultUploadDialog } from "./dialogs";
 import { fileToBase64, joinObjectKey, normalizeObjectKey } from "./helpers";
 
+const maxInlineUploadBytes = 16 << 20;
+
 export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObjects, readObjectMetadata, setState }) {
   const [uploadDialog, setUploadDialog] = useState(defaultUploadDialog);
   const requests = useRequestGuard(`s3-upload:${scopeKey}`);
@@ -134,6 +136,9 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
 
 function uploadValidationError({ fileMode, preparedFiles, includeText }) {
   if (fileMode && preparedFiles.length === 0) return "Choose one or more files to upload.";
+  if (fileMode && preparedFiles.some((item) => item.file.size > maxInlineUploadBytes)) {
+    return "Choose files no larger than 16 MiB.";
+  }
   if (!fileMode && !includeText) return "Enter an object key and text content.";
   return "";
 }

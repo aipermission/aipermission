@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { saveBlob } from "../../../lib/api";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
@@ -15,7 +15,12 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   const [metadata, setMetadata] = useState(null);
   const [metadataSearch, setMetadataSearch] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const scopeKey = `${target.ref}:${activeSession.active ? activeSession.startedAt || "active" : "inactive"}`;
+  const requestGuard = useRequestGuard(scopeKey);
+  const scopeKeyRef = useRef(scopeKey);
+  const selectedKeyRef = useRef(selectedKey);
+  scopeKeyRef.current = scopeKey;
+  selectedKeyRef.current = selectedKey;
   const refreshObjectsForEffect = useEffectEvent((options) => refreshObjects(options));
 
   useEffect(() => {
@@ -119,27 +124,43 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   }
 
   async function downloadSelected() {
-    if (!selectedKey) return;
-    const filename = filenameFromKey(selectedKey);
-    const saveHandle = await chooseSaveHandle(filename, setState);
-    if (saveHandle === false) return;
-    const item = await runS3Action({
-      actionName: "download_object",
-      input: { key: selectedKey },
-      reason: "manual S3 browser object download",
-      busy: "downloading",
-    });
-    if (!item) return;
-    const output = item.output || {};
-    const blob = base64Blob(output.content_base64 || "", output.content_type || "application/octet-stream");
-    if (saveHandle) {
-      const writable = await saveHandle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      setState({ state: "idle", error: "", message: `Saved ${output.filename || filename}.` });
-      return;
+    const key = selectedKey;
+    if (!key) return;
+    const operationScope = scopeKey;
+    const preparation = requestGuard.begin("download-preparation");
+    const filename = filenameFromKey(key);
+    try {
+      const saveHandle = await chooseSaveHandle(filename);
+      if (!preparation.isCurrent() || scopeKeyRef.current !== operationScope || selectedKeyRef.current !== key) return;
+      if (saveHandle === false) {
+        setState({ state: "idle", error: "", message: "Download canceled." });
+        return;
+      }
+      const item = await runS3Action({
+        actionName: "download_object",
+        input: { key },
+        reason: "manual S3 browser object download",
+        busy: "downloading",
+      });
+      if (!item || !preparation.isCurrent() || scopeKeyRef.current !== operationScope || selectedKeyRef.current !== key) return;
+      const output = item.output || {};
+      const blob = base64Blob(output.content_base64 || "", output.content_type || "application/octet-stream");
+      if (saveHandle) {
+        const savedFilename = output.filename || filename;
+        await writeNativeDownload(saveHandle, blob);
+        if (preparation.isCurrent() && scopeKeyRef.current === operationScope && selectedKeyRef.current === key) {
+          setState({ state: "idle", error: "", message: `Saved ${savedFilename}.` });
+        }
+        return;
+      }
+      await saveBlob(blob, output.filename || filename, { picker: false });
+    } catch (error) {
+      if (preparation.isCurrent()) {
+        setState({ state: "error", error: error?.message || "Download failed.", message: "" });
+      }
+    } finally {
+      preparation.complete();
     }
-    await saveBlob(blob, output.filename || filename, { picker: false });
   }
 
   async function readBucketInfo() {
@@ -191,13 +212,30 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   };
 }
 
-async function chooseSaveHandle(filename, setState) {
+async function writeNativeDownload(saveHandle, blob) {
+  let writable;
+  try {
+    writable = await saveHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  } catch (error) {
+    if (writable && typeof writable.abort === "function") {
+      try {
+        await writable.abort();
+      } catch {
+        // The original write failure is the actionable error.
+      }
+    }
+    throw error;
+  }
+}
+
+async function chooseSaveHandle(filename) {
   if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function") return null;
   try {
     return await window.showSaveFilePicker({ suggestedName: safeDownloadName(filename) });
   } catch (error) {
     if (error?.name !== "AbortError") throw error;
-    setState({ state: "idle", error: "", message: "Download canceled." });
     return false;
   }
 }
