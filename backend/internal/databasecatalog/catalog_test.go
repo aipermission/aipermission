@@ -1256,7 +1256,7 @@ func TestDeleteRecoveryRollsBackPartialPublishFailure(t *testing.T) {
 	}
 }
 
-func TestDeleteRecoveryResumesManifestedPartialPublish(t *testing.T) {
+func TestDeleteRecoveryRollsBackManifestedPartialPublish(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "manifest-recovery.db")
 	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"manifested")
@@ -1287,8 +1287,10 @@ func TestDeleteRecoveryResumesManifestedPartialPublish(t *testing.T) {
 	if err := recoverDatabaseDeleteQuarantinesWithPublish(directory, publish); err == nil || !strings.Contains(err.Error(), "injected recovery publish failure") {
 		t.Fatalf("first recovery error = %v", err)
 	}
-	if !db.Exists(path) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(path)+"-wal")) {
-		t.Fatal("manifested recovery did not preserve its mixed durable state")
+	for _, candidate := range []string{path, path + "-wal"} {
+		if db.Exists(candidate) || !db.Exists(filepath.Join(quarantineDir, filepath.Base(candidate))) {
+			t.Fatalf("manifested recovery left a partially restored artifact set for %q", candidate)
+		}
 	}
 	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
 		t.Fatalf("resume manifested recovery: %v", err)
@@ -1300,6 +1302,41 @@ func TestDeleteRecoveryResumesManifestedPartialPublish(t *testing.T) {
 	}
 	if db.Exists(quarantineDir) {
 		t.Fatal("resumed recovery retained completed quarantine")
+	}
+}
+
+func TestDeleteRecoveryPreflightsManifestedArtifactSet(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, "manifest-conflict.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"manifest-conflict")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{filepath.Base(databasePath), filepath.Base(databasePath) + "-wal"}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(quarantineDir, name), []byte("quarantined "+name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(databasePath+"-wal", []byte("conflicting wal"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 2, Primary: names[0], Files: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover conflicting artifact set: %v", err)
+	}
+	if db.Exists(databasePath) {
+		t.Fatal("recovery published the primary before detecting the WAL conflict")
+	}
+	if !db.Exists(filepath.Join(quarantineDir, names[0])) {
+		t.Fatal("recovery removed the quarantined primary after detecting a conflict")
 	}
 }
 
