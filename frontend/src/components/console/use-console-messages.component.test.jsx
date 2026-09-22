@@ -122,4 +122,62 @@ describe("useConsoleMessages", () => {
     expect(result.current.text).toBe("new draft");
     expect(result.current.state.state).not.toBe("sending");
   });
+
+  it("does not erase a draft edited while an earlier message is sending", async () => {
+    const pendingSend = deferred();
+    apiGet.mockResolvedValue([]);
+    apiPost.mockReturnValue(pendingSend.promise);
+    const { result } = renderHook(() => useConsoleMessages(baseProps()));
+    act(() => {
+      result.current.setTokenID("5");
+      result.current.setText("same draft");
+    });
+
+    let submission;
+    act(() => {
+      submission = result.current.submit({ preventDefault: vi.fn() });
+    });
+    act(() => {
+      result.current.setText("new draft");
+      result.current.setText("same draft");
+    });
+    await act(async () => pendingSend.resolve({}));
+    await submission;
+
+    expect(result.current.text).toBe("same draft");
+  });
+
+  it("closes and clears message state when the selected runtime changes", async () => {
+    const pendingSend = deferred();
+    apiGet.mockResolvedValue([{ id: 1, message: "old message" }]);
+    apiPost.mockReturnValue(pendingSend.promise);
+    const props = baseProps();
+    const { result, rerender } = renderHook((value) => useConsoleMessages(value), { initialProps: props });
+    act(() => {
+      result.current.open();
+      result.current.setTokenID("5");
+      result.current.setText("old draft");
+    });
+    await act(async () => result.current.load());
+
+    let submission;
+    act(() => {
+      submission = result.current.submit({ preventDefault: vi.fn() });
+    });
+    rerender({ ...props, selectedRuntimeTarget: { id: 4, name: "next" } });
+
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.text).toBe("");
+    expect(result.current.tokenID).toBe("");
+    expect(result.current.state).toEqual({ state: "idle", data: [], error: null });
+
+    await act(async () => pendingSend.resolve({}));
+    await submission;
+    expect(apiPost).toHaveBeenCalledWith(
+      "/api/messages",
+      expect.objectContaining({ runtime_id: 3, message: "old draft" }),
+      expect.anything(),
+    );
+    expect(result.current.text).toBe("");
+  });
 });
