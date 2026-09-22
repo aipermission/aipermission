@@ -21,7 +21,7 @@ require (
 	github.com/twmb/franz-go v1.21.6
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260729023516-cc159eb5ddb9
-	github.com/twmb/franz-go/pkg/kmsg v1.13.1
+	github.com/twmb/franz-go/pkg/kmsg v1.14.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
