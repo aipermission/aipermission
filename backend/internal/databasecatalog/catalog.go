@@ -679,6 +679,7 @@ func databaseDeleteCandidatesFromNames(dir, quarantineDir string, names []string
 }
 
 func recoverManifestedDatabaseDelete(candidates []quarantinedDatabaseFile, publish func(string, string) error) error {
+	toPublish := make([]quarantinedDatabaseFile, 0, len(candidates))
 	for _, item := range candidates {
 		quarantined, qErr := regularFileExists(item.quarantine)
 		original, oErr := regularFileExists(item.original)
@@ -697,10 +698,22 @@ func recoverManifestedDatabaseDelete(candidates []quarantinedDatabaseFile, publi
 		case !quarantined && !original:
 			return fmt.Errorf("database delete recovery lost artifact %q", item.original)
 		case quarantined:
-			if err := publish(item.quarantine, item.original); err != nil {
-				return fmt.Errorf("recover database file %q: %w", item.original, err)
-			}
+			toPublish = append(toPublish, item)
 		}
+	}
+
+	restored := make([]quarantinedDatabaseFile, 0, len(toPublish))
+	for _, item := range toPublish {
+		if err := publish(item.quarantine, item.original); err != nil {
+			errs := []error{fmt.Errorf("recover database file %q: %w", item.original, err)}
+			for index := len(restored) - 1; index >= 0; index-- {
+				if rollbackErr := publish(restored[index].original, restored[index].quarantine); rollbackErr != nil {
+					errs = append(errs, fmt.Errorf("roll back recovered database file %q: %w", restored[index].original, rollbackErr))
+				}
+			}
+			return errors.Join(errs...)
+		}
+		restored = append(restored, item)
 	}
 	return nil
 }
