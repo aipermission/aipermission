@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { sqlCompletionItems } from "./sql-editor-completions";
 import { applySQLEditorTheme, loadSQLMonaco } from "./sql-editor-runtime";
 
-export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keywords, disabled }) {
+export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keywords, identifierPolicy, disabled }) {
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const changeRef = useRef(null);
@@ -11,6 +11,7 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   const onChangeRef = useRef(onChange);
   const tablesRef = useRef(tables);
   const keywordsRef = useRef(keywords);
+  const identifierPolicyRef = useRef(identifierPolicy);
   const latestOptionsRef = useRef({ value, theme, disabled });
   latestOptionsRef.current = { value, theme, disabled };
   const [monaco, setMonaco] = useState(null);
@@ -28,6 +29,9 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   useEffect(() => {
     keywordsRef.current = keywords;
   }, [keywords]);
+  useEffect(() => {
+    identifierPolicyRef.current = identifierPolicy;
+  }, [identifierPolicy]);
 
   useEffect(() => {
     let canceled = false;
@@ -39,7 +43,16 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
         providerRef.current = instance.languages.registerCompletionItemProvider("sql", {
           triggerCharacters: [".", " ", '"'],
           provideCompletionItems(model, position) {
-            return { suggestions: sqlCompletionItems(instance, tablesRef.current, keywordsRef.current, model, position) };
+            return {
+              suggestions: sqlCompletionItems(
+                instance,
+                tablesRef.current,
+                keywordsRef.current,
+                model,
+                position,
+                identifierPolicyRef.current,
+              ),
+            };
           },
         });
         const editor = instance.editor.create(

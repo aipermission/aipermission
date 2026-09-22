@@ -3,6 +3,8 @@ package vaultrequests
 import (
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/projectvault"
 )
 
 func TestNormalizeActionInputRejectsUnknownFieldsAndCanonicalizesPayload(t *testing.T) {
@@ -10,6 +12,12 @@ func TestNormalizeActionInputRejectsUnknownFieldsAndCanonicalizesPayload(t *test
 		"name": "GENERATED_KEY", "generator_kind": "hex_secret", "unexpected": true,
 	}); err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("unknown field error = %v", err)
+	}
+	generated, err := NormalizeActionInput(ActionGenerateItem, map[string]any{
+		"name": "GENERATED_KEY", "generator_kind": "hex_secret",
+	})
+	if err != nil || generated["secret_type"] != projectvault.DefaultSecretType {
+		t.Fatalf("normalized generated input = %#v error=%v", generated, err)
 	}
 	normalized, err := NormalizeActionInput(ActionRestartSession, map[string]any{
 		"target_ref": "ssh:1:2",

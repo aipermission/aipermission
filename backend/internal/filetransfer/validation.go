@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 func FormatByteLimit(size int64) string {
@@ -227,5 +229,5 @@ func rejectionNote(note string) string {
 }
 
 func nowString() string {
-	return time.Now().UTC().Format(time.RFC3339)
+	return timeformat.UTC(time.Now())
 }

@@ -54,3 +54,18 @@ it("restores focus to the opener after closing", async () => {
   await user.keyboard("{Escape}");
   await waitFor(() => expect(opener).toHaveFocus());
 });
+
+it("keeps a controlled drawer open while closing is disabled", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  render(
+    <Drawer open title="Creating token" onClose={onClose} closeDisabled>
+      Body
+    </Drawer>,
+  );
+
+  expect(screen.getByRole("button", { name: "Close drawer" })).toBeDisabled();
+  await user.keyboard("{Escape}");
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByRole("dialog", { name: "Creating token" })).toBeVisible();
+});

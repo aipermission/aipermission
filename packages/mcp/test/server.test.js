@@ -116,16 +116,17 @@ test("Vault tools route through secret-free MCP Vault APIs", async () => {
 
 test("Vault tool schemas enforce the public MCP contract", () => {
   const parse = (schema, value) => Object.fromEntries(Object.entries(schema).map(([key, field]) => [key, field.parse(value[key])]));
+  const validAction = {
+    project_ref: "my-project",
+    action_name: "generate_item",
+    input: {},
+    reason: "Generate approved metadata.",
+    idempotency_key: "request-1",
+  };
   assert.deepEqual(parse(listVaultItemsSchema, {}), { project_ref: undefined });
-  assert.throws(() =>
-    parse(callVaultActionSchema, {
-      project_ref: "my-project",
-      action_name: "generate_item",
-      input: {},
-      reason: "",
-      idempotency_key: "request-1",
-    }),
-  );
+  assert.throws(() => parse(listVaultItemsSchema, { project_ref: "   " }));
+  assert.throws(() => parse(callVaultActionSchema, { ...validAction, project_ref: "   " }));
+  assert.throws(() => parse(callVaultActionSchema, { ...validAction, reason: "" }));
   assert.throws(() =>
     parse(callVaultActionSchema, {
       project_ref: "my-project",

@@ -119,11 +119,12 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     if (!backupRecordsProvider) return;
     await runBackupProviderAction({
       pending: `downloading-record-${record.id}`,
-      successMessage: `Downloaded ${record.filename}.`,
+      successMessage: (result) => (result?.canceled ? null : `Downloaded ${record.filename}.`),
       action: () =>
         apiDownload(
           `/api/backup/providers/${backupRecordsProvider.id}/records/${record.id}/download`,
           record.filename || "aipermission-backup.aipdb",
+          { picker: true, requireStreaming: true },
         ),
     });
   }

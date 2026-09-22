@@ -22,13 +22,31 @@ func TestHTTPHandlersListAndRunPendingRequest(t *testing.T) {
 		t.Fatalf("list response = %d %s", listed.Code, listed.Body.String())
 	}
 
-	run := approvalHTTPRequest(http.MethodPost, `/api/vault-action-approvals/1/run`, `{"user_note":" approved "}`)
-	run.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	run := approvalHTTPRequest(http.MethodPost, `/api/vault-action-approvals/1/run`, `{"user_note":" approved ","approval_context_hash":"`+created.ApprovalContextHash+`"}`)
+	run.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 	handlers.Run(response, run)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"completed"`) ||
 		!strings.Contains(response.Body.String(), `"user_note":"approved"`) {
 		t.Fatalf("run response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestHTTPHandlersGetExactRequest(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	created := harness.call(t, "http-get")
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
+		return testApprovalHTTPScope(harness), true
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/vault-action-approvals/1", nil)
+	request.SetPathValue("id", strconv.FormatInt(created.ID, 10))
+	response := httptest.NewRecorder()
+
+	handlers.Get(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":`+strconv.FormatInt(created.ID, 10)) ||
+		!strings.Contains(response.Body.String(), `"approval_context_hash":"`+created.ApprovalContextHash+`"`) {
+		t.Fatalf("get response = %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -77,15 +95,15 @@ func TestHTTPHandlersValidateDecisionIDBeforeResolvingWorkspace(t *testing.T) {
 	}
 }
 
-func TestHTTPHandlersDeclineWithoutBodyAndValidateNotes(t *testing.T) {
+func TestHTTPHandlersDeclineAndValidateNotes(t *testing.T) {
 	harness := newRuntimeHarness(t)
 	created := harness.call(t, "http-decline")
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
 		return testApprovalHTTPScope(harness), true
 	})
 
-	decline := httptest.NewRequest(http.MethodPost, "/api/vault-action-approvals/1/decline", nil)
-	decline.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	decline := approvalHTTPRequest(http.MethodPost, "/api/vault-action-approvals/1/decline", `{"approval_context_hash":"`+created.ApprovalContextHash+`"}`)
+	decline.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	response := httptest.NewRecorder()
 	handlers.Decline(response, decline)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"declined"`) {
@@ -97,11 +115,42 @@ func TestHTTPHandlersDeclineWithoutBodyAndValidateNotes(t *testing.T) {
 		http.MethodPost, "/api/vault-action-approvals/1/decline",
 		`{"user_note":"`+strings.Repeat("x", maxUserNoteBytes+1)+`"}`,
 	)
-	tooLong.SetPathValue("id", strconv.FormatInt(created.Request.ID, 10))
+	tooLong.SetPathValue("id", strconv.FormatInt(created.ID, 10))
 	invalid := httptest.NewRecorder()
 	handlers.Decline(invalid, tooLong)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("long note response = %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestHTTPHandlersRejectApprovalContextThatWasNotDisplayed(t *testing.T) {
+	harness := newRuntimeHarness(t)
+	created := harness.call(t, "http-stale-context")
+	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
+		return testApprovalHTTPScope(harness), true
+	})
+	request := approvalHTTPRequest(http.MethodPost, "/api/vault-action-approvals/1/run", `{"approval_context_hash":"different-context"}`)
+	request.SetPathValue("id", strconv.FormatInt(created.ID, 10))
+	response := httptest.NewRecorder()
+
+	handlers.Run(response, request)
+
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_context_changed"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+	stored, err := harness.runtime.Get(t.Context(), created.ID)
+	if err != nil || stored.Status != StatusApprovalPending {
+		t.Fatalf("stored request = %#v err=%v", stored, err)
+	}
+}
+
+func TestDecisionPendingConflictUsesStableErrorCode(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeDecisionHTTPError(response, ErrNotPending) {
+		t.Fatal("pending conflict was not handled")
+	}
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":"approval_not_pending"`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
 

@@ -48,6 +48,9 @@ func (coordinator *PeerTrustCoordinator) Change(ctx context.Context, change func
 		}
 		release, err := workspace.AcquireExclusive(ctx)
 		if err != nil {
+			if release != nil {
+				release()
+			}
 			releasePeerTrustLocks(releases)
 			return err
 		}

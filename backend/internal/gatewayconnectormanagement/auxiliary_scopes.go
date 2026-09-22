@@ -16,6 +16,7 @@ func (component *Component) ProfileDeletionScope(w http.ResponseWriter) (connect
 	}
 	return connectormanagement.ProfileDeletionScope{
 		Database: workspace.Storage.Database, AcquireExclusive: workspace.Storage.AcquireExclusive,
+		Admission: workspace.Storage.Admission,
 		Cleanup: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) (connectormanagement.ProfileCleanupOutcome, error) {
 			return connectormanagement.CleanupProvisionedCredentialProfileIfNeeded(ctx, connectormanagement.ManagedCredentialCleanupScope{
 				Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
@@ -38,6 +39,7 @@ func (component *Component) ProfileTestingScope(w http.ResponseWriter) (connecto
 	}
 	return connectormanagement.ProfileTestingScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
+		AcquireDelivery: workspace.Storage.AcquireDelivery, Admission: workspace.Storage.Admission,
 		SpecialTest: func(ctx context.Context, target connectors.TargetView, profile connectors.CredentialProfileView) (*connectors.ManagementResponse, error) {
 			return workspace.Credentials.SpecialTest(ctx, target, profile)
 		},
@@ -54,7 +56,9 @@ func (component *Component) ProfileBackupScope(w http.ResponseWriter) (connector
 	}
 	return connectormanagement.ProfileBackupScope{
 		Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
+		AcquireDelivery:  workspace.Storage.AcquireDelivery,
 		AcquireExclusive: workspace.Storage.AcquireExclusive,
+		Admission:        workspace.Storage.Admission,
 		Observe: func(ctx context.Context, action string, payload map[string]any) {
 			workspace.Observation.Observe(ctx, action, payload)
 		},

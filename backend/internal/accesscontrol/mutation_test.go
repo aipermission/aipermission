@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -18,6 +19,7 @@ type authorizationFixture struct {
 	tokenID   int64
 	sessionID int64
 	requestID int64
+	actionID  int64
 }
 
 func newAuthorizationFixture(t *testing.T) authorizationFixture {
@@ -81,7 +83,20 @@ func newAuthorizationFixture(t *testing.T) authorizationFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return authorizationFixture{database: database, tokenID: token.ID, sessionID: sessionID, requestID: request.ID}
+	tokenID := token.ID
+	actionRequest, err := targets.InsertActionRequest(ctx, connectortargets.InsertActionRequestInput{
+		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID,
+		ConnectorKind: "test", ActionName: "inspect", Source: "mcp",
+		Status: connectors.ResultApprovalPending, EncryptedPayloadJSON: "sealed",
+		ApprovalContext: `{"permission":"prompt"}`, ApprovalContextHash: "approval",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authorizationFixture{
+		database: database, tokenID: token.ID, sessionID: sessionID,
+		requestID: request.ID, actionID: actionRequest.ID,
+	}
 }
 
 func (f authorizationFixture) scope(failAfterMutation error, finish func(context.Context, int64, []int64)) Scope {
@@ -100,7 +115,7 @@ func TestAuthorizationMutationCommitsAuditAndPersistentInvalidationBeforeLiveCle
 		if tokenID != fixture.tokenID || len(sessionIDs) != 1 || sessionIDs[0] != fixture.sessionID {
 			t.Fatalf("invalidation callback: token=%d sessions=%v", tokenID, sessionIDs)
 		}
-		assertAuthorizationState(t, fixture, "revoked", vaultrequests.StatusStale, 1)
+		assertAuthorizationState(t, fixture, "revoked", vaultrequests.StatusStale, connectors.ResultStale, 1)
 	})
 	changed, err := mutateAuthorization(
 		t.Context(), scope, fixture.tokenID, "authorization.updated",
@@ -114,7 +129,7 @@ func TestAuthorizationMutationCommitsAuditAndPersistentInvalidationBeforeLiveCle
 	if err != nil || !changed || !finishCalled {
 		t.Fatalf("mutation: changed=%v finish=%v err=%v", changed, finishCalled, err)
 	}
-	assertAuthorizationState(t, fixture, "revoked", vaultrequests.StatusStale, 1)
+	assertAuthorizationState(t, fixture, "revoked", vaultrequests.StatusStale, connectors.ResultStale, 1)
 }
 
 func TestAuthorizationMutationRollbackPreservesAuthorizationState(t *testing.T) {
@@ -130,7 +145,7 @@ func TestAuthorizationMutationRollbackPreservesAuthorizationState(t *testing.T) 
 	if !errors.Is(err, forced) || changed || finishCalled {
 		t.Fatalf("rollback: changed=%v finish=%v err=%v", changed, finishCalled, err)
 	}
-	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, 0)
+	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, connectors.ResultApprovalPending, 0)
 }
 
 func TestUnchangedAuthorizationDoesNotAuditOrInvalidate(t *testing.T) {
@@ -145,7 +160,7 @@ func TestUnchangedAuthorizationDoesNotAuditOrInvalidate(t *testing.T) {
 	if err != nil || changed || finishCalled {
 		t.Fatalf("unchanged mutation: changed=%v finish=%v err=%v", changed, finishCalled, err)
 	}
-	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, 0)
+	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, connectors.ResultApprovalPending, 0)
 }
 
 func TestAuthorizationMutationFailsClosedWhenExclusiveLeaseCannotBeAcquired(t *testing.T) {
@@ -163,19 +178,38 @@ func TestAuthorizationMutationFailsClosedWhenExclusiveLeaseCannotBeAcquired(t *t
 	if !errors.Is(err, ErrVaultDeliveryCanceled) || changed || mutateCalled {
 		t.Fatalf("exclusive acquisition: changed=%v mutate=%v err=%v", changed, mutateCalled, err)
 	}
-	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, 0)
+	assertAuthorizationState(t, fixture, "active", vaultrequests.StatusApprovalPending, connectors.ResultApprovalPending, 0)
 }
 
-func assertAuthorizationState(t *testing.T, fixture authorizationFixture, leaseStatus, requestStatus string, audits int) {
+func assertAuthorizationState(
+	t *testing.T,
+	fixture authorizationFixture,
+	leaseStatus string,
+	requestStatus string,
+	actionStatus connectors.ResultStatus,
+	audits int,
+) {
 	t.Helper()
-	var gotLease, gotRequest string
+	var gotLease, gotRequest, gotAction, gotHistory string
 	if err := fixture.database.QueryRow(`SELECT status FROM vault_session_leases WHERE session_id = ?`, fixture.sessionID).Scan(&gotLease); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.database.QueryRow(`SELECT status FROM vault_action_requests WHERE id = ?`, fixture.requestID).Scan(&gotRequest); err != nil {
 		t.Fatal(err)
 	}
-	if gotLease != leaseStatus || gotRequest != requestStatus || countRows(t, fixture.database, "audit_logs") != audits {
-		t.Fatalf("state: lease=%q request=%q audits=%d", gotLease, gotRequest, countRows(t, fixture.database, "audit_logs"))
+	if err := fixture.database.QueryRow(`SELECT status FROM connector_action_requests WHERE id = ?`, fixture.actionID).Scan(&gotAction); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.database.QueryRow(`
+		SELECT status FROM history_entries
+		WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, fixture.actionID).Scan(&gotHistory); err != nil {
+		t.Fatal(err)
+	}
+	wantHistory := string(actionStatus)
+	if actionStatus == connectors.ResultApprovalPending {
+		wantHistory = "pending_approval"
+	}
+	if gotLease != leaseStatus || gotRequest != requestStatus || gotAction != string(actionStatus) || gotHistory != wantHistory || countRows(t, fixture.database, "audit_logs") != audits {
+		t.Fatalf("state: lease=%q request=%q action=%q history=%q audits=%d", gotLease, gotRequest, gotAction, gotHistory, countRows(t, fixture.database, "audit_logs"))
 	}
 }

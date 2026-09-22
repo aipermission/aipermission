@@ -22,6 +22,18 @@ func TestWriteErrorUsesStableJSONEnvelope(t *testing.T) {
 	}
 }
 
+func TestWriteErrorCodeUsesStableMachineReadableCode(t *testing.T) {
+	response := httptest.NewRecorder()
+	WriteErrorCode(response, http.StatusConflict, "approval changed", "approval_context_changed")
+	var body ErrorResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusConflict || body.Error != "approval changed" || body.Code != "approval_context_changed" {
+		t.Fatalf("response = %d %#v", response.Code, body)
+	}
+}
+
 func TestWriteSensitiveJSONPreventsCaching(t *testing.T) {
 	response := httptest.NewRecorder()
 	WriteSensitiveJSON(response, http.StatusOK, map[string]string{"value": "secret"})

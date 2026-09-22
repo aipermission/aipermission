@@ -22,6 +22,16 @@ function renderEditor(model) {
   return { ...hook, onRefresh, onOperation, modelForKind };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("useConnectorEditor", () => {
   it("saves through the connector model and clears sensitive form state", async () => {
     const model = { save: vi.fn(async () => {}), syncForm: ({ form }) => form };
@@ -89,6 +99,33 @@ describe("useConnectorEditor", () => {
     expect(result.current.actionState.error).toMatch(/Saved successfully.*refresh unavailable/);
   });
 
+  it("does not let a retired save close or reset a replacement draft", async () => {
+    let resolveSave;
+    const pendingSave = new Promise((resolve) => {
+      resolveSave = resolve;
+    });
+    const model = { save: vi.fn(() => pendingSave), syncForm: ({ form }) => form };
+    const { result, onRefresh } = renderEditor(model);
+
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "Old draft"));
+    let save;
+    act(() => {
+      save = result.current.save({ preventDefault() {} });
+    });
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "Replacement draft"));
+
+    await act(async () => resolveSave());
+
+    await expect(save).resolves.toBe(false);
+    expect(result.current.drawer.open).toBe(true);
+    expect(result.current.form.name).toBe("Replacement draft");
+    expect(result.current.actionState.state).toBe("idle");
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   it("hands connector-owned recovery operations back to the route", async () => {
     const recovery = { open: true, connector_kind: "example", type: "trust" };
     const model = {
@@ -120,5 +157,31 @@ describe("useConnectorEditor", () => {
     expect(result.current.deleteDialog).toEqual({ open: false, target: null });
     expect(result.current.actionState.message).toBe("Connector deleted.");
     expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it.each(["success", "failure"])("does not let a retired %s delete affect a replacement target", async (outcome) => {
+    const pendingDelete = deferred();
+    const first = { id: 8, connector_kind: "example", name: "First target" };
+    const replacement = { id: 9, connector_kind: "example", name: "Replacement target" };
+    const model = { deleteTarget: vi.fn(() => pendingDelete.promise), syncForm: ({ form }) => form };
+    const { result, onRefresh } = renderEditor(model);
+
+    act(() => result.current.requestDelete(first));
+    let removal;
+    act(() => {
+      removal = result.current.remove(false);
+    });
+    act(() => result.current.closeDelete());
+    act(() => result.current.requestDelete(replacement));
+
+    await act(async () => {
+      if (outcome === "success") pendingDelete.resolve();
+      else pendingDelete.reject(new Error("retired delete failed"));
+    });
+
+    await expect(removal).resolves.toBe(false);
+    expect(result.current.deleteDialog).toEqual({ open: true, target: replacement });
+    expect(result.current.actionState).toEqual({ state: "idle", error: null, message: null });
+    expect(onRefresh).not.toHaveBeenCalled();
   });
 });

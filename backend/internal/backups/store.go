@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 var ErrNotFound = errors.New("backup provider not found")
@@ -380,19 +381,20 @@ func (s *Store) writeRecord(ctx context.Context, request CreateRecordRequest, up
 	if filename == "" {
 		return Record{}, ValidationError("filename is required")
 	}
-	backupCreatedAt := strings.TrimSpace(request.BackupCreatedAt)
-	if backupCreatedAt == "" {
-		backupCreatedAt = time.Now().UTC().Format(time.RFC3339)
+	nowTime := time.Now()
+	backupCreatedAt, err := canonicalRecordTimestamp(request.BackupCreatedAt, nowTime, "backup_created_at")
+	if err != nil {
+		return Record{}, err
 	}
-	uploadedAt := strings.TrimSpace(request.UploadedAt)
-	if uploadedAt == "" {
-		uploadedAt = time.Now().UTC().Format(time.RFC3339)
+	uploadedAt, err := canonicalRecordTimestamp(request.UploadedAt, nowTime, "uploaded_at")
+	if err != nil {
+		return Record{}, err
 	}
 	metadataJSON, err := marshalJSONObject(request.Metadata)
 	if err != nil {
 		return Record{}, err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.UTC(nowTime)
 	statement := `
 		INSERT INTO backup_records (
 			provider_id, database_id, database_name, provider_file_id, filename,
@@ -444,6 +446,18 @@ func (s *Store) writeRecord(ctx context.Context, request CreateRecordRequest, up
 		return Record{}, fmt.Errorf("read backup record id: %w", err)
 	}
 	return s.GetRecord(ctx, request.ProviderID, id)
+}
+
+func canonicalRecordTimestamp(value string, fallback time.Time, field string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return timeformat.UTC(fallback), nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return "", ValidationError(field + " must be an RFC3339 timestamp")
+	}
+	return timeformat.UTC(parsed), nil
 }
 
 func (s *Store) getRecordByProviderFileID(ctx context.Context, providerID int64, providerFileID string) (Record, error) {
@@ -531,12 +545,9 @@ func (s *Store) MarkMissingProviderRecordsDeleted(ctx context.Context, providerI
 		return err
 	}
 	defer rollback()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	for _, id := range missing {
-		if _, err := executor.ExecContext(ctx, `
-			UPDATE backup_records
-			SET deleted_at = ?, updated_at = ?
-			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
+		if err := markProviderRecordDeleted(ctx, executor, providerID, id, now); err != nil {
 			return fmt.Errorf("mark missing provider record deleted: %w", err)
 		}
 	}
@@ -568,17 +579,30 @@ func (s *Store) MarkProviderRecordsDeleted(ctx context.Context, providerID int64
 		return err
 	}
 	defer rollback()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	for _, id := range normalizedIDs {
-		if _, err := executor.ExecContext(ctx, `
-			UPDATE backup_records
-			SET deleted_at = ?, updated_at = ?
-			WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, id); err != nil {
+		if err := markProviderRecordDeleted(ctx, executor, providerID, id, now); err != nil {
 			return fmt.Errorf("mark provider record deleted: %w", err)
 		}
 	}
 	if err := commit(); err != nil {
 		return fmt.Errorf("commit provider record deletion: %w", err)
+	}
+	return nil
+}
+
+func markProviderRecordDeleted(ctx context.Context, executor sqldb.Executor, providerID int64, providerFileID, now string) error {
+	if _, err := executor.ExecContext(ctx, `
+		UPDATE backup_records
+		SET deleted_at = ?, updated_at = ?
+		WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, providerFileID); err != nil {
+		return fmt.Errorf("update backup record tombstone: %w", err)
+	}
+	if _, err := executor.ExecContext(ctx, `
+		UPDATE backup_upload_operations
+		SET status = 'expired', last_error = 'remote upload result expired', updated_at = ?, completed_at = COALESCE(completed_at, ?)
+		WHERE provider_id = ? AND provider_file_id = ? AND status = 'completed'`, now, now, providerID, providerFileID); err != nil {
+		return fmt.Errorf("expire backup upload operation: %w", err)
 	}
 	return nil
 }

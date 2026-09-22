@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/accesscontrol"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -34,10 +36,20 @@ func (testConnectorPort) ExpectedPeerIdentities(context.Context, connectortarget
 	return PeerIdentityExpectation{}, nil
 }
 
-type testDeliveryGate struct{}
+type testDeliveryGate struct {
+	identity *connectors.DeliveryAdmissionIdentity
+}
+
+var fallbackTestDeliveryAdmission connectors.DeliveryAdmissionIdentity
 
 func (testDeliveryGate) AcquireDelivery(context.Context) (func(), error)  { return func() {}, nil }
 func (testDeliveryGate) AcquireExclusive(context.Context) (func(), error) { return func() {}, nil }
+func (gate testDeliveryGate) WithAdmission(ctx context.Context) context.Context {
+	if gate.identity != nil {
+		return connectors.WithDeliveryAdmission(ctx, gate.identity)
+	}
+	return connectors.WithDeliveryAdmission(ctx, &fallbackTestDeliveryAdmission)
+}
 
 type testProjectPort struct{ store *projectstore.Store }
 
@@ -82,7 +94,13 @@ type testSessions struct{}
 func (testSessions) ActiveRecord(context.Context, int64) (console.Record, error) {
 	return console.Record{}, console.ErrNotFound
 }
-func (testSessions) ReplaceIfCurrent(context.Context, executionprincipal.Principal, console.SessionHandle, console.CreateRequest) (console.Record, error) {
+func (testSessions) ReplaceIfCurrent(_ context.Context, _ executionprincipal.Principal, _ console.SessionHandle, request console.CreateRequest) (console.Record, error) {
+	if request.Environment != nil {
+		request.Environment.Destroy()
+	}
+	if request.StartupAdmissionRelease != nil {
+		request.StartupAdmissionRelease()
+	}
 	return console.Record{}, errors.New("not used")
 }
 func (testSessions) Close(context.Context, executionprincipal.Principal, int64) error { return nil }
@@ -110,11 +128,12 @@ func (reader testTokenReader) Get(ctx context.Context, id int64) (TokenState, er
 }
 
 type runtimeFixture struct {
-	runtime   *Runtime
-	database  *sql.DB
-	tokenID   int64
-	projectID int64
-	project   projectstore.Project
+	runtime    *Runtime
+	database   *sql.DB
+	tokenID    int64
+	projectID  int64
+	project    projectstore.Project
+	mcpStarted *bool
 }
 
 func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
@@ -146,6 +165,7 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 		t.Fatal(err)
 	}
 	itemStore := mustProjectVaultStore(t, database, secretVault)
+	mcpStarted := true
 	runtime, err := NewRuntime(Dependencies{
 		Database: database, Tokens: testTokenReader{store: tokenStore},
 		Projects:      testProjectPort{store: projectstore.NewStore(database)},
@@ -153,13 +173,13 @@ func newRuntimeFixture(t *testing.T, rule string) runtimeFixture {
 		ItemMutations: testItemPort{store: itemStore},
 		Sessions:      testSessions{}, Leases: testLeases{}, PersistedLeases: testLeasePersistence{},
 		Connector: testConnectorPort{}, Delivery: testDeliveryGate{},
-		WorkspaceID: "workspace", RuntimeInstanceID: "runtime", MCPStarted: func() bool { return true },
+		WorkspaceID: "workspace", RuntimeInstanceID: "runtime", MCPStarted: func() bool { return mcpStarted },
 		AllowGenerate: func(int64) bool { return true },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return runtimeFixture{runtime: runtime, database: database, tokenID: token.ID, projectID: project.ID, project: project}
+	return runtimeFixture{runtime: runtime, database: database, tokenID: token.ID, projectID: project.ID, project: project, mcpStarted: &mcpStarted}
 }
 
 func mustProjectVaultStore(t *testing.T, database *sql.DB, secretVault *vault.Vault) *projectvault.Store {
@@ -177,7 +197,6 @@ func TestPrepareSnapshotsGenerateAuthorizationAndExecutionRule(t *testing.T) {
 		t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem,
 		map[string]any{
 			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
-			"shared_project_ids": []any{float64(fixture.projectID), float64(fixture.projectID)},
 		},
 	)
 	if err != nil {
@@ -202,6 +221,95 @@ func TestPrepareSnapshotsGenerateAuthorizationAndExecutionRule(t *testing.T) {
 	}
 	if err := fixture.runtime.ValidateAuthorization(t.Context(), request, prepared.ApprovalContext); !IsStale(err) {
 		t.Fatalf("changed capability error = %v", err)
+	}
+}
+
+func TestAuthorizeOutputDistinguishesTemporaryWithholdingFromContextDrift(t *testing.T) {
+	t.Run("MCP stopped", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		*fixture.mcpStarted = false
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputWithheld {
+			t.Fatalf("stopped authorization = %v", got)
+		}
+	})
+
+	t.Run("capability drift", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := accesscontrol.NewCapabilityStore(fixture.database).Replace(t.Context(), fixture.tokenID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputContextStale {
+			t.Fatalf("drift authorization = %v", got)
+		}
+	})
+
+	t.Run("storage unavailable", func(t *testing.T) {
+		fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+		prepared, err := fixture.runtime.Prepare(t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, map[string]any{
+			"name": "PROJECT_TOKEN", "generator_kind": "hex_secret",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fixture.database.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if got := fixture.runtime.AuthorizeOutput(t.Context(), requestFromPrepared(t, fixture.tokenID, prepared)); got != vaultrequests.OutputWithheld {
+			t.Fatalf("transient authorization = %v", got)
+		}
+	})
+}
+
+func TestPrepareValidatesGenerateMetadataBeforeApproval(t *testing.T) {
+	fixture := newRuntimeFixture(t, accesscontrol.RuleApprovalRequired)
+	valid, err := fixture.runtime.Prepare(
+		t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem,
+		map[string]any{"name": "PROJECT_TOKEN", "generator_kind": "hex_secret"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid.Input["secret_type"] != projectvault.DefaultSecretType {
+		t.Fatalf("default secret type = %#v", valid.Input["secret_type"])
+	}
+
+	for name, input := range map[string]map[string]any{
+		"secret type": {
+			"name": "PROJECT_TOKEN", "secret_type": "certificate", "generator_kind": "hex_secret",
+		},
+		"generator": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "unknown",
+		},
+		"expiry": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret", "expires_at": "not-rfc3339",
+		},
+		"warning days": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret", "expiry_warning_days": 3651,
+		},
+		"owner repeated as shared": {
+			"name": "PROJECT_TOKEN", "secret_type": "api_key", "generator_kind": "hex_secret",
+			"shared_project_ids": []any{float64(fixture.projectID)},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := fixture.runtime.Prepare(
+				t.Context(), fixture.tokenID, fixture.project.Slug, vaultrequests.ActionGenerateItem, input,
+			); err == nil {
+				t.Fatal("invalid generation metadata reached approval")
+			}
+		})
 	}
 }
 
@@ -269,7 +377,7 @@ func TestExecuteGenerateRejectsTamperingAndCompensatesCreatedItem(t *testing.T) 
 	if !ok || jsonInt(item["item_id"]) < 1 {
 		t.Fatalf("generated item output = %#v", payload["item"])
 	}
-	if !fixture.runtime.AuthorizeOutput(t.Context(), request) {
+	if !fixture.runtime.AuthorizeOutput(t.Context(), request).Authorized() {
 		t.Fatal("unchanged generate request output was not authorized")
 	}
 	if err := fixture.runtime.Compensate(t.Context(), request, output); err != nil {
@@ -291,6 +399,98 @@ func TestNormalizeIdentitiesDropsEmptyAndDuplicateValues(t *testing.T) {
 	want := []string{"peer-a", "peer-b"}
 	if !equalStrings(got, want) {
 		t.Fatalf("normalizeIdentities() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDeliveryAdmissionReleasesExactlyOnceForCallerAndPreparerOwnership(t *testing.T) {
+	callerReleases := 0
+	callerOwned := newDeliveryAdmission(func() { callerReleases++ })
+	callerOwned.releaseIfUnclaimed()
+	callerOwned.releaseIfUnclaimed()
+	if callerReleases != 1 {
+		t.Fatalf("unclaimed delivery releases = %d, want 1", callerReleases)
+	}
+	if _, err := callerOwned.claim(); err == nil {
+		t.Fatal("released delivery admission was claimed")
+	}
+
+	preparerReleases := 0
+	preparerOwned := newDeliveryAdmission(func() { preparerReleases++ })
+	release, err := preparerOwned.claim()
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparerOwned.releaseIfUnclaimed()
+	if preparerReleases != 0 {
+		t.Fatal("caller released a delivery admission after the preparer claimed it")
+	}
+	release()
+	release()
+	if preparerReleases != 1 {
+		t.Fatalf("claimed delivery releases = %d, want 1", preparerReleases)
+	}
+}
+
+func TestVaultSessionContextCarriesExactDeliveryAdmission(t *testing.T) {
+	identity := &connectors.DeliveryAdmissionIdentity{}
+	other := &connectors.DeliveryAdmissionIdentity{}
+	ctx := withDeliveryAdmission(t.Context(), testDeliveryGate{identity: identity})
+	if !connectors.DeliveryAdmissionHeld(ctx, identity) {
+		t.Fatal("Vault session context does not carry its delivery admission")
+	}
+	if connectors.DeliveryAdmissionHeld(ctx, other) {
+		t.Fatal("Vault session context carries a different delivery admission")
+	}
+}
+
+func TestVaultSessionAdmissionPreventsNestedTransportDeadlock(t *testing.T) {
+	coordinator := &vaultsessions.DeliveryCoordinator{}
+	outerRelease, err := coordinator.AcquireDelivery(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outerRelease()
+
+	writerAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := coordinator.AcquireExclusive(t.Context())
+		if acquireErr == nil {
+			writerAcquired <- release
+		}
+	}()
+	writerQueued := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		probeCtx, cancelProbe := context.WithTimeout(t.Context(), 5*time.Millisecond)
+		probeRelease, probeErr := coordinator.AcquireDelivery(probeCtx)
+		cancelProbe()
+		if probeErr != nil {
+			writerQueued = true
+			break
+		}
+		probeRelease()
+	}
+	if !writerQueued {
+		t.Fatal("lifecycle writer did not enter the admission queue")
+	}
+
+	gate := testDeliveryGate{identity: coordinator.AdmissionIdentity()}
+	admittedCtx := withDeliveryAdmission(t.Context(), gate)
+	nestedRelease, err := (connectortransport.Approved(nil)).Acquire(admittedCtx, connectortransport.Runtime{
+		Database:        &sql.DB{},
+		AcquireDelivery: coordinator.AcquireDelivery,
+		Admission:       coordinator.AdmissionIdentity(),
+	}, connectors.CommandTransportCapabilityName, "ssh:1:1")
+	if err != nil {
+		t.Fatalf("nested transport acquisition blocked behind its own writer: %v", err)
+	}
+	nestedRelease()
+
+	outerRelease()
+	select {
+	case release := <-writerAcquired:
+		release()
+	case <-time.After(time.Second):
+		t.Fatal("waiting lifecycle writer did not acquire after the Vault delivery released")
 	}
 }
 

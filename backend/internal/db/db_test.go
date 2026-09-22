@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 func TestOpenEncryptedCreatesSchemaAndRejectsWrongPassword(t *testing.T) {
@@ -1386,12 +1388,16 @@ func TestOpenEncryptedClosesVaultRuntimeStateAfterRestart(t *testing.T) {
 		t.Fatalf("reopen encrypted db: %v", err)
 	}
 	defer reopened.Close()
-	var requestStatus, requestError string
-	if err := reopened.QueryRow(`SELECT status, error FROM vault_action_requests LIMIT 1`).Scan(&requestStatus, &requestError); err != nil {
+	var requestStatus, requestError, completedAt, updatedAt string
+	if err := reopened.QueryRow(`SELECT status, error, completed_at, updated_at FROM vault_action_requests LIMIT 1`).Scan(&requestStatus, &requestError, &completedAt, &updatedAt); err != nil {
 		t.Fatalf("read Vault request: %v", err)
 	}
 	if requestStatus != "failed" || requestError != "gateway restarted while the Vault action was running" {
 		t.Fatalf("unexpected restarted Vault request: status=%q error=%q", requestStatus, requestError)
+	}
+	canonicalLength := len(timeformat.UTC(time.Now()))
+	if len(completedAt) != canonicalLength || len(updatedAt) != canonicalLength {
+		t.Fatalf("restart timestamps are not canonical: completed_at=%q updated_at=%q", completedAt, updatedAt)
 	}
 	var historyStatus, historyError string
 	if err := reopened.QueryRow(`

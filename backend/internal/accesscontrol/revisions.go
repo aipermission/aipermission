@@ -59,10 +59,11 @@ func projectScopesRevision(items []projects.TokenScope) (string, error) {
 	type revisionItem struct {
 		ProjectID int64 `json:"project_id"`
 		Enabled   bool  `json:"enabled"`
+		Revision  int64 `json:"record_revision"`
 	}
 	values := make([]revisionItem, 0, len(items))
 	for _, item := range items {
-		values = append(values, revisionItem{ProjectID: item.ProjectID, Enabled: item.Enabled})
+		values = append(values, revisionItem{ProjectID: item.ProjectID, Enabled: item.Enabled, Revision: item.Revision})
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i].ProjectID < values[j].ProjectID })
 	return authorizationRevision(values)

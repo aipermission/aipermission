@@ -239,7 +239,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
                 type="button"
                 variant="outline"
                 className="h-8 px-2 text-xs"
-                onClick={refreshRequests}
+                onClick={() => void refreshRequests()}
                 disabled={runState.items.length === 0}
               >
                 <RefreshCcw className="h-3.5 w-3.5" />

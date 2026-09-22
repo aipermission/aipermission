@@ -373,6 +373,7 @@ func newFakeBackupService(t *testing.T) *fakeBackupService {
 					"delete_versions",
 					"storage_usage",
 					"automatic_retention",
+					"upload_operation_tombstones",
 				},
 				MaxUploadBytes: backups.MaxDatabaseTransferBytes,
 			})

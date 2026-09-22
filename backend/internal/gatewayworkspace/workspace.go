@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/gatewayworkspace/catalog"
@@ -44,32 +43,9 @@ type Identity struct {
 	RetryIdentity string
 }
 
-type PasswordAttempt interface {
-	Success()
-	Failure()
-}
-
-type HTTPDependencies struct {
-	BeginAttempt       func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
-	HasSession         func(*http.Request) bool
-	IssueSession       func(http.ResponseWriter) error
-	ClearSessions      func(http.ResponseWriter)
-	InvalidateSessions func(string)
-	CloseMaintenance   func(string)
-	Now                func() time.Time
-}
-
-type HTTPHandlers interface {
-	Status(http.ResponseWriter, *http.Request)
-	Setup(http.ResponseWriter, *http.Request)
-	Unlock(http.ResponseWriter, *http.Request)
-	Lock(http.ResponseWriter, *http.Request)
-	Rename(http.ResponseWriter, *http.Request)
-	Delete(http.ResponseWriter, *http.Request)
-	DeleteLocked(http.ResponseWriter, *http.Request)
-	Switch(http.ResponseWriter, *http.Request)
-	ChangePassword(http.ResponseWriter, *http.Request)
-}
+type PasswordAttempt = lifecycle.PasswordAttempt
+type HTTPDependencies = lifecycle.HTTPDependencies
+type HTTPHandlers = lifecycle.HTTPHandlers
 
 type ActionWorkflow interface {
 	BeginShutdown()
@@ -346,17 +322,7 @@ func (component *Component) HTTP(dependencies HTTPDependencies) HTTPHandlers {
 	if component == nil || component.lifecycle == nil {
 		return nil
 	}
-	converted := lifecycle.HTTPDependencies{
-		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
-		ClearSessions: dependencies.ClearSessions, InvalidateSessions: dependencies.InvalidateSessions,
-		CloseMaintenance: dependencies.CloseMaintenance, Now: dependencies.Now,
-	}
-	if dependencies.BeginAttempt != nil {
-		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (lifecycle.PasswordAttempt, bool) {
-			return dependencies.BeginAttempt(w, r)
-		}
-	}
-	return component.lifecycle.HTTP(converted)
+	return component.lifecycle.HTTP(dependencies)
 }
 
 func (component *Component) Open(ctx context.Context, input OpenInput) (*Runtime, error) {

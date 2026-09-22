@@ -45,6 +45,9 @@ func s3Host(target connectors.TargetView) string {
 	if host == "" {
 		return defaultS3Host
 	}
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimSpace(host[1 : len(host)-1])
+	}
 	return host
 }
 

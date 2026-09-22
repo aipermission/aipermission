@@ -100,6 +100,7 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 		LiveConsole: connectorports.LiveConsoleDependencies{
 			TransportAdapter: application.liveConsoleTransportAdapter,
 			TargetAdapter:    application.liveConsoleTargetAdapter,
+			AdapterFor:       application.adapters.For,
 		},
 	})
 	return application, nil
@@ -299,9 +300,9 @@ func (application *ConnectorRuntimeApplication) MutationRouteGateway() connector
 	return application.ports.RouteGateway()
 }
 
-func (application *ConnectorRuntimeApplication) LiveConsoleGateway(handle *WorkspaceHandle) connectorapi.LiveConsoleGateway {
+func (application *ConnectorRuntimeApplication) LiveConsoleGateway(handle *WorkspaceHandle, sourceTargetRef string) connectorapi.LiveConsoleGateway {
 	workspace, _ := application.workspace(handle, true, nil, ConnectorTargetWorkflowPorts{})
-	return application.ports.LiveConsoleGateway(workspace)
+	return application.ports.LiveConsoleGateway(workspace, sourceTargetRef)
 }
 
 func (application *ConnectorRuntimeApplication) RuntimeActionPorts(handle *WorkspaceHandle, kind string) (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
@@ -427,7 +428,27 @@ func (application *ConnectorRuntimeApplication) OpenLiveConsole(ctx context.Cont
 	if adapter == nil {
 		return nil, connectormgmt.InvalidTargetRefError()
 	}
-	session, err := adapter.OpenLiveConsole(ctx, application.LiveConsoleGateway(handle), application.LiveRuntime(handle, kind), request)
+	workspace, ok := application.workspace(handle, true, nil, ConnectorTargetWorkflowPorts{})
+	if !ok {
+		return nil, connectorports.ErrRuntimeUnavailable
+	}
+	ctx, release, err := connectorports.AcquireDeliveryAdmission(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	liveRuntime := connectorports.LiveRuntime(workspace, kind)
+	sourceTarget, sourceProfile, _, err := liveRuntime.TargetProfileByRuntimeID(ctx, request.RuntimeID)
+	if err != nil {
+		return nil, err
+	}
+	sourceTargetRef := connectors.FormatTargetRef(sourceTarget.ConnectorKind, sourceTarget.ID, sourceProfile.ID)
+	session, err := adapter.OpenLiveConsole(
+		ctx,
+		application.ports.LiveConsoleGateway(workspace, sourceTargetRef),
+		liveRuntime,
+		request,
+	)
 	if err != nil {
 		return nil, err
 	}

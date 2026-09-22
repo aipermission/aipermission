@@ -27,7 +27,9 @@ type ProfileBackupScope struct {
 	Database         *sql.DB
 	Registry         connectors.Catalog
 	Runtime          CredentialRuntimePorts
+	AcquireDelivery  func(context.Context) (func(), error)
 	AcquireExclusive func(context.Context) (func(), error)
+	Admission        *connectors.DeliveryAdmissionIdentity
 	Observe          func(context.Context, string, map[string]any)
 	WithTransaction  func(context.Context, func(*sql.Tx, AuditAppender) error) error
 }
@@ -41,7 +43,16 @@ func NewProfileBackupHTTPHandler(scope ProfileBackupScopeProvider) *ProfileBacku
 }
 
 func (h *ProfileBackupHTTPHandler) Download(w http.ResponseWriter, r *http.Request) {
-	resolved, ok := h.resolveProfile(w, r)
+	scope, ok := h.resolve(w)
+	if !ok {
+		return
+	}
+	release, ok := acquireLifecycleDelivery(w, r, scope.AcquireDelivery, scope.Admission, "connector profile backup was canceled")
+	if !ok {
+		return
+	}
+	defer release()
+	resolved, ok := h.resolveProfileWithScope(w, r, scope)
 	if !ok {
 		return
 	}
@@ -75,9 +86,8 @@ func (h *ProfileBackupHTTPHandler) Restore(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil || release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector profile restore was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -247,14 +257,6 @@ type resolvedProfileBackup struct {
 	boundary  actionresult.CredentialBoundary
 }
 
-func (h *ProfileBackupHTTPHandler) resolveProfile(w http.ResponseWriter, r *http.Request) (resolvedProfileBackup, bool) {
-	scope, ok := h.resolve(w)
-	if !ok {
-		return resolvedProfileBackup{}, false
-	}
-	return h.resolveProfileWithScope(w, r, scope)
-}
-
 func (h *ProfileBackupHTTPHandler) resolveProfileWithScope(w http.ResponseWriter, r *http.Request, scope ProfileBackupScope) (resolvedProfileBackup, bool) {
 	targetID, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
@@ -301,7 +303,7 @@ func (h *ProfileBackupHTTPHandler) resolve(w http.ResponseWriter) (ProfileBackup
 	if !ok {
 		return ProfileBackupScope{}, false
 	}
-	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.AcquireExclusive == nil || scope.Observe == nil || scope.WithTransaction == nil {
+	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.AcquireDelivery == nil || scope.AcquireExclusive == nil || scope.Admission == nil || scope.Observe == nil || scope.WithTransaction == nil {
 		httptransport.WriteInternalError(w)
 		return ProfileBackupScope{}, false
 	}

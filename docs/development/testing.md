@@ -106,23 +106,24 @@ Vault, storage, and command packages. Runtime scopes and critical owner floors
 include failure-path tests; a new security-sensitive package must be added once
 its baseline coverage is established.
 
-Linux coverage inventory and floors are complemented by a native
-`windows-latest` backend job that executes the encrypted-database ownership
-tests rather than merely cross-compiling their binaries. That job first compiles
-and starts the complete Windows `_test.go` graph with an empty test selection,
-then requires package-bound pass events for the named behavior tests and checks
-each mapped platform source against its own native coverage floor. The Linux
-job also cross-builds the complete Windows source graph. Active host and Windows
-source inventories are merged. The tagged `cmd/e2e` browser harness is also
+Linux coverage inventory and floors are complemented by native
+`windows-latest` and `macos-latest` backend jobs. They execute platform behavior
+tests rather than merely cross-compiling their binaries, first compiling and
+starting the complete `_test.go` graph with an empty test selection and then
+requiring package-bound pass events for every named behavior test. Each mapped
+platform source is checked against its own native coverage floor. The Linux job
+also cross-builds the complete Windows and macOS source graphs. Active host,
+Windows, and macOS source inventories are merged. The tagged `cmd/e2e` browser harness is also
 inventoried explicitly and excluded only while it belongs exclusively to the
 declared `linux-e2e` build context. If it enters the host production graph, the
 coverage gate fails even while its package remains listed as an exclusion.
-Executable Windows and non-Linux files must be mapped in
+Executable Windows and macOS files must be mapped in
 `backendCoveragePlatformFiles` with their exact `//go:build` constraint, native
 required tests, and coverage floor instead of disappearing from coverage
-silently. Platform mappings and command exclusions
-are one-time ratcheted exceptions: adding another one requires a separately
-reviewed policy baseline.
+silently. Platform mappings and command exclusions are one-time ratcheted
+exceptions. A new platform mapping is accepted only when the same reviewed
+policy change registers exact native runtime evidence, requires 100% coverage
+for the mapped source, and leaves every other exception budget unchanged.
 Keep all checks required: platform-tagged ownership behavior must not be
 represented as Linux coverage, and `go test -exec=true` alone is rejected as
 behavior evidence.
@@ -131,9 +132,9 @@ Repository tooling tests are recursively discovered and must exactly match the
 ratcheted `toolingTestFiles` inventory beneath explicit `toolingTestRoots`.
 Discovery uses the same `.test`/`.spec` markers and JavaScript extensions as the
 source classifier, so changing a suffix cannot silently bypass execution.
-Native Windows behavior tests similarly
-come from `windowsRuntimeTests`; the Windows runner rejects execution on any
-other operating system and requires one package-bound pass event per entry.
+Native platform behavior tests similarly come from `windowsRuntimeTests` and
+`darwinRuntimeTests`; each runner rejects execution on any other operating
+system and requires one package-bound pass event per entry.
 Deleting a test together with its manifest entry therefore fails the ratchet.
 Required-check and command moves use a two-change authorization flow: first add
 the exact migration while the old gate remains active, then move the gate only

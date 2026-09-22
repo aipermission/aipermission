@@ -272,7 +272,7 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 	for configuredPath, evidence := range policy.BackendCoveragePlatformFiles {
 		sourcePath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(configuredPath)))
 		expression, expressionErr := parseBuildConstraint(evidence.BuildConstraint)
-		if configuredPath != sourcePath || !productionPackagePath(filepath.ToSlash(filepath.Dir(sourcePath))) || filepath.Ext(sourcePath) != ".go" || evidence.Platform != "windows" || expressionErr != nil || !buildConstraintMatchesPlatform(expression, evidence.Platform) || evidence.MinimumCoverage <= 0 || evidence.MinimumCoverage > 100 || len(evidence.Tests) == 0 {
+		if configuredPath != sourcePath || !productionPackagePath(filepath.ToSlash(filepath.Dir(sourcePath))) || filepath.Ext(sourcePath) != ".go" || !supportedCoveragePlatform(evidence.Platform) || expressionErr != nil || !buildConstraintMatchesPlatform(expression, evidence.Platform) || evidence.MinimumCoverage <= 0 || evidence.MinimumCoverage > 100 || len(evidence.Tests) == 0 {
 			return coveragePolicy{}, fmt.Errorf("invalid backend coverage platform source %q", configuredPath)
 		}
 		for _, test := range evidence.Tests {
@@ -286,6 +286,10 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 		floors: policy.BackendCoverageFloors, defaultFloor: policy.BackendCoverageDefaultFloor,
 		neutralPackages: neutral, excludedPackages: excluded, platformFiles: platformFiles,
 	}, nil
+}
+
+func supportedCoveragePlatform(platform string) bool {
+	return platform == "windows" || platform == "darwin"
 }
 
 func productionPackagePath(packagePath string) bool {
@@ -547,6 +551,7 @@ func ignoredGoDirectory(name string) bool {
 func productionBuildContexts() []buildContext {
 	return []buildContext{
 		{label: "host"},
+		{label: "darwin", goos: "darwin", goarch: "amd64", cgo: "0"},
 		{label: "windows", goos: "windows", goarch: "amd64", cgo: "0"},
 		{label: "linux-e2e", goos: "linux", goarch: "amd64", cgo: "1", tags: []string{"e2e"}},
 	}

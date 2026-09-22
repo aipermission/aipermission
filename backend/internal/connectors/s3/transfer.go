@@ -252,14 +252,14 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 	if err := waitTransfer(ctx, options); err != nil {
 		return TransferResult{}, err
 	}
+	contentType := mime.TypeByExtension(path.Ext(key))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 	if info.Size() <= multipartThreshold {
 		data, err := io.ReadAll(file)
 		if err != nil {
 			return TransferResult{}, err
-		}
-		contentType := mime.TypeByExtension(path.Ext(key))
-		if contentType == "" {
-			contentType = "application/octet-stream"
 		}
 		headers := http.Header{}
 		if !overwrite {
@@ -269,7 +269,7 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 			return TransferResult{}, err
 		}
 		progressTransfer(options, info.Size(), info.Size())
-	} else if err := client.multipartUpload(ctx, key, file, info.Size(), !overwrite, options); err != nil {
+	} else if err := client.multipartUpload(ctx, key, file, info.Size(), contentType, !overwrite, options); err != nil {
 		return TransferResult{}, err
 	}
 	return TransferResult{Bytes: info.Size(), Size: info.Size(), ChecksumSHA256: checksum, DurationMS: time.Since(started).Milliseconds()}, nil
@@ -292,6 +292,7 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 	if err != nil {
 		return TransferResult{}, err
 	}
+	req.Header.Set("Accept-Encoding", "identity")
 	client.Sign(req, nil)
 	response, err := client.httpClient.Do(req)
 	if err != nil {
@@ -353,9 +354,10 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 	return TransferResult{Bytes: written, Size: written, ChecksumSHA256: hex.EncodeToString(hash.Sum(nil)), DurationMS: time.Since(started).Milliseconds()}, nil
 }
 
-func (client *s3Client) multipartUpload(ctx context.Context, key string, file *os.File, size int64, preventOverwrite bool, options TransferOptions) (err error) {
+func (client *s3Client) multipartUpload(ctx context.Context, key string, file *os.File, size int64, contentType string, preventOverwrite bool, options TransferOptions) (err error) {
 	query := url.Values{"uploads": []string{""}}
-	data, _, err := client.Do(ctx, http.MethodPost, key, query, s3RequestBody{Headers: http.Header{}, Data: nil}, maxS3ResponseBytes)
+	initHeaders := http.Header{"Content-Type": []string{contentType}}
+	data, _, err := client.Do(ctx, http.MethodPost, key, query, s3RequestBody{Headers: initHeaders, Data: nil}, maxS3ResponseBytes)
 	if err != nil {
 		return classifyMultipartInitiationError(err)
 	}

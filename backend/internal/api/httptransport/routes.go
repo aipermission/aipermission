@@ -133,6 +133,7 @@ type Approvals interface {
 }
 type VaultApprovals interface {
 	List(http.ResponseWriter, *http.Request)
+	Get(http.ResponseWriter, *http.Request)
 	Run(http.ResponseWriter, *http.Request)
 	Decline(http.ResponseWriter, *http.Request)
 }
@@ -398,6 +399,7 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("POST /api/vault-default-bindings/{id}/delete", d.VaultItems.DeleteDefaultBinding)
 	mux.HandleFunc("GET /api/vault-session-options", d.VaultItems.SessionOptions)
 	mux.HandleFunc("GET /api/vault-action-approvals", d.VaultApprovals.List)
+	mux.HandleFunc("GET /api/vault-action-approvals/{id}", d.VaultApprovals.Get)
 	mux.HandleFunc("POST /api/vault-action-approvals/{id}/run", d.VaultApprovals.Run)
 	mux.HandleFunc("POST /api/vault-action-approvals/{id}/decline", d.VaultApprovals.Decline)
 	registerTransfers(mux, d.FileTransfers)

@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayvault "github.com/aipermission/aipermission/backend/internal/gatewayvault"
 )
@@ -44,6 +45,9 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 			Sessions: capability.Sessions, Leases: capability.Leases,
 			RuntimeInstanceID: identity.RuntimeID, MCPStarted: capability.Control.MCPStarted,
 			AcquireDelivery: capability.Delivery.AcquireDelivery, AcquireExclusive: capability.Delivery.AcquireExclusive,
+			WithAdmission: func(ctx context.Context) context.Context {
+				return connectors.WithDeliveryAdmission(ctx, capability.Delivery.AdmissionIdentity())
+			},
 		},
 		Project: gatewayvault.ProjectRuntimePorts{
 			InvalidateSessions: ports.InvalidateSessions,

@@ -180,6 +180,7 @@ type PeerTrustGateway interface {
 // exposing the provider connector's runtime data or credential resources.
 type LiveConsoleGateway interface {
 	PeerIdentityGateway
+	ConnectorRunCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error)
 	ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows int, cols int, params map[string]any) (*LiveConsoleSession, error)
 }
 
@@ -541,7 +542,9 @@ type DraftTester interface {
 
 // TargetDeleter lets a connector customize deletion behavior.
 type TargetDeleter interface {
-	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target Target)
+	// DeleteTarget writes connector-owned pre-commit responses itself. A returned
+	// error means the target mutation committed but lifecycle finalization did not.
+	DeleteTarget(handler TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime TargetLifecycleRuntime, target Target) error
 }
 
 // CredentialProfileLifecycleAdapter lets a connector react to profile lifecycle

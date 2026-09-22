@@ -51,7 +51,7 @@ type Runtime struct {
 	ActionIdentityKey []byte
 	Storage           storage.State
 	Connectors        connectorstate.State
-	Security          security.State
+	Security          *security.State
 	Observation       observation.State
 	actionIdentityMu  sync.RWMutex
 	teardownMu        sync.Mutex

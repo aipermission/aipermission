@@ -62,7 +62,7 @@ func TestPeerTrustChangeReleasesAcquiredLocksWhenLaterLockFails(t *testing.T) {
 				Identifier: "zeta",
 				AcquireExclusive: func(context.Context) (func(), error) {
 					steps = append(steps, "lock:zeta")
-					return nil, want
+					return func() { steps = append(steps, "release:zeta") }, want
 				},
 				InvalidateAll: func(context.Context, string) error { return nil },
 			},
@@ -76,7 +76,7 @@ func TestPeerTrustChangeReleasesAcquiredLocksWhenLaterLockFails(t *testing.T) {
 	if !errors.Is(err, want) {
 		t.Fatalf("error = %v, want %v", err, want)
 	}
-	if !reflect.DeepEqual(steps, []string{"lock:alpha", "lock:zeta", "release:alpha"}) {
+	if !reflect.DeepEqual(steps, []string{"lock:alpha", "lock:zeta", "release:zeta", "release:alpha"}) {
 		t.Fatalf("steps = %#v", steps)
 	}
 }

@@ -125,7 +125,7 @@ test("permits removing a completed ownership migration marker", () => {
   assert.deepEqual(budgetIncreases(base, current), []);
 });
 
-test("ratchets tooling and Windows runtime test inventory", () => {
+test("ratchets tooling and native runtime test inventories", () => {
   const base = policySnapshot(policy);
   const added = copyPolicy();
   added.toolingTestFiles.push("scripts/ci/future.test.js");
@@ -133,11 +133,16 @@ test("ratchets tooling and Windows runtime test inventory", () => {
     package: "github.com/aipermission/aipermission/backend/internal/future",
     name: "TestFutureRuntime",
   });
+  added.darwinRuntimeTests.push({
+    package: "github.com/aipermission/aipermission/backend/internal/future",
+    name: "TestFutureDarwinRuntime",
+  });
   assert.deepEqual(budgetIncreases(base, policySnapshot(added)), []);
 
   const removed = copyPolicy();
   removed.toolingTestFiles.pop();
   removed.windowsRuntimeTests.pop();
+  removed.darwinRuntimeTests.pop();
   const failures = budgetIncreases(base, policySnapshot(removed));
   assert.ok(
     failures.some((failure) => failure.includes("test.tooling.inventory")),
@@ -145,67 +150,41 @@ test("ratchets tooling and Windows runtime test inventory", () => {
   assert.ok(
     failures.some((failure) => failure.includes("test.windows.runtime")),
   );
+  assert.ok(
+    failures.some((failure) => failure.includes("test.darwin.runtime")),
+  );
 });
 
-test("bootstraps platform exclusions once and rejects later expansion", () => {
-  const current = policySnapshot(policy);
-  const legacy = { ...current };
-  delete legacy["backend.coverage.exceptionBaseline"];
-  for (const key of Object.keys(legacy)) {
-    if (
-      key.startsWith("backend.coverage.platform.") ||
-      key.startsWith("backend.coverage.excluded.")
-    ) {
-      delete legacy[key];
-    }
-  }
-  assert.deepEqual(budgetIncreases(legacy, current), []);
-
-  const arbitraryBootstrap = {
-    ...current,
-    "backend.coverage.platform.internal/arbitrary_windows.go": 0,
-    "backend.coverage.platform.internal/arbitrary_windows.go.constraint.windows": -100,
+test("permits a native runtime test relocation only with replacement coverage evidence", () => {
+  const oldRuntime =
+    "test.windows.runtime.example/backend/internal/old:TestOwnership";
+  const oldSource =
+    "backend.coverage.platform.internal/old/ownership_windows.go";
+  const base = {
+    [oldRuntime]: 0,
+    [oldSource]: 0,
+    [`${oldSource}.constraint.windows`]: -100,
+    [`${oldSource}.evidence.example/backend/internal/old:TestOwnership`]: 0,
   };
-  assert.ok(
-    budgetIncreases(legacy, arbitraryBootstrap).some((failure) =>
-      failure.includes("arbitrary_windows"),
-    ),
-  );
-
-  const expanded = {
-    ...current,
-    "backend.coverage.platform.internal/future_windows.go": 0,
-    "backend.coverage.platform.internal/future_windows.go.constraint.windows": -100,
-    "backend.coverage.excluded.cmd/future": 0,
+  const newRuntime =
+    "test.windows.runtime.example/backend/internal/new:TestOwnership";
+  const newSource =
+    "backend.coverage.platform.internal/new/ownership_windows.go";
+  const relocated = {
+    [newRuntime]: 0,
+    [newSource]: 0,
+    [`${newSource}.constraint.windows`]: -100,
+    [`${newSource}.evidence.example/backend/internal/new:TestOwnership`]: 0,
   };
-  const expansionFailures = budgetIncreases(current, expanded);
-  assert.ok(
-    expansionFailures.some((failure) => failure.includes("future_windows")),
-  );
-  assert.ok(
-    expansionFailures.some((failure) => failure.includes("cmd/future")),
-  );
 
-  const reduced = { ...current };
-  delete reduced[
-    Object.keys(reduced).find((key) =>
-      key.startsWith("backend.coverage.platform."),
-    )
+  assert.deepEqual(budgetIncreases(base, relocated), []);
+  const missingEvidence = { ...relocated };
+  delete missingEvidence[
+    `${newSource}.evidence.example/backend/internal/new:TestOwnership`
   ];
-  delete reduced[
-    Object.keys(reduced).find((key) =>
-      key.startsWith("backend.coverage.excluded."),
-    )
-  ];
-  assert.deepEqual(budgetIncreases(current, reduced), []);
-
-  const replayed = {
-    ...reduced,
-    "backend.coverage.excluded.cmd/future": 0,
-  };
   assert.ok(
-    budgetIncreases(reduced, replayed).some((failure) =>
-      failure.includes("cmd/future"),
+    budgetIncreases(base, missingEvidence).some((failure) =>
+      failure.includes(oldRuntime),
     ),
   );
 });
@@ -342,10 +321,14 @@ test("maintenance budget base fails closed instead of comparing HEAD to itself",
   };
   assert.throws(
     () =>
-      resolveBaseReference("HEAD", (...args) => {
-        if (args[0] === "rev-parse") return "same-sha";
-        return "";
-      }, {}),
+      resolveBaseReference(
+        "HEAD",
+        (...args) => {
+          if (args[0] === "rev-parse") return "same-sha";
+          return "";
+        },
+        {},
+      ),
     /must not resolve to HEAD/,
   );
   assert.throws(

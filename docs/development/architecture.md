@@ -220,6 +220,12 @@ place.
 - `internal/vaultsessions`: in-memory exact-session authorization leases for
   Project Vault application. SQL rows persist lease lifecycle/revocation
   metadata only; authorization is never restored after gateway restart.
+- `internal/connectortargets`: connector target/profile persistence plus durable
+  mutation-finalization intents. A mutation queues Vault-session and
+  action-request invalidation in the mutation transaction, finalizes both
+  components independently while holding the exclusive delivery gate, and
+  keeps later delivery fail-closed until startup recovery has completed every
+  pending component.
 - `internal/runtimecontrol`: concurrency-safe per-workspace MCP availability
   state. Saved token permissions and the live Started/Stopped switch remain
   separate concepts.

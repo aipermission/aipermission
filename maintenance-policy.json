@@ -140,16 +140,17 @@
     "scripts/release/release-notes.test.js",
     "scripts/release/release-version.test.js",
     "scripts/release/source/verify-release-source.test.js",
+    "scripts/verification/platform-coverage-ratchet.test.js",
     "scripts/verification/verification-policy.test.js",
     "scripts/verification/workflow-runtime-contract.test.js"
   ],
   "windowsRuntimeTests": [
     {
-      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
       "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
     },
     {
-      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
       "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
     },
     {
@@ -159,6 +160,48 @@
     {
       "package": "github.com/aipermission/aipermission/backend/internal/maintenanceconsole",
       "name": "TestMaintenanceConsoleUnsupportedSupervisorFailsClosed"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestMoveFileNoReplaceWindowsContract"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestWindowsMoveFileFailuresAreReported"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestWindowsDatabaseCatalogDurabilityPaths"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestWindowsDatabasePathSyncFailuresAreReported"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestWindowsMoveAndDeleteDatabaseEndToEnd"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+      "name": "TestKnownHostsAtomicReplacementWindowsContract"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+      "name": "TestWindowsKnownHostsReplacementFailuresAreReported"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/connectors/docker",
+      "name": "TestDockerCommandUsesRemotePOSIXPathRulesOnWindows"
+    }
+  ],
+  "darwinRuntimeTests": [
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestMoveFileNoReplaceDarwinContract"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+      "name": "TestDarwinMoveFileFailuresAreReported"
     }
   ],
   "sourceOverrides": {},
@@ -177,17 +220,77 @@
     }
   },
   "backendCoveragePlatformFiles": {
-    "internal/db/ownership_windows.go": {
+    "internal/databasecatalog/file_move_darwin.go": {
+      "platform": "darwin",
+      "buildConstraint": "darwin",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestMoveFileNoReplaceDarwinContract"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestDarwinMoveFileFailuresAreReported"
+        }
+      ]
+    },
+    "internal/connectors/ssh/execution/hostkeys_file_windows.go": {
       "platform": "windows",
       "buildConstraint": "windows",
       "minimumCoverage": 100.0,
       "tests": [
         {
-          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+          "name": "TestKnownHostsAtomicReplacementWindowsContract"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution",
+          "name": "TestWindowsKnownHostsReplacementFailuresAreReported"
+        }
+      ]
+    },
+    "internal/databasecatalog/file_move_windows.go": {
+      "platform": "windows",
+      "buildConstraint": "windows",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestMoveFileNoReplaceWindowsContract"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestWindowsMoveFileFailuresAreReported"
+        }
+      ]
+    },
+    "internal/databasecatalog/path_sync_windows.go": {
+      "platform": "windows",
+      "buildConstraint": "windows",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestWindowsDatabaseCatalogDurabilityPaths"
+        },
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
+          "name": "TestWindowsDatabasePathSyncFailuresAreReported"
+        }
+      ]
+    },
+    "internal/databaseownership/ownership_windows.go": {
+      "platform": "windows",
+      "buildConstraint": "windows",
+      "minimumCoverage": 100.0,
+      "tests": [
+        {
+          "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
           "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
         },
         {
-          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
           "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
         }
       ]

@@ -5,14 +5,30 @@ import {
   extractTableSuggestions,
   pendingMetadataReferences,
   referencedTablesFromSQL,
+  tableMatchesReference,
   tableReferenceKey,
 } from "../connectors/templates/_shared/sql-console-data.js";
+import { filteredTableBrowserRows, normalizeSQLConsoleConfig } from "../connectors/templates/_shared/sql-console-config.js";
+import { sqlCompletionItems } from "../connectors/templates/_shared/sql-editor-completions.js";
 
 test("SQL references support ANSI and ClickHouse quoted identifiers", () => {
-  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "public"."users" AS u'), [{ schema: "public", table: "users", alias: "u" }]);
-  assert.deepEqual(referencedTablesFromSQL("SELECT * FROM `analytics`.`daily-events` e"), [
-    { schema: "analytics", table: "daily-events", alias: "e" },
+  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "public"."users" AS u'), [
+    { schema: "public", table: "users", alias: "u", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
   ]);
+  assert.deepEqual(referencedTablesFromSQL("SELECT * FROM `analytics`.`daily-events` e"), [
+    { schema: "analytics", table: "daily-events", alias: "e", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
+  ]);
+  assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "tenant.one"."events.live"'), [
+    { schema: "tenant.one", table: "events.live", alias: "", schemaQuoted: true, tableQuoted: true, aliasQuoted: false },
+  ]);
+});
+
+test("quoted SQL references match metadata exactly while unquoted references fold case", () => {
+  const metadata = { schema: "public", table: "Users" };
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL('SELECT * FROM public."Users"')[0]), true);
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL('SELECT * FROM public."users"')[0]), false);
+  assert.equal(tableMatchesReference(metadata, referencedTablesFromSQL("SELECT * FROM PUBLIC.users")[0]), false);
+  assert.equal(tableMatchesReference({ schema: "public", table: "users" }, referencedTablesFromSQL("SELECT * FROM PUBLIC.USERS")[0]), true);
 });
 
 test("metadata requests are not reserved until the caller dispatches them", () => {
@@ -42,4 +58,27 @@ test("ClickHouse aggregated tuple metadata becomes ordered column suggestions", 
     { schema: "analytics", table: "events", column: "name", dataType: "String", position: 2, type: "" },
     { schema: "analytics", table: "events", column: "id", dataType: "UInt64", position: 1, type: "" },
   ]);
+});
+
+test("SQL metadata preserves whitespace-bearing database identities end to end", () => {
+  const rows = extractTableSuggestions({
+    rows: [{ table_schema: " tenant ", table_name: " order lines ", column_name: " item id ", data_type: " text " }],
+  });
+  assert.deepEqual(rows, [{ schema: " tenant ", table: " order lines ", column: " item id ", dataType: "text", position: 0, type: "" }]);
+
+  const browserRows = filteredTableBrowserRows(rows, "order");
+  assert.equal(browserRows[0].schema, " tenant ");
+  assert.equal(browserRows[0].table, " order lines ");
+  assert.equal(browserRows[0].columns[0].name, " item id ");
+  assert.equal(normalizeSQLConsoleConfig().tableQuery(browserRows[0], 25), 'SELECT *\nFROM " tenant "." order lines "\nLIMIT 25;');
+
+  const monaco = { languages: { CompletionItemKind: { Keyword: 1, Module: 2, Class: 3, Field: 4 } } };
+  const model = {
+    getValue: () => "SELECT * FROM ",
+    getWordUntilPosition: () => ({ startColumn: 15, endColumn: 15 }),
+    getLineContent: () => "SELECT * FROM ",
+  };
+  const suggestions = sqlCompletionItems(monaco, rows, [], model, { lineNumber: 1, column: 15 });
+  assert.equal(suggestions.find((item) => item.label === " order lines ")?.insertText, '" order lines "');
+  assert.equal(suggestions.find((item) => item.label === " tenant . order lines ")?.insertText, '" tenant "." order lines "');
 });

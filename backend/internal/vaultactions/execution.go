@@ -137,13 +137,17 @@ func (r *Runtime) prepareGenerate(ctx context.Context, request vaultrequests.Req
 		release()
 		return projectvault.CreateInput{}, nil, err
 	}
+	return generateCreateInput(request.ProjectID, input), release, nil
+}
+
+func generateCreateInput(projectID int64, input vaultrequests.GenerateInput) projectvault.CreateInput {
 	return projectvault.CreateInput{
-		Name: input.Name, OwnerProjectID: request.ProjectID, SharedProjectIDs: input.SharedProjectIDs,
+		Name: input.Name, OwnerProjectID: projectID, SharedProjectIDs: input.SharedProjectIDs,
 		SecretType: input.SecretType, Provider: input.Provider, Environment: input.Environment,
 		Description: input.Description, ExpiresAt: input.ExpiresAt,
 		ExpiryWarningDays: input.ExpiryWarningDays, Source: "generated",
 		GeneratorKind: input.GeneratorKind, Tags: input.Tags, UsageNotes: input.ProjectUsageNotes(),
-	}, release, nil
+	}
 }
 
 func generatedItemOutput(item projectvault.Item) map[string]any {
@@ -184,6 +188,16 @@ func (r *Runtime) executeSessionApply(
 	authorize := func(authorizeCtx context.Context) error {
 		_, authorizeErr := r.validateAuthorization(authorizeCtx, request, approval)
 		return authorizeErr
+	}
+	releaseDelivery, err := r.delivery.AcquireDelivery(ctx)
+	if err != nil {
+		return nil, err
+	}
+	admission := newDeliveryAdmission(releaseDelivery)
+	defer admission.releaseIfUnclaimed()
+	ctx = withDeliveryAdmission(ctx, r.delivery)
+	if err := authorize(ctx); err != nil {
+		return nil, err
 	}
 	expiresAt, err := r.sessionLeaseExpiry(ctx, request, approval, capability)
 	if err != nil {
@@ -233,12 +247,17 @@ func (r *Runtime) executeSessionApply(
 	if rows < 1 {
 		rows = 32
 	}
+	startupAdmissionRelease, err := admission.claim()
+	if err != nil {
+		return nil, err
+	}
 	createRequest := console.CreateRequest{
 		RuntimeID: approval.RuntimeID, Name: fmt.Sprintf("Vault session for %s", request.ProjectName),
 		CloseExisting: false, Cols: cols, Rows: rows, WaitForStart: true, Principal: principal,
-		PrepareEnvironment:     consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize)),
-		EnvironmentContentHash: approval.EnvironmentContentHash,
-		ApprovalContextHash:    request.ApprovalContextHash,
+		PrepareEnvironment:      consoleEnvironmentPreparer(r.environmentPreparer(snapshot, input.SessionSelections(), authorize, finalize, startupAdmissionRelease)),
+		StartupAdmissionRelease: startupAdmissionRelease,
+		EnvironmentContentHash:  approval.EnvironmentContentHash,
+		ApprovalContextHash:     request.ApprovalContextHash,
 	}
 	expected := console.SessionHandle{}
 	if approval.ExpectedSessionID > 0 {
@@ -258,6 +277,13 @@ func (r *Runtime) executeSessionApply(
 		"runtime_id": record.RuntimeID, "status": record.Status,
 		"environment_names": itemNames(approval.Items), "expires_at": expiresAt.Format(time.RFC3339),
 	}, nil
+}
+
+func withDeliveryAdmission(ctx context.Context, delivery DeliveryGate) context.Context {
+	if delivery == nil {
+		return ctx
+	}
+	return delivery.WithAdmission(ctx)
 }
 
 func consoleEnvironmentPreparer(preparer EnvironmentPreparer) console.EnvironmentPreparer {

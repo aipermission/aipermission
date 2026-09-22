@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiDownload, apiPostForm } from "../../../lib/api";
+import { apiDownload, apiPostForm, currentWorkspaceBinding } from "../../../lib/api";
 import { APIError, errorMessage } from "../../../lib/errors";
 import {
   completeLocalActionRetry,
@@ -8,6 +8,7 @@ import {
   preserveLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
 import { safeBackupFilename } from "./provisioning";
 
 const emptyActionState = { state: "idle", error: "", message: "" };
@@ -42,6 +43,7 @@ export function usePostgresBackupRestore(value) {
     try {
       const result = await apiDownload(`${endpoint}/backup`, `${safeBackupFilename(targetName || "postgres")}.sql`, {
         picker: true,
+        requireStreaming: true,
         signal: request.signal,
       });
       if (!request.isCurrent()) return;
@@ -65,19 +67,18 @@ export function usePostgresBackupRestore(value) {
     setRestoreState({ state: "running", error: "", message: "" });
     try {
       const formData = new FormData();
-      retry = await prepareLocalActionRetry({
-        path: `${endpoint}/restore`,
-        body: {
-          confirm_target: capturedConfirmation,
-          filename: capturedFile.name,
-          size: capturedFile.size,
-          last_modified: capturedFile.lastModified || 0,
-        },
-      });
+      const workspaceID = currentWorkspaceBinding();
+      const retryIdentity = await postgresRestoreRetryIdentity(`${endpoint}/restore`, capturedConfirmation, capturedFile, request.signal);
+      if (!request.isCurrent()) return;
+      retry = await prepareLocalActionRetry(retryIdentity, { workspaceID });
       formData.append("dump", capturedFile);
       formData.append("confirm_target", capturedConfirmation);
       formData.append("idempotency_key", retry.idempotencyKey);
-      const response = await apiPostForm(`${endpoint}/restore`, formData, { signal: request.signal, requireJSON: true });
+      const response = await apiPostForm(`${endpoint}/restore`, formData, {
+        signal: request.signal,
+        requireJSON: true,
+        workspaceBinding: workspaceID,
+      });
       requireCompletedRestoreResponse(response);
       await completeLocalActionRetry(retry);
       if (!request.isCurrent()) return;
@@ -146,7 +147,7 @@ export async function settleRestoreRetryFailure(retry, error) {
     await completeLocalActionRetry(retry);
     return;
   }
-  if (error instanceof APIError && error.status >= 400 && error.status < 500 && error.code !== "restore_in_progress") {
+  if (!retry.reused && error instanceof APIError && error.status >= 400 && error.status < 500 && error.code !== "restore_in_progress") {
     await completeLocalActionRetry(retry);
     return;
   }

@@ -60,9 +60,7 @@ export function useTransferBatch({ open, runtimeTarget, mode, remoteDir, uploadQ
   }
 
   function clearBatch() {
-    setBatch(emptyBatchState);
-    setOverwritePrompt(null);
-    startAttemptRef.current = null;
+    resetBatch();
   }
 
   async function refreshBatch(id = batch.item?.id, options = {}) {

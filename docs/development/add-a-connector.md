@@ -166,8 +166,12 @@ The local `idempotency_key` prevents duplicate gateway request creation, not
 duplicate remote execution after `outcome_unknown`.
 For local UI actions, the browser retains an uncertain attempt's generated key
 across reloads until the gateway returns a recognized request id and status.
-Only a SHA-256 request fingerprint and the generated key enter browser storage;
-action input and credentials do not.
+The browser signs the canonical request fingerprint with HMAC-SHA-256 using a
+non-extractable, origin-local signing key scoped to the database installation.
+Its bounded IndexedDB ledger stores that signing key, the generated idempotency
+key, keyed signature, and reservation/revision metadata; raw action input and
+credential values do not enter browser storage. See the canonical
+[browser retry ledger contract](../api/rest-api.md#history-and-connector-approvals).
 
 `ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
 JSON marshaler, but it must encode as JSON. Before persistence or external
@@ -545,12 +549,13 @@ must still normalize defaults in `PrepareAction` or `ExecuteAction` before
 building payloads, opening sockets, or running transport-specific logic.
 
 Use `Field.PreserveWhitespace` (`preserve_whitespace: true`) only for opaque
-`string` identities such as S3 object keys and prefixes. It distinguishes a
-whitespace-only string from an absent value; the empty string still follows
-required/default rules. Other fields retain their existing empty-value
-semantics. Credential validation honors the same flag for string fields.
-Changing it changes the action catalog and approval-context hash. Test the
-generic action/API path, not only connector preparation, when adding it.
+`string` or `multiline` identities and payloads such as S3 object keys or Kafka
+message bytes. It distinguishes a whitespace-only string from an absent value;
+the empty string still follows required/default rules. Other fields retain
+their existing empty-value semantics. Credential validation honors the same
+flag for supported string and multiline fields. Changing it changes the action
+catalog and approval-context hash. Test the generic action/API path, not only
+connector preparation, when adding it.
 
 Remote transfer identities need not be filesystem paths. An adapter can implement
 `connectorapi.FileTransferPathPolicy` to own locator validation, upload joining,

@@ -4,14 +4,14 @@ import { Button } from "./button";
 import { useDialogFrame } from "./use-dialog-frame";
 import { cn } from "../../lib/utils";
 
-export function Drawer({ open, title, description, children, onClose, bodyClassName, className }) {
+export function Drawer({ open, title, description, children, onClose, closeDisabled = false, bodyClassName, className }) {
   const { closeButtonRef, descriptionID, titleID, requestClose, handleOpenAutoFocus, handleCloseAutoFocus } = useDialogFrame({ onClose });
 
   return (
     <DialogPrimitive.Root
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) requestClose();
+        if (!nextOpen && !closeDisabled) requestClose();
       }}
     >
       <DialogPrimitive.Portal>
@@ -39,7 +39,14 @@ export function Drawer({ open, title, description, children, onClose, bodyClassN
               ) : null}
             </div>
             <DialogPrimitive.Close asChild>
-              <Button ref={closeButtonRef} type="button" variant="ghost" className="h-9 w-9 px-0" aria-label="Close drawer">
+              <Button
+                ref={closeButtonRef}
+                type="button"
+                variant="ghost"
+                className="h-9 w-9 px-0"
+                aria-label="Close drawer"
+                disabled={closeDisabled}
+              >
                 <X className="h-4 w-4" />
               </Button>
             </DialogPrimitive.Close>

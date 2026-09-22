@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -188,11 +189,17 @@ func TestSecretLeakCanaryAcrossApprovalHistoryAuditAndMCP(t *testing.T) {
 		t.Fatalf("read approval detail: %d %s", approvalDetail.Code, approvalDetail.Body.String())
 	}
 	assertCanaryAbsent("approval detail preview", approvalDetail.Body.String())
+	var displayedApproval struct {
+		ApprovalContextHash string `json:"approval_context_hash"`
+	}
+	if err := json.Unmarshal(approvalDetail.Body.Bytes(), &displayedApproval); err != nil || displayedApproval.ApprovalContextHash == "" {
+		t.Fatalf("decode approval context: %#v err=%v", displayedApproval, err)
+	}
 
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,
 		"/api/connector-action-approvals/"+strconv.FormatInt(pending.RequestID, 10)+"/run", "",
-		runConnectorActionApprovalRequest{},
+		runConnectorActionApprovalRequest{ApprovalContextHash: displayedApproval.ApprovalContextHash},
 	)
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("run canary action: %d %s", runResponse.Code, runResponse.Body.String())

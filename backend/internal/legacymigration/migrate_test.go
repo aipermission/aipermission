@@ -238,6 +238,77 @@ func TestRecoveryDrillLegacyMigrationCanRetryAfterSecretFailure(t *testing.T) {
 	}
 }
 
+func TestLegacyMigrationPreservesResolvedGatewaySecret(t *testing.T) {
+	const sourceSecret = "migration-source-secret-0123456789"
+	tests := []struct {
+		name         string
+		storedSecret *string
+		fallback     string
+		wantFailure  bool
+	}{
+		{name: "missing uses fallback", fallback: sourceSecret},
+		{name: "blank uses fallback", storedSecret: stringPointer(""), fallback: sourceSecret},
+		{name: "whitespace uses fallback", storedSecret: stringPointer("  \t "), fallback: sourceSecret},
+		{name: "stored secret ignores fallback", storedSecret: stringPointer(sourceSecret), fallback: "incorrect-fallback-secret-0123456789"},
+		{name: "blank rejects incorrect fallback", storedSecret: stringPointer(""), fallback: "incorrect-fallback-secret-0123456789", wantFailure: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataPath := filepath.Join(t.TempDir(), "aipermission.db")
+			sourceID, sourcePath, err := databasecatalog.NewDatabasePath(dataPath, "Legacy")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourceDB, err := db.OpenEncryptedForMigration(sourcePath, "LegacyPassword123")
+			if err != nil {
+				t.Fatal(err)
+			}
+			createLegacySchema(t, sourceDB)
+			insertLegacyRows(t, sourceDB, sourceSecret)
+			if test.storedSecret == nil {
+				_, err = sourceDB.Exec(`DELETE FROM settings WHERE key = 'gateway_secret'`)
+			} else {
+				_, err = sourceDB.Exec(`UPDATE settings SET value = ? WHERE key = 'gateway_secret'`, *test.storedSecret)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sourceDB.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := MigrateLegacy010To020(t.Context(), Legacy010To020Request{
+				DataPath: dataPath, FallbackSecret: test.fallback, SourceDatabaseID: sourceID,
+				SourcePassword: "LegacyPassword123", TargetName: "Migrated", TargetPassword: "MigratedPassword123",
+			})
+			if test.wantFailure {
+				if err == nil {
+					t.Fatal("migration with an incorrect resolved secret succeeded")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("migrate legacy database: %v", err)
+			}
+			targetPath, err := databasecatalog.DatabasePath(dataPath, result.TargetDatabaseID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			targetDB, err := db.OpenEncrypted(targetPath, "MigratedPassword123")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer targetDB.Close()
+			resolved, err := projectvault.ResolveGatewaySecret(t.Context(), targetDB, "")
+			if err != nil || resolved != sourceSecret {
+				t.Fatalf("resolved migrated gateway secret = %q, err=%v", resolved, err)
+			}
+		})
+	}
+}
+
+func stringPointer(value string) *string { return &value }
+
 func createLegacySchema(t *testing.T, database *sql.DB) {
 	t.Helper()
 	for _, statement := range []string{

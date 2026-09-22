@@ -65,6 +65,9 @@ func TestGetHelpAndActionList(t *testing.T) {
 	if actions[3].Name != ActionBrowseRemoteFiles || actions[3].Risk != connectors.RiskRead {
 		t.Fatalf("unexpected browse action: %#v", actions[3])
 	}
+	if actions[3].OutputHint.MaxRows != MaxBrowseRemoteRows {
+		t.Fatalf("browse max rows = %d, want %d", actions[3].OutputHint.MaxRows, MaxBrowseRemoteRows)
+	}
 	if actions[4].Name != ActionStartFileDownload || actions[4].Risk != connectors.RiskRead {
 		t.Fatalf("unexpected download action: %#v", actions[4])
 	}

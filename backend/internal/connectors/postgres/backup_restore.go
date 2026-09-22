@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -246,6 +247,9 @@ func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader)
 	if restrictToken != "" {
 		return total, false, fmt.Errorf("restore SQL file contains an unmatched psql restriction marker")
 	}
+	if !lexical.empty() {
+		return total, false, fmt.Errorf("restore SQL file contains an unterminated quoted or commented section")
+	}
 	return total, lexical.controlsTransaction, nil
 }
 
@@ -276,7 +280,6 @@ type postgresRestoreLexicalState struct {
 	inSingleQuote       bool
 	singleEscapes       bool
 	inDoubleQuote       bool
-	doubleEscapes       bool
 	blockCommentDepth   int
 	dollarQuote         string
 	statementStart      bool
@@ -331,17 +334,12 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			continue
 		}
 		if state.inDoubleQuote {
-			if state.doubleEscapes && line[index] == '\\' && index+1 < len(line) {
-				index += 2
-				continue
-			}
 			if line[index] == '"' {
 				if index+1 < len(line) && line[index+1] == '"' {
 					index += 2
 					continue
 				}
 				state.inDoubleQuote = false
-				state.doubleEscapes = false
 			}
 			index++
 			continue
@@ -360,15 +358,17 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			state.singleEscapes = postgresEscapeStringPrefix(line, index)
 			index++
 		case line[index] == '"':
+			if postgresUnicodeIdentifierPrefix(line, index) {
+				return fmt.Errorf("restore SQL file contains an unsupported Unicode escaped identifier")
+			}
 			state.finishStatementPrefix()
 			state.inDoubleQuote = true
-			state.doubleEscapes = postgresUnicodeIdentifierPrefix(line, index)
 			index++
 		case line[index] == '\\':
 			return fmt.Errorf("restore SQL file contains an unsupported inline psql meta-command")
 		case line[index] == '$':
 			state.finishStatementPrefix()
-			if delimiter := postgresDollarQuoteDelimiter(line[index:]); delimiter != "" {
+			if delimiter := postgresDollarQuoteDelimiterAt(line, index); delimiter != "" {
 				state.dollarQuote = delimiter
 				index += len(delimiter)
 			} else {
@@ -443,6 +443,17 @@ func postgresUnicodeIdentifierPrefix(line string, quoteIndex int) bool {
 func postgresIdentifierByte(value byte) bool {
 	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
 		(value >= '0' && value <= '9') || value == '_' || value == '$'
+}
+
+func postgresDollarQuoteDelimiterAt(line string, index int) string {
+	if index > 0 && postgresIdentifierContinuationByte(line[index-1]) {
+		return ""
+	}
+	return postgresDollarQuoteDelimiter(line[index:])
+}
+
+func postgresIdentifierContinuationByte(value byte) bool {
+	return postgresIdentifierByte(value) || value >= utf8.RuneSelf
 }
 
 func postgresDollarQuoteDelimiter(value string) string {

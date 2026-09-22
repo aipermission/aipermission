@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -23,19 +24,30 @@ func NewApproved(dependencies []actions.ResolvedDependency) Approved {
 }
 
 func (approved Approved) Acquire(ctx context.Context, runtime Runtime, purpose, targetRef string) (func(), error) {
-	if approved == nil {
-		return func() {}, nil
-	}
-	expected, ok := approved[key(purpose, targetRef)]
-	if !ok {
-		return nil, ErrApprovalChanged
-	}
 	if runtime.Database == nil || runtime.AcquireDelivery == nil {
 		return nil, errors.New("database runtime is not available")
 	}
-	release, err := runtime.AcquireDelivery(ctx)
-	if err != nil {
-		return nil, err
+	release := func() {}
+	if !connectors.DeliveryAdmissionHeld(ctx, runtime.Admission) {
+		var err error
+		release, err = runtime.AcquireDelivery(ctx)
+		if err != nil {
+			if release != nil {
+				release()
+			}
+			return nil, err
+		}
+		if release == nil {
+			return nil, errors.New("connector delivery admission did not return a release function")
+		}
+	}
+	if approved == nil {
+		return release, nil
+	}
+	expected, ok := approved[key(purpose, targetRef)]
+	if !ok {
+		release()
+		return nil, ErrApprovalChanged
 	}
 	currentTarget, currentProfile, err := connectortargets.NewStore(runtime.Database).ResolveConnectorActionTarget(ctx, targetRef)
 	if err != nil || !reflect.DeepEqual(currentTarget, expected.Target) || !reflect.DeepEqual(currentProfile, expected.Profile) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -83,6 +85,102 @@ func TestAcquireReadOperationUsesBackupSlotBeforeLifecycle(t *testing.T) {
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("lease order = %v, want %v", events, want)
 	}
+}
+
+func TestAuthorizedOperationRevalidatesWorkspaceAfterLifecycleAdmission(t *testing.T) {
+	events := []string{}
+	component := New(Dependencies{
+		Lifecycle: lifecycleStub{acquire: func(context.Context) (func(), error) {
+			events = append(events, "lifecycle.acquire")
+			return func() { events = append(events, "lifecycle.release") }, nil
+		}},
+		AcquireOperation: func(context.Context) (func(), error) {
+			events = append(events, "operation.acquire")
+			return func() { events = append(events, "operation.release") }, nil
+		},
+		AuthorizeOperation: func(w http.ResponseWriter, _ *http.Request) bool {
+			events = append(events, "workspace.authorize")
+			http.Error(w, "workspace changed", http.StatusConflict)
+			return false
+		},
+	})
+	response := httptest.NewRecorder()
+	lease, ok := component.authorizedReadOperation(response, httptest.NewRequest(http.MethodGet, "/api/backup/download", nil))
+	if ok || lease != nil || response.Code != http.StatusConflict {
+		t.Fatalf("authorization result: ok=%t lease=%v status=%d", ok, lease, response.Code)
+	}
+	want := []string{"operation.acquire", "lifecycle.acquire", "workspace.authorize", "lifecycle.release", "operation.release"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("authorization order = %v, want %v", events, want)
+	}
+}
+
+func TestContendedBackupOperationRejectsWorkspaceChangedWhileWaiting(t *testing.T) {
+	var lifecycleMu sync.RWMutex
+	var current atomic.Value
+	current.Store("workspace-a")
+	thirdAttempted := make(chan struct{})
+	var operationAcquires atomic.Int32
+	limiter := &OperationLimiter{}
+	component := New(Dependencies{
+		Lifecycle: lifecycleStub{acquire: func(context.Context) (func(), error) {
+			lifecycleMu.RLock()
+			return lifecycleMu.RUnlock, nil
+		}},
+		AcquireOperation: func(ctx context.Context) (func(), error) {
+			if operationAcquires.Add(1) == 3 {
+				close(thirdAttempted)
+			}
+			return limiter.Acquire(ctx)
+		},
+		AuthorizeOperation: func(w http.ResponseWriter, r *http.Request) bool {
+			if r.Header.Get("X-AIPermission-Workspace") != current.Load().(string) {
+				http.Error(w, "workspace changed", http.StatusConflict)
+				return false
+			}
+			return true
+		},
+	})
+	first, err := component.acquireReadOperation(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := component.acquireReadOperation(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.ReleaseLifecycle()
+	second.ReleaseLifecycle()
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/backup/providers/1/upload", nil)
+	request.Header.Set("X-AIPermission-Workspace", "workspace-a")
+	done := make(chan bool, 1)
+	go func() {
+		lease, ok := component.authorizedReadOperation(response, request)
+		if lease != nil {
+			lease.Release()
+		}
+		done <- ok
+	}()
+	select {
+	case <-thirdAttempted:
+	case <-time.After(time.Second):
+		t.Fatal("contended operation did not reach the operation limiter")
+	}
+	lifecycleMu.Lock()
+	current.Store("workspace-b")
+	lifecycleMu.Unlock()
+	first.Release()
+	select {
+	case ok := <-done:
+		if ok || response.Code != http.StatusConflict {
+			t.Fatalf("stale operation: ok=%t status=%d", ok, response.Code)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("contended operation did not finish after a slot was released")
+	}
+	second.Release()
 }
 
 func TestAcquireReadOperationReleasesSlotWhenLifecycleAdmissionFails(t *testing.T) {

@@ -122,6 +122,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		},
 		Warnings: []string{
 			"Redis and Valkey values may contain secrets. Redaction is best-effort; avoid intentionally reading secrets unless the operator approved that access.",
+			"Key identities are preserved as exact UTF-8 strings, including whitespace and NUL bytes; non-UTF-8 binary keys are not representable through the JSON action boundary.",
 			"scan_keys uses SCAN, not KEYS, and returns bounded batches.",
 			"scan_keys limit is a target count, not a hard cap: the last page is kept whole, up to 5095 keys. Continue with next_cursor until complete; an empty page need not be complete.",
 			"A scan stops after 100 pages and returns its continuation. Actions have a 10-second total deadline. SCAN is not a snapshot and may repeat keys while data changes.",
@@ -173,7 +174,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 				{Name: "limit", Label: "Collection limit", Type: connectors.FieldInteger, Default: defaultValueLimit},
 				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultMaxValueBytes},
 			}},
@@ -186,8 +187,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
-				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Required: true},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
+				{Name: "value", Label: "Value", Type: connectors.FieldMultiline, PreserveWhitespace: true, Required: true},
 				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldInteger, Description: "Optional positive TTL."},
 			}},
 			SensitiveInputFields: []string{"value"},
@@ -200,7 +201,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "key", Label: "Key", Type: connectors.FieldString, Required: true},
+				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 				{Name: "ttl_seconds", Label: "TTL seconds", Type: connectors.FieldInteger, Required: true, Description: "Positive seconds, or -1 to persist."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 4000},
@@ -244,20 +245,20 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		title = "Scan " + product + " keys"
 		summary = fmt.Sprintf("Scan keys matching %q with limit %d.", pattern, limit)
 	case ActionGetKey:
-		key := strings.TrimSpace(stringValue(input, "key"))
-		if key == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		key, err := exactRedisKey(input, "key")
+		if err != nil {
+			return connectors.PreparedAction{}, err
 		}
 		input["key"] = key
 		input["limit"] = normalizeInt(input, "limit", defaultValueLimit, 1, maxValueLimit)
 		input["max_bytes"] = normalizeInt(input, "max_bytes", defaultMaxValueBytes, 1, maxValueBytes)
 		title = "Read " + product + " key"
-		summary = key
+		summary = fmt.Sprintf("%q", key)
 	case ActionSetString:
 		risk = connectors.RiskWrite
-		key := strings.TrimSpace(stringValue(input, "key"))
-		if key == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		key, err := exactRedisKey(input, "key")
+		if err != nil {
+			return connectors.PreparedAction{}, err
 		}
 		if _, ok := input["value"]; !ok {
 			return connectors.PreparedAction{}, fmt.Errorf("value is required")
@@ -265,12 +266,12 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["ttl_seconds"] = normalizeInt(input, "ttl_seconds", 0, 0, 31_536_000)
 		title = "Set " + product + " string"
-		summary = key
+		summary = fmt.Sprintf("%q", key)
 	case ActionExpireKey:
 		risk = connectors.RiskWrite
-		key := strings.TrimSpace(stringValue(input, "key"))
-		if key == "" {
-			return connectors.PreparedAction{}, fmt.Errorf("key is required")
+		key, err := exactRedisKey(input, "key")
+		if err != nil {
+			return connectors.PreparedAction{}, err
 		}
 		ttl := normalizeInt(input, "ttl_seconds", 0, -1, 31_536_000)
 		if ttl == 0 {
@@ -279,7 +280,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["ttl_seconds"] = ttl
 		title = "Set " + product + " TTL"
-		summary = key
+		summary = fmt.Sprintf("%q", key)
 	case ActionDeleteKeys:
 		risk = connectors.RiskDestructive
 		keys, err := normalizeKeys(input["keys"])

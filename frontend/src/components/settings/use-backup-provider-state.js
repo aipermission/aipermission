@@ -53,8 +53,12 @@ export function useBackupProviderState(database) {
   async function downloadDatabase() {
     await runBackupAction({
       pending: "downloading",
-      successMessage: "Encrypted database downloaded.",
-      action: () => apiDownload("/api/backup/download", `${databaseName}-${new Date().toISOString().slice(0, 19)}.aipdb`),
+      successMessage: (result) => (result?.canceled ? null : "Encrypted database downloaded."),
+      action: () =>
+        apiDownload("/api/backup/download", `${databaseName}-${new Date().toISOString().slice(0, 19)}.aipdb`, {
+          picker: true,
+          requireStreaming: true,
+        }),
     });
   }
 

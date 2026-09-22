@@ -143,6 +143,7 @@ func (component *OperationsOwner) backupWorkspace(handle *WorkspaceHandle, runti
 	runtime.DatabaseID = identity.DatabaseID
 	runtime.DatabasePath = identity.DatabasePath
 	runtime.WorkspaceID = identity.WorkspaceID
+	runtime.WorkspaceInstanceID = identity.UIRetryID
 	return runtime, true
 }
 

@@ -24,54 +24,78 @@ type RequestView struct {
 	OutputAuthorized bool
 }
 
-func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error) {
+func (r *Runtime) Call(ctx context.Context, input CallInput) (Request, error) {
 	if err := r.validate(); err != nil {
-		return RequestView{}, err
+		return Request{}, err
 	}
 	input.ProjectRef = strings.TrimSpace(input.ProjectRef)
 	input.ActionName = strings.TrimSpace(input.ActionName)
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	if input.TokenID < 1 || input.ProjectRef == "" || input.IdempotencyKey == "" {
-		return RequestView{}, ValidationError("project_ref and idempotency_key are required")
+		return Request{}, ValidationError("project_ref and idempotency_key are required")
 	}
 	if input.Reason == "" {
-		return RequestView{}, ValidationError("reason is required")
+		return Request{}, ValidationError("reason is required")
 	}
 	if len([]byte(input.IdempotencyKey)) > maxIdempotencyKeyBytes {
-		return RequestView{}, ValidationError("idempotency_key is too long")
+		return Request{}, ValidationError("idempotency_key is too long")
 	}
 	if len([]byte(input.Reason)) > maxReasonBytes {
-		return RequestView{}, ValidationError(fmt.Sprintf("reason must be %d bytes or less", maxReasonBytes))
+		return Request{}, ValidationError(fmt.Sprintf("reason must be %d bytes or less", maxReasonBytes))
 	}
 	normalizedInput, err := NormalizeActionInput(input.ActionName, input.Input)
 	if err != nil {
-		return RequestView{}, ValidationError(err.Error())
+		return Request{}, ValidationError(err.Error())
 	}
+	releaseDelivery, err := r.acquireDelivery(ctx)
+	if err != nil {
+		return Request{}, err
+	}
+	deliveryHeld := true
+	defer func() {
+		if deliveryHeld {
+			releaseDelivery()
+		}
+	}()
 	existing, err := r.store.GetByIdempotencyKey(ctx, input.TokenID, input.IdempotencyKey)
 	if err == nil {
 		exact, openErr := r.exactRequest(existing)
 		if openErr != nil {
-			return RequestView{}, openErr
+			return Request{}, openErr
 		}
-		if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
-			return RequestView{}, ErrIdempotencyConflict
+		projectID, resolveErr := r.resolveProject(ctx, input.ProjectRef)
+		if errors.Is(resolveErr, ErrProjectNotFound) && storedProjectReferenceMatches(exact, input.ProjectRef) {
+			projectID, resolveErr = exact.ProjectID, nil
 		}
-		return r.View(ctx, existing), nil
+		if resolveErr != nil {
+			return Request{}, resolveErr
+		}
+		if !SameActionCall(exact, projectID, input.ActionName, normalizedInput, input.Reason) {
+			return Request{}, ErrIdempotencyConflict
+		}
+		return existing, nil
 	}
 	if !errors.Is(err, ErrNotFound) {
-		return RequestView{}, err
+		return Request{}, err
+	}
+	projectID, err := r.resolveProject(ctx, input.ProjectRef)
+	if err != nil {
+		return Request{}, err
 	}
 	if !r.allowRequest(input.TokenID) {
-		return RequestView{}, ErrRequestRateLimited
+		return Request{}, ErrRequestRateLimited
 	}
 	prepared, err := r.prepare(ctx, input.TokenID, input.ProjectRef, input.ActionName, normalizedInput)
 	if err != nil {
-		return RequestView{}, err
+		return Request{}, err
+	}
+	if prepared.ProjectID != projectID {
+		return Request{}, ErrProjectNotFound
 	}
 	contextMap, err := approvalContextMap(prepared.ApprovalContext)
 	if err != nil {
-		return RequestView{}, err
+		return Request{}, err
 	}
 	runtimeID := (*int64)(nil)
 	if prepared.RuntimeID > 0 {
@@ -83,7 +107,7 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	}
 	publicInput, publicReason, err := r.publicProjection(ctx, prepared.Input, input.Reason)
 	if err != nil {
-		return RequestView{}, err
+		return Request{}, err
 	}
 	envelope := ExecutionEnvelope{
 		Input: prepared.Input, Reason: input.Reason, ApprovalContext: contextMap,
@@ -109,7 +133,7 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 				if openErr != nil {
 					return openErr
 				}
-				if !SameActionCall(exact, input.ProjectRef, input.ActionName, normalizedInput, input.Reason) {
+				if !SameActionCall(exact, projectID, input.ActionName, normalizedInput, input.Reason) {
 					return ErrIdempotencyConflict
 				}
 			}
@@ -120,18 +144,20 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 		},
 	)
 	if errors.Is(err, errMutationUnchanged) {
-		return r.View(ctx, request), nil
+		return request, nil
 	}
 	if err != nil {
-		return RequestView{}, err
+		return Request{}, err
 	}
 	if !prepared.RunImmediately {
 		r.mutations.Observe(ctx, "mcp", &input.TokenID, prepared.RuntimeID, "mcp.vault_action.approval_pending", map[string]any{
 			"request_id": request.ID, "project_id": prepared.ProjectID, "action_name": request.ActionName,
 			"approval_context_hash": request.ApprovalContextHash,
 		})
-		return r.View(ctx, request), nil
+		return request, nil
 	}
+	releaseDelivery()
+	deliveryHeld = false
 	executionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.executionTimeout)
 	defer cancel()
 	exact := request
@@ -140,40 +166,69 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (RequestView, error
 	exact.ApprovalContext = envelope.ApprovalContext
 	result, err := RunClaimedWorkflow(executionCtx, exact, r.workflowPorts("mcp", "", "", "mcp.vault_action"))
 	if err != nil {
-		return RequestView{}, err
+		return Request{}, err
 	}
-	return r.View(ctx, result.Request), nil
+	return result.Request, nil
 }
 
-func (r *Runtime) GetOwned(ctx context.Context, id, tokenID int64) (RequestView, error) {
-	if err := r.validate(); err != nil {
-		return RequestView{}, err
+func storedProjectReferenceMatches(request Request, ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if strings.HasPrefix(ref, "id:") {
+		id, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(ref, "id:")), 10, 64)
+		return err == nil && id > 0 && id == request.ProjectID
 	}
+	if strings.HasPrefix(ref, "slug:") {
+		return strings.TrimSpace(strings.TrimPrefix(ref, "slug:")) == request.ProjectSlug
+	}
+	if id, err := strconv.ParseInt(ref, 10, 64); err == nil && id > 0 && id == request.ProjectID {
+		return true
+	}
+	return ref != "" && ref == request.ProjectSlug
+}
+
+func (r *Runtime) DeliverOwned(ctx context.Context, id, tokenID int64, deliver func(RequestView)) error {
+	return r.deliverOwned(ctx, id, tokenID, true, deliver)
+}
+
+func (r *Runtime) DeliverCallResult(ctx context.Context, id, tokenID int64, deliver func(RequestView)) error {
+	return r.deliverOwned(ctx, id, tokenID, false, deliver)
+}
+
+func (r *Runtime) deliverOwned(ctx context.Context, id, tokenID int64, stalePending bool, deliver func(RequestView)) error {
+	if err := r.validate(); err != nil {
+		return err
+	}
+	if deliver == nil {
+		return ErrRuntimeUnavailable
+	}
+	releaseDelivery, err := r.acquireDelivery(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseDelivery()
 	item, err := r.store.Get(ctx, id)
 	if errors.Is(err, ErrNotFound) || (err == nil && item.TokenID != tokenID) {
-		return RequestView{}, ErrNotFound
+		return ErrNotFound
 	}
 	if err != nil {
-		return RequestView{}, err
+		return err
 	}
 	exact, openErr := r.exactRequest(item)
-	authorized := openErr == nil && r.authorizeOutput(ctx, exact)
-	if item.Status == StatusApprovalPending && !authorized {
+	authorization := OutputWithheld
+	if openErr == nil {
+		authorization = r.authorizeOutput(ctx, exact)
+	}
+	if stalePending && item.Status == StatusApprovalPending && authorization == OutputContextStale {
 		if stale, staleErr := r.store.StalePending(ctx, item.ID, "Vault approval context changed; send a fresh request"); staleErr == nil {
 			item = stale
 		}
 	}
-	return RequestView{Request: item, OutputAuthorized: authorized}, nil
+	deliver(RequestView{Request: item, OutputAuthorized: authorization.Authorized()})
+	return nil
 }
 
-func (r *Runtime) View(ctx context.Context, item Request) RequestView {
-	exact, err := r.exactRequest(item)
-	return RequestView{Request: item, OutputAuthorized: err == nil && r.authorizeOutput(ctx, exact)}
-}
-
-func SameActionCall(request Request, projectRef, actionName string, input map[string]any, reason string) bool {
-	projectMatches := request.ProjectSlug == projectRef || strconv.FormatInt(request.ProjectID, 10) == projectRef
-	if !projectMatches || request.ActionName != actionName || request.Reason != reason {
+func SameActionCall(request Request, projectID int64, actionName string, input map[string]any, reason string) bool {
+	if request.ProjectID != projectID || request.ActionName != actionName || request.Reason != reason {
 		return false
 	}
 	requestJSON, requestErr := json.Marshal(request.Input)

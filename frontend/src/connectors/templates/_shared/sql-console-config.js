@@ -1,4 +1,4 @@
-import { normalizeSQLName } from "./sql-console-data";
+import { normalizeSQLName, sqlMetadataIdentity } from "./sql-console-data.js";
 
 export function normalizeSQLConsoleConfig(config = {}) {
   const label = String(config.label || "SQL").trim() || "SQL";
@@ -14,6 +14,7 @@ export function normalizeSQLConsoleConfig(config = {}) {
     manualReason: String(config.manualReason || `manual ${label} console query`),
     browserLabel: String(config.browserLabel || "Schema"),
     filenamePrefix: String(config.filenamePrefix || `${label.toLowerCase()}-result`),
+    identifierPolicy: config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted",
     keywords: [...new Set([...DEFAULT_SQL_KEYWORDS, ...(config.keywords || [])].map((item) => String(item).toLowerCase()))],
     targetEndpoint: config.targetEndpoint || ((target) => defaultTargetEndpoint(target, defaultPort, defaultDatabase)),
     tableQuery:
@@ -64,13 +65,13 @@ export function mergeMetadataRows(current, incoming) {
   const merged = [];
   const seen = new Set();
   for (const item of [...(current || []), ...(incoming || [])]) {
-    const key = [
-      normalizeSQLName(item.schema),
-      normalizeSQLName(item.table),
-      normalizeSQLName(item.column),
-      normalizeSQLName(item.dataType || item.type),
+    const key = JSON.stringify([
+      sqlMetadataIdentity(item.schema),
+      sqlMetadataIdentity(item.table),
+      sqlMetadataIdentity(item.column),
+      sqlMetadataIdentity(item.dataType || item.type),
       item.position || "",
-    ].join(".");
+    ]);
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(item);
@@ -94,10 +95,11 @@ function uniqueTableBrowserRows(rows) {
   const seenColumns = new Set();
   for (const row of rows) {
     if (!row.schema || !row.table) continue;
-    const key = `${normalizeSQLName(row.schema)}.${normalizeSQLName(row.table)}`;
+    const key = JSON.stringify([sqlMetadataIdentity(row.schema), sqlMetadataIdentity(row.table)]);
     const current = byTable.get(key) || { schema: row.schema, table: row.table, type: row.type || "table", columnCount: 0, columns: [] };
-    if (row.column && !seenColumns.has(`${key}.${normalizeSQLName(row.column)}`)) {
-      seenColumns.add(`${key}.${normalizeSQLName(row.column)}`);
+    const columnKey = JSON.stringify([key, sqlMetadataIdentity(row.column)]);
+    if (row.column && !seenColumns.has(columnKey)) {
+      seenColumns.add(columnKey);
       current.columns.push({ name: row.column, dataType: row.dataType || "", position: row.position || current.columns.length + 1 });
     }
     byTable.set(key, current);

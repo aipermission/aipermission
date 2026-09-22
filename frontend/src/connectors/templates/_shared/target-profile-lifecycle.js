@@ -59,7 +59,11 @@ export function createTargetProfileLifecycle({
       formMode,
       targets,
       state,
-      onChange: (form) => setFormState({ form }),
+      onChange: (form) =>
+        setFormState((current) => ({
+          ...current,
+          form: typeof form === "function" ? form(current.form) : form,
+        })),
       onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
     };
   }

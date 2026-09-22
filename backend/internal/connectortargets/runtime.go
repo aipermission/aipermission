@@ -51,7 +51,7 @@ func (s *Store) EnsureRuntimeSurface(ctx context.Context, input EnsureRuntimeSur
 	if label == "" {
 		label = input.CapabilityKind
 	}
-	now := nowString()
+	now := nowRevisionString()
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connector_runtime_surfaces (
 			connector_kind, target_id, profile_id, capability_kind, label, status, created_at, updated_at
@@ -233,7 +233,7 @@ func (s *Store) ArchiveRuntimeSurfacesForTarget(ctx context.Context, targetID in
 		UPDATE connector_runtime_surfaces
 		SET status = 'archived', updated_at = ?
 		WHERE target_id = ? AND status = 'active'`,
-		nowString(),
+		nowRevisionString(),
 		targetID,
 	)
 	return err
@@ -250,7 +250,7 @@ func (s *Store) ArchiveRuntimeSurfacesForProfile(ctx context.Context, targetID i
 		UPDATE connector_runtime_surfaces
 		SET status = 'archived', updated_at = ?
 		WHERE target_id = ? AND profile_id = ? AND status = 'active'`,
-		nowString(),
+		nowRevisionString(),
 		targetID,
 		profileID,
 	)

@@ -398,13 +398,16 @@ func TestGatewayBoundariesDoNotReintroduceForwarderFiles(t *testing.T) {
 func TestGatewayTypeAliasesAreExplicitCanonicalContracts(t *testing.T) {
 	root := filepath.Join("..", "..", "internal")
 	allowed := map[string]bool{
-		"gatewayaccess/access.go:PreparedUISession":    true,
-		"gatewayaccess/access.go:Principal":            true,
-		"gatewayaccess/access.go:SecurityRule":         true,
-		"gatewayaccess/access.go:SecurityRuleInput":    true,
-		"gatewayaccess/access.go:SecuritySettings":     true,
-		"gatewayaccess/access.go:TokenValidationError": true,
-		"gatewayoperations/transfer/workspace.go:Jobs": true,
+		"gatewayaccess/access.go:PreparedUISession":      true,
+		"gatewayaccess/access.go:Principal":              true,
+		"gatewayaccess/access.go:SecurityRule":           true,
+		"gatewayaccess/access.go:SecurityRuleInput":      true,
+		"gatewayaccess/access.go:SecuritySettings":       true,
+		"gatewayaccess/access.go:TokenValidationError":   true,
+		"gatewayoperations/transfer/workspace.go:Jobs":   true,
+		"gatewayworkspace/workspace.go:HTTPDependencies": true,
+		"gatewayworkspace/workspace.go:HTTPHandlers":     true,
+		"gatewayworkspace/workspace.go:PasswordAttempt":  true,
 	}
 	found := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {

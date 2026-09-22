@@ -40,7 +40,7 @@ func stripReusableTokenValues(items []tokens.Token) {
 }
 
 func (h *HTTPHandlers) CreateToken(w http.ResponseWriter, r *http.Request) {
-	scope, ok := h.resolve(w, requireTokens|requireReusableTokens|requireMutation)
+	scope, ok := h.resolve(w, requireTokens|requireReusableTokensForMutation|requireMutation)
 	if !ok {
 		return
 	}
@@ -48,16 +48,16 @@ func (h *HTTPHandlers) CreateToken(w http.ResponseWriter, r *http.Request) {
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	reusableTokens, err := scope.ReusableTokens(r.Context())
-	if err != nil {
-		log.Printf("read security settings for token create failed: %v", err)
-		httptransport.WriteInternalError(w)
-		return
-	}
+	reusableTokens := false
 	var item tokens.CreateResponse
-	err = scope.Mutate(r.Context(), "token.created", func() any {
+	err := scope.Mutate(r.Context(), "token.created", func() any {
 		return map[string]any{"token_id": item.ID, "name": item.Name, "reusable_tokens": reusableTokens}
 	}, func(tx *sql.Tx) error {
+		var policyErr error
+		reusableTokens, policyErr = scope.ReusableTokensForMutation(r.Context(), tx)
+		if policyErr != nil {
+			return policyErr
+		}
 		var createErr error
 		item, createErr = scope.Tokens.WithTx(tx).Create(r.Context(), request, tokens.CreateOptions{StoreReusableToken: reusableTokens})
 		return createErr

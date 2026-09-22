@@ -198,8 +198,8 @@ export function serverProductLabel(targetOrConfig) {
 }
 
 export function validateStringWrite({ key, value }) {
-  if (!String(key || "").trim()) return "Key is required.";
-  if (!String(value || "").trim()) return "Value is required.";
+  if (String(key ?? "") === "") return "Key is required.";
+  if (String(value ?? "") === "") return "Value is required.";
   return "";
 }
 

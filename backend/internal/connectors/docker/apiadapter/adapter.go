@@ -67,9 +67,6 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	if !dockerconnector.ValidContainerRef(containerRef) {
 		return nil, errors.New("docker container must be a name or ID without shell syntax")
 	}
-	if !dockerconnector.ProfileAllowsContainerRef(profile, containerRef) {
-		return nil, fmt.Errorf("%w: %s", dockerconnector.ErrScopeDenied, containerRef)
-	}
 	transportRef := strings.TrimSpace(stringConfigValue(target.Config, "transport_target_ref"))
 	if transportRef == "" {
 		return nil, fmt.Errorf("%w: transport_target_ref is required", dockerconnector.ErrInvalidConfig)
@@ -78,7 +75,28 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	if err != nil {
 		return nil, err
 	}
-	command := dockerExecShellCommand(dockerCommand, containerRef)
+	inventoryCommand, err := dockerconnector.ContainerInventoryCommand(target)
+	if err != nil {
+		return nil, err
+	}
+	inventory, err := server.ConnectorRunCommand(ctx, connectors.CommandRunRequest{
+		SourceTargetRef:    target.Ref,
+		Mode:               dockerconnector.ConnectionMode(target),
+		TransportTargetRef: transportRef,
+		Command:            inventoryCommand,
+		TimeoutSeconds:     20,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolve docker container: %w", err)
+	}
+	if inventory.ExitCode != 0 {
+		return nil, fmt.Errorf("resolve docker container: inventory command exited with code %d", inventory.ExitCode)
+	}
+	container, err := dockerconnector.ResolveProfileContainer(profile, containerRef, inventory.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	command := dockerExecShellCommand(dockerCommand, container.ID)
 	return server.ConnectorOpenLiveConsole(ctx, transportRef, request.Rows, request.Cols, map[string]any{"force_shell_command": command})
 }
 

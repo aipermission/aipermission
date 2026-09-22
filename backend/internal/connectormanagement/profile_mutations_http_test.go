@@ -94,7 +94,7 @@ func TestProfileMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 	if after.EncryptedSecretJSON != persisted.EncryptedSecretJSON || after.SecretRevision != persisted.SecretRevision {
 		t.Fatal("metadata-only update rewrote the credential secret")
 	}
-	if acquired != 1 || released != 1 || len(ensured) != 2 || len(lifecycleChanges) != 1 || lifecycleChanges[0].ProfileID != created.ID {
+	if acquired != 2 || released != 2 || len(ensured) != 2 || len(lifecycleChanges) != 1 || lifecycleChanges[0].ProfileID != created.ID {
 		t.Fatalf("acquired=%d released=%d ensured=%v lifecycle=%#v", acquired, released, ensured, lifecycleChanges)
 	}
 	if strings.Join(auditActions, ",") != "connector.profile.created,connector.profile.updated" {
@@ -149,27 +149,38 @@ func TestProfileMutationHandlersFailClosedForIncompleteScopes(t *testing.T) {
 	}
 }
 
-func TestProfileUpdateRejectsMissingExclusiveRelease(t *testing.T) {
+func TestProfileMutationsRejectMissingExclusiveRelease(t *testing.T) {
 	fixture := newManagementHTTPFixture(t)
-	auditActions := []string{}
-	scope := profileMutationTestScope(fixture, &auditActions)
-	scope.AcquireExclusive = func(context.Context) (func(), error) { return nil, nil }
-	handler := NewProfileMutationHTTPHandler(func(http.ResponseWriter) (ProfileMutationScope, bool) { return scope, true })
-	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /connector-targets/{id}/profiles/{profile_id}", handler.Update)
-	response := performProfileMutationJSON(t, mux, http.MethodPut,
-		"/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10)+"/profiles/"+strconv.FormatInt(fixture.profile.ID, 10),
-		CredentialProfileInput{Kind: fixture.profile.Kind, Label: "must-not-change"},
-	)
-	if response.Code != http.StatusInternalServerError || len(auditActions) != 0 {
-		t.Fatalf("missing release response=%d audit=%v: %s", response.Code, auditActions, response.Body.String())
+	for _, testCase := range []struct {
+		name, method, path string
+		payload            CredentialProfileInput
+	}{
+		{name: "create", method: http.MethodPost, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles", payload: CredentialProfileInput{Kind: "operator", Label: "must-not-create", Secret: map[string]any{}}},
+		{name: "update", method: http.MethodPut, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles/" + strconv.FormatInt(fixture.profile.ID, 10), payload: CredentialProfileInput{Kind: fixture.profile.Kind, Label: "must-not-change"}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			auditActions := []string{}
+			scope := profileMutationTestScope(fixture, &auditActions)
+			scope.AcquireExclusive = func(context.Context) (func(), error) { return nil, nil }
+			handler := NewProfileMutationHTTPHandler(func(http.ResponseWriter) (ProfileMutationScope, bool) { return scope, true })
+			mux := http.NewServeMux()
+			pattern := map[string]string{
+				"create": "POST /connector-targets/{id}/profiles",
+				"update": "PUT /connector-targets/{id}/profiles/{profile_id}",
+			}[testCase.name]
+			mux.HandleFunc(pattern, map[string]http.HandlerFunc{"create": handler.Create, "update": handler.Update}[testCase.name])
+			response := performProfileMutationJSON(t, mux, testCase.method, testCase.path, testCase.payload)
+			if response.Code != http.StatusInternalServerError || len(auditActions) != 0 {
+				t.Fatalf("missing release response=%d audit=%v: %s", response.Code, auditActions, response.Body.String())
+			}
+		})
 	}
-	after, err := connectortargets.NewStore(fixture.database).GetCredentialProfile(t.Context(), fixture.target.ID, fixture.profile.ID)
+	profiles, err := connectortargets.NewStore(fixture.database).ListCredentialProfiles(t.Context(), fixture.target.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Label != fixture.profile.Label {
-		t.Fatalf("profile changed without an exclusive release: %q", after.Label)
+	if len(profiles) != 1 || profiles[0].Label != fixture.profile.Label {
+		t.Fatalf("profiles changed without an exclusive release: %#v", profiles)
 	}
 }
 

@@ -11,6 +11,30 @@ import (
 )
 
 func (s *Store) normalizeCreateInput(ctx context.Context, input CreateInput) (CreateInput, error) {
+	input, err := NormalizeCreateMetadata(input)
+	if err != nil {
+		return CreateInput{}, err
+	}
+	if input.Source == "generated" {
+		value, parameters, err := Generate(input.GeneratorKind)
+		if err != nil {
+			return CreateInput{}, err
+		}
+		input.Value = value
+		input.GeneratorParams = parameters
+	} else if err := validateValue(input.Value); err != nil {
+		return CreateInput{}, err
+	}
+	if err := validateActiveProjects(ctx, s.db, append([]int64{input.OwnerProjectID}, input.SharedProjectIDs...)); err != nil {
+		return CreateInput{}, err
+	}
+	return input, nil
+}
+
+// NormalizeCreateMetadata validates item metadata without generating or
+// inspecting the secret value. Callers can use it before creating an approval;
+// Store.Create still repeats it at execution time.
+func NormalizeCreateMetadata(input CreateInput) (CreateInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.SecretType = strings.TrimSpace(input.SecretType)
 	input.Provider = strings.TrimSpace(input.Provider)
@@ -31,20 +55,11 @@ func (s *Store) normalizeCreateInput(ctx context.Context, input CreateInput) (Cr
 		return CreateInput{}, ValidationError("source must be imported or generated")
 	}
 	if input.Source == "generated" {
-		if input.GeneratorKind == "" {
-			return CreateInput{}, ValidationError("generator kind is required")
-		}
-		value, parameters, err := Generate(input.GeneratorKind)
-		if err != nil {
+		if err := ValidateGeneratorKind(input.GeneratorKind); err != nil {
 			return CreateInput{}, err
 		}
-		input.Value = value
-		input.GeneratorParams = parameters
 	} else if input.GeneratorKind != "" {
 		return CreateInput{}, ValidationError("imported values cannot specify a generator")
-	}
-	if err := validateValue(input.Value); err != nil {
-		return CreateInput{}, err
 	}
 	expiresAt, err := normalizeExpiry(input.ExpiresAt)
 	if err != nil {
@@ -70,9 +85,6 @@ func (s *Store) normalizeCreateInput(ctx context.Context, input CreateInput) (Cr
 	}
 	input.UsageNotes, err = normalizeUsageNotes(input.UsageNotes)
 	if err != nil {
-		return CreateInput{}, err
-	}
-	if err := validateActiveProjects(ctx, s.db, append([]int64{input.OwnerProjectID}, input.SharedProjectIDs...)); err != nil {
 		return CreateInput{}, err
 	}
 	return input, nil

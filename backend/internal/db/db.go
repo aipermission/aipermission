@@ -18,16 +18,14 @@ import (
 var ErrPublishTargetExists = errors.New("publish target already exists")
 
 const (
-	currentSchemaVersion     = 33
+	currentSchemaVersion     = 38
 	expectedSQLCipherVersion = "4.16.0"
 	expectedSQLiteVersion    = "3.53.1"
 	expectedKDFIterations    = 256000
 )
 
 // CurrentSchemaVersion returns the newest schema understood by this build.
-func CurrentSchemaVersion() int {
-	return currentSchemaVersion
-}
+func CurrentSchemaVersion() int { return currentSchemaVersion }
 
 func OpenEncrypted(path string, password string) (*sql.DB, error) {
 	return openEncrypted(path, password, openOptions{runMigrations: true, createMigrationSnapshot: true})
@@ -360,14 +358,30 @@ func Exists(path string) bool {
 }
 
 func Rekey(database *sql.DB, newPassword string) error {
+	return RekeyContext(context.Background(), database, newPassword)
+}
+
+func RekeyContext(ctx context.Context, database *sql.DB, newPassword string) error {
+	if database == nil {
+		return ErrDatabaseNotOpen
+	}
+	connection, err := database.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("reserve encrypted sqlite connection for rekey: %w", err)
+	}
+	defer connection.Close()
+	if err := checkpointFullConnection(ctx, connection); err != nil {
+		return fmt.Errorf("checkpoint database before password change: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// SQLCipher PRAGMA rekey does not support parameter binding through this
 	// driver. Escape double quotes because the driver and SQLCipher examples use
-	// double-quoted PRAGMA key/rekey passphrases.
-	if _, err := database.Exec(`PRAGMA rekey = "` + quoteSQLDoubleQuotedString(newPassword) + `"`); err != nil {
+	// double-quoted PRAGMA key/rekey passphrases. Once dispatch starts, finish the
+	// irreversible operation even if the originating request is canceled.
+	if _, err := connection.ExecContext(context.WithoutCancel(ctx), `PRAGMA rekey = "`+quoteSQLDoubleQuotedString(newPassword)+`"`); err != nil {
 		return fmt.Errorf("rekey encrypted sqlite: %w", err)
-	}
-	if err := database.Ping(); err != nil {
-		return fmt.Errorf("ping rekeyed sqlite: %w", err)
 	}
 	return nil
 }

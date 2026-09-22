@@ -62,6 +62,7 @@ it("owns completed download notices and allows retry after picker cancellation",
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(apiDownload).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/download", "reports.zip", {
     picker: true,
+    requireStreaming: true,
     signal: expect.any(AbortSignal),
   });
   expect(onNotice).toHaveBeenLastCalledWith({

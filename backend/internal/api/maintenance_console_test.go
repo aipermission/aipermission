@@ -70,7 +70,7 @@ func TestMaintenanceConsoleLockClosesAttachedSession(t *testing.T) {
 	}
 	httpServer := httptest.NewServer(handler)
 	defer httpServer.Close()
-	header := http.Header{"Origin": {"http://localhost:3001"}}
+	header := http.Header{"Origin": {"http://localhost:3001"}, "X-AIPermission-Workspace": {currentTestUIWorkspaceBinding()}}
 	if cookie := currentTestUICookie(); cookie != nil {
 		header.Set("Cookie", cookie.String())
 	}

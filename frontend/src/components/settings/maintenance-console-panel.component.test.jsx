@@ -7,6 +7,7 @@ import { MaintenanceConsolePanel } from "./maintenance-console-panel";
 vi.mock("../../lib/api", () => ({
   apiPost: vi.fn(),
   apiUrl: "http://localhost:3210",
+  currentWorkspaceBinding: vi.fn(() => "workspace-a"),
 }));
 
 vi.mock("../console/pty-console", () => ({
@@ -60,7 +61,7 @@ describe("MaintenanceConsolePanel", () => {
     await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     const socket = FakeWebSocket.instances[0];
-    expect(socket.url).toBe("ws://localhost:3210/api/settings/maintenance-console/attach");
+    expect(socket.url).toBe("ws://localhost:3210/api/settings/maintenance-console/attach?workspace=workspace-a");
     expect(screen.getByText("terminal:connecting")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Send input" }));
     expect(socket.send).not.toHaveBeenCalled();
@@ -112,6 +113,23 @@ describe("MaintenanceConsolePanel", () => {
     replacement.readyState = FakeWebSocket.OPEN;
     replacement.onmessage?.({ data: JSON.stringify({ type: "ready", status: "connected" }) });
     expect(replacement.send).toHaveBeenCalledWith(JSON.stringify({ type: "input", data: "whoami\n" }));
+  });
+
+  it("replaces the active socket on reconnect and surfaces socket failures", async () => {
+    const user = userEvent.setup();
+    render(<MaintenanceConsolePanel />);
+    await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const first = FakeWebSocket.instances[0];
+    first.readyState = FakeWebSocket.OPEN;
+    first.onmessage?.({ data: JSON.stringify({ type: "ready", status: "connected" }) });
+
+    await user.click(screen.getByRole("button", { name: "Reconnect" }));
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    expect(first.readyState).toBe(3);
+    const replacement = FakeWebSocket.instances[1];
+    replacement.onerror?.();
+    expect(await screen.findByText("Maintenance console connection failed.")).toBeVisible();
   });
 
   it("surfaces API and malformed websocket failures without trapping the dialog", async () => {

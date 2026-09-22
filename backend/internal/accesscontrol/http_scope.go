@@ -25,13 +25,14 @@ type MutationRunner func(
 ) error
 
 type Scope struct {
-	Database                *sql.DB
-	Tokens                  *tokens.Store
-	Registry                connectors.Catalog
-	ReusableTokens          func(context.Context) (bool, error)
-	Mutate                  MutationRunner
-	AcquireExclusive        func(context.Context) (func(), error)
-	FinishTokenInvalidation func(context.Context, int64, []int64)
+	Database                  *sql.DB
+	Tokens                    *tokens.Store
+	Registry                  connectors.Catalog
+	ReusableTokens            func(context.Context) (bool, error)
+	ReusableTokensForMutation func(context.Context, *sql.Tx) (bool, error)
+	Mutate                    MutationRunner
+	AcquireExclusive          func(context.Context) (func(), error)
+	FinishTokenInvalidation   func(context.Context, int64, []int64)
 }
 
 type ScopeProvider func(http.ResponseWriter) (Scope, bool)
@@ -45,6 +46,7 @@ const (
 	requireTokens
 	requireRegistry
 	requireReusableTokens
+	requireReusableTokensForMutation
 	requireMutation
 	requireExclusive
 	requireInvalidation
@@ -69,6 +71,7 @@ func (h *HTTPHandlers) resolve(w http.ResponseWriter, requirements scopeRequirem
 	valid = valid && (requirements&requireTokens == 0 || scope.Tokens != nil)
 	valid = valid && (requirements&requireRegistry == 0 || scope.Registry != nil)
 	valid = valid && (requirements&requireReusableTokens == 0 || scope.ReusableTokens != nil)
+	valid = valid && (requirements&requireReusableTokensForMutation == 0 || scope.ReusableTokensForMutation != nil)
 	valid = valid && (requirements&requireMutation == 0 || scope.Mutate != nil)
 	valid = valid && (requirements&requireExclusive == 0 || scope.AcquireExclusive != nil)
 	valid = valid && (requirements&requireInvalidation == 0 || scope.FinishTokenInvalidation != nil)

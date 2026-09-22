@@ -2,7 +2,7 @@
 
 This document tracks the public-ish REST surface used by the web UI and MCP bridge. The API is local-only and assumes the encrypted database has been unlocked unless the endpoint is part of setup/unlock.
 
-The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating web REST requests also send a double-submit CSRF header/cookie pair. MCP endpoints do not use that cookie; they authenticate with API tokens.
+The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating requests send a double-submit CSRF header/cookie pair and `X-AIPermission-Workspace`, the workspace identity observed by that browser tab. Recovery, diagnostics, and file download GETs also require the workspace header so a workspace switch cannot return data from a different unlocked database. Browser WebSocket attach routes carry the same binding in the required `workspace` query parameter because the WebSocket API cannot set custom request headers. A valid session without the required matching workspace binding is rejected with `409 Conflict`; clients must refresh instead of replaying the operation against another workspace. Setup and recovery mutations that can run while locked require the header only after a workspace is unlocked. MCP endpoints do not use browser cookies or this workspace binding; they authenticate with API tokens.
 
 The machine-readable [OpenAPI contract](openapi.json) is generated from the
 core route registration source, connector-owned adapter route catalogs, and a
@@ -453,6 +453,15 @@ non-secret config. Connector-specific runtime behavior, such as SSH remote-key
 cleanup, host-key approval, persistent console, and SFTP-backed file transfer,
 is owned by the connector implementation.
 
+Target/profile updates and deletions persist a lifecycle-finalization intent in
+the same SQL transaction as the mutation. The gateway then invalidates affected
+Vault sessions and tracked connector requests independently before releasing
+the exclusive delivery gate. If either cleanup cannot be confirmed, the
+mutation remains committed and the API returns `409` with
+`connector_lifecycle_finalization_pending`; connector delivery stays blocked
+until workspace-open recovery completes the pending intent. Clients must reload
+state rather than retrying the already committed mutation.
+
 `PUT /api/connector-targets/{id}/with-profile/{profile_id}` updates the target
 and one credential profile in one database transaction. Prefer it for add/edit
 forms that present target and profile fields together.
@@ -667,10 +676,12 @@ staging artifact until its normal private-temp TTL expires and records the
 expected SHA-256 and byte count for reconciliation.
 Uploads do not overwrite an existing remote file unless `overwrite=true` is
 sent after an explicit local UI confirmation. SSH overwrite additionally
-requires the remote SFTP server's atomic POSIX rename extension. When that
-extension is unavailable, the upload fails closed and leaves the destination
-unchanged instead of deleting it before replacement. A lost atomic-rename reply
-is recorded as `outcome_unknown`; inspect the destination before retrying.
+requires the remote SFTP server's atomic POSIX rename extension and a complete
+GNU/BSD `stat` metadata probe over an SSH exec channel so destination ownership
+and permissions can be preserved. SFTP-only accounts, incomplete metadata, or
+servers without that extension fail closed and leave the destination unchanged
+instead of deleting it before replacement. A lost atomic-rename reply is
+recorded as `outcome_unknown`; inspect the destination before retrying.
 SSH no-overwrite publication requires the OpenSSH hardlink SFTP extension so
 the target can be created atomically without replacing a concurrent file. A
 server without that extension returns `atomic_create_unsupported`; the gateway
@@ -825,8 +836,10 @@ Transfer queue state is visible in the local Transfer Center UI.
 }
 ```
 
-Connector responses never include file contents, local temporary paths, or
-archive staging paths.
+File-transfer queue and status responses do not include transferred file bytes,
+local temporary paths, or archive staging paths. Explicitly authorized connector
+read actions may return bounded content, such as S3 `download_object`
+`content_base64` or SSH command output; treat it as sensitive target data.
 
 ## Connector Credential Resources
 
@@ -918,9 +931,12 @@ identity file path, proxy jump metadata, whether a `ProxyCommand` is configured,
 and warnings where OpenSSH tokens are present. The raw `ProxyCommand` value is
 not returned. It does not import private key material silently. Wildcard-only
 blocks such as `Host *` are not returned as servers, but matching fields are
-applied in OpenSSH-style first-value-wins order. Docker installs should use
-explicit file parsing or pasted config content unless the host SSH config was
-deliberately mounted into the gateway container.
+applied in first-value-wins order. This is a bounded metadata prefill parser,
+not a complete OpenSSH evaluator: `Include`, `Match`, wildcard/negated host
+patterns, and token expansion are not evaluated. Unsupported directives are
+ignored and every prefilled field must be reviewed before connector creation.
+Docker installs should use explicit file parsing or pasted config content unless
+the host SSH config was deliberately mounted into the gateway container.
 
 ## Tokens
 
@@ -967,9 +983,27 @@ Security settings:
 {
   "reusable_tokens": false,
   "expose_mcp_server_metadata": false,
-  "redaction_mode": "basic"
+  "mcp_start_enabled": false,
+  "redaction_mode": "basic",
+  "revision": "current-revision-from-get"
 }
 ```
+
+`PUT /api/settings/security` replaces the complete settings document and
+requires the revision returned by the latest GET:
+
+```json
+{
+  "reusable_tokens": false,
+  "expose_mcp_server_metadata": false,
+  "mcp_start_enabled": false,
+  "redaction_mode": "basic",
+  "expected_revision": "current-revision-from-get"
+}
+```
+
+A stale `expected_revision` returns `409 Conflict`; clients must reload before
+retrying so one browser tab cannot restore settings disabled in another tab.
 
 `expose_mcp_server_metadata` controls whether MCP connector target discovery includes SSH `host`, `port`, and `username`. `redaction_mode` is `basic` or `off`; basic redaction masks common token/password/API-key/private-key patterns before command history, connector action history, console transcripts, and audit payloads are persisted or returned through MCP.
 
@@ -1154,6 +1188,15 @@ connected provider, and stores a local backup record with provider file id,
 filename, size, checksum, source installation, and timestamps. The service
 receives the encrypted database bytes and its own bearer token, but never the
 database password.
+
+Uploads use a durable idempotency identity. If the backup service has retained
+that identity after its immutable version was removed, it returns `410` with
+the machine-readable code `operation_expired`. The service is authoritative for
+that replay window; the gateway does not expire unresolved operations from its
+earlier local claim timestamp. After the service response, the gateway
+terminalizes the local operation and later retries of that identity stop before
+another snapshot is created. A new intentional upload must use a new
+idempotency key.
 
 `GET /api/backup/providers/{id}/storage` returns service-reported storage usage,
 quota, remaining capacity, backup/stream counts, and pending remote deletions.
@@ -1463,10 +1506,16 @@ redacted.
 
 Run changes an `approval_pending` connector action to `running`, validates the
 current token/target/profile/action permission and approval-context hash, then
-decrypts the stored payload and executes the connector. It accepts an optional
-JSON body with `user_note`; when provided, the note is delivered to the matching
-MCP token through the message queue. The request later becomes `completed`,
-`failed`, `error`, or `stale`.
+decrypts the stored payload and executes the connector. It requires a JSON body
+with the exact `approval_context_hash` returned by the reviewed detail response;
+`user_note` is optional and, when provided, is delivered to the matching MCP
+token through the message queue. Missing or malformed decision input returns
+`400`, a missing request returns `404`, and changed context returns `409`.
+When the bounded action runner is at capacity, Run returns `429 Too Many
+Requests` with `code: connector_action_backpressure` and a bounded
+`Retry-After` header. The approval remains `approval_pending`; wait for that
+interval and re-read the same request before trying Run again. An admitted
+request later becomes `completed`, `failed`, `error`, or `stale`.
 
 If the token, connector action permission, target/profile context, credential
 profile revision, connector action definition, MCP tool metadata, or prepared
@@ -1480,9 +1529,10 @@ If execution finishes but terminal persistence cannot be proven, Run returns
 `request_id`, and explicit no-automatic-retry guidance. Inspect that request
 and the external target before deciding whether another action is safe.
 
-Decline changes the connector action request to `declined`. The optional
-`user_note` is stored on the connector action request and returned to MCP as
-operator guidance.
+Decline also requires the reviewed `approval_context_hash` and changes the
+connector action request to `declined`. The optional `user_note` is stored on
+the connector action request and returned to MCP as operator guidance. It uses
+the same `400`, `404`, and `409` decision errors as Run.
 
 Connector approval context includes token validity, permission rule,
 target/profile public

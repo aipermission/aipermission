@@ -36,6 +36,17 @@ describe("file transfer list state", () => {
     });
   });
 
+  it("does not regress a terminal batch with an older active action response", () => {
+    const controller = createFileTransferListState();
+    const terminal = { id: 4, status: "completed", completed_items: 2, total_items: 2 };
+    const state = controller.applyBatch(
+      { state: "ready", data: [terminal], error: null },
+      { id: 4, status: "running", completed_items: 1 },
+    );
+
+    expect(state.data).toEqual([terminal]);
+  });
+
   it("drops a stale list response after an authoritative action result", async () => {
     const controller = createFileTransferListState();
     let resolveRequest;

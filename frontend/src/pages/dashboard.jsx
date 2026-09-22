@@ -4,10 +4,13 @@ import { apiUrl, mcpApiUrl } from "../lib/api";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { useGateway } from "../lib/gateway-context";
+import { isActiveToken } from "../lib/token-status";
+import { useTokenExpiryClock } from "../lib/use-token-expiry-clock";
 
 export function DashboardPage() {
   const { targets, credentials, tokens, gatewayState } = useGateway();
-  const activeTokens = tokens.data.filter((token) => !token.revoked_at).length;
+  const tokenNow = useTokenExpiryClock(tokens.data);
+  const activeTokens = tokens.data.filter((token) => isActiveToken(token, tokenNow)).length;
 
   return (
     <section className="grid gap-5">

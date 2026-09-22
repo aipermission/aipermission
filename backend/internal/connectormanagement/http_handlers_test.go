@@ -266,6 +266,7 @@ func TestTargetMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 	auditActions := []string{}
 	acquired := 0
 	released := 0
+	exclusiveHeld := false
 	ensuredProfiles := []int64{}
 	lifecycleChanges := []TargetLifecycleChange{}
 	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
@@ -273,6 +274,9 @@ func TestTargetMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 			Database: fixture.database,
 			Registry: fixture.registry,
 			ValidateTransport: func(_ context.Context, projectID int64, config map[string]any) error {
+				if !exclusiveHeld {
+					t.Fatal("transport validation ran outside the exclusive lifecycle gate")
+				}
 				if projectID < 1 || config["endpoint"] == "" {
 					return connectortargets.ValidationError("invalid transport fixture")
 				}
@@ -280,7 +284,11 @@ func TestTargetMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 			},
 			AcquireExclusive: func(context.Context) (func(), error) {
 				acquired++
-				return func() { released++ }, nil
+				exclusiveHeld = true
+				return func() {
+					exclusiveHeld = false
+					released++
+				}, nil
 			},
 			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
 				tx, err := fixture.database.BeginTx(ctx, nil)
@@ -325,7 +333,7 @@ func TestTargetMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 	if update.Code != http.StatusOK || updated.Name != "Primary renamed" || updated.ProjectID != fixture.target.ProjectID {
 		t.Fatalf("update target: %d %s", update.Code, update.Body.String())
 	}
-	if acquired != 1 || released != 1 || len(ensuredProfiles) != 1 || ensuredProfiles[0] != fixture.profile.ID {
+	if acquired != 2 || released != 2 || exclusiveHeld || len(ensuredProfiles) != 1 || ensuredProfiles[0] != fixture.profile.ID {
 		t.Fatalf("acquired=%d released=%d ensured=%v", acquired, released, ensuredProfiles)
 	}
 	if len(lifecycleChanges) != 1 || lifecycleChanges[0].TargetID != fixture.target.ID || lifecycleChanges[0].ProfileID != 0 {
@@ -348,13 +356,16 @@ func TestTargetMutationHandlersFailClosedBeforeWriting(t *testing.T) {
 	}
 }
 
-func TestTargetCreateRequiresOnlyCreateCapabilities(t *testing.T) {
+func TestTargetCreateRequiresLifecycleAdmissionCapabilities(t *testing.T) {
 	fixture := newManagementHTTPFixture(t)
 	handler := NewTargetMutationHTTPHandler(func(http.ResponseWriter) (TargetMutationScope, bool) {
 		return TargetMutationScope{
 			Database:          fixture.database,
 			Registry:          fixture.registry,
 			ValidateTransport: func(context.Context, int64, map[string]any) error { return nil },
+			AcquireExclusive: func(context.Context) (func(), error) {
+				return func() {}, nil
+			},
 			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
 				tx, err := fixture.database.BeginTx(ctx, nil)
 				if err != nil {
@@ -384,6 +395,7 @@ func TestTargetCreateRejectsMissingAuditAppenderWithoutPersisting(t *testing.T) 
 			Database:          fixture.database,
 			Registry:          fixture.registry,
 			ValidateTransport: func(context.Context, int64, map[string]any) error { return nil },
+			AcquireExclusive:  func(context.Context) (func(), error) { return func() {}, nil },
 			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
 				tx, err := fixture.database.BeginTx(ctx, nil)
 				if err != nil {

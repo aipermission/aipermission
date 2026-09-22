@@ -49,7 +49,21 @@ type PreparedAction struct {
 }
 
 type ActionPreparer func(context.Context, int64, string, string, map[string]any) (PreparedAction, error)
-type OutputAuthorizer func(context.Context, Request) bool
+type ProjectResolver func(context.Context, string) (int64, error)
+
+type OutputAuthorization uint8
+
+const (
+	OutputWithheld OutputAuthorization = iota
+	OutputAuthorized
+	OutputContextStale
+)
+
+func (authorization OutputAuthorization) Authorized() bool {
+	return authorization == OutputAuthorized
+}
+
+type OutputAuthorizer func(context.Context, Request) OutputAuthorization
 type RequestLimiter func(int64) bool
 type EffectExecutor func(context.Context, Request) (any, error)
 type AtomicEffectExecutor func(context.Context, Request, string, string, string) (WorkflowResult, bool, error)
@@ -57,6 +71,7 @@ type EffectCompensator func(context.Context, Request, any) error
 type ProjectionRepairer func(context.Context, int64) error
 type ErrorRedactor func(context.Context, error) string
 type StaleClassifier func(error) bool
+type DeliveryAcquirer func(context.Context) (func(), error)
 
 type MutationPort interface {
 	WithMutation(context.Context, string, *int64, int64, string, func() any, func(*sql.Tx) error) error
@@ -85,6 +100,7 @@ type RuntimeDependencies struct {
 	Store            RequestStore
 	Mutations        MutationPort
 	Prepare          ActionPreparer
+	ResolveProject   ProjectResolver
 	AuthorizeOutput  OutputAuthorizer
 	AllowRequest     RequestLimiter
 	Execute          EffectExecutor
@@ -97,6 +113,7 @@ type RuntimeDependencies struct {
 	OpenRequest      RequestOpener
 	IsStale          StaleClassifier
 	MCPStarted       func() bool
+	AcquireDelivery  DeliveryAcquirer
 	ExecutionTimeout time.Duration
 }
 
@@ -104,6 +121,7 @@ type Runtime struct {
 	store            RequestStore
 	mutations        MutationPort
 	prepare          ActionPreparer
+	resolveProject   ProjectResolver
 	authorizeOutput  OutputAuthorizer
 	allowRequest     RequestLimiter
 	execute          EffectExecutor
@@ -116,15 +134,16 @@ type Runtime struct {
 	openRequest      RequestOpener
 	isStale          StaleClassifier
 	mcpStarted       func() bool
+	acquireDelivery  DeliveryAcquirer
 	executionTimeout time.Duration
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
-	if dependencies.Store == nil || dependencies.Mutations == nil || dependencies.Prepare == nil ||
+	if dependencies.Store == nil || dependencies.Mutations == nil || dependencies.Prepare == nil || dependencies.ResolveProject == nil ||
 		dependencies.AuthorizeOutput == nil || dependencies.AllowRequest == nil || dependencies.Execute == nil ||
 		dependencies.ExecuteAtomic == nil || dependencies.Compensate == nil || dependencies.RepairProjection == nil || dependencies.RedactError == nil ||
 		dependencies.RedactProjection == nil || dependencies.SealRequest == nil || dependencies.OpenRequest == nil ||
-		dependencies.IsStale == nil || dependencies.MCPStarted == nil {
+		dependencies.IsStale == nil || dependencies.MCPStarted == nil || dependencies.AcquireDelivery == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	timeout := dependencies.ExecutionTimeout
@@ -133,20 +152,20 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 	}
 	return &Runtime{
 		store: dependencies.Store, mutations: dependencies.Mutations,
-		prepare: dependencies.Prepare, authorizeOutput: dependencies.AuthorizeOutput,
+		prepare: dependencies.Prepare, resolveProject: dependencies.ResolveProject, authorizeOutput: dependencies.AuthorizeOutput,
 		allowRequest: dependencies.AllowRequest, execute: dependencies.Execute, executeAtomic: dependencies.ExecuteAtomic,
 		compensate: dependencies.Compensate, repairProjection: dependencies.RepairProjection,
 		redactError: dependencies.RedactError, redactProjection: dependencies.RedactProjection,
 		sealRequest: dependencies.SealRequest, openRequest: dependencies.OpenRequest, isStale: dependencies.IsStale,
-		mcpStarted: dependencies.MCPStarted, executionTimeout: timeout,
+		mcpStarted: dependencies.MCPStarted, acquireDelivery: dependencies.AcquireDelivery, executionTimeout: timeout,
 	}, nil
 }
 
 func (r *Runtime) validate() error {
-	if r == nil || r.store == nil || r.mutations == nil || r.prepare == nil || r.authorizeOutput == nil ||
+	if r == nil || r.store == nil || r.mutations == nil || r.prepare == nil || r.resolveProject == nil || r.authorizeOutput == nil ||
 		r.allowRequest == nil || r.execute == nil || r.compensate == nil || r.repairProjection == nil ||
 		r.executeAtomic == nil || r.redactError == nil || r.redactProjection == nil || r.sealRequest == nil ||
-		r.openRequest == nil || r.isStale == nil || r.mcpStarted == nil || r.executionTimeout <= 0 {
+		r.openRequest == nil || r.isStale == nil || r.mcpStarted == nil || r.acquireDelivery == nil || r.executionTimeout <= 0 {
 		return ErrRuntimeUnavailable
 	}
 	return nil

@@ -248,7 +248,11 @@ func (b sessionEnvironmentBootstrap) Apply(
 	if b.protocol == nil {
 		return sessionenvprotocol.Result{}, errors.New("session environment bootstrap is unavailable")
 	}
-	return b.protocol.Bootstrap(ctx, stdin, stdout, environment)
+	writeCloser, ok := stdin.(io.WriteCloser)
+	if !ok {
+		return sessionenvprotocol.Result{}, errors.New("session environment bootstrap requires a closable input stream")
+	}
+	return b.protocol.Bootstrap(ctx, writeCloser, stdout, environment)
 }
 
 func startupInputAfterConnect(input string, hasEnvironment bool) string {

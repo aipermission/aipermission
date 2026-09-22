@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,7 +120,7 @@ func TestRemoteUploadTempPathUsesTargetDirectory(t *testing.T) {
 func TestCommitRemoteUploadWithoutOverwriteRejectsExistingTarget(t *testing.T) {
 	client := &fakeUploadCommitter{existing: map[string]bool{"/tmp/app.zip": true}}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
 	if err == nil || !strings.Contains(err.Error(), "remote file already exists") {
 		t.Fatalf("expected existing target error, got %v", err)
 	}
@@ -130,7 +132,7 @@ func TestCommitRemoteUploadWithoutOverwriteRejectsExistingTarget(t *testing.T) {
 func TestCommitRemoteUploadWithoutOverwriteRejectsRacingTarget(t *testing.T) {
 	client := &fakeUploadCommitter{existing: map[string]bool{}, createTargetBeforeLink: true}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
 	if err == nil || !strings.Contains(err.Error(), "remote file already exists") {
 		t.Fatalf("racing target error = %v", err)
 	}
@@ -145,7 +147,7 @@ func TestCommitRemoteUploadWithoutOverwriteFailsClosedWithoutHardlink(t *testing
 		linkErrs: []error{errors.New("unsupported extension: hardlink@openssh.com")},
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
 	if connectors.ErrorCode(err) != "atomic_create_unsupported" || client.existing["/tmp/app.zip"] {
 		t.Fatalf("unsupported hardlink result: err=%v existing=%#v", err, client.existing)
 	}
@@ -154,7 +156,7 @@ func TestCommitRemoteUploadWithoutOverwriteFailsClosedWithoutHardlink(t *testing
 func TestCommitRemoteUploadWithoutOverwritePublishesWithNoReplaceLink(t *testing.T) {
 	client := &fakeUploadCommitter{existing: map[string]bool{}}
 
-	if err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false); err != nil {
+	if err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false); err != nil {
 		t.Fatalf("commit upload: %v", err)
 	}
 	if len(client.links) != 1 || client.links[0] != "/tmp/.aipermission-upload-app.zip.tmp -> /tmp/app.zip" || len(client.removes) != 1 {
@@ -165,18 +167,177 @@ func TestCommitRemoteUploadWithoutOverwritePublishesWithNoReplaceLink(t *testing
 func TestCommitRemoteUploadOverwriteUsesPosixRename(t *testing.T) {
 	client := &fakeUploadCommitter{existing: map[string]bool{"/tmp/app.zip": true}}
 
-	if err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true); err != nil {
+	if err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true); err != nil {
 		t.Fatalf("commit upload: %v", err)
 	}
 	if len(client.posixRenames) != 1 || len(client.removes) != 0 {
 		t.Fatalf("expected atomic posix rename without remove, posix=%#v removes=%#v", client.posixRenames, client.removes)
+	}
+	if len(client.chmods) != 1 || client.chmods[0] != "/tmp/.aipermission-upload-app.zip.tmp:0600" {
+		t.Fatalf("overwrite should preserve destination permissions, chmods=%#v", client.chmods)
+	}
+}
+
+func TestCommitRemoteUploadOverwritePreservesSpecialPermissionBits(t *testing.T) {
+	const destination = "/tmp/app.zip"
+	const staging = "/tmp/.aipermission-upload-app.zip.tmp"
+	want := os.FileMode(0o755) | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+	client := &fakeUploadCommitter{
+		existing: map[string]bool{destination: true, staging: true},
+		metadata: map[string]remoteFileMetadata{
+			destination: {Mode: want, UID: 1000, GID: 1000},
+			staging:     {Mode: 0o600, UID: 1000, GID: 1000},
+		},
+	}
+
+	if err := commitRemoteUpload(t.Context(), client, staging, destination, true); err != nil {
+		t.Fatalf("commit upload: %v", err)
+	}
+	if len(client.chmodModes) != 1 || client.chmodModes[0] != want {
+		t.Fatalf("overwrite mode=%#o, want %#o", client.chmodModes[0], want)
+	}
+}
+
+func TestCommitRemoteUploadRejectsOwnershipDriftBeforeOverwrite(t *testing.T) {
+	client := &fakeUploadCommitter{
+		existing: map[string]bool{
+			"/tmp/app.zip":                          true,
+			"/tmp/.aipermission-upload-app.zip.tmp": true,
+		},
+		fileStats: map[string]*sftp.FileStat{
+			"/tmp/app.zip":                          {UID: 1000, GID: 1000},
+			"/tmp/.aipermission-upload-app.zip.tmp": {UID: 1001, GID: 1000},
+		},
+	}
+
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
+	if err == nil || !strings.Contains(err.Error(), "staging owner differs") {
+		t.Fatalf("ownership drift should fail closed: %v", err)
+	}
+	if len(client.posixRenames) != 0 {
+		t.Fatalf("ownership drift reached commit: %#v", client.posixRenames)
+	}
+}
+
+func TestCommitRemoteUploadFailsClosedWithoutCompleteDestinationMetadata(t *testing.T) {
+	remotePath := "/tmp/app.zip"
+	client := &fakeUploadCommitter{
+		existing:       map[string]bool{remotePath: true},
+		metadataErrors: map[string]error{remotePath: errors.New("SFTP attributes omitted")},
+	}
+
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", remotePath, true)
+	if err == nil || !strings.Contains(err.Error(), "preserve remote destination metadata") {
+		t.Fatalf("incomplete metadata must fail closed: %v", err)
+	}
+	if len(client.posixRenames) != 0 || len(client.chmods) != 0 {
+		t.Fatalf("incomplete metadata reached mutation: renames=%#v chmods=%#v", client.posixRenames, client.chmods)
+	}
+}
+
+func TestParseRemoteFileMetadataPreservesRootOwnershipAndPermissions(t *testing.T) {
+	metadata, err := parseRemoteFileMetadata("gnu 81c0 0 0\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.Mode.IsRegular() || metadata.Mode.Perm() != 0o700 || metadata.UID != 0 || metadata.GID != 0 {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
+func TestParseRemoteFileMetadataAcceptsBSDStatMode(t *testing.T) {
+	metadata, err := parseRemoteFileMetadata("bsd 100640 501 20\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.Mode.IsRegular() || metadata.Mode.Perm() != 0o640 || metadata.UID != 501 || metadata.GID != 20 {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
+func TestReadRemoteFileMetadataBoundsOutputAndHonorsCancellation(t *testing.T) {
+	for _, output := range []string{"gnu 81c0 0 0\n", "bsd 100640 501 20"} {
+		session := newFakeRemoteMetadataSession([][]byte{[]byte(output)}, false)
+		if _, err := readRemoteFileMetadata(t.Context(), session, "stat"); err != nil {
+			t.Fatalf("valid metadata %q: %v", output, err)
+		}
+	}
+
+	oversized := newFakeRemoteMetadataSession([][]byte{
+		bytes.Repeat([]byte(" "), maxRemoteMetadataOutputBytes),
+		[]byte("x"),
+	}, false)
+	if _, err := readRemoteFileMetadata(t.Context(), oversized, "stat"); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized metadata error = %v", err)
+	}
+	select {
+	case <-oversized.closed:
+	default:
+		t.Fatal("oversized metadata did not close the SSH session")
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	blocked := newFakeRemoteMetadataSession(nil, true)
+	cancel()
+	if _, err := readRemoteFileMetadata(ctx, blocked, "stat"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled metadata error = %v", err)
+	}
+}
+
+type fakeRemoteMetadataSession struct {
+	chunks  [][]byte
+	blocked bool
+	stdout  io.Writer
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func newFakeRemoteMetadataSession(chunks [][]byte, blocked bool) *fakeRemoteMetadataSession {
+	return &fakeRemoteMetadataSession{chunks: chunks, blocked: blocked, closed: make(chan struct{})}
+}
+
+func (session *fakeRemoteMetadataSession) SetStdout(output io.Writer) { session.stdout = output }
+
+func (session *fakeRemoteMetadataSession) Run(string) error {
+	if session.blocked {
+		<-session.closed
+		return net.ErrClosed
+	}
+	for _, chunk := range session.chunks {
+		if _, err := session.stdout.Write(chunk); err != nil {
+			return err
+		}
+		select {
+		case <-session.closed:
+			return net.ErrClosed
+		default:
+		}
+	}
+	return nil
+}
+
+func (session *fakeRemoteMetadataSession) Close() error {
+	session.once.Do(func() { close(session.closed) })
+	return nil
+}
+
+func TestRemoteMetadataCommandSupportsGNUAndBSDStatWithoutOptionLikePaths(t *testing.T) {
+	command := remoteMetadataCommand("-private")
+	if !strings.Contains(command, "stat -c") || !strings.Contains(command, "stat -f") || !strings.Contains(command, "'./-private'") {
+		t.Fatalf("metadata command = %q", command)
+	}
+}
+
+func TestQuoteRemoteShellArgEscapesPaths(t *testing.T) {
+	if got := quoteRemoteShellArg("/tmp/user's file"); got != `'/tmp/user'\''s file'` {
+		t.Fatalf("quoted path = %q", got)
 	}
 }
 
 func TestCommitRemoteUploadOverwriteUsesNoReplaceLinkWhenTargetIsAbsent(t *testing.T) {
 	client := &fakeUploadCommitter{existing: map[string]bool{}}
 
-	if err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true); err != nil {
+	if err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true); err != nil {
 		t.Fatalf("commit new upload with overwrite enabled: %v", err)
 	}
 	if len(client.links) != 1 || len(client.posixRenames) != 0 {
@@ -190,7 +351,7 @@ func TestCommitRemoteUploadOverwriteFailsClosedWithoutAtomicReplace(t *testing.T
 		posixRenameErr: errors.New("unsupported extension: posix-rename@openssh.com"),
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
 	if err == nil || connectors.ErrorCode(err) != "atomic_replace_unsupported" {
 		t.Fatalf("expected atomic replace rejection, got %v", err)
 	}
@@ -208,7 +369,7 @@ func TestCommitRemoteUploadOverwriteClassifiesLostReplyAsOutcomeUnknown(t *testi
 		posixRenameErr: errors.New("connection reset after request dispatch"),
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
 	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
 		t.Fatalf("error status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
 	}
@@ -227,7 +388,7 @@ func TestCommitRemoteUploadOverwriteKeepsPermissionFailureDefinite(t *testing.T)
 		posixRenameErr: os.ErrPermission,
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", true)
 	if err == nil || connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
 		t.Fatalf("permission rejection must remain a definite failure: %v", err)
 	}
@@ -242,7 +403,7 @@ func TestCommitRemoteUploadWithoutOverwriteClassifiesLostReplyAsOutcomeUnknown(t
 		linkErrs: []error{errors.New("connection lost")},
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
 	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
 		t.Fatalf("error status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
 	}
@@ -255,7 +416,7 @@ func TestCommitRemoteUploadWithoutOverwriteKeepsCreatedTargetAmbiguousAfterLostR
 		linkErrs:                  []error{errors.New("connection lost after link dispatch")},
 	}
 
-	err := commitRemoteUpload(client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
+	err := commitRemoteUpload(t.Context(), client, "/tmp/.aipermission-upload-app.zip.tmp", "/tmp/app.zip", false)
 	if connectors.ErrorStatus(err) != connectors.ResultOutcomeUnknown {
 		t.Fatalf("error status = %q, want outcome_unknown: %v", connectors.ErrorStatus(err), err)
 	}
@@ -310,6 +471,7 @@ func TestRemoteUploadRecordsOwnedNamespaceBeforeCreatingPlaintext(t *testing.T) 
 	sequence := []string{}
 	client := &orderingRemoteUploadClient{
 		onMkdir: func() { sequence = append(sequence, "mkdir") },
+		onChmod: func() { sequence = append(sequence, "chmod") },
 		onOpen:  func() { sequence = append(sequence, "open") },
 	}
 	path, _, recorded, err := createRemoteUploadTemp(t.Context(), client, "/tmp/file", TransferOptions{
@@ -322,7 +484,7 @@ func TestRemoteUploadRecordsOwnedNamespaceBeforeCreatingPlaintext(t *testing.T) 
 	if err == nil || path == "" || !recorded {
 		t.Fatalf("create result path=%q recorded=%v err=%v", path, recorded, err)
 	}
-	if strings.Join(sequence, ",") != "mkdir,record,open" {
+	if strings.Join(sequence, ",") != "mkdir,chmod,record,open" {
 		t.Fatalf("staging sequence = %v, plaintext creation must follow durable namespace ownership", sequence)
 	}
 }
@@ -378,6 +540,9 @@ func TestRemoteUploadTempPathIsBoundedAndDoesNotExposeDestinationName(t *testing
 
 type fakeUploadCommitter struct {
 	existing                  map[string]bool
+	fileStats                 map[string]*sftp.FileStat
+	metadata                  map[string]remoteFileMetadata
+	metadataErrors            map[string]error
 	createTargetBeforeLink    bool
 	createTargetWithLinkError bool
 	posixRenameErr            error
@@ -385,6 +550,8 @@ type fakeUploadCommitter struct {
 	links                     []string
 	posixRenames              []string
 	removes                   []string
+	chmods                    []string
+	chmodModes                []os.FileMode
 }
 
 type blockingRemoveClient struct {
@@ -407,6 +574,7 @@ type timeoutRecordingCloser struct {
 
 type orderingRemoteUploadClient struct {
 	onMkdir  func()
+	onChmod  func()
 	onOpen   func()
 	mkdirErr error
 	openErr  error
@@ -430,6 +598,12 @@ func (client *orderingRemoteUploadClient) OpenFile(string, int) (*sftp.File, err
 	}
 	return nil, net.ErrClosed
 }
+func (client *orderingRemoteUploadClient) Chmod(string, os.FileMode) error {
+	if client.onChmod != nil {
+		client.onChmod()
+	}
+	return nil
+}
 func (*orderingRemoteUploadClient) Link(string, string) error        { return nil }
 func (*orderingRemoteUploadClient) PosixRename(string, string) error { return nil }
 func (*orderingRemoteUploadClient) Remove(string) error              { return nil }
@@ -443,11 +617,27 @@ func (closer *timeoutRecordingCloser) Close() error {
 	return nil
 }
 
-func (f *fakeUploadCommitter) Stat(path string) (os.FileInfo, error) {
+func (f *fakeUploadCommitter) Lstat(path string) (os.FileInfo, error) {
 	if f.existing[path] {
-		return fakeFileInfo{name: filepath.Base(path)}, nil
+		return fakeFileInfo{name: filepath.Base(path), stat: f.fileStats[path]}, nil
+	}
+	if strings.Contains(path, ".aipermission-upload-") {
+		return fakeFileInfo{name: filepath.Base(path), stat: f.fileStats[path]}, nil
 	}
 	return nil, os.ErrNotExist
+}
+
+func (f *fakeUploadCommitter) CompleteMetadata(_ context.Context, path string) (remoteFileMetadata, error) {
+	if err := f.metadataErrors[path]; err != nil {
+		return remoteFileMetadata{}, err
+	}
+	if metadata, ok := f.metadata[path]; ok {
+		return metadata, nil
+	}
+	if stat := f.fileStats[path]; stat != nil {
+		return remoteFileMetadata{Mode: stat.FileMode(), UID: stat.UID, GID: stat.GID}, nil
+	}
+	return remoteFileMetadata{Mode: 0o600, UID: 1000, GID: 1000}, nil
 }
 
 func (f *fakeUploadCommitter) Link(oldname string, newname string) error {
@@ -487,6 +677,12 @@ func (f *fakeUploadCommitter) PosixRename(oldname string, newname string) error 
 	return nil
 }
 
+func (f *fakeUploadCommitter) Chmod(path string, mode os.FileMode) error {
+	f.chmods = append(f.chmods, fmt.Sprintf("%s:%04o", path, mode.Perm()))
+	f.chmodModes = append(f.chmodModes, mode)
+	return nil
+}
+
 func (f *fakeUploadCommitter) Remove(path string) error {
 	f.removes = append(f.removes, path)
 	if !f.existing[path] {
@@ -498,6 +694,7 @@ func (f *fakeUploadCommitter) Remove(path string) error {
 
 type fakeFileInfo struct {
 	name string
+	stat *sftp.FileStat
 }
 
 func (f fakeFileInfo) Name() string       { return f.name }
@@ -505,4 +702,4 @@ func (f fakeFileInfo) Size() int64        { return 1 }
 func (f fakeFileInfo) Mode() os.FileMode  { return 0o600 }
 func (f fakeFileInfo) ModTime() time.Time { return time.Unix(0, 0) }
 func (f fakeFileInfo) IsDir() bool        { return false }
-func (f fakeFileInfo) Sys() any           { return nil }
+func (f fakeFileInfo) Sys() any           { return f.stat }

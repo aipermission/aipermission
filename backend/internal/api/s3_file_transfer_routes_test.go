@@ -299,13 +299,10 @@ func performMultipartRequest(handler http.Handler, path string, body *bytes.Buff
 	request.Host = "localhost:8080"
 	request.RemoteAddr = "127.0.0.1:12345"
 	request.Header.Set("Content-Type", contentType)
-	if cookie := currentTestUICookie(); cookie != nil {
-		request.AddCookie(cookie)
-	}
-	request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-	request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	attachTestUIAuthorization(request)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
+	recordTestUIResponse(response)
 	return response
 }
 

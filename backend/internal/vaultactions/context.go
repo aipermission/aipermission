@@ -17,6 +17,8 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
+var errProjectVisibilityDenied = errors.New("token cannot access one or more Vault source projects")
+
 func (r *Runtime) buildApprovalContext(
 	ctx context.Context,
 	tokenID int64,
@@ -87,13 +89,11 @@ func (r *Runtime) completeGenerateApproval(
 	if err != nil {
 		return err
 	}
-	if err := projectvault.ValidateSessionItemName(actionInput.Name); err != nil {
+	normalized, err := projectvault.NormalizeCreateMetadata(generateCreateInput(projectID, actionInput))
+	if err != nil {
 		return err
 	}
-	if err := projectvault.ValidateGeneratorKind(actionInput.GeneratorKind); err != nil {
-		return err
-	}
-	approval.SourceProjectIDs = uniquePositiveIDs(append([]int64{projectID}, actionInput.SharedProjectIDs...))
+	approval.SourceProjectIDs = append([]int64{projectID}, normalized.SharedProjectIDs...)
 	return r.requireProjectVisibility(ctx, tokenID, approval.SourceProjectIDs)
 }
 
@@ -193,7 +193,7 @@ func (r *Runtime) requireProjectVisibility(ctx context.Context, tokenID int64, p
 			return err
 		}
 		if !allowed {
-			return errors.New("token cannot access one or more Vault source projects")
+			return errProjectVisibilityDenied
 		}
 	}
 	return nil
@@ -206,16 +206,17 @@ func (r *Runtime) projectScopeHash(ctx context.Context, tokenID int64, projectID
 		ProjectUpdated string `json:"project_updated_at"`
 		Enabled        int    `json:"enabled"`
 		ScopeUpdated   string `json:"scope_updated_at"`
+		ScopeRevision  int64  `json:"scope_revision"`
 	}
 	revisions := make([]scopeRevision, 0, len(projectIDs))
 	for _, projectID := range uniquePositiveIDs(projectIDs) {
 		item := scopeRevision{ProjectID: projectID}
 		err := r.database.QueryRowContext(ctx, `
-			SELECT p.status, p.updated_at, COALESCE(s.enabled, 0), COALESCE(s.updated_at, '')
+			SELECT p.status, p.updated_at, COALESCE(s.enabled, 0), COALESCE(s.updated_at, ''), COALESCE(s.revision, 0)
 			FROM projects p
 			LEFT JOIN token_project_scopes s ON s.project_id = p.id AND s.token_id = ?
 			WHERE p.id = ?`, tokenID, projectID,
-		).Scan(&item.ProjectStatus, &item.ProjectUpdated, &item.Enabled, &item.ScopeUpdated)
+		).Scan(&item.ProjectStatus, &item.ProjectUpdated, &item.Enabled, &item.ScopeUpdated, &item.ScopeRevision)
 		if err != nil {
 			return "", err
 		}

@@ -6,7 +6,43 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
+	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
+
+func TestManualCaptureCompletesAfterTranscriptTrimming(t *testing.T) {
+	session := &managedConsoleSession{rawTranscript: strings.Repeat("x", maxConsoleTranscriptLength)}
+	startOffset := session.rawStreamPositionLocked()
+	session.appendSafeOutput(strings.Repeat("y", maxConsoleTranscriptLength+32) + "\nresult\nroot@worker:~# ")
+	session.manualActive = &consoleSessionManualCapture{
+		RequestID:    1,
+		Command:      "pwd",
+		StartOffset:  startOffset,
+		ResumePrompt: "root@worker:~# ",
+	}
+
+	completion := session.manualOutputCompletionLocked()
+	if completion == nil || !completion.OutputTruncated || !strings.Contains(completion.Stdout, "result") {
+		t.Fatalf("unexpected trimmed manual completion: %#v", completion)
+	}
+}
+
+func TestManualPauseRecoversAfterTranscriptTrimming(t *testing.T) {
+	session := &managedConsoleSession{rawTranscript: strings.Repeat("x", maxConsoleTranscriptLength)}
+	startOffset := session.rawStreamPositionLocked()
+	session.appendSafeOutput(strings.Repeat("y", maxConsoleTranscriptLength+32) + "\nroot@worker:~# ")
+	session.manualPause = &consoleSessionManualPause{
+		Prompt:      "root@worker:~# ",
+		StartOffset: startOffset,
+	}
+
+	session.clearManualPauseIfPromptReturnedLocked()
+	if session.manualPause != nil {
+		t.Fatalf("manual pause should clear after the original prompt returns")
+	}
+}
 
 func TestManualInputCreatesUntrackedHistoryRow(t *testing.T) {
 	database, _, session := newManualHistoryTestSession(t)
@@ -437,6 +473,57 @@ func TestManualInputClearsStaleRunningRowsWhenCanceled(t *testing.T) {
 	}
 }
 
+func TestDelayedManualCompletionPreservesNewerRunningCommand(t *testing.T) {
+	database, _, session := newManualHistoryTestSession(t)
+	insert := func(command string) int64 {
+		t.Helper()
+		result, err := database.Exec(`
+			INSERT INTO command_requests (runtime_id, source, command, reason, status, tracking_reason, session_id, created_at)
+			VALUES (?, 'manual', ?, 'manual console command', 'running', 'manual_output_tracked', ?, ?)`,
+			session.runtimeID, command, session.id, timeformat.Now(),
+		)
+		if err != nil {
+			t.Fatalf("insert %q: %v", command, err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			t.Fatalf("read %q id: %v", command, err)
+		}
+		if err := history.NewStore(database).SyncCommandRequest(t.Context(), id); err != nil {
+			t.Fatalf("project %q: %v", command, err)
+		}
+		return id
+	}
+	olderID := insert("older")
+	newerID := insert("newer")
+
+	session.finishManualOutputCapture(&manualOutputCompletion{
+		RequestID: olderID,
+		Status:    "completed",
+		Stdout:    "older output",
+	})
+
+	for _, testCase := range []struct {
+		id         int64
+		wantStatus string
+	}{
+		{id: olderID, wantStatus: "completed"},
+		{id: newerID, wantStatus: "running"},
+	} {
+		var canonical string
+		if err := database.QueryRow(`SELECT status FROM command_requests WHERE id = ?`, testCase.id).Scan(&canonical); err != nil {
+			t.Fatal(err)
+		}
+		var projected string
+		if err := database.QueryRow(`SELECT status FROM history_entries WHERE source_ref_type = ? AND source_ref_id = ?`, history.SourceCommandRequest, testCase.id).Scan(&projected); err != nil {
+			t.Fatal(err)
+		}
+		if canonical != testCase.wantStatus || projected != testCase.wantStatus {
+			t.Fatalf("request %d canonical=%q projected=%q want=%q", testCase.id, canonical, projected, testCase.wantStatus)
+		}
+	}
+}
+
 func TestManualInputCompletesPreviousCommandBeforeRecordingNextInput(t *testing.T) {
 	database, manager, session := newManualHistoryTestSession(t)
 	stdin := &recordingWriteCloser{}
@@ -626,36 +713,36 @@ func TestManualInputPausesNestedShellEvenWithoutKnownResumePrompt(t *testing.T) 
 
 func TestManualPromptPrefixUsesCommandEchoLineForResumePrompt(t *testing.T) {
 	transcript := "root@worker:~# docker exec -it f6f sh"
-	if prompt := lastManualShellPrompt(transcript); prompt != "root@worker:~#" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "root@worker:~#" {
 		t.Fatalf("expected prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "root@worker:~#") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "root@worker:~#") {
 		t.Fatalf("command echo line must not count as returned prompt")
 	}
 }
 
 func TestManualPromptPrefixSupportsBracketPathPrompts(t *testing.T) {
 	transcript := "[/] # ls"
-	if prompt := lastManualShellPrompt(transcript); prompt != "[/] #" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "[/] #" {
 		t.Fatalf("expected bracket prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "[/] #") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "[/] #") {
 		t.Fatalf("command echo line must not count as returned bracket prompt")
 	}
-	if !manualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
+	if !terminaltext.ManualTranscriptEndsWithPrompt("[~] # ", "[~] #") {
 		t.Fatalf("bare bracket prompt should count as returned prompt")
 	}
 }
 
 func TestManualPromptPrefixSupportsKubernetesPathPrompts(t *testing.T) {
 	transcript := "/ # ls"
-	if prompt := lastManualShellPrompt(transcript); prompt != "/ #" {
+	if prompt := terminaltext.LastManualShellPrompt(transcript); prompt != "/ #" {
 		t.Fatalf("expected Kubernetes path prompt prefix from echo line, got %q", prompt)
 	}
-	if manualTranscriptEndsWithPrompt(transcript, "/ #") {
+	if terminaltext.ManualTranscriptEndsWithPrompt(transcript, "/ #") {
 		t.Fatalf("command echo line must not count as returned path prompt")
 	}
-	if !manualTranscriptEndsWithPrompt("/app $ ", "/app $") {
+	if !terminaltext.ManualTranscriptEndsWithPrompt("/app $ ", "/app $") {
 		t.Fatalf("bare path prompt should count as returned prompt")
 	}
 }
@@ -701,7 +788,7 @@ func TestManualInputAutomationFinalizesRunningCapture(t *testing.T) {
 }
 
 func TestManualCapturedOutputDoesNotDropLinesEndingWithCommandText(t *testing.T) {
-	output, _ := manualCapturedOutput("ls\r\ntools\r\nlogs\r\nroot@worker:~# ", "ls")
+	output, _ := terminaltext.ManualCapturedOutput("ls\r\ntools\r\nlogs\r\nroot@worker:~# ", "ls", maxManualCapturedOutputBytes)
 	if output != "tools\nlogs" {
 		t.Fatalf("expected output lines ending with command text to survive, got %q", output)
 	}
@@ -833,6 +920,69 @@ type recordingWriteCloser struct {
 func (r *recordingWriteCloser) Close() error {
 	return nil
 }
+
+func TestManagedConsoleSessionSerializesManualInputSubmission(t *testing.T) {
+	writes := make(chan string, 2)
+	releaseFirst := make(chan struct{})
+	stdin := &sequencedWriteCloser{writes: writes, releaseFirst: releaseFirst}
+	session := &managedConsoleSession{status: "connected", stdin: stdin}
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+	go func() { firstDone <- session.submitManualInput("first\n") }()
+	if value := <-writes; value != "first\n" {
+		t.Fatalf("first write = %q", value)
+	}
+	go func() { secondDone <- session.submitManualInput("second\n") }()
+	select {
+	case value := <-writes:
+		t.Fatalf("second input overtook the first write: %q", value)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if value := <-writes; value != "second\n" {
+		t.Fatalf("second write = %q", value)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManagedConsoleSessionDoesNotAdvanceManualParserWhenInputWriteFails(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	session.stdin = &recordingWriteCloser{}
+	session.status = "connecting"
+	manager.sessions[session.id] = session
+
+	if err := session.submitManualInput("echo stale"); err == nil {
+		t.Fatal("expected input while connecting to fail")
+	}
+	if session.manualInput.line != "" {
+		t.Fatalf("failed input advanced parser state: %q", session.manualInput.line)
+	}
+
+	session.status = "connected"
+	if err := session.submitManualInput("\n"); err != nil {
+		t.Fatalf("submit connected newline: %v", err)
+	}
+	assertManualHistoryCount(t, database, 0)
+}
+
+type sequencedWriteCloser struct {
+	writes       chan<- string
+	releaseFirst <-chan struct{}
+	once         sync.Once
+}
+
+func (w *sequencedWriteCloser) Write(data []byte) (int, error) {
+	w.writes <- string(data)
+	w.once.Do(func() { <-w.releaseFirst })
+	return len(data), nil
+}
+
+func (w *sequencedWriteCloser) Close() error { return nil }
 
 type blockingWriteCloser struct {
 	started chan struct{}

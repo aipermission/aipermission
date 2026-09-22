@@ -7,6 +7,7 @@ import { useConsoleConnections } from "./use-console-connections";
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...(await importOriginal()),
   apiPost: vi.fn(),
+  currentWorkspaceBinding: vi.fn(() => "workspace-a"),
 }));
 
 class FakeWebSocket {
@@ -55,6 +56,7 @@ describe("useConsoleConnections", () => {
 
     act(() => result.current.connections.attachSession(7));
     const socket = FakeWebSocket.instances[0];
+    expect(socket.url).toContain("/api/console/sessions/7/attach?workspace=workspace-a");
     act(() => socket.onmessage({ data: "{" }));
 
     expect(result.current.sessions.data[0]).toMatchObject({
@@ -128,6 +130,39 @@ describe("useConsoleConnections", () => {
     expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
   });
 
+  it("queues connecting input and flushes it in order without HTTP fallback", () => {
+    const { result } = renderHook(() => useHarness());
+
+    act(() => {
+      result.current.connections.sendInput(7, "echo first\n");
+      result.current.connections.sendInput(7, "echo second\n");
+    });
+    const socket = FakeWebSocket.instances[0];
+    expect(socket.send).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+
+    act(() => {
+      socket.readyState = FakeWebSocket.OPEN;
+      socket.onopen();
+    });
+
+    expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify({ type: "input", data: "echo first\n" }));
+    expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: "input", data: "echo second\n" }));
+  });
+
+  it("bounds input queued while the console socket connects", () => {
+    const { result } = renderHook(() => useHarness());
+
+    act(() => result.current.connections.sendInput(7, "x".repeat(64 * 1024 + 1)));
+
+    expect(result.current.sessions.data[0]).toMatchObject({
+      status: "error",
+      error: "Console input queue is full. Wait for the connection before sending more input.",
+    });
+    expect(FakeWebSocket.instances[0].send).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
   it("ignores the replaced socket close while forcing a reconnect", () => {
     const { result } = renderHook(() => useHarness());
 
@@ -138,6 +173,19 @@ describe("useConsoleConnections", () => {
     expect(first.readyState).toBe(FakeWebSocket.CLOSED);
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(result.current.sessions.data[0]).toMatchObject({ status: "connecting", error: null });
+  });
+
+  it("disconnects only the requested sessions and permits a fresh attachment", () => {
+    const { result } = renderHook(() => useHarness());
+    act(() => result.current.connections.attachSession(7));
+    const first = FakeWebSocket.instances[0];
+
+    act(() => result.current.connections.disconnectSessions([999, 7]));
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+
+    act(() => result.current.connections.sendInput(7, "pwd\n"));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.instances[1].readyState).toBe(FakeWebSocket.CONNECTING);
   });
 
   it("keeps a user-closed session closed when its socket closes", async () => {

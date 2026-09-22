@@ -220,7 +220,7 @@ func TestPreparePublishMessageBoundsAndRedactsPreview(t *testing.T) {
 		t.Fatalf("prepare canonical headers: %v", err)
 	}
 	canonicalHeaders := prepared.Payload["headers"].([]map[string]any)
-	if !reflect.DeepEqual(canonicalHeaders, []map[string]any{{"key": "trace-id", "value": "abc", "encoding": "utf8"}}) {
+	if !reflect.DeepEqual(canonicalHeaders, []map[string]any{{"key": " trace-id ", "value": "abc", "encoding": "utf8"}}) {
 		t.Fatalf("canonical headers = %#v", canonicalHeaders)
 	}
 	request.Input["headers"] = []any{}

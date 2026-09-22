@@ -16,6 +16,8 @@ import { updateTokenProjectVisibility } from "../../lib/project-scopes";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
 import { useRequestGuard } from "../../lib/request-guard";
 import { inferPermissionMode, tokenProfileModeKey } from "./connector-token-permission-model";
+import { isActiveToken } from "../../lib/token-status";
+import { useTokenExpiryClock } from "../../lib/use-token-expiry-clock";
 
 export function useConnectorTokenPermissionState({
   connectorPermissionState,
@@ -27,7 +29,7 @@ export function useConnectorTokenPermissionState({
   targets,
   tokens,
 }) {
-  const activeTokens = useMemo(() => tokens.data.filter((token) => !token.revoked_at), [tokens.data]);
+  const activeTokens = useActiveTokens(tokens.data);
   const [savingKey, setSavingKey] = useState("");
   const [openTokenID, setOpenTokenID] = useState(null);
   const [profileByToken, setProfileByToken] = useState({});
@@ -281,6 +283,11 @@ export function useConnectorTokenPermissionState({
     targetProfiles,
     tokenTriggerRef,
   };
+}
+
+function useActiveTokens(tokens) {
+  const now = useTokenExpiryClock(tokens);
+  return useMemo(() => tokens.filter((token) => isActiveToken(token, now)), [tokens, now]);
 }
 
 async function refreshPermissionSnapshot(error, loadAllConnectorPermissions, activeTokens, permissionsByTokenRef) {

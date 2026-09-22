@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 type Route struct {
@@ -193,6 +195,9 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 			contractLevel = "typed-response"
 			for status, schema := range contract.AdditionalResponses {
 				responses[status] = responseWithSchema("Documented error response", schema)
+				if headers := contract.ResponseHeaders[status]; len(headers) > 0 {
+					responses[status].(map[string]any)["headers"] = headers
+				}
 			}
 		}
 		operation := map[string]any{
@@ -201,7 +206,11 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 			"tags":                          []string{routeTag(route.Path)},
 			"x-aipermission-contract-level": contractLevel,
 		}
-		if parameters := pathParameters(route.Path); len(parameters) > 0 {
+		parameters := pathParameters(route.Path)
+		if parameter := workspaceBindingParameter(route); parameter != nil {
+			parameters = append(parameters, parameter)
+		}
+		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}
 		if contract, ok := typedContracts[route]; ok && contract.RequestSchema != nil {
@@ -239,6 +248,44 @@ func GenerateRoutes(routes []Route) ([]byte, error) {
 		return nil, fmt.Errorf("encode OpenAPI route inventory: %w", err)
 	}
 	return output.Bytes(), nil
+}
+
+func workspaceBindingParameter(route Route) map[string]any {
+	mutation := isMutationMethod(route.Method) && strings.HasPrefix(route.Path, "/api/") && !strings.HasPrefix(route.Path, "/api/mcp/") && route.Path != "/api/unlock"
+	boundRead := transportcontract.IsWorkspaceBoundRead(route.Method, route.Path)
+	if !mutation && !boundRead {
+		return nil
+	}
+	if transportcontract.IsWorkspaceSocketRoute(route.Path) {
+		return map[string]any{
+			"name": "workspace", "in": "query", "required": true,
+			"description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+			"schema":      nonBlankStringSchema(),
+		}
+	}
+	return map[string]any{
+		"name": "X-AIPermission-Workspace", "in": "header", "required": boundRead || !workspaceHeaderIsConditional(route.Path),
+		"description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+		"schema":      nonBlankStringSchema(),
+	}
+}
+
+func isMutationMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return true
+	default:
+		return false
+	}
+}
+
+func workspaceHeaderIsConditional(path string) bool {
+	switch path {
+	case "/api/unlock/setup", "/api/backup/import", "/api/backup/remote/list", "/api/backup/remote/restore", "/api/databases/delete-locked":
+		return true
+	default:
+		return false
+	}
 }
 
 func responseWithSchema(description string, schema map[string]any) map[string]any {

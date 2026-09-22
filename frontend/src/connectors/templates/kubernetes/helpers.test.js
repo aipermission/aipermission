@@ -24,3 +24,12 @@ test("Kubernetes resource helpers classify workload actions and warning events",
   assert.equal(resourceTone("events", { type: "Warning" }), "warn");
   assert.equal(resourceTone("pods", { phase: "CrashLoopBackOff" }), "bad");
 });
+
+test("Kubernetes workload tones distinguish ready, degraded, unavailable, and scaled-to-zero states", () => {
+  assert.equal(resourceTone("workloads", { ready: "3/3" }), "good");
+  assert.equal(resourceTone("workloads", { ready: "1/3" }), "warn");
+  assert.equal(resourceTone("workloads", { ready: "0/3" }), "bad");
+  assert.equal(resourceTone("workloads", { ready: "0/0" }), "neutral");
+  assert.equal(resourceTone("workloads", { ready: "4/3" }), "warn");
+  assert.equal(resourceTone("workloads", {}), "neutral");
+});

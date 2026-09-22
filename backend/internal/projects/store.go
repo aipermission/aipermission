@@ -16,6 +16,7 @@ const UngroupedSlug = "ungrouped"
 
 var (
 	ErrNotFound        = errors.New("project not found")
+	ErrAmbiguousRef    = errors.New("project reference is ambiguous")
 	ErrProtected       = errors.New("ungrouped project cannot be archived")
 	ErrProjectNotEmpty = errors.New("move connector targets before archiving this project")
 )
@@ -45,6 +46,7 @@ type TokenScope struct {
 	ProjectName string `json:"project_name"`
 	ProjectSlug string `json:"project_slug"`
 	Enabled     bool   `json:"enabled"`
+	Revision    int64  `json:"-"`
 }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db, begin: db.BeginTx} }
@@ -93,19 +95,74 @@ func (s *Store) Get(ctx context.Context, id int64) (Project, error) {
 
 func (s *Store) ResolveRef(ctx context.Context, ref string) (Project, error) {
 	ref = strings.TrimSpace(ref)
-	if id, err := strconv.ParseInt(ref, 10, 64); err == nil && id > 0 {
+	if strings.HasPrefix(ref, "id:") {
+		id, err := parseProjectID(strings.TrimSpace(strings.TrimPrefix(ref, "id:")))
+		if err != nil {
+			return Project{}, err
+		}
 		return s.Get(ctx, id)
 	}
-	items, err := s.List(ctx)
-	if err != nil {
-		return Project{}, err
-	}
-	for _, item := range items {
-		if item.Slug == ref {
-			return item, nil
+	if strings.HasPrefix(ref, "slug:") {
+		slug := strings.TrimSpace(strings.TrimPrefix(ref, "slug:"))
+		if slug == "" {
+			return Project{}, ValidationError("project slug reference is required")
 		}
+		return s.getBySlug(ctx, slug)
+	}
+	id, parseErr := strconv.ParseInt(ref, 10, 64)
+	if parseErr != nil || id < 1 {
+		return s.getBySlug(ctx, ref)
+	}
+	byID, idErr := s.Get(ctx, id)
+	bySlug, slugErr := s.getBySlug(ctx, ref)
+	if idErr == nil && slugErr == nil && byID.ID != bySlug.ID {
+		return Project{}, fmt.Errorf("%w: use id:%d or slug:%s", ErrAmbiguousRef, id, ref)
+	}
+	if idErr == nil {
+		return byID, nil
+	}
+	if !errors.Is(idErr, ErrNotFound) {
+		return Project{}, idErr
+	}
+	if slugErr == nil {
+		return bySlug, nil
+	}
+	if !errors.Is(slugErr, ErrNotFound) {
+		return Project{}, slugErr
 	}
 	return Project{}, ErrNotFound
+}
+
+func parseProjectID(value string) (int64, error) {
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id < 1 {
+		return 0, ValidationError("project id reference must be a positive integer")
+	}
+	return id, nil
+}
+
+func (s *Store) getBySlug(ctx context.Context, slug string) (Project, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM projects WHERE slug = ? AND status = 'active'`, slug).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, ErrNotFound
+	}
+	if err != nil {
+		return Project{}, fmt.Errorf("get project by slug: %w", err)
+	}
+	return s.Get(ctx, id)
+}
+
+func numericSlug(slug string) bool {
+	if slug == "" {
+		return false
+	}
+	for _, value := range slug {
+		if value < '0' || value > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) Ungrouped(ctx context.Context) (Project, error) {
@@ -225,7 +282,7 @@ func (s *Store) Archive(ctx context.Context, id int64) error {
 
 func (s *Store) ListTokenScopes(ctx context.Context, tokenID int64) ([]TokenScope, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.name, p.slug, COALESCE(s.enabled, 0)
+		SELECT p.id, p.name, p.slug, COALESCE(s.enabled, 0), COALESCE(s.revision, 0)
 		FROM projects p
 		LEFT JOIN token_project_scopes s ON s.project_id = p.id AND s.token_id = ?
 		WHERE p.status = 'active'
@@ -238,7 +295,7 @@ func (s *Store) ListTokenScopes(ctx context.Context, tokenID int64) ([]TokenScop
 	for rows.Next() {
 		var item TokenScope
 		var enabled int
-		if err := rows.Scan(&item.ProjectID, &item.ProjectName, &item.ProjectSlug, &enabled); err != nil {
+		if err := rows.Scan(&item.ProjectID, &item.ProjectName, &item.ProjectSlug, &enabled, &item.Revision); err != nil {
 			return nil, err
 		}
 		item.Enabled = enabled == 1
@@ -296,7 +353,7 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 	if len(enabled) > len(activeIDs) {
 		return nil, ValidationError("project not found")
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, id := range activeIDs {
 		value := 0
 		if enabled[id] {
@@ -306,7 +363,16 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 		if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(token_id, project_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`, tokenID, id, value, now, now); err != nil {
+			ON CONFLICT(token_id, project_id) DO UPDATE SET
+				revision = CASE
+					WHEN token_project_scopes.enabled <> excluded.enabled THEN token_project_scopes.revision + 1
+					ELSE token_project_scopes.revision
+				END,
+				enabled = excluded.enabled,
+				updated_at = CASE
+					WHEN token_project_scopes.enabled <> excluded.enabled THEN excluded.updated_at
+					ELSE token_project_scopes.updated_at
+				END`, tokenID, id, value, now, now); err != nil {
 			return nil, err
 		}
 	}
@@ -396,6 +462,9 @@ func slugify(value string) string {
 	slug := strings.Trim(builder.String(), "-")
 	if slug == "" {
 		return "project"
+	}
+	if numericSlug(slug) {
+		return "project-" + slug
 	}
 	return slug
 }

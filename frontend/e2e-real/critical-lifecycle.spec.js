@@ -63,7 +63,7 @@ test("runs approval, stale rejection, lock, and restart against the real backend
       { target_id: fixture.targetID, profile_id: fixture.profileID, action_name: "echo", execution_rule: "blocked" },
     ]);
     await page.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "e2e action approval" }).getByText(/approval context changed/i)).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "e2e action approval" }).getByText(/request is no longer pending/i)).toBeVisible();
     await page.getByRole("button", { name: "OK", exact: true }).click();
 
     const stale = await mcpRequest(page, fixture.token, `/api/mcp/connector-action-requests/${request.request_id}`);
@@ -138,10 +138,16 @@ async function uiRequest(page, path, method, body) {
     async ({ requestPath, requestMethod, requestBody }) => {
       const csrfCookie = document.cookie.split("; ").find((entry) => entry.startsWith("aipermission_csrf_4174="));
       const csrf = csrfCookie ? decodeURIComponent(csrfCookie.split("=").slice(1).join("=")) : "";
+      const workspaceCookie = document.cookie.split("; ").find((entry) => entry.startsWith("aipermission_workspace_4174="));
+      const workspace = workspaceCookie ? decodeURIComponent(workspaceCookie.split("=").slice(1).join("=")) : "";
       const response = await fetch(`http://127.0.0.1:18080${requestPath}`, {
         method: requestMethod,
         credentials: "include",
-        headers: { "Content-Type": "application/json", "X-AIPermission-CSRF": csrf },
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-CSRF": csrf,
+          ...(workspace ? { "X-AIPermission-Workspace": workspace } : {}),
+        },
         body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
       });
       const data = await response.json();

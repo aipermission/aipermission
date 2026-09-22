@@ -423,6 +423,42 @@ func TestMoveDatabaseRollsBackPartialArtifactMove(t *testing.T) {
 	}
 }
 
+func TestMoveDatabaseRetriesIndeterminatePlatformRollbackBeforeRemovingJournal(t *testing.T) {
+	root := t.TempDir()
+	currentPath := filepath.Join(root, "current.db")
+	targetPath := filepath.Join(root, "renamed.db")
+	if err := os.WriteFile(currentPath, []byte("preserved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	moveErr := errors.New("injected platform rollback failure")
+	ops := defaultDatabaseMoveOps()
+	ops.rename = func(source, target string) error {
+		if source == currentPath && target == targetPath {
+			if err := os.Rename(source, target); err != nil {
+				return err
+			}
+			return errors.Join(errDurableFileMoveStateIndeterminate, moveErr)
+		}
+		return os.Rename(source, target)
+	}
+
+	err := moveDatabaseWithOps(currentPath, targetPath, ops)
+	if !errors.Is(err, moveErr) {
+		t.Fatalf("move error = %v, want platform rollback failure", err)
+	}
+	if content, readErr := os.ReadFile(currentPath); readErr != nil || string(content) != "preserved" {
+		t.Fatalf("restored source = %q, err=%v", content, readErr)
+	}
+	if db.Exists(targetPath) {
+		t.Fatal("outer rollback retained indeterminate target")
+	}
+	journals, globErr := filepath.Glob(filepath.Join(root, databaseMoveJournalPrefix+"*"))
+	if globErr != nil || len(journals) != 0 {
+		t.Fatalf("completed rollback retained journals %v, err=%v", journals, globErr)
+	}
+}
+
 func TestMoveDatabasePreservesCompletedTargetWhenMarkerCannotBeRemoved(t *testing.T) {
 	root := t.TempDir()
 	currentPath := filepath.Join(root, "current.db")
@@ -525,6 +561,31 @@ func TestMoveRecoveryDoesNotPartiallyRestoreConflictingArtifactSet(t *testing.T)
 	}
 }
 
+func TestMoveRecoveryRemovesInterruptedHardLinkPublication(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "target.db")
+	if err := os.WriteFile(source, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(source, target); err != nil {
+		t.Fatal(err)
+	}
+	manifest := databaseMoveManifest{
+		SourceBase: source, TargetBase: target,
+		Moves: []databaseMove{{Source: source, Target: target}},
+	}
+	if err := recoverDatabaseMoveJournal(manifest); err != nil {
+		t.Fatalf("recover interrupted hard-link publication: %v", err)
+	}
+	if content, err := os.ReadFile(source); err != nil || string(content) != "database" {
+		t.Fatalf("recovered source content = %q, err=%v", content, err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("duplicate target remains after recovery: %v", err)
+	}
+}
+
 func TestMoveRecoveryRestoresZeroByteArtifacts(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source.db")
@@ -561,6 +622,51 @@ func TestMoveManifestRejectsSymlinkedCatalogDirectory(t *testing.T) {
 	}
 	if err := validateDatabaseMoveManifest(root, manifest); err == nil || !strings.Contains(err.Error(), "symbolic links") {
 		t.Fatalf("symlinked catalog directory validation = %v", err)
+	}
+}
+
+func TestMoveManifestRejectsNonCanonicalArtifactPaths(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.db")
+	target := filepath.Join(root, "target.db")
+	manifest := databaseMoveManifest{
+		SourceBase: source,
+		TargetBase: target,
+		Moves: []databaseMove{{
+			Source: filepath.Join(root, "nested") + string(os.PathSeparator) + ".." + string(os.PathSeparator) + filepath.Base(source),
+			Target: target,
+		}},
+	}
+	if err := validateDatabaseMoveManifest(root, manifest); err == nil || !strings.Contains(err.Error(), "invalid artifact path") {
+		t.Fatalf("non-canonical move artifact validation = %v", err)
+	}
+}
+
+func TestCompletedMoveCleanupKeepsMarkerUntilArtifactsAreDurablyRemoved(t *testing.T) {
+	root := t.TempDir()
+	journalDir := filepath.Join(root, databaseMoveJournalPrefix+"cleanup")
+	if err := os.Mkdir(journalDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(journalDir, databaseMoveManifestFile)
+	markerPath := filepath.Join(journalDir, databaseMoveCompleteFile)
+	for path, content := range map[string]string{manifestPath: `{}`, markerPath: "complete\n"} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ops := defaultDatabaseMoveOps()
+	ops.remove = func(path string) error {
+		if path == manifestPath {
+			return errors.New("injected artifact cleanup failure")
+		}
+		return os.Remove(path)
+	}
+	if err := removeCompletedMoveJournalWithOps(root, journalDir, ops); err == nil || !strings.Contains(err.Error(), "injected artifact cleanup failure") {
+		t.Fatalf("completed move cleanup error = %v", err)
+	}
+	if marker, err := os.ReadFile(markerPath); err != nil || string(marker) != "complete\n" {
+		t.Fatalf("completion marker was removed before journal artifacts: marker=%q err=%v", marker, err)
 	}
 }
 
@@ -868,8 +974,14 @@ func TestDeleteDatabaseDefersFailedQuarantineCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	ops := defaultDatabaseDeleteOps()
-	ops.removeAll = func(string) error {
-		return errors.New("injected cleanup failure")
+	remove := ops.remove
+	failed := false
+	ops.remove = func(path string) error {
+		if !failed && filepath.Base(path) == databaseDeleteManifestFile {
+			failed = true
+			return errors.New("injected cleanup failure")
+		}
+		return remove(path)
 	}
 	if err := deleteDatabaseWithOps(path, ops); err != nil {
 		t.Fatalf("completed quarantine should be a successful logical delete: %v", err)
@@ -887,6 +999,34 @@ func TestDeleteDatabaseDefersFailedQuarantineCleanup(t *testing.T) {
 	quarantined, err = filepath.Glob(filepath.Join(filepath.Dir(path), databaseDeleteQuarantinePrefix+"*"))
 	if err != nil || len(quarantined) != 0 {
 		t.Fatalf("expected deferred cleanup to finish: paths=%v err=%v", quarantined, err)
+	}
+}
+
+func TestCompletedDeleteCleanupKeepsMarkerUntilArtifactsAreDurablyRemoved(t *testing.T) {
+	root := t.TempDir()
+	quarantineDir := filepath.Join(root, databaseDeleteQuarantinePrefix+"cleanup-order")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(quarantineDir, databaseDeleteManifestFile)
+	markerPath := filepath.Join(quarantineDir, databaseDeleteCompleteMarker)
+	for path, content := range map[string]string{manifestPath: `{}`, markerPath: "complete\n"} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ops := defaultDatabaseDeleteOps()
+	ops.remove = func(path string) error {
+		if path == manifestPath {
+			return errors.New("injected artifact cleanup failure")
+		}
+		return os.Remove(path)
+	}
+	if err := removeCompletedDatabaseDeleteQuarantine(root, quarantineDir, ops); err == nil || !strings.Contains(err.Error(), "injected artifact cleanup failure") {
+		t.Fatalf("completed delete cleanup error = %v", err)
+	}
+	if marker, err := os.ReadFile(markerPath); err != nil || string(marker) != "complete\n" {
+		t.Fatalf("completion marker was removed before quarantine artifacts: marker=%q err=%v", marker, err)
 	}
 }
 
@@ -1160,6 +1300,39 @@ func TestDeleteRecoveryResumesManifestedPartialPublish(t *testing.T) {
 	}
 	if db.Exists(quarantineDir) {
 		t.Fatal("resumed recovery retained completed quarantine")
+	}
+}
+
+func TestDeleteRecoveryRemovesInterruptedHardLinkPublication(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "hard-link-recovery.db")
+	quarantineDir := filepath.Join(directory, databaseDeleteQuarantinePrefix+"hard-link")
+	if err := os.Mkdir(quarantineDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Base(path)
+	if err := os.Link(path, filepath.Join(quarantineDir, name)); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := json.Marshal(databaseDeleteManifest{Version: 2, Primary: name, Files: []string{name}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quarantineDir, databaseDeleteManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverDatabaseDeleteQuarantines(directory); err != nil {
+		t.Fatalf("recover interrupted delete publication: %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "database" {
+		t.Fatalf("recovered database content = %q, err=%v", content, err)
+	}
+	if _, err := os.Lstat(quarantineDir); !os.IsNotExist(err) {
+		t.Fatalf("recovered quarantine remains: %v", err)
 	}
 }
 

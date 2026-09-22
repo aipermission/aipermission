@@ -20,6 +20,7 @@ const pendingApproval = {
   connector_kind: "ssh",
   action_name: "exec",
   status: "approval_pending",
+  approval_context_hash: "approval-context",
   retry_policy: { class: "non_idempotent", guidance: "Inspect before retrying." },
   created_at: "2026-09-16T00:00:00Z",
 };
@@ -36,8 +37,11 @@ it("refreshes validated approvals after running an action and marks runtime mess
   await act(async () => result.current.loadConnectorActionApprovals());
   expect(result.current.connectorActionApprovals).toMatchObject({ state: "ready", data: [pendingApproval] });
 
-  await act(async () => result.current.runConnectorActionApproval(12, "reviewed"));
-  expect(apiPost).toHaveBeenCalledWith("/api/connector-action-approvals/12/run", { user_note: "reviewed" });
+  await act(async () => result.current.runConnectorActionApproval(pendingApproval, "reviewed"));
+  expect(apiPost).toHaveBeenCalledWith("/api/connector-action-approvals/12/run", {
+    user_note: "reviewed",
+    approval_context_hash: "approval-context",
+  });
   expect(apiGet).toHaveBeenCalledTimes(2);
 
   await act(async () => result.current.markRuntimeMessagesRead("7"));
@@ -79,8 +83,11 @@ it("declines approvals, refreshes messages, and preserves freshness data on fail
 
   await act(async () => result.current.loadMessages(1));
   await act(async () => result.current.loadBackupFreshness());
-  await act(async () => result.current.declineConnectorActionApproval(12, "not now"));
-  expect(apiPost).toHaveBeenCalledWith("/api/connector-action-approvals/12/decline", { user_note: "not now" });
+  await act(async () => result.current.declineConnectorActionApproval(pendingApproval, "not now"));
+  expect(apiPost).toHaveBeenCalledWith("/api/connector-action-approvals/12/decline", {
+    user_note: "not now",
+    approval_context_hash: "approval-context",
+  });
   expect(result.current.messages.data).toEqual([{ id: 4 }]);
   expect(result.current.backupFreshness.data).toEqual([{ provider_id: 2 }]);
 
@@ -93,6 +100,22 @@ it("refreshes approvals after a failed run before surfacing the error", async ()
   apiPost.mockRejectedValue(new Error("execution failed"));
   apiGet.mockResolvedValue([]);
   const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
-  await expect(act(async () => result.current.runConnectorActionApproval(12))).rejects.toThrow("execution failed");
+  await expect(act(async () => result.current.runConnectorActionApproval(pendingApproval))).rejects.toThrow("execution failed");
   expect(apiGet).toHaveBeenCalledWith("/api/connector-action-approvals", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+});
+
+it("rejects run and decline responses that do not match the displayed decision", async () => {
+  apiGet.mockResolvedValue([]);
+  const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
+
+  apiPost.mockResolvedValueOnce({ ...pendingApproval, id: 99, status: "completed", approval_context_hash: "" });
+  await expect(act(async () => result.current.runConnectorActionApproval(pendingApproval))).rejects.toThrow(/Invalid connector approval/);
+
+  apiPost.mockResolvedValueOnce({ ...pendingApproval, status: "approval_pending" });
+  await expect(act(async () => result.current.runConnectorActionApproval(pendingApproval))).rejects.toThrow(/Invalid connector approval/);
+
+  apiPost.mockResolvedValueOnce({ ...pendingApproval, status: "completed", approval_context_hash: "" });
+  await expect(act(async () => result.current.declineConnectorActionApproval(pendingApproval))).rejects.toThrow(
+    /Invalid connector approval/,
+  );
 });

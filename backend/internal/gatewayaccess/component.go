@@ -88,6 +88,11 @@ func (component *Component) ClearUISessions(w http.ResponseWriter) {
 		component.uiSessions.Clear(w)
 	}
 }
+func (component *Component) ExpireUISessionCookies(w http.ResponseWriter) {
+	if component != nil && component.uiSessions != nil {
+		component.uiSessions.Expire(w)
+	}
+}
 func (component *Component) ValidUISession(r *http.Request, databaseID string) bool {
 	return component != nil && component.uiSessions != nil && component.uiSessions.Valid(r, databaseID)
 }

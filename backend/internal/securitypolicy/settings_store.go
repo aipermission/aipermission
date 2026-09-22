@@ -21,7 +21,7 @@ type settingValue struct {
 	value string
 }
 
-func readSettings(ctx context.Context, database *sql.DB) (Settings, error) {
+func readSettings(ctx context.Context, database sqldb.Executor) (Settings, error) {
 	values := map[string]string{}
 	for _, key := range []string{reusableTokensKey, exposeMCPServerMetadataKey, mcpStartEnabledKey, redactionModeKey} {
 		var value string

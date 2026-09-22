@@ -53,6 +53,7 @@ type ProjectVaultHTTP interface {
 
 type VaultApprovalsHTTP interface {
 	List(http.ResponseWriter, *http.Request)
+	Get(http.ResponseWriter, *http.Request)
 	Run(http.ResponseWriter, *http.Request)
 	Decline(http.ResponseWriter, *http.Request)
 }

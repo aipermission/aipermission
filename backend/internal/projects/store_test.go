@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
@@ -99,6 +101,46 @@ func TestReplaceTokenScopesReportsNoOp(t *testing.T) {
 	}
 }
 
+func TestReplaceTokenScopesUsesMonotonicRevisions(t *testing.T) {
+	database := openProjectTestDB(t)
+	ctx := t.Context()
+	store := NewStore(database)
+	project, err := store.Create(ctx, "Revision Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.NewStore(database).Create(ctx, tokens.CreateRequest{Name: "revision-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initial := scopeForProject(t, store, token.ID, project.ID)
+	if !initial.Enabled || initial.Revision != 1 {
+		t.Fatalf("initial scope = %#v", initial)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	disabled := scopeForProject(t, store, token.ID, project.ID)
+	if disabled.Enabled || disabled.Revision != initial.Revision+1 {
+		t.Fatalf("disabled scope = %#v, initial = %#v", disabled, initial)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatal(err)
+	}
+	reenabled := scopeForProject(t, store, token.ID, project.ID)
+	if !reenabled.Enabled || reenabled.Revision != disabled.Revision+1 {
+		t.Fatalf("re-enabled scope = %#v, disabled = %#v", reenabled, disabled)
+	}
+	if _, err := store.ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatal(err)
+	}
+	unchanged := scopeForProject(t, store, token.ID, project.ID)
+	if unchanged.Revision != reenabled.Revision {
+		t.Fatalf("no-op revision = %d, want %d", unchanged.Revision, reenabled.Revision)
+	}
+}
+
 func TestResolveRefAcceptsActiveIDOrSlug(t *testing.T) {
 	database := openProjectTestDB(t)
 	store := NewStore(database)
@@ -106,7 +148,12 @@ func TestResolveRefAcceptsActiveIDOrSlug(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, ref := range []string{fmt.Sprintf(" %d ", project.ID), " resolve-me "} {
+	for _, ref := range []string{
+		fmt.Sprintf(" %d ", project.ID),
+		fmt.Sprintf(" id:%d ", project.ID),
+		" resolve-me ",
+		" slug:resolve-me ",
+	} {
 		resolved, err := store.ResolveRef(t.Context(), ref)
 		if err != nil {
 			t.Fatalf("ResolveRef(%q): %v", ref, err)
@@ -117,6 +164,75 @@ func TestResolveRefAcceptsActiveIDOrSlug(t *testing.T) {
 	}
 	if _, err := store.ResolveRef(t.Context(), "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing ResolveRef() error = %v", err)
+	}
+	for _, ref := range []string{"id:", "id:0", "id:not-a-number", "slug:"} {
+		if _, err := store.ResolveRef(t.Context(), ref); err == nil {
+			t.Fatalf("ResolveRef(%q) unexpectedly succeeded", ref)
+		}
+	}
+}
+
+func TestNumericProjectNamesUseUnambiguousSlugs(t *testing.T) {
+	store := NewStore(openProjectTestDB(t))
+	for name, want := range map[string]string{
+		"2026":   "project-2026",
+		" 0007 ": "project-0007",
+		"2026!":  "project-2026",
+	} {
+		project, err := store.Create(t.Context(), name)
+		if err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+		if project.Slug != want && !strings.HasPrefix(project.Slug, want+"-") {
+			t.Fatalf("project %q slug = %q, want base %q", name, project.Slug, want)
+		}
+	}
+}
+
+func TestResolveRefRejectsLegacyNumericSlugCollision(t *testing.T) {
+	database := openProjectTestDB(t)
+	store := NewStore(database)
+	byID, err := store.Create(t.Context(), "ID Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bySlug, err := store.Create(t.Context(), "Slug Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric := strconv.FormatInt(byID.ID, 10)
+	if _, err := database.Exec(`UPDATE projects SET slug = ? WHERE id = ?`, numeric, bySlug.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ResolveRef(t.Context(), numeric); !errors.Is(err, ErrAmbiguousRef) {
+		t.Fatalf("ambiguous numeric ref error = %v", err)
+	}
+	resolvedID, err := store.ResolveRef(t.Context(), "id:"+numeric)
+	if err != nil || resolvedID.ID != byID.ID {
+		t.Fatalf("explicit id ref = %#v, err=%v", resolvedID, err)
+	}
+	resolvedSlug, err := store.ResolveRef(t.Context(), "slug:"+numeric)
+	if err != nil || resolvedSlug.ID != bySlug.ID {
+		t.Fatalf("explicit slug ref = %#v, err=%v", resolvedSlug, err)
+	}
+}
+
+func TestResolveRefSupportsLegacyNumericSlugsOutsideInt64(t *testing.T) {
+	database := openProjectTestDB(t)
+	store := NewStore(database)
+	project, err := store.Create(t.Context(), "Legacy Numeric")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const numericSlug = "9223372036854775808"
+	if _, err := database.Exec(`UPDATE projects SET slug = ? WHERE id = ?`, numericSlug, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{numericSlug, "slug:" + numericSlug} {
+		resolved, err := store.ResolveRef(t.Context(), ref)
+		if err != nil || resolved.ID != project.ID {
+			t.Fatalf("ResolveRef(%q) = %#v, err=%v", ref, resolved, err)
+		}
 	}
 }
 
@@ -155,4 +271,19 @@ func scopeEnabled(scopes []TokenScope, projectID int64) bool {
 		}
 	}
 	return false
+}
+
+func scopeForProject(t *testing.T, store *Store, tokenID, projectID int64) TokenScope {
+	t.Helper()
+	scopes, err := store.ListTokenScopes(t.Context(), tokenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range scopes {
+		if scope.ProjectID == projectID {
+			return scope
+		}
+	}
+	t.Fatalf("scope for project %d not found", projectID)
+	return TokenScope{}
 }

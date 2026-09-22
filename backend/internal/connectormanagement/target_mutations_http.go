@@ -27,6 +27,7 @@ type TargetMutationScope struct {
 	Registry              connectors.Catalog
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
 	AfterLifecycleChange  func(context.Context, TargetLifecycleChange) error
@@ -66,6 +67,11 @@ func (h *TargetMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reques
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector target create was canceled")
+	if !ok {
+		return
+	}
+	defer release()
 	if err := scope.ValidateTransport(r.Context(), request.ProjectID, config); err != nil {
 		writeTargetError(w, err)
 		return
@@ -105,13 +111,8 @@ func (h *TargetMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reques
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector target update was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector target update was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -140,6 +141,10 @@ func (h *TargetMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	lifecycleChange := TargetLifecycleChange{
+		TargetID: targetID, StaleReason: "connector target changed; send a fresh Vault request",
+		UserMessage: "connector target was updated; ask the AI to send a fresh request",
+	}
 	var target connectortargets.Target
 	var profiles []connectortargets.CredentialProfile
 	err = scope.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit AuditAppender) error {
@@ -164,17 +169,19 @@ func (h *TargetMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reques
 				return err
 			}
 		}
+		if updateErr := queueLifecycleChange(r.Context(), tx, lifecycleChange); updateErr != nil {
+			return updateErr
+		}
 		return appendAudit(tx, "user", nil, 0, "connector.target.updated", targetAuditPayload(target))
 	})
 	if err != nil {
 		writeTargetError(w, err)
 		return
 	}
-	if err := scope.AfterLifecycleChange(r.Context(), TargetLifecycleChange{
-		TargetID: target.ID, StaleReason: "connector target changed; send a fresh Vault request",
-		UserMessage: "connector target was updated; ask the AI to send a fresh request",
+	if err := finalizeLifecycleMutation(r.Context(), func(ctx context.Context) error {
+		return scope.AfterLifecycleChange(ctx, lifecycleChange)
 	}); err != nil {
-		httptransport.WriteInternalError(w)
+		WriteCommittedLifecycleError(w, err)
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, TargetToResponse(target, profiles))
@@ -189,9 +196,10 @@ func (h *TargetMutationHTTPHandler) resolve(w http.ResponseWriter, requirements 
 	if !ok {
 		return TargetMutationScope{}, false
 	}
-	valid := scope.Database != nil && scope.Registry != nil && scope.ValidateTransport != nil && scope.WithTransaction != nil
+	valid := scope.Database != nil && scope.Registry != nil && scope.ValidateTransport != nil &&
+		scope.AcquireExclusive != nil && scope.WithTransaction != nil
 	if requirements&requireTargetUpdateCapabilities != 0 {
-		valid = valid && scope.AcquireExclusive != nil && scope.EnsureRuntimeSurfaces != nil && scope.AfterLifecycleChange != nil
+		valid = valid && scope.EnsureRuntimeSurfaces != nil && scope.AfterLifecycleChange != nil
 	}
 	if !valid {
 		httptransport.WriteInternalError(w)

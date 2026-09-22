@@ -12,6 +12,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 type ActionPermissionRule string
@@ -940,7 +941,7 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64, owner st
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
 	request, affected, err := s.mutateActionRequestAndSync(ctx, id, func(executor storeDB) (sql.Result, error) {
-		return executor.ExecContext(ctx, `
+		result, updateErr := executor.ExecContext(ctx, `
 			UPDATE connector_action_requests
 			SET status = ?, error = '', execution_owner = ?, execution_lease_expires_at = ?, dispatch_started_at = ''
 			WHERE id = ? AND status = ?
@@ -949,10 +950,25 @@ func (s *Store) MarkActionRequestRunning(ctx context.Context, id int64, owner st
 				AND trim(approval_context_hash) <> ''`,
 			string(connectors.ResultRunning),
 			owner,
-			leaseExpiresAt.UTC().Format(time.RFC3339Nano),
+			timeformat.UTC(leaseExpiresAt),
 			id,
 			string(connectors.ResultApprovalPending),
 		)
+		if updateErr != nil {
+			return nil, updateErr
+		}
+		updated, rowsErr := result.RowsAffected()
+		if rowsErr != nil || updated != 1 {
+			return result, rowsErr
+		}
+		current, readErr := getActionRequestWithExecutor(ctx, executor, id)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if err := enforceActionRequestTokenCapacity(ctx, executor, current.TokenID, id); err != nil {
+			return nil, err
+		}
+		return result, nil
 	})
 	if err != nil {
 		return ActionRequest{}, err
@@ -978,12 +994,12 @@ func (s *Store) BeginActionRequestDispatch(ctx context.Context, id int64, owner 
 			WHERE id = ? AND status = ? AND execution_owner = ? AND dispatch_started_at = ''
 				AND execution_lease_expires_at <> ''
 				AND julianday(execution_lease_expires_at) >= julianday(?)`,
-			now.UTC().Format(time.RFC3339Nano),
-			leaseExpiresAt.UTC().Format(time.RFC3339Nano),
+			timeformat.UTC(now),
+			timeformat.UTC(leaseExpiresAt),
 			id,
 			string(connectors.ResultRunning),
 			owner,
-			now.UTC().Format(time.RFC3339Nano),
+			timeformat.UTC(now),
 		)
 	})
 	if err != nil {
@@ -1017,10 +1033,10 @@ func (s *Store) RecoverExpiredActionRequest(ctx context.Context, id int64, now t
 			string(connectors.ResultOutcomeUnknown),
 			strings.TrimSpace(beforeDispatchError),
 			strings.TrimSpace(outcomeUnknownError),
-			now.UTC().Format(time.RFC3339Nano),
+			timeformat.UTC(now),
 			id,
 			string(connectors.ResultRunning),
-			now.UTC().Format(time.RFC3339Nano),
+			timeformat.UTC(now),
 		)
 	})
 	if err != nil {

@@ -37,11 +37,11 @@ func validatePublishInput(input map[string]any) error {
 	if len(stringValue(input, "topic", "")) > 249 {
 		return fmt.Errorf("topic must not exceed 249 bytes")
 	}
-	key, err := decodePublishBytes(stringValue(input, "key", ""), stringValue(input, "key_encoding", "utf8"), "key", maxPublishKeyBytes)
+	key, err := decodePublishField(input, "key", "key_encoding", maxPublishKeyBytes)
 	if err != nil {
 		return err
 	}
-	value, err := decodePublishBytes(stringValue(input, "value", ""), stringValue(input, "value_encoding", "utf8"), "value", maxPublishValueBytes)
+	value, err := decodePublishField(input, "value", "value_encoding", maxPublishValueBytes)
 	if err != nil {
 		return err
 	}
@@ -60,8 +60,8 @@ func validatePublishInput(input map[string]any) error {
 }
 
 func publishPreview(input map[string]any) map[string]any {
-	key, _ := decodePublishBytes(stringValue(input, "key", ""), stringValue(input, "key_encoding", "utf8"), "key", maxPublishKeyBytes)
-	value, _ := decodePublishBytes(stringValue(input, "value", ""), stringValue(input, "value_encoding", "utf8"), "value", maxPublishValueBytes)
+	key, _ := decodePublishField(input, "key", "key_encoding", maxPublishKeyBytes)
+	value, _ := decodePublishField(input, "value", "value_encoding", maxPublishValueBytes)
 	headers, _ := parsePublishHeaders(input["headers"])
 	return map[string]any{
 		"topic":         stringValue(input, "topic", ""),
@@ -78,11 +78,11 @@ func executePublishMessage(ctx context.Context, runtime connectors.RuntimeContex
 	if err != nil {
 		return failedResult(err), nil
 	}
-	key, err := decodePublishBytes(stringValue(payload, "key", ""), stringValue(payload, "key_encoding", "utf8"), "key", maxPublishKeyBytes)
+	key, err := decodePublishField(payload, "key", "key_encoding", maxPublishKeyBytes)
 	if err != nil {
 		return failedResult(err), nil
 	}
-	value, err := decodePublishBytes(stringValue(payload, "value", ""), stringValue(payload, "value_encoding", "utf8"), "value", maxPublishValueBytes)
+	value, err := decodePublishField(payload, "value", "value_encoding", maxPublishValueBytes)
 	if err != nil {
 		return failedResult(err), nil
 	}
@@ -348,8 +348,7 @@ func canonicalPublishHeaders(value any) ([]map[string]any, error) {
 		if err := decoder.Decode(&entry); err != nil {
 			return nil, fmt.Errorf("headers[%d] must contain only key, value, and encoding: %w", index, err)
 		}
-		entry.Key = strings.TrimSpace(entry.Key)
-		if entry.Key == "" {
+		if strings.TrimSpace(entry.Key) == "" {
 			return nil, fmt.Errorf("headers[%d].key is required", index)
 		}
 		if len(entry.Key) > maxPublishHeaderKeyBytes {
@@ -388,6 +387,18 @@ func decodePublishBytes(value, encoding, field string, limit int) ([]byte, error
 		return nil, fmt.Errorf("%s must not exceed %d bytes", field, limit)
 	}
 	return decoded, nil
+}
+
+func decodePublishField(input map[string]any, field string, encodingField string, limit int) ([]byte, error) {
+	value := ""
+	if raw, ok := input[field]; ok && raw != nil {
+		var stringOK bool
+		value, stringOK = raw.(string)
+		if !stringOK {
+			return nil, fmt.Errorf("%s must be a string", field)
+		}
+	}
+	return decodePublishBytes(value, stringValue(input, encodingField, "utf8"), field, limit)
 }
 
 func defaultEncoding(value string) string {

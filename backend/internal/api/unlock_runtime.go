@@ -59,6 +59,9 @@ func (s *Server) initializeOpenedRuntime(ctx context.Context, runtime *gatewayin
 	if err := s.configureVaultSessionRuntime(runtime); err != nil {
 		return fmt.Errorf("initialize Vault session runtime: %w", err)
 	}
+	if err := s.connectorManagementApplication().RecoverLifecycleFinalizations(ctx, runtime); err != nil {
+		return fmt.Errorf("recover connector lifecycle finalizations: %w", err)
+	}
 	s.configureAuditDispatcher(runtime)
 	if err := s.connectorManagementApplication().RecoverProfileRestores(ctx, runtime); err != nil {
 		return fmt.Errorf("recover profile restore operations: %w", err)

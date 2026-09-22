@@ -2,11 +2,16 @@ import { z } from "zod";
 import { idempotencyKeySchema } from "./idempotency-key.js";
 
 export const listVaultItemsSchema = {
-  project_ref: z.string().min(1).optional().describe("Optional project id or slug. Omit to list every readable project."),
+  project_ref: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Optional project reference. Prefer id:<id> or slug:<slug>; omit to list every readable project."),
 };
 
 export const callVaultActionSchema = {
-  project_ref: z.string().min(1).describe("Owning project id or slug."),
+  project_ref: z.string().trim().min(1).describe("Owning project reference. Prefer id:<id> or slug:<slug>."),
   action_name: z.enum(["generate_item", "restart_session_with_environment"]),
   input: z.record(z.unknown()).describe("Action input. Never include raw secret values."),
   reason: z.string().min(1).describe("Why this Vault action is needed."),

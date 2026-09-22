@@ -1,6 +1,23 @@
 {
   "components": {
     "schemas": {
+      "ApprovalDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_context_hash": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "user_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_context_hash"
+        ],
+        "type": "object"
+      },
       "AuditEntry": {
         "additionalProperties": false,
         "properties": {
@@ -112,6 +129,32 @@
       },
       "ConnectorActionApprovalDetail": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "approval_pending"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "approval_context_hash": {
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "approval_context_hash"
+              ]
+            }
+          }
+        ],
         "properties": {
           "action_name": {
             "type": "string"
@@ -253,6 +296,32 @@
       },
       "ConnectorActionApprovalSummary": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "approval_pending"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "properties": {
+                "approval_context_hash": {
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "approval_context_hash"
+              ]
+            }
+          }
+        ],
         "properties": {
           "action_name": {
             "type": "string"
@@ -389,6 +458,27 @@
           "status",
           "retry_policy",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ConnectorActionBackpressure": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "connector_action_backpressure"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "code"
         ],
         "type": "object"
       },
@@ -1285,6 +1375,90 @@
         ],
         "type": "object"
       },
+      "SecuritySettingsDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "expose_mcp_server_metadata": {
+            "type": "boolean"
+          },
+          "mcp_start_enabled": {
+            "type": "boolean"
+          },
+          "redaction_mode": {
+            "enum": [
+              "off",
+              "basic"
+            ],
+            "type": "string"
+          },
+          "reusable_tokens": {
+            "type": "boolean"
+          },
+          "revision": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reusable_tokens",
+          "expose_mcp_server_metadata",
+          "mcp_start_enabled",
+          "redaction_mode",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "SecuritySettingsUpdate": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "expected_revision"
+            ]
+          },
+          {
+            "required": [
+              "revision"
+            ]
+          }
+        ],
+        "properties": {
+          "expected_revision": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "expose_mcp_server_metadata": {
+            "type": "boolean"
+          },
+          "mcp_start_enabled": {
+            "type": "boolean"
+          },
+          "redaction_mode": {
+            "enum": [
+              "off",
+              "basic"
+            ],
+            "type": "string"
+          },
+          "reusable_tokens": {
+            "type": "boolean"
+          },
+          "revision": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reusable_tokens",
+          "expose_mcp_server_metadata",
+          "mcp_start_enabled",
+          "redaction_mode"
+        ],
+        "type": "object"
+      },
       "TargetProfile": {
         "additionalProperties": false,
         "properties": {
@@ -1365,6 +1539,432 @@
           "status",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "VaultActionOutput": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/VaultGeneratedOutput"
+          },
+          {
+            "$ref": "#/components/schemas/VaultSessionOutput"
+          }
+        ]
+      },
+      "VaultActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "approval_context": {
+            "$ref": "#/components/schemas/VaultApprovalContext"
+          },
+          "approval_context_hash": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "properties": {},
+            "type": "object"
+          },
+          "output": {
+            "$ref": "#/components/schemas/VaultActionOutput"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "project_slug": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approval_pending",
+              "running",
+              "completed",
+              "failed",
+              "declined",
+              "stale",
+              "canceled",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "user_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "token_id",
+          "token_name",
+          "project_id",
+          "project_name",
+          "project_slug",
+          "action_name",
+          "source",
+          "input",
+          "reason",
+          "status",
+          "approval_context_hash",
+          "idempotency_key",
+          "created_at",
+          "expires_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "VaultApprovalContext": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "capability_execution_rule": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "capability_expires_at": {
+            "type": "string"
+          },
+          "capability_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "capability_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "connector_action_name": {
+            "type": "string"
+          },
+          "connector_execution_rule": {
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "connector_permission_expires_at": {
+            "type": "string"
+          },
+          "connector_permission_updated_at": {
+            "type": "string"
+          },
+          "environment_content_hash": {
+            "type": "string"
+          },
+          "execution_rule": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "expected_cols": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expected_peer_identities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expected_rows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expected_session_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expected_session_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "input_hash": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VaultSessionItem"
+            },
+            "type": "array"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_scope_hash": {
+            "type": "string"
+          },
+          "runtime_capability_version": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runtime_instance_id": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "runtime_surface_updated_at": {
+            "type": "string"
+          },
+          "schema": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "source_project_ids": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "target_context_hash": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_expires_at": {
+            "type": "string"
+          },
+          "token_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_updated_at": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "VaultGeneratedItem": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "type": "string"
+          },
+          "item_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "metadata_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "secret_type": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "status": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "value_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vault_ref": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vault_ref",
+          "item_id",
+          "project_id",
+          "name",
+          "secret_type",
+          "status",
+          "expires_at",
+          "value_version",
+          "metadata_revision"
+        ],
+        "type": "object"
+      },
+      "VaultGeneratedOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/VaultGeneratedItem"
+          },
+          "secret_returned": {
+            "const": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item",
+          "secret_returned"
+        ],
+        "type": "object"
+      },
+      "VaultSessionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "binding_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "binding_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "item_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "metadata_revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "replace_existing": {
+            "type": "boolean"
+          },
+          "source_project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "value_version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "source_project_id",
+          "value_version",
+          "metadata_revision",
+          "replace_existing"
+        ],
+        "type": "object"
+      },
+      "VaultSessionOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "environment_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "session_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "session_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "session_generation",
+          "runtime_id",
+          "status",
+          "environment_names",
+          "expires_at"
         ],
         "type": "object"
       }
@@ -1452,6 +2052,19 @@
     "/api/backup/download": {
       "get": {
         "operationId": "getApiBackupDownload",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -1494,6 +2107,19 @@
     "/api/backup/import": {
       "post": {
         "operationId": "postApiBackupImport",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -1534,6 +2160,19 @@
       },
       "post": {
         "operationId": "postApiBackupProviders",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -1584,6 +2223,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1612,6 +2262,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -1644,6 +2305,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1674,6 +2346,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -1737,6 +2420,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1776,6 +2470,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1814,6 +2519,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -1875,6 +2591,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1905,6 +2632,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -1968,6 +2706,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1999,6 +2748,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2022,6 +2782,19 @@
     "/api/backup/remote/list": {
       "post": {
         "operationId": "postApiBackupRemoteList",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2043,6 +2816,19 @@
     "/api/backup/remote/restore": {
       "post": {
         "operationId": "postApiBackupRemoteRestore",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2147,8 +2933,29 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2159,6 +2966,36 @@
               }
             },
             "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
           },
           "default": {
             "content": {
@@ -2174,7 +3011,7 @@
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "typed-response"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/connector-action-approvals/{id}/run": {
@@ -2188,8 +3025,29 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2201,6 +3059,26 @@
             },
             "description": "Successful response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "409": {
             "content": {
               "application/json": {
@@ -2210,6 +3088,25 @@
               }
             },
             "description": "Documented error response"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorActionBackpressure"
+                }
+              }
+            },
+            "description": "Documented error response",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying after connector action capacity is exhausted.",
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              }
+            }
           },
           "503": {
             "content": {
@@ -2235,12 +3132,25 @@
         "tags": [
           "connector-action-approvals"
         ],
-        "x-aipermission-contract-level": "typed-response"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/connector-actions/local-run": {
       "post": {
         "operationId": "postApiConnectorActionsLocalRun",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2343,6 +3253,19 @@
       },
       "post": {
         "operationId": "postApiConnectorTargets",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2385,6 +3308,19 @@
     "/api/connector-targets/ping": {
       "post": {
         "operationId": "postApiConnectorTargetsPing",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2406,6 +3342,19 @@
     "/api/connector-targets/test": {
       "post": {
         "operationId": "postApiConnectorTargetsTest",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2427,6 +3376,19 @@
     "/api/connector-targets/with-profile": {
       "post": {
         "operationId": "postApiConnectorTargetsWithProfile",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -2455,6 +3417,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -2524,6 +3497,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2561,6 +3545,17 @@
             "name": "operation",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
               "type": "string"
             }
           }
@@ -2645,6 +3640,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2684,6 +3690,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2720,6 +3737,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -2821,6 +3849,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2859,6 +3898,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -2899,6 +3949,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2938,6 +3999,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2976,6 +4048,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3042,6 +4125,19 @@
     "/api/connectors/ssh/config/parse": {
       "post": {
         "operationId": "postApiConnectorsSshConfigParse",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3063,6 +4159,19 @@
     "/api/connectors/ssh/host-keys/approve": {
       "post": {
         "operationId": "postApiConnectorsSshHostKeysApprove",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3152,6 +4261,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3181,6 +4301,17 @@
             "name": "kind",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
               "type": "string"
             }
           }
@@ -3221,6 +4352,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3296,6 +4438,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3319,6 +4472,19 @@
     "/api/console/bulk-exec": {
       "post": {
         "operationId": "postApiConsoleBulkExec",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3379,6 +4545,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3421,6 +4598,19 @@
       },
       "post": {
         "operationId": "postApiConsoleSessions",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3481,6 +4671,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3511,6 +4712,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3543,6 +4755,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3574,6 +4797,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3597,6 +4831,19 @@
     "/api/databases/change-password": {
       "post": {
         "operationId": "postApiDatabasesChangePassword",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3618,6 +4865,19 @@
     "/api/databases/delete": {
       "post": {
         "operationId": "postApiDatabasesDelete",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3639,6 +4899,19 @@
     "/api/databases/delete-locked": {
       "post": {
         "operationId": "postApiDatabasesDeleteLocked",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3660,6 +4933,19 @@
     "/api/databases/rename": {
       "post": {
         "operationId": "postApiDatabasesRename",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3681,6 +4967,19 @@
     "/api/databases/switch": {
       "post": {
         "operationId": "postApiDatabasesSwitch",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -3762,6 +5061,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3792,6 +5102,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3824,6 +5145,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3854,6 +5186,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3886,6 +5229,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3917,6 +5271,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3947,6 +5312,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -3992,6 +5368,19 @@
     "/api/file-transfers/browse": {
       "post": {
         "operationId": "postApiFileTransfersBrowse",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4013,6 +5402,19 @@
     "/api/file-transfers/download": {
       "post": {
         "operationId": "postApiFileTransfersDownload",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4034,6 +5436,19 @@
     "/api/file-transfers/download-batch": {
       "post": {
         "operationId": "postApiFileTransfersDownloadBatch",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4055,6 +5470,19 @@
     "/api/file-transfers/expand": {
       "post": {
         "operationId": "postApiFileTransfersExpand",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4076,6 +5504,19 @@
     "/api/file-transfers/upload": {
       "post": {
         "operationId": "postApiFileTransfersUpload",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4097,6 +5538,19 @@
     "/api/file-transfers/upload-batch": {
       "post": {
         "operationId": "postApiFileTransfersUploadBatch",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4157,6 +5611,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4187,6 +5652,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -4261,6 +5737,19 @@
       },
       "post": {
         "operationId": "postApiHistoryLabels",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4289,6 +5778,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -4383,6 +5883,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4422,6 +5933,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4445,6 +5967,19 @@
     "/api/lock": {
       "post": {
         "operationId": "postApiLock",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4704,6 +6239,19 @@
       },
       "post": {
         "operationId": "postApiMessages",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4725,6 +6273,19 @@
     "/api/messages/read": {
       "post": {
         "operationId": "postApiMessagesRead",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4765,6 +6326,19 @@
       },
       "post": {
         "operationId": "postApiProjects",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4793,6 +6367,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -4823,6 +6408,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4846,6 +6442,19 @@
     "/api/settings/diagnostics": {
       "get": {
         "operationId": "getApiSettingsDiagnostics",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4877,6 +6486,19 @@
     "/api/settings/maintenance-console/attach": {
       "get": {
         "operationId": "getApiSettingsMaintenanceConsoleAttach",
+        "parameters": [
+          {
+            "description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4898,6 +6520,19 @@
     "/api/settings/maintenance-console/close": {
       "post": {
         "operationId": "postApiSettingsMaintenanceConsoleClose",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4919,6 +6554,19 @@
     "/api/settings/maintenance-console/open": {
       "post": {
         "operationId": "postApiSettingsMaintenanceConsoleOpen",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -4980,6 +6628,19 @@
       },
       "put": {
         "operationId": "putApiSettingsMcpRuntime",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5020,6 +6681,19 @@
       },
       "post": {
         "operationId": "postApiSettingsRedactionRules",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5049,6 +6723,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5077,6 +6762,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5120,6 +6816,19 @@
       },
       "put": {
         "operationId": "putApiSettingsRetention",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5141,6 +6850,19 @@
     "/api/settings/retention/purge": {
       "post": {
         "operationId": "postApiSettingsRetentionPurge",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5163,6 +6885,16 @@
       "get": {
         "operationId": "getApiSettingsSecurity",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsDocument"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -5177,11 +6909,64 @@
         "tags": [
           "settings"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "put": {
         "operationId": "putApiSettingsSecurity",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecuritySettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsDocument"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -5196,7 +6981,7 @@
         "tags": [
           "settings"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/status": {
@@ -5285,6 +7070,19 @@
       },
       "post": {
         "operationId": "postApiTokens",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5342,6 +7140,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5403,6 +7212,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5463,6 +7283,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5493,6 +7324,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5538,6 +7380,19 @@
     "/api/unlock/setup": {
       "post": {
         "operationId": "postApiUnlockSetup",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5581,6 +7436,19 @@
       "get": {
         "operationId": "getApiVaultActionApprovals",
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VaultActionRequest"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -5595,7 +7463,48 @@
         "tags": [
           "vault-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
+      }
+    },
+    "/api/vault-action-approvals/{id}": {
+      "get": {
+        "operationId": "getApiVaultActionApprovalsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultActionRequest"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "vault-action-approvals"
+        ],
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/vault-action-approvals/{id}/decline": {
@@ -5609,9 +7518,70 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultActionRequest"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -5626,7 +7596,7 @@
         "tags": [
           "vault-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/vault-action-approvals/{id}/run": {
@@ -5640,9 +7610,70 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultActionRequest"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -5657,7 +7688,7 @@
         "tags": [
           "vault-action-approvals"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/vault-default-bindings": {
@@ -5682,6 +7713,19 @@
       },
       "put": {
         "operationId": "putApiVaultDefaultBindings",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5710,6 +7754,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5753,6 +7808,19 @@
       },
       "post": {
         "operationId": "postApiVaultItems",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "default": {
             "content": {
@@ -5811,6 +7879,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5841,6 +7920,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],
@@ -5873,6 +7963,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5904,6 +8005,17 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5934,6 +8046,17 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
             }
           }
         ],

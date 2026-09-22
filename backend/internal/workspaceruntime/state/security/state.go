@@ -3,6 +3,7 @@ package security
 import (
 	"database/sql"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
@@ -15,8 +16,10 @@ type State struct {
 	vaultDelivery vaultsessions.DeliveryCoordinator
 }
 
-func New(database *sql.DB) State {
-	return State{policy: securitypolicy.NewService(database), vaultLeases: vaultsessions.NewStore()}
+func New(database *sql.DB) *State {
+	state := &State{policy: securitypolicy.NewService(database), vaultLeases: vaultsessions.NewStore()}
+	state.vaultDelivery.SetDeliveryGuard(connectortargets.NewLifecycleFinalizationStore(database).RequireReady)
+	return state
 }
 
 func (s *State) PolicyService() *securitypolicy.Service {

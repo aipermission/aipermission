@@ -2,7 +2,6 @@ import { Download, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { connectorBadgeTone, connectorKindLabel } from "../../connectors/templates/common";
 import { getConnectorModel } from "../../connectors/templates/registry";
-import { apiDownload } from "../../lib/api";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -11,6 +10,7 @@ import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 import { ProgressBar } from "../ui/progress-bar";
 import { TerminalBlock } from "../ui/terminal-block";
+import { useHistoryTransferDownload } from "./use-history-transfer-download";
 function HistoryStat({ label, value, tone = "neutral" }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4">
@@ -24,12 +24,12 @@ function HistoryStat({ label, value, tone = "neutral" }) {
 
 function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }) {
   const [labelName, setLabelName] = useState("");
-  const [state, setState] = useState({ state: "idle", error: null });
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const labelInputRef = useRef(null);
   const blurTimerRef = useRef(null);
   const focusTimerRef = useRef(null);
+  const { labelState, attachLabel, detachLabel } = useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel });
 
   function cancelTimer(timerRef) {
     if (timerRef.current === null) return;
@@ -47,7 +47,6 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
 
   useEffect(() => {
     setLabelName("");
-    setState({ state: "idle", error: null });
     setSuggestionsOpen(false);
     setActiveSuggestion(0);
   }, [item?.id]);
@@ -88,30 +87,19 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
       setLabelName("");
       return;
     }
-    setState({ state: "saving", error: null });
-    try {
-      await onAttachLabel(item.id, { name });
+    const attached = await attachLabel(name);
+    if (attached === undefined) return;
+    if (attached) {
       setLabelName("");
       setSuggestionsOpen(false);
       setActiveSuggestion(0);
-      setState({ state: "idle", error: null });
-      focusLabelInput();
-    } catch (error) {
-      setState({ state: "error", error: error.message });
-      focusLabelInput();
     }
+    focusLabelInput();
   }
 
   async function removeLabel(labelID) {
-    setState({ state: "saving", error: null });
-    try {
-      await onDetachLabel(item.id, labelID);
-      setState({ state: "idle", error: null });
-      focusLabelInput();
-    } catch (error) {
-      setState({ state: "error", error: error.message });
-      focusLabelInput();
-    }
+    const detached = await detachLabel(labelID);
+    if (detached !== undefined) focusLabelInput();
   }
 
   function handleLabelKeyDown(event) {
@@ -134,16 +122,6 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
     if (event.key === "Enter" || event.key === ",") {
       event.preventDefault();
       void addLabel(showSuggestions ? suggestions[activeSuggestion]?.name : labelName);
-    }
-  }
-
-  async function downloadTransfer() {
-    setState({ state: "downloading", error: null });
-    try {
-      await apiDownload(`/api/file-transfers/${item.source_ref_id}/download`, transferFileName(item));
-      setState({ state: "idle", error: null });
-    } catch (error) {
-      setState({ state: "error", error: error.message });
     }
   }
 
@@ -198,7 +176,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                   className="inline-flex max-w-44 shrink-0 items-center gap-1 rounded-full border bg-transparent px-2.5 py-1 text-xs font-semibold"
                   style={labelStyle(label)}
                   onClick={() => removeLabel(label.id)}
-                  disabled={state.state === "saving"}
+                  disabled={labelState.state === "saving"}
                   aria-label={`Remove ${label.name} label`}
                   title={`Remove ${label.name} label`}
                 >
@@ -223,7 +201,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
                 onBlur={closeSuggestionsAfterBlur}
                 onKeyDown={handleLabelKeyDown}
                 placeholder={attachedLabels.length === 0 ? "Type a label and press Enter" : "Add another label"}
-                disabled={state.state === "saving"}
+                disabled={labelState.state === "saving"}
                 className="h-7 min-w-40 flex-1 shrink-0 border-0 bg-transparent px-1 text-sm outline-none placeholder:text-stone-400"
               />
             </div>
@@ -248,7 +226,7 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
               </div>
             ) : null}
           </form>
-          {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
+          {labelState.state === "error" ? <Notice tone="bad">{labelState.error}</Notice> : null}
         </div>
 
         <div className="grid min-h-0 gap-4 p-5 lg:grid-cols-2">
@@ -266,16 +244,64 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
           </div>
         </div>
 
-        {item.activity_type === "file_transfer" && item.action_name === "download" && item.status === "completed" ? (
-          <div className="flex justify-end border-t border-stone-200 px-5 py-3">
-            <Button type="button" onClick={downloadTransfer} disabled={state.state === "downloading"}>
-              <Download className="h-4 w-4" />
-              Save download
-            </Button>
-          </div>
-        ) : null}
+        <HistoryDownloadAction item={item} />
       </div>
     </Dialog>
+  );
+}
+
+function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }) {
+  const [labelState, setLabelState] = useState({ state: "idle", error: null });
+  const ownerRef = useRef({ generation: 0, itemID: null });
+
+  useEffect(() => {
+    ownerRef.current = { generation: ownerRef.current.generation + 1, itemID: item?.id ?? null };
+    setLabelState({ state: "idle", error: null });
+    return () => {
+      ownerRef.current = { generation: ownerRef.current.generation + 1, itemID: null };
+    };
+  }, [item?.id]);
+
+  async function run(operation) {
+    const owner = { generation: ownerRef.current.generation + 1, itemID: item.id };
+    ownerRef.current = owner;
+    setLabelState({ state: "saving", error: null });
+    try {
+      await operation();
+      if (!isCurrentLabelOwner(ownerRef, owner)) return undefined;
+      setLabelState({ state: "idle", error: null });
+      return true;
+    } catch (error) {
+      if (!isCurrentLabelOwner(ownerRef, owner)) return undefined;
+      setLabelState({ state: "error", error: error.message });
+      return false;
+    }
+  }
+
+  return {
+    labelState,
+    attachLabel: (name) => run(() => onAttachLabel(item.id, { name })),
+    detachLabel: (labelID) => run(() => onDetachLabel(item.id, labelID)),
+  };
+}
+
+function isCurrentLabelOwner(ownerRef, owner) {
+  return ownerRef.current.generation === owner.generation && ownerRef.current.itemID === owner.itemID;
+}
+
+function HistoryDownloadAction({ item }) {
+  const { downloadTransfer, downloadState } = useHistoryTransferDownload(item, transferFileName(item));
+  if (item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed") return null;
+  return (
+    <div className="grid gap-2 border-t border-stone-200 px-5 py-3">
+      {downloadState.state === "error" ? <Notice tone="bad">{downloadState.error}</Notice> : null}
+      <div className="flex justify-end">
+        <Button type="button" onClick={downloadTransfer} disabled={downloadState.state === "downloading"}>
+          <Download className="h-4 w-4" />
+          Save download
+        </Button>
+      </div>
+    </div>
   );
 }
 

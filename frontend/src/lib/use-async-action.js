@@ -20,7 +20,7 @@ export function useAsyncAction(initialState = idleActionState) {
     setActionState({ state: pending, error: null, message: null });
     try {
       const result = await action();
-      if (!mountedRef.current || generation !== generationRef.current) return result;
+      if (!mountedRef.current || generation !== generationRef.current) return undefined;
       const message = typeof successMessage === "function" ? successMessage(result) : successMessage;
       setActionState({ state: "idle", error: null, message });
       return result;

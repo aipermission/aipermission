@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +27,115 @@ import (
 )
 
 type mcpVaultActionCallRequest = vaultrequests.MCPActionCallRequest
+
+func displayedVaultApprovalContextHash(t *testing.T, fixture apiTestFixture, requestID int64) string {
+	t.Helper()
+	response := performJSON(fixture.server.Handler(), http.MethodGet, "/api/vault-action-approvals?status=approval_pending", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list local Vault approvals: %d %s", response.Code, response.Body.String())
+	}
+	var items []vaultrequests.Request
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode local Vault approvals: %v", err)
+	}
+	for _, item := range items {
+		if item.ID == requestID && item.ApprovalContextHash != "" {
+			return item.ApprovalContextHash
+		}
+	}
+	t.Fatalf("local Vault approval %d did not expose its decision context", requestID)
+	return ""
+}
+
+func createPendingVaultGenerateApproval(t *testing.T, fixture apiTestFixture, key string) int64 {
+	t.Helper()
+	project, err := projectstore.NewStore(fixture.db).Get(t.Context(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := createAPITestToken(t, fixture, t.Context(), "vault-note-"+key)
+	if _, err := accesscontrol.NewCapabilityStore(fixture.db).Replace(t.Context(), token.ID, []accesscontrol.CapabilitySetInput{{
+		ProjectID: project.ID, Name: accesscontrol.VaultItemGenerate,
+		ExecutionRule: accesscontrol.RuleApprovalRequired,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, mcpVaultActionCallRequest{
+		ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
+		Input: map[string]any{
+			"name": "VAULT_NOTE_" + strings.ToUpper(key), "secret_type": "generic_secret",
+			"generator_kind": "random_token",
+		},
+		Reason: "Verify operator note handling.", IdempotencyKey: "vault-note-" + key,
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("create pending Vault request: %d %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		RequestID int64  `json:"request_id"`
+		Status    string `json:"status"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RequestID < 1 || body.Status != vaultrequests.StatusApprovalPending {
+		t.Fatalf("pending Vault response = %#v", body)
+	}
+	return body.RequestID
+}
+
+func TestVaultOperatorNotesUseConfiguredPersistenceRedaction(t *testing.T) {
+	for _, decision := range []string{"run", "decline"} {
+		t.Run(decision, func(t *testing.T) {
+			fixture := newAPITestFixture(t)
+			const customCanary = "VAULT_NOTE_CANARY_7391"
+			const basicCanary = "Bearer abcdefghijklmnopqrstuvwxyz123456"
+			rule := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
+				Name: "Vault operator note canary", Pattern: customCanary, Enabled: true,
+			})
+			if rule.Code != http.StatusCreated {
+				t.Fatalf("create custom redaction rule: %d %s", rule.Code, rule.Body.String())
+			}
+
+			requestID := createPendingVaultGenerateApproval(t, fixture, decision)
+			note := "harmless operator context " + customCanary + " " + basicCanary
+			response := performJSON(
+				fixture.server.Handler(), http.MethodPost,
+				fmt.Sprintf("/api/vault-action-approvals/%d/%s", requestID, decision), "",
+				vaultrequests.DecisionHTTPRequest{
+					UserNote: note, ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID),
+				},
+			)
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s Vault request: %d %s", decision, response.Code, response.Body.String())
+			}
+
+			var storedNote, historyNote string
+			if err := fixture.db.QueryRow(`SELECT user_note FROM vault_action_requests WHERE id = ?`, requestID).Scan(&storedNote); err != nil {
+				t.Fatal(err)
+			}
+			if err := fixture.db.QueryRow(`
+				SELECT user_note FROM history_entries
+				WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, requestID).Scan(&historyNote); err != nil {
+				t.Fatal(err)
+			}
+			list := performJSON(fixture.server.Handler(), http.MethodGet, "/api/vault-action-approvals", "", nil)
+			history := performJSON(fixture.server.Handler(), http.MethodGet, "/api/history?limit=100", "", nil)
+			for surface, value := range map[string]string{
+				"request row": storedNote, "history row": historyNote,
+				"decision response": response.Body.String(), "approval list": list.Body.String(),
+				"history response": history.Body.String(),
+			} {
+				if strings.Contains(value, customCanary) || strings.Contains(value, "abcdefghijklmnopqrstuvwxyz123456") {
+					t.Fatalf("%s exposed raw operator note: %s", surface, value)
+				}
+				if !strings.Contains(value, "harmless operator context") || !strings.Contains(value, "[REDACTED]") {
+					t.Fatalf("%s did not retain harmless text with redaction: %s", surface, value)
+				}
+			}
+		})
+	}
+}
 
 func TestMCPVaultListReportsExactTruncationAtProjectBoundary(t *testing.T) {
 	fixture := newAPITestFixture(t)
@@ -113,6 +224,25 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	if rejectedCount != 0 {
 		t.Fatal("rejected Vault input was persisted")
 	}
+	for index, invalidInput := range []map[string]any{
+		{"name": "INVALID_TYPE", "secret_type": "certificate", "generator_kind": "random_token"},
+		{"name": "INVALID_EXPIRY", "generator_kind": "random_token", "expires_at": "not-rfc3339"},
+	} {
+		idempotencyKey := "rejected-metadata-" + strconv.Itoa(index)
+		response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, mcpVaultActionCallRequest{
+			ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
+			Input: invalidInput, Reason: "Reject invalid metadata before approval.", IdempotencyKey: idempotencyKey,
+		})
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid generation metadata %d = %d %s", index, response.Code, response.Body.String())
+		}
+		if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM vault_action_requests WHERE idempotency_key = ?`, idempotencyKey).Scan(&rejectedCount); err != nil {
+			t.Fatal(err)
+		}
+		if rejectedCount != 0 {
+			t.Fatalf("invalid generation metadata %d created an approval", index)
+		}
+	}
 	for index, nestedInput := range []map[string]any{
 		{
 			"name": "REJECTED_USAGE_NOTE", "generator_kind": "random_token",
@@ -141,7 +271,7 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 	}
 
 	input := map[string]any{
-		"name": "MY_PROJECT_API_TOKEN", "secret_type": "api_key",
+		"name":           "MY_PROJECT_API_TOKEN",
 		"generator_kind": "random_token", "provider": "Example API",
 		"description": "Generated without exposing its value.",
 	}
@@ -202,8 +332,9 @@ func TestMCPVaultGenerateRequiresLocalApprovalAndNeverReturnsSecret(t *testing.T
 		t.Fatalf("foreign token cancel = %d %s", foreignCancel.Code, foreignCancel.Body.String())
 	}
 
-	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."})
-	if run.Code != http.StatusOK || strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
+	run := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally.", ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID)})
+	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"secret_type":"generic_secret"`) ||
+		strings.Contains(run.Body.String(), `"value"`) || strings.Contains(run.Body.String(), "encrypted_value") {
 		t.Fatalf("run Vault action: %d %s", run.Code, run.Body.String())
 	}
 	poll := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/vault-action-requests/"+strconv.FormatInt(requestID, 10), token.TokenValue, nil)
@@ -281,7 +412,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 		ProjectRef: project.Slug,
 		ActionName: vaultrequests.ActionGenerateItem,
 		Input: map[string]any{
-			"name": "AUTOMATED_API_TOKEN", "secret_type": "api_key",
+			"name":           "AUTOMATED_API_TOKEN",
 			"generator_kind": "random_token", "provider": "Example API",
 		},
 		Reason:         "Create a token for the approved autonomous workflow.",
@@ -290,6 +421,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	fixture.server.access.ConfigureVaultRequestLimit(1, time.Minute)
 	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
 	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
+		!strings.Contains(call.Body.String(), `"secret_type":"generic_secret"`) ||
 		strings.Contains(call.Body.String(), `"retry_after_seconds"`) ||
 		strings.Contains(call.Body.String(), `"value"`) || strings.Contains(call.Body.String(), "encrypted_value") {
 		t.Fatalf("always Vault action: %d %s", call.Code, call.Body.String())
@@ -495,8 +627,26 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 
 	var appliedValues []string
 	var openedGeometry [][2]int
+	firstOpenEntered := make(chan struct{})
+	releaseFirstOpen := make(chan struct{})
+	defer func() {
+		select {
+		case <-releaseFirstOpen:
+		default:
+			close(releaseFirstOpen)
+		}
+	}()
+	var openCount atomic.Int64
 	if err := fixture.server.accessOwner.ConfigureConsoleRuntime(runtime, func(openCtx context.Context, request gatewayoperations.RuntimeOpenRequest) (*gatewayoperations.RuntimeSession, error) {
 		openedGeometry = append(openedGeometry, [2]int{request.Cols, request.Rows})
+		if openCount.Add(1) == 1 {
+			close(firstOpenEntered)
+			select {
+			case <-releaseFirstOpen:
+			case <-openCtx.Done():
+				return nil, openCtx.Err()
+			}
+		}
 		done := make(chan error, 1)
 		go func() {
 			<-openCtx.Done()
@@ -534,7 +684,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		Reason: "Start the approved session with its Vault environment.",
 	}
 	callBody.IdempotencyKey = "vault-session-e2e-always"
-	always := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
+	always := runVaultSessionApplyAgainstConcurrentProjectArchive(
+		t, fixture, token.TokenValue, callBody, firstOpenEntered, releaseFirstOpen,
+	)
 	if always.Code != http.StatusOK || !strings.Contains(always.Body.String(), `"status":"completed"`) {
 		t.Fatalf("Always session apply: %d %s", always.Code, always.Body.String())
 	}
@@ -574,7 +726,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		http.MethodPost,
 		"/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run",
 		"",
-		vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally."},
+		vaultrequests.DecisionHTTPRequest{UserNote: "Approved locally.", ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, requestID)},
 	)
 	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"status":"completed"`) {
 		t.Fatalf("run Prompt session apply: %d %s", run.Code, run.Body.String())
@@ -620,6 +772,57 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		strings.Contains(run.Body.String(), secretValue) {
 		t.Fatal("Vault secret leaked into a persisted or MCP response surface")
 	}
+}
+
+func runVaultSessionApplyAgainstConcurrentProjectArchive(
+	t *testing.T,
+	fixture apiTestFixture,
+	tokenValue string,
+	callBody mcpVaultActionCallRequest,
+	firstOpenEntered <-chan struct{},
+	releaseFirstOpen chan<- struct{},
+) *httptest.ResponseRecorder {
+	t.Helper()
+	project, err := projectstore.NewStore(fixture.db).Create(t.Context(), "Concurrent Vault Mutation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actionResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		actionResult <- performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", tokenValue, callBody)
+	}()
+	select {
+	case <-firstOpenEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Vault session replacement did not reach the console transport")
+	}
+	mutationResult := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		mutationResult <- performJSON(
+			fixture.server.Handler(), http.MethodDelete, "/api/projects/"+strconv.FormatInt(project.ID, 10), "", nil,
+		)
+	}()
+	select {
+	case mutation := <-mutationResult:
+		t.Fatalf("exclusive Vault mutation crossed an admitted session replacement: %d %s", mutation.Code, mutation.Body.String())
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseFirstOpen)
+	var action *httptest.ResponseRecorder
+	select {
+	case action = <-actionResult:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Vault session replacement deadlocked behind the waiting exclusive mutation")
+	}
+	select {
+	case mutation := <-mutationResult:
+		if mutation.Code != http.StatusNoContent {
+			t.Fatalf("exclusive Vault mutation after delivery: %d %s", mutation.Code, mutation.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("exclusive Vault mutation remained blocked after session finalization")
+	}
+	return action
 }
 
 func closedTerminalOutput() <-chan console.RuntimeOutput {
@@ -754,6 +957,21 @@ func TestVaultSessionContextAcceptsAlwaysCapability(t *testing.T) {
 		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
 	}, promptApproval); !vaultactions.IsStale(err) {
 		t.Fatalf("project scope drift should stale the approval, got %v", err)
+	}
+	reenabled := performJSON(
+		fixture.server.Handler(),
+		http.MethodPut,
+		scopePath,
+		"",
+		withCurrentAuthorizationRevision(t, fixture.server.Handler(), scopePath, accesscontrol.UpdateProjectScopesRequest{EnabledProjectIDs: []int64{project.ID}}),
+	)
+	if reenabled.Code != http.StatusOK {
+		t.Fatalf("restore Vault source project: %d %s", reenabled.Code, reenabled.Body.String())
+	}
+	if err := actions.ValidateAuthorization(ctx, vaultrequests.Request{
+		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
+	}, promptApproval); !vaultactions.IsStale(err) {
+		t.Fatalf("project scope ABA should keep the old approval stale, got %v", err)
 	}
 }
 

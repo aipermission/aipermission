@@ -347,21 +347,42 @@ func (s *Session) Attach(ws *websocket.Conn) {
 }
 
 func (s *Session) addClient(ws *websocket.Conn, writeMu *sync.Mutex) bool {
+	return s.initializeClient(ws, writeMu, func(message maintenanceConsoleServerMessage) error {
+		return writeMaintenanceConsoleMessageLocked(ws, message)
+	})
+}
+
+func (s *Session) initializeClient(
+	ws *websocket.Conn,
+	writeMu *sync.Mutex,
+	send func(maintenanceConsoleServerMessage) error,
+) bool {
+	if writeMu == nil || send == nil {
+		return false
+	}
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	snapshot, ok := s.registerClient(ws, writeMu)
 	if !ok {
 		return false
 	}
-	_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
+	if err := send(maintenanceConsoleServerMessage{
 		Type:   "snapshot",
 		Status: snapshot.Status,
 		Shell:  snapshot.Shell,
 		Data:   snapshot.Transcript,
-	})
-	_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
+	}); err != nil {
+		s.unregisterClient(ws)
+		return false
+	}
+	if err := send(maintenanceConsoleServerMessage{
 		Type:   "ready",
 		Status: snapshot.Status,
 		Shell:  snapshot.Shell,
-	})
+	}); err != nil {
+		s.unregisterClient(ws)
+		return false
+	}
 	return true
 }
 
@@ -376,10 +397,16 @@ func (s *Session) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (gatew
 }
 
 func (s *Session) removeClient(ws *websocket.Conn) {
+	s.unregisterClient(ws)
+	if ws != nil {
+		_ = ws.Close()
+	}
+}
+
+func (s *Session) unregisterClient(ws *websocket.Conn) {
 	s.mu.Lock()
 	delete(s.clients, ws)
 	s.mu.Unlock()
-	_ = ws.Close()
 }
 
 func (s *Session) writeInput(data string) error {
@@ -417,8 +444,8 @@ func (s *Session) readLoop() {
 		n, err := s.pty.Read(buffer)
 		if n > 0 {
 			data := string(buffer[:n])
-			s.appendTranscript(data)
-			s.broadcast(maintenanceConsoleServerMessage{
+			clients := s.appendTranscriptAndClients(data)
+			s.broadcastClients(clients, maintenanceConsoleServerMessage{
 				Type:   "output",
 				Status: "connected",
 				Shell:  s.shell,
@@ -450,10 +477,11 @@ func (s *Session) waitLoop() {
 	s.markClosed("closed", "maintenance console process exited")
 }
 
-func (s *Session) appendTranscript(data string) {
+func (s *Session) appendTranscriptAndClients(data string) map[*websocket.Conn]*sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.transcript = tailStringByBytes(s.transcript+data, MaxTranscriptBytes)
+	return cloneMaintenanceClients(s.clients)
 }
 
 func (s *Session) markClosed(status string, data string) {
@@ -524,11 +552,20 @@ func waitForMaintenanceConsoleProcess(done <-chan struct{}, timeout time.Duratio
 
 func (s *Session) broadcast(message maintenanceConsoleServerMessage) {
 	s.mu.Lock()
-	clients := make(map[*websocket.Conn]*sync.Mutex, len(s.clients))
-	for ws, writeMu := range s.clients {
-		clients[ws] = writeMu
-	}
+	clients := cloneMaintenanceClients(s.clients)
 	s.mu.Unlock()
+	s.broadcastClients(clients, message)
+}
+
+func cloneMaintenanceClients(clients map[*websocket.Conn]*sync.Mutex) map[*websocket.Conn]*sync.Mutex {
+	cloned := make(map[*websocket.Conn]*sync.Mutex, len(clients))
+	for ws, writeMu := range clients {
+		cloned[ws] = writeMu
+	}
+	return cloned
+}
+
+func (s *Session) broadcastClients(clients map[*websocket.Conn]*sync.Mutex, message maintenanceConsoleServerMessage) {
 	for ws, writeMu := range clients {
 		if err := writeMaintenanceConsoleMessage(ws, writeMu, message); err != nil {
 			s.removeClient(ws)
@@ -540,6 +577,13 @@ func writeMaintenanceConsoleMessage(ws *websocket.Conn, writeMu *sync.Mutex, mes
 	if writeMu != nil {
 		writeMu.Lock()
 		defer writeMu.Unlock()
+	}
+	return writeMaintenanceConsoleMessageLocked(ws, message)
+}
+
+func writeMaintenanceConsoleMessageLocked(ws *websocket.Conn, message maintenanceConsoleServerMessage) error {
+	if ws == nil {
+		return errors.New("maintenance console websocket is unavailable")
 	}
 	if err := ws.SetWriteDeadline(time.Now().Add(maintenanceConsoleWriteTimeout)); err != nil {
 		return err

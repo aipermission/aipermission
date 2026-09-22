@@ -2,7 +2,6 @@ import { ChevronDown, ChevronRight, Database } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
-import { normalizeSQLName } from "./sql-console-data";
 
 export function SQLSchemaBrowser({
   rows,
@@ -130,7 +129,7 @@ function TableRow({ table, expanded, onToggle, theme, mutedClass, hoverClass, on
 }
 
 function tableBrowserKey(table) {
-  return `${normalizeSQLName(table.schema)}.${normalizeSQLName(table.table)}`;
+  return JSON.stringify([table.schema, table.table]);
 }
 
 function groupTableBrowserRows(rows) {

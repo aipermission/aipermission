@@ -39,11 +39,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       setNote("");
       setAction({ state: "loading", error: null });
       try {
-        const exact = connectorApproval(await apiGet(`/api/connector-action-approvals/${approval.id}`, { signal: request.signal }), {
-          id: approval.id,
-          targetRef: selectedTargetRefRef.current,
-          actionName: approval.action_name,
-        });
+        const exact = await readExactApproval(approval, selectedTargetRefRef.current, request.signal);
         if (!request.isCurrent()) return;
         setSnapshot(exact);
         setAction(
@@ -73,9 +69,9 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     const request = requests.begin("mutation");
     setAction({ state: "running", error: null });
     try {
-      const item = await runApproval(approval.id, note);
+      const item = await runApproval(approval, note);
       if (!request.isCurrent()) return;
-      if (["error", "failed", "stale"].includes(item?.status)) {
+      if (!["completed", "running"].includes(item?.status)) {
         setSnapshot({ ...approval, ...item });
         setAction({ state: item.status === "stale" ? "stale" : "failed", error: item.error || "Connector action failed." });
         return;
@@ -84,7 +80,31 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       reset();
     } catch (error) {
       if (!request.isCurrent()) return;
-      setSnapshot(approval);
+      const uncertain = connectorOutcomeUnknown(error, approval);
+      if (uncertain) {
+        setSnapshot({ ...approval, ...uncertain });
+        setAction({ state: "failed", error: uncertain.assistant_hint || uncertain.error || error.message });
+        return;
+      }
+      let exact = null;
+      try {
+        exact = await readExactApproval(approval, approval.target_ref, request.signal);
+      } catch {
+        // A lost run response is unsafe to retry until its exact request can be reconciled.
+      }
+      if (!request.isCurrent()) return;
+      setSnapshot(exact || approval);
+      if (exact && exact.status !== "approval_pending") {
+        setAction({
+          state: "stale",
+          error: `${error.message} This connector approval is ${exact.status}; the run response may have been lost.`,
+        });
+        return;
+      }
+      if (!exact) {
+        setAction({ state: "failed", error: `${error.message} The request outcome could not be reconciled; do not retry yet.` });
+        return;
+      }
       setAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
     } finally {
       request.complete();
@@ -97,13 +117,28 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     const request = requests.begin("mutation");
     setAction({ state: "declining", error: null });
     try {
-      await declineApproval(approval.id, note);
+      await declineApproval(approval, note);
       if (!request.isCurrent()) return;
       setDismissedIDs((current) => withoutKey(current, approval.id));
       reset();
     } catch (error) {
       if (!request.isCurrent()) return;
-      setAction({ state: "error", error: error.message });
+      let exact = null;
+      try {
+        exact = await readExactApproval(approval, approval.target_ref, request.signal);
+      } catch {
+        // Preserve the reviewed snapshot and note when reconciliation is unavailable.
+      }
+      if (!request.isCurrent()) return;
+      setSnapshot(exact || approval);
+      if (exact && exact.status !== "approval_pending") {
+        setAction({
+          state: "stale",
+          error: `${error.message} This connector approval is no longer pending; the decline may already have been recorded.`,
+        });
+        return;
+      }
+      setAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: error.message });
     } finally {
       request.complete();
     }
@@ -128,9 +163,30 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
   return { action, activeApproval, approve, close, decline, note, open, pendingApprovals, selectedPendingApprovals, setNote };
 }
 
+async function readExactApproval(approval, targetRef, signal) {
+  return connectorApproval(await apiGet(`/api/connector-action-approvals/${approval.id}`, { signal }), {
+    id: approval.id,
+    targetRef,
+    actionName: approval.action_name,
+  });
+}
+
 function isStaleApprovalError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("stale") || message.includes("approval context") || message.includes("fresh request");
+  return ["approval_context_changed", "approval_not_pending"].includes(error?.code);
+}
+
+function connectorOutcomeUnknown(error, approval) {
+  const data = error?.data;
+  if (
+    data?.status !== "outcome_unknown" ||
+    !Number.isSafeInteger(data.request_id) ||
+    Number(data.request_id) !== Number(approval.id) ||
+    typeof data.error !== "string" ||
+    typeof data.assistant_hint !== "string"
+  ) {
+    return null;
+  }
+  return data;
 }
 
 function isTerminalActionState(state) {

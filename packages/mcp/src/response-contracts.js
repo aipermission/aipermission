@@ -237,24 +237,46 @@ const vaultSessionOutputSchema = z
   })
   .strict();
 
-const vaultActionResponseSchema = z
-  .object({
-    status: z.string(),
-    request_id: positiveID.optional(),
-    project_ref: z.string().optional(),
-    action_name: z.string().optional(),
-    input: z.union([vaultGenerateInputSchema, vaultSessionInputSchema]).optional(),
-    reason: z.string().optional(),
-    created_at: z.string().optional(),
-    expires_at: z.string().optional(),
-    secret_values_returned: z.literal(false).optional(),
-    output: z.union([generatedVaultOutputSchema, vaultSessionOutputSchema]).optional(),
-    output_withheld: z.boolean().optional(),
-    retry_after_seconds: nonNegativeInteger.optional(),
-    assistant_hint: z.string().optional(),
-    error: z.string().optional(),
-  })
-  .strict();
+const vaultActionStatuses = ["approval_pending", "running", "completed", "failed", "declined", "stale", "canceled", "expired"];
+const vaultActionRecordedShape = {
+  status: z.enum(vaultActionStatuses),
+  request_id: positiveID,
+  project_ref: z.string().min(1),
+  reason: z.string().optional(),
+  created_at: z.string().optional(),
+  expires_at: z.string().optional(),
+  secret_values_returned: z.literal(false),
+  output_withheld: z.literal(true).optional(),
+  retry_after_seconds: nonNegativeInteger.max(3600).optional(),
+  assistant_hint: z.string().optional(),
+  error: z.string().optional(),
+};
+const vaultActionRecordedSchema = z
+  .discriminatedUnion("action_name", [
+    z
+      .object({
+        ...vaultActionRecordedShape,
+        action_name: z.literal("generate_item"),
+        input: vaultGenerateInputSchema.optional(),
+        output: generatedVaultOutputSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        ...vaultActionRecordedShape,
+        action_name: z.literal("restart_session_with_environment"),
+        input: vaultSessionInputSchema.optional(),
+        output: vaultSessionOutputSchema.optional(),
+      })
+      .strict(),
+  ])
+  .superRefine((value, context) => {
+    if (value.output_withheld && value.output !== undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "withheld Vault output must not contain result content" });
+    }
+  });
+const vaultActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1) }).strict();
+const vaultActionResponseSchema = z.union([vaultActionRecordedSchema, vaultActionStoppedSchema]);
 
 export const responseContracts = Object.freeze({
   connectorTargets: z.array(connectorTargetSchema),
@@ -266,12 +288,25 @@ export const responseContracts = Object.freeze({
   vaultAction: vaultActionResponseSchema,
 });
 
-export function projectGatewaySuccess(schema, value) {
+export function projectGatewaySuccess(schema, value, expected = undefined) {
   const result = schema.safeParse(value);
   if (!result.success) {
-    const error = new Error("Gateway success response failed MCP contract validation.");
-    error.code = "gateway_response_contract_invalid";
-    throw error;
+    throw gatewayContractError();
+  }
+  if (expected && result.data?.status !== "stopped") {
+    for (const [field, expectedValue] of Object.entries(expected)) {
+      if (expectedValue !== undefined && result.data?.[field] !== expectedValue) {
+        throw gatewayContractError();
+      }
+    }
+  } else if (expected && (expected.request_id !== undefined || expected.status !== undefined)) {
+    throw gatewayContractError();
   }
   return result.data;
+}
+
+function gatewayContractError() {
+  const error = new Error("Gateway success response failed MCP contract validation.");
+  error.code = "gateway_response_contract_invalid";
+  return error;
 }

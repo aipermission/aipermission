@@ -1,12 +1,13 @@
 import {
   cleanSQLIdentifier,
-  normalizeSQLName,
   referencedTablesFromSQL,
+  sqlIdentifierMatches,
+  sqlReferenceIdentifiersMatch,
   tableMatchesReference,
   tableReferenceKey,
-} from "./sql-console-data";
+} from "./sql-console-data.js";
 
-export function sqlCompletionItems(monaco, tables, keywords, model, position) {
+export function sqlCompletionItems(monaco, tables, keywords, model, position, identifierPolicy = "lowercase-unquoted") {
   const word = model.getWordUntilPosition(position);
   const range = {
     startLineNumber: position.lineNumber,
@@ -26,12 +27,14 @@ export function sqlCompletionItems(monaco, tables, keywords, model, position) {
   const seenColumns = new Set();
   const tableReferences = referencedTablesFromSQL(model.getValue());
   const dotReference = dotReferenceBeforePosition(model, position);
-  const columnReferences = dotReference ? matchingReferencesForQualifier(dotReference, tableReferences, tables) : tableReferences;
+  const columnReferences = dotReference
+    ? matchingReferencesForQualifier(dotReference, tableReferences, tables, identifierPolicy)
+    : tableReferences;
   const inTableContext = isTableCompletionContext(model, position);
   for (const item of tables || []) {
     addSchemaSuggestion(suggestions, seenSchemas, item, monaco, range);
     addTableSuggestions(suggestions, seenTables, item, monaco, range);
-    if (!inTableContext && item.column && columnReferences.some((reference) => tableMatchesReference(item, reference))) {
+    if (!inTableContext && item.column && columnReferences.some((reference) => tableMatchesReference(item, reference, identifierPolicy))) {
       addColumnSuggestion(suggestions, seenColumns, item, monaco, range);
     }
   }
@@ -53,8 +56,9 @@ function addSchemaSuggestion(suggestions, seen, item, monaco, range) {
 
 function addTableSuggestions(suggestions, seen, item, monaco, range) {
   const tableKey = `${item.schema}.${item.table}`;
-  if (seen.has(tableKey)) return;
-  seen.add(tableKey);
+  const identity = JSON.stringify([item.schema, item.table]);
+  if (seen.has(identity)) return;
+  seen.add(identity);
   suggestions.push(
     {
       label: item.table,
@@ -78,7 +82,7 @@ function addTableSuggestions(suggestions, seen, item, monaco, range) {
 
 function addColumnSuggestion(suggestions, seen, item, monaco, range) {
   const tableKey = `${item.schema}.${item.table}`;
-  const columnKey = `${tableKey}.${item.column}`;
+  const columnKey = JSON.stringify([item.schema, item.table, item.column]);
   if (seen.has(columnKey)) return;
   seen.add(columnKey);
   suggestions.push({
@@ -91,18 +95,26 @@ function addColumnSuggestion(suggestions, seen, item, monaco, range) {
   });
 }
 
-function matchingReferencesForQualifier(qualifier, references, metadataRows) {
-  const normalized = normalizeSQLName(qualifier);
+function matchingReferencesForQualifier(qualifier, references, metadataRows, identifierPolicy) {
   const matches = references.filter(
-    (reference) => normalizeSQLName(reference.alias) === normalized || normalizeSQLName(reference.table) === normalized,
+    (reference) =>
+      sqlReferenceIdentifiersMatch(reference.alias, reference.aliasQuoted, qualifier.value, qualifier.quoted, identifierPolicy) ||
+      sqlReferenceIdentifiersMatch(reference.table, reference.tableQuoted, qualifier.value, qualifier.quoted, identifierPolicy),
   );
   if (matches.length > 0) return matches;
   const metadataMatches = [];
   const seen = new Set();
   for (const item of metadataRows || []) {
-    if (normalizeSQLName(item.table) !== normalized) continue;
-    const reference = { schema: item.schema || "", table: item.table || "", alias: "" };
-    const key = tableReferenceKey(reference);
+    if (!sqlIdentifierMatches(item.table, qualifier.value, qualifier.quoted, identifierPolicy)) continue;
+    const reference = {
+      schema: item.schema || "",
+      table: item.table || "",
+      alias: "",
+      schemaQuoted: true,
+      tableQuoted: true,
+      aliasQuoted: false,
+    };
+    const key = tableReferenceKey(reference, identifierPolicy);
     if (seen.has(key)) continue;
     seen.add(key);
     metadataMatches.push(reference);
@@ -113,7 +125,12 @@ function matchingReferencesForQualifier(qualifier, references, metadataRows) {
 function dotReferenceBeforePosition(model, position) {
   const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
   const match = prefix.match(/((?:"[^"]+"|`[^`]+`|[a-zA-Z_][\w$]*))\.\s*(?:"[^"]*"|`[^`]*`|[a-zA-Z_][\w$]*)?$/);
-  return match ? cleanSQLIdentifier(match[1]) : "";
+  if (!match) return null;
+  const raw = match[1];
+  return {
+    value: cleanSQLIdentifier(raw),
+    quoted: (raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("`") && raw.endsWith("`")),
+  };
 }
 
 function isTableCompletionContext(model, position) {

@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
@@ -20,7 +21,7 @@ type State struct {
 	ID              string
 	Path            string
 	Database        *sql.DB
-	Ownership       *db.DatabaseOwnership
+	Ownership       *databaseownership.Ownership
 	Registry        connectors.Catalog
 	AdapterRegistry connectorapi.Catalog
 	TokenStore      *tokens.Store
@@ -40,7 +41,7 @@ func Open(ctx context.Context, input OpenInput) (_ State, resultErr error) {
 	if input.Registry == nil || input.AdapterRegistry == nil {
 		return State{}, fmt.Errorf("open workspace runtime: connector registries are required")
 	}
-	ownership, err := db.AcquireDatabaseOwnership(input.Path)
+	ownership, err := databaseownership.Acquire(input.Path)
 	if err != nil {
 		return State{}, err
 	}

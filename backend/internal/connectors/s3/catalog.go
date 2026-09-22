@@ -137,7 +137,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use list_objects with cursor from next_cursor to fetch the next page. Do not send continuation_token; use the cursor field only.",
 			"Use search for bounded key lookup across pages. When search is set, folder grouping is disabled and results are returned as matching objects.",
 			"Use get_object_metadata to inspect one object without downloading content.",
-			"Use download_object only for bounded object reads. It returns base64 content for the requested object up to max_bytes.",
+			"Use download_object only for bounded object reads up to 768 KiB. Use file transfer for larger objects.",
 			"Use upload_object with overwrite=false by default. If the object exists, ask the operator before retrying with overwrite=true.",
 			"Use delete_object carefully; it is destructive and should normally require explicit approval.",
 			"Use presign_download or presign_upload only when the operator explicitly needs a short-lived URL for one exact object key.",
@@ -203,14 +203,14 @@ func objectActions() []connectors.ActionDefinition {
 		{
 			Name:        ActionDownloadObject,
 			Label:       "Download object",
-			Description: "Download one bounded object and return base64 content.",
+			Description: "Download one object up to 768 KiB and return base64 content.",
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Exact object key returned by list_objects."},
-				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped by the connector."},
+				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultDownloadMax, Description: "Maximum bytes to read, capped at 786432. Use file transfer for larger objects."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadBytes},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxDownloadOutput},
 		},
 		{
 			Name:          ActionUploadObject,
@@ -221,7 +221,7 @@ func objectActions() []connectors.ActionDefinition {
 			MaxInputBytes: connectors.MaximumActionInputBytes,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Destination object key."},
-				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, Description: "Text payload for small text objects. Use this or content_base64, not both."},
+				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, PreserveWhitespace: true, Description: "Text payload for small text objects. Use this or content_base64, not both."},
 				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, Description: "Base64 payload for binary objects. Use this or content_text, not both."},
 				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
 				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing an existing object."},

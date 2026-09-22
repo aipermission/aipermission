@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	mailconnector "github.com/aipermission/aipermission/backend/internal/connectors/mail"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
+	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 )
 
 type fakeResolver struct {
@@ -452,6 +454,68 @@ func TestServicePrepareAcceptsBuiltInSensitiveWriteActions(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("prepare built-in action through shared service: %v", err)
 			}
+		})
+	}
+}
+
+func TestServicePreparePreservesWhitespaceOnlyConnectorPayloads(t *testing.T) {
+	const whitespace = " \t\n"
+	tests := []struct {
+		name      string
+		connector connectors.Connector
+		target    connectors.TargetView
+		profile   connectors.CredentialProfileView
+		action    string
+		input     map[string]any
+		assert    func(*testing.T, connectors.PreparedAction)
+	}{
+		{
+			name: "redis string value", connector: redisconnector.New(), action: redisconnector.ActionSetString,
+			target:  connectors.TargetView{ID: 1, Ref: "redis:1:1", ConnectorKind: redisconnector.Kind},
+			profile: connectors.CredentialProfileView{ID: 1, TargetID: 1, ConnectorKind: redisconnector.Kind},
+			input:   map[string]any{"key": "whitespace", "value": whitespace},
+			assert: func(t *testing.T, action connectors.PreparedAction) {
+				t.Helper()
+				if got := action.Payload["value"]; got != whitespace {
+					t.Fatalf("redis value = %q, want %q", got, whitespace)
+				}
+			},
+		},
+		{
+			name: "s3 text body", connector: s3connector.New(), action: s3connector.ActionUploadObject,
+			target: connectors.TargetView{ID: 2, Ref: "s3:2:2", ConnectorKind: s3connector.Kind, Config: map[string]any{
+				"endpoint": "https://s3.example.com", "bucket": "review-bucket", "region": "us-east-1", "trust_conditional_requests": true,
+			}},
+			profile: connectors.CredentialProfileView{ID: 2, TargetID: 2, ConnectorKind: s3connector.Kind},
+			input:   map[string]any{"key": "whitespace.txt", "content_text": whitespace},
+			assert: func(t *testing.T, action connectors.PreparedAction) {
+				t.Helper()
+				encoded, ok := action.Payload["content_base64"].(string)
+				if !ok {
+					t.Fatalf("S3 content_base64 = %#v", action.Payload["content_base64"])
+				}
+				decoded, err := base64.StdEncoding.DecodeString(encoded)
+				if err != nil || string(decoded) != whitespace {
+					t.Fatalf("S3 body = %q, %v; want %q", decoded, err, whitespace)
+				}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registry := connectors.NewRegistry()
+			if err := registry.Register(test.connector); err != nil {
+				t.Fatal(err)
+			}
+			service := NewService(registry, &fakeResolver{target: test.target, profile: test.profile})
+			prepared, err := service.Prepare(t.Context(), PrepareRequest{
+				TargetRef: test.target.Ref, ActionName: test.action, Input: test.input, Reason: "verify exact whitespace payload",
+			})
+			if err != nil {
+				t.Fatalf("prepare built-in action through shared service: %v", err)
+			}
+			test.assert(t, prepared.Action)
 		})
 	}
 }

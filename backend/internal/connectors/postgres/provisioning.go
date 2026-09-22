@@ -394,13 +394,19 @@ BEGIN
 	END LOOP;
 END
 $$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
-		return statements, map[string]any{"preset": preset, "database": database, "grants": grants}, nil
+		if preset == "read_write" {
+			statements = append(statements, provisionOwnedSequenceGrant(roleName, "ns.nspname NOT LIKE 'pg_%' AND ns.nspname <> 'information_schema'"))
+		}
+		return statements, provisionRoleSummary(preset, database, grants), nil
 	}
 	for _, schema := range scope.Schemas {
 		schemaSQL := quoteIdentifier(schema.Schema)
 		statements = append(statements, fmt.Sprintf("GRANT USAGE ON SCHEMA %s TO %s", schemaSQL, roleSQL))
 		if schema.AllTables {
 			statements = append(statements, fmt.Sprintf("GRANT %s ON ALL TABLES IN SCHEMA %s TO %s", privileges, schemaSQL, roleSQL))
+			if preset == "read_write" {
+				statements = append(statements, provisionOwnedSequenceGrant(roleName, "ns.nspname = "+quoteLiteral(schema.Schema)))
+			}
 			grants = append(grants, map[string]any{"schema": schema.Schema, "all_tables": true, "privileges": privileges})
 			continue
 		}
@@ -410,6 +416,10 @@ $$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
 			}
 			if table.AllColumns {
 				statements = append(statements, fmt.Sprintf("GRANT %s ON TABLE %s TO %s", privileges, qualifiedIdentifierSQL(schema.Schema, table.Table), roleSQL))
+				if preset == "read_write" {
+					filter := "ns.nspname = " + quoteLiteral(schema.Schema) + " AND tbl.relname = " + quoteLiteral(table.Table)
+					statements = append(statements, provisionOwnedSequenceGrant(roleName, filter))
+				}
 				grants = append(grants, map[string]any{"schema": schema.Schema, "table": table.Table, "all_columns": true, "privileges": privileges})
 				continue
 			}
@@ -421,7 +431,40 @@ $$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
 			grants = append(grants, map[string]any{"schema": schema.Schema, "table": table.Table, "columns": table.Columns, "privileges": "SELECT"})
 		}
 	}
-	return statements, map[string]any{"preset": preset, "database": database, "grants": grants}, nil
+	return statements, provisionRoleSummary(preset, database, grants), nil
+}
+
+func provisionOwnedSequenceGrant(roleName, tableFilter string) string {
+	return fmt.Sprintf(`
+DO $$
+DECLARE sequence_oid oid;
+BEGIN
+	FOR sequence_oid IN
+		SELECT DISTINCT to_regclass(owned.sequence_name)::oid
+		FROM pg_catalog.pg_class tbl
+		JOIN pg_catalog.pg_namespace ns ON ns.oid = tbl.relnamespace
+		JOIN pg_catalog.pg_attribute att ON att.attrelid = tbl.oid
+		CROSS JOIN LATERAL (
+			SELECT pg_get_serial_sequence(format('%%I.%%I', ns.nspname, tbl.relname), att.attname) AS sequence_name
+		) owned
+		WHERE tbl.relkind IN ('r', 'p')
+			AND att.attnum > 0
+			AND NOT att.attisdropped
+			AND owned.sequence_name IS NOT NULL
+			AND %s
+	LOOP
+		EXECUTE format('GRANT USAGE ON SEQUENCE %%s TO %%I', sequence_oid::regclass, %s);
+	END LOOP;
+END
+$$`, tableFilter, quoteLiteral(roleName))
+}
+
+func provisionRoleSummary(preset, database string, grants []map[string]any) map[string]any {
+	summary := map[string]any{"preset": preset, "database": database, "grants": grants}
+	if preset == "read_write" {
+		summary["sequence_privileges"] = "usage_on_sequences_owned_by_writable_tables"
+	}
+	return summary
 }
 
 func randomCredentialPassword() (string, error) {

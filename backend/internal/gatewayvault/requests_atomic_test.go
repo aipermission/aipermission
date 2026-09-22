@@ -183,3 +183,14 @@ func atomicRequestFixture(t *testing.T) (*sql.DB, vaultrequests.Request) {
 	}
 	return database, request
 }
+
+func TestResolveVaultRequestProjectMapsMissingProject(t *testing.T) {
+	database, request := atomicRequestFixture(t)
+	projectID, err := resolveVaultRequestProject(t.Context(), database, request.ProjectSlug)
+	if err != nil || projectID != request.ProjectID {
+		t.Fatalf("resolved project=%d err=%v", projectID, err)
+	}
+	if _, err := resolveVaultRequestProject(t.Context(), database, "missing-project"); !errors.Is(err, vaultrequests.ErrProjectNotFound) {
+		t.Fatalf("missing project error = %v", err)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -70,6 +71,11 @@ func newS3ClientWithTimeout(ctx context.Context, runtime connectors.RuntimeConte
 	}
 	if client.bucket == "" {
 		return nil, fmt.Errorf("%w: bucket is required", ErrInvalidConfig)
+	}
+	if !client.pathStyle {
+		if _, err := netip.ParseAddr(client.host); err == nil {
+			return nil, fmt.Errorf("%w: virtual-host addressing requires a DNS endpoint; enable path_style for IP endpoints", ErrInvalidConfig)
+		}
 	}
 	request := connectors.NetworkDialRequest{
 		SourceTargetRef:    runtime.Target.Ref,
@@ -190,6 +196,10 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 			req.Header.Add(name, value)
 		}
 	}
+	// Preserve object bytes exactly. Leaving this header implicit lets Go add
+	// gzip and transparently decode a stored compressed object before limits,
+	// checksums, or base64 projection see it.
+	req.Header.Set("Accept-Encoding", "identity")
 	client.Sign(req, payload)
 	req, requestDispatched := connectors.TrackHTTPRequestDispatch(req)
 	resp, err := client.httpClient.Do(req)
@@ -221,7 +231,7 @@ func (client *s3Client) Do(ctx context.Context, method string, key string, query
 func (client *s3Client) URL(key string, query url.Values) *url.URL {
 	host := net.JoinHostPort(client.host, strconv.Itoa(client.port))
 	if (client.scheme == "http" && client.port == 80) || (client.scheme == "https" && client.port == 443) {
-		host = client.host
+		host = strings.TrimSuffix(host, ":"+strconv.Itoa(client.port))
 	}
 	path := ""
 	rawPath := ""

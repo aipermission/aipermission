@@ -30,6 +30,10 @@ func WriteError(w http.ResponseWriter, status int, message string) {
 	WriteJSON(w, status, ErrorResponse{Error: message})
 }
 
+func WriteErrorCode(w http.ResponseWriter, status int, message, code string) {
+	WriteJSON(w, status, ErrorResponse{Error: message, Code: code})
+}
+
 func WriteInternalError(w http.ResponseWriter) {
 	WriteError(w, http.StatusInternalServerError, "internal server error")
 }

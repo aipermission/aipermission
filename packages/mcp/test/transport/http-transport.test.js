@@ -156,7 +156,16 @@ test("Vault action failures are tool errors but reading a failed request is not"
     t,
     (_request, response) => {
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ status: "failed", request_id: 17, error: "fixture failure", secret_values_returned: false }));
+      response.end(
+        JSON.stringify({
+          status: "failed",
+          request_id: 17,
+          project_ref: "my-project",
+          action_name: "generate_item",
+          error: "fixture failure",
+          secret_values_returned: false,
+        }),
+      );
     },
     2000,
   );
@@ -204,6 +213,107 @@ test("packaged MCP rejects unexpected successful gateway fields without exposing
   assert.equal(payload.idempotency_key, "response-contract-fixture");
   assert.match(payload.assistant_hint, /same idempotency key/);
   assert.doesNotMatch(result.content[0].text, /provider_secret|must-not-escape/);
+});
+
+test("packaged MCP treats rejected Vault mutation responses as unknown without exposing raw payloads", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          request_id: 19,
+          project_ref: "my-project",
+          action_name: "generate_item",
+          secret_values_returned: false,
+          provider_secret: "must-not-escape",
+        }),
+      );
+    },
+    2000,
+  );
+  const result = await client.callTool({
+    name: "call_vault_action",
+    arguments: {
+      project_ref: "my-project",
+      action_name: "generate_item",
+      input: { name: "TEST_KEY", generator_kind: "random_token" },
+      reason: "response contract fixture",
+      idempotency_key: "vault-response-contract-fixture",
+    },
+  });
+  assert.equal(result.isError, true);
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.status, "outcome_unknown");
+  assert.equal(payload.code, "gateway_response_contract_outcome_unknown");
+  assert.equal(payload.idempotency_key, "vault-response-contract-fixture");
+  assert.doesNotMatch(result.content[0].text, /provider_secret|must-not-escape/);
+});
+
+test("packaged MCP rejects successful responses for a different action identity", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      if (request.url === "/api/mcp/connector-action-requests/42") {
+        response.end(
+          JSON.stringify({
+            status: "completed",
+            request_id: 41,
+            target_ref: "redis:1:1",
+            connector_kind: "redis",
+            action_name: "get_string",
+            retry_policy: { class: "read_only", guidance: "Read again if needed." },
+          }),
+        );
+        return;
+      }
+      if (request.url === "/api/mcp/vault-action-requests/12/cancel") {
+        response.end(
+          JSON.stringify({
+            status: "completed",
+            request_id: 12,
+            project_ref: "my-project",
+            action_name: "generate_item",
+            secret_values_returned: false,
+          }),
+        );
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          request_id: 19,
+          target_ref: "redis:2:1",
+          connector_kind: "redis",
+          action_name: "get_string",
+          retry_policy: { class: "read_only", guidance: "Read again if needed." },
+        }),
+      );
+    },
+    2000,
+  );
+
+  const called = await client.callTool({
+    name: "call_connector_action",
+    arguments: {
+      target_ref: "redis:1:1",
+      action_name: "get_string",
+      input: { key: "fixture" },
+      idempotency_key: "identity-contract-fixture",
+    },
+  });
+  assert.equal(called.isError, true);
+  assert.equal(JSON.parse(called.content[0].text).status, "outcome_unknown");
+
+  const read = await client.callTool({ name: "get_connector_action_request", arguments: { request_id: 42 } });
+  assert.equal(read.isError, true);
+  assert.match(JSON.parse(read.content[0].text).error, /contract validation/);
+
+  const canceled = await client.callTool({ name: "cancel_vault_action_request", arguments: { request_id: 12 } });
+  assert.equal(canceled.isError, true);
+  assert.equal(JSON.parse(canceled.content[0].text).status, "outcome_unknown");
 });
 
 test("one deadline spans delayed headers and continuing chunks without retry", { timeout: 10000 }, async (t) => {

@@ -12,6 +12,7 @@ type operationContract struct {
 	RequestSchema       map[string]any
 	ResponseSchema      map[string]any
 	AdditionalResponses map[string]map[string]any
+	ResponseHeaders     map[string]map[string]map[string]any
 }
 
 func sharedSchemas() map[string]any {
@@ -22,17 +23,11 @@ func sharedSchemas() map[string]any {
 			"error": stringSchema(),
 			"code":  stringSchema(),
 		}, []string{"error"}),
-		"ConnectorActionDefinition": objectSchema(map[string]any{
-			"name":                   stringSchema(),
-			"label":                  stringSchema(),
-			"description":            stringSchema(),
-			"category":               stringSchema(),
-			"risk":                   enumSchema("read", "write", "destructive", "credential_sensitive"),
-			"input_schema":           stringMap,
-			"sensitive_input_fields": arraySchema(stringSchema()),
-			"output_hint":            stringMap,
-			"retry_policy":           retryPolicySchema(),
-		}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"}),
+		"ConnectorActionBackpressure": objectSchema(map[string]any{
+			"error": nonBlankStringSchema(),
+			"code":  enumSchema("connector_action_backpressure"),
+		}, []string{"error", "code"}),
+		"ConnectorActionDefinition": connectorActionDefinitionSchema(stringMap),
 		"ConnectorCredentialProfile": objectSchema(map[string]any{
 			"id":                      integerSchema(),
 			"target_id":               integerSchema(),
@@ -84,6 +79,74 @@ func sharedSchemas() map[string]any {
 		}, []string{"ref", "project_id", "project_name", "project_slug", "connector_kind", "target_id", "target_name", "profile_id", "profile_kind", "profile_label", "status", "created_at", "updated_at"}),
 		"ConnectorActionApprovalSummary": connectorActionApprovalSchema(false),
 		"ConnectorActionApprovalDetail":  connectorActionApprovalSchema(true),
+		"ApprovalDecisionRequest": objectSchema(map[string]any{
+			"user_note":             stringSchema(),
+			"approval_context_hash": nonBlankStringSchema(),
+		}, []string{"approval_context_hash"}),
+		"VaultSessionItem": objectSchema(map[string]any{
+			"item_id": integerSchema(), "name": nonBlankStringSchema(), "source_project_id": integerSchema(),
+			"value_version": integerSchema(), "metadata_revision": integerSchema(), "replace_existing": boolSchema(),
+			"binding_id": integerSchema(), "binding_revision": integerSchema(),
+		}, []string{"item_id", "name", "source_project_id", "value_version", "metadata_revision", "replace_existing"}),
+		"VaultApprovalContext":     vaultApprovalContextSchema(),
+		"SecuritySettingsDocument": securitySettingsSchema("revision"),
+		"SecuritySettingsUpdate":   securitySettingsUpdateSchema(),
+		"VaultGeneratedItem": objectSchema(map[string]any{
+			"vault_ref":         nonBlankStringSchema(),
+			"item_id":           integerSchema(),
+			"project_id":        integerSchema(),
+			"name":              nonBlankStringSchema(),
+			"secret_type":       nonBlankStringSchema(),
+			"status":            nonBlankStringSchema(),
+			"expires_at":        stringSchema(),
+			"value_version":     integerSchema(),
+			"metadata_revision": integerSchema(),
+		}, []string{
+			"vault_ref", "item_id", "project_id", "name", "secret_type", "status", "expires_at", "value_version", "metadata_revision",
+		}),
+		"VaultGeneratedOutput": objectSchema(map[string]any{
+			"item":            refSchema("VaultGeneratedItem"),
+			"secret_returned": map[string]any{"type": "boolean", "const": false},
+		}, []string{"item", "secret_returned"}),
+		"VaultSessionOutput": objectSchema(map[string]any{
+			"session_id":         integerSchema(),
+			"session_generation": integerSchema(),
+			"runtime_id":         integerSchema(),
+			"status":             nonBlankStringSchema(),
+			"environment_names":  arraySchema(stringSchema()),
+			"expires_at":         dateTimeSchema(),
+		}, []string{"session_id", "session_generation", "runtime_id", "status", "environment_names", "expires_at"}),
+		"VaultActionOutput": map[string]any{"anyOf": []any{
+			refSchema("VaultGeneratedOutput"),
+			refSchema("VaultSessionOutput"),
+		}},
+		"VaultActionRequest": objectSchema(map[string]any{
+			"id":                    integerSchema(),
+			"token_id":              integerSchema(),
+			"token_name":            stringSchema(),
+			"project_id":            integerSchema(),
+			"project_name":          stringSchema(),
+			"project_slug":          stringSchema(),
+			"runtime_id":            integerSchema(),
+			"action_name":           stringSchema(),
+			"source":                stringSchema(),
+			"input":                 stringMap,
+			"reason":                stringSchema(),
+			"status":                enumSchema("approval_pending", "running", "completed", "failed", "declined", "stale", "canceled", "expired"),
+			"approval_context":      refSchema("VaultApprovalContext"),
+			"approval_context_hash": nonBlankStringSchema(),
+			"idempotency_key":       stringSchema(),
+			"error":                 stringSchema(),
+			"output":                refSchema("VaultActionOutput"),
+			"user_note":             stringSchema(),
+			"created_at":            dateTimeSchema(),
+			"expires_at":            dateTimeSchema(),
+			"completed_at":          dateTimeSchema(),
+			"updated_at":            dateTimeSchema(),
+		}, []string{
+			"id", "token_id", "token_name", "project_id", "project_name", "project_slug", "action_name", "source", "input", "reason",
+			"status", "approval_context_hash", "idempotency_key", "created_at", "expires_at", "updated_at",
+		}),
 		"LocalConnectorActionRequest": objectSchema(map[string]any{
 			"target_ref":      stringSchema(),
 			"action_name":     stringSchema(),
@@ -131,6 +194,20 @@ func sharedSchemas() map[string]any {
 	}
 }
 
+func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
+	return objectSchema(map[string]any{
+		"name":                   stringSchema(),
+		"label":                  stringSchema(),
+		"description":            stringSchema(),
+		"category":               stringSchema(),
+		"risk":                   enumSchema("read", "write", "destructive", "credential_sensitive"),
+		"input_schema":           stringMap,
+		"sensitive_input_fields": arraySchema(stringSchema()),
+		"output_hint":            stringMap,
+		"retry_policy":           retryPolicySchema(),
+	}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"})
+}
+
 func typedOperationContracts() map[Route]operationContract {
 	return map[Route]operationContract{
 		{Method: "GET", Path: "/api/targets"}:                                              okContract(itemsSchema(refSchema("TargetProfile"))),
@@ -142,18 +219,51 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}:                      okContract(refSchema("ConnectorActionApprovalDetail")),
 		{Method: "POST", Path: "/api/connector-action-approvals/{id}/run"}: {
 			StatusCode:     "200",
+			RequestSchema:  refSchema("ApprovalDecisionRequest"),
 			ResponseSchema: refSchema("ConnectorActionApprovalSummary"),
 			AdditionalResponses: map[string]map[string]any{
+				"400": refSchema("Error"),
+				"404": refSchema("Error"),
 				"409": refSchema("Error"),
+				"429": refSchema("ConnectorActionBackpressure"),
 				"503": refSchema("ConnectorActionOutcomeUnknown"),
 			},
+			ResponseHeaders: map[string]map[string]map[string]any{
+				"429": {
+					"Retry-After": {
+						"description": "Seconds before retrying after connector action capacity is exhausted.",
+						"schema":      integerSchema(),
+					},
+				},
+			},
 		},
-		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}: okContract(refSchema("ConnectorActionApprovalSummary")),
-		{Method: "GET", Path: "/api/history"}:                                  okContract(refSchema("HistoryPage")),
-		{Method: "GET", Path: "/api/history/{id}"}:                             okContract(refSchema("HistoryEntry")),
-		{Method: "GET", Path: "/api/audit-logs"}:                               okContract(refSchema("AuditPage")),
-		{Method: "GET", Path: "/api/audit-logs/{id}"}:                          okContract(refSchema("AuditEntry")),
-		{Method: "GET", Path: "/api/settings/diagnostics"}:                     okContract(refSchema("DiagnosticsReport")),
+		{Method: "POST", Path: "/api/connector-action-approvals/{id}/decline"}: {
+			StatusCode: "200", RequestSchema: refSchema("ApprovalDecisionRequest"),
+			ResponseSchema: refSchema("ConnectorActionApprovalSummary"),
+			AdditionalResponses: map[string]map[string]any{
+				"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error"),
+			},
+		},
+		{Method: "GET", Path: "/api/history"}:              okContract(refSchema("HistoryPage")),
+		{Method: "GET", Path: "/api/history/{id}"}:         okContract(refSchema("HistoryEntry")),
+		{Method: "GET", Path: "/api/audit-logs"}:           okContract(refSchema("AuditPage")),
+		{Method: "GET", Path: "/api/audit-logs/{id}"}:      okContract(refSchema("AuditEntry")),
+		{Method: "GET", Path: "/api/settings/diagnostics"}: okContract(refSchema("DiagnosticsReport")),
+		{Method: "GET", Path: "/api/settings/security"}:    okContract(refSchema("SecuritySettingsDocument")),
+		{Method: "PUT", Path: "/api/settings/security"}: {
+			StatusCode: "200", RequestSchema: refSchema("SecuritySettingsUpdate"), ResponseSchema: refSchema("SecuritySettingsDocument"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "409": refSchema("Error")},
+		},
+		{Method: "GET", Path: "/api/vault-action-approvals"}:      okContract(arraySchema(refSchema("VaultActionRequest"))),
+		{Method: "GET", Path: "/api/vault-action-approvals/{id}"}: okContract(refSchema("VaultActionRequest")),
+		{Method: "POST", Path: "/api/vault-action-approvals/{id}/run"}: {
+			StatusCode: "200", RequestSchema: refSchema("ApprovalDecisionRequest"), ResponseSchema: refSchema("VaultActionRequest"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error")},
+		},
+		{Method: "POST", Path: "/api/vault-action-approvals/{id}/decline"}: {
+			StatusCode: "200", RequestSchema: refSchema("ApprovalDecisionRequest"), ResponseSchema: refSchema("VaultActionRequest"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error")},
+		},
 		{Method: "POST", Path: "/api/connector-actions/local-run"}: {
 			StatusCode:     "200",
 			RequestSchema:  refSchema("LocalConnectorActionRequest"),
@@ -164,6 +274,51 @@ func typedOperationContracts() map[Route]operationContract {
 			},
 		},
 	}
+}
+
+func securitySettingsSchema(revisionField string) map[string]any {
+	return objectSchema(map[string]any{
+		"reusable_tokens":            boolSchema(),
+		"expose_mcp_server_metadata": boolSchema(),
+		"mcp_start_enabled":          boolSchema(),
+		"redaction_mode":             enumSchema("off", "basic"),
+		revisionField:                nonBlankStringSchema(),
+	}, []string{"reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled", "redaction_mode", revisionField})
+}
+
+func securitySettingsUpdateSchema() map[string]any {
+	schema := objectSchema(map[string]any{
+		"reusable_tokens":            boolSchema(),
+		"expose_mcp_server_metadata": boolSchema(),
+		"mcp_start_enabled":          boolSchema(),
+		"redaction_mode":             enumSchema("off", "basic"),
+		"expected_revision":          nonBlankStringSchema(),
+		"revision":                   nonBlankStringSchema(),
+	}, []string{"reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled", "redaction_mode"})
+	schema["anyOf"] = []any{
+		map[string]any{"required": []string{"expected_revision"}},
+		map[string]any{"required": []string{"revision"}},
+	}
+	return schema
+}
+
+func vaultApprovalContextSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"schema": nonBlankStringSchema(), "action_name": nonBlankStringSchema(), "token_id": integerSchema(),
+		"project_id": integerSchema(), "workspace_id": nonBlankStringSchema(), "runtime_instance_id": nonBlankStringSchema(),
+		"capability_name": nonBlankStringSchema(), "execution_rule": nonBlankStringSchema(),
+		"capability_execution_rule": nonBlankStringSchema(), "capability_revision": integerSchema(),
+		"capability_expires_at": stringSchema(), "token_expires_at": stringSchema(), "token_updated_at": stringSchema(),
+		"input_hash": nonBlankStringSchema(), "runtime_id": integerSchema(), "runtime_surface_updated_at": stringSchema(),
+		"runtime_capability_version": stringSchema(), "target_id": integerSchema(), "profile_id": integerSchema(),
+		"connector_kind": stringSchema(), "connector_action_name": stringSchema(), "connector_execution_rule": stringSchema(),
+		"connector_permission_expires_at": stringSchema(), "connector_permission_updated_at": stringSchema(),
+		"target_context_hash": stringSchema(), "expected_peer_identities": arraySchema(stringSchema()),
+		"expected_session_id": integerSchema(), "expected_session_generation": integerSchema(),
+		"expected_cols": integerSchema(), "expected_rows": integerSchema(), "environment_content_hash": stringSchema(),
+		"items": arraySchema(refSchema("VaultSessionItem")), "source_project_ids": arraySchema(integerSchema()),
+		"project_scope_hash": stringSchema(),
+	}, nil)
 }
 
 func connectorActionApprovalSchema(exactPreview bool) map[string]any {
@@ -177,7 +332,7 @@ func connectorActionApprovalSchema(exactPreview bool) map[string]any {
 		preview = cloneSchema(stringMap)
 		preview["description"] = "Redacted approval preview safe for list and mutation responses."
 	}
-	return objectSchema(map[string]any{
+	schema := objectSchema(map[string]any{
 		"id":                    integerSchema(),
 		"token_id":              integerSchema(),
 		"token_name":            stringSchema(),
@@ -204,6 +359,17 @@ func connectorActionApprovalSchema(exactPreview bool) map[string]any {
 		"retry_after_seconds":   integerSchema(),
 		"assistant_hint":        stringSchema(),
 	}, []string{"id", "target_id", "target_name", "target_ref", "profile_id", "profile_label", "connector_kind", "action_name", "status", "retry_policy", "created_at"})
+	schema["allOf"] = []any{map[string]any{
+		"if": map[string]any{
+			"properties": map[string]any{"status": map[string]any{"const": "approval_pending"}},
+			"required":   []string{"status"},
+		},
+		"then": map[string]any{
+			"properties": map[string]any{"approval_context_hash": nonBlankStringSchema()},
+			"required":   []string{"approval_context_hash"},
+		},
+	}}
+	return schema
 }
 
 func cloneSchema(schema map[string]any) map[string]any {
@@ -339,7 +505,10 @@ func objectSchema(properties map[string]any, required []string) map[string]any {
 func arraySchema(items map[string]any) map[string]any {
 	return map[string]any{"type": "array", "items": items}
 }
-func stringSchema() map[string]any   { return map[string]any{"type": "string"} }
+func stringSchema() map[string]any { return map[string]any{"type": "string"} }
+func nonBlankStringSchema() map[string]any {
+	return map[string]any{"type": "string", "minLength": 1, "pattern": `\S`}
+}
 func integerSchema() map[string]any  { return map[string]any{"type": "integer", "format": "int64"} }
 func boolSchema() map[string]any     { return map[string]any{"type": "boolean"} }
 func dateTimeSchema() map[string]any { return map[string]any{"type": "string", "format": "date-time"} }

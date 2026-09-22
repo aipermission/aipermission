@@ -26,6 +26,24 @@ func TestDeliveryCoordinatorRejectsExpiredContextBeforeAcquiringGate(t *testing.
 	release()
 }
 
+func TestDeliveryCoordinatorGuardFailsClosedAndReleasesReader(t *testing.T) {
+	coordinator := &DeliveryCoordinator{}
+	want := errors.New("finalization pending")
+	coordinator.SetDeliveryGuard(func(context.Context) error { return want })
+
+	release, err := coordinator.AcquireDelivery(t.Context())
+	if !errors.Is(err, want) || release != nil {
+		t.Fatalf("guarded delivery = release:%v err:%v", release != nil, err)
+	}
+
+	coordinator.SetDeliveryGuard(nil)
+	exclusive, err := coordinator.AcquireExclusive(t.Context())
+	if err != nil || exclusive == nil {
+		t.Fatalf("guard failure leaked reader admission: release:%v err:%v", exclusive != nil, err)
+	}
+	exclusive()
+}
+
 func TestDeliveryCoordinatorAllowsConcurrentDeliveriesAndFencesMutation(t *testing.T) {
 	coordinator := &DeliveryCoordinator{}
 	first, err := coordinator.AcquireDelivery(t.Context())

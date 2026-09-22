@@ -113,6 +113,7 @@ Terminal statuses:
 ```text
 completed
 failed
+canceled
 declined
 blocked
 error
@@ -193,8 +194,11 @@ files or inspect remote paths. Prefer the smallest explicit path set. Do not use
 globs, recursive copy, or directory transfer unless a connector action
 explicitly supports that behavior.
 
-MCP connector responses never include file contents, gateway temp paths, archive
-staging paths, or local upload contents.
+File-transfer queue and status responses do not include transferred file bytes,
+gateway temp paths, archive staging paths, or local upload contents. Explicitly
+authorized connector read actions may return bounded content, such as S3
+`download_object` `content_base64` or SSH command output; treat it as sensitive
+target data.
 
 ## S3/Object Storage Practice
 
@@ -259,7 +263,8 @@ the operator how to rotate or redact it.
 Use Project Vault only through its dedicated tools:
 
 1. Call `list_vault_items(project_ref)` to discover names and non-secret
-   metadata. Never ask the gateway to reveal values.
+   metadata. Prefer an explicit `id:<id>` or `slug:<slug>` reference. Never ask
+   the gateway to reveal values.
 2. Use `call_vault_action` with `generate_item` only when the operator asked for
    a new secret. Use a stable, unique `idempotency_key`. Send `tags` as a string
    array, `shared_project_ids` as an integer array, and `usage_notes` as an

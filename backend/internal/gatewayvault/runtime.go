@@ -42,6 +42,7 @@ type SessionRuntime struct {
 	MCPStarted        func() bool
 	AcquireDelivery   func(context.Context) (func(), error)
 	AcquireExclusive  func(context.Context) (func(), error)
+	WithAdmission     func(context.Context) context.Context
 }
 
 type ProjectRuntimePorts struct {

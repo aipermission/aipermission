@@ -21,17 +21,20 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 )
 
 const (
 	ServiceProviderType = "aipermission_backup"
-	ServiceProtocol     = "3"
+	ServiceProtocol     = "4"
 	maxServiceJSONBytes = 1 << 20
 )
 
 var requiredServiceCapabilities = []string{
 	"immutable_upload",
 	"idempotent_upload",
+	"upload_operation_tombstones",
 	"list_streams",
 	"list_versions",
 	"download",
@@ -466,6 +469,9 @@ func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sour
 	if err := validateServiceBackup(backup, streamID, expectedSize); err != nil {
 		return ServiceBackup{}, false, err
 	}
+	if backup.SourceInstallationID != sourceInstallationID {
+		return ServiceBackup{}, false, errors.New("backup service upload response source installation does not match the request")
+	}
 	if !replayed && !strings.EqualFold(backup.SHA256, expectedSHA256) {
 		return ServiceBackup{}, false, errors.New("backup service checksum does not match the uploaded snapshot")
 	}
@@ -777,16 +783,7 @@ func decodeBoundedJSON(reader io.Reader, target any) error {
 }
 
 func validServiceIdentifier(value string) bool {
-	if len(value) < 1 || len(value) > 128 {
-		return false
-	}
-	for index, char := range value {
-		valid := char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || index > 0 && (char == '.' || char == '_' || char == '-')
-		if !valid {
-			return false
-		}
-	}
-	return true
+	return uploadoperation.ValidServiceIdentifier(value)
 }
 
 func validSHA256(value string) bool {

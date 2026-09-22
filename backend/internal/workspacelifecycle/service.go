@@ -50,6 +50,8 @@ type Dependencies[T Runtime] struct {
 	ValidateNewPassword func(context.Context, T, string, string) error
 	Publish             func(sourcePath, targetPath string) error
 	GatewaySecret       func() string
+	CheckpointFull      func(context.Context, *sql.DB) error
+	Rekey               func(context.Context, *sql.DB, string) error
 }
 
 type Service[T Runtime] struct {
@@ -69,6 +71,8 @@ type Service[T Runtime] struct {
 	validateNewPassword func(context.Context, T, string, string) error
 	publish             func(sourcePath, targetPath string) error
 	gatewaySecret       func() string
+	checkpointFull      func(context.Context, *sql.DB) error
+	rekey               func(context.Context, *sql.DB, string) error
 }
 
 func (s *Service[T]) AcquireReadContext(ctx context.Context) (func(), error) {
@@ -94,14 +98,29 @@ type Transition struct {
 	Opened   bool
 }
 
-type verifiedCredentialError struct{ err error }
+type verifiedCredentialError struct {
+	err               error
+	sessionDatabaseID string
+}
 
 func (e verifiedCredentialError) Error() string { return e.err.Error() }
 func (e verifiedCredentialError) Unwrap() error { return e.err }
+func (e verifiedCredentialError) SessionInvalidationDatabase() string {
+	return e.sessionDatabaseID
+}
 
 func CredentialWasVerified(err error) bool {
 	var verified verifiedCredentialError
 	return errors.As(err, &verified)
+}
+
+func SessionInvalidationDatabase(err error) (string, bool) {
+	var detached interface{ SessionInvalidationDatabase() string }
+	if !errors.As(err, &detached) {
+		return "", false
+	}
+	databaseID := strings.TrimSpace(detached.SessionInvalidationDatabase())
+	return databaseID, databaseID != ""
 }
 
 func afterCredential(err error) error {
@@ -109,6 +128,13 @@ func afterCredential(err error) error {
 		return nil
 	}
 	return verifiedCredentialError{err: err}
+}
+
+func afterRuntimeDetached(databaseID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return verifiedCredentialError{err: err, sessionDatabaseID: databaseID}
 }
 
 type classifiedError struct {
@@ -178,6 +204,14 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 	if publish == nil {
 		publish = db.PublishFileNoReplace
 	}
+	checkpointFull := dependencies.CheckpointFull
+	if checkpointFull == nil {
+		checkpointFull = db.CheckpointFull
+	}
+	rekey := dependencies.Rekey
+	if rekey == nil {
+		rekey = db.RekeyContext
+	}
 	return &Service[T]{
 		gate:     newRequestGate(),
 		dataPath: dependencies.DataPath, registry: dependencies.Registry,
@@ -187,6 +221,7 @@ func NewService[T Runtime](dependencies Dependencies[T]) (*Service[T], error) {
 		validate: validate, move: move, delete: deleteDatabase,
 		validateNewPassword: dependencies.ValidateNewPassword,
 		publish:             publish, gatewaySecret: dependencies.GatewaySecret,
+		checkpointFull: checkpointFull, rekey: rekey,
 	}, nil
 }
 
@@ -592,13 +627,54 @@ func (s *Service[T]) ChangePassword(ctx context.Context, currentPassword, newPas
 	if err := s.validate(identity.Path, currentPassword); err != nil {
 		return fmt.Errorf("%w: %v", ErrCredential, err)
 	}
-	_ = db.CheckpointFull(ctx, runtime.WorkspaceDatabase())
-	if err := db.Rekey(runtime.WorkspaceDatabase(), newPassword); err != nil {
-		return afterCredential(err)
+	if err := s.rekey(ctx, runtime.WorkspaceDatabase(), newPassword); err != nil {
+		if s.validate(identity.Path, newPassword) == nil {
+			return s.reactivateAfterPasswordChangeLocked(ctx, runtime, identity, newPassword)
+		}
+		if s.validate(identity.Path, currentPassword) == nil {
+			return afterCredential(err)
+		}
+		return s.detachAfterAmbiguousPasswordChangeLocked(ctx, runtime, identity, err)
 	}
-	_ = db.CheckpointFull(ctx, runtime.WorkspaceDatabase())
+	return s.reactivateAfterPasswordChangeLocked(ctx, runtime, identity, newPassword)
+}
+
+func (s *Service[T]) detachAfterAmbiguousPasswordChangeLocked(ctx context.Context, runtime T, identity Identity, cause error) error {
+	detachCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	closeErr := s.close(runtime)
+	s.registry.Remove(identity.ID, false)
+	s.registry.Select(identity)
+	if err := s.waitForDeferredClose(detachCtx, runtime, closeErr); err != nil {
+		cause = errors.Join(cause, fmt.Errorf("close ambiguous password-change runtime: %w", err))
+	}
+	return afterRuntimeDetached(identity.ID, fmt.Errorf("database password change outcome is uncertain; unlock the workspace again: %w", cause))
+}
+
+func (s *Service[T]) reactivateAfterPasswordChangeLocked(ctx context.Context, runtime T, identity Identity, newPassword string) error {
+	// Rekey changes the file, but database/sql retains the old password in its
+	// connector. Replace the complete runtime so every future physical
+	// connection is opened with the new key. This recovery must finish even if
+	// the HTTP request is canceled after the irreversible rekey succeeds.
+	reactivationCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
+	checkpointErr := s.checkpointFull(reactivationCtx, runtime.WorkspaceDatabase())
+	closeErr := s.close(runtime)
+	s.registry.Remove(identity.ID, false)
+	s.registry.Select(identity)
+	if err := s.waitForDeferredClose(reactivationCtx, runtime, closeErr); err != nil {
+		return afterRuntimeDetached(identity.ID, fmt.Errorf("database password changed but the previous runtime could not close cleanly: %w", err))
+	}
+	if checkpointErr != nil {
+		return afterRuntimeDetached(identity.ID, fmt.Errorf("database password changed but the recovery checkpoint failed: %w", checkpointErr))
+	}
 	if err := s.validate(identity.Path, newPassword); err != nil {
-		return afterCredential(fmt.Errorf("database password changed but verification reopen failed: %w", err))
+		return afterRuntimeDetached(identity.ID, fmt.Errorf("database password changed but verification reopen failed: %w", err))
+	}
+	if _, err := s.openAndActivateLocked(reactivationCtx, identity, newPassword, "unlocked"); err != nil {
+		return afterRuntimeDetached(identity.ID, fmt.Errorf("database password changed but runtime reactivation failed: %w", err))
 	}
 	return nil
 }

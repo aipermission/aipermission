@@ -323,8 +323,17 @@ func normalizeKeys(value any) ([]string, error) {
 	keys := make([]string, 0, len(raw))
 	seen := map[string]bool{}
 	for _, item := range raw {
-		key := strings.TrimSpace(fmt.Sprint(item))
-		if key == "" || seen[key] {
+		key, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("keys must contain only strings")
+		}
+		if key == "" {
+			return nil, fmt.Errorf("keys must not contain an empty key")
+		}
+		if len(key) > maxRESPBulkBytes {
+			return nil, fmt.Errorf("redis key exceeds %d bytes", maxRESPBulkBytes)
+		}
+		if seen[key] {
 			continue
 		}
 		keys = append(keys, key)
@@ -337,6 +346,17 @@ func normalizeKeys(value any) ([]string, error) {
 		return nil, fmt.Errorf("too many keys")
 	}
 	return keys, nil
+}
+
+func exactRedisKey(values map[string]any, field string) (string, error) {
+	key, ok := values[field].(string)
+	if !ok || key == "" {
+		return "", fmt.Errorf("%s is required", field)
+	}
+	if len(key) > maxRESPBulkBytes {
+		return "", fmt.Errorf("redis key exceeds %d bytes", maxRESPBulkBytes)
+	}
+	return key, nil
 }
 
 func copyMap(input map[string]any) map[string]any {

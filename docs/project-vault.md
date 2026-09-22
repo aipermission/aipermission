@@ -59,6 +59,13 @@ idempotency, context-drift, history, audit, and secret-redaction path without
 opening the approval dialog. Always is an explicit autonomous secret-use grant,
 not a way to expose the secret value to MCP.
 
+Metadata responses contain no Vault values. Revocation is authoritative for
+every metadata read admitted after the revocation commits. A non-secret metadata
+response whose authorization check already completed may finish concurrently
+with that commit; AIPermission does not promise cancellation between an admitted
+read and its final HTTP byte. Secret delivery has a stronger boundary and uses
+the lifecycle lease and exact-session checks described below.
+
 ## Session Application
 
 Supported connector runtimes advertise a typed session-environment capability.
@@ -149,10 +156,19 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
+Use explicit project references in automation: `id:<id>` for a database ID or
+`slug:<slug>` for a stable slug. Plain IDs and slugs remain supported for
+compatibility, but a legacy numeric slug that collides with an ID is rejected
+instead of selecting a project implicitly.
+
 `call_vault_action` currently supports:
 
 - `generate_item`
 - `restart_session_with_environment`
+
+`generate_item` defaults an omitted `secret_type` to `generic_secret` and
+validates all generation metadata before creating either an Always request or
+a local Prompt approval.
 
 Every mutation creates a tracked request. Prompt requests can be declined,
 canceled by the owning token, expire after 15 minutes, or become stale when the

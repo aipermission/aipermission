@@ -16,7 +16,7 @@ import (
 const (
 	Kind    = "s3"
 	Label   = "S3"
-	Version = "0.3"
+	Version = "0.4"
 
 	ActionBucketInfo        = "bucket_info"
 	ActionListObjects       = "list_objects"
@@ -41,8 +41,11 @@ const (
 	defaultS3ListLimit = 100
 	maxS3ListLimit     = 1000
 	maxS3SearchPages   = 20
-	defaultDownloadMax = 5 << 20
-	maxDownloadBytes   = 25 << 20
+	// A 768 KiB object expands to exactly the shared 1 MiB canonical string
+	// limit when represented as base64. Larger transfers use file transfer.
+	defaultDownloadMax = 768 << 10
+	maxDownloadBytes   = 768 << 10
+	maxDownloadOutput  = (1 << 20) + (4 << 10)
 	maxUploadBytes     = 16 << 20
 	maxS3ResponseBytes = 2 << 20
 	maxS3ReasonBytes   = 2000

@@ -71,18 +71,20 @@ type Record struct {
 }
 
 type CreateRequest struct {
-	RuntimeID              int64                        `json:"runtime_id"`
-	Name                   string                       `json:"name"`
-	CloseExisting          bool                         `json:"close_existing"`
-	Cols                   int                          `json:"cols"`
-	Rows                   int                          `json:"rows"`
-	WaitForStart           bool                         `json:"wait_for_start"`
-	Params                 map[string]any               `json:"params,omitempty"`
-	Principal              executionprincipal.Principal `json:"-"`
-	Environment            *sessionenv.Envelope         `json:"-"`
-	PrepareEnvironment     EnvironmentPreparer          `json:"-"`
-	EnvironmentContentHash string                       `json:"-"`
-	ApprovalContextHash    string                       `json:"-"`
+	RuntimeID          int64                        `json:"runtime_id"`
+	Name               string                       `json:"name"`
+	CloseExisting      bool                         `json:"close_existing"`
+	Cols               int                          `json:"cols"`
+	Rows               int                          `json:"rows"`
+	WaitForStart       bool                         `json:"wait_for_start"`
+	Params             map[string]any               `json:"params,omitempty"`
+	Principal          executionprincipal.Principal `json:"-"`
+	Environment        *sessionenv.Envelope         `json:"-"`
+	PrepareEnvironment EnvironmentPreparer          `json:"-"`
+	// StartupAdmissionRelease is an idempotent callback owned by the session.
+	StartupAdmissionRelease func() `json:"-"`
+	EnvironmentContentHash  string `json:"-"`
+	ApprovalContextHash     string `json:"-"`
 }
 
 type EnvironmentPreparation struct {
@@ -141,14 +143,14 @@ type RuntimeSession struct {
 type consoleSessionActiveExec struct {
 	Command     string
 	Marker      string
-	StartOffset int
+	StartOffset int64
 	Started     time.Time
 }
 
 type consoleSessionManualCapture struct {
 	RequestID                int64
 	Command                  string
-	StartOffset              int
+	StartOffset              int64
 	ResumePrompt             string
 	Started                  time.Time
 	CompletionTrackingReason string
@@ -157,7 +159,7 @@ type consoleSessionManualCapture struct {
 type consoleSessionManualPause struct {
 	Prompt      string
 	Reason      string
-	StartOffset int
+	StartOffset int64
 }
 
 type Manager struct {
@@ -194,9 +196,7 @@ const (
 	OperationClose     SessionOperation = "close"
 )
 
-// SessionAuthorizer must invoke run only while the authorization decision
-// remains valid. This keeps permission mutations from crossing the boundary
-// between a successful check and the protected console operation.
+// SessionAuthorizer runs the operation only while its authorization decision remains valid.
 type SessionAuthorizer func(
 	context.Context,
 	executionprincipal.Principal,
@@ -213,23 +213,24 @@ func (m *Manager) redactText(value string) string {
 }
 
 type managedConsoleSession struct {
-	id                     int64
-	runtimeID              int64
-	generation             int64
-	name                   string
-	cols                   int
-	rows                   int
-	params                 map[string]any
-	principal              executionprincipal.Principal
-	environment            *sessionenv.Envelope
-	prepareEnvironment     EnvironmentPreparer
-	environmentContentHash string
-	approvalContextHash    string
-	exactRedactor          *sessionenv.Redactor
-	stdoutExactRedactor    *sessionenv.Redactor
-	stderrExactRedactor    *sessionenv.Redactor
-	exactRedactionClosed   bool
-	manager                *Manager
+	id                      int64
+	runtimeID               int64
+	generation              int64
+	name                    string
+	cols                    int
+	rows                    int
+	params                  map[string]any
+	principal               executionprincipal.Principal
+	environment             *sessionenv.Envelope
+	prepareEnvironment      EnvironmentPreparer
+	startupAdmissionRelease func()
+	environmentContentHash  string
+	approvalContextHash     string
+	exactRedactor           *sessionenv.Redactor
+	stdoutExactRedactor     *sessionenv.Redactor
+	stderrExactRedactor     *sessionenv.Redactor
+	exactRedactionClosed    bool
+	manager                 *Manager
 
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -248,24 +249,25 @@ type managedConsoleSession struct {
 	persisted  bool
 	hookDone   bool
 
-	mu            sync.Mutex
-	execMu        sync.Mutex
-	status        string
-	closing       bool
-	transcript    string
-	rawTranscript string
-	pendingOutput string
-	errText       string
-	stdin         io.WriteCloser
-	runtime       *RuntimeSession
-	clients       map[*websocket.Conn]*sync.Mutex
-	activeExec    *consoleSessionActiveExec
-	manualInput   manualInputCapture
-	manualActive  *consoleSessionManualCapture
-	manualPause   *consoleSessionManualPause
-	filterUntil   time.Time
-	persistTimer  *time.Timer
-	startErr      error
-	finalStatus   string
-	finalMessage  string
+	mu              sync.Mutex
+	execMu, inputMu sync.Mutex
+	status          string
+	closing         bool
+	transcript      string
+	rawTranscript   string
+	rawBaseOffset   int64
+	pendingOutput   string
+	errText         string
+	stdin           io.WriteCloser
+	runtime         *RuntimeSession
+	clients         map[*websocket.Conn]*sync.Mutex
+	activeExec      *consoleSessionActiveExec
+	manualInput     manualInputCapture
+	manualActive    *consoleSessionManualCapture
+	manualPause     *consoleSessionManualPause
+	filterUntil     time.Time
+	persistTimer    *time.Timer
+	startErr        error
+	finalStatus     string
+	finalMessage    string
 }

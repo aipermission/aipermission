@@ -162,6 +162,15 @@ function ValueContent({ browser, inputClass }) {
       />
     );
   if (!browser.keyResult) return <Notice>Select a key from the left panel to inspect its value.</Notice>;
+  if (browser.keyResult.type === "string" && browser.keyResult.truncated === true)
+    return (
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+        <Notice tone="warn">This bounded preview is read-only and cannot replace the complete stored string.</Notice>
+        <TerminalBlock surface="log" className="min-h-0 text-xs">
+          {String(browser.keyResult.value ?? "")}
+        </TerminalBlock>
+      </div>
+    );
   if (browser.keyResult.type === "string")
     return (
       <Textarea

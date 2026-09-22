@@ -63,10 +63,11 @@ cat secrets/backup-token
 5. Save the provider. New providers remain disabled.
 6. Select **Test** to verify authentication and protocol compatibility.
 
-AIPermission v0.2.48 requires AIPermission Backup v0.3.0 and service protocol
-v3 for every backup operation. Upgrade the separate backup service first, then
-upgrade the gateway. Older backup service versions are intentionally rejected
-instead of silently falling back to weaker upload semantics.
+This AIPermission release requires backup service protocol v4 and its
+`upload_operation_tombstones` capability for every backup operation. Upgrade
+the separate backup service first, then upgrade the gateway. Older backup
+service versions are intentionally rejected instead of silently falling back
+to weaker upload or replay semantics.
 7. Select **Enable**, then enter the current database password.
 
 Enabling remote backup applies a stronger password policy than normal local
@@ -123,11 +124,25 @@ immutable upload. Both automatic and explicit cleanup preserve the final
 recovery version. Pending deletion bytes may continue to count toward provider
 storage until the remote blob worker finishes cleanup.
 
-All provider operations require backup service protocol v3, including its
-idempotent upload contract. Retention and quota controls additionally use the
-protocol's `/v1/...` storage and retention routes. A protocol error means the
-separate backup service must be upgraded to v0.3.0 before this AIPermission
-release can use it.
+All provider operations require backup service protocol v4, including its
+idempotent upload and expired-operation tombstone contracts. Retention and
+quota controls additionally use the protocol's `/v1/...` storage and retention
+routes. A protocol error means the separate backup service must be upgraded
+before this AIPermission release can use it.
+
+The service retains non-secret upload operation tombstones independently from
+deleted backup versions. A replay after the original version has expired
+returns `410 operation_expired`; the gateway retires that operation identity
+after the authoritative service response. That reconciliation attempt can
+create a temporary local snapshot before the service rejects the retained key,
+but later retries stop locally and no replacement backup version is committed.
+Starting a new backup uses a new operation identity.
+
+When upgrading the gateway from protocol v3 to v4, unfinished upload identities
+are retired locally. Protocol v3 could not prove that a pruned remote result
+still retained its idempotency tombstone, so replaying those identities would
+risk creating a duplicate version. Start a new backup after the upgrade rather
+than retrying an upload whose earlier outcome was uncertain.
 
 ## Operational Notes
 

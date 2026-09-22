@@ -12,7 +12,7 @@ import (
 const (
 	Kind    = "kafka"
 	Label   = "Kafka / Redpanda"
-	Version = "0.3"
+	Version = "0.4"
 
 	ActionClusterInfo            = "cluster_info"
 	ActionListTopics             = "list_topics"
@@ -263,12 +263,12 @@ func actionDefinitions() []connectors.ActionDefinition {
 		{Name: ActionPublishMessage, Label: "Publish message", Description: "Publish one bounded message to one explicit topic partition with all-in-sync-replica acknowledgements.", Category: "messages", Risk: connectors.RiskWrite, InputSchema: connectors.Schema{Fields: []connectors.Field{
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
 			{Name: "partition", Label: "Partition", Type: connectors.FieldInteger, Required: true, Default: 0},
-			{Name: "key", Label: "Key", Type: connectors.FieldMultiline, Default: ""},
+			{Name: "key", Label: "Key", Type: connectors.FieldMultiline, PreserveWhitespace: true, Default: ""},
 			{Name: "key_encoding", Label: "Key encoding", Type: connectors.FieldSelect, Required: true, Default: "utf8", Options: []connectors.FieldOption{
 				{Value: "utf8", Label: "UTF-8"},
 				{Value: "base64", Label: "Base64"},
 			}},
-			{Name: "value", Label: "Value", Type: connectors.FieldMultiline, Default: ""},
+			{Name: "value", Label: "Value", Type: connectors.FieldMultiline, PreserveWhitespace: true, Default: ""},
 			{Name: "value_encoding", Label: "Value encoding", Type: connectors.FieldSelect, Required: true, Default: "utf8", Options: []connectors.FieldOption{
 				{Value: "utf8", Label: "UTF-8"},
 				{Value: "base64", Label: "Base64"},

@@ -1,18 +1,28 @@
 package httptransport
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const (
 	OrdinaryRequestTimeout        = 45 * time.Second
 	RemoteBrowseRequestTimeout    = 75 * time.Second
 	ConnectorActionRequestTimeout = 90 * time.Second
+	WorkspaceHeaderName           = "X-AIPermission-Workspace"
+	WorkspaceChangedHeaderName    = "X-AIPermission-Workspace-Changed"
+	WorkspaceQueryName            = "workspace"
 )
 
 type Lifecycle interface {
@@ -32,6 +42,7 @@ type HTTPBoundary struct {
 	HasCSRF           func(*http.Request) bool
 	IsSessionExempt   func(string) bool
 	RequiresCSRF      func(string, string) bool
+	CurrentWorkspace  func() string
 	WriteError        func(http.ResponseWriter, int, string)
 }
 
@@ -75,7 +86,8 @@ func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-AIPermission-CSRF")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-AIPermission-CSRF, "+WorkspaceHeaderName)
+			w.Header().Set("Access-Control-Expose-Headers", WorkspaceHeaderName+", "+WorkspaceChangedHeaderName)
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -86,12 +98,19 @@ func (boundary HTTPBoundary) cors(next http.Handler) http.Handler {
 }
 
 func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	workspaceWriter := &workspaceResponseWriter{
+		ResponseWriter: w,
+		current:        boundary.CurrentWorkspace,
+		requested:      requestedWorkspace(r),
+	}
+	w = workspaceWriter
 	if IsStateChangingMethod(r.Method) && !boundary.safeBrowserMutationSource(r) {
 		boundary.writeError(w, http.StatusForbidden, "cross-site mutation requests are not allowed")
 		return
 	}
 	streaming, managesLifecycle := IsStreamingRoute(r.URL.Path), ManagesLifecycleLock(r.URL.Path)
-	if !streaming && !managesLifecycle {
+	upgradeLease := isWorkspaceSocketRoute(r.URL.Path)
+	if (!streaming || upgradeLease) && !managesLifecycle {
 		var release func()
 		var err error
 		if IsLifecycleMutation(r.URL.Path) {
@@ -107,7 +126,12 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		defer release()
+		if upgradeLease {
+			workspaceWriter.release = release
+			defer workspaceWriter.releaseLease()
+		} else {
+			defer release()
+		}
 	}
 	unlocked := boundary.IsUnlocked != nil && boundary.IsUnlocked()
 	if !unlocked && !isAllowedWhileLocked(r.URL.Path) {
@@ -128,7 +152,111 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		boundary.writeError(w, http.StatusForbidden, "csrf token required")
 		return
 	}
+	requiresMutationBinding := boundary.RequiresCSRF != nil && boundary.RequiresCSRF(r.Method, r.URL.Path)
+	if unlocked && (requiresMutationBinding || IsWorkspaceBoundRead(r.Method, r.URL.Path)) && !boundary.hasCurrentWorkspace(r) {
+		boundary.writeError(w, http.StatusConflict, "workspace changed; refresh before making changes")
+		return
+	}
 	boundary.Routes.ServeHTTP(w, r)
+}
+
+func (boundary HTTPBoundary) hasCurrentWorkspace(r *http.Request) bool {
+	if boundary.CurrentWorkspace == nil {
+		return false
+	}
+	want := strings.TrimSpace(boundary.CurrentWorkspace())
+	return want != "" && requestedWorkspace(r) == want
+}
+
+func requestedWorkspace(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(r.Header.Get(WorkspaceHeaderName)); value != "" {
+		return value
+	}
+	if isWorkspaceSocketRoute(r.URL.Path) {
+		return strings.TrimSpace(r.URL.Query().Get(WorkspaceQueryName))
+	}
+	return ""
+}
+
+type workspaceResponseWriter struct {
+	http.ResponseWriter
+	current   func() string
+	requested string
+	wrote     bool
+	release   func()
+	releaseMu sync.Once
+}
+
+func (w *workspaceResponseWriter) WriteHeader(status int) {
+	w.applyHeader()
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *workspaceResponseWriter) Write(data []byte) (int, error) {
+	w.applyHeader()
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *workspaceResponseWriter) Flush() {
+	w.applyHeader()
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *workspaceResponseWriter) ReadFrom(reader io.Reader) (int64, error) {
+	w.applyHeader()
+	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(reader)
+	}
+	return io.Copy(w.ResponseWriter, reader)
+}
+
+func (w *workspaceResponseWriter) Push(target string, options *http.PushOptions) error {
+	pusher, ok := w.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, options)
+}
+
+func (w *workspaceResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	w.applyHeader()
+	connection, buffer, err := hijacker.Hijack()
+	if err == nil {
+		w.releaseLease()
+	}
+	return connection, buffer, err
+}
+
+func (w *workspaceResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *workspaceResponseWriter) releaseLease() {
+	if w == nil || w.release == nil {
+		return
+	}
+	w.releaseMu.Do(w.release)
+}
+
+func (w *workspaceResponseWriter) applyHeader() {
+	if w.wrote {
+		return
+	}
+	w.wrote = true
+	if w.current != nil {
+		current := strings.TrimSpace(w.current())
+		w.Header().Set(WorkspaceHeaderName, current)
+		if w.requested != "" && current != w.requested {
+			w.Header().Set(WorkspaceChangedHeaderName, "true")
+		}
+	}
 }
 
 func (boundary HTTPBoundary) safeBrowserMutationSource(r *http.Request) bool {
@@ -175,6 +303,12 @@ func IsStateChangingMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
 }
 
+// IsWorkspaceBoundRead exposes the shared transport contract through the API
+// boundary package so API composition does not depend on transport internals.
+func IsWorkspaceBoundRead(method, path string) bool {
+	return transportcontract.IsWorkspaceBoundRead(method, path)
+}
+
 func IsLifecycleMutation(path string) bool {
 	if strings.HasPrefix(path, "/api/backup/providers/") && strings.HasSuffix(path, "/restore") {
 		return true
@@ -189,7 +323,11 @@ func IsLifecycleMutation(path string) bool {
 }
 
 func IsStreamingRoute(path string) bool {
-	return path == "/api/settings/maintenance-console/attach" || strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
+	return isWorkspaceSocketRoute(path)
+}
+
+func isWorkspaceSocketRoute(path string) bool {
+	return transportcontract.IsWorkspaceSocketRoute(path)
 }
 
 func IsUnboundedRequestRoute(path string) bool {

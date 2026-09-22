@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -94,7 +95,7 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	if _, err := fixture.db.Exec(`UPDATE connector_action_requests SET encrypted_payload_json = ? WHERE id = ?`, encryptedPayload, result.Request.ID); err != nil {
 		t.Fatalf("restore encrypted approval payload: %v", err)
 	}
-	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "credential secret"})
+	declineResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/decline", "", declineConnectorActionApprovalRequest{UserNote: "credential secret", ApprovalContextHash: result.Request.ApprovalContextHash})
 	if declineResponse.Code != http.StatusOK || !strings.Contains(declineResponse.Body.String(), `"status":"declined"`) {
 		t.Fatalf("decline connector approval failed: %d %s", declineResponse.Code, declineResponse.Body.String())
 	}
@@ -108,6 +109,102 @@ func TestConnectorActionApprovalRoutesDeclinePendingRequest(t *testing.T) {
 	}
 	if strings.Contains(storedError, "credential secret") || !strings.Contains(storedError, "[REDACTED CREDENTIAL]") {
 		t.Fatalf("decline note was not credential-boundary redacted: %q", storedError)
+	}
+}
+
+func TestConnectorActionApprovalRejectsStaleTabAcrossCollidingWorkspaceIDs(t *testing.T) {
+	for _, operation := range []string{"run", "decline"} {
+		t.Run(operation, func(t *testing.T) {
+			catalog := newTestConnectorCatalog(t)
+			withTestConnector(localActionTestConnector{})(t, catalog)
+			server := NewLockedServer(
+				fixtureConfigForLockedTest(t),
+				WithConnectorRegistry(catalog.connectors),
+				WithConnectorAdapterRegistry(catalog.adapters),
+			)
+			defer server.Close()
+
+			setup := func(name string) {
+				t.Helper()
+				response := performJSON(server.Handler(), http.MethodPost, "/api/unlock/setup", "", setupUnlockRequest{
+					Password: "WorkspacePassword123", ConfirmPassword: "WorkspacePassword123", DatabaseName: name,
+				})
+				if response.Code != http.StatusOK {
+					t.Fatalf("setup %s: %d %s", name, response.Code, response.Body.String())
+				}
+			}
+			pending := func(value string) connectortargets.ActionRequest {
+				t.Helper()
+				runtime := server.activeRuntime()
+				database := testRuntimeDatabase(t, server, runtime)
+				token, err := tokens.NewStore(database).Create(t.Context(), tokens.CreateRequest{Name: "workspace-agent"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				store := connectortargets.NewStore(database)
+				target, profile := createApprovalObserverTargetProfile(t, store)
+				if err := store.SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
+					TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "echo",
+					ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				testRuntimeControlState(t, server, runtime).SetMCPStarted(true)
+				result, err := server.callConnectorAction(t.Context(), runtime, connectorActionCall{
+					Source: commandRequestSourceMCP, TokenID: token.ID,
+					TargetRef:  connectors.FormatTargetRef(localActionTestConnectorKind, target.ID, profile.ID),
+					ActionName: "echo", Input: map[string]any{"value": value}, Reason: "workspace binding regression",
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return result.Request
+			}
+
+			setup("Workspace A")
+			requestA := pending("displayed-from-a")
+			detail := performJSON(server.Handler(), http.MethodGet, "/api/connector-action-approvals/"+strconv.FormatInt(requestA.ID, 10), "", nil)
+			if detail.Code != http.StatusOK {
+				t.Fatalf("read workspace A approval: %d %s", detail.Code, detail.Body.String())
+			}
+			var displayed struct {
+				ApprovalContextHash string `json:"approval_context_hash"`
+			}
+			if err := json.Unmarshal(detail.Body.Bytes(), &displayed); err != nil || displayed.ApprovalContextHash == "" {
+				t.Fatalf("decode workspace A approval: %#v err=%v", displayed, err)
+			}
+			workspaceA := currentTestUIWorkspaceBinding()
+			if workspaceA == "" {
+				t.Fatal("workspace A binding is empty")
+			}
+			if response := performJSON(server.Handler(), http.MethodPost, "/api/lock", "", map[string]string{"scope": "all"}); response.Code != http.StatusOK {
+				t.Fatalf("lock workspace A: %d %s", response.Code, response.Body.String())
+			}
+
+			setup("Workspace B")
+			requestB := pending("unseen-from-b")
+			if requestA.ID != requestB.ID {
+				t.Fatalf("workspace request IDs did not collide: A=%d B=%d", requestA.ID, requestB.ID)
+			}
+			path := "/api/connector-action-approvals/" + strconv.FormatInt(requestA.ID, 10) + "/" + operation
+			stale := performJSONForWorkspace(server.Handler(), http.MethodPost, path, runConnectorActionApprovalRequest{
+				ApprovalContextHash: displayed.ApprovalContextHash,
+			}, workspaceA)
+			if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), "workspace changed") {
+				t.Fatalf("stale %s response: %d %s", operation, stale.Code, stale.Body.String())
+			}
+			stored, err := connectortargets.NewStore(testRuntimeDatabase(t, server, server.activeRuntime())).GetActionRequest(t.Context(), requestB.ID)
+			if err != nil || stored.Status != connectors.ResultApprovalPending {
+				t.Fatalf("stale %s mutated workspace B request: %#v err=%v", operation, stored, err)
+			}
+
+			fresh := performJSON(server.Handler(), http.MethodPost, path, "", runConnectorActionApprovalRequest{
+				ApprovalContextHash: requestB.ApprovalContextHash,
+			})
+			if fresh.Code != http.StatusOK {
+				t.Fatalf("fresh workspace B %s failed: %d %s", operation, fresh.Code, fresh.Body.String())
+			}
+		})
 	}
 }
 
@@ -143,7 +240,7 @@ func TestConnectorActionApprovalRunUsesEncryptedInputNotRedactedDisplay(t *testi
 		t.Fatalf("display input should be redacted: %#v", result.Request.Input)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{ApprovalContextHash: result.Request.ApprovalContextHash})
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("approval run should not fail stale because display input was redacted: %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -185,7 +282,7 @@ func TestConnectorActionApprovalRunDeliversUserNote(t *testing.T) {
 		t.Fatalf("call connector action: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "only inspect metadata"})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "only inspect metadata", ApprovalContextHash: result.Request.ApprovalContextHash})
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("approval run failed: %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -243,7 +340,7 @@ func TestConnectorActionApprovalRunMarksDriftStale(t *testing.T) {
 		t.Fatalf("block connector permission: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "must not persist after drift"})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{UserNote: "must not persist after drift", ApprovalContextHash: result.Request.ApprovalContextHash})
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -308,7 +405,7 @@ func TestConnectorActionApprovalRunMarksPrepareFailureStale(t *testing.T) {
 		t.Fatalf("insert pending connector request: %v", err)
 	}
 
-	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
+	runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{ApprovalContextHash: request.ApprovalContextHash})
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("expected prepare drift conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 	}
@@ -379,7 +476,7 @@ func TestConnectorActionApprovalRunRejectsRetryPolicyDrift(t *testing.T) {
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,
 		"/api/connector-action-approvals/"+strconv.FormatInt(pending.Request.ID, 10)+"/run", "",
-		runConnectorActionApprovalRequest{},
+		runConnectorActionApprovalRequest{ApprovalContextHash: pending.Request.ApprovalContextHash},
 	)
 	if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 		t.Fatalf("retry policy drift response: %d %s", runResponse.Code, runResponse.Body.String())
@@ -526,7 +623,7 @@ func TestConnectorActionApprovalRunRequiresCurrentToken(t *testing.T) {
 			}
 
 			mutate(t, fixture, token)
-			runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{})
+			runResponse := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-action-approvals/"+strconv.FormatInt(result.Request.ID, 10)+"/run", "", runConnectorActionApprovalRequest{ApprovalContextHash: result.Request.ApprovalContextHash})
 			if runResponse.Code != http.StatusConflict || !strings.Contains(runResponse.Body.String(), "fresh request") {
 				t.Fatalf("expected stale conflict, got %d %s", runResponse.Code, runResponse.Body.String())
 			}
@@ -614,7 +711,7 @@ func TestConnectorActionApprovalRunFinalizesExecutionFailure(t *testing.T) {
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,
 		"/api/connector-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "",
-		runConnectorActionApprovalRequest{},
+		runConnectorActionApprovalRequest{ApprovalContextHash: pending.Request.ApprovalContextHash},
 	)
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("run connector approval: %d %s", runResponse.Code, runResponse.Body.String())
@@ -713,7 +810,7 @@ func TestConnectorActionApprovalRunTransitionsBeforeExecutionAndCompletesAudit(t
 	runResponse := performJSON(
 		fixture.server.Handler(), http.MethodPost,
 		"/api/connector-action-approvals/"+strconv.FormatInt(requestID, 10)+"/run", "",
-		runConnectorActionApprovalRequest{UserNote: "inspect metadata only"},
+		runConnectorActionApprovalRequest{UserNote: "inspect metadata only", ApprovalContextHash: pending.Request.ApprovalContextHash},
 	)
 	if runResponse.Code != http.StatusOK {
 		t.Fatalf("run connector approval: %d %s", runResponse.Code, runResponse.Body.String())

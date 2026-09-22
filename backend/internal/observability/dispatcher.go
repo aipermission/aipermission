@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const (
@@ -170,7 +172,7 @@ func (dispatcher *Dispatcher) DispatchOnce(ctx context.Context) (int, error) {
 	if firstErr != nil {
 		return delivered, firstErr
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := timeformat.UTC(time.Now())
 	if _, err := dispatcher.database.ExecContext(ctx, `
 		UPDATE audit_dispatch_state
 		SET failure_count = 0, last_error = '', last_success_at = ?, updated_at = ?
@@ -186,7 +188,7 @@ func (dispatcher *Dispatcher) dispatchEvent(ctx context.Context, event queuedEve
 		return dispatcher.failDelivery(ctx, event, fmt.Errorf("begin audit projection: %w", err))
 	}
 	defer tx.Rollback()
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := timeformat.UTC(time.Now())
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO audit_logs (
 			event_id, event_version, actor_type, token_id, project_id, runtime_id, connector_kind,
@@ -263,14 +265,14 @@ func (dispatcher *Dispatcher) failDelivery(ctx context.Context, event queuedEven
 	message := strings.TrimSpace(deliveryErr.Error())
 	message = truncateUTF8(message, maxDeliveryError)
 	nowTime := time.Now().UTC()
-	now := nowTime.Format(time.RFC3339Nano)
+	now := timeformat.UTC(nowTime)
 	attempts := event.AttemptCount + 1
 	var nextAttempt any
 	var deadLettered any
 	if attempts >= maxDeliveryAttempts {
 		deadLettered = now
 	} else {
-		nextAttempt = nowTime.Add(deliveryRetryDelay(attempts)).Format(time.RFC3339Nano)
+		nextAttempt = timeformat.UTC(nowTime.Add(deliveryRetryDelay(attempts)))
 	}
 	if _, err := dispatcher.database.ExecContext(ctx, `
 		UPDATE audit_outbox

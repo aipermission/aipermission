@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildProvisionScope, buildProvisionSQLPreview, groupMetadataRows, safeBackupFilename } from "./provisioning.js";
+import {
+  buildProvisionScope,
+  buildProvisionSQLPreview,
+  groupMetadataRows,
+  provisionScopeSupportsPreset,
+  safeBackupFilename,
+} from "./provisioning.js";
 
 test("Postgres provisioning metadata preserves schema, table, and column order", () => {
   assert.deepEqual(
@@ -41,6 +47,22 @@ test("Postgres provisioning drops incomplete nested scope selections", () => {
       schemas: [{ schema: "public", all_tables: false, tables: [{ table: "users", all_columns: false, columns: ["id"] }] }],
     },
   );
+});
+
+test("Postgres read and change preset rejects column-scoped tables", () => {
+  const columnScope = {
+    all_schemas: false,
+    schemas: [{ schema: "public", all_tables: false, tables: [{ table: "users", all_columns: false, columns: ["id"] }] }],
+  };
+  const tableScope = {
+    all_schemas: false,
+    schemas: [{ schema: "public", all_tables: false, tables: [{ table: "users", all_columns: true }] }],
+  };
+
+  assert.equal(provisionScopeSupportsPreset(columnScope, "read_only"), true);
+  assert.equal(provisionScopeSupportsPreset(columnScope, "read_write"), false);
+  assert.equal(provisionScopeSupportsPreset(tableScope, "read_write"), true);
+  assert.equal(provisionScopeSupportsPreset({ all_schemas: true }, "read_write"), true);
 });
 
 test("Postgres SQL previews remain bounded to validated identifiers and scopes", () => {

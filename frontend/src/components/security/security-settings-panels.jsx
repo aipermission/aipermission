@@ -71,8 +71,19 @@ export function SecurityToggleCard({ setting, value, disabled, onUpdate }) {
   );
 }
 
-export function RedactionSettingsCard({ security, action, rules, form, onUpdateSecurity, onUpdateForm, onCreate, onToggle, onDelete }) {
-  const busy = security.state === "loading" || action.state === "saving";
+export function RedactionSettingsCard({
+  security,
+  securityAction,
+  ruleAction,
+  rules,
+  form,
+  onUpdateSecurity,
+  onUpdateForm,
+  onCreate,
+  onToggle,
+  onDelete,
+}) {
+  const busy = security.state !== "ready" || securityAction.state === "saving";
   const basic = security.data?.redaction_mode === "basic";
   return (
     <Card>
@@ -100,7 +111,7 @@ export function RedactionSettingsCard({ security, action, rules, form, onUpdateS
         {basic ? (
           <RedactionRuleEditor
             rules={rules}
-            action={action}
+            action={ruleAction}
             form={form}
             onUpdate={onUpdateForm}
             onCreate={onCreate}

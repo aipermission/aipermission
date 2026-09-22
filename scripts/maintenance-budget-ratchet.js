@@ -4,6 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { resolveTrustedBase } = require("./trusted-git-base");
+const {
+  approvedPlatformCoverageAddition,
+  approvedPlatformCoverageRelocation,
+} = require("./maintenance/platform-coverage-ratchet");
 
 const root = path.resolve(__dirname, "..");
 
@@ -95,8 +99,10 @@ function policySnapshot(input) {
   for (const testPath of policy.toolingTestFiles || []) {
     snapshot[`test.tooling.inventory.${testPath}`] = 0;
   }
-  for (const test of policy.windowsRuntimeTests || []) {
-    snapshot[`test.windows.runtime.${test.package}:${test.name}`] = 0;
+  for (const platform of ["windows", "darwin"]) {
+    for (const test of policy[`${platform}RuntimeTests`] || []) {
+      snapshot[`test.${platform}.runtime.${test.package}:${test.name}`] = 0;
+    }
   }
   for (const [directory, value] of Object.entries(
     policy.backendPackage.stricterRatchets,
@@ -198,6 +204,7 @@ function budgetIncreases(base, current) {
       (name) =>
         !Object.hasOwn(current, name) &&
         !name.startsWith("migration.test.package.") &&
+        !approvedPlatformCoverageRelocation(base, current, name) &&
         !coverageExceptionRemovalAllowed(current, name) &&
         !removedExceptionRemainsProtected(base, current, name),
     )
@@ -216,10 +223,11 @@ function budgetIncreases(base, current) {
         value === 0 &&
         (name.startsWith("test.tooling.inventory.") ||
           name.startsWith("test.tooling.root.") ||
-          name.startsWith("test.windows.runtime."))
+          /^test\.(?:windows|darwin)\.runtime\./.test(name))
       ) {
         return [];
       }
+      if (approvedPlatformCoverageAddition(base, current, name)) return [];
       if (approvedCoverageExceptionBootstrap(base, name)) {
         return [];
       }

@@ -76,6 +76,11 @@ func migrations() []migration {
 		fileTransferRecoveryMigration(),
 		profileRestoreIdempotencyMigration(),
 		vaultActionRequestEnvelopeMigration(),
+		projectScopeRevisionMigration(),
+		chronologicalTimestampMigration(),
+		backupUploadExpiryMigration(),
+		connectorLifecycleFinalizationMigration,
+		backupUploadWorkspaceInstanceMigration(),
 	)
 }
 

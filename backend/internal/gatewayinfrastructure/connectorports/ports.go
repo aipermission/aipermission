@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -30,6 +31,7 @@ type RouteDependencies struct {
 type LiveConsoleDependencies struct {
 	TransportAdapter func(string) connectorapi.LiveConsoleTransportAdapter
 	TargetAdapter    func(string) connectorapi.LiveConsoleTargetAdapter
+	AdapterFor       func(string) connectorapi.Adapter
 }
 
 type Workspace struct {
@@ -68,8 +70,29 @@ func NewPorts(dependencies PortsDependencies) *PortsComponent {
 	return &PortsComponent{dependencies: dependencies}
 }
 
-func NewWorkspace(scopes connectortransport.ScopeRuntime, database *sql.DB, acquireDelivery func(context.Context) (func(), error)) Workspace {
-	return Workspace{runtime: connectortransport.Runtime{Scopes: scopes, Database: database, AcquireDelivery: acquireDelivery}}
+func NewWorkspace(scopes connectortransport.ScopeRuntime, database *sql.DB, acquireDelivery func(context.Context) (func(), error), admission *connectors.DeliveryAdmissionIdentity) Workspace {
+	return Workspace{runtime: connectortransport.Runtime{Scopes: scopes, Database: database, AcquireDelivery: acquireDelivery, Admission: admission}}
+}
+
+func AcquireDeliveryAdmission(ctx context.Context, workspace Workspace) (context.Context, func(), error) {
+	runtime := workspace.runtime
+	if runtime.AcquireDelivery == nil || runtime.Admission == nil {
+		return ctx, nil, ErrRuntimeUnavailable
+	}
+	if connectors.DeliveryAdmissionHeld(ctx, runtime.Admission) {
+		return ctx, func() {}, nil
+	}
+	release, err := runtime.AcquireDelivery(ctx)
+	if err != nil {
+		if release != nil {
+			release()
+		}
+		return ctx, nil, err
+	}
+	if release == nil {
+		return ctx, nil, errors.New("connector delivery admission did not return a release function")
+	}
+	return connectors.WithDeliveryAdmission(ctx, runtime.Admission), release, nil
 }
 
 func (workspace Workspace) WithPrincipal(principal func() (executionprincipal.Principal, error)) Workspace {
@@ -133,11 +156,12 @@ func (component *PortsComponent) RouteGateway() RouteGateway {
 
 type LiveConsoleGateway struct {
 	PeerGateway
-	workspace Workspace
+	workspace       Workspace
+	sourceTargetRef string
 }
 
-func (component *PortsComponent) LiveConsoleGateway(workspace Workspace) LiveConsoleGateway {
-	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), workspace: workspace}
+func (component *PortsComponent) LiveConsoleGateway(workspace Workspace, sourceTargetRef string) LiveConsoleGateway {
+	return LiveConsoleGateway{PeerGateway: component.PeerGateway(), workspace: workspace, sourceTargetRef: strings.TrimSpace(sourceTargetRef)}
 }
 
 func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, targetRef string, rows, cols int, params map[string]any) (*connectorapi.LiveConsoleSession, error) {
@@ -162,7 +186,33 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	return transport.OpenLiveConsole(ctx, gateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+	sourceGateway := gateway
+	sourceGateway.sourceTargetRef = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
+	return transport.OpenLiveConsole(ctx, sourceGateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+}
+
+func (gateway LiveConsoleGateway) ConnectorRunCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+	if gateway.component == nil || gateway.workspace.runtime.Database == nil || gateway.workspace.runtime.Scopes == nil ||
+		gateway.component.dependencies.LiveConsole.AdapterFor == nil {
+		return connectors.CommandRunResult{}, ErrRuntimeUnavailable
+	}
+	if err := requireCommandSourceTarget(gateway.sourceTargetRef, request.SourceTargetRef); err != nil {
+		return connectors.CommandRunResult{}, err
+	}
+	return CommandTransport(
+		gateway.workspace,
+		gateway.component.dependencies.LiveConsole.AdapterFor,
+		gateway.component.dependencies.Peer.TrustStorePath,
+	).RunConnectorCommand(ctx, request)
+}
+
+func requireCommandSourceTarget(expectedTargetRef string, sourceTargetRef string) error {
+	expectedKind, expectedTargetID, expectedProfileID, expectedOK := connectors.ParseTargetRef(strings.TrimSpace(expectedTargetRef))
+	kind, targetID, profileID, ok := connectors.ParseTargetRef(strings.TrimSpace(sourceTargetRef))
+	if !expectedOK || !ok || kind != expectedKind || targetID != expectedTargetID || profileID != expectedProfileID {
+		return connectortargets.ErrInvalidTargetRef
+	}
+	return nil
 }
 
 type RuntimeActionGateway struct {

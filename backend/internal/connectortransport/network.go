@@ -91,43 +91,24 @@ func networkDialAddress(host string, port int) (string, error) {
 }
 
 func dialDirectConnectorTCP(ctx context.Context, host string, port int) (net.Conn, error) {
+	return dialDirectConnectorTCPWith(ctx, host, port, dialTCPAddress)
+}
+
+func dialDirectConnectorTCPWith(
+	ctx context.Context,
+	host string,
+	port int,
+	dial func(context.Context, string, string) (net.Conn, error),
+) (net.Conn, error) {
 	host = resolveConnectorDialHost(strings.TrimSpace(host))
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
-		return dialTCPAddress(ctx, ipNetwork(ip), address)
+		return dial(ctx, ipNetwork(ip), address)
 	}
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err == nil && len(addrs) > 0 {
-		var lastErr error
-		for _, addr := range preferredDialAddresses(addrs, port) {
-			connection, dialErr := dialTCPAddress(ctx, addr.network, addr.address)
-			if dialErr == nil {
-				return connection, nil
-			}
-			lastErr = dialErr
-		}
-		if lastErr != nil {
-			return nil, lastErr
-		}
-	}
-	return dialTCPAddress(ctx, "tcp", address)
-}
-
-type preferredDialAddress struct{ network, address string }
-
-func preferredDialAddresses(addrs []net.IPAddr, port int) []preferredDialAddress {
-	result := make([]preferredDialAddress, 0, len(addrs))
-	appendFamily := func(wantV4 bool) {
-		for _, addr := range addrs {
-			if addr.IP == nil || (addr.IP.To4() != nil) != wantV4 {
-				continue
-			}
-			result = append(result, preferredDialAddress{network: ipNetwork(addr.IP), address: net.JoinHostPort(addr.IP.String(), strconv.Itoa(port))})
-		}
-	}
-	appendFamily(true)
-	appendFamily(false)
-	return result
+	// The standard TCP dialer owns DNS address ordering, per-address deadline
+	// sharing, and IPv4/IPv6 fallback. A local serial loop can spend the whole
+	// request deadline on the first unreachable address.
+	return dial(ctx, "tcp", address)
 }
 
 func ipNetwork(ip net.IP) string {

@@ -48,6 +48,16 @@ func TestConnectorSchemaAndActions(t *testing.T) {
 	}
 }
 
+func TestReadonlyQuerySettingsFailClosedOnServerOverflow(t *testing.T) {
+	settings := readonlyQuerySettings()
+	if settings["result_overflow_mode"] != "throw" {
+		t.Fatalf("result_overflow_mode = %#v", settings["result_overflow_mode"])
+	}
+	if settings["max_result_rows"] != uint64(maxRows+1) || settings["max_result_bytes"] != uint64(maxOutputBytes) {
+		t.Fatalf("bounded result settings = %#v", settings)
+	}
+}
+
 func TestPrepareActionsAreDeterministicAndBounded(t *testing.T) {
 	connector := New()
 	target := connectors.TargetView{

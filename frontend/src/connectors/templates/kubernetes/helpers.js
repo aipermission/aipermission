@@ -58,7 +58,17 @@ export function resourceStatus(tab, item) {
 export function resourceTone(tab, item) {
   const value = String(resourceStatus(tab, item)).toLowerCase();
   if (tab === "events" && value === "warning") return "warn";
-  if (value.includes("running") || value.includes("ready") || value.match(/^\d+\/\d+$/)) return "good";
+  if (tab === "workloads") {
+    const readiness = value.match(/^(\d+)\/(\d+)$/);
+    if (readiness) {
+      const ready = Number(readiness[1]);
+      const desired = Number(readiness[2]);
+      if (desired === 0) return ready === 0 ? "neutral" : "warn";
+      if (ready === desired) return "good";
+      return ready === 0 ? "bad" : "warn";
+    }
+  }
+  if (value.includes("running") || value.includes("ready")) return "good";
   if (value.includes("pending") || value.includes("unknown")) return "warn";
   if (value.includes("failed") || value.includes("error") || value.includes("crash")) return "bad";
   return "neutral";

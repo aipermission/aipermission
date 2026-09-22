@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const (
@@ -85,7 +86,7 @@ func (Store) Append(ctx context.Context, executor sqldb.Executor, event Event) (
 	if event.OccurredAt.IsZero() {
 		event.OccurredAt = time.Now().UTC()
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := timeformat.UTC(time.Now())
 	_, err := executor.ExecContext(ctx, `
 		INSERT INTO audit_outbox (
 			event_id, event_version, actor_type, token_id, project_id, runtime_id,
@@ -97,7 +98,7 @@ func (Store) Append(ctx context.Context, executor sqldb.Executor, event Event) (
 		event.EventID, event.EventVersion, event.ActorType, nullableInt64(event.TokenID),
 		event.ProjectID, event.RuntimeID, event.ConnectorKind, event.TargetID,
 		event.ProfileID, event.ActionRequestID, event.Action, event.LifecyclePhase,
-		event.PayloadJSON, event.OccurredAt.UTC().Format(time.RFC3339Nano), now,
+		event.PayloadJSON, timeformat.UTC(event.OccurredAt), now,
 	)
 	if err != nil {
 		return Event{}, fmt.Errorf("append audit outbox event: %w", err)

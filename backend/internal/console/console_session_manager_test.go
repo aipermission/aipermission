@@ -54,6 +54,12 @@ func TestConsoleSessionManagerCreateValidationAndCloseInactive(t *testing.T) {
 	}
 }
 
+func activeSessionCount(manager *Manager) int {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.activeSessionCountLocked()
+}
+
 func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *testing.T) {
 	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
 	if err != nil {
@@ -81,13 +87,228 @@ func TestConsoleSessionManagerCloseAllDrainsSessionsAndRejectsLateCreates(t *tes
 	if err := manager.CloseAll(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if count := manager.activeSessionCount(); count != 0 {
+	if count := activeSessionCount(manager); count != 0 {
 		t.Fatalf("sessions retained after CloseAll: %d", count)
 	}
 	if _, err := manager.Create(t.Context(), CreateRequest{
 		RuntimeID: runtimeID, Name: "late", Principal: testExecutionPrincipal(),
 	}); !errors.Is(err, ErrManagerClosed) {
 		t.Fatalf("late create error = %v, want %v", err, ErrManagerClosed)
+	}
+}
+
+func TestConsoleSessionManagerImplicitSessionCreationIsSingleFlight(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-single-flight", "127.0.0.1", 22)
+	output := make(chan RuntimeOutput)
+	var opens atomic.Int32
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		opens.Add(1)
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Output: output,
+			Done: testRuntimeDone(func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	t.Cleanup(func() {
+		_ = manager.CloseAll(context.Background())
+	})
+
+	const callers = 12
+	start := make(chan struct{})
+	handles := make(chan SessionHandle, callers)
+	resultErrors := make(chan error, callers)
+	for range callers {
+		go func() {
+			<-start
+			handle, ensureErr := manager.EnsureReady(t.Context(), testExecutionPrincipal(), runtimeID)
+			handles <- handle
+			resultErrors <- ensureErr
+		}()
+	}
+	close(start)
+	var first SessionHandle
+	for range callers {
+		if ensureErr := <-resultErrors; ensureErr != nil {
+			t.Fatal(ensureErr)
+		}
+		handle := <-handles
+		if !first.Valid() {
+			first = handle
+		} else if handle != first {
+			t.Fatalf("implicit session handles differ: first=%#v current=%#v", first, handle)
+		}
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("runtime opens = %d, want 1", opens.Load())
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id = ?`, runtimeID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("persisted implicit sessions = %d, want 1", rows)
+	}
+}
+
+func TestConsoleSessionManagerSerializesGlobalSessionAdmission(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeIDs := []int64{
+		insertConsoleTestSSHProfile(t, database, "worker-admission-a", "127.0.0.1", 22),
+		insertConsoleTestSSHProfile(t, database, "worker-admission-b", "127.0.0.1", 22),
+	}
+	output := make(chan RuntimeOutput)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		return &RuntimeSession{
+			Stdin: &recordingWriteCloser{}, Output: output,
+			Done: testRuntimeDone(func() error {
+				<-ctx.Done()
+				return ctx.Err()
+			}),
+			Close: func() error { return nil },
+		}, nil
+	}, nil)
+	for index := 0; index < maxActiveConsoleSessions-1; index++ {
+		id := int64(index + 10_000)
+		manager.sessions[id] = &managedConsoleSession{id: id, runtimeID: id, status: "connected"}
+	}
+	start := make(chan struct{})
+	resultErrors := make(chan error, len(runtimeIDs))
+	for _, runtimeID := range runtimeIDs {
+		go func() {
+			<-start
+			_, createErr := manager.Create(t.Context(), CreateRequest{RuntimeID: runtimeID, Principal: testExecutionPrincipal()})
+			resultErrors <- createErr
+		}()
+	}
+	close(start)
+	successes := 0
+	limits := 0
+	for range runtimeIDs {
+		switch createErr := <-resultErrors; {
+		case createErr == nil:
+			successes++
+		case errors.Is(createErr, ErrSessionLimit):
+			limits++
+		default:
+			t.Fatalf("unexpected create error: %v", createErr)
+		}
+	}
+	if successes != 1 || limits != 1 || activeSessionCount(manager) != maxActiveConsoleSessions {
+		t.Fatalf("successes=%d limits=%d active=%d", successes, limits, activeSessionCount(manager))
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id IN (?, ?)`, runtimeIDs[0], runtimeIDs[1]).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("persisted admitted sessions = %d, want 1", rows)
+	}
+	var admitted *managedConsoleSession
+	for _, runtimeID := range runtimeIDs {
+		if session := manager.activeForRuntime(runtimeID); session != nil {
+			admitted = session
+			break
+		}
+	}
+	if admitted == nil {
+		t.Fatal("admitted session is not active")
+	}
+	admitted.beginClose()
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := admitted.waitDone(cleanupCtx); err != nil {
+		t.Fatalf("drain admitted session: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerPreservesContextValuesWithoutRequestCancellation(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-context", "127.0.0.1", 22)
+	type contextKey struct{}
+	const contextValue = "delivery-admission"
+	entered := make(chan struct{})
+	continueOpen := make(chan struct{})
+	observed := make(chan struct {
+		value any
+		err   error
+	}, 1)
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		close(entered)
+		<-continueOpen
+		observed <- struct {
+			value any
+			err   error
+		}{value: ctx.Value(contextKey{}), err: ctx.Err()}
+		return nil, errors.New("stop after context observation")
+	}, nil)
+
+	requestCtx, cancelRequest := context.WithCancel(context.WithValue(t.Context(), contextKey{}, contextValue))
+	if _, err := manager.Create(requestCtx, CreateRequest{
+		RuntimeID: runtimeID, Principal: testExecutionPrincipal(), WaitForStart: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	cancelRequest()
+	close(continueOpen)
+	got := <-observed
+	if got.err != nil {
+		t.Fatalf("session context inherited request cancellation: %v", got.err)
+	}
+	if got.value != contextValue {
+		t.Fatalf("session context value = %#v, want %q", got.value, contextValue)
+	}
+	cleanupCtx, cancelCleanup := context.WithTimeout(t.Context(), time.Second)
+	defer cancelCleanup()
+	if err := manager.CloseAll(cleanupCtx); err != nil {
+		t.Fatalf("close context test manager: %v", err)
+	}
+}
+
+func TestConsoleSessionManagerCloseExistingCannotBypassGlobalLimit(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-close-existing-limit", "127.0.0.1", 22)
+	manager := NewManager(database, nil, nil)
+	for index := 0; index < maxActiveConsoleSessions; index++ {
+		id := int64(index + 20_000)
+		manager.sessions[id] = &managedConsoleSession{id: id, runtimeID: id, status: "connected"}
+	}
+
+	_, err = manager.Create(t.Context(), CreateRequest{
+		RuntimeID: runtimeID, Principal: testExecutionPrincipal(), CloseExisting: true,
+	})
+	if !errors.Is(err, ErrSessionLimit) {
+		t.Fatalf("create error = %v, want %v", err, ErrSessionLimit)
+	}
+	if activeSessionCount(manager) != maxActiveConsoleSessions {
+		t.Fatalf("active sessions = %d", activeSessionCount(manager))
+	}
+	var rows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM console_sessions WHERE runtime_id = ?`, runtimeID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("persisted bypass sessions = %d", rows)
 	}
 }
 
@@ -425,6 +646,61 @@ func TestClosingBeforeRuntimePublicationClosesPublishedTransportOnce(t *testing.
 	}
 }
 
+func TestCanceledCreateRetainsStartupAdmissionUntilRuntimeOpenerExits(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "console.db"), "ConsolePassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	runtimeID := insertConsoleTestSSHProfile(t, database, "worker-startup-admission", "127.0.0.1", 22)
+	openStarted := make(chan struct{})
+	releaseOpen := make(chan struct{})
+	admissionReleased := make(chan struct{})
+	var releaseOnce sync.Once
+	manager := NewManager(database, func(ctx context.Context, _ RuntimeOpenRequest) (*RuntimeSession, error) {
+		close(openStarted)
+		<-releaseOpen
+		return nil, ctx.Err()
+	}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	createResult := make(chan error, 1)
+	go func() {
+		_, createErr := manager.Create(ctx, CreateRequest{
+			RuntimeID: runtimeID, Name: "startup admission", Principal: testExecutionPrincipal(), WaitForStart: true,
+			StartupAdmissionRelease: func() { releaseOnce.Do(func() { close(admissionReleased) }) },
+		})
+		createResult <- createErr
+	}()
+	<-openStarted
+	session := manager.activeForRuntime(runtimeID)
+	if session == nil {
+		t.Fatal("connecting session was not published")
+	}
+	cancel()
+	select {
+	case err := <-createResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Create() error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled create did not return")
+	}
+	select {
+	case <-admissionReleased:
+		t.Fatal("startup admission released while runtime opener still held the admitted context")
+	default:
+	}
+	close(releaseOpen)
+	select {
+	case <-admissionReleased:
+	case <-time.After(time.Second):
+		t.Fatal("startup admission was not released after runtime opener exited")
+	}
+	if err := session.waitDone(t.Context()); err != nil {
+		t.Fatalf("wait for canceled session finalization: %v", err)
+	}
+}
+
 func TestConsoleSessionFinalizationRetriesPersistenceAndOwnershipHook(t *testing.T) {
 	persistErr := errors.New("injected transcript persistence failure")
 	hookErr := errors.New("injected session ownership failure")
@@ -509,15 +785,22 @@ func TestConsoleSessionManagerCloseAllWaitsForSessionClosedHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
-	defer cancel()
-	if err := manager.CloseAll(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("CloseAll() error = %v, want hook deadline", err)
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	closeResult := make(chan error, 1)
+	go func() { closeResult <- manager.CloseAll(ctx) }()
 	select {
 	case <-hookStarted:
-	default:
-		t.Fatal("session-closed hook did not enter before CloseAll returned")
+	case <-time.After(time.Second):
+		t.Fatal("session-closed hook did not start")
+	}
+	cancel()
+	select {
+	case err := <-closeResult:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("CloseAll() error = %v, want canceled hook", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CloseAll did not return after cancellation")
 	}
 	if manager.active(record.ID) == nil {
 		t.Fatal("session disappeared while its ownership hook was blocked")

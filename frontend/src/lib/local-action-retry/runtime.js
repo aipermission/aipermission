@@ -7,8 +7,8 @@ import {
 } from "./constants.js";
 import { storageError } from "./errors.js";
 
-export function currentRetryScope() {
-  const workspaceID = readCookie(scopedUICookieName(workspaceCookieName));
+export function currentRetryScope(explicitWorkspaceID = "") {
+  const workspaceID = String(explicitWorkspaceID || readCookie(scopedUICookieName(workspaceCookieName))).trim();
   if (!workspaceID) throw new Error("Database retry identity is unavailable; the connector action was not sent.");
   return { key: workspaceID, legacyKey: `${legacyStoragePrefix}${workspaceID}` };
 }

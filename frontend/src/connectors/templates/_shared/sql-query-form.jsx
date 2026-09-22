@@ -58,6 +58,7 @@ export function SQLQueryForm({ controller, styles, theme }) {
           theme={theme}
           tables={controller.metadata.tables}
           keywords={controller.connector.keywords}
+          identifierPolicy={controller.connector.identifierPolicy}
           disabled={running}
         />
         <Button type="submit" className="h-full min-h-10 px-5" disabled={!controller.sql.trim() || running}>

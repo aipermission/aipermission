@@ -18,35 +18,42 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-func (h *HTTPHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request, requirements scopeRequirements) (HTTPScope, Provider, *ServiceClient, bool) {
+func (h *HTTPHandlers) activeBackupServiceProvider(w http.ResponseWriter, r *http.Request, requirements scopeRequirements) (HTTPScope, Provider, *ServiceClient, func(), bool) {
 	runtime, ok := h.resolve(w, requireDatabase|requireSecrets|requirements)
 	if !ok {
-		return HTTPScope{}, Provider{}, nil, false
+		return HTTPScope{}, Provider{}, nil, nil, false
 	}
-	provider, client, ok := activeBackupServiceProviderFromScope(w, r, runtime)
-	return runtime, provider, client, ok
+	provider, client, release, ok := h.activeBackupServiceProviderFromScope(w, r, runtime)
+	return runtime, provider, client, release, ok
 }
 
-func activeBackupServiceProviderFromScope(w http.ResponseWriter, r *http.Request, runtime HTTPScope) (Provider, *ServiceClient, bool) {
+func (h *HTTPHandlers) activeBackupServiceProviderFromScope(w http.ResponseWriter, r *http.Request, runtime HTTPScope) (Provider, *ServiceClient, func(), bool) {
 	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
-		return Provider{}, nil, false
+		return Provider{}, nil, nil, false
+	}
+	release, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return Provider{}, nil, nil, false
 	}
 	provider, err := NewStore(runtime.Database).GetProvider(r.Context(), id)
 	if err != nil {
+		release()
 		handleBackupProviderError(w, err)
-		return Provider{}, nil, false
+		return Provider{}, nil, nil, false
 	}
 	if provider.Status != "active" {
+		release()
 		httptransport.WriteError(w, http.StatusConflict, "backup provider is disabled")
-		return Provider{}, nil, false
+		return Provider{}, nil, nil, false
 	}
 	client, err := backupServiceClient(runtime, provider)
 	if err != nil {
+		release()
 		handleBackupProviderError(w, err)
-		return Provider{}, nil, false
+		return Provider{}, nil, nil, false
 	}
-	return provider, client, true
+	return provider, client, release, true
 }
 
 func resolveBackupServiceRecordFromScope(w http.ResponseWriter, r *http.Request, runtime HTTPScope, provider Provider) (Record, bool) {
@@ -155,7 +162,23 @@ func RecordToResponse(item Record) RecordResponse {
 	}
 }
 
-func syncBackupServiceRecords(ctx context.Context, runtime HTTPScope, store *Store, provider Provider) (backupSyncResult, error) {
+func (h *HTTPHandlers) syncBackupServiceRecords(ctx context.Context, runtime HTTPScope, store *Store, provider Provider) (backupSyncResult, error) {
+	release, err := h.providerOps.Acquire(ctx, runtime.Database, provider.ID)
+	if err != nil {
+		return backupSyncResult{}, err
+	}
+	defer release()
+	provider, err = store.GetProvider(ctx, provider.ID)
+	if err != nil {
+		return backupSyncResult{}, err
+	}
+	if provider.Status != "active" {
+		return backupSyncResult{}, ErrProviderDisabled
+	}
+	return syncBackupServiceRecordsUnlocked(ctx, runtime, store, provider)
+}
+
+func syncBackupServiceRecordsUnlocked(ctx context.Context, runtime HTTPScope, store *Store, provider Provider) (backupSyncResult, error) {
 	baseURL := stringFromMap(provider.Public, "base_url")
 	streamID := stringFromMap(provider.Public, "stream_id")
 	baseline, err := ReadServiceBaseline(ctx, runtime.Database, baseURL, streamID)
@@ -374,6 +397,12 @@ func handleBackupServiceError(w http.ResponseWriter, err error) {
 			httptransport.WriteError(w, http.StatusInsufficientStorage, "backup service storage quota is full")
 		case http.StatusUpgradeRequired:
 			httptransport.WriteError(w, http.StatusConflict, "backup service protocol is incompatible with this AIPermission version")
+		case http.StatusGone:
+			if serviceError.Code == "operation_expired" {
+				httptransport.WriteErrorCode(w, http.StatusGone, "the original backup upload result is no longer available", "operation_expired")
+			} else {
+				httptransport.WriteError(w, http.StatusBadGateway, "backup service request failed")
+			}
 		default:
 			httptransport.WriteError(w, http.StatusBadGateway, "backup service request failed")
 		}

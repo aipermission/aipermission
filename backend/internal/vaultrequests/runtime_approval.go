@@ -13,6 +13,13 @@ func (r *Runtime) List(ctx context.Context, status string, limit int) ([]Request
 	return r.store.List(ctx, strings.TrimSpace(status), limit)
 }
 
+func (r *Runtime) Get(ctx context.Context, id int64) (Request, error) {
+	if err := r.validate(); err != nil {
+		return Request{}, err
+	}
+	return r.store.Get(ctx, id)
+}
+
 func (r *Runtime) RunPending(ctx context.Context, id int64, userNote string) (WorkflowResult, error) {
 	if err := r.validate(); err != nil {
 		return WorkflowResult{}, err
@@ -20,7 +27,7 @@ func (r *Runtime) RunPending(ctx context.Context, id int64, userNote string) (Wo
 	if !r.mcpStarted() {
 		return WorkflowResult{}, ErrMCPExecutionStopped
 	}
-	userNote, err := normalizeUserNote(userNote)
+	userNote, err := r.redactUserNote(ctx, userNote)
 	if err != nil {
 		return WorkflowResult{}, err
 	}
@@ -33,7 +40,7 @@ func (r *Runtime) DeclinePending(ctx context.Context, id int64, userNote string)
 	if err := r.validate(); err != nil {
 		return Request{}, err
 	}
-	userNote, err := normalizeUserNote(userNote)
+	userNote, err := r.redactUserNote(ctx, userNote)
 	if err != nil {
 		return Request{}, err
 	}
@@ -74,6 +81,22 @@ func normalizeUserNote(value string) (string, error) {
 		return "", ValidationError("user_note must be 8192 bytes or less")
 	}
 	return value, nil
+}
+
+func (r *Runtime) redactUserNote(ctx context.Context, value string) (string, error) {
+	value, err := normalizeUserNote(value)
+	if err != nil || value == "" {
+		return value, err
+	}
+	redacted, err := r.redactProjection(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	text, ok := redacted.(string)
+	if !ok {
+		return "", ValidationError("redacted user_note must be text")
+	}
+	return normalizeUserNote(text)
 }
 
 func RequestAuditPayload(item Request, userNote string) map[string]any {

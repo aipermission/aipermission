@@ -12,7 +12,7 @@ import (
 const (
 	Kind    = "kubernetes"
 	Label   = "Kubernetes"
-	Version = "0.2"
+	Version = "0.3"
 
 	ActionVersion        = "cluster_version"
 	ActionListNamespaces = "list_namespaces"

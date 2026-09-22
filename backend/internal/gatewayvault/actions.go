@@ -83,7 +83,7 @@ type EnvironmentPlan struct {
 type VaultActionApplication interface {
 	BuildEnvironmentPlan(context.Context, int64, []SessionSelection) (EnvironmentPlan, error)
 	Prepare(context.Context, int64, string, string, map[string]any) (vaultrequests.PreparedAction, error)
-	AuthorizeOutput(context.Context, vaultrequests.Request) bool
+	AuthorizeOutput(context.Context, vaultrequests.Request) vaultrequests.OutputAuthorization
 	ValidateAuthorization(context.Context, vaultrequests.Request, vaultrequests.ApprovalContext) error
 	Execute(context.Context, vaultrequests.Request) (any, error)
 	PrepareTransactional(context.Context, vaultrequests.Request) (vaultactions.TransactionalExecution, bool, error)
@@ -217,10 +217,14 @@ func (port actionDeliveryPort) AcquireExclusive(ctx context.Context) (func(), er
 	return port.runtime.Session.AcquireExclusive(ctx)
 }
 
+func (port actionDeliveryPort) WithAdmission(ctx context.Context) context.Context {
+	return port.runtime.Session.WithAdmission(ctx)
+}
+
 func (component *Component) ActionRuntime(runtime Runtime) (VaultActionApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.SecretVault == nil || runtime.Storage.ReadToken == nil || runtime.Session.Sessions == nil ||
 		runtime.Session.Leases == nil || runtime.Action.Connector == nil || runtime.Session.MCPStarted == nil ||
-		runtime.Storage.DatabaseID == "" || component.dependencies.AllowGenerate == nil {
+		runtime.Session.WithAdmission == nil || runtime.Storage.DatabaseID == "" || component.dependencies.AllowGenerate == nil {
 		return nil, vaultactions.ErrRuntimeUnavailable
 	}
 	items, err := projectvault.NewStore(runtime.Storage.Database, runtime.Storage.SecretVault, runtime.Storage.WorkspaceID)

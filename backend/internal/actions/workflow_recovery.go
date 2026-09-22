@@ -9,6 +9,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 const actionRecoveryInterval = 15 * time.Second
@@ -72,7 +73,7 @@ func (r *Runtime) Recover(workerContext context.Context, now time.Time) {
 		FROM connector_action_requests
 		WHERE status = ?
 		  AND (execution_lease_expires_at = '' OR julianday(execution_lease_expires_at) <= julianday(?))
-		ORDER BY id`, string(connectors.ResultRunning), now.Format(time.RFC3339Nano))
+		ORDER BY id`, string(connectors.ResultRunning), timeformat.UTC(now))
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			r.logf("list orphaned connector actions failed: %v", err)

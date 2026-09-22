@@ -16,6 +16,18 @@ func (component *ConnectorManagementOwner) lifecycleMutationRunner(handle *Works
 	}
 }
 
+func (component *ConnectorManagementOwner) lifecycleFinalizationStore(handle *WorkspaceHandle) connectormgmt.LifecycleFinalizationStore {
+	capabilities, available := component.projection(handle)
+	if !available {
+		return nil
+	}
+	capability, ok := capabilities.Management.Current()
+	if !ok {
+		return nil
+	}
+	return connectormgmt.NewLifecycleFinalizationStore(capability.Database)
+}
+
 func (component *ConnectorManagementOwner) connectorCatalog(handle *WorkspaceHandle, application *connectormgmt.Component) connectormgmt.Catalog {
 	capabilities, available := component.projection(handle)
 	if !available || application == nil {
@@ -56,7 +68,9 @@ func (component *ConnectorManagementOwner) connectorManagementWorkspace(handle *
 	}
 	ports.Storage.Database = capability.Database
 	ports.Storage.Registry = capability.Registry
+	ports.Storage.AcquireDelivery = capability.Delivery.AcquireDelivery
 	ports.Storage.AcquireExclusive = capability.Delivery.AcquireExclusive
+	ports.Storage.Admission = capability.Delivery.AdmissionIdentity()
 	ports.Storage.Transaction = func(ctx context.Context, mutate func(*sql.Tx, connectormgmt.AuditAppender) error) error {
 		return component.observation.withObservationTransaction(ctx, handle, func(tx *sql.Tx, appendAudit observationAppender) error {
 			return mutate(tx, connectormgmt.AuditAppender(appendAudit))

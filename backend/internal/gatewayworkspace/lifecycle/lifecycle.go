@@ -24,6 +24,7 @@ type HTTPDependencies struct {
 	HasSession         func(*http.Request) bool
 	IssueSession       func(http.ResponseWriter) error
 	ClearSessions      func(http.ResponseWriter)
+	ExpireSession      func(http.ResponseWriter)
 	InvalidateSessions func(string)
 	CloseMaintenance   func(string)
 	Now                func() time.Time
@@ -190,9 +191,10 @@ func newHTTP(service *workspacelifecycle.Service[Runtime], dependencies HTTPDepe
 	converted := workspacehttp.Dependencies{
 		Lifecycle:  service,
 		HasSession: dependencies.HasSession, IssueSession: dependencies.IssueSession,
-		ClearSessions: dependencies.ClearSessions, InvalidateSessions: dependencies.InvalidateSessions,
-		CloseMaintenance: dependencies.CloseMaintenance,
-		Now:              dependencies.Now,
+		ClearSessions: dependencies.ClearSessions, ExpireSession: dependencies.ExpireSession,
+		InvalidateSessions: dependencies.InvalidateSessions,
+		CloseMaintenance:   dependencies.CloseMaintenance,
+		Now:                dependencies.Now,
 	}
 	if dependencies.BeginAttempt != nil {
 		converted.BeginAttempt = func(w http.ResponseWriter, r *http.Request) (workspacehttp.PasswordAttempt, bool) {

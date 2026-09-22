@@ -3,12 +3,12 @@ package console
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
-	"time"
 
+	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
 type manualOutputCompletion struct {
@@ -104,7 +104,7 @@ func (s *managedConsoleSession) updateManualActiveCommand(update *manualActiveCo
 	command := s.redactForPersistence(update.Command)
 	trackingReason := s.redactForPersistence(update.TrackingReason)
 	if update.Downgrade {
-		now := time.Now().UTC().Format(time.RFC3339)
+		now := timeformat.Now()
 		err := s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
 			if _, err := tx.ExecContext(context.Background(), `
 					UPDATE command_requests
@@ -149,20 +149,14 @@ func (s *managedConsoleSession) manualOutputCompletionLocked() *manualOutputComp
 		return nil
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	truncated := false
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-		truncated = true
-	}
-	segment := s.rawTranscript[startOffset:]
-	if !manualSegmentHasPrompt(segment) {
+	segment, truncated := s.rawSegmentLocked(active.StartOffset)
+	if !terminaltext.ManualSegmentHasPrompt(segment) {
 		return nil
 	}
-	if manualActiveIsHistoryRecall(&active) && strings.TrimSpace(active.ResumePrompt) != "" && !manualTranscriptEndsWithPrompt(segment, active.ResumePrompt) {
+	if manualActiveIsHistoryRecall(&active) && strings.TrimSpace(active.ResumePrompt) != "" && !terminaltext.ManualTranscriptEndsWithPrompt(segment, active.ResumePrompt) {
 		return nil
 	}
-	stdout, outputTruncated := manualCapturedOutput(segment, active.Command)
+	stdout, outputTruncated := terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	truncated = truncated || outputTruncated
 	status := "completed"
 	errorText := ""
@@ -190,11 +184,8 @@ func (s *managedConsoleSession) manualActiveHasOutputLocked() bool {
 		return false
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-	}
-	stdout, _ := manualCapturedOutput(s.rawTranscript[startOffset:], active.Command)
+	segment, _ := s.rawSegmentLocked(active.StartOffset)
+	stdout, _ := terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	return strings.TrimSpace(terminaltext.PlainOutput(stdout)) != ""
 }
 
@@ -203,16 +194,11 @@ func (s *managedConsoleSession) downgradeManualOutputCaptureLocked(reason string
 		return nil
 	}
 	active := *s.manualActive
-	startOffset := active.StartOffset
-	truncated := false
-	if startOffset > len(s.rawTranscript) {
-		startOffset = 0
-		truncated = true
-	}
+	segment, truncated := s.rawSegmentLocked(active.StartOffset)
 	stdout := ""
 	outputTruncated := false
 	if captureOutput {
-		stdout, outputTruncated = manualCapturedOutput(s.rawTranscript[startOffset:], active.Command)
+		stdout, outputTruncated = terminaltext.ManualCapturedOutput(segment, active.Command, maxManualCapturedOutputBytes)
 	}
 	s.manualActive = nil
 	return &manualOutputCompletion{
@@ -228,7 +214,7 @@ func (s *managedConsoleSession) finishManualOutputCapture(completion *manualOutp
 	if completion == nil || s == nil || s.manager == nil || s.manager.db == nil {
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	stdout := s.redactForPersistence(terminaltext.PlainOutput(completion.Stdout))
 	errorText := s.redactForPersistence(completion.Error)
 	trackingReason := s.redactForPersistence(completion.TrackingReason)
@@ -283,54 +269,8 @@ func (s *managedConsoleSession) closeStaleManualRunningRows(exceptID int64, reas
 	if reason == "" {
 		reason = manualCaptureSuperseded
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	return s.withManualHistoryTransaction(context.Background(), func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(context.Background(), `
-				SELECT id
-				FROM command_requests
-				WHERE source = 'manual'
-					AND session_id = ?
-					AND status = 'running'
-					AND (? = 0 OR id <> ?)`,
-			s.id,
-			exceptID,
-			exceptID,
-		)
-		if err != nil {
-			return fmt.Errorf("list stale manual command rows: %w", err)
-		}
-		ids := []int64{}
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				_ = rows.Close()
-				return fmt.Errorf("scan stale manual command row: %w", err)
-			}
-			ids = append(ids, id)
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("iterate stale manual command rows: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return fmt.Errorf("close stale manual command rows: %w", err)
-		}
-		if _, err := tx.ExecContext(context.Background(), `
-				UPDATE command_requests
-				SET status = 'untracked', tracking_reason = ?, completed_at = COALESCE(completed_at, ?)
-				WHERE source = 'manual'
-					AND session_id = ?
-					AND status = 'running'
-					AND (? = 0 OR id <> ?)`,
-			s.redactForPersistence(reason), now, s.id, exceptID, exceptID,
-		); err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if err := history.SyncCommandRequestWithExecutor(context.Background(), tx, id); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return consolepersistence.CloseStaleManualRunningRows(
+		context.Background(), s.manager.db, s.id, exceptID,
+		s.redactForPersistence(reason), timeformat.Now(),
+	)
 }

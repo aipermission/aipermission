@@ -49,6 +49,27 @@ it("submits the selected targets with the exact bulk command contract", async ()
   expect(await screen.findByText("1/1 finished")).toBeVisible();
 });
 
+it("manually refreshes existing bulk results without forwarding the click event", async () => {
+  const user = userEvent.setup();
+  const onRefresh = vi.fn();
+  apiPost.mockResolvedValue({
+    parallelism: 3,
+    items: [{ request_id: 41, target_name: "Example host", status: "completed", exit_code: 0, stdout: "old" }],
+  });
+  apiGet.mockResolvedValue({ status: "completed", exit_code: 0, stdout: "fresh" });
+  render(<BulkCommandDialog open targets={[target]} selectedTarget={target} onClose={vi.fn()} onRefresh={onRefresh} />);
+
+  await user.type(screen.getByRole("textbox", { name: "Command" }), "printf ok");
+  await user.type(screen.getByPlaceholderText("RUN ON 1 TARGETS"), "RUN ON 1 TARGETS");
+  await user.click(screen.getByRole("button", { name: "Run selected" }));
+  await screen.findByText("1/1 finished");
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+  await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/console/command-requests/41", { signal: expect.any(AbortSignal) }));
+  await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText(/items\.map|is not a function/i)).not.toBeInTheDocument();
+});
+
 it("does not restore an old run after the dialog closes and reopens", async () => {
   const user = userEvent.setup();
   const pending = deferred();

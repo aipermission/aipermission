@@ -19,7 +19,7 @@ func TestConcreteConnectorPortsExposeOnlyTheirDeclaredAuthority(t *testing.T) {
 		methods []string
 	}{
 		{name: "peer gateway", value: connectorports.PeerGateway{}, methods: []string{"ConnectorTrustStorePath"}},
-		{name: "live console gateway", value: connectorports.LiveConsoleGateway{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorTrustStorePath"}},
+		{name: "live console gateway", value: connectorports.LiveConsoleGateway{}, methods: []string{"ConnectorOpenLiveConsole", "ConnectorRunCommand", "ConnectorTrustStorePath"}},
 		{name: "route gateway", value: connectorports.RouteGateway{}, methods: []string{"ConnectorActiveRuntimeAvailable", "ConnectorChangeVaultPeerTrust", "ConnectorTrustStorePath"}},
 		{name: "runtime action gateway", value: connectorports.RuntimeActionGateway{}, methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
 		{name: "action finish gateway", value: connectorports.ActionFinishGateway{}, methods: []string{"ConnectorFinishActionRequest"}},

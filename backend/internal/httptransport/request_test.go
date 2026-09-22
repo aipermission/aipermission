@@ -49,3 +49,49 @@ func TestDecodeJSONAcceptsOneStrictObject(t *testing.T) {
 		t.Fatalf("decoded target = %#v, response = %s", target, response.Body.String())
 	}
 }
+
+func TestWorkspaceBoundReadCatalog(t *testing.T) {
+	for _, path := range []string{
+		"/api/backup/download",
+		"/api/settings/diagnostics",
+		"/api/backup/providers/3/records/9/download",
+		"/api/file-transfers/4/download",
+		"/api/file-transfer-batches/4/download",
+		"/api/connector-targets/1/profiles/2/backup",
+		"/api/console/sessions/4/attach",
+		"/api/settings/maintenance-console/attach",
+	} {
+		if !IsWorkspaceBoundRead(http.MethodGet, path) {
+			t.Errorf("download route %s is not workspace-bound", path)
+		}
+	}
+	for _, request := range []struct{ method, path string }{
+		{http.MethodPost, "/api/backup/download"},
+		{http.MethodGet, "/api/status"},
+		{http.MethodGet, "/api/backup/providers/3/records"},
+	} {
+		if IsWorkspaceBoundRead(request.method, request.path) {
+			t.Errorf("ordinary route %s %s is workspace-bound", request.method, request.path)
+		}
+	}
+}
+
+func TestWorkspaceSocketRouteCatalog(t *testing.T) {
+	for _, path := range []string{
+		"/api/settings/maintenance-console/attach",
+		"/api/console/sessions/12/attach",
+	} {
+		if !IsWorkspaceSocketRoute(path) {
+			t.Fatalf("workspace socket route %q was not recognized", path)
+		}
+	}
+	for _, path := range []string{
+		"/api/settings/maintenance-console/status",
+		"/api/console/sessions/12",
+		"/api/console/sessions/12/attach/extra",
+	} {
+		if IsWorkspaceSocketRoute(path) {
+			t.Fatalf("ordinary route %q was classified as a workspace socket", path)
+		}
+	}
+}

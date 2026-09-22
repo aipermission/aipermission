@@ -43,48 +43,48 @@ func (Management) BeforeDeleteCredentialProfile(ctx context.Context, handler con
 	return nil
 }
 
-func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectorapi.Target) {
+func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w http.ResponseWriter, r *http.Request, runtime connectorapi.TargetLifecycleRuntime, target connectorapi.Target) error {
 	if w == nil || r == nil {
-		return
+		return nil
 	}
 	gateway, err := targetDeletionGatewayFrom(handler)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil
 	}
 	profiles, err := runtime.ListCredentialProfiles(r.Context(), target.ID)
 	if err != nil {
 		handleTargetError(w, err)
-		return
+		return nil
 	}
 	removedKeys := int64(0)
 	if r.URL.Query().Get("remove_key") == "true" {
 		if len(profiles) == 0 {
 			writeError(w, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
-			return
+			return nil
 		}
 		cleanupSeen := map[string]bool{}
 		for _, profile := range profiles {
 			runtimeID, err := ensureLiveConsoleRuntimeIDForProfile(r.Context(), runtime, target.ID, profile.ID, profile.Label)
 			if err != nil {
 				handleTargetError(w, err)
-				return
+				return nil
 			}
 			remoteTarget, privateKey, err := TargetMaterialForRuntime(r.Context(), runtime, runtimeID)
 			if err != nil {
 				handleMaterialError(w, err)
-				return
+				return nil
 			}
 			keyStore, err := keyStore(runtime)
 			if err != nil {
 				writeInternalError(w)
-				return
+				return nil
 			}
 			sshKeyID := int64ConfigValue(profile.Public, "ssh_key_id")
 			key, err := keyStore.Get(r.Context(), sshKeyID)
 			if err != nil {
 				handleKeyError(w, err)
-				return
+				return nil
 			}
 			cleanupKey := remoteTarget.Username + "\x00" + publicKeyBlob(key.PublicKey)
 			if cleanupSeen[cleanupKey] {
@@ -96,7 +96,7 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 			cancel()
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
-				return
+				return nil
 			}
 			if result.ExitCode != 0 {
 				message := strings.TrimSpace(result.Stderr + result.Stdout)
@@ -107,7 +107,7 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 					continue
 				}
 				writeError(w, http.StatusBadGateway, message)
-				return
+				return nil
 			}
 			removedKeys++
 		}
@@ -116,19 +116,19 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 	principal, err := runtime.ConnectorLocalExecutionPrincipal()
 	if err != nil {
 		writeInternalError(w)
-		return
+		return nil
 	}
 	for _, profile := range profiles {
 		runtimeIDs, err := existingLiveConsoleRuntimeIDsForProfile(r.Context(), runtime, target.ID, profile.ID)
 		if err != nil {
 			writeInternalError(w)
-			return
+			return nil
 		}
 		for _, runtimeID := range runtimeIDs {
 			result, err := gateway.ConnectorRestartConsoleSession(r.Context(), principal, runtimeID, "SSH connector target was deleted before command completed")
 			if err != nil {
 				writeInternalError(w)
-				return
+				return nil
 			}
 			canceledCommands += result.CanceledRunningRequests
 		}
@@ -139,13 +139,13 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 		"canceled_commands":   canceledCommands,
 	}); err != nil {
 		handleTargetError(w, err)
-		return
+		return nil
 	}
 	if _, err := handler.ConnectorFinalizeDeletedTarget(r.Context(), target, "SSH connector target was deleted; ask the AI to send a fresh request", nil); err != nil {
-		writeInternalError(w)
-		return
+		return err
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "remote_key_removed": removedKeys > 0, "remote_keys_removed": removedKeys})
+	return nil
 }
 
 func (Management) TestCredentialProfile(ctx context.Context, handler connectorapi.PeerIdentityGateway, runtime connectorapi.ConnectorDataRuntime, target connectors.TargetView, profile connectors.CredentialProfileView) (connectors.ManagementResponse, error) {

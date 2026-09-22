@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -19,6 +20,7 @@ type ProfileCleanupOutcome struct {
 type ProfileDeletionScope struct {
 	Database             *sql.DB
 	AcquireExclusive     func(context.Context) (func(), error)
+	Admission            *connectors.DeliveryAdmissionIdentity
 	Cleanup              func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) (ProfileCleanupOutcome, error)
 	BeforeDelete         func(context.Context, connectortargets.Target, connectortargets.CredentialProfile) error
 	WithTransaction      func(context.Context, func(*sql.Tx, AuditAppender) error) error
@@ -48,13 +50,8 @@ func (h *ProfileDeletionHTTPHandler) Delete(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector credential profile deletion was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile deletion was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -79,11 +76,20 @@ func (h *ProfileDeletionHTTPHandler) Delete(w http.ResponseWriter, r *http.Reque
 		writeTargetError(w, err)
 		return
 	}
+	lifecycleChange := TargetLifecycleChange{
+		TargetID: targetID, ProfileID: profileID,
+		StaleReason:    "connector credential profile was deleted; send a fresh Vault request",
+		UserMessage:    "connector credential profile was deleted; ask the AI to send a fresh request",
+		IncludeRunning: true,
+	}
 	err = scope.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit AuditAppender) error {
 		if tx == nil || appendAudit == nil {
 			return errProfileDeletionRuntimeUnavailable
 		}
 		if err := connectortargets.NewTxStore(tx).DeleteCredentialProfile(r.Context(), targetID, profileID); err != nil {
+			return err
+		}
+		if err := queueLifecycleChange(r.Context(), tx, lifecycleChange); err != nil {
 			return err
 		}
 		payload := profileAuditPayload(target, profile)
@@ -96,13 +102,10 @@ func (h *ProfileDeletionHTTPHandler) Delete(w http.ResponseWriter, r *http.Reque
 		writeTargetError(w, err)
 		return
 	}
-	if err := scope.AfterLifecycleChange(r.Context(), TargetLifecycleChange{
-		TargetID: targetID, ProfileID: profileID,
-		StaleReason:    "connector credential profile was deleted; send a fresh Vault request",
-		UserMessage:    "connector credential profile was deleted; ask the AI to send a fresh request",
-		IncludeRunning: true,
+	if err := finalizeLifecycleMutation(r.Context(), func(ctx context.Context) error {
+		return scope.AfterLifecycleChange(ctx, lifecycleChange)
 	}); err != nil {
-		httptransport.WriteInternalError(w)
+		WriteCommittedLifecycleError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

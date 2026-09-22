@@ -53,6 +53,7 @@ export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQu
       const filename = batch.item.archive_name || batch.item.items?.[0]?.file_name || "aipermission-download";
       const result = await apiDownload(`/api/file-transfer-batches/${batch.item.id}/download`, filename, {
         picker: true,
+        requireStreaming: true,
         signal: request.signal,
       });
       if (!request.isCurrent()) return false;

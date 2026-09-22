@@ -3,6 +3,7 @@ package gatewayconnectormanagement
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -30,27 +31,27 @@ func (component *Component) CredentialResources(dependencies CredentialResourceD
 }
 
 func (handlers CredentialResourceHandlers) List(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.ListCredentialResources)
+	handlers.run(w, r, false, CredentialResourceAdapter.ListCredentialResources)
 }
 func (handlers CredentialResourceHandlers) Create(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.CreateCredentialResource)
+	handlers.run(w, r, true, CredentialResourceAdapter.CreateCredentialResource)
 }
 func (handlers CredentialResourceHandlers) Import(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.ImportCredentialResource)
+	handlers.run(w, r, true, CredentialResourceAdapter.ImportCredentialResource)
 }
 func (handlers CredentialResourceHandlers) Get(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.GetCredentialResource)
+	handlers.run(w, r, false, CredentialResourceAdapter.GetCredentialResource)
 }
 func (handlers CredentialResourceHandlers) Update(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.UpdateCredentialResource)
+	handlers.run(w, r, true, CredentialResourceAdapter.UpdateCredentialResource)
 }
 func (handlers CredentialResourceHandlers) Delete(w http.ResponseWriter, r *http.Request) {
-	handlers.run(w, r, CredentialResourceAdapter.DeleteCredentialResource)
+	handlers.run(w, r, true, CredentialResourceAdapter.DeleteCredentialResource)
 }
 
 type credentialResourceOperation func(CredentialResourceAdapter, http.ResponseWriter, *http.Request, connectorapi.CredentialResourceRuntime)
 
-func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Request, operation credentialResourceOperation) {
+func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Request, mutation bool, operation credentialResourceOperation) {
 	workspace, ok := handlers.component.active(w)
 	if !ok {
 		return
@@ -64,6 +65,26 @@ func (handlers CredentialResourceHandlers) run(w http.ResponseWriter, r *http.Re
 	if workspace.Credentials.ResourceRuntime == nil {
 		handlers.dependencies.WriteError(w, http.StatusServiceUnavailable, "connector credential runtime is unavailable")
 		return
+	}
+	if mutation {
+		if workspace.Storage.AcquireExclusive == nil {
+			handlers.dependencies.WriteError(w, http.StatusServiceUnavailable, "connector credential mutation runtime is unavailable")
+			return
+		}
+		release, err := workspace.Storage.AcquireExclusive(r.Context())
+		if err != nil {
+			if release != nil {
+				release()
+			}
+			handlers.dependencies.WriteError(w, http.StatusRequestTimeout, "connector credential resource mutation was canceled")
+			return
+		}
+		if release == nil {
+			handlers.dependencies.WriteError(w, http.StatusInternalServerError, "connector credential mutation runtime is unavailable")
+			return
+		}
+		defer release()
+		*r = *r.WithContext(connectors.WithDeliveryAdmission(r.Context(), workspace.Storage.Admission))
 	}
 	operation(adapter, w, r, workspace.Credentials.ResourceRuntime(kind))
 }

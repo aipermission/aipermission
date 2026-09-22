@@ -53,7 +53,37 @@ func (s *Service) ReadSettings(ctx context.Context) (Settings, error) {
 	return settings, nil
 }
 
+// ReusableTokensForMutation reads the authoritative policy from the caller's
+// transaction so sensitive persistence decisions cannot race a settings
+// update or rely on the read cache.
+func (s *Service) ReusableTokensForMutation(ctx context.Context, tx *sql.Tx) (bool, error) {
+	if s == nil || s.database == nil || tx == nil {
+		return false, errors.New("security policy transaction is unavailable")
+	}
+	settings, err := readSettings(ctx, tx)
+	return settings.ReusableTokens, err
+}
+
 func (s *Service) UpdateSettings(ctx context.Context, settings Settings, mutate auditedmutation.Runner) (Settings, error) {
+	return s.updateSettings(ctx, settings, "", false, mutate)
+}
+
+func (s *Service) UpdateSettingsAtRevision(
+	ctx context.Context,
+	settings Settings,
+	expectedRevision string,
+	mutate auditedmutation.Runner,
+) (Settings, error) {
+	return s.updateSettings(ctx, settings, expectedRevision, true, mutate)
+}
+
+func (s *Service) updateSettings(
+	ctx context.Context,
+	settings Settings,
+	expectedRevision string,
+	requireRevision bool,
+	mutate auditedmutation.Runner,
+) (Settings, error) {
 	if s == nil || s.database == nil {
 		return Settings{}, errors.New("security policy database is unavailable")
 	}
@@ -66,6 +96,15 @@ func (s *Service) UpdateSettings(ctx context.Context, settings Settings, mutate 
 	err := mutate(ctx, "settings.security.updated", func() any {
 		return settingsAuditPayload(settings)
 	}, func(tx *sql.Tx) error {
+		if requireRevision {
+			current, err := readSettings(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if err := requireSettingsRevision(expectedRevision, current); err != nil {
+				return err
+			}
+		}
 		return writeSettings(ctx, tx, settings)
 	})
 	if err != nil {

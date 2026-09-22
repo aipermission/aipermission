@@ -1,6 +1,8 @@
 package s3connector
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +15,40 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
+
+func TestDownloadFilePreservesContentEncodedObjectBytes(t *testing.T) {
+	var stored bytes.Buffer
+	writer := gzip.NewWriter(&stored)
+	if _, err := writer.Write([]byte("stored object payload")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := append([]byte(nil), stored.Bytes()...)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept-Encoding"); got != "identity" {
+			t.Fatalf("Accept-Encoding = %q, want identity", got)
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", fmt.Sprint(len(want)))
+		_, _ = w.Write(want)
+	}))
+	defer server.Close()
+
+	localPath := t.TempDir() + "/download"
+	result, err := DownloadFile(t.Context(), s3TestRuntime(t, server.URL), "/encoded", localPath, TransferOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) || result.Bytes != int64(len(want)) {
+		t.Fatalf("download bytes=%d content=%x, want bytes=%d content=%x", result.Bytes, got, len(want), want)
+	}
+}
 
 func TestBrowseRemoteFilesReturnsVirtualDirectoriesAndObjects(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +103,9 @@ func TestUploadFileUsesMultipartAndReportsProgress(t *testing.T) {
 		case r.Method == http.MethodHead:
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodPost && r.URL.Query().Has("uploads"):
+			if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
+				t.Fatalf("multipart content type = %q", got)
+			}
 			_, _ = w.Write([]byte(`<InitiateMultipartUploadResult><UploadId>upload-1</UploadId></InitiateMultipartUploadResult>`))
 		case r.Method == http.MethodPut && r.URL.Query().Get("uploadId") == "upload-1":
 			partCount++

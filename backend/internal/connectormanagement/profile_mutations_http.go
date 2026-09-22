@@ -16,6 +16,7 @@ type ProfileMutationScope struct {
 	Registry              connectors.Catalog
 	Preparation           CredentialPreparationPorts
 	AcquireExclusive      func(context.Context) (func(), error)
+	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
 	BeforeCreate          func(context.Context, connectortargets.Target) error
 	EnsureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
@@ -45,6 +46,11 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile create was canceled")
+	if !ok {
+		return
+	}
+	defer release()
 	store := connectortargets.NewStore(scope.Database)
 	target, err := store.GetTarget(r.Context(), targetID)
 	if err != nil {
@@ -139,13 +145,8 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	release, err := scope.AcquireExclusive(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector credential profile update was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireLifecycleMutation(w, r, scope.AcquireExclusive, scope.Admission, "connector credential profile update was canceled")
+	if !ok {
 		return
 	}
 	defer release()
@@ -183,6 +184,11 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	lifecycleChange := TargetLifecycleChange{
+		TargetID: target.ID, ProfileID: profileID,
+		StaleReason: "connector credential profile changed; send a fresh Vault request",
+		UserMessage: "connector credential profile was updated; ask the AI to send a fresh request",
+	}
 	var profile connectortargets.CredentialProfile
 	err = scope.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit AuditAppender) error {
 		if tx == nil || appendAudit == nil {
@@ -196,18 +202,19 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 		if updateErr != nil {
 			return updateErr
 		}
+		if updateErr := queueLifecycleChange(r.Context(), tx, lifecycleChange); updateErr != nil {
+			return updateErr
+		}
 		return appendAudit(tx, "user", nil, 0, "connector.profile.updated", profileAuditPayload(target, profile))
 	})
 	if err != nil {
 		writeTargetError(w, err)
 		return
 	}
-	if err := scope.AfterLifecycleChange(r.Context(), TargetLifecycleChange{
-		TargetID: target.ID, ProfileID: profile.ID,
-		StaleReason: "connector credential profile changed; send a fresh Vault request",
-		UserMessage: "connector credential profile was updated; ask the AI to send a fresh request",
+	if err := finalizeLifecycleMutation(r.Context(), func(ctx context.Context) error {
+		return scope.AfterLifecycleChange(ctx, lifecycleChange)
 	}); err != nil {
-		httptransport.WriteInternalError(w)
+		WriteCommittedLifecycleError(w, err)
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, ProfileToSummary(profile))
@@ -254,9 +261,9 @@ func (h *ProfileMutationHTTPHandler) resolve(w http.ResponseWriter, update bool)
 		return ProfileMutationScope{}, false
 	}
 	valid := scope.Database != nil && scope.Registry != nil && scope.WithTransaction != nil &&
-		scope.EnsureRuntimeSurfaces != nil
+		scope.EnsureRuntimeSurfaces != nil && scope.AcquireExclusive != nil
 	if update {
-		valid = valid && scope.AcquireExclusive != nil && scope.AfterLifecycleChange != nil
+		valid = valid && scope.AfterLifecycleChange != nil
 	} else {
 		valid = valid && scope.BeforeCreate != nil
 	}

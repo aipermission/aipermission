@@ -1,0 +1,10 @@
+package db
+
+var connectorLifecycleFinalizationMigration = migration{
+	version:     37,
+	description: "durable connector lifecycle finalization",
+	statements: []string{
+		`CREATE TABLE IF NOT EXISTS connector_lifecycle_finalizations (id INTEGER PRIMARY KEY AUTOINCREMENT, target_id INTEGER NOT NULL, profile_id INTEGER NOT NULL DEFAULT 0, stale_reason TEXT NOT NULL DEFAULT '', user_message TEXT NOT NULL DEFAULT '', include_running INTEGER NOT NULL DEFAULT 0 CHECK (include_running IN (0, 1)), vault_pending INTEGER NOT NULL DEFAULT 1 CHECK (vault_pending IN (0, 1)), requests_pending INTEGER NOT NULL DEFAULT 1 CHECK (requests_pending IN (0, 1)), attempt_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(target_id, profile_id));`,
+		`CREATE INDEX IF NOT EXISTS idx_connector_lifecycle_finalizations_pending ON connector_lifecycle_finalizations(vault_pending, requests_pending, id);`,
+	},
+}

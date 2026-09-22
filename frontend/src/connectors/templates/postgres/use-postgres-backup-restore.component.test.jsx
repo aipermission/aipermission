@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiDownload, apiPostForm } from "../../../lib/api";
+import { apiDownload, apiPostForm, currentWorkspaceBinding } from "../../../lib/api";
 import { APIError } from "../../../lib/errors";
 import {
   completeLocalActionRetry,
@@ -8,9 +8,10 @@ import {
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
+import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
 import { usePostgresBackupRestore } from "./use-postgres-backup-restore";
 
-vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn() }));
+vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn(), currentWorkspaceBinding: vi.fn() }));
 vi.mock("../../../lib/local-action-retry", () => ({
   prepareLocalActionRetry: vi.fn(),
   completeLocalActionRetry: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../../../lib/local-action-retry", () => ({
 beforeEach(() => {
   apiDownload.mockReset().mockResolvedValue({ saved: true });
   apiPostForm.mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
+  currentWorkspaceBinding.mockReset().mockReturnValue("workspace-a");
   prepareLocalActionRetry.mockReset().mockResolvedValue({ idempotencyKey: "restore-attempt-key" });
   completeLocalActionRetry.mockReset().mockResolvedValue(undefined);
   markLocalActionRetryOutcome.mockReset().mockResolvedValue(undefined);
@@ -44,9 +46,19 @@ it("downloads a safe filename and keeps canceled pickers idle", async () => {
   expect(apiDownload).toHaveBeenCalledWith(
     "/api/connector-targets/1/profiles/10/backup",
     "main-db-1.sql",
-    expect.objectContaining({ picker: true, signal: expect.any(AbortSignal) }),
+    expect.objectContaining({ picker: true, requireStreaming: true, signal: expect.any(AbortSignal) }),
   );
   expect(result.current.backupState).toEqual({ state: "idle", error: "", message: "" });
+});
+
+it("surfaces backup download failures and leaves the working state", async () => {
+  apiDownload.mockRejectedValueOnce(new Error("download transport failed"));
+  const { result } = renderHook(() => usePostgresBackupRestore(operation()));
+
+  await act(async () => result.current.downloadBackup());
+
+  expect(result.current.backupState).toEqual({ state: "error", error: "download transport failed", message: "" });
+  expect(result.current.isWorking).toBe(false);
 });
 
 it("discards a backup completion after the selected profile changes", async () => {
@@ -82,8 +94,9 @@ it("restores only after exact target confirmation and captures the selected dump
   expect(apiPostForm).toHaveBeenCalledWith(
     "/api/connector-targets/1/profiles/10/restore",
     expect.any(FormData),
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect.objectContaining({ signal: expect.any(AbortSignal), workspaceBinding: "workspace-a" }),
   );
+  expect(prepareLocalActionRetry).toHaveBeenCalledWith(expect.any(Object), { workspaceID: "workspace-a" });
   const submitted = apiPostForm.mock.calls[0][1];
   expect(submitted.get("dump")).toBe(dump);
   expect(submitted.get("confirm_target")).toBe("Main DB 1");
@@ -155,6 +168,21 @@ it("reuses one restore identity after an uncertain client failure", async () => 
   expect(result.current.restoreState).toEqual({ state: "ready", error: "", message: "Restore completed." });
   expect(result.current.file).toBeNull();
   expect(result.current.confirmTarget).toBe("");
+});
+
+it("derives restore retry identity from content instead of mutable file metadata", async () => {
+  const first = new File(["SELECT 1;"], "backup.sql", { lastModified: 7 });
+  const touched = new File(["SELECT 1;"], "backup.sql", { lastModified: 8 });
+  const changed = new File(["SELECT 2;"], "backup.sql", { lastModified: 7 });
+
+  const firstIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", first);
+  const touchedIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", touched);
+  const changedIdentity = await postgresRestoreRetryIdentity("/restore", "Main DB", changed);
+
+  expect(touchedIdentity).toEqual(firstIdentity);
+  expect(changedIdentity.body).toMatchObject({ filename: first.name, size: first.size });
+  expect(changedIdentity.body.artifact_sha256).not.toBe(firstIdentity.body.artifact_sha256);
+  expect(firstIdentity.body).not.toHaveProperty("last_modified");
 });
 
 it("records an explicitly uncertain restore without preserving it as a normal retry", async () => {

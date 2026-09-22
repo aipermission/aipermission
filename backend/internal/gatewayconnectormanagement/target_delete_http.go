@@ -3,6 +3,8 @@ package gatewayconnectormanagement
 import (
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -28,11 +30,6 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 		httptransport.WriteInternalError(w)
 		return
 	}
-	target, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), id)
-	if err != nil {
-		WriteTargetError(w, err)
-		return
-	}
 	release, err := workspace.Storage.AcquireExclusive(r.Context())
 	if err != nil {
 		if release != nil {
@@ -46,6 +43,12 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	defer release()
+	*r = *r.WithContext(connectors.WithDeliveryAdmission(r.Context(), workspace.Storage.Admission))
+	target, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), id)
+	if err != nil {
+		WriteTargetError(w, err)
+		return
+	}
 
 	adapter, _ := handler.component.dependencies.Adapters.For(target.ConnectorKind).(connectorapi.TargetDeleter)
 	if adapter != nil {
@@ -59,7 +62,9 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 			httptransport.WriteInternalError(w)
 			return
 		}
-		adapter.DeleteTarget(gateway, w, r, runtime, connectorTarget(target))
+		if err := adapter.DeleteTarget(gateway, w, r, runtime, connectorTarget(target)); err != nil {
+			connectormanagement.WriteCommittedLifecycleError(w, err)
+		}
 		return
 	}
 	if workspace.Lifecycle.DeleteTarget == nil || workspace.Lifecycle.FinalizeTarget == nil {
@@ -71,7 +76,7 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if _, err := workspace.Lifecycle.FinalizeTarget(r.Context(), target, deletedTargetStaleReason); err != nil {
-		httptransport.WriteInternalError(w)
+		connectormanagement.WriteCommittedLifecycleError(w, err)
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})

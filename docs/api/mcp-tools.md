@@ -31,6 +31,10 @@ get_vault_action_request(request_id)
 cancel_vault_action_request(request_id)
 ```
 
+Vault tools accept project references as `id:<id>` or `slug:<slug>`. Prefer
+these explicit forms in stored prompts and automation. Unprefixed references
+remain compatible unless a legacy numeric slug collides with a project ID.
+
 ## Connector Model
 
 Every connector uses the same permission path:
@@ -117,8 +121,10 @@ expire after 15 minutes. Action input is decoded against the documented action
 schema before the request is stored; unknown fields are rejected and are never
 copied verbatim into approval, history, or replay data.
 
-For `generate_item`, `tags` is an array of strings, `shared_project_ids` is an
-array of integer project ids, and `usage_notes` uses this shape:
+For `generate_item`, omitted `secret_type` defaults to `generic_secret`. Invalid
+metadata is rejected before an Always execution or Prompt approval is created.
+`tags` is an array of strings, `shared_project_ids` is an array of integer
+project ids, and `usage_notes` uses this shape:
 
 ```json
 [
@@ -632,5 +638,8 @@ tail -n 100 /path/to/log
 Avoid commands that wait for interactive stdin. Use the web console for
 interactive work.
 
-MCP connector responses never include file contents, gateway temporary paths,
-archive staging paths, or local upload contents.
+File-transfer queue and status responses do not include transferred file bytes,
+gateway temporary paths, archive staging paths, or local upload contents.
+Explicitly authorized connector read actions may return bounded content, such
+as S3 `download_object` `content_base64` or SSH command output; treat it as
+sensitive target data.

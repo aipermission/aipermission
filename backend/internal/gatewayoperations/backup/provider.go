@@ -35,8 +35,9 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 	return backups.HTTPScope{
 		Database: runtime.Database, DatabaseID: runtime.DatabaseID,
 		DatabaseName: component.dependencies.CurrentDatabaseName(), DatabasePath: runtime.DatabasePath,
-		WorkspaceUUID: runtime.WorkspaceID, InstallationDataPath: component.dependencies.DataPath,
-		Secrets: providerSecretCodec{runtime: runtime},
+		WorkspaceUUID: runtime.WorkspaceID, WorkspaceInstanceID: runtime.WorkspaceInstanceID,
+		InstallationDataPath: component.dependencies.DataPath,
+		Secrets:              providerSecretCodec{runtime: runtime},
 		Mutate: func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
 			return runtime.Mutate(ctx, action, payload, mutate)
 		},
@@ -67,9 +68,8 @@ func (component *Component) providerScope(w http.ResponseWriter) (backups.HTTPSc
 }
 
 func (component *Component) providerOperationScope(w http.ResponseWriter, r *http.Request) (backups.HTTPScope, func(), bool) {
-	lease, err := component.acquireReadOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "backup operation was canceled")
+	lease, ok := component.authorizedReadOperation(w, r)
+	if !ok {
 		return backups.HTTPScope{}, nil, false
 	}
 	scope, ok := component.providerScope(w)
@@ -99,9 +99,8 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 		return
 	}
 	defer clearStrings(&request.DatabasePassword)
-	lease, err := component.acquireMutationOperation(r.Context())
-	if err != nil {
-		httptransport.WriteError(w, http.StatusRequestTimeout, "backup restore was canceled")
+	lease, ok := component.authorizedMutationOperation(w, r)
+	if !ok {
 		return
 	}
 	defer lease.Release()

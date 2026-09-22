@@ -25,10 +25,12 @@ func (s *managedConsoleSession) execCommand(
 		return ExecResult{}, err
 	}
 
+	s.inputMu.Lock()
 	if active := s.activeCommand(); active != nil {
 		output, exitCode, completed, err := s.checkCommandResult(active.StartOffset, active.Marker)
+		s.inputMu.Unlock()
 		if err != nil {
-			s.clearActiveCommand(active.Marker)
+			s.clearActiveCommandWithInputAdmission(active.Marker)
 			return ExecResult{}, err
 		}
 		if completed {
@@ -57,7 +59,7 @@ func (s *managedConsoleSession) execCommand(
 	started := time.Now()
 	marker := fmt.Sprintf("__AIPERMISSION_EXIT_%d_%d__", s.id, started.UnixNano())
 	s.mu.Lock()
-	startOffset := len(s.rawTranscript)
+	startOffset := s.rawStreamPositionLocked()
 	s.mu.Unlock()
 
 	s.setActiveCommand(consoleSessionActiveExec{
@@ -66,8 +68,11 @@ func (s *managedConsoleSession) execCommand(
 		StartOffset: startOffset,
 		Started:     started,
 	})
+	s.inputMu.Unlock()
 
 	writeCommand := func() error {
+		s.inputMu.Lock()
+		defer s.inputMu.Unlock()
 		if err := s.writeInput(consoleExecPrelude()); err != nil {
 			return err
 		}
@@ -81,7 +86,7 @@ func (s *managedConsoleSession) execCommand(
 		writeErr = writeCommand()
 	}
 	if writeErr != nil {
-		s.clearActiveCommand(marker)
+		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, writeErr
 	}
 	s.appendDisplayOutput(terminaltext.FormatAutomationCommand(command))
@@ -98,11 +103,10 @@ func (s *managedConsoleSession) execCommand(
 				DurationMS: time.Since(started).Milliseconds(),
 			}, nil
 		}
-		s.clearActiveCommand(marker)
+		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, err
 	}
-	s.clearActiveCommand(marker)
-	s.restoreTerminalInput()
+	s.restoreTerminalInputAndClear(marker)
 
 	return ExecResult{
 		SessionID:  s.id,
@@ -123,8 +127,7 @@ func (s *managedConsoleSession) waitActiveCommand(ctx context.Context) (ExecResu
 	if err != nil {
 		return ExecResult{}, err
 	}
-	s.clearActiveCommand(active.Marker)
-	s.restoreTerminalInput()
+	s.restoreTerminalInputAndClear(active.Marker)
 	return ExecResult{
 		SessionID:  s.id,
 		Generation: s.generation,
@@ -136,6 +139,8 @@ func (s *managedConsoleSession) waitActiveCommand(ctx context.Context) (ExecResu
 }
 
 func (s *managedConsoleSession) interruptActiveCommand(ctx context.Context) error {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
 	active := s.activeCommand()
 	if active == nil {
 		return nil
@@ -148,13 +153,32 @@ func (s *managedConsoleSession) interruptActiveCommand(ctx context.Context) erro
 		return ctx.Err()
 	case <-time.After(250 * time.Millisecond):
 	}
+	s.restoreTerminalInputLocked()
 	s.clearActiveCommand(active.Marker)
-	s.restoreTerminalInput()
 	return nil
 }
 
 func (s *managedConsoleSession) restoreTerminalInput() {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.restoreTerminalInputLocked()
+}
+
+func (s *managedConsoleSession) restoreTerminalInputLocked() {
 	_ = s.writeInput(restoreTerminalInputCommand)
+}
+
+func (s *managedConsoleSession) restoreTerminalInputAndClear(marker string) {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.restoreTerminalInputLocked()
+	s.clearActiveCommand(marker)
+}
+
+func (s *managedConsoleSession) clearActiveCommandWithInputAdmission(marker string) {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.clearActiveCommand(marker)
 }
 
 func (s *managedConsoleSession) activeCommand() *consoleSessionActiveExec {
@@ -209,7 +233,7 @@ func (s *managedConsoleSession) waitReady(ctx context.Context) error {
 	}
 }
 
-func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startOffset int, marker string) (string, int, error) {
+func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startOffset int64, marker string) (string, int, error) {
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -230,30 +254,38 @@ func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startO
 	}
 }
 
-func (s *managedConsoleSession) checkCommandResult(startOffset int, marker string) (string, int, bool, error) {
+func (s *managedConsoleSession) checkCommandResult(startOffset int64, marker string) (string, int, bool, error) {
 	s.mu.Lock()
 	transcript := s.rawTranscript
+	baseOffset := s.rawBaseOffset
 	status := s.status
 	errText := s.errText
 	s.mu.Unlock()
-	if startOffset > len(transcript) {
-		startOffset = 0
-	}
-	segment := transcript[startOffset:]
+	segment, truncated := rawTranscriptSegment(transcript, baseOffset, startOffset)
 	markerNeedle := "\n" + marker + ":"
 	markerIndex := strings.Index(segment, markerNeedle)
+	markerLength := len(markerNeedle)
+	if markerIndex < 0 && truncated && strings.HasPrefix(segment, marker+":") {
+		markerIndex = 0
+		markerLength = len(marker) + 1
+	}
 	if markerIndex >= 0 {
-		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
-		afterMarker := segment[markerIndex+len(markerNeedle):]
+		afterMarker := segment[markerIndex+markerLength:]
 		lineEnd := strings.IndexAny(afterMarker, "\r\n")
-		exitText := afterMarker
-		if lineEnd >= 0 {
-			exitText = afterMarker[:lineEnd]
+		if lineEnd < 0 {
+			return segment, 1, false, nil
 		}
-		exitCode, err := strconv.Atoi(strings.TrimSpace(exitText))
+		exitText := afterMarker[:lineEnd]
+		if exitText == "" || strings.IndexFunc(exitText, func(value rune) bool {
+			return value < '0' || value > '9'
+		}) >= 0 {
+			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("invalid console command exit marker")
+		}
+		exitCode, err := strconv.Atoi(exitText)
 		if err != nil {
-			exitCode = 1
+			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("parse console command exit status: %w", err)
 		}
+		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
 		return output, exitCode, true, nil
 	}
 	if status == "error" || status == "closed" {

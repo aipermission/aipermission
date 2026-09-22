@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -60,8 +61,9 @@ type testSSHConnectorProfile struct {
 const testUICSRFToken = "test-ui-csrf"
 
 var (
-	testUICookieMu sync.Mutex
-	testUICookie   *http.Cookie
+	testUICookieMu         sync.Mutex
+	testUICookie           *http.Cookie
+	testUIWorkspaceBinding string
 )
 
 func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTestFixture {
@@ -219,6 +221,14 @@ func performJSONWithoutUICookie(handler http.Handler, method string, path string
 }
 
 func performJSONWithOptions(handler http.Handler, method string, path string, token string, body any, includeUICookie bool) *httptest.ResponseRecorder {
+	return performJSONWithWorkspace(handler, method, path, token, body, includeUICookie, nil)
+}
+
+func performJSONForWorkspace(handler http.Handler, method string, path string, body any, workspace string) *httptest.ResponseRecorder {
+	return performJSONWithWorkspace(handler, method, path, "", body, true, &workspace)
+}
+
+func performJSONWithWorkspace(handler http.Handler, method string, path string, token string, body any, includeUICookie bool, workspace *string) *httptest.ResponseRecorder {
 	var reader *bytes.Reader
 	if body == nil {
 		reader = bytes.NewReader(nil)
@@ -235,17 +245,36 @@ func performJSONWithOptions(handler http.Handler, method string, path string, to
 	if token != "" {
 		request.Header.Set("X-API-Key", token)
 	} else if includeUICookie {
-		if cookie := currentTestUICookie(); cookie != nil {
-			request.AddCookie(cookie)
+		attachTestUIAuthorization(request)
+		if workspace != nil {
+			request.Header.Set(httptransport.WorkspaceHeaderName, *workspace)
 		}
-		request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-		request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
-		request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	recordTestUICookies(response.Result().Cookies())
+	recordTestUIResponse(response)
 	return response
+}
+
+func attachTestUIAuthorization(request *http.Request) {
+	if cookie := currentTestUICookie(); cookie != nil {
+		request.AddCookie(cookie)
+	}
+	request.AddCookie(&http.Cookie{Name: uiCSRFCookieName, Value: testUICSRFToken})
+	request.Header.Set(uiCSRFHeaderName, testUICSRFToken)
+	if binding := currentTestUIWorkspaceBinding(); binding != "" {
+		request.Header.Set(httptransport.WorkspaceHeaderName, binding)
+	}
+}
+
+func recordTestUIResponse(response *httptest.ResponseRecorder) {
+	recordTestUICookies(response.Result().Cookies())
+	if _, ok := response.Header()[http.CanonicalHeaderKey(httptransport.WorkspaceHeaderName)]; !ok {
+		return
+	}
+	testUICookieMu.Lock()
+	testUIWorkspaceBinding = response.Header().Get(httptransport.WorkspaceHeaderName)
+	testUICookieMu.Unlock()
 }
 
 func authorizeTestUISession(srv *Server) {
@@ -267,19 +296,31 @@ func currentTestUICookie() *http.Cookie {
 	return &copy
 }
 
+func currentTestUIWorkspaceBinding() string {
+	testUICookieMu.Lock()
+	defer testUICookieMu.Unlock()
+	return testUIWorkspaceBinding
+}
+
 func recordTestUICookies(cookies []*http.Cookie) {
 	testUICookieMu.Lock()
 	defer testUICookieMu.Unlock()
 	for _, cookie := range cookies {
-		if cookie.Name != uiSessionCookieName {
-			continue
+		switch cookie.Name {
+		case uiSessionCookieName:
+			if cookie.MaxAge < 0 || cookie.Value == "" {
+				testUICookie = nil
+				continue
+			}
+			copy := *cookie
+			testUICookie = &copy
+		case uiWorkspaceCookieName:
+			if cookie.MaxAge < 0 {
+				testUIWorkspaceBinding = ""
+				continue
+			}
+			testUIWorkspaceBinding = cookie.Value
 		}
-		if cookie.MaxAge < 0 || cookie.Value == "" {
-			testUICookie = nil
-			continue
-		}
-		copy := *cookie
-		testUICookie = &copy
 	}
 }
 
@@ -353,7 +394,12 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("metadata should be hidden by default: %#v", items)
 	}
 
-	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "", securitypolicy.Settings{ExposeMCPServerMetadata: true})
+	settingsDocument := decodeRouteResponse[securitypolicy.SettingsDocument](t,
+		performJSON(fixture.server.Handler(), http.MethodGet, "/api/settings/security", "", nil).Body.Bytes())
+	settingsResponse := performJSON(fixture.server.Handler(), http.MethodPut, "/api/settings/security", "",
+		securitypolicy.NewSettingsUpdateRequest(
+			securitypolicy.Settings{ExposeMCPServerMetadata: true}, settingsDocument.Revision,
+		))
 	if settingsResponse.Code != http.StatusOK {
 		t.Fatalf("enable metadata setting failed: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}

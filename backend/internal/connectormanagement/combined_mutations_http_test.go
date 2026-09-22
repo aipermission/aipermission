@@ -16,6 +16,9 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 	audits := []string{}
 	ensured := []int64{}
 	lifecycle := []TargetLifecycleChange{}
+	acquired := 0
+	released := 0
+	exclusiveHeld := false
 	scope := CombinedMutationScope{
 		Database: fixture.database,
 		Registry: fixture.registry,
@@ -24,12 +27,22 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 			Encrypt: func(context.Context, int64, map[string]any) (string, error) { return "combined-ciphertext", nil },
 		},
 		ValidateTransport: func(_ context.Context, projectID int64, config map[string]any) error {
+			if !exclusiveHeld {
+				t.Fatal("transport validation ran outside the exclusive lifecycle gate")
+			}
 			if projectID < 1 || config["endpoint"] == "" {
 				return connectortargets.ValidationError("invalid transport")
 			}
 			return nil
 		},
-		AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil },
+		AcquireExclusive: func(context.Context) (func(), error) {
+			acquired++
+			exclusiveHeld = true
+			return func() {
+				exclusiveHeld = false
+				released++
+			}, nil
+		},
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
 			tx, err := fixture.database.BeginTx(ctx, nil)
 			if err != nil {
@@ -90,8 +103,8 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 		t.Fatalf("updated profile = %#v", profile)
 	}
 	wantAudits := "connector.target.created,connector.profile.created,connector.target.updated,connector.profile.updated"
-	if strings.Join(audits, ",") != wantAudits || len(ensured) != 2 || len(lifecycle) != 1 || lifecycle[0].ProfileID != 0 {
-		t.Fatalf("audits=%v ensured=%v lifecycle=%#v", audits, ensured, lifecycle)
+	if strings.Join(audits, ",") != wantAudits || len(ensured) != 2 || len(lifecycle) != 1 || lifecycle[0].ProfileID != 0 || acquired != 2 || released != 2 || exclusiveHeld {
+		t.Fatalf("audits=%v ensured=%v lifecycle=%#v acquired=%d released=%d", audits, ensured, lifecycle, acquired, released)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
+	"github.com/aipermission/aipermission/backend/internal/timeformat"
 	"github.com/gorilla/websocket"
 )
 
@@ -107,8 +108,9 @@ func (s *managedConsoleSession) destroySensitiveRuntime() {
 	// Admitted persistence work must retain the exact redactor until it drains.
 	s.drainOwnedWork()
 	s.closeExactRedactor()
-	if s.environment != nil {
-		s.environment.Destroy()
+	s.environment.Destroy()
+	if s.startupAdmissionRelease != nil {
+		s.startupAdmissionRelease()
 	}
 }
 
@@ -213,18 +215,23 @@ func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
 	s.finish("closed", "")
 }
 
-func (s *managedConsoleSession) addClient(ws *websocket.Conn) (*sync.Mutex, error) {
+// addClientWithSnapshot returns with writeMu locked. The caller must send the
+// snapshot before unlocking it so later broadcasts cannot overtake it.
+func (s *managedConsoleSession) addClientWithSnapshot(ws *websocket.Conn) (*sync.Mutex, string, string, error) {
 	writeMu := &sync.Mutex{}
+	writeMu.Lock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
-		return nil, ErrSessionClosing
+		writeMu.Unlock()
+		return nil, "", "", ErrSessionClosing
 	}
 	if len(s.clients) >= maxConsoleClientsPerSession {
-		return nil, ErrClientLimit
+		writeMu.Unlock()
+		return nil, "", "", ErrClientLimit
 	}
 	s.clients[ws] = writeMu
-	return writeMu, nil
+	return writeMu, s.status, s.transcript, nil
 }
 
 func (s *managedConsoleSession) removeClient(ws *websocket.Conn) {
@@ -250,13 +257,15 @@ func (s *managedConsoleSession) writeInput(data string) error {
 		return nil
 	}
 	s.mu.Lock()
-	stdin := s.stdin
-	status := s.status
-	s.mu.Unlock()
-	if stdin == nil || status != "connected" {
+	defer s.mu.Unlock()
+	return s.writeInputLocked(data)
+}
+
+func (s *managedConsoleSession) writeInputLocked(data string) error {
+	if s.stdin == nil || s.status != "connected" {
 		return fmt.Errorf("console session is not ready")
 	}
-	_, err := io.WriteString(stdin, data)
+	_, err := io.WriteString(s.stdin, data)
 	return err
 }
 
@@ -272,7 +281,7 @@ func (s *managedConsoleSession) resize(cols int, rows int) {
 	if runtime != nil && runtime.Resize != nil {
 		_ = runtime.Resize(cols, rows)
 	}
-	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET cols = ?, rows = ?, updated_at = ? WHERE id = ?`, cols, rows, time.Now().UTC().Format(time.RFC3339), s.id); err != nil {
+	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET cols = ?, rows = ?, updated_at = ? WHERE id = ?`, cols, rows, timeformat.Now(), s.id); err != nil {
 		logConsolePersistError("resize", s.id, err)
 	}
 }
@@ -436,7 +445,7 @@ func (s *managedConsoleSession) waitDone(ctx context.Context) error {
 }
 
 func (s *managedConsoleSession) setStatus(status string, message string) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	persistedMessage := s.manager.redactText(message)
 	s.mu.Lock()
 	s.status = status
@@ -482,14 +491,14 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	automationActive := s.activeExec != nil
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
 	keepShellPrompt := postAutomationFilter
-	s.rawTranscript = terminaltext.TailStringByBytes(s.rawTranscript+data, maxConsoleTranscriptLength)
+	combinedRaw := s.rawTranscript + data
+	retainedRaw := terminaltext.TailStringByBytes(combinedRaw, maxConsoleTranscriptLength)
+	s.rawBaseOffset += int64(len(combinedRaw) - len(retainedRaw))
+	s.rawTranscript = retainedRaw
 	if automationActive {
 		active := s.activeExec
-		startOffset := active.StartOffset
-		if startOffset > len(s.rawTranscript) {
-			startOffset = 0
-		}
-		if strings.Contains(s.rawTranscript[startOffset:], "\n"+active.Marker+":") {
+		segment, _ := s.rawSegmentLocked(active.StartOffset)
+		if strings.Contains(segment, "\n"+active.Marker+":") {
 			keepShellPrompt = true
 		}
 	}
@@ -519,6 +528,25 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	if displayData != "" {
 		s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
 	}
+}
+
+func (s *managedConsoleSession) rawStreamPositionLocked() int64 {
+	return s.rawBaseOffset + int64(len(s.rawTranscript))
+}
+
+func (s *managedConsoleSession) rawSegmentLocked(startOffset int64) (string, bool) {
+	return rawTranscriptSegment(s.rawTranscript, s.rawBaseOffset, startOffset)
+}
+
+func rawTranscriptSegment(transcript string, baseOffset int64, startOffset int64) (string, bool) {
+	endOffset := baseOffset + int64(len(transcript))
+	if startOffset < baseOffset {
+		return transcript, true
+	}
+	if startOffset > endOffset {
+		return "", true
+	}
+	return transcript[int(startOffset-baseOffset):], false
 }
 
 func (s *managedConsoleSession) appendDisplayOutput(data string) {
@@ -591,7 +619,7 @@ func (s *managedConsoleSession) flushTranscriptContext(ctx context.Context) erro
 	}
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := timeformat.Now()
 	s.mu.Lock()
 	if s.persistTimer != nil {
 		s.persistTimer.Stop()
@@ -640,7 +668,7 @@ func (s *managedConsoleSession) finalize(ctx context.Context) error {
 			status, message = s.status, s.errText
 		}
 		s.mu.Unlock()
-		now := time.Now().UTC().Format(time.RFC3339)
+		now := timeformat.Now()
 		persist := s.manager.persistStatus
 		if persist == nil {
 			persist = consolepersistence.PersistTerminalStatus

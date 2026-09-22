@@ -192,6 +192,11 @@ func (h *HTTPHandlers) UpdateProvider(w http.ResponseWriter, r *http.Request) {
 	if !validateBackupProviderPayload(w, request.Public, request.Secret) {
 		return
 	}
+	releaseProvider, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return
+	}
+	defer releaseProvider()
 	store := NewStore(runtime.Database)
 	existing, err := store.GetProvider(r.Context(), id)
 	if err != nil {
@@ -250,8 +255,14 @@ func (h *HTTPHandlers) UpdateProvider(w http.ResponseWriter, r *http.Request) {
 		r.Context(), "backup.provider.updated",
 		func() any { return backupProviderAuditPayload(item) },
 		func(tx *sql.Tx) error {
+			txStore := NewTxStore(tx)
+			if stringFromMap(existing.Public, "base_url") != stringFromMap(public, "base_url") || encrypted != nil {
+				if err := txStore.ExpireUnresolvedUploadOperations(r.Context(), id, "upload outcome expired because the backup service identity changed"); err != nil {
+					return err
+				}
+			}
 			var err error
-			item, err = NewTxStore(tx).UpdateProvider(r.Context(), id, UpdateProviderRequest{
+			item, err = txStore.UpdateProvider(r.Context(), id, UpdateProviderRequest{
 				Name: name, Status: status, Public: public, Encrypted: encrypted,
 			})
 			return err
@@ -273,6 +284,11 @@ func (h *HTTPHandlers) TestProvider(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	releaseProvider, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return
+	}
+	defer releaseProvider()
 	store := NewStore(runtime.Database)
 	provider, err := store.GetProvider(r.Context(), id)
 	if err != nil {
@@ -335,6 +351,11 @@ func (h *HTTPHandlers) EnableProvider(w http.ResponseWriter, r *http.Request) {
 		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	releaseProvider, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return
+	}
+	defer releaseProvider()
 	item, err := EnableProvider(r.Context(), runtime, id)
 	if err != nil {
 		WriteProviderHTTPError(w, err)
@@ -352,6 +373,11 @@ func (h *HTTPHandlers) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	releaseProvider, ok := h.acquireProviderOperation(w, r.Context(), runtime.Database, id)
+	if !ok {
+		return
+	}
+	defer releaseProvider()
 	err := runtime.Mutate(
 		r.Context(), "backup.provider.archived",
 		func() any { return map[string]any{"provider_id": id} },

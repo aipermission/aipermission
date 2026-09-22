@@ -29,7 +29,13 @@ export function RedisKeyBrowser({ browser, styles }) {
           >
             <RefreshCcw className="h-3.5 w-3.5" />
           </Button>
-          <Button type="button" variant="outline" className="h-8 px-2 text-xs" onClick={browser.startNewKey}>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-8 px-2 text-xs"
+            onClick={browser.startNewKey}
+            disabled={!browser.canStartNewKey}
+          >
             <Plus className="h-3.5 w-3.5" />
             New
           </Button>

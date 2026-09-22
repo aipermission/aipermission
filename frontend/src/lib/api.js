@@ -4,6 +4,7 @@ import {
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
   releaseLocalActionRetryAttempt,
+  retireLocalActionRetryAttempt,
 } from "./local-action-retry.js";
 import { APIError } from "./errors.js";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
@@ -11,6 +12,10 @@ import { scopedUICookieName } from "./ui-cookie.js";
 import { readBufferedDownload } from "./downloads/download-buffer.js";
 
 const viteEnv = import.meta.env || {};
+const workspaceHeaderName = "X-AIPermission-Workspace";
+const workspaceChangedHeaderName = "X-AIPermission-Workspace-Changed";
+let workspaceBinding = "";
+let workspaceBindingOwner = null;
 
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
@@ -29,12 +34,13 @@ export async function apiGet(path, options = {}) {
 }
 
 export async function apiPost(path, body, options = {}) {
-  const prepared = await preparePostBody(path, body);
+  const requestWorkspace = currentWorkspaceBinding();
+  const prepared = await preparePostBody(path, body, requestWorkspace);
   let finalized = false;
   try {
     const response = await fetch(`${apiUrl}${path}`, {
       method: "POST",
-      headers: csrfHeaders({ "Content-Type": "application/json" }),
+      headers: mutationHeaders({ "Content-Type": "application/json" }, requestWorkspace),
       body: JSON.stringify(prepared.body),
       signal: options.signal,
       credentials: "include",
@@ -43,16 +49,7 @@ export async function apiPost(path, body, options = {}) {
     try {
       data = await readResponse(response);
     } catch (error) {
-      if (prepared.retry && error?.data?.status === "outcome_unknown") {
-        await markLocalActionRetryOutcome(prepared.retry, error.data);
-        finalized = true;
-      } else if (prepared.retry && !prepared.retry.reused && response.status >= 400 && response.status < 500) {
-        // A gateway 4xx is a definitive pre-dispatch rejection unless the
-        // key predates this attempt. Another active attempt still keeps the
-        // shared identity protected.
-        await completeLocalActionRetry(prepared.retry);
-        finalized = true;
-      }
+      finalized = await finalizePostError(prepared, error, response);
       throw error;
     }
     if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
@@ -75,6 +72,25 @@ export async function apiPost(path, body, options = {}) {
   }
 }
 
+async function finalizePostError(prepared, error, response) {
+  const retry = prepared.retry;
+  if (!retry) return false;
+  if (prepared.retireOnError?.(error)) {
+    await retireLocalActionRetryAttempt(retry);
+    return true;
+  }
+  if (error?.data?.status === "outcome_unknown") {
+    await markLocalActionRetryOutcome(retry, error.data);
+    return true;
+  }
+  if (!retry.reused && response.status >= 400 && response.status < 500) {
+    // A fresh gateway 4xx is definitive unless another attempt already owns the identity.
+    await completeLocalActionRetry(retry);
+    return true;
+  }
+  return false;
+}
+
 async function preserveRetryAfterFailure(retry, finalized) {
   if (!retry || finalized) return finalized;
   await preserveLocalActionRetryAttempt(retry);
@@ -90,11 +106,11 @@ function isAcknowledgedLocalActionResponse(data, body) {
   }
 }
 
-async function preparePostBody(path, body) {
+async function preparePostBody(path, body, workspaceID) {
   const policy = idempotentPostPolicy(path, body);
-  if (!policy) return { body, retry: null, acknowledged: null, invalidResponseMessage: "" };
+  if (!policy) return { body, retry: null, acknowledged: null, retireOnError: null, invalidResponseMessage: "" };
   if (body?.idempotency_key) return { body, retry: null, ...policy };
-  const retry = await prepareLocalActionRetry({ path, body: body || {} });
+  const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID });
   return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 
@@ -109,7 +125,11 @@ function idempotentPostPolicy(path, body) {
     return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };
   }
   if (/^\/api\/backup\/providers\/\d+\/upload$/.test(path)) {
-    return { acknowledged: isAcknowledgedBackupUploadResponse, invalidResponseMessage: "Invalid backup upload response from gateway." };
+    return {
+      acknowledged: isAcknowledgedBackupUploadResponse,
+      retireOnError: (error) => error?.status === 410 && error?.code === "operation_expired",
+      invalidResponseMessage: "Invalid backup upload response from gateway.",
+    };
   }
   return null;
 }
@@ -138,9 +158,10 @@ function isAcknowledgedBulkCommandResponse(data) {
 }
 
 export async function apiPostForm(path, formData, options = {}) {
+  const requestWorkspace = options.workspaceBinding || currentWorkspaceBinding();
   const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
-    headers: csrfHeaders(),
+    headers: mutationHeaders({}, requestWorkspace),
     body: formData,
     signal: options.signal,
     credentials: "include",
@@ -151,7 +172,7 @@ export async function apiPostForm(path, formData, options = {}) {
 export async function apiPut(path, body, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "PUT",
-    headers: csrfHeaders({ "Content-Type": "application/json" }),
+    headers: mutationHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
     signal: options.signal,
     credentials: "include",
@@ -162,7 +183,7 @@ export async function apiPut(path, body, options = {}) {
 export async function apiDelete(path, options = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "DELETE",
-    headers: csrfHeaders(),
+    headers: mutationHeaders(),
     signal: options.signal,
     credentials: "include",
   });
@@ -173,9 +194,14 @@ export async function apiDelete(path, options = {}) {
 }
 
 export async function apiDownload(path, filename, options = {}) {
+  const requestWorkspace = currentWorkspaceBinding();
   const safeFilename = filename.replaceAll(":", "-");
   let saveHandle = null;
-  if (options.picker && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+  const pickerAvailable = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+  if (options.requireStreaming && !pickerAvailable) {
+    throw new Error("This download requires a browser with a streaming Save dialog.");
+  }
+  if ((options.picker || options.requireStreaming) && pickerAvailable) {
     try {
       saveHandle = await window.showSaveFilePicker({ suggestedName: safeFilename });
     } catch (error) {
@@ -185,23 +211,61 @@ export async function apiDownload(path, filename, options = {}) {
       throw error;
     }
   }
-  const response = await fetch(`${apiUrl}${path}`, { signal: options.signal, credentials: "include" });
+  const response = await fetch(`${apiUrl}${path}`, {
+    headers: workspaceHeaders({}, requestWorkspace),
+    signal: options.signal,
+    credentials: "include",
+  });
   if (!response.ok) {
-    return readResponse(response);
+    return readResponse(response, { captureWorkspace: false });
   }
+  captureWorkspaceBinding(response);
   if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
-    const writable = await saveHandle.createWritable();
-    await response.body.pipeTo(writable, { signal: options.signal });
-    return { saved: true, method: "picker" };
+    let writable = null;
+    try {
+      writable = await saveHandle.createWritable();
+      await response.body.pipeTo(writable, { signal: options.signal });
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      await abortDownloadResources(response.body, writable, error);
+      throw error;
+    }
+  }
+  if (options.requireStreaming) {
+    try {
+      await response.body?.cancel?.();
+    } catch {
+      // Preserve the actionable compatibility error when response cancellation fails.
+    }
+    throw new Error("This browser cannot stream this download to the selected file. Try a current Chromium-based browser.");
   }
   const blob = await readBufferedDownload(response);
   if (saveHandle) {
-    const writable = await saveHandle.createWritable();
-    await writable.write(blob);
-    await writable.close();
-    return { saved: true, method: "picker" };
+    let writable = null;
+    try {
+      writable = await saveHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { saved: true, method: "picker" };
+    } catch (error) {
+      await abortDownloadResources(null, writable, error);
+      throw error;
+    }
   }
   return saveBlob(blob, safeFilename, { ...options, picker: false });
+}
+
+async function abortDownloadResources(body, writable, reason) {
+  try {
+    await writable?.abort?.(reason);
+  } catch {
+    // Keep the original download failure.
+  }
+  try {
+    await body?.cancel?.(reason);
+  } catch {
+    // The stream may already be closed or locked by pipeTo.
+  }
 }
 
 async function readResponse(response, options = {}) {
@@ -224,7 +288,9 @@ async function readResponse(response, options = {}) {
       data,
     });
   }
-  return parseResponseBody(text, options);
+  const data = parseResponseBody(text, options);
+  if (options.captureWorkspace !== false) captureWorkspaceBinding(response);
+  return data;
 }
 
 function parseResponseBody(text) {
@@ -280,6 +346,38 @@ function csrfHeaders(base = {}) {
   const token = readCookie(scopedUICookieName("aipermission_csrf"));
   if (!token) return base;
   return { ...base, "X-AIPermission-CSRF": token };
+}
+
+function mutationHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+  return workspaceHeaders(csrfHeaders(base), requestWorkspace);
+}
+
+function workspaceHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+  const headers = base;
+  if (!requestWorkspace) return headers;
+  return { ...headers, [workspaceHeaderName]: requestWorkspace };
+}
+
+export function currentWorkspaceBinding() {
+  synchronizeWorkspaceBindingOwner();
+  if (!workspaceBinding) workspaceBinding = readCookie(scopedUICookieName("aipermission_workspace"));
+  return workspaceBinding;
+}
+
+function captureWorkspaceBinding(response) {
+  synchronizeWorkspaceBindingOwner();
+  if (!response?.headers?.has?.(workspaceHeaderName)) return;
+  const changed = response.headers.get(workspaceChangedHeaderName) === "true";
+  if (!workspaceBinding || changed) {
+    workspaceBinding = String(response.headers.get(workspaceHeaderName) || "").trim();
+  }
+}
+
+function synchronizeWorkspaceBindingOwner() {
+  const owner = typeof window === "undefined" ? null : window;
+  if (owner === workspaceBindingOwner) return;
+  workspaceBindingOwner = owner;
+  workspaceBinding = "";
 }
 
 function readCookie(name) {

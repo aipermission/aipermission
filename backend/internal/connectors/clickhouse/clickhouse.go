@@ -26,7 +26,7 @@ import (
 const (
 	Kind    = "clickhouse"
 	Label   = "ClickHouse"
-	Version = "0.1"
+	Version = "0.2"
 
 	ActionGetDatabases  = "get_databases"
 	ActionGetTables     = "get_tables"
@@ -345,16 +345,10 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 	dialRequest := connectors.NetworkDialRequest{SourceTargetRef: runtime.Target.Ref, SourceProjectID: runtime.Target.ProjectID, Mode: connectionMode(runtime.Target), Host: host, Port: port, TransportTargetRef: targetString(runtime.Target.Config, "transport_target_ref")}
 	tlsConfig := clickHouseTLSConfig(runtime.Target)
 	options := &clickhouse.Options{
-		Protocol: clickhouse.Native,
-		Addr:     []string{net.JoinHostPort(host, strconv.Itoa(port))},
-		Auth:     clickhouse.Auth{Database: database, Username: username, Password: password},
-		Settings: clickhouse.Settings{
-			"readonly":             1,
-			"max_execution_time":   uint64(queryTimeout / time.Second),
-			"max_result_rows":      uint64(maxRows + 1),
-			"max_result_bytes":     uint64(maxOutputBytes),
-			"result_overflow_mode": "break",
-		},
+		Protocol:        clickhouse.Native,
+		Addr:            []string{net.JoinHostPort(host, strconv.Itoa(port))},
+		Auth:            clickhouse.Auth{Database: database, Username: username, Password: password},
+		Settings:        readonlyQuerySettings(),
 		DialTimeout:     10 * time.Second,
 		ReadTimeout:     queryTimeout,
 		MaxOpenConns:    1,
@@ -378,6 +372,16 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 		},
 	}
 	return clickhouse.OpenDB(options), nil
+}
+
+func readonlyQuerySettings() clickhouse.Settings {
+	return clickhouse.Settings{
+		"readonly":             1,
+		"max_execution_time":   uint64(queryTimeout / time.Second),
+		"max_result_rows":      uint64(maxRows + 1),
+		"max_result_bytes":     uint64(maxOutputBytes),
+		"result_overflow_mode": "throw",
+	}
 }
 
 func clickHouseTLSConfig(target connectors.TargetView) *tls.Config {

@@ -506,7 +506,15 @@ func (ownership *ownershipRetrySpy) Release() (bool, error) {
 }
 
 func TestCloseRetriesUnconfirmedOwnershipRelease(t *testing.T) {
-	ownership := &ownershipRetrySpy{}
+	retryRelease := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-retryRelease:
+		default:
+			close(retryRelease)
+		}
+	})
+	ownership := &ownershipRetrySpy{retryRelease: retryRelease}
 	runtime := &workspaceruntime.Runtime{
 		ID:      "workspace-ownership-retry",
 		Storage: workspacestorage.New(nil, nil, nil, "workspace-ownership-retry", ownership),
@@ -517,6 +525,7 @@ func TestCloseRetriesUnconfirmedOwnershipRelease(t *testing.T) {
 	if runtime.Storage.DatabaseOwnership() == nil {
 		t.Fatal("unconfirmed ownership release was discarded")
 	}
+	close(retryRelease)
 	deadline := time.Now().Add(time.Second)
 	for runtime.Storage.DatabaseOwnership() != nil && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)

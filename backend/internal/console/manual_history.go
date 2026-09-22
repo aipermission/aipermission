@@ -1,6 +1,10 @@
 package console
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
+)
 
 const (
 	maxManualCommandBufferBytes  = 8192
@@ -14,33 +18,42 @@ const (
 	manualActiveExecPaused       = "active_exec_paused"
 )
 
+type manualInputPreparation struct {
+	commands     []manualCommandRecord
+	completion   *manualOutputCompletion
+	activeUpdate *manualActiveCommandUpdate
+}
+
 func (s *managedConsoleSession) prepareManualInput(data string) []manualCommandRecord {
 	if data == "" || s == nil || s.manager == nil || s.manager.db == nil {
 		return nil
 	}
-	if s.activeCommand() != nil {
-		s.mu.Lock()
+	s.mu.Lock()
+	preparation := s.prepareManualInputLocked(data)
+	s.mu.Unlock()
+	return s.finishManualInputPreparation(preparation)
+}
+
+func (s *managedConsoleSession) prepareManualInputLocked(data string) manualInputPreparation {
+	if s.activeExec != nil {
 		s.manualInput.reset()
-		s.mu.Unlock()
-		return nil
+		return manualInputPreparation{}
 	}
 
 	commands := []manualCommandRecord{}
 	var completion *manualOutputCompletion
 	var activeUpdate *manualActiveCommandUpdate
-	s.mu.Lock()
 	s.clearManualPauseIfPromptReturnedLocked()
 	if s.manualPause != nil {
 		s.manualInput.reset()
-		s.mu.Unlock()
-		return nil
+		return manualInputPreparation{}
 	}
 	if strings.ContainsAny(data, "\r\n") && s.manualActive != nil {
 		completion = s.manualOutputCompletionLocked()
 	}
 	if activeUpdate == nil {
-		startOffset := len(s.rawTranscript)
-		resumePrompt := lastManualShellPrompt(s.rawTranscript)
+		startOffset := s.rawStreamPositionLocked()
+		resumePrompt := terminaltext.LastManualShellPrompt(s.rawTranscript)
 		for _, command := range s.manualInput.consume(data) {
 			if command.Command != "" {
 				command.StartOffset = startOffset
@@ -61,14 +74,17 @@ func (s *managedConsoleSession) prepareManualInput(data string) []manualCommandR
 			commands = nil
 		}
 	}
-	s.mu.Unlock()
-	if completion != nil {
-		s.finishManualOutputCapture(completion)
+	return manualInputPreparation{commands: commands, completion: completion, activeUpdate: activeUpdate}
+}
+
+func (s *managedConsoleSession) finishManualInputPreparation(preparation manualInputPreparation) []manualCommandRecord {
+	if preparation.completion != nil {
+		s.finishManualOutputCapture(preparation.completion)
 	}
-	if activeUpdate != nil {
-		s.updateManualActiveCommand(activeUpdate)
+	if preparation.activeUpdate != nil {
+		s.updateManualActiveCommand(preparation.activeUpdate)
 	}
-	return commands
+	return preparation.commands
 }
 
 func (s *managedConsoleSession) persistManualInput(commands []manualCommandRecord) {
@@ -81,4 +97,26 @@ func (s *managedConsoleSession) persistManualInput(commands []manualCommandRecor
 
 func (s *managedConsoleSession) recordManualInput(data string) {
 	s.persistManualInput(s.prepareManualInput(data))
+}
+
+func (s *managedConsoleSession) submitManualInput(data string) error {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.mu.Lock()
+	if s.activeExec != nil {
+		s.mu.Unlock()
+		return ErrCommandActive
+	}
+	if err := s.writeInputLocked(data); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	var preparation manualInputPreparation
+	if data != "" && s.manager != nil && s.manager.db != nil {
+		preparation = s.prepareManualInputLocked(data)
+	}
+	s.mu.Unlock()
+	commands := s.finishManualInputPreparation(preparation)
+	s.persistManualInput(commands)
+	return nil
 }

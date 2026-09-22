@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -65,7 +66,11 @@ func mutateAuthorization(
 		); updateErr != nil {
 			return updateErr
 		}
-		return vaultrequests.NewTxStore(tx).StalePendingForToken(ctx, tokenID, invalidationReason)
+		if err := vaultrequests.NewTxStore(tx).StalePendingForToken(ctx, tokenID, invalidationReason); err != nil {
+			return err
+		}
+		_, err := connectortargets.NewTxStore(tx).StalePendingActionRequestsForToken(ctx, tokenID, invalidationReason)
+		return err
 	})
 	if errors.Is(err, ErrAuthorizationUnchanged) {
 		return false, nil

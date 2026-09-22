@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
@@ -243,7 +244,7 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 		runtime.Requests.Transaction == nil || runtime.Requests.Mutate == nil || runtime.Requests.RepairProjection == nil ||
 		runtime.Requests.RedactRequestError == nil || runtime.Requests.RedactRequestValue == nil ||
 		runtime.Requests.SealRequest == nil || runtime.Requests.OpenRequest == nil || runtime.Storage.SecretVault == nil ||
-		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil {
+		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil || runtime.Session.AcquireDelivery == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable
 	}
 	actions, err := component.ActionRuntime(runtime)
@@ -257,7 +258,11 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 	mutations := requestMutationPort{component: component, runtime: runtime, finalizationTimeout: executionTimeout}
 	owner, err := vaultrequests.NewRuntime(vaultrequests.RuntimeDependencies{
 		Store: runtime.Requests.Store(ctx), Mutations: mutations,
-		Prepare: actions.Prepare, AuthorizeOutput: actions.AuthorizeOutput,
+		Prepare: actions.Prepare,
+		ResolveProject: func(ctx context.Context, ref string) (int64, error) {
+			return resolveVaultRequestProject(ctx, runtime.Storage.Database, ref)
+		},
+		AuthorizeOutput: actions.AuthorizeOutput,
 		AllowRequest: func(tokenID int64) bool {
 			return component.dependencies.AllowRequest("vault-request:" + runtime.Storage.DatabaseID + ":" + strconv.FormatInt(tokenID, 10))
 		},
@@ -275,10 +280,22 @@ func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime)
 			err := runtime.Requests.OpenRequest(id, sealed, &envelope)
 			return envelope, err
 		},
-		IsStale: actions.IsStale, MCPStarted: runtime.Session.MCPStarted, ExecutionTimeout: executionTimeout,
+		IsStale: actions.IsStale, MCPStarted: runtime.Session.MCPStarted,
+		AcquireDelivery: runtime.Session.AcquireDelivery, ExecutionTimeout: executionTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize Vault request runtime: %w", err)
 	}
 	return owner, nil
+}
+
+func resolveVaultRequestProject(ctx context.Context, database *sql.DB, ref string) (int64, error) {
+	project, err := projects.NewStore(database).ResolveRef(ctx, ref)
+	if errors.Is(err, projects.ErrNotFound) {
+		return 0, vaultrequests.ErrProjectNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return project.ID, nil
 }

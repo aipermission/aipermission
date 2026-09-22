@@ -16,10 +16,12 @@ type HTTPScope struct {
 
 type Application interface {
 	List(context.Context, string, int) ([]Request, error)
+	Get(context.Context, int64) (Request, error)
 	RunPending(context.Context, int64, string) (WorkflowResult, error)
 	DeclinePending(context.Context, int64, string) (Request, error)
-	Call(context.Context, CallInput) (RequestView, error)
-	GetOwned(context.Context, int64, int64) (RequestView, error)
+	Call(context.Context, CallInput) (Request, error)
+	DeliverCallResult(context.Context, int64, int64, func(RequestView)) error
+	DeliverOwned(context.Context, int64, int64, func(RequestView)) error
 	CancelOwned(context.Context, int64, int64) (Request, error)
 	StalePendingForContext(context.Context, int64, int64, string) error
 	StalePendingForProject(context.Context, int64, string) error
@@ -36,8 +38,14 @@ type HTTPHandlers struct {
 }
 
 type DecisionHTTPRequest struct {
-	UserNote string `json:"user_note"`
+	UserNote            string `json:"user_note"`
+	ApprovalContextHash string `json:"approval_context_hash"`
 }
+
+const (
+	approvalContextChangedCode = "approval_context_changed"
+	approvalNotPendingCode     = "approval_not_pending"
+)
 
 func NewHTTPHandlers(scope HTTPScopeProvider) *HTTPHandlers {
 	return &HTTPHandlers{scope: scope}
@@ -60,6 +68,31 @@ func (h *HTTPHandlers) List(w http.ResponseWriter, r *http.Request) {
 	httptransport.WriteJSON(w, http.StatusOK, items)
 }
 
+func (h *HTTPHandlers) Get(w http.ResponseWriter, r *http.Request) {
+	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
+	if !ok {
+		return
+	}
+	scope, ok := h.resolve(w)
+	if !ok {
+		return
+	}
+	runtime, ok := resolveHTTPRuntime(w, r, scope)
+	if !ok {
+		return
+	}
+	item, err := runtime.Get(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		httptransport.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
+		return
+	}
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	httptransport.WriteJSON(w, http.StatusOK, item)
+}
+
 func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	id, ok := httptransport.ParsePathInt64(w, r, "id", "invalid id")
 	if !ok {
@@ -79,6 +112,9 @@ func (h *HTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	}
 	runtime, ok := resolveHTTPRuntime(w, r, scope)
 	if !ok {
+		return
+	}
+	if !validateVaultDecisionContext(w, r, runtime, id, request.ApprovalContextHash) {
 		return
 	}
 	result, err := runtime.RunPending(r.Context(), id, request.UserNote)
@@ -109,11 +145,36 @@ func (h *HTTPHandlers) Decline(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !validateVaultDecisionContext(w, r, runtime, id, request.ApprovalContextHash) {
+		return
+	}
 	item, err := runtime.DeclinePending(r.Context(), id, request.UserNote)
 	if writeDecisionHTTPError(w, err) {
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, item)
+}
+
+func validateVaultDecisionContext(w http.ResponseWriter, r *http.Request, runtime Application, id int64, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		httptransport.WriteError(w, http.StatusBadRequest, "approval_context_hash is required")
+		return false
+	}
+	item, err := runtime.Get(r.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		httptransport.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
+		return false
+	}
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return false
+	}
+	if item.ApprovalContextHash == "" || item.ApprovalContextHash != expected {
+		httptransport.WriteErrorCode(w, http.StatusConflict, "Vault approval context changed; refresh and review the request again", approvalContextChangedCode)
+		return false
+	}
+	return true
 }
 
 func (h *HTTPHandlers) resolve(w http.ResponseWriter) (HTTPScope, bool) {
@@ -164,7 +225,7 @@ func writeDecisionHTTPError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, ErrNotFound):
 		httptransport.WriteError(w, http.StatusNotFound, "Vault action request not found")
 	case errors.Is(err, ErrNotPending):
-		httptransport.WriteError(w, http.StatusConflict, "Vault action request is no longer pending")
+		httptransport.WriteErrorCode(w, http.StatusConflict, "Vault action request is no longer pending", approvalNotPendingCode)
 	case errors.Is(err, ErrMCPExecutionStopped):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	case errors.As(err, &validation):

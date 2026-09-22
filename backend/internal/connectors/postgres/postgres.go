@@ -19,7 +19,7 @@ import (
 const (
 	Kind    = "postgres"
 	Label   = "Postgres"
-	Version = "0.2"
+	Version = "0.3"
 
 	ActionGetSchemas    = "get_schemas"
 	ActionGetTables     = "get_tables"

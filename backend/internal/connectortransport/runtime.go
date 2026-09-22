@@ -22,6 +22,7 @@ type Runtime struct {
 	Scopes          ScopeRuntime
 	Database        *sql.DB
 	AcquireDelivery func(context.Context) (func(), error)
+	Admission       *connectors.DeliveryAdmissionIdentity
 }
 
 type AdapterProvider func(string) connectorapi.Adapter

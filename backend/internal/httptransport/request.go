@@ -7,9 +7,40 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 )
 
 const DefaultJSONBodyBytes int64 = 1 << 20
+
+// IsWorkspaceBoundRead identifies authenticated downloads whose response must
+// come from the workspace observed by the browser before the request started.
+func IsWorkspaceBoundRead(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	if path == "/api/backup/download" || path == "/api/settings/diagnostics" {
+		return true
+	}
+	if IsWorkspaceSocketRoute(path) {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/backup/providers/") && strings.HasSuffix(path, "/download") {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/file-transfers/") && strings.HasSuffix(path, "/download") ||
+		strings.HasPrefix(path, "/api/file-transfer-batches/") && strings.HasSuffix(path, "/download") {
+		return true
+	}
+	return strings.HasPrefix(path, "/api/connector-targets/") && strings.HasSuffix(path, "/backup")
+}
+
+// IsWorkspaceSocketRoute identifies browser WebSocket upgrades that carry the
+// workspace binding in a query parameter because the WebSocket API cannot set
+// custom request headers.
+func IsWorkspaceSocketRoute(path string) bool {
+	return path == "/api/settings/maintenance-console/attach" ||
+		strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
+}
 
 func DecodeJSON(w http.ResponseWriter, r *http.Request, target any, maxBytes int64) bool {
 	if maxBytes < 1 {
