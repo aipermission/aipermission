@@ -669,6 +669,26 @@ test("setup preflights the skill before writing a token config", async () => {
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SETUP_CANARY_TOKEN/);
 });
 
+test("setup reads a piped token before asynchronous skill preflight", async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-setup-stdin-"));
+  const skillSource = path.join(homeDir, "operator-skill.md");
+  await fs.writeFile(skillSource, "---\nname: aipermission-operator\ndescription: Test operator skill.\n---\n# AIPermission Operator\n");
+  const token = "SETUP_STDIN_CANARY_TOKEN";
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("src/cli.js"), "setup", "--provider", "codex", "--home", homeDir, "--token-stdin", "--skill-source", skillSource],
+    { encoding: "utf8", input: `${token}\n` },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(token));
+  assert.match(await fs.readFile(path.join(homeDir, ".codex", "config.toml"), "utf8"), new RegExp(token));
+  assert.match(
+    await fs.readFile(path.join(homeDir, ".agents", "skills", "aipermission-operator", "SKILL.md"), "utf8"),
+    /Test operator skill/,
+  );
+});
+
 test("CLI print emits the selected provider format and validates scope", () => {
   const cliPath = path.resolve("src/cli.js");
   const run = (provider, scope) =>
