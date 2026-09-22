@@ -126,8 +126,7 @@ func parseOrigins(value string) []string {
 }
 
 func isLoopbackBind(host string) bool {
-	host = strings.TrimSpace(strings.ToLower(host))
-	return host == "" || host == "localhost" || host == "127.0.0.1" || host == "::1"
+	return localhttp.IsLoopbackHost(strings.TrimSpace(host))
 }
 
 func validateLocalBind(host string) error {
