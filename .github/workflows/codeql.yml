@@ -40,7 +40,7 @@ jobs:
 
       - uses: ./.github/actions/setup-backend-native
 
-      - uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63
+      - uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd
         with:
           languages: go
           build-mode: manual
@@ -49,7 +49,7 @@ jobs:
         working-directory: backend
         run: go build ./...
 
-      - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63
+      - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd
         with:
           category: /language:go
 
@@ -65,11 +65,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63
+      - uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd
         with:
           languages: javascript-typescript
           build-mode: none
 
-      - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63
+      - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd
         with:
           category: /language:javascript-typescript
