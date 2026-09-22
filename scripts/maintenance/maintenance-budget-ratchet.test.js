@@ -155,6 +155,40 @@ test("ratchets tooling and native runtime test inventories", () => {
   );
 });
 
+test("permits a native runtime test relocation only with replacement coverage evidence", () => {
+  const oldRuntime =
+    "test.windows.runtime.example/backend/internal/old:TestOwnership";
+  const oldSource =
+    "backend.coverage.platform.internal/old/ownership_windows.go";
+  const base = {
+    [oldRuntime]: 0,
+    [oldSource]: 0,
+    [`${oldSource}.constraint.windows`]: -100,
+    [`${oldSource}.evidence.example/backend/internal/old:TestOwnership`]: 0,
+  };
+  const newRuntime =
+    "test.windows.runtime.example/backend/internal/new:TestOwnership";
+  const newSource =
+    "backend.coverage.platform.internal/new/ownership_windows.go";
+  const relocated = {
+    [newRuntime]: 0,
+    [newSource]: 0,
+    [`${newSource}.constraint.windows`]: -100,
+    [`${newSource}.evidence.example/backend/internal/new:TestOwnership`]: 0,
+  };
+
+  assert.deepEqual(budgetIncreases(base, relocated), []);
+  const missingEvidence = { ...relocated };
+  delete missingEvidence[
+    `${newSource}.evidence.example/backend/internal/new:TestOwnership`
+  ];
+  assert.ok(
+    budgetIncreases(base, missingEvidence).some((failure) =>
+      failure.includes(oldRuntime),
+    ),
+  );
+});
+
 test("rejects removed coverage roots, extensions, markers, and classifiers", () => {
   const current = copyPolicy();
   current.frontendArchitecture.testModuleMarkers.pop();

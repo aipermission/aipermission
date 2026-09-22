@@ -108,10 +108,11 @@ test("validates tooling, native platform evidence, and explicit coverage exclusi
     structuredClone(candidate.darwinRuntimeTests[0]),
   );
   candidate.backendCoveragePlatformFiles[
-    "internal/db/ownership_windows.go"
+    "internal/databaseownership/ownership_windows.go"
   ].tests = [
     {
-      package: "github.com/aipermission/aipermission/backend/internal/db",
+      package:
+        "github.com/aipermission/aipermission/backend/internal/databaseownership",
       name: "TestMissing",
     },
   ];

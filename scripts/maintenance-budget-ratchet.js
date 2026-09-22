@@ -6,6 +6,7 @@ const { execFileSync } = require("node:child_process");
 const { resolveTrustedBase } = require("./trusted-git-base");
 const {
   approvedPlatformCoverageAddition,
+  approvedPlatformCoverageRelocation,
 } = require("./maintenance/platform-coverage-ratchet");
 
 const root = path.resolve(__dirname, "..");
@@ -203,6 +204,7 @@ function budgetIncreases(base, current) {
       (name) =>
         !Object.hasOwn(current, name) &&
         !name.startsWith("migration.test.package.") &&
+        !approvedPlatformCoverageRelocation(base, current, name) &&
         !coverageExceptionRemovalAllowed(current, name) &&
         !removedExceptionRemainsProtected(base, current, name),
     )

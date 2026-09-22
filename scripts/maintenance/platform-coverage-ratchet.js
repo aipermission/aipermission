@@ -41,4 +41,42 @@ function approvedPlatformCoverageAddition(base, current, name) {
   );
 }
 
-module.exports = { approvedPlatformCoverageAddition };
+function approvedPlatformCoverageRelocation(base, current, name) {
+  const match = name.match(/^test\.(windows|darwin)\.runtime\.(.+):([^:]+)$/);
+  if (!match) return false;
+  const [, platform, previousPackage, testName] = match;
+  const previousEvidenceSuffix = `.evidence.${previousPackage}:${testName}`;
+  const previousEvidence = Object.keys(base).filter(
+    (key) =>
+      key.startsWith("backend.coverage.platform.") &&
+      key.endsWith(previousEvidenceSuffix),
+  );
+  if (previousEvidence.length !== 1) return false;
+  const previousSource = previousEvidence[0].slice(
+    0,
+    -previousEvidenceSuffix.length,
+  );
+  if (Object.hasOwn(current, previousSource)) return false;
+
+  const runtimePrefix = `test.${platform}.runtime.`;
+  const replacements = Object.keys(current).filter(
+    (key) => key.startsWith(runtimePrefix) && key.endsWith(`:${testName}`),
+  );
+  if (replacements.length !== 1) return false;
+  const replacementIdentity = replacements[0].slice(runtimePrefix.length);
+  const replacementEvidenceSuffix = `.evidence.${replacementIdentity}`;
+  const replacementEvidence = Object.keys(current).filter(
+    (key) =>
+      key.startsWith("backend.coverage.platform.") &&
+      key.endsWith(replacementEvidenceSuffix),
+  );
+  return (
+    replacementEvidence.length === 1 &&
+    approvedPlatformCoverageAddition(base, current, replacementEvidence[0])
+  );
+}
+
+module.exports = {
+  approvedPlatformCoverageAddition,
+  approvedPlatformCoverageRelocation,
+};

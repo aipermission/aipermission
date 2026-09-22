@@ -146,11 +146,11 @@
   ],
   "windowsRuntimeTests": [
     {
-      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
       "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
     },
     {
-      "package": "github.com/aipermission/aipermission/backend/internal/db",
+      "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
       "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
     },
     {
@@ -280,17 +280,17 @@
         }
       ]
     },
-    "internal/db/ownership_windows.go": {
+    "internal/databaseownership/ownership_windows.go": {
       "platform": "windows",
       "buildConstraint": "windows",
       "minimumCoverage": 100.0,
       "tests": [
         {
-          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
           "name": "TestDatabaseOwnershipIsExclusiveAndReleased"
         },
         {
-          "package": "github.com/aipermission/aipermission/backend/internal/db",
+          "package": "github.com/aipermission/aipermission/backend/internal/databaseownership",
           "name": "TestDatabaseOwnershipIsExclusiveAcrossProcesses"
         }
       ]
