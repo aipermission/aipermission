@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
 
@@ -16,9 +16,21 @@ export function useConsoleMessages({
   const [isOpen, setOpen] = useState(false);
   const [state, setState] = useState(idleState);
   const [text, setText] = useState("");
+  const draftRevision = useRef(0);
   const [tokenID, setTokenID] = useState("");
   const runtimeID = selectedRuntimeTarget?.id ? String(selectedRuntimeTarget.id) : "";
   const requests = useRequestGuard(`console-messages:${runtimeID || "none"}`);
+
+  useEffect(() => {
+    requests.invalidate("messages");
+    requests.invalidate("send");
+    requests.invalidate("mark-read");
+    draftRevision.current += 1;
+    setOpen(false);
+    setState(idleState);
+    setText("");
+    setTokenID("");
+  }, [requests, runtimeID]);
 
   const load = useCallback(async () => {
     if (!runtimeID) return;
@@ -61,10 +73,16 @@ export function useConsoleMessages({
       .finally(request.complete);
   }, [markRuntimeMessagesRead, requests, runtimeID, selectedUnreadMessages.length]);
 
+  const updateText = useCallback((value) => {
+    draftRevision.current += 1;
+    setText(value);
+  }, []);
+
   const submit = useCallback(
     async (event) => {
       event.preventDefault();
       if (!runtimeID || !text.trim() || !tokenID) return;
+      const submittedDraftRevision = draftRevision.current;
       const request = requests.begin("send");
       setState((current) => ({ ...current, state: "sending", error: null }));
       try {
@@ -80,7 +98,7 @@ export function useConsoleMessages({
           { signal: request.signal },
         );
         if (!request.isCurrent()) return;
-        setText("");
+        if (draftRevision.current === submittedDraftRevision) setText("");
         await Promise.allSettled([load(), loadMessages()]);
       } catch (error) {
         if (!request.isCurrent()) return;
@@ -92,5 +110,5 @@ export function useConsoleMessages({
     [load, loadMessages, requests, runtimeID, selectedSession.id, selectedSessionLive, text, tokenID],
   );
 
-  return { close, isOpen, load, open, setText, setTokenID, state, submit, text, tokenID };
+  return { close, isOpen, load, open, setText: updateText, setTokenID, state, submit, text, tokenID };
 }
