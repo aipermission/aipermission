@@ -33,6 +33,7 @@ var (
 	ErrNotFound            = errors.New("Vault action request not found")
 	ErrNotPending          = errors.New("Vault action request is not pending")
 	ErrIdempotencyConflict = errors.New("Vault idempotency key was already used for different input")
+	ErrIdempotencyExpired  = errors.New("the original Vault action result expired; retry with a new idempotency key")
 )
 
 type Request struct {
@@ -156,6 +157,11 @@ func (s *Store) create(ctx context.Context, input CreateInput, seal func(int64) 
 		return Request{}, false, err
 	}
 	defer rollback()
+	if exists, err := vaultIdempotencyTombstoneExists(ctx, executor, input.TokenID, input.IdempotencyKey); err != nil {
+		return Request{}, false, err
+	} else if exists {
+		return Request{}, false, ErrIdempotencyExpired
+	}
 	finalStatus := input.InitialStatus
 	storedStatus := finalStatus
 	if seal != nil {
@@ -246,7 +252,32 @@ func (s *Store) GetByIdempotencyKey(ctx context.Context, tokenID int64, key stri
 	if err := s.ExpirePending(ctx, time.Now().UTC()); err != nil {
 		return Request{}, err
 	}
-	return scanRequest(s.db.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, tokenID, key))
+	item, err := scanRequest(s.db.QueryRowContext(ctx, requestSelect+` WHERE r.token_id = ? AND r.idempotency_key = ?`, tokenID, key))
+	if !errors.Is(err, ErrNotFound) {
+		return item, err
+	}
+	exists, tombstoneErr := vaultIdempotencyTombstoneExists(ctx, s.db, tokenID, key)
+	if tombstoneErr != nil {
+		return Request{}, tombstoneErr
+	}
+	if exists {
+		return Request{}, ErrIdempotencyExpired
+	}
+	return Request{}, ErrNotFound
+}
+
+func vaultIdempotencyTombstoneExists(ctx context.Context, executor sqldb.Executor, tokenID int64, key string) (bool, error) {
+	var exists int
+	err := executor.QueryRowContext(ctx, `
+		SELECT 1 FROM vault_action_idempotency_tombstones
+		WHERE token_id = ? AND idempotency_key = ?`, tokenID, key).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read Vault idempotency tombstone: %w", err)
+	}
+	return true, nil
 }
 
 func (s *Store) List(ctx context.Context, status string, limit int) ([]Request, error) {

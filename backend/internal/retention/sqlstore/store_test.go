@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,6 +9,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
+	projectstore "github.com/aipermission/aipermission/backend/internal/projects"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
+	"github.com/aipermission/aipermission/backend/internal/vaultrequests"
 )
 
 func TestStoreReadsWritesAndPurgesRetentionData(t *testing.T) {
@@ -34,6 +38,84 @@ func TestStoreReadsWritesAndPurgesRetentionData(t *testing.T) {
 		if _, err := purge(); err != nil {
 			t.Fatalf("purge %s: %v", name, err)
 		}
+	}
+}
+
+func TestHistoryRetentionPurgesOnlyTerminalVaultRequests(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "retention.db"), "RetentionPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := t.Context()
+	project, err := projectstore.NewStore(database).Create(ctx, "Retention project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.NewStore(database).Create(ctx, tokens.CreateRequest{Name: "retention-agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := vaultrequests.NewStore(database)
+	completed, _, err := requests.Create(ctx, vaultrequests.CreateInput{
+		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionGenerateItem,
+		IdempotencyKey: "retention-completed", InitialStatus: vaultrequests.StatusRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := requests.Complete(ctx, completed.ID, vaultrequests.StatusCompleted, nil, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	pending, _, err := requests.Create(ctx, vaultrequests.CreateInput{
+		TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionGenerateItem,
+		IdempotencyKey: "retention-pending", InitialStatus: vaultrequests.StatusApprovalPending,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE vault_action_requests SET created_at = datetime('now', '-10 days'), updated_at = datetime('now', '-10 days'), completed_at = CASE WHEN id = ? THEN datetime('now', '-10 days') ELSE NULL END WHERE id IN (?, ?)`, completed.ID, completed.ID, pending.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := (Store{}).PurgeHistory(ctx, database, "-7 days"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := requests.Get(ctx, completed.ID); !errors.Is(err, vaultrequests.ErrNotFound) {
+		t.Fatalf("completed Vault request error = %v, want not found", err)
+	}
+	if _, err := requests.Get(ctx, pending.ID); err != nil {
+		t.Fatalf("pending Vault request was purged: %v", err)
+	}
+	var tombstones int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM vault_action_idempotency_tombstones WHERE token_id = ? AND idempotency_key = ?`, token.ID, completed.IdempotencyKey).Scan(&tombstones); err != nil || tombstones != 1 {
+		t.Fatalf("Vault tombstones=%d err=%v, want one", tombstones, err)
+	}
+	for _, input := range []vaultrequests.CreateInput{
+		{
+			TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionGenerateItem,
+			IdempotencyKey: completed.IdempotencyKey, InitialStatus: vaultrequests.StatusRunning,
+		},
+		{
+			TokenID: token.ID, ProjectID: project.ID, ActionName: vaultrequests.ActionRestartSession,
+			IdempotencyKey: completed.IdempotencyKey, InitialStatus: vaultrequests.StatusRunning,
+		},
+	} {
+		if _, _, err := requests.Create(ctx, input); !errors.Is(err, vaultrequests.ErrIdempotencyExpired) {
+			t.Fatalf("retained Vault idempotency error = %v, want expired result", err)
+		}
+	}
+	if _, err := requests.GetByIdempotencyKey(ctx, token.ID, completed.IdempotencyKey); !errors.Is(err, vaultrequests.ErrIdempotencyExpired) {
+		t.Fatalf("Vault idempotency lookup error = %v, want expired result", err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE vault_action_idempotency_tombstones SET expires_at = datetime('now', '-1 minute')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Store{}).PurgeExpiredIdempotency(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM vault_action_idempotency_tombstones`).Scan(&tombstones); err != nil || tombstones != 0 {
+		t.Fatalf("expired Vault tombstones=%d err=%v", tombstones, err)
 	}
 }
 

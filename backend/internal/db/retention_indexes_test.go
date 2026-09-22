@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -12,7 +14,21 @@ func TestRetentionExpressionIndexesSupportCleanupQueries(t *testing.T) {
 	}
 	defer database.Close()
 
-	const indexName = "idx_history_entries_retention_completed"
+	for _, test := range []struct {
+		table string
+		index string
+	}{
+		{table: "history_entries", index: "idx_history_entries_retention_completed"},
+		{table: "vault_action_requests", index: "idx_vault_action_requests_retention_completed"},
+	} {
+		t.Run(test.table, func(t *testing.T) {
+			assertRetentionExpressionIndex(t, database, test.table, test.index)
+		})
+	}
+}
+
+func assertRetentionExpressionIndex(t *testing.T, database *sql.DB, table, indexName string) {
+	t.Helper()
 	var indexSQL string
 	if err := database.QueryRow(`
 		SELECT sql FROM sqlite_master
@@ -23,11 +39,11 @@ func TestRetentionExpressionIndexesSupportCleanupQueries(t *testing.T) {
 		t.Fatalf("retention index does not preserve mixed timestamp semantics: %s", indexSQL)
 	}
 
-	rows, err := database.Query(`
+	rows, err := database.Query(fmt.Sprintf(`
 		EXPLAIN QUERY PLAN
-		SELECT id FROM history_entries
+		SELECT id FROM %s
 		WHERE completed_at IS NOT NULL
-			AND julianday(completed_at) < julianday('now', '-2 days')`)
+			AND julianday(completed_at) < julianday('now', '-2 days')`, table))
 	if err != nil {
 		t.Fatalf("explain retention query: %v", err)
 	}
