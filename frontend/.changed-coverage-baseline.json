@@ -154,10 +154,10 @@
       "lines": 100
     },
     "src/components/console/use-connector-approval-dialog.js": {
-      "statements": 85.71,
-      "branches": 76.54,
-      "functions": 81.81,
-      "lines": 92.85
+      "statements": 91.17,
+      "branches": 78.82,
+      "functions": 90.9,
+      "lines": 98.26
     },
     "src/components/console/use-connector-token-permission-state.js": {
       "statements": 94.88,
@@ -178,10 +178,10 @@
       "lines": 100
     },
     "src/components/console/use-console-messages.js": {
-      "statements": 79.66,
-      "branches": 68.57,
-      "functions": 70,
-      "lines": 89.36
+      "statements": 83.78,
+      "branches": 70.27,
+      "functions": 75,
+      "lines": 91.8
     },
     "src/components/console/use-console-page-state.js": {
       "statements": 95.23,
@@ -1588,10 +1588,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/use-s3-browser.js": {
-      "statements": 68.46,
-      "branches": 46.42,
-      "functions": 80,
-      "lines": 73.91
+      "statements": 80.45,
+      "branches": 62.03,
+      "functions": 80.95,
+      "lines": 85.08
     },
     "src/connectors/templates/s3/use-s3-object-delete.js": {
       "statements": 93.33,
@@ -1600,10 +1600,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/use-s3-upload.js": {
-      "statements": 80,
-      "branches": 71.87,
-      "functions": 69.23,
-      "lines": 92.72
+      "statements": 90.47,
+      "branches": 76.47,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/s3/versions-dialog.jsx": {
       "statements": 73.43,

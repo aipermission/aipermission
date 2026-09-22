@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { saveBlob } from "../../../lib/api";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { defaultUploadDialog } from "./dialogs";
 import { useS3Browser } from "./use-s3-browser";
@@ -7,6 +8,7 @@ import { useS3ObjectDelete } from "./use-s3-object-delete";
 import { useS3Upload } from "./use-s3-upload";
 
 vi.mock("../_shared/action-runner", () => ({ runGuardedConnectorAction: vi.fn() }));
+vi.mock("../../../lib/api", () => ({ saveBlob: vi.fn() }));
 
 const objects = [
   { key: "backups/one.aipdb", size: 10 },
@@ -14,6 +16,7 @@ const objects = [
 ];
 
 beforeEach(() => {
+  saveBlob.mockReset().mockResolvedValue(undefined);
   runGuardedConnectorAction.mockReset();
   runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
     if (actionName === "list_objects") {
@@ -31,13 +34,17 @@ afterEach(() => {
 });
 
 function renderBrowser() {
-  return renderHook(() =>
-    useS3Browser({
-      target: { ref: "s3:1:1" },
-      approvals: { data: [] },
-      session: { active: true, startedAt: "now" },
-      onRefreshActivity: vi.fn(),
-    }),
+  return renderHook(
+    ({ target }) =>
+      useS3Browser({
+        target,
+        approvals: { data: [] },
+        session: { active: true, startedAt: "now" },
+        onRefreshActivity: vi.fn(),
+      }),
+    {
+      initialProps: { target: { ref: "s3:1:1" } },
+    },
   );
 }
 
@@ -66,6 +73,78 @@ it("cancels an S3 download before dispatch when the file picker is dismissed", a
 
   expect(result.current.state.message).toBe("Download canceled.");
   expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+});
+
+it("aborts a failed native S3 download writer and reports the error", async () => {
+  const abort = vi.fn().mockResolvedValue(undefined);
+  const write = vi.fn().mockRejectedValue(new Error("disk full"));
+  window.showSaveFilePicker = vi.fn().mockResolvedValue({
+    createWritable: vi.fn().mockResolvedValue({ write, close: vi.fn(), abort }),
+  });
+  runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
+    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
+    if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
+    if (actionName === "download_object") {
+      return { action_name: actionName, output: { filename: "one.aipdb", content_base64: "aGVsbG8=" } };
+    }
+    return null;
+  });
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.objects).toHaveLength(2));
+  await act(async () => result.current.selectObject(objects[0].key));
+
+  await act(async () => result.current.downloadSelected());
+
+  expect(write).toHaveBeenCalledOnce();
+  expect(abort).toHaveBeenCalledOnce();
+  expect(result.current.state).toEqual({ state: "error", error: "disk full", message: "" });
+});
+
+it("does not dispatch a download after the target changes while the picker is open", async () => {
+  let resolvePicker;
+  window.showSaveFilePicker = vi.fn().mockReturnValue(
+    new Promise((resolve) => {
+      resolvePicker = resolve;
+    }),
+  );
+  const { result, rerender } = renderBrowser();
+  await waitFor(() => expect(result.current.objects).toHaveLength(2));
+  await act(async () => result.current.selectObject(objects[0].key));
+  runGuardedConnectorAction.mockClear();
+
+  let download;
+  act(() => {
+    download = result.current.downloadSelected();
+  });
+  rerender({ target: { ref: "s3:2:2" } });
+  await act(async () => resolvePicker({ createWritable: vi.fn() }));
+  await download;
+
+  expect(runGuardedConnectorAction.mock.calls.some(([options]) => options.actionName === "download_object")).toBe(false);
+});
+
+it("reports picker and buffered download failures", async () => {
+  window.showSaveFilePicker = vi.fn().mockRejectedValue(new Error("picker unavailable"));
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.objects).toHaveLength(2));
+  await act(async () => result.current.selectObject(objects[0].key));
+
+  await act(async () => result.current.downloadSelected());
+  expect(result.current.state).toEqual({ state: "error", error: "picker unavailable", message: "" });
+
+  delete window.showSaveFilePicker;
+  runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
+    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
+    if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
+    if (actionName === "download_object") {
+      return { action_name: actionName, output: { filename: "one.aipdb", content_base64: "aGVsbG8=" } };
+    }
+    return null;
+  });
+  saveBlob.mockRejectedValueOnce(new Error("local save failed"));
+  await act(async () => result.current.downloadSelected());
+
+  expect(result.current.state).toEqual({ state: "error", error: "local save failed", message: "" });
 });
 
 it("validates S3 uploads before dispatch and refreshes successful text objects", async () => {
@@ -102,6 +181,56 @@ it("validates S3 uploads before dispatch and refreshes successful text objects",
   expect(refreshObjects).toHaveBeenCalledWith({ reset: true });
   expect(readObjectMetadata).toHaveBeenCalledWith("notes/readme.txt");
   expect(result.current.uploadDialog.open).toBe(false);
+});
+
+it("rejects oversized S3 files before reading or dispatching them", async () => {
+  const runAction = vi.fn();
+  const { result } = renderHook(() =>
+    useS3Upload({
+      scopeKey: "s3:1:1:now",
+      active: true,
+      prefix: "",
+      runAction,
+      refreshObjects: vi.fn(),
+      readObjectMetadata: vi.fn(),
+      setState: vi.fn(),
+    }),
+  );
+  act(() => {
+    result.current.openUploadDialog();
+    result.current.addUploadFiles([{ name: "large.bin", size: (16 << 20) + 1, lastModified: 1, type: "application/octet-stream" }]);
+  });
+
+  await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
+
+  expect(result.current.uploadDialog.error).toBe("Choose files no larger than 16 MiB.");
+  expect(runAction).not.toHaveBeenCalled();
+});
+
+it("updates, removes, and closes staged S3 upload files", () => {
+  const { result } = renderHook(() =>
+    useS3Upload({
+      scopeKey: "s3:1:1:now",
+      active: true,
+      prefix: "",
+      runAction: vi.fn(),
+      refreshObjects: vi.fn(),
+      readObjectMetadata: vi.fn(),
+      setState: vi.fn(),
+    }),
+  );
+  act(() => {
+    result.current.openUploadDialog();
+    result.current.addUploadFiles([new File(["a"], "a.txt")]);
+  });
+  const id = result.current.uploadDialog.files[0].id;
+
+  act(() => result.current.updateUploadFile(id, { key: "renamed.txt" }));
+  expect(result.current.uploadDialog.files[0].key).toBe("renamed.txt");
+  act(() => result.current.removeUploadFile(id));
+  expect(result.current.uploadDialog.files).toEqual([]);
+  act(() => result.current.closeUploadDialog());
+  expect(result.current.uploadDialog).toEqual(defaultUploadDialog);
 });
 
 it.each([false, true])("retries only unfinished S3 files after a partial upload when overwrite is %s", async (overwrite) => {
