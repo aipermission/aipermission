@@ -25,6 +25,9 @@ const (
 
 	defaultConsoleTailBytes = 20000
 	maxConsoleTailBytes     = 100000
+
+	// MaxBrowseRemoteRows bounds one AI-facing directory listing.
+	MaxBrowseRemoteRows = 100
 )
 
 var (
@@ -152,6 +155,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use read_console when you need live persistent console output and the token has permission for that action; always_run is useful for repeated polling, but Prompt is also supported.",
 			"Use restart_console_session when a persistent console appears stuck before sending more commands.",
 			"Use browse_remote_files before file transfers when the remote path is uncertain.",
+			fmt.Sprintf("Directory listings return at most %d entries; choose a narrower path when truncated is true.", MaxBrowseRemoteRows),
 			"Use start_file_download for remote-to-local transfer queues.",
 			"Prefer bounded output: tail -n, journalctl --no-pager -n, docker logs --tail, or redirect full output to a temp file.",
 		},
@@ -223,7 +227,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 					Description: "Remote directory to list.",
 				},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxRows: 500},
+			OutputHint: connectors.OutputHint{Format: "json", MaxRows: MaxBrowseRemoteRows},
 		},
 		{
 			Name:        ActionStartFileDownload,
