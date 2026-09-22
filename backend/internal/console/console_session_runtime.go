@@ -257,15 +257,13 @@ func (s *managedConsoleSession) writeInput(data string) error {
 		return nil
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.writeInputLocked(data)
-}
-
-func (s *managedConsoleSession) writeInputLocked(data string) error {
 	if s.stdin == nil || s.status != "connected" {
+		s.mu.Unlock()
 		return fmt.Errorf("console session is not ready")
 	}
-	_, err := io.WriteString(s.stdin, data)
+	stdin := s.stdin
+	s.mu.Unlock()
+	_, err := io.WriteString(stdin, data)
 	return err
 }
 

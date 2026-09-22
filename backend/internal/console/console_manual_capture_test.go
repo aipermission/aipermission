@@ -889,6 +889,33 @@ func TestManualInputCapturesOutputIfPromptReturnedBeforePersist(t *testing.T) {
 	}
 }
 
+func TestManualInputCapturesOutputThatArrivesBeforeWriteReturns(t *testing.T) {
+	database, manager, session := newManualHistoryTestSession(t)
+	session.stdin = immediateOutputWriteCloser{session: session}
+	manager.sessions[session.id] = session
+
+	if err := manager.Input(context.Background(), testExecutionPrincipal(), session.id, "pwd\n"); err != nil {
+		t.Fatalf("input: %v", err)
+	}
+
+	waitForManualHistoryStatus(t, database, "completed")
+	row := readManualHistoryRow(t, database)
+	if row.command != "pwd" || row.stdout != "/home/root" {
+		t.Fatalf("expected synchronous output to remain attached to the command, got %#v", row)
+	}
+}
+
+type immediateOutputWriteCloser struct {
+	session *managedConsoleSession
+}
+
+func (writer immediateOutputWriteCloser) Write(data []byte) (int, error) {
+	writer.session.appendOutput(string(data) + "/home/root\r\nroot@worker:~# ")
+	return len(data), nil
+}
+
+func (immediateOutputWriteCloser) Close() error { return nil }
+
 func TestManualInputAppendsNextLineBeforePromptReturns(t *testing.T) {
 	database, manager, session := newManualHistoryTestSession(t)
 	stdin := &recordingWriteCloser{}

@@ -243,6 +243,35 @@ func TestConsoleSessionManagerSerializesAuthorizationWithInputWrite(t *testing.T
 	}
 }
 
+func TestManagedConsoleSessionCloseDoesNotWaitForBlockedInputWrite(t *testing.T) {
+	writeStarted := make(chan struct{})
+	allowWrite := make(chan struct{})
+	session := &managedConsoleSession{
+		status:  "connected",
+		stdin:   &blockingWriteCloser{started: writeStarted, proceed: allowWrite},
+		clients: map[*websocket.Conn]*sync.Mutex{},
+	}
+	writeDone := make(chan error, 1)
+	go func() { writeDone <- session.writeInput("blocked") }()
+	<-writeStarted
+
+	closeDone := make(chan struct{})
+	go func() {
+		session.beginClose()
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("session close waited for a blocked transport write")
+	}
+
+	close(allowWrite)
+	if err := <-writeDone; err != nil {
+		t.Fatalf("input write error = %v", err)
+	}
+}
+
 func TestConsoleSessionManagerReportsUnknownOutcomeWhenObserveAuthorizationChangesAfterDispatch(t *testing.T) {
 	local := testExecutionPrincipal()
 	token, err := executionprincipal.MCPToken(9, local.WorkspaceID, local.RuntimeInstanceID)

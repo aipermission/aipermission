@@ -24,17 +24,22 @@ type manualInputPreparation struct {
 	activeUpdate *manualActiveCommandUpdate
 }
 
+type manualInputBoundary struct {
+	startOffset  int64
+	resumePrompt string
+}
+
 func (s *managedConsoleSession) prepareManualInput(data string) []manualCommandRecord {
 	if data == "" || s == nil || s.manager == nil || s.manager.db == nil {
 		return nil
 	}
 	s.mu.Lock()
-	preparation := s.prepareManualInputLocked(data)
+	preparation := s.prepareManualInputLocked(data, nil)
 	s.mu.Unlock()
 	return s.finishManualInputPreparation(preparation)
 }
 
-func (s *managedConsoleSession) prepareManualInputLocked(data string) manualInputPreparation {
+func (s *managedConsoleSession) prepareManualInputLocked(data string, boundary *manualInputBoundary) manualInputPreparation {
 	if s.activeExec != nil {
 		s.manualInput.reset()
 		return manualInputPreparation{}
@@ -54,6 +59,10 @@ func (s *managedConsoleSession) prepareManualInputLocked(data string) manualInpu
 	if activeUpdate == nil {
 		startOffset := s.rawStreamPositionLocked()
 		resumePrompt := terminaltext.LastManualShellPrompt(s.rawTranscript)
+		if boundary != nil {
+			startOffset = boundary.startOffset
+			resumePrompt = boundary.resumePrompt
+		}
 		for _, command := range s.manualInput.consume(data) {
 			if command.Command != "" {
 				command.StartOffset = startOffset
@@ -107,15 +116,20 @@ func (s *managedConsoleSession) submitManualInput(data string) error {
 		s.mu.Unlock()
 		return ErrCommandActive
 	}
-	if err := s.writeInputLocked(data); err != nil {
-		s.mu.Unlock()
+	boundary := manualInputBoundary{
+		startOffset:  s.rawStreamPositionLocked(),
+		resumePrompt: terminaltext.LastManualShellPrompt(s.rawTranscript),
+	}
+	s.mu.Unlock()
+	if err := s.writeInput(data); err != nil {
 		return err
 	}
 	var preparation manualInputPreparation
 	if data != "" && s.manager != nil && s.manager.db != nil {
-		preparation = s.prepareManualInputLocked(data)
+		s.mu.Lock()
+		preparation = s.prepareManualInputLocked(data, &boundary)
+		s.mu.Unlock()
 	}
-	s.mu.Unlock()
 	commands := s.finishManualInputPreparation(preparation)
 	s.persistManualInput(commands)
 	return nil
