@@ -50,12 +50,18 @@ async function runConfiguration(command, argv) {
   const flags = parseCommandFlags(command, argv);
   const interactive = Boolean(input.isTTY && output.isTTY);
   assertProviderSelectionAvailable(flags.provider, interactive);
-  const rl = readline.createInterface({ input, output });
+  let rl;
+  const getReadline = () => {
+    rl ||= readline.createInterface({ input, output });
+    return rl;
+  };
   try {
     const provider = flags.provider
       ? findProvider(flags.provider)
       : await selectProvider("Which AI client should use this token?", MCP_PROVIDERS);
-    const name = sanitizeName(flags.name || (interactive ? await ask(rl, "MCP server name", "aipermission") : "aipermission"));
+    const needsToken = provider.id !== "custom" && !flags.print;
+    const stdinToken = needsToken && flags.tokenStdin ? (await readStdin()).trim() : "";
+    const name = sanitizeName(flags.name || (interactive ? await ask(getReadline(), "MCP server name", "aipermission") : "aipermission"));
     const apiUrl = normalizeURL(flags.apiUrl || DEFAULT_API_URL);
     const outputTarget =
       provider.id === "custom"
@@ -75,8 +81,7 @@ async function runConfiguration(command, argv) {
       return { provider: provider.id, name, printed: true, skill: skillResult };
     }
 
-    const stdinToken = flags.tokenStdin ? (await readStdin()).trim() : "";
-    const token = await resolveToken({ ...flags, stdinToken }, rl);
+    const token = flags.tokenStdin ? stdinToken : await resolveToken(flags, getReadline());
     if (!token) {
       throw new Error("API token is required.");
     }
@@ -103,7 +108,7 @@ async function runConfiguration(command, argv) {
     console.log(`${color.yellow}Restart the AI client so it reloads MCP servers.${color.reset}`);
     return { provider: provider.id, name, config: result, skill: skillResult };
   } finally {
-    rl.close();
+    rl?.close();
   }
 }
 
