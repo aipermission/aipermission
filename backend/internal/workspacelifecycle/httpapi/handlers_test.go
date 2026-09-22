@@ -165,7 +165,7 @@ func TestUnlockErrorsAndAttemptsAreClassifiedAtTheWorkspaceBoundary(t *testing.T
 	}{
 		{
 			name: "database already owned", err: databaseownership.ErrDatabaseInUse,
-			wantStatus: http.StatusConflict, wantBody: "database is in use by another AIPermission process", wantSuccess: 1,
+			wantStatus: http.StatusConflict, wantBody: "database is in use by another AIPermission process",
 		},
 		{
 			name: "authentication", err: fmt.Errorf("%w: encrypted database validation failed", workspacelifecycle.ErrAuthentication),
@@ -173,7 +173,7 @@ func TestUnlockErrorsAndAttemptsAreClassifiedAtTheWorkspaceBoundary(t *testing.T
 		},
 		{
 			name: "initialization", err: fmt.Errorf("%w: migrate encrypted records: invalid envelope", workspacelifecycle.ErrInitialization),
-			wantStatus: http.StatusConflict, wantBody: "database initialization failed", wantSuccess: 1,
+			wantStatus: http.StatusConflict, wantBody: "database initialization failed",
 		},
 	}
 	for _, test := range tests {
