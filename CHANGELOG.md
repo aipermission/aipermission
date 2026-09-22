@@ -9,6 +9,53 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.56] - 2026-09-22
+
+### Changed
+
+- Workspace, project, credential, approval, token, and live-session mutations now use
+  stricter ownership and lifecycle boundaries so stale or concurrent operations cannot
+  act on newer state.
+- Connector execution applies consistent admission, timeout, output, identity, and
+  resource limits across SSH, Postgres, ClickHouse, Redis / Valkey, S3, Docker,
+  Kubernetes, Kafka, and Mail workflows.
+- Frontend request owners retire superseded dialogs, saves, transfers, approvals, and
+  detail loads instead of allowing late responses to replace current user intent.
+
+### Fixed
+
+- Interactive consoles preserve ordered input, transcript positions, workspace binding,
+  shutdown behavior, and connector-specific runtime identity through reconnects and
+  replacements.
+- File transfers, backups, catalog publication, host-key replacement, and S3 multipart
+  operations preserve durable identities and reject unsafe paths, stale claims, and
+  ambiguous overwrites.
+- Database and messaging connectors preserve exact names and bytes, fail closed on
+  parser or result-limit gaps, and report workload or restore state consistently.
+- SSH directory listings and environment bootstrap reads are bounded, while network
+  fallback and portable remote wrapper handling remain compatible across supported
+  hosts.
+
+### Security
+
+- Approval delivery, reusable token storage, Vault output, project scope revisions,
+  settings writes, and gateway response decoding are bound to the authorization context
+  that created them.
+- Sensitive connector operations use fail-closed parsing and bounded persistence,
+  download, metadata, and action-result projections.
+
+### Maintenance
+
+- Release verification now mirrors macOS, Windows, vulnerability, recovery, fuzz,
+  coverage, architecture, and connector-contract gates with pinned workflow actions.
+- Kafka protocol support, frontend and MCP tooling, UI dependencies, and the Node.js
+  container image include reviewed maintainer-authored updates.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.55] - 2026-09-19
 
 ### Changed
