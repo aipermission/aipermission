@@ -51,6 +51,16 @@ it("downloads a safe filename and keeps canceled pickers idle", async () => {
   expect(result.current.backupState).toEqual({ state: "idle", error: "", message: "" });
 });
 
+it("surfaces backup download failures and leaves the working state", async () => {
+  apiDownload.mockRejectedValueOnce(new Error("download transport failed"));
+  const { result } = renderHook(() => usePostgresBackupRestore(operation()));
+
+  await act(async () => result.current.downloadBackup());
+
+  expect(result.current.backupState).toEqual({ state: "error", error: "download transport failed", message: "" });
+  expect(result.current.isWorking).toBe(false);
+});
+
 it("discards a backup completion after the selected profile changes", async () => {
   let resolveDownload;
   apiDownload.mockImplementationOnce(() => new Promise((resolve) => (resolveDownload = resolve)));

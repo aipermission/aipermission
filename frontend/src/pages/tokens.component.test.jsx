@@ -13,13 +13,17 @@ const gateway = {
   loadTokens: vi.fn(async () => gateway.tokens.data),
   loadTargets: vi.fn(async () => []),
 };
+const connectorPermissions = {
+  state: { state: "ready", data: {}, error: null },
+  load: vi.fn(async () => ({})),
+};
 
 vi.mock("../lib/api", async () => ({ ...(await vi.importActual("../lib/api")), apiPost: vi.fn() }));
 vi.mock("../lib/gateway-context", () => ({ useGateway: () => gateway }));
 vi.mock("../lib/use-connector-permissions", () => ({
   useConnectorPermissions: () => ({
-    connectorPermissionState: { state: "ready", data: {}, error: null },
-    loadAllConnectorPermissions: vi.fn(async () => ({})),
+    connectorPermissionState: connectorPermissions.state,
+    loadAllConnectorPermissions: connectorPermissions.load,
   }),
 }));
 
@@ -36,6 +40,8 @@ describe("TokensPage", () => {
     apiPost.mockReset();
     gateway.loadTokens.mockClear();
     gateway.loadTargets.mockClear();
+    connectorPermissions.load.mockClear();
+    connectorPermissions.state = { state: "ready", data: {}, error: null };
     gateway.tokens.data = [{ id: 7, name: "maintenance", token: "aip_masked", created_at: "2026-08-31T00:00:00Z" }];
   });
 
@@ -130,5 +136,53 @@ describe("TokensPage", () => {
     await user.click(screen.getByRole("button", { name: /Revoked 1/ }));
     expect(screen.getByText("revoked-agent")).toBeVisible();
     expect(screen.getByRole("button", { name: "Revoke" })).toBeDisabled();
+  });
+
+  it("refreshes tokens, targets, and connector permissions together", async () => {
+    const user = userEvent.setup();
+    const refreshed = [{ id: 11, name: "refreshed", token: "aip_refreshed" }];
+    gateway.loadTokens.mockResolvedValueOnce(refreshed);
+    render(<TokensPage />);
+
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(gateway.loadTargets).toHaveBeenCalledOnce();
+    expect(connectorPermissions.load).toHaveBeenCalledWith(refreshed);
+  });
+
+  it("filters active tokens and restores the complete token list", async () => {
+    const user = userEvent.setup();
+    gateway.tokens.data = [
+      { id: 7, name: "active-agent", token: "aip_active" },
+      { id: 8, name: "expired-agent", token: "aip_expired", expires_at: "2020-01-01T00:00:00Z" },
+    ];
+    render(<TokensPage />);
+
+    expect(screen.getByText("active-agent")).toBeVisible();
+    expect(screen.queryByText("expired-agent")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Total tokens 2/ }));
+    expect(screen.getByText("expired-agent")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Active 1/ }));
+    expect(screen.queryByText("expired-agent")).not.toBeInTheDocument();
+  });
+
+  it("summarizes active connector grants by kind and target profile", () => {
+    connectorPermissions.state = {
+      state: "ready",
+      error: null,
+      data: {
+        7: [
+          { connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "always_run" },
+          { connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "approval_required" },
+          { connector_kind: "ssh", target_id: 4, profile_id: 5, execution_rule: "blocked" },
+        ],
+      },
+    };
+
+    render(<TokensPage />);
+
+    expect(screen.getByText("postgres")).toBeVisible();
+    expect(screen.getByText("ssh")).toBeVisible();
+    expect(screen.getByText("3 action grants / 2 target profiles")).toBeVisible();
   });
 });

@@ -142,6 +142,13 @@ describe("ConnectorTokenPermissionPanel modes", () => {
     await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
   });
 
+  it("falls back to the selected target profile when a stored profile disappears", async () => {
+    window.localStorage.setItem("aipermission.console.profile:postgres:7:5", "99");
+    renderPanel({ targetProfiles: [selectedTarget] });
+
+    expect(await screen.findByLabelText("Profile")).toHaveValue("11");
+  });
+
   it("keeps the panel inert until a connector target is selected", async () => {
     const { loadConnectorActions } = renderPanel({ target: null });
 
@@ -244,6 +251,17 @@ describe("ConnectorTokenPermissionPanel modes", () => {
 
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the compact token popover open for non-dismissal keys", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+
+    await user.click(trigger);
+    await user.keyboard("a");
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
   it("closes the compact token popover after an outside pointer press", async () => {

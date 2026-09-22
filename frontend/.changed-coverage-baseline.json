@@ -497,7 +497,7 @@
     },
     "src/components/ui/drawer.jsx": {
       "statements": 100,
-      "branches": 83.33,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1299,6 +1299,12 @@
       "functions": 50,
       "lines": 75
     },
+    "src/connectors/templates/postgres/postgres-restore-identity.js": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/postgres/provision-scope-picker.jsx": {
       "statements": 0,
       "branches": 0,
@@ -1707,6 +1713,12 @@
       "functions": 33.33,
       "lines": 15.78
     },
+    "src/lib/file-digest.js": {
+      "statements": 95.45,
+      "branches": 83.33,
+      "functions": 85.71,
+      "lines": 100
+    },
     "src/lib/file-transfer-utils.js": {
       "statements": 71.79,
       "branches": 61.9,
@@ -1838,6 +1850,12 @@
       "branches": 60,
       "functions": 70,
       "lines": 75
+    },
+    "src/lib/use-token-expiry-clock.js": {
+      "statements": 100,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/utils.js": {
       "statements": 100,
