@@ -316,12 +316,18 @@ func TestServiceChangePasswordCancelsWhileWaitingForSoleConnection(t *testing.T)
 			return nil, errors.New("canceled password change must not reopen the runtime")
 		},
 		Close: func(runtime *serviceRuntime) error { return runtime.database.Close() },
+		Validate: func(_ string, password string) error {
+			if password != currentPassword {
+				return errors.New("new password was not applied")
+			}
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	requestCtx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	requestCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	releaseMutation, err := service.AcquireMutationContext(requestCtx)
 	if err != nil {
@@ -329,16 +335,31 @@ func TestServiceChangePasswordCancelsWhileWaitingForSoleConnection(t *testing.T)
 	}
 	result := make(chan error, 1)
 	go func() {
-		defer releaseMutation()
-		result <- service.ChangePassword(requestCtx, currentPassword, "ReplacementPassword456")
+		changeErr := service.ChangePassword(requestCtx, currentPassword, "ReplacementPassword456")
+		releaseMutation()
+		result <- changeErr
 	}()
+	waitDeadline := time.NewTimer(5 * time.Second)
+	defer waitDeadline.Stop()
+	waitTicker := time.NewTicker(time.Millisecond)
+	defer waitTicker.Stop()
+	for database.Stats().WaitCount == 0 {
+		select {
+		case changeErr := <-result:
+			t.Fatalf("password change returned before waiting for the sole connection: %v", changeErr)
+		case <-waitTicker.C:
+		case <-waitDeadline.C:
+			t.Fatal("password change never waited for the sole connection")
+		}
+	}
+	cancel()
 	select {
 	case changeErr := <-result:
-		if !errors.Is(changeErr, context.DeadlineExceeded) {
-			t.Fatalf("ChangePassword() error = %v, want deadline exceeded", changeErr)
+		if !errors.Is(changeErr, context.Canceled) {
+			t.Fatalf("ChangePassword() error = %v, want cancellation", changeErr)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("password change ignored its connection acquisition deadline")
+	case <-time.After(5 * time.Second):
+		t.Fatal("password change ignored cancellation while waiting for the sole connection")
 	}
 
 	readCtx, cancelRead := context.WithTimeout(t.Context(), time.Second)
