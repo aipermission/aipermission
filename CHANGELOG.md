@@ -9,6 +9,37 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.57] - 2026-09-23
+
+### Fixed
+
+- Database cleanup preserves persistent workspaces, and interrupted database deletion
+  recovers its artifacts together.
+- Interactive console input no longer holds the session lock during writes, while
+  transcript capture preserves output order.
+- S3 browser actions, pending message drafts, and approval detail dialogs remain bound
+  to the selected item and retain useful errors.
+- MCP setup reads piped tokens before asynchronous preflight, and empty backend bind
+  hosts are rejected.
+
+### Security
+
+- Kubernetes rejects flag-like or invalid resource names and optional scopes before any
+  transport call.
+- Unlock backoff survives system errors; terminal Vault activity is retained only for
+  its configured period while replay protection remains intact.
+- Audit redaction keeps structured JSON valid after sensitive fields are removed.
+
+### Maintenance
+
+- Focused regression tests and three independent strict review passes cover the
+  corrected behavior.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.56] - 2026-09-22
 
 ### Changed
