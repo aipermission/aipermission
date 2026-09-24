@@ -45,6 +45,149 @@ func TestRemoveAuthorizedKeyCommandRemovesByPublicKeyBlob(t *testing.T) {
 	if !strings.Contains(string(updated), "AAAAIOTHER") {
 		t.Fatalf("other key should remain: %s", updated)
 	}
+	info, err := os.Stat(filepath.Join(sshDir, "authorized_keys"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("authorized_keys mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestRemoveAuthorizedKeyCommandPreservesFileOnInterruptedCopy(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY aipermission-main"
+	contents := []byte(key + "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTHER other\n")
+	keyPath := filepath.Join(sshDir, "authorized_keys")
+	if err := os.WriteFile(keyPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(home, "bin")
+	if err := os.Mkdir(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catStub := "#!/bin/sh\ncase \"$1\" in\n  *.count) exec /bin/cat \"$@\" ;;\n  */authorized_keys.aipermission.*) printf 'partial'; exit 1 ;;\nesac\nexec /bin/cat \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(binDir, "cat"), []byte(catStub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", removeAuthorizedKeyCommand(key))
+	command.Env = append(os.Environ(), "HOME="+home, "PATH="+binDir+":"+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("atomic key removal should not need a final copy: %v\n%s", err, output)
+	}
+	updated, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(updated), "AAAAITESTKEY") || !strings.Contains(string(updated), "AAAAIOTHER") {
+		t.Fatalf("unexpected key file after removal: %q", updated)
+	}
+}
+
+func TestRemoveAuthorizedKeyCommandPreservesFileWhenRenameFails(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY aipermission-main"
+	contents := []byte(key + "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTHER other\n")
+	keyPath := filepath.Join(sshDir, "authorized_keys")
+	if err := os.WriteFile(keyPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(home, "bin")
+	if err := os.Mkdir(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "mv"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", removeAuthorizedKeyCommand(key))
+	command.Env = append(os.Environ(), "HOME="+home, "PATH="+binDir+":"+os.Getenv("PATH"))
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("expected publication failure, got %s", output)
+	}
+	updated, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(updated) != string(contents) {
+		t.Fatalf("failed publication changed original keys: %q", updated)
+	}
+	if temps, err := filepath.Glob(filepath.Join(sshDir, ".authorized_keys.aipermission.*")); err != nil || len(temps) != 0 {
+		t.Fatalf("failed publication left temporary files: %v, %v", temps, err)
+	}
+}
+
+func TestRemoveAuthorizedKeyCommandCleansPartialTempWrite(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY aipermission-main"
+	contents := []byte(key + "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTHER other\n")
+	keyPath := filepath.Join(sshDir, "authorized_keys")
+	if err := os.WriteFile(keyPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(home, "bin")
+	if err := os.Mkdir(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "awk"), []byte("#!/bin/sh\nprintf 'partial'\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", removeAuthorizedKeyCommand(key))
+	command.Env = append(os.Environ(), "HOME="+home, "PATH="+binDir+":"+os.Getenv("PATH"))
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("expected temporary write failure, got %s", output)
+	}
+	updated, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(updated) != string(contents) {
+		t.Fatalf("temporary write failure changed original keys: %q", updated)
+	}
+	if temps, err := filepath.Glob(filepath.Join(sshDir, ".authorized_keys.*")); err != nil || len(temps) != 0 {
+		t.Fatalf("temporary write failure left files: %v, %v", temps, err)
+	}
+}
+
+func TestRemoveAuthorizedKeyCommandRejectsSymlink(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY aipermission-main"
+	contents := []byte(key + "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTHER other\n")
+	linkedPath := filepath.Join(home, "linked-keys")
+	if err := os.WriteFile(linkedPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkedPath, filepath.Join(sshDir, "authorized_keys")); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", removeAuthorizedKeyCommand(key))
+	command.Env = append(os.Environ(), "HOME="+home)
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("expected symlink rejection, got %s", output)
+	}
+	updated, err := os.ReadFile(linkedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(updated) != string(contents) {
+		t.Fatalf("symlink rejection changed destination keys: %q", updated)
+	}
 }
 
 func TestTransportFailureMessageClassifiesCommonFailures(t *testing.T) {
