@@ -70,6 +70,7 @@ export function useCredentialProfileEditor({ defaultKind, targets, emptyStateFor
       });
       if (result === undefined) return false;
       const message = result.value?.message || "Credential saved.";
+      editorEpochRef.current += 1;
       setDrawer({ open: false, kind: defaultKind, mode: "create", row: null });
       resetForm(defaultKind);
       await refreshAfterEditorMutation(onRefresh, setActionState, message);

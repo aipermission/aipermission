@@ -168,6 +168,19 @@ describe("useCredentialProfileEditor", () => {
     expect(result.current.formState.form.label).toBe("new");
   });
 
+  it("keeps a cleared secret empty after a successful save", async () => {
+    const model = { saveCredential: vi.fn(async () => ({ message: "Saved." })) };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "secret", password: "secret-value" } }));
+    const staleSetFormState = result.current.setFormState;
+
+    await act(async () => result.current.save({ preventDefault() {} }, "create"));
+    act(() => staleSetFormState((current) => ({ ...current, form: { ...current.form, password: "secret-value" } })));
+
+    expect(result.current.formState.form.password).toBe("");
+  });
+
   it("keeps a replacement save locked when the retired request settles", async () => {
     const resolvers = [];
     const model = {

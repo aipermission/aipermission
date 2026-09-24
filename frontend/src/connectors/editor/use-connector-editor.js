@@ -105,6 +105,7 @@ export function useConnectorEditor({
       });
       if (result !== true) return false;
       const kind = form.connector_kind;
+      editorEpochRef.current += 1;
       setDrawer({ open: false, mode: "create", kind, target: null });
       resetForm(kind);
       await refreshAfterEditorMutation(onRefresh, setActionState, message);
