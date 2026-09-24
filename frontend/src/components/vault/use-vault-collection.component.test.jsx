@@ -1,8 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
-import { filterVaultItemsByExpiry, useVaultCollection } from "./use-vault-collection";
+import { emptyVaultEditor, filterVaultItemsByExpiry, useVaultCollection } from "./use-vault-collection";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
@@ -50,6 +50,9 @@ function CollectionHarness() {
       </button>
       <button type="button" onClick={() => vault.setEditor((current) => ({ ...current, name: "my_key", value: "secret" }))}>
         Fill
+      </button>
+      <button type="button" onClick={() => vault.setEditor((current) => ({ ...current, name: "broader_key" }))}>
+        Broaden
       </button>
       <button type="button" onClick={(event) => void vault.saveItem(event)}>
         Save
@@ -125,6 +128,58 @@ it("does not let a late create close a newly opened editor", async () => {
   await act(async () => resolveSave({ id: 2 }));
   expect(screen.getByTestId("editor")).toHaveTextContent("true:4:");
   expect(screen.getByTestId("action")).toHaveTextContent("");
+});
+
+it("keeps the submitted Vault snapshot locked and sends one mutation", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPost.mockReturnValue(pending.promise);
+  render(<CollectionHarness />);
+  await waitFor(() => expect(screen.getByTestId("project")).toHaveTextContent("My Project"));
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(screen.getByRole("button", { name: "Fill" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Broaden" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(apiPost).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId("editor")).toHaveTextContent("true:4:my_key");
+  await act(async () => pending.resolve({ id: 2 }));
+  await waitFor(() => expect(screen.getByTestId("action")).toHaveTextContent("Vault item created"));
+});
+
+it("ignores delayed edits from a closed Vault drawer", () => {
+  const { result } = renderHook(() => useVaultCollection());
+  act(() => result.current.openCreate());
+  const staleSetEditor = result.current.setEditor;
+  act(() => result.current.closeEditor());
+  act(() => result.current.openCreate());
+  act(() => result.current.setEditor((current) => ({ ...current, name: "NEW_KEY" })));
+  act(() => staleSetEditor((current) => ({ ...current, name: "OLD_KEY" })));
+  expect(result.current.editor.name).toBe("NEW_KEY");
+});
+
+it("unlocks the Vault draft for correction after a failed mutation", async () => {
+  const user = userEvent.setup();
+  apiPost.mockRejectedValueOnce(new Error("Save failed"));
+  render(<CollectionHarness />);
+  await waitFor(() => expect(screen.getByTestId("project")).toHaveTextContent("My Project"));
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(screen.getByRole("button", { name: "Fill" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.getByTestId("action")).toHaveTextContent("Save failed"));
+  await user.click(screen.getByRole("button", { name: "Broaden" }));
+  expect(screen.getByTestId("editor")).toHaveTextContent("true:4:broader_key");
+});
+
+it("does not restore a cleared secret through a delayed editor callback", async () => {
+  const { result } = renderHook(() => useVaultCollection());
+  act(() => result.current.openCreate());
+  act(() => result.current.setEditor((current) => ({ ...current, name: "MY_KEY", value: "secret", owner_project_id: 4 })));
+  const staleSetEditor = result.current.setEditor;
+  await act(async () => result.current.saveItem({ preventDefault() {} }));
+  act(() => staleSetEditor((current) => ({ ...current, value: "secret" })));
+  expect(result.current.editor).toEqual(emptyVaultEditor);
 });
 
 it("updates Vault metadata without replacing the existing value", async () => {

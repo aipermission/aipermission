@@ -164,204 +164,206 @@ export function VaultEditor({ editor, projects, action, onChange, onClose, onSub
       bodyClassName="overflow-y-auto"
     >
       <form className="grid gap-5" onSubmit={onSubmit}>
-        {editor.mode === "create" ? (
-          <div className="grid grid-cols-2 rounded-md border border-stone-300 p-1">
-            <Button
-              type="button"
-              variant={editor.source === "imported" ? "default" : "ghost"}
-              className="h-9"
-              onClick={() => update("source", "imported")}
-            >
-              Import value
-            </Button>
-            <Button
-              type="button"
-              variant={editor.source === "generated" ? "default" : "ghost"}
-              className="h-9"
-              onClick={() => update("source", "generated")}
-            >
-              Generate locally
-            </Button>
-          </div>
-        ) : null}
-
-        <Field>
-          Environment name
-          <Input
-            value={editor.name}
-            onChange={(event) => update("name", event.target.value.toUpperCase())}
-            placeholder="PROJECT_SERVICE_API_KEY"
-            maxLength={128}
-            required
-          />
-          <span className="text-xs font-normal text-stone-500">
-            Use a specific uppercase name so AI clients can choose it reliably. Runtime-sensitive names such as PATH, LD_*, and BASH_FUNC_*
-            are rejected.
-          </span>
-        </Field>
-
-        {editor.mode === "create" && editor.source === "imported" ? (
-          <Field>
-            Secret value
-            <Textarea
-              className="min-h-28 font-mono"
-              value={editor.value}
-              onChange={(event) => update("value", event.target.value)}
-              required
-            />
-          </Field>
-        ) : null}
-        {editor.mode === "create" && editor.source === "generated" ? (
-          <Field>
-            Generator
-            <Select value={editor.generator_kind} onChange={(event) => update("generator_kind", event.target.value)}>
-              {vaultGeneratorKinds.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field>
-            Secret type
-            <Select value={editor.secret_type} onChange={(event) => update("secret_type", event.target.value)}>
-              {vaultSecretTypes.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field>
-            Owner project
-            <Select
-              value={editor.owner_project_id}
-              onChange={(event) => {
-                update("owner_project_id", event.target.value);
-                update(
-                  "shared_project_ids",
-                  editor.shared_project_ids.filter((id) => Number(id) !== Number(event.target.value)),
-                );
-              }}
-              required
-            >
-              <option value="">Choose project</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <div className="grid gap-2">
-          <p className="text-sm font-medium text-stone-800">Shared projects</p>
-          <div className="grid gap-2 rounded-md border border-stone-200 p-3 sm:grid-cols-2">
-            {projects
-              .filter((project) => Number(project.id) !== Number(editor.owner_project_id))
-              .map((project) => (
-                <label key={project.id} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={editor.shared_project_ids.map(Number).includes(Number(project.id))}
-                    onChange={() => toggleSharedProject(project.id)}
-                  />
-                  <span className="truncate">{project.name}</span>
-                </label>
-              ))}
-            {projects.length < 2 ? <p className="text-xs text-stone-500">Create another project to share this item.</p> : null}
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field>
-            Provider
-            <Input value={editor.provider} onChange={(event) => update("provider", event.target.value)} placeholder="GitHub" />
-          </Field>
-          <Field>
-            Environment
-            <Input value={editor.environment} onChange={(event) => update("environment", event.target.value)} placeholder="production" />
-          </Field>
-        </div>
-        <Field>
-          Description
-          <Textarea
-            value={editor.description}
-            onChange={(event) => update("description", event.target.value)}
-            placeholder="Non-secret purpose and access scope"
-          />
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(120px,1fr)]">
-          <div className="grid gap-2 text-sm font-medium text-stone-800">
-            <span>Expires at</span>
-            <DateTimePicker value={editor.expires_at} onChange={(value) => update("expires_at", value)} />
-          </div>
-          <Field>
-            Warning days
-            <Input
-              type="number"
-              min="1"
-              max="3650"
-              value={editor.expiry_warning_days}
-              onChange={(event) => update("expiry_warning_days", event.target.value)}
-              required
-            />
-          </Field>
-        </div>
-        <Field>
-          Tags
-          <Input value={editor.tags} onChange={(event) => update("tags", event.target.value)} placeholder="deploy, production, ci" />
-        </Field>
-
-        <div className="grid gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-stone-800">Used in</p>
-              <p className="text-xs text-stone-500">Track places that need an update when this value changes.</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-9 px-3"
-              onClick={() => update("usage_notes", [...editor.usage_notes, { location: "", notes: "" }])}
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </Button>
-          </div>
-          {editor.usage_notes.map((note, index) => (
-            <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_36px] gap-2">
-              <Input
-                value={note.location}
-                onChange={(event) => updateUsageNote(index, "location", event.target.value)}
-                placeholder="core-1: /opt/app/.env"
-              />
-              <Input
-                value={note.notes}
-                onChange={(event) => updateUsageNote(index, "notes", event.target.value)}
-                placeholder="Optional note"
-              />
+        <fieldset disabled={action.state === "saving"} className="grid min-w-0 gap-5">
+          {editor.mode === "create" ? (
+            <div className="grid grid-cols-2 rounded-md border border-stone-300 p-1">
               <Button
                 type="button"
-                variant="ghost"
-                className="h-10 w-9 px-0"
-                title="Remove usage note"
-                onClick={() =>
-                  update(
-                    "usage_notes",
-                    editor.usage_notes.filter((_, noteIndex) => noteIndex !== index),
-                  )
-                }
+                variant={editor.source === "imported" ? "default" : "ghost"}
+                className="h-9"
+                onClick={() => update("source", "imported")}
               >
-                <X className="h-4 w-4" />
+                Import value
+              </Button>
+              <Button
+                type="button"
+                variant={editor.source === "generated" ? "default" : "ghost"}
+                className="h-9"
+                onClick={() => update("source", "generated")}
+              >
+                Generate locally
               </Button>
             </div>
-          ))}
-        </div>
+          ) : null}
+
+          <Field>
+            Environment name
+            <Input
+              value={editor.name}
+              onChange={(event) => update("name", event.target.value.toUpperCase())}
+              placeholder="PROJECT_SERVICE_API_KEY"
+              maxLength={128}
+              required
+            />
+            <span className="text-xs font-normal text-stone-500">
+              Use a specific uppercase name so AI clients can choose it reliably. Runtime-sensitive names such as PATH, LD_*, and
+              BASH_FUNC_* are rejected.
+            </span>
+          </Field>
+
+          {editor.mode === "create" && editor.source === "imported" ? (
+            <Field>
+              Secret value
+              <Textarea
+                className="min-h-28 font-mono"
+                value={editor.value}
+                onChange={(event) => update("value", event.target.value)}
+                required
+              />
+            </Field>
+          ) : null}
+          {editor.mode === "create" && editor.source === "generated" ? (
+            <Field>
+              Generator
+              <Select value={editor.generator_kind} onChange={(event) => update("generator_kind", event.target.value)}>
+                {vaultGeneratorKinds.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              Secret type
+              <Select value={editor.secret_type} onChange={(event) => update("secret_type", event.target.value)}>
+                {vaultSecretTypes.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field>
+              Owner project
+              <Select
+                value={editor.owner_project_id}
+                onChange={(event) => {
+                  update("owner_project_id", event.target.value);
+                  update(
+                    "shared_project_ids",
+                    editor.shared_project_ids.filter((id) => Number(id) !== Number(event.target.value)),
+                  );
+                }}
+                required
+              >
+                <option value="">Choose project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-sm font-medium text-stone-800">Shared projects</p>
+            <div className="grid gap-2 rounded-md border border-stone-200 p-3 sm:grid-cols-2">
+              {projects
+                .filter((project) => Number(project.id) !== Number(editor.owner_project_id))
+                .map((project) => (
+                  <label key={project.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={editor.shared_project_ids.map(Number).includes(Number(project.id))}
+                      onChange={() => toggleSharedProject(project.id)}
+                    />
+                    <span className="truncate">{project.name}</span>
+                  </label>
+                ))}
+              {projects.length < 2 ? <p className="text-xs text-stone-500">Create another project to share this item.</p> : null}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              Provider
+              <Input value={editor.provider} onChange={(event) => update("provider", event.target.value)} placeholder="GitHub" />
+            </Field>
+            <Field>
+              Environment
+              <Input value={editor.environment} onChange={(event) => update("environment", event.target.value)} placeholder="production" />
+            </Field>
+          </div>
+          <Field>
+            Description
+            <Textarea
+              value={editor.description}
+              onChange={(event) => update("description", event.target.value)}
+              placeholder="Non-secret purpose and access scope"
+            />
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(120px,1fr)]">
+            <div className="grid gap-2 text-sm font-medium text-stone-800">
+              <span>Expires at</span>
+              <DateTimePicker value={editor.expires_at} onChange={(value) => update("expires_at", value)} />
+            </div>
+            <Field>
+              Warning days
+              <Input
+                type="number"
+                min="1"
+                max="3650"
+                value={editor.expiry_warning_days}
+                onChange={(event) => update("expiry_warning_days", event.target.value)}
+                required
+              />
+            </Field>
+          </div>
+          <Field>
+            Tags
+            <Input value={editor.tags} onChange={(event) => update("tags", event.target.value)} placeholder="deploy, production, ci" />
+          </Field>
+
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-stone-800">Used in</p>
+                <p className="text-xs text-stone-500">Track places that need an update when this value changes.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 px-3"
+                onClick={() => update("usage_notes", [...editor.usage_notes, { location: "", notes: "" }])}
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </Button>
+            </div>
+            {editor.usage_notes.map((note, index) => (
+              <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_36px] gap-2">
+                <Input
+                  value={note.location}
+                  onChange={(event) => updateUsageNote(index, "location", event.target.value)}
+                  placeholder="core-1: /opt/app/.env"
+                />
+                <Input
+                  value={note.notes}
+                  onChange={(event) => updateUsageNote(index, "notes", event.target.value)}
+                  placeholder="Optional note"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-10 w-9 px-0"
+                  title="Remove usage note"
+                  onClick={() =>
+                    update(
+                      "usage_notes",
+                      editor.usage_notes.filter((_, noteIndex) => noteIndex !== index),
+                    )
+                  }
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </fieldset>
 
         {action.error && editor.open ? <Notice tone="bad">{action.error}</Notice> : null}
         <div className="grid gap-2 sm:grid-cols-2">
