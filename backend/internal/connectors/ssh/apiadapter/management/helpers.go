@@ -376,10 +376,27 @@ if [ -z "$KEY_BLOB" ]; then
   echo "remote key uninstall failed: invalid public key" >&2
   exit 1
 fi
-mkdir -p ~/.ssh
-touch ~/.ssh/authorized_keys
-chmod 700 ~/.ssh
-tmp="$HOME/.ssh/authorized_keys.aipermission.$$"
+ssh_dir="$HOME/.ssh"
+key_file="$ssh_dir/authorized_keys"
+if [ -L "$ssh_dir" ] || [ -L "$key_file" ]; then
+  echo "remote key uninstall failed: symlinked SSH key path" >&2
+  exit 1
+fi
+if [ ! -e "$key_file" ]; then
+  echo "remote key uninstall removed 0 authorized_keys entries" >&2
+  exit 1
+fi
+if [ ! -d "$ssh_dir" ] || [ ! -f "$key_file" ] || [ ! -O "$ssh_dir" ] || [ ! -O "$key_file" ]; then
+  echo "remote key uninstall failed: authorized_keys must be a regular file owned by the SSH user" >&2
+  exit 1
+fi
+chmod 700 "$ssh_dir"
+umask 077
+tmp="$(mktemp "$ssh_dir/.authorized_keys.aipermission.XXXXXXXX")"
+count=""
+trap 'rm -f "$tmp"; [ -z "$count" ] || rm -f "$count"' 0
+trap 'exit 1' 1 2 3 15
+count="$(mktemp "$ssh_dir/.authorized_keys.count.XXXXXXXX")"
 awk -v key_blob="$KEY_BLOB" '
 BEGIN { removed = 0 }
 {
@@ -394,17 +411,17 @@ BEGIN { removed = 0 }
   if (keep) print
 }
 END { print removed > "/dev/stderr" }
-' ~/.ssh/authorized_keys 2>"$tmp.count" > "$tmp"
-removed="$(cat "$tmp.count" 2>/dev/null || printf '0')"
-rm -f "$tmp.count"
+' "$key_file" 2>"$count" > "$tmp"
+removed="$(cat "$count")"
+case "$removed" in
+  ''|*[!0-9]*) echo "remote key uninstall failed: invalid removal count" >&2; exit 1 ;;
+esac
 if [ "${removed:-0}" -eq 0 ]; then
-  rm -f "$tmp"
   echo "remote key uninstall removed 0 authorized_keys entries" >&2
   exit 1
 fi
-cat "$tmp" > ~/.ssh/authorized_keys
-rm -f "$tmp"
-chmod 600 ~/.ssh/authorized_keys
+chmod 600 "$tmp"
+mv -f "$tmp" "$key_file"
 printf 'aipermission_key_removed=%s\n' "$removed"`
 }
 

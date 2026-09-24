@@ -70,6 +70,12 @@ The SSH connector delete dialog offers:
 
 Remote cleanup matches the public key blob, so it can remove entries even if the authorized_keys comment or options were changed. If cleanup fails or removes zero entries, the local connector target is kept so the user does not lose track of a possible remote leftover.
 
+The cleanup writes a private temporary file in the same `.ssh` directory and
+atomically replaces `authorized_keys` only after the complete filtered file is
+ready. It rejects symlinked or non-owned key paths rather than risking a
+partial rewrite. If the remote shell lacks the required file tools or the
+replacement fails, the original key file and local target remain unchanged.
+
 ## Security Boundary
 
 Responses may show:
