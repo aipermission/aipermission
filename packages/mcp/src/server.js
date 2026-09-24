@@ -18,6 +18,7 @@ import { idempotencyKeySchema } from "./idempotency-key.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { projectGatewaySuccess, responseContracts } from "./response-contracts.js";
 import { jsonActionToolResult, jsonToolResult } from "./results.js";
+import { readGatewayResponseText } from "./response-body.js";
 import { externalActionAnnotations, localMutationAnnotations, localReadAnnotations } from "./tool-annotations.js";
 
 const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -266,7 +267,7 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
     }
     dispatchStarted = true;
     const response = await fetch(request, { signal: controller.signal });
-    const text = await response.text();
+    const text = await readGatewayResponseText(response);
     const data = response.status === 204 ? null : parseResponseBody(text);
     bodyReceived = true;
     if (!response.ok) {
