@@ -1,7 +1,7 @@
 {
   "kind": "rabbitmq",
   "label": "RabbitMQ",
-  "summary": "Queue browsing, bounded message previews, and explicit message publishing through RabbitMQ Management API profiles.",
+  "summary": "Paginated queue/binding browsing, bounded message previews, and explicit message publishing through RabbitMQ Management API profiles. Queue-filtered binding scans report when their page cap may leave results incomplete.",
   "version": "0.2",
   "icon": "database",
   "badge_tone": "warn",
