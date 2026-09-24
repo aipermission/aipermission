@@ -83,6 +83,7 @@ func migrations() []migration {
 		backupUploadWorkspaceInstanceMigration(),
 		vaultActionRetentionIndexMigration,
 		vaultActionIdempotencyTombstoneMigration,
+		vaultFinalizationMigration,
 	)
 }
 
