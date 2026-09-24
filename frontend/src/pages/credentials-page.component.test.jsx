@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { useCredentialProfileEditor } from "../connectors/editor/use-credential-profile-editor";
+import { emptyCredentialState } from "../connectors/templates/ssh/model";
 import { CredentialsPage } from "./credentials";
 
 vi.mock("../lib/api", () => ({ apiGet: vi.fn() }));
@@ -30,4 +31,19 @@ it("loads the generic credential inventories and shows the empty state", async (
   expect(await screen.findByText("Create your first connector credential.")).toBeVisible();
   expect(apiGet).toHaveBeenCalledWith("/api/connectors");
   expect(apiGet).toHaveBeenCalledWith("/api/connector-targets/inventory");
+});
+
+it("disables credential fields and mode changes while a save is pending", () => {
+  useCredentialProfileEditor.mockReturnValue({
+    ...useCredentialProfileEditor(),
+    drawer: { open: true, mode: "create", kind: "ssh" },
+    formState: emptyCredentialState(),
+    actionState: { state: "saving", error: null, message: null },
+  });
+
+  render(<CredentialsPage />);
+
+  expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /Generating|Creating|Generate .* credential/ })).toBeDisabled();
 });
