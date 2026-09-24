@@ -182,7 +182,9 @@ export function CredentialsPage() {
         onClose={editor.closeEditor}
       >
         {CredentialFormTemplate ? (
-          <CredentialFormTemplate {...credentialFormProps} />
+          <fieldset disabled={state.state === "saving" || state.state === "importing"} className="min-w-0">
+            <CredentialFormTemplate {...credentialFormProps} />
+          </fieldset>
         ) : (
           <ConnectorTemplateNotFound kind={drawer.kind} slot="credential-form" />
         )}

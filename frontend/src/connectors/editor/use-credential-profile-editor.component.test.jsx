@@ -110,6 +110,93 @@ describe("useCredentialProfileEditor", () => {
     expect(onRefresh).not.toHaveBeenCalled();
   });
 
+  it("locks an in-flight draft and submits its snapshot only once", async () => {
+    let resolveSave;
+    const pendingSave = new Promise((resolve) => {
+      resolveSave = resolve;
+    });
+    const model = { saveCredential: vi.fn(() => pendingSave) };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "original", password: "secret" } }));
+
+    let firstSave;
+    let secondSave;
+    act(() => {
+      firstSave = result.current.save({ preventDefault() {} }, "create");
+      result.current.setFormState((current) => ({ ...current, form: { ...current.form, label: "broader scope" } }));
+      secondSave = result.current.save({ preventDefault() {} }, "create");
+    });
+
+    expect(result.current.formState.form.label).toBe("original");
+    expect(model.saveCredential).toHaveBeenCalledTimes(1);
+    await act(async () => resolveSave({ message: "Saved." }));
+    await expect(firstSave).resolves.toBe(true);
+    await expect(secondSave).resolves.toBe(false);
+    expect(result.current.drawer.open).toBe(false);
+  });
+
+  it("unlocks the same draft for correction after a failed save", async () => {
+    let rejectSave;
+    const pendingSave = new Promise((_, reject) => {
+      rejectSave = reject;
+    });
+    const model = { saveCredential: vi.fn(() => pendingSave) };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    let save;
+    act(() => {
+      save = result.current.save({ preventDefault() {} }, "create");
+    });
+    await act(async () => rejectSave(new Error("Network failed")));
+    await expect(save).resolves.toBe(false);
+
+    act(() => result.current.setFormState((current) => ({ ...current, form: { ...current.form, label: "corrected" } })));
+    expect(result.current.formState.form.label).toBe("corrected");
+  });
+
+  it("ignores delayed field updates from a retired editor", () => {
+    const { result } = renderEditor({ saveCredential: vi.fn() });
+    act(() => result.current.openCreate("example"));
+    const staleSetFormState = result.current.setFormState;
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "new", password: "new-secret" } }));
+
+    act(() => staleSetFormState((current) => ({ ...current, form: { ...current.form, label: "old" } })));
+
+    expect(result.current.formState.form.label).toBe("new");
+  });
+
+  it("keeps a replacement save locked when the retired request settles", async () => {
+    const resolvers = [];
+    const model = {
+      saveCredential: vi.fn(() => new Promise((resolve) => resolvers.push(resolve))),
+    };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    let oldSave;
+    act(() => {
+      oldSave = result.current.save({ preventDefault() {} }, "create");
+    });
+
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    let newSave;
+    act(() => {
+      newSave = result.current.save({ preventDefault() {} }, "create");
+    });
+    await act(async () => resolvers[0]({ message: "Old saved." }));
+    await expect(oldSave).resolves.toBe(false);
+
+    await act(async () => {
+      expect(await result.current.save({ preventDefault() {} }, "create")).toBe(false);
+    });
+    expect(model.saveCredential).toHaveBeenCalledTimes(2);
+    await act(async () => resolvers[1]({ message: "New saved." }));
+    await expect(newSave).resolves.toBe(true);
+  });
+
   it("surfaces missing connector behavior without opening an invalid editor", () => {
     const { result } = renderEditor(null);
     const row = { id: 3, connector_kind: "missing" };
