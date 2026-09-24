@@ -687,10 +687,12 @@ the target can be created atomically without replacing a concurrent file. A
 server without that extension returns `atomic_create_unsupported`; the gateway
 does not fall back to a check-then-rename race. The gateway durably records a
 remote staging path only after exclusive creation proves that the current
-transfer owns it. Interrupted uploads are reconciled on the next workspace open
-through the owning connector's bounded asynchronous cleanup hook. While cleanup
-is unresolved, retention preserves its evidence and target or credential
-mutations that could change the cleanup identity are rejected.
+transfer owns it. Recovery never cleans staging still owned by an active upload.
+Interrupted uploads are reconciled on the next workspace open and
+periodically while that workspace remains open, through the owning connector's
+bounded asynchronous cleanup hook after the transfer worker has stopped. While
+cleanup is unresolved, retention preserves its evidence and target or
+credential mutations that could change the cleanup identity are rejected.
 Completed
 multi-file download archives persist their cleanup deadline, so restart does
 not turn temporary archives into unbounded local files.

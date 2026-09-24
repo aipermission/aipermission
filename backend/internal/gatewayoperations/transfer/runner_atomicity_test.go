@@ -53,6 +53,13 @@ type retryingStagingRecoveryAdapter struct {
 	recovered chan struct{}
 }
 
+type activeStagingRecoveryAdapter struct {
+	rejectingTransferAdapter
+	staged    chan struct{}
+	release   chan struct{}
+	recovered atomic.Int32
+}
+
 func (adapter *blockingStagingRecoveryAdapter) CleanupRemoteStaging(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, ref string) error {
 	adapter.calls.Add(1)
 	deadline, ok := ctx.Deadline()
@@ -74,6 +81,20 @@ func (adapter *retryingStagingRecoveryAdapter) CleanupRemoteStaging(context.Cont
 		return errors.New("temporary cleanup failure")
 	}
 	close(adapter.recovered)
+	return nil
+}
+
+func (adapter *activeStagingRecoveryAdapter) UploadFile(ctx context.Context, _ connectorapi.FileTransferGateway, _ connectorapi.TransferRuntime, _ int64, _ string, _ string, _ bool, options connectors.TransferOptions) (connectors.TransferResult, error) {
+	if err := options.RecordStaging(ctx, "opaque-active"); err != nil {
+		return connectors.TransferResult{}, err
+	}
+	close(adapter.staged)
+	<-adapter.release
+	return connectors.TransferResult{}, errors.New("simulated canceled upload")
+}
+
+func (adapter *activeStagingRecoveryAdapter) CleanupRemoteStaging(context.Context, connectorapi.FileTransferGateway, connectorapi.TransferRuntime, int64, string) error {
+	adapter.recovered.Add(1)
 	return nil
 }
 
@@ -203,6 +224,70 @@ func TestRemoteUploadStagingRecoverySurvivesRuntimeRestart(t *testing.T) {
 	}
 }
 
+func TestRemoteStagingRecoveryDoesNotCleanLiveUpload(t *testing.T) {
+	adapter := &activeStagingRecoveryAdapter{staged: make(chan struct{}), release: make(chan struct{})}
+	released := false
+	defer func() {
+		if !released {
+			close(adapter.release)
+		}
+	}()
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	tempPath, size, checksum, err := fixture.handlers.runner.StageUploadFile(fixture.runtime, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload", TempPath: tempPath, SizeBytes: size, ChecksumSHA256: checksum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.handlers.runner.LaunchUpload(t.Context(), fixture.runtime, item.ID, true, fixture.execution(t).runnerExecution()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-adapter.staged:
+	case <-time.After(time.Second):
+		t.Fatal("upload did not record staging")
+	}
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour,
+		AdapterFor: func(string) connectorapi.FileTransferAdapter { return adapter },
+	})
+	if err := runner.RecoverRemoteStaging(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	if got := adapter.recovered.Load(); got != 0 {
+		t.Fatalf("active upload staging was cleaned %d times", got)
+	}
+	if changed, err := fixture.store.Cancel(t.Context(), item.ID, "canceled"); err != nil || !changed {
+		t.Fatalf("cancel staged upload: changed=%v err=%v", changed, err)
+	}
+	if err := runner.RecoverRemoteStaging(t.Context(), fixture.runtime); err != nil {
+		t.Fatal(err)
+	}
+	if got := adapter.recovered.Load(); got != 0 {
+		t.Fatalf("worker-owned canceled staging was cleaned %d times", got)
+	}
+	close(adapter.release)
+	released = true
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := runner.RecoverRemoteStaging(t.Context(), fixture.runtime); err != nil {
+			t.Fatal(err)
+		}
+		if adapter.recovered.Load() == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("orphaned staging was not recovered after the worker stopped")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestRemoteStagingRecoveryBoundsEachCandidateIndependently(t *testing.T) {
 	adapter := &blockingStagingRecoveryAdapter{}
 	fixture := newTransferTestFixtureWithAdapter(t, adapter)
@@ -219,6 +304,9 @@ func TestRemoteStagingRecoveryBoundsEachCandidateIndependently(t *testing.T) {
 		}
 		if err := fixture.store.SetRemoteStagingRef(t.Context(), item.ID, fmt.Sprintf("opaque-%d", index)); err != nil {
 			t.Fatal(err)
+		}
+		if changed, err := fixture.store.Fail(t.Context(), item.ID, "interrupted"); err != nil || !changed {
+			t.Fatalf("fail staged transfer: changed=%v err=%v", changed, err)
 		}
 	}
 	runner := transferapp.NewRunner(transferapp.RunnerConfig{
@@ -260,6 +348,9 @@ func TestRemoteStagingRecoveryRetriesWhileWorkspaceRemainsOpen(t *testing.T) {
 	if err := fixture.store.SetRemoteStagingRef(t.Context(), item.ID, "opaque-retry"); err != nil {
 		t.Fatal(err)
 	}
+	if changed, err := fixture.store.Fail(t.Context(), item.ID, "interrupted"); err != nil || !changed {
+		t.Fatalf("fail staged transfer: changed=%v err=%v", changed, err)
+	}
 	runner := transferapp.NewRunner(transferapp.RunnerConfig{
 		DataPath: fixture.dataPath, TempTTL: time.Hour, RemoteRecoveryTimeout: 20 * time.Millisecond,
 		RemoteRecoveryRetry: 5 * time.Millisecond,
@@ -284,6 +375,48 @@ func TestRemoteStagingRecoveryRetriesWhileWorkspaceRemainsOpen(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("recovered staging reference was not cleared")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestRemoteStagingRecoveryFindsLaterTerminalTransfer(t *testing.T) {
+	adapter := &recoverableStagingTransferAdapter{}
+	fixture := newTransferTestFixtureWithAdapter(t, adapter)
+	runner := transferapp.NewRunner(transferapp.RunnerConfig{
+		DataPath: fixture.dataPath, TempTTL: time.Hour, RemoteRecoveryRetry: 5 * time.Millisecond,
+		AdapterFor: func(string) connectorapi.FileTransferAdapter { return adapter },
+	})
+	if !runner.StartRemoteStagingRecovery(fixture.runtime) {
+		t.Fatal("remote staging recovery did not start")
+	}
+	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
+		RemotePath: "/remote", FileName: "upload",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := fixture.store.MarkRunning(t.Context(), item.ID); err != nil || !changed {
+		t.Fatalf("mark running: changed=%v err=%v", changed, err)
+	}
+	if err := fixture.store.SetRemoteStagingRef(t.Context(), item.ID, "opaque-later"); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := fixture.store.Fail(t.Context(), item.ID, "interrupted"); err != nil || !changed {
+		t.Fatalf("fail staged transfer: changed=%v err=%v", changed, err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		stored, err := fixture.store.Get(t.Context(), item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.RemoteStagingRef == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("recovery loop missed a staging ref created after its first pass")
 		}
 		time.Sleep(time.Millisecond)
 	}

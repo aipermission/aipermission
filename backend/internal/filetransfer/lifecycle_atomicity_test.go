@@ -102,8 +102,15 @@ func TestRemoteStagingRecoveryReferenceLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidates, err := store.ListRemoteStagingCandidates(t.Context())
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("active staging must not be recovered: %#v err=%v", candidates, err)
+	}
+	if changed, err := store.Fail(t.Context(), item.ID, "interrupted"); err != nil || !changed {
+		t.Fatalf("fail staged transfer: changed=%v err=%v", changed, err)
+	}
+	candidates, err = store.ListRemoteStagingCandidates(t.Context())
 	if err != nil || len(candidates) != 1 || candidates[0].RemoteStagingRef != ref {
-		t.Fatalf("remote staging candidates = %#v err=%v", candidates, err)
+		t.Fatalf("terminal remote staging candidates = %#v err=%v", candidates, err)
 	}
 	if err := store.ClearRemoteStagingRef(t.Context(), item.ID, ref); err != nil {
 		t.Fatal(err)
