@@ -166,6 +166,13 @@ func (g *Group) Control(id int64) *Control {
 	return g.jobs[id].control
 }
 
+func (g *Group) Active(id int64) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	entry := g.jobs[id]
+	return entry.running || entry.cancel != nil
+}
+
 func (g *Group) Cancel(id int64) bool {
 	g.mu.Lock()
 	cancel := g.jobs[id].cancel

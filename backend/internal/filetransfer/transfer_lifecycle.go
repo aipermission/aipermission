@@ -226,8 +226,8 @@ func (s *Store) ListRemoteStagingCandidates(ctx context.Context) ([]Record, erro
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, runtime_id, status, remote_staging_ref
 		FROM file_transfers
-		WHERE remote_staging_ref != ''
-		ORDER BY id`)
+		WHERE remote_staging_ref != '' AND status IN (?, ?, ?)
+		ORDER BY id`, StatusCompleted, StatusFailed, StatusCanceled)
 	if err != nil {
 		return nil, fmt.Errorf("list remote file transfer staging candidates: %w", err)
 	}

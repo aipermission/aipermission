@@ -344,16 +344,11 @@ func (s Runner) StartRemoteStagingRecovery(runtime *Runtime) bool {
 	ctx, cancel := context.WithCancel(runtime.finalization.Context())
 	return runtime.jobs.Maintenance.Launch(1, cancel, func() {
 		for {
-			pending, err := s.recoverRemoteStagingPass(ctx, runtime)
-			if err != nil {
+			if err := s.recoverRemoteStagingPass(ctx, runtime); err != nil {
 				if errors.Is(err, context.Canceled) {
 					return
 				}
 				log.Printf("recover remote file transfer staging delayed: %v", err)
-				pending = true
-			}
-			if !pending {
-				return
 			}
 			timer := time.NewTimer(s.remoteRecoveryRetry)
 			select {
@@ -370,8 +365,7 @@ func (s Runner) RecoverRemoteStaging(ctx context.Context, runtime *Runtime) erro
 	if runtime == nil {
 		return fmt.Errorf("file transfer runtime is unavailable")
 	}
-	_, err := s.recoverRemoteStagingPass(ctx, runtime)
-	return err
+	return s.recoverRemoteStagingPass(ctx, runtime)
 }
 
 func (s Runner) scavengeOrphanedTempFiles(ctx context.Context, runtime *Runtime) error {
@@ -430,42 +424,41 @@ func ownedFileTransferTempName(name string) bool {
 		(strings.HasPrefix(name, "archive-") && strings.HasSuffix(name, ".zip"))
 }
 
-func (s Runner) recoverRemoteStagingPass(ctx context.Context, runtime *Runtime) (bool, error) {
+func (s Runner) recoverRemoteStagingPass(ctx context.Context, runtime *Runtime) error {
 	items, err := runtime.store.ListRemoteStagingCandidates(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
-	pending := false
 	for _, item := range items {
 		if err := ctx.Err(); err != nil {
-			return true, err
+			return err
+		}
+		if runtime.jobs.Files.Active(item.ID) {
+			continue
 		}
 		candidateCtx, cancel := context.WithTimeout(ctx, s.remoteRecoveryTimeout)
 		ports, err := runtime.ConnectorPorts(candidateCtx, item.RuntimeID)
 		if err != nil || s.adapterFor == nil {
 			cancel()
-			pending = true
 			continue
 		}
 		cleaner, ok := s.adapterFor(ports.ConnectorKind).(connectorapi.RemoteStagingRecoveryAdapter)
 		if !ok || cleaner == nil {
 			cancel()
-			pending = true
 			continue
 		}
 		err = cleaner.CleanupRemoteStaging(candidateCtx, ports.Gateway, ports.Runtime, item.RuntimeID, item.RemoteStagingRef)
 		cancel()
 		if err != nil {
 			if err := ctx.Err(); err != nil {
-				return true, err
+				return err
 			}
 			log.Printf("recover remote file transfer staging failed transfer=%d", item.ID)
-			pending = true
 			continue
 		}
 		if err := runtime.store.ClearRemoteStagingRef(ctx, item.ID, item.RemoteStagingRef); err != nil {
-			return true, err
+			return err
 		}
 	}
-	return pending, nil
+	return nil
 }
