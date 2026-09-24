@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
+	"github.com/aipermission/aipermission/backend/internal/vaultfinalization"
 )
 
 type HTTPScope struct {
@@ -440,6 +441,10 @@ func writeHTTPCancellation(w http.ResponseWriter, err error, message string) boo
 func writeItemHTTPError(w http.ResponseWriter, err error) {
 	var validation ValidationError
 	switch {
+	case errors.Is(err, vaultfinalization.ErrPending):
+		httptransport.WriteErrorCode(w, http.StatusConflict, err.Error(), "vault_finalization_pending")
+	case errors.Is(err, vaultfinalization.ErrBlocked):
+		httptransport.WriteErrorCode(w, http.StatusConflict, err.Error(), "vault_finalization_blocked")
 	case errors.Is(err, ErrSessionEnvironmentUnsupported):
 		httptransport.WriteError(w, http.StatusConflict, "this connector runtime does not support Vault session environments")
 	case errors.As(err, &validation):
@@ -456,6 +461,10 @@ func writeItemHTTPError(w http.ResponseWriter, err error) {
 func writeBindingHTTPError(w http.ResponseWriter, err error) {
 	var validation ValidationError
 	switch {
+	case errors.Is(err, vaultfinalization.ErrPending):
+		httptransport.WriteErrorCode(w, http.StatusConflict, err.Error(), "vault_finalization_pending")
+	case errors.Is(err, vaultfinalization.ErrBlocked):
+		httptransport.WriteErrorCode(w, http.StatusConflict, err.Error(), "vault_finalization_blocked")
 	case errors.As(err, &validation):
 		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 	case errors.Is(err, ErrNotFound):

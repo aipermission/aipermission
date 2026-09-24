@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 )
 
 var ErrPending = errors.New("Vault change was saved but session cleanup is pending; retry after reopening the database")
+var ErrBlocked = errors.New("Vault cleanup is pending; this operation was not applied")
+
+const cleanupTimeout = 15 * time.Second
 
 type Reference struct {
 	SessionID  int64 `json:"session_id"`
@@ -87,6 +91,33 @@ func (s *Store) Pending(ctx context.Context) ([]Intent, error) {
 	return intents, nil
 }
 
+func (s *Store) ActiveProjectReferences(ctx context.Context, projectID int64) ([]Reference, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("Vault finalization store is unavailable")
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT session_id, runtime_id, session_generation
+		FROM vault_session_leases
+		WHERE project_id = ? AND status = 'active'
+		ORDER BY session_id`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list active project Vault sessions: %w", err)
+	}
+	defer rows.Close()
+	references := make([]Reference, 0)
+	for rows.Next() {
+		var reference Reference
+		if err := rows.Scan(&reference.SessionID, &reference.RuntimeID, &reference.Generation); err != nil {
+			return nil, fmt.Errorf("scan active project Vault session: %w", err)
+		}
+		references = append(references, reference)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list active project Vault sessions: %w", err)
+	}
+	return references, nil
+}
+
 func (s *Store) Complete(ctx context.Context, id int64) error {
 	if s == nil || s.db == nil {
 		return errors.New("Vault finalization store is unavailable")
@@ -114,6 +145,20 @@ func (s *Store) RequireReady(ctx context.Context) error {
 		return fmt.Errorf("inspect Vault finalizations: %w", err)
 	}
 	if pending {
+		return ErrBlocked
+	}
+	return nil
+}
+
+func (s *Store) Finalize(ctx context.Context, id int64, invalidate func(context.Context) error) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	if err := invalidate(cleanupCtx); err != nil {
+		log.Printf("Vault finalization pending id=%d: %v", id, err)
+		return ErrPending
+	}
+	if err := s.Complete(cleanupCtx, id); err != nil {
+		log.Printf("Vault finalization completion pending id=%d: %v", id, err)
 		return ErrPending
 	}
 	return nil

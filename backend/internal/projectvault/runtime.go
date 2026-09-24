@@ -117,6 +117,9 @@ func (r *Runtime) Create(ctx context.Context, input CreateInput) (Item, error) {
 		return Item{}, err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return Item{}, err
+	}
 	var item Item
 	err = r.mutations.WithMutation(ctx, "vault.item.created", func() any {
 		return ItemAuditPayload(item)
@@ -137,6 +140,9 @@ func (r *Runtime) UpdateMetadata(ctx context.Context, input UpdateMetadataInput)
 		return Item{}, err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return Item{}, err
+	}
 	current, err := r.store.Get(ctx, input.ID)
 	if err != nil {
 		return Item{}, err
@@ -150,18 +156,23 @@ func (r *Runtime) UpdateMetadata(ctx context.Context, input UpdateMetadataInput)
 		return Item{}, err
 	}
 	var item Item
+	var finalizationID int64
 	err = r.mutations.WithMutation(ctx, "vault.item.updated", func() any {
 		return ItemAuditPayload(item)
 	}, func(tx *sql.Tx) error {
 		var updateErr error
 		item, updateErr = r.store.WithTx(tx).UpdateMetadata(ctx, input)
+		if updateErr != nil {
+			return updateErr
+		}
+		finalizationID, updateErr = r.queueSessionFinalization(ctx, tx, sessions, scope)
 		return updateErr
 	})
 	if err != nil {
 		return Item{}, err
 	}
-	if err := r.invalidateSessions(ctx, sessions, scope); err != nil {
-		return Item{}, err
+	if err := r.finishSessionFinalization(ctx, finalizationID, sessions, scope); err != nil {
+		return item, err
 	}
 	return item, nil
 }
@@ -175,6 +186,9 @@ func (r *Runtime) Delete(ctx context.Context, id, expectedValueVersion, expected
 		return err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return err
+	}
 	item, err := r.store.Get(ctx, id)
 	if err != nil {
 		return err
@@ -187,14 +201,20 @@ func (r *Runtime) Delete(ctx context.Context, id, expectedValueVersion, expected
 	if err != nil {
 		return err
 	}
+	var finalizationID int64
 	if err := r.mutations.WithMutation(ctx, "vault.item.deleted", func() any {
 		return ItemAuditPayload(item)
 	}, func(tx *sql.Tx) error {
-		return r.store.WithTx(tx).Delete(ctx, id, expectedValueVersion, expectedMetadataRevision)
+		if err := r.store.WithTx(tx).Delete(ctx, id, expectedValueVersion, expectedMetadataRevision); err != nil {
+			return err
+		}
+		var err error
+		finalizationID, err = r.queueSessionFinalization(ctx, tx, sessions, scope)
+		return err
 	}); err != nil {
 		return err
 	}
-	if err := r.invalidateSessions(ctx, sessions, scope); err != nil {
+	if err := r.finishSessionFinalization(ctx, finalizationID, sessions, scope); err != nil {
 		return err
 	}
 	r.clearPreview(id)

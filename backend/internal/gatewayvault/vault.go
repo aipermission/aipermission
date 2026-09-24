@@ -23,7 +23,7 @@ type ProjectScope struct {
 	Database         *sql.DB
 	Mutate           ProjectMutation
 	AcquireExclusive func(context.Context) (func(), error)
-	Invalidate       func(context.Context, int64) error
+	Invalidate       func(context.Context, int64, []SessionReference) error
 }
 
 type ProjectVaultHTTPScope struct {

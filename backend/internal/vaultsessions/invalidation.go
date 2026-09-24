@@ -93,6 +93,13 @@ func (i *Invalidator) InvalidateProject(ctx context.Context, projectID int64, re
 	if err != nil {
 		return err
 	}
+	return i.InvalidateProjectReferences(ctx, references, projectID, reason)
+}
+
+func (i *Invalidator) InvalidateProjectReferences(ctx context.Context, references []Reference, projectID int64, reason string) error {
+	if err := i.validate(); err != nil {
+		return err
+	}
 	closeErr := i.closeReferences(ctx, references)
 	requests, requestErr := i.requestInvalidator(ctx)
 	if requestErr != nil {
@@ -202,6 +209,9 @@ func (i *Invalidator) closeReferences(ctx context.Context, references []Referenc
 				"revoke persisted Vault lease for session %d: %w", reference.SessionID, err,
 			))
 		}
+	}
+	if len(references) == 0 {
+		return nil
 	}
 	principal, err := i.principal()
 	if err != nil {

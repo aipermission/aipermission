@@ -86,9 +86,21 @@ func projectScopeProvider(provider ProjectScopeProvider) projects.ScopeProvider 
 				return scope.Mutate(ctx, action, payload, mutation)
 			}
 		}
+		var invalidate func(context.Context, int64, []projects.SessionReference) error
+		if scope.Invalidate != nil {
+			invalidate = func(ctx context.Context, projectID int64, references []projects.SessionReference) error {
+				items := make([]SessionReference, len(references))
+				for index, reference := range references {
+					items[index] = SessionReference{
+						SessionID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
+					}
+				}
+				return scope.Invalidate(ctx, projectID, items)
+			}
+		}
 		return projects.Scope{
 			Database: scope.Database, Mutate: mutate,
-			AcquireExclusive: scope.AcquireExclusive, Invalidate: scope.Invalidate,
+			AcquireExclusive: scope.AcquireExclusive, Invalidate: invalidate,
 		}, ok
 	}
 }
