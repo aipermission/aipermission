@@ -298,6 +298,10 @@ func existingCapabilityStates(ctx context.Context, executor storeDB, tokenID int
 		}
 		values[capabilityKey(projectID, name)] = state
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}

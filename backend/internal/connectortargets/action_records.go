@@ -861,6 +861,10 @@ func (s *Store) InvalidateActionRequestsForTarget(ctx context.Context, input Inv
 			result.StaleIDs = append(result.StaleIDs, id)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return InvalidateActionRequestsForTargetResult{}, err
+	}
 	if err := rows.Close(); err != nil {
 		return InvalidateActionRequestsForTargetResult{}, err
 	}

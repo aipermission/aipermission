@@ -347,6 +347,10 @@ func (s *Store) ReplaceTokenScopes(ctx context.Context, tokenID int64, enabledPr
 		}
 		activeIDs = append(activeIDs, id)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
