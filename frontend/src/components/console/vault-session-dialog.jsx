@@ -6,12 +6,15 @@ import { Dialog } from "../ui/dialog";
 import { Checkbox, Input, Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { preferredDefaultBindings } from "../../lib/vault-session-selection";
+import { useVaultSessionItems } from "./use-vault-session-items";
 
 export function VaultSessionDialog({ state, onClose, onStart }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState({});
+  const [selectedLabels, setSelectedLabels] = useState({});
   const [projectID, setProjectID] = useState("");
-  const items = useMemo(() => state.options?.items || [], [state.options?.items]);
+  const page = useVaultSessionItems({ open: state.open, runtimeID: state.runtime?.id, projectID, query });
+  const items = page.items;
   const defaults = useMemo(() => state.options?.defaults || [], [state.options?.defaults]);
   const projects = useMemo(() => state.options?.projects || [], [state.options?.projects]);
   const projectNames = useMemo(() => Object.fromEntries(projects.map((project) => [Number(project.id), project.name])), [projects]);
@@ -44,6 +47,14 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
       };
     });
     setSelected(next);
+    setSelectedLabels(
+      Object.fromEntries(
+        defaults.map((binding) => [
+          Number(binding.vault_item_id),
+          { id: binding.vault_item_id, name: binding.vault_item_name, owner_project_id: binding.source_project_id },
+        ]),
+      ),
+    );
     setQuery("");
     setProjectID(String(state.options?.target_project_id || projects[0]?.id || ""));
   }, [state.open, state.runtime?.id, state.options?.target_project_id, defaults, projects]);
@@ -65,14 +76,14 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
     });
   }, [availableItems, projectID, query]);
   const selectedItems = useMemo(() => {
-    const byID = new Map(availableItems.map((item) => [Number(item.id), item]));
     return Object.values(selected)
-      .map((selection) => ({ selection, item: byID.get(Number(selection.item_id)) }))
+      .map((selection) => ({ selection, item: selectedLabels[selection.item_id] }))
       .filter((entry) => entry.item)
       .sort((left, right) => String(left.item.name).localeCompare(String(right.item.name)));
-  }, [availableItems, selected]);
+  }, [selected, selectedLabels]);
 
   function toggle(item) {
+    setSelectedLabels((current) => ({ ...current, [item.id]: item }));
     setSelected((current) => {
       const next = { ...current };
       if (next[item.id]) {
@@ -210,15 +221,28 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
               </div>
             );
           })}
-          {visibleItems.length === 0 ? (
+          {page.status === "loading" && visibleItems.length === 0 ? (
+            <p className="p-6 text-center text-sm text-stone-500">Loading Vault items...</p>
+          ) : null}
+          {page.status !== "loading" && visibleItems.length === 0 ? (
             <p className="p-6 text-center text-sm text-stone-500">No matching Vault items in this project.</p>
           ) : null}
         </div>
-        {Number(state.options?.total || 0) > items.length ? (
-          <Notice tone="warn" className="py-2 text-xs">
-            Showing {items.length} of {state.options.total} Vault items. Narrow the project first, then use the Vault page search to manage
-            items outside this bounded session list.
-          </Notice>
+        {page.error ? <Notice tone="bad">Vault item search failed: {page.error}</Notice> : null}
+        {page.hasMore || page.status === "error" ? (
+          <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
+            <span>
+              Showing {items.length} of {page.total} matching Vault items
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={page.status === "error" ? page.retry : page.loadMore}
+              disabled={page.status === "loading"}
+            >
+              {page.status === "error" ? "Retry" : "Load more"}
+            </Button>
+          </div>
         ) : null}
         {Object.keys(selected).length > 0 ? (
           <Notice tone="warn" className="py-2 text-xs">

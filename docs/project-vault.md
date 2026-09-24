@@ -147,6 +147,12 @@ no-op and does not revoke an unchanged active session. The overwrite option
 changes an existing environment value only inside the newly started shell; it
 does not edit remote files, shell profiles, or provider-side credentials.
 
+The session picker searches Vault item metadata within the selected project on
+the server and loads additional results in bounded pages. Selected items remain
+selected when the project or search term changes; a stale search response cannot
+replace the current result list. The session environment limits above still
+apply when starting the session.
+
 ## MCP Tools
 
 ```text

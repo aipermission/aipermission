@@ -219,11 +219,17 @@
       "functions": 83.33,
       "lines": 89.83
     },
+    "src/components/console/use-vault-session-items.js": {
+      "statements": 95.55,
+      "branches": 86.36,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/console/vault-session-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+      "statements": 73.33,
+      "branches": 67.74,
+      "functions": 63.88,
+      "lines": 74.24
     },
     "src/components/database-lock-dialog.jsx": {
       "statements": 1,
@@ -586,10 +592,10 @@
       "lines": 77.5
     },
     "src/components/vault/use-vault-collection.js": {
-      "statements": 92.39,
-      "branches": 82.08,
-      "functions": 87.5,
-      "lines": 96.05
+      "statements": 95.49,
+      "branches": 88,
+      "functions": 88,
+      "lines": 97.82
     },
     "src/components/vault/use-vault-value-actions.js": {
       "statements": 72.72,
@@ -634,10 +640,10 @@
       "lines": 0
     },
     "src/connectors/editor/connector-page-dialogs.jsx": {
-      "statements": 77.94,
-      "branches": 46.09,
-      "functions": 70.83,
-      "lines": 79.66
+      "statements": 90.47,
+      "branches": 79.31,
+      "functions": 86.66,
+      "lines": 89.47
     },
     "src/connectors/editor/connector-target-groups.js": {
       "statements": 0,
@@ -664,10 +670,10 @@
       "lines": 87.17
     },
     "src/connectors/editor/use-connector-editor.js": {
-      "statements": 71.76,
-      "branches": 41.02,
-      "functions": 77.27,
-      "lines": 73.68
+      "statements": 83.78,
+      "branches": 66.03,
+      "functions": 86.36,
+      "lines": 85.56
     },
     "src/connectors/editor/use-connector-inventory.js": {
       "statements": 94.5,
@@ -676,10 +682,10 @@
       "lines": 97.14
     },
     "src/connectors/editor/use-credential-profile-editor.js": {
-      "statements": 91.66,
-      "branches": 72.22,
+      "statements": 94.02,
+      "branches": 80.76,
       "functions": 100,
-      "lines": 91.11
+      "lines": 93.44
     },
     "src/connectors/templates/_shared/action-result.js": {
       "statements": 94.11,
@@ -1906,10 +1912,10 @@
       "lines": 82.22
     },
     "src/pages/credentials.jsx": {
-      "statements": 2.94,
-      "branches": 1,
-      "functions": 6.66,
-      "lines": 3.27
+      "statements": 55.88,
+      "branches": 37.5,
+      "functions": 36.66,
+      "lines": 57.37
     },
     "src/pages/dashboard.jsx": {
       "statements": 100,
@@ -2008,10 +2014,10 @@
       "lines": 100
     },
     "src/pages/vault-components.jsx": {
-      "statements": 35.38,
-      "branches": 35.21,
-      "functions": 26.92,
-      "lines": 34.48
+      "statements": 41.53,
+      "branches": 63.38,
+      "functions": 34.61,
+      "lines": 41.37
     },
     "src/pages/vault.jsx": {
       "statements": 0,

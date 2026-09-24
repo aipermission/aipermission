@@ -12,6 +12,7 @@ export const asyncStateOwnerTests = {
     "src/components/console/use-console-session-coordinator.component.test.jsx",
   ],
   "src/components/console/use-console-workspace-session.js": ["src/components/console/use-console-workspace-session.component.test.jsx"],
+  "src/components/console/use-vault-session-items.js": ["src/components/console/use-vault-session-items.component.test.jsx"],
   "src/components/file-transfer/use-transfer-browser.js": ["src/components/file-transfer/use-transfer-browser.component.test.jsx"],
   "src/components/file-transfer/use-transfer-batch.js": ["src/components/file-transfer/use-transfer-batch.component.test.jsx"],
   "src/components/file-transfer/use-transfer-download.js": ["src/components/file-transfer/use-transfer-download.component.test.jsx"],
