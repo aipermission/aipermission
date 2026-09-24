@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { parse as parseTOML } from "smol-toml";
+import { parse as parseJSONC } from "jsonc-parser";
 
 import {
   assertProviderSelectionAvailable,
@@ -159,6 +160,64 @@ test("writeJSONMCPConfig redacts malformed JSON parser context", async () => {
       return true;
     },
   );
+});
+
+test("VS Code JSONC updates keep unrelated servers and comments", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-vscode-jsonc-"));
+  const filePath = path.join(dir, "mcp.json");
+  const existing =
+    '{\r\n  // team config\r\n  "servers": {\r\n    "other": { "command": "node" }, // keep other\r\n    "aipermission": { "command": "old" },\r\n  },\r\n  "unrelated": true,\r\n}\r\n';
+  await fs.writeFile(filePath, existing);
+
+  await writeJSONMCPConfig(filePath, "aipermission", { command: "npx", args: ["-y", "@aipermission/mcp"] }, "servers", {
+    jsonc: true,
+  });
+
+  const updated = await fs.readFile(filePath, "utf8");
+  assert.match(updated, /\/\/ team config/);
+  assert.match(updated, /\/\/ keep other/);
+  assert.match(updated, /\r\n/);
+  assert.deepEqual(parseJSONC(updated, [], { allowTrailingComma: true }), {
+    servers: { other: { command: "node" }, aipermission: { command: "npx", args: ["-y", "@aipermission/mcp"] } },
+    unrelated: true,
+  });
+});
+
+test("VS Code JSONC rejects malformed config without writing", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-vscode-invalid-"));
+  const filePath = path.join(dir, "mcp.json");
+  const existing = '{ // keep this\n "servers": { bad }\n}\n';
+  await fs.writeFile(filePath, existing);
+  await assert.rejects(
+    () => writeJSONMCPConfig(filePath, "aipermission", { command: "npx" }, "servers", { jsonc: true }),
+    /Could not parse VS Code JSONC/,
+  );
+  assert.equal(await fs.readFile(filePath, "utf8"), existing);
+});
+
+test("VS Code JSONC inserts a server without dropping trailing comments", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-vscode-jsonc-insert-"));
+  const filePath = path.join(dir, "mcp.json");
+  await fs.writeFile(filePath, '{\n  "servers": {\n    "other": { "command": "node" }, // keep other\n  },\n}\n');
+  await writeJSONMCPConfig(filePath, "aipermission", { command: "npx" }, "servers", { jsonc: true });
+  const updated = await fs.readFile(filePath, "utf8");
+  assert.match(updated, /"other": \{ "command": "node" \}, \/\/ keep other/);
+  assert.deepEqual(parseJSONC(updated, [], { allowTrailingComma: true }), {
+    servers: { other: { command: "node" }, aipermission: { command: "npx" } },
+  });
+});
+
+test("VS Code JSONC inserts a servers section without moving a root comment", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-vscode-jsonc-root-"));
+  const filePath = path.join(dir, "mcp.json");
+  await fs.writeFile(filePath, '{\n  "unrelated": true, // keep unrelated\n}\n');
+  await writeJSONMCPConfig(filePath, "aipermission", { command: "npx" }, "servers", { jsonc: true });
+  const updated = await fs.readFile(filePath, "utf8");
+  assert.match(updated, /"unrelated": true, \/\/ keep unrelated/);
+  assert.deepEqual(parseJSONC(updated, [], { allowTrailingComma: true }), {
+    servers: { aipermission: { command: "npx" } },
+    unrelated: true,
+  });
 });
 
 test("writeJSONMCPConfig serializes concurrent read-modify-write updates", async () => {
@@ -667,6 +726,24 @@ test("setup preflights the skill before writing a token config", async () => {
   assert.notEqual(result.status, 0);
   await assert.rejects(() => fs.stat(path.join(homeDir, ".copilot", "mcp-config.json")), { code: "ENOENT" });
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SETUP_CANARY_TOKEN/);
+});
+
+test("setup leaves skill unchanged when VS Code config cannot be updated", async () => {
+  const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-vscode-setup-invalid-"));
+  const configPath = path.join(projectDir, ".vscode", "mcp.json");
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, '{ "servers": { broken } }');
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("src/cli.js"), "setup", "--provider", "vscode", "--project-dir", projectDir, "--token-stdin"],
+    { encoding: "utf8", input: "SETUP_CANARY_TOKEN\n" },
+  );
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /SETUP_CANARY_TOKEN/);
+  assert.equal(await fs.readFile(configPath, "utf8"), '{ "servers": { broken } }');
+  await assert.rejects(() => fs.stat(path.join(projectDir, ".github", "skills", "aipermission-operator", "SKILL.md")), {
+    code: "ENOENT",
+  });
 });
 
 test("setup reads a piped token before asynchronous skill preflight", async () => {
