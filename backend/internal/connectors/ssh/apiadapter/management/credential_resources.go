@@ -35,8 +35,7 @@ func (Management) CreateCredentialResource(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input sshkeys.CreateRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	keyStore, err := keyStore(runtime)
@@ -57,8 +56,7 @@ func (Management) ImportCredentialResource(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input sshkeys.ImportRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	keyStore, err := keyStore(runtime)
@@ -104,8 +102,7 @@ func (Management) UpdateCredentialResource(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input sshkeys.UpdateRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	keyStore, err := keyStore(runtime)

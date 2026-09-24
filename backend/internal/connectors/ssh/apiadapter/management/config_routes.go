@@ -18,8 +18,7 @@ func (Management) approveHostKey(server connectorapi.MutationRouteGateway, w htt
 		return
 	}
 	var input hostKeyApprovalRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	input.Host = strings.TrimSpace(input.Host)
@@ -94,8 +93,7 @@ func (Management) parseConfig(server connectorapi.MutationRouteGateway, w http.R
 		return
 	}
 	var input parseConfigRequest
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	input.Content = strings.TrimSpace(input.Content)
