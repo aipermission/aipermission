@@ -32,6 +32,9 @@ export function useVaultCollection() {
   const [action, setAction] = useState({ state: "idle", message: "", error: null });
   const filtersRef = useRef(filters);
   const searchTimer = useRef(null);
+  const pendingSaveRef = useRef(null);
+  const editorEpochRef = useRef(0);
+  const editorEpoch = editorEpochRef.current;
   const guard = useRequestGuard("vault-collection");
   const loadItems = useCallback(async () => {
     const request = guard.begin("items");
@@ -63,6 +66,11 @@ export function useVaultCollection() {
   );
   const visibleItems = useMemo(() => filterVaultItemsByExpiry(items.data, filters.expiry), [items.data, filters.expiry]);
 
+  function updateEditor(nextEditor) {
+    if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
+    setEditor(nextEditor);
+  }
+
   useEffect(() => {
     void loadProjects();
     return () => {
@@ -78,6 +86,8 @@ export function useVaultCollection() {
   }, [guard, loadItems]);
 
   function openCreate() {
+    editorEpochRef.current += 1;
+    pendingSaveRef.current = null;
     guard.invalidate("editor-mutation");
     const owner = filters.project_id || projects.data.find((project) => project.slug !== "ungrouped")?.id || projects.data[0]?.id || "";
     setAction({ state: "idle", message: "", error: null });
@@ -85,6 +95,8 @@ export function useVaultCollection() {
   }
 
   function openEdit(item) {
+    editorEpochRef.current += 1;
+    pendingSaveRef.current = null;
     guard.invalidate("editor-mutation");
     setAction({ state: "idle", message: "", error: null });
     setEditor({
@@ -109,13 +121,18 @@ export function useVaultCollection() {
   }
 
   function closeEditor() {
+    editorEpochRef.current += 1;
+    pendingSaveRef.current = null;
     guard.invalidate("editor-mutation");
     setEditor(emptyVaultEditor);
   }
 
   async function saveItem(event) {
     event.preventDefault();
+    if (pendingSaveRef.current !== null) return;
     const snapshot = editor;
+    const saveToken = Symbol("vault-save");
+    pendingSaveRef.current = saveToken;
     const request = guard.begin("editor-mutation");
     setAction({ state: "saving", message: "", error: null });
     try {
@@ -139,6 +156,7 @@ export function useVaultCollection() {
         );
       }
       if (!request.isCurrent()) return;
+      editorEpochRef.current += 1;
       setEditor(emptyVaultEditor);
       setAction({ state: "ready", message: snapshot.mode === "edit" ? "Vault item updated." : "Vault item created.", error: null });
       await loadItems();
@@ -146,6 +164,7 @@ export function useVaultCollection() {
       if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
     } finally {
       request.complete();
+      if (pendingSaveRef.current === saveToken) pendingSaveRef.current = null;
     }
   }
 
@@ -156,7 +175,7 @@ export function useVaultCollection() {
     setFilters: updateFilters,
     visibleItems,
     editor,
-    setEditor,
+    setEditor: updateEditor,
     action,
     setAction,
     loadItems,

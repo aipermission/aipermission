@@ -2,7 +2,8 @@ import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { VaultBindingsDialog } from "./vault-components";
+import { emptyVaultEditor } from "../components/vault/use-vault-collection";
+import { VaultBindingsDialog, VaultEditor } from "./vault-components";
 
 const target = { id: 7, name: "Target", connector_kind: "ssh", profiles: [{ id: 8, label: "Primary" }] };
 const item = { id: 5, name: "API_KEY", owner_project_id: 2, project_ids: [2] };
@@ -59,4 +60,21 @@ it("preserves an overwrite change for an existing Vault binding", async () => {
   expect(overwrite).not.toBeChecked();
   await user.click(screen.getByRole("button", { name: "Update binding" }));
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ replace_existing: false }));
+});
+
+it("keeps the Vault editor fields locked while saving but permits cancellation", () => {
+  render(
+    <VaultEditor
+      editor={{ ...emptyVaultEditor, open: true, name: "API_KEY", value: "secret", owner_project_id: "2" }}
+      projects={[project]}
+      action={{ state: "saving", error: null }}
+      onChange={vi.fn()}
+      onClose={vi.fn()}
+      onSubmit={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("textbox", { name: /Environment name/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Import value" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
 });
