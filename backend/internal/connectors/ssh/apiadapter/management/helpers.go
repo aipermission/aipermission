@@ -16,6 +16,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 func decodeDraftRequest(value any) (draftTargetRequest, error) {
@@ -112,10 +113,8 @@ func operationProfileID(profiles []connectors.CredentialProfileView, requestedPr
 	return profiles[0].ID, nil
 }
 
-func decodeJSON(r *http.Request, target any) error {
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	return httptransport.DecodeJSON(w, r, target, httptransport.DefaultJSONBodyBytes)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
