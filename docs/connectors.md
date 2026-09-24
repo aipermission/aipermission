@@ -16,7 +16,7 @@ templates own connector-specific forms and activity surfaces.
 | Mail | `mail` | 0.2 | Bounded IMAP browsing, explicit read state changes, guarded mailbox moves, and SMTP send/reply actions. |
 | Postgres | `postgres` | 0.3 | Schema inspection and bounded read-only SQL through database credential profiles. |
 | RabbitMQ | `rabbitmq` | 0.2 | Paginated queue/binding browsing, bounded message previews, and explicit message publishing through RabbitMQ Management API profiles. Queue-filtered binding scans report when their page cap may leave results incomplete. |
-| Redis / Valkey | `redis` | 0.3 | Redis-compatible key browsing, bounded reads, string writes, TTL updates, and destructive deletes through encrypted credential profiles. |
+| Redis / Valkey | `redis` | 0.3 | Redis-compatible key browsing, range/scan-based bounded previews, string writes, TTL updates, and destructive deletes through encrypted credential profiles. |
 | S3 | `s3` | 0.4 | S3-compatible browsing, bounded transfer queues, temporary URLs, object versions, and lifecycle controls. |
 | SSH | `ssh` | 0.3 | Persistent shell, file transfer, remote browsing, and command execution. |
 
