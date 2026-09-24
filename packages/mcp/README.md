@@ -91,6 +91,8 @@ integer; invalid configuration stops the bridge instead of silently changing
 the deadline. It covers both response headers and the complete response body,
 including streamed bodies. A timeout does not prove that a submitted
 operation failed; do not retry mutations with a new idempotency key blindly.
+Gateway response bodies are capped at 8 MiB. An oversized POST response is
+also treated as an unknown outcome, not proof that the operation failed.
 If a POST response is lost or incomplete, the bridge returns
 `status: outcome_unknown` and `code: gateway_transport_outcome_unknown`.
 Action calls also return the original `idempotency_key`; no request ID is

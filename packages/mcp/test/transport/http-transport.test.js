@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { MAX_GATEWAY_RESPONSE_BYTES } from "../../src/response-body.js";
 
 async function withGateway(t, handler, timeout = 100, token = "HTTP_TEST_TOKEN", userinfo = "") {
   const gateway = http.createServer(handler);
@@ -97,6 +98,40 @@ test("packaged MCP accepts a timely streamed body", { timeout: 10000 }, async (t
   assert.notEqual(result.isError, true);
   assert.deepEqual(JSON.parse(result.content[0].text), []);
 });
+
+for (const [tool, args, expectedStatus] of [
+  ["list_connector_targets", {}, "error"],
+  [
+    "call_connector_action",
+    {
+      target_ref: "redis:1:1",
+      action_name: "set_string",
+      input: {},
+      reason: "bounded response fixture",
+      idempotency_key: "oversized-response",
+    },
+    "outcome_unknown",
+  ],
+]) {
+  test(`packaged MCP bounds ${tool} responses`, { timeout: 20000 }, async (t) => {
+    const client = await withGateway(
+      t,
+      (_request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end("x".repeat(MAX_GATEWAY_RESPONSE_BYTES + 1));
+      },
+      10000,
+    );
+    const result = await client.callTool({ name: tool, arguments: args });
+    const data = JSON.parse(result.content[0].text);
+    assert.equal(result.isError, true);
+    assert.equal(data.status, expectedStatus);
+    if (tool === "call_connector_action") {
+      assert.equal(data.code, "gateway_transport_outcome_unknown");
+      assert.equal(data.idempotency_key, "oversized-response");
+    }
+  });
+}
 
 test("connector action call errors differ from pending states and request reads", { timeout: 10000 }, async (t) => {
   let status = "completed";
