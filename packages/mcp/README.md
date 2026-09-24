@@ -41,6 +41,11 @@ configuration, and installs the native operator skill for the selected client.
 Generated runtime configs pin the exact package version that wrote them; re-run
 setup when you intentionally upgrade a client. Use `init` when you only want the
 MCP config, or `install-skill` when you only want the skill.
+VS Code `.vscode/mcp.json` may contain JSONC comments and trailing commas;
+setup updates only the selected server entry while keeping unrelated entries
+and comments. Setup validates the skill before writing the config, then installs
+it. If skill installation fails after the config is written, the error names
+that partial state so you can run `install-skill` separately.
 
 Check both paths without printing the bearer token:
 

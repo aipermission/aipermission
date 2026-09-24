@@ -11,6 +11,7 @@ import { parseCommandFlags } from "./cli-flags.js";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
 import { adaptMCPServerConfig, getClient, MCP_PROVIDERS, resolveMCPConfigTarget, resolveMCPPrintTarget } from "./client-registry.js";
 import { commitSkillInstallation, prepareSkillInstallation } from "./install-skill.js";
+import { updateJSONCServer } from "./jsonc-config.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -86,13 +87,25 @@ async function runConfiguration(command, argv) {
       throw new Error("API token is required.");
     }
     const config = adaptMCPServerConfig(provider.id, buildMCPServerConfig({ apiUrl, token }));
-    const skillResult = preparedSkill ? await reportInstalledSkill(preparedSkill) : undefined;
     const result = await writeProviderConfig(provider.id, name, config, {
       force: Boolean(flags.force),
       scope: flags.scope,
       homeDir: flags.home,
       projectDir: flags.projectDir,
     });
+    let skillResult;
+    if (preparedSkill) {
+      try {
+        skillResult = await reportInstalledSkill(preparedSkill);
+      } catch (error) {
+        throw new Error(
+          `MCP config was written at ${result.path}, but operator skill installation failed. Complete the skill installation separately.`,
+          {
+            cause: error,
+          },
+        );
+      }
+    }
     console.log("");
     console.log(`${color.green}Configured ${provider.label}${color.reset}`);
     console.log(`${color.dim}Name:${color.reset} ${name}`);
@@ -316,6 +329,7 @@ export async function writeProviderConfig(providerID, name, config, options = {}
   const trustedRoot = target.trustedRoot;
   const writeOptions = {
     trustedRoot,
+    jsonc: providerID === "vscode",
     beforeWrite: target.projectConfig
       ? async () => {
           await assertProjectConfigWritable(target.path, options);
@@ -337,27 +351,39 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
     filePath,
     async () => {
       await options.beforeWrite?.();
-      let root = {};
+      let content = "";
       try {
-        root = JSON.parse(await fs.readFile(filePath, "utf8"));
+        content = await fs.readFile(filePath, "utf8");
       } catch (error) {
         if (error.code !== "ENOENT") {
-          redactParseError(error);
-          throw new Error(`Could not parse JSON config at ${filePath}; the existing file was left unchanged`, {
+          throw new Error(`Could not read JSON config at ${filePath}; the existing file was left unchanged`, {
             cause: error,
           });
         }
       }
-      if (!root || typeof root !== "object" || Array.isArray(root)) root = {};
-      const currentServers = root[rootKey];
-      const servers =
-        currentServers && typeof currentServers === "object" && !Array.isArray(currentServers)
-          ? { ...currentServers }
-          : Object.create(null);
-      Object.defineProperty(servers, name, { value: config, enumerable: true, configurable: true, writable: true });
-      root[rootKey] = servers;
+      let outputContent;
+      if (options.jsonc) {
+        outputContent = updateJSONCServer(content, rootKey, name, config);
+      } else {
+        let root;
+        try {
+          root = content ? JSON.parse(content) : {};
+        } catch (error) {
+          redactParseError(error);
+          throw new Error(`Could not parse JSON config at ${filePath}; the existing file was left unchanged`, { cause: error });
+        }
+        if (!root || typeof root !== "object" || Array.isArray(root)) root = {};
+        const currentServers = root[rootKey];
+        const servers =
+          currentServers && typeof currentServers === "object" && !Array.isArray(currentServers)
+            ? { ...currentServers }
+            : Object.create(null);
+        Object.defineProperty(servers, name, { value: config, enumerable: true, configurable: true, writable: true });
+        root[rootKey] = servers;
+        outputContent = `${JSON.stringify(root, null, 2)}\n`;
+      }
       await options.beforeWrite?.();
-      await writePrivateFile(filePath, `${JSON.stringify(root, null, 2)}\n`, options);
+      await writePrivateFile(filePath, outputContent, options);
     },
     options,
   );
