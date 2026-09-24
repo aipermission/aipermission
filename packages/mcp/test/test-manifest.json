@@ -4,6 +4,7 @@
     "test/contracts/lifecycle.test.js",
     "test/contracts/response-contracts.test.js",
     "test/doctor.test.js",
+    "test/init/cli-setup.test.js",
     "test/init/init.test.js",
     "test/private-file.test.js",
     "test/response-contracts.test.js",
