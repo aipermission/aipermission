@@ -2,7 +2,9 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -42,9 +44,7 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("create local file: %w", err)
 	}
-	defer local.Close()
-
-	copied, checksum, err := copyWithProgress(ctx, local, remote, info.Size(), options)
+	copied, checksum, err := copyAndCloseDownloadedFile(ctx, local, remote, info.Size(), options)
 	if err != nil {
 		return TransferResult{}, fmt.Errorf("download file: %w", err)
 	}
@@ -57,4 +57,16 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 		ChecksumSHA256: checksum,
 		DurationMS:     time.Since(started).Milliseconds(),
 	}, nil
+}
+
+func copyAndCloseDownloadedFile(ctx context.Context, local io.WriteCloser, remote io.Reader, size int64, options TransferOptions) (int64, string, error) {
+	copied, checksum, copyErr := copyWithProgress(ctx, local, remote, size, options)
+	closeErr := local.Close()
+	if closeErr != nil {
+		closeErr = fmt.Errorf("close local download file: %w", closeErr)
+	}
+	if copyErr != nil || closeErr != nil {
+		return 0, "", errors.Join(copyErr, closeErr)
+	}
+	return copied, checksum, nil
 }
