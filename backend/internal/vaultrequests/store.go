@@ -500,6 +500,10 @@ func (s *Store) StalePendingForContext(ctx context.Context, itemID, bindingID in
 		}
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
