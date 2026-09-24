@@ -1,7 +1,7 @@
 {
   "kind": "kubernetes",
   "label": "Kubernetes",
-  "summary": "Read-heavy Kubernetes cluster browser with bounded logs and prompt-only rollout restart.",
+  "summary": "Read-heavy Kubernetes cluster browser with bounded logs and prompt-only rollout restart. Selected namespace profiles probe a namespaced resource and list configured namespaces without cluster-wide namespace-list permission.",
   "version": "0.3",
   "icon": "server",
   "badge_tone": "neutral",
