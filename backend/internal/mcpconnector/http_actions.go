@@ -257,21 +257,9 @@ func writeCodedError(w http.ResponseWriter, status int, message, code string) {
 }
 
 func ResponseFromResult(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest, result connectors.ActionResult) actions.Response {
-	return actions.FromResult(request, result, responseRunningHint(resolveRunningHint, request))
+	return actions.FromResult(request, result, actions.ResponseRunningHint(request, resolveRunningHint))
 }
 
 func ResponseFromRequest(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest) actions.Response {
-	return actions.FromRequest(request, responseRunningHint(resolveRunningHint, request))
-}
-
-func responseRunningHint(resolveRunningHint func(connectortargets.ActionRequest) string, request connectortargets.ActionRequest) string {
-	if request.Status != connectors.ResultRunning {
-		return ""
-	}
-	if resolveRunningHint != nil {
-		if hint := strings.TrimSpace(resolveRunningHint(request)); hint != "" {
-			return hint
-		}
-	}
-	return "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
+	return actions.FromRequest(request, actions.ResponseRunningHint(request, resolveRunningHint))
 }
