@@ -115,12 +115,20 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 	if err != nil {
 		return connectors.TestResult{Status: connectors.TestUnknownError, Message: err.Error()}, nil
 	}
-	result, err := client.run(ctx, client.baseCommand()+" get namespaces -o json", 20)
+	command := client.baseCommand() + " get namespaces -o json"
+	if client.scope.mode == "selected" {
+		namespaces, err := client.scope.selectedNamespaces()
+		if err != nil {
+			return connectors.TestResult{Status: connectors.TestUnknownError, Message: err.Error()}, nil
+		}
+		command = client.baseCommand() + " get pods -n " + shellQuote(namespaces[0]) + " --limit=1 -o json"
+	}
+	result, err := client.run(ctx, command, 20)
 	if err != nil {
 		return connectors.TestResult{Status: connectors.TestFailedNetwork, Message: err.Error()}, nil
 	}
 	if result.ExitCode != 0 {
-		return connectors.TestResult{Status: connectors.TestFailedPermission, Message: kubeCommandError("kubectl get namespaces", result).Error()}, nil
+		return connectors.TestResult{Status: connectors.TestFailedPermission, Message: kubeCommandError("kubectl connection probe", result).Error()}, nil
 	}
 	return connectors.TestResult{
 		Status:  connectors.TestOK,

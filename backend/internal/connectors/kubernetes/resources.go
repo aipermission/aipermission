@@ -47,6 +47,20 @@ func (scope kubeScope) ensureNamespace(namespace string) error {
 	return nil
 }
 
+func (scope kubeScope) selectedNamespaces() ([]string, error) {
+	if len(scope.namespaces) == 0 {
+		return nil, fmt.Errorf("%w: selected scope has no namespaces", ErrInvalidConfig)
+	}
+	namespaces := make([]string, 0, len(scope.namespaces))
+	for _, namespace := range scope.namespaces {
+		if err := scope.ensureNamespace(namespace); err != nil {
+			return nil, err
+		}
+		namespaces = append(namespaces, namespace)
+	}
+	return namespaces, nil
+}
+
 type NamespaceSummary struct {
 	Name      string `json:"name"`
 	Status    string `json:"status,omitempty"`

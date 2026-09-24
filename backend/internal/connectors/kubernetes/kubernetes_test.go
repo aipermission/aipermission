@@ -212,6 +212,39 @@ func TestListPodsUsesSelectedNamespaces(t *testing.T) {
 	}
 }
 
+func TestConnectionSelectedScopeDoesNotRequireClusterNamespaceList(t *testing.T) {
+	transport := &fakeCommandTransport{results: map[string]connectors.CommandRunResult{
+		"kubectl get pods -n 'production' --limit=1 -o json": {Stdout: `{"items":[]}`, DurationMS: 5},
+	}}
+	result, err := New().TestConnection(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	})
+	if err != nil || result.Status != connectors.TestOK {
+		t.Fatalf("test connection result=%#v err=%v", result, err)
+	}
+	if len(transport.commands) != 1 || transport.commands[0] != "kubectl get pods -n 'production' --limit=1 -o json" {
+		t.Fatalf("commands = %#v", transport.commands)
+	}
+}
+
+func TestListNamespacesSelectedScopeNeedsNoClusterRequest(t *testing.T) {
+	transport := &fakeCommandTransport{}
+	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
+		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
+	}, connectors.PreparedAction{ActionName: ActionListNamespaces})
+	if err != nil {
+		t.Fatalf("list namespaces: %v", err)
+	}
+	if len(transport.commands) != 0 {
+		t.Fatalf("unexpected cluster request: %#v", transport.commands)
+	}
+	output := result.Output.(map[string]any)
+	namespaces := output["namespaces"].([]NamespaceSummary)
+	if len(namespaces) != 1 || namespaces[0].Name != "production" || namespaces[0].Status != "" {
+		t.Fatalf("namespaces = %#v", namespaces)
+	}
+}
+
 func TestLogsRejectsOutOfScopeNamespace(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target:       kubeTarget(),

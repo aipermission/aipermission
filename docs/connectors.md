@@ -12,7 +12,7 @@ templates own connector-specific forms and activity surfaces.
 | ClickHouse | `clickhouse` | 0.2 | Metadata inspection and bounded read-only analytics SQL through ClickHouse credential profiles. |
 | Docker | `docker` | 0.3 | Bounded container inventory, logs, inspect, and lifecycle actions through an SSH transport profile. |
 | Kafka / Redpanda | `kafka` | 0.4 | Kafka-compatible metadata, bounded message inspection, guarded single-message publish, and inactive-group offset control through direct or SSH-transported profiles. |
-| Kubernetes | `kubernetes` | 0.3 | Read-heavy Kubernetes cluster browser with bounded logs and prompt-only rollout restart. |
+| Kubernetes | `kubernetes` | 0.3 | Read-heavy Kubernetes cluster browser with bounded logs and prompt-only rollout restart. Selected namespace profiles probe a namespaced resource and list configured namespaces without cluster-wide namespace-list permission. |
 | Mail | `mail` | 0.2 | Bounded IMAP browsing, explicit read state changes, guarded mailbox moves, and SMTP send/reply actions. |
 | Postgres | `postgres` | 0.3 | Schema inspection and bounded read-only SQL through database credential profiles. |
 | RabbitMQ | `rabbitmq` | 0.2 | Paginated queue/binding browsing, bounded message previews, and explicit message publishing through RabbitMQ Management API profiles. Queue-filtered binding scans report when their page cap may leave results incomplete. |

@@ -84,6 +84,18 @@ func executeVersion(ctx context.Context, client *kubeClient) (connectors.ActionR
 }
 
 func executeListNamespaces(ctx context.Context, client *kubeClient) (connectors.ActionResult, error) {
+	if client.scope.mode == "selected" {
+		selected, err := client.scope.selectedNamespaces()
+		if err != nil {
+			return connectors.ActionResult{}, err
+		}
+		namespaces := make([]NamespaceSummary, 0, len(selected))
+		for _, name := range selected {
+			namespaces = append(namespaces, NamespaceSummary{Name: name})
+		}
+		sort.SliceStable(namespaces, func(i, j int) bool { return namespaces[i].Name < namespaces[j].Name })
+		return connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"namespaces": namespaces, "count": len(namespaces), "scope_mode": "selected"}, DisplayText: fmt.Sprintf("Listed %d configured Kubernetes namespace(s).", len(namespaces))}, nil
+	}
 	items, err := client.runKubeList(ctx, client.baseCommand()+" get namespaces -o json", 20)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -395,10 +407,8 @@ func (client *kubeClient) namespacesForQuery(namespace string) ([]string, bool, 
 		return []string{namespace}, false, nil
 	}
 	if client.scope.mode == "selected" {
-		if len(client.scope.namespaces) == 0 {
-			return nil, false, fmt.Errorf("%w: selected scope has no namespaces", ErrInvalidConfig)
-		}
-		return append([]string(nil), client.scope.namespaces...), false, nil
+		namespaces, err := client.scope.selectedNamespaces()
+		return namespaces, false, err
 	}
 	return nil, true, nil
 }
