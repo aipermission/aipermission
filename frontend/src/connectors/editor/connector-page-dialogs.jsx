@@ -78,43 +78,45 @@ export function ConnectorEditorDrawer({
       onClose={editor.closeEditor}
     >
       <form className="grid gap-4" onSubmit={editor.save}>
-        {drawer.mode === "create" ? (
+        <fieldset disabled={state.state === "saving"} className="grid min-w-0 gap-4">
+          {drawer.mode === "create" ? (
+            <Field>
+              Connector type
+              <Select value={form.connector_kind} onChange={(event) => editor.selectKind(event.target.value)}>
+                {connectorOptions.map((option) => (
+                  <option value={option.kind} key={option.kind}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
           <Field>
-            Connector type
-            <Select value={form.connector_kind} onChange={(event) => editor.selectKind(event.target.value)}>
-              {connectorOptions.map((option) => (
-                <option value={option.kind} key={option.kind}>
-                  {option.label}
+            Project
+            <Select value={form.project_id || ""} onChange={(event) => editor.updateField("project_id", event.target.value)} required>
+              <option value="" disabled>
+                Select project
+              </option>
+              {projects.map((project) => (
+                <option value={project.id} key={project.id}>
+                  {project.name}
                 </option>
               ))}
             </Select>
           </Field>
-        ) : null}
-        <Field>
-          Project
-          <Select value={form.project_id || ""} onChange={(event) => editor.updateField("project_id", event.target.value)} required>
-            <option value="" disabled>
-              Select project
-            </option>
-            {projects.map((project) => (
-              <option value={project.id} key={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {FormTemplate ? (
-          <FormTemplate
-            form={form}
-            mode={drawer.mode}
-            credentials={credentials}
-            targets={targets.filter((target) => String(target.project_id || "") === String(form.project_id || ""))}
-            activeCredential={activeCredential}
-            onChange={editor.updateField}
-          />
-        ) : (
-          <ConnectorTemplateNotFound kind={form.connector_kind} slot="form" />
-        )}
+          {FormTemplate ? (
+            <FormTemplate
+              form={form}
+              mode={drawer.mode}
+              credentials={credentials}
+              targets={targets.filter((target) => String(target.project_id || "") === String(form.project_id || ""))}
+              activeCredential={activeCredential}
+              onChange={editor.updateField}
+            />
+          ) : (
+            <ConnectorTemplateNotFound kind={form.connector_kind} slot="form" />
+          )}
+        </fieldset>
         {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
         <div className="grid gap-2 sm:grid-cols-2">
           <Button type="button" variant="outline" onClick={editor.closeEditor}>
@@ -122,7 +124,9 @@ export function ConnectorEditorDrawer({
           </Button>
           <Button
             type="submit"
-            disabled={activeConnectorModel?.submitDisabled?.({ state, mode: drawer.mode, form, credentials }) ?? state.state === "saving"}
+            disabled={
+              state.state === "saving" || Boolean(activeConnectorModel?.submitDisabled?.({ state, mode: drawer.mode, form, credentials }))
+            }
           >
             {activeConnectorModel?.submitLabel?.({ state, mode: drawer.mode, form }) ||
               (drawer.mode === "edit" ? "Save changes" : "Create connector")}

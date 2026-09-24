@@ -112,6 +112,30 @@ it("renders edit errors and the missing-template fallback", async () => {
   expect(editor.closeEditor).toHaveBeenCalledOnce();
 });
 
+it("locks connector fields even when the template does not disable its submit button", () => {
+  const editor = { closeEditor: vi.fn(), save: vi.fn(), selectKind: vi.fn(), updateField: vi.fn() };
+  render(
+    <ConnectorEditorDrawer
+      drawer={{ open: true, mode: "create", target: null }}
+      form={{ connector_kind: "ssh", project_id: "1" }}
+      state={{ state: "saving", error: null }}
+      connectorOptions={[{ kind: "ssh", label: "SSH" }]}
+      projects={[{ id: 1, name: "One" }]}
+      credentials={[]}
+      targets={[]}
+      activeConnectorModel={{ submitDisabled: () => false }}
+      activeCredential={null}
+      FormTemplate={() => <input aria-label="Connector setting" />}
+      editor={editor}
+    />,
+  );
+  expect(screen.getByLabelText("Connector type")).toBeDisabled();
+  expect(screen.getByLabelText("Project")).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "Connector setting" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Create connector" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+});
+
 it("runs generic connector delete actions and exposes pending state", async () => {
   const user = userEvent.setup();
   const onDelete = vi.fn();

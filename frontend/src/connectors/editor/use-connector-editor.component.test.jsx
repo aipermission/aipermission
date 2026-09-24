@@ -8,16 +8,18 @@ function renderEditor(model) {
   const onRefresh = vi.fn(async () => {});
   const onOperation = vi.fn(() => true);
   const modelForKind = vi.fn(() => model);
-  const hook = renderHook(() =>
-    useConnectorEditor({
-      defaultKind: "example",
-      firstCredentialID: "4",
-      defaultProjectID: "2",
-      emptyFormForKind: baseForm,
-      modelForKind,
-      onRefresh,
-      onOperation,
-    }),
+  const hook = renderHook(
+    ({ firstCredentialID }) =>
+      useConnectorEditor({
+        defaultKind: "example",
+        firstCredentialID,
+        defaultProjectID: "2",
+        emptyFormForKind: baseForm,
+        modelForKind,
+        onRefresh,
+        onOperation,
+      }),
+    { initialProps: { firstCredentialID: "4" } },
   );
   return { ...hook, onRefresh, onOperation, modelForKind };
 }
@@ -85,6 +87,26 @@ describe("useConnectorEditor", () => {
     expect(result.current.actionState.state).toBe("idle");
   });
 
+  it("opens profile-bound target edits only with a selected profile", () => {
+    const target = { id: 8, connector_kind: "example", project_id: "5", profiles: [{ id: 7 }] };
+    const profile = { id: 7 };
+    const model = {
+      formFromTarget: vi.fn(() => ({ connector_kind: "example", name: "Existing" })),
+      syncForm: ({ form }) => form,
+    };
+    const { result } = renderEditor(model);
+
+    act(() => expect(result.current.openEdit(target, null)).toBe(false));
+    expect(result.current.actionState.error).toMatch(/Select a credential profile/);
+    expect(result.current.drawer.open).toBe(false);
+
+    act(() => expect(result.current.openEdit(target, profile)).toBe(true));
+    expect(model.formFromTarget).toHaveBeenCalledWith({ target, profile });
+    expect(result.current.form).toEqual({ connector_kind: "example", name: "Existing", project_id: "5" });
+    expect(result.current.drawer).toEqual({ open: true, mode: "edit", kind: "example", target });
+    expect(result.current.actionState.state).toBe("idle");
+  });
+
   it("does not report a persisted connector as a save failure when refresh fails", async () => {
     const model = { save: vi.fn(async () => undefined), syncForm: ({ form }) => form };
     const { result, onRefresh } = renderEditor(model);
@@ -124,6 +146,47 @@ describe("useConnectorEditor", () => {
     expect(result.current.form.name).toBe("Replacement draft");
     expect(result.current.actionState.state).toBe("idle");
     expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it("locks fields and duplicate submits until the same connector save settles", async () => {
+    const pending = deferred();
+    const model = {
+      save: vi.fn(() => pending.promise),
+      syncForm: ({ form, firstCredentialID }) => ({ ...form, credential_id: firstCredentialID }),
+    };
+    const { result, rerender } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "original"));
+    act(() => result.current.updateField("credential_id", "4"));
+    let firstSave;
+    let secondSave;
+    act(() => {
+      firstSave = result.current.save({ preventDefault() {} });
+      result.current.updateField("name", "broader scope");
+      result.current.selectKind("other");
+      secondSave = result.current.save({ preventDefault() {} });
+    });
+    rerender({ firstCredentialID: "5" });
+
+    expect(result.current.form.name).toBe("original");
+    expect(result.current.form.connector_kind).toBe("example");
+    expect(result.current.form.credential_id).toBe("4");
+    expect(model.save).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve());
+    await expect(firstSave).resolves.toBe(true);
+    await expect(secondSave).resolves.toBe(false);
+  });
+
+  it("ignores delayed field changes from a retired connector editor", () => {
+    const model = { syncForm: ({ form }) => form };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    const staleUpdateField = result.current.updateField;
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "replacement"));
+    act(() => staleUpdateField("name", "old"));
+    expect(result.current.form.name).toBe("replacement");
   });
 
   it("hands connector-owned recovery operations back to the route", async () => {
