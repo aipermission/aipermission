@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -147,31 +148,31 @@ func executeListQueues(ctx context.Context, client *rabbitClient, input map[stri
 	vhost := normalizeVHost(input, "vhost", fallbackVHost)
 	pattern := strings.ToLower(strings.TrimSpace(stringValue(input, "pattern")))
 	limit := normalizeInt(input, "limit", defaultQueueLimit, 1, maxQueueLimit)
-	var rows []map[string]any
-	if err := client.Get(ctx, "/api/queues/"+pathPart(vhost), &rows); err != nil {
+	pageSize := min(limit+1, maxRabbitListPageSize)
+	query := url.Values{"columns": {rabbitQueueListColumns}}
+	if pattern != "" {
+		query.Set("name", pattern)
+		query.Set("use_regex", "false")
+	}
+	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, "/api/queues/"+pathPart(vhost), query, limit, pageSize, (limit+pageSize)/pageSize, func(row map[string]any) bool {
+		return pattern == "" || strings.Contains(strings.ToLower(strings.TrimSpace(fmt.Sprint(row["name"]))), pattern)
+	})
+	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	filtered := make([]map[string]any, 0, min(len(rows), limit))
-	truncated := false
+	filtered := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		name := strings.TrimSpace(fmt.Sprint(row["name"]))
-		if pattern != "" && !strings.Contains(strings.ToLower(name), pattern) {
-			continue
-		}
-		if len(filtered) >= limit {
-			truncated = true
-			break
-		}
 		filtered = append(filtered, slimQueue(row))
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"vhost":     vhost,
-			"pattern":   pattern,
-			"queues":    filtered,
-			"count":     len(filtered),
-			"truncated": truncated,
+			"vhost":              vhost,
+			"pattern":            pattern,
+			"queues":             filtered,
+			"count":              len(filtered),
+			"truncated":          truncated,
+			"scan_limit_reached": scanLimitReached,
 		},
 		DisplayText: queueListDisplay(filtered),
 	}, nil
@@ -199,25 +200,33 @@ func executeListBindings(ctx context.Context, client *rabbitClient, input map[st
 	queue := strings.TrimSpace(stringValue(input, "queue"))
 	limit := normalizeInt(input, "limit", defaultQueueLimit, 1, maxQueueLimit)
 	path := "/api/bindings/" + pathPart(vhost)
+	pageSize := min(limit+1, maxRabbitListPageSize)
+	maxPages := (limit + pageSize) / pageSize
 	if queue != "" {
-		path = "/api/queues/" + pathPart(vhost) + "/" + pathPart(queue) + "/bindings"
+		pageSize = maxRabbitListPageSize
+		maxPages = maxBindingScanPages
 	}
-	var rows []map[string]any
-	if err := client.Get(ctx, path, &rows); err != nil {
+	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, path, nil, limit, pageSize, maxPages, func(row map[string]any) bool {
+		return queue == "" || (row["destination_type"] == "queue" && row["destination"] == queue)
+	})
+	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	if len(rows) > limit {
-		rows = rows[:limit]
+	display := fmt.Sprintf("%d binding(s)", len(rows))
+	if scanLimitReached {
+		display += " (scan limit reached; more bindings may exist)"
 	}
 	return connectors.ActionResult{
 		Status: connectors.ResultCompleted,
 		Output: map[string]any{
-			"vhost":    vhost,
-			"queue":    queue,
-			"bindings": rows,
-			"count":    len(rows),
+			"vhost":              vhost,
+			"queue":              queue,
+			"bindings":           rows,
+			"count":              len(rows),
+			"truncated":          truncated,
+			"scan_limit_reached": scanLimitReached,
 		},
-		DisplayText: fmt.Sprintf("%d binding(s)", len(rows)),
+		DisplayText: display,
 	}, nil
 }
 

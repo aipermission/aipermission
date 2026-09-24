@@ -65,9 +65,12 @@ func TestExecuteActionListsQueuesThroughNetworkTransport(t *testing.T) {
 		if r.URL.EscapedPath() != "/api/queues/%2F" {
 			t.Fatalf("path = %q escaped=%q", r.URL.Path, r.URL.EscapedPath())
 		}
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{"name": "jobs", "vhost": "/", "messages_ready": 3, "messages_unacknowledged": 1, "messages": 4, "consumers": 2, "state": "running"},
-			{"name": "events", "vhost": "/", "messages_ready": 0, "messages_unacknowledged": 0, "messages": 0, "consumers": 1, "state": "running"},
+		if r.URL.Query().Get("page") != "1" || r.URL.Query().Get("name") != "job" {
+			t.Errorf("query = %q", r.URL.RawQuery)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"page": 1, "page_size": 11, "page_count": 1, "filtered_count": 1,
+			"items": []map[string]any{{"name": "jobs", "vhost": "/", "messages_ready": 3, "messages_unacknowledged": 1, "messages": 4, "consumers": 2, "state": "running"}},
 		})
 	}))
 	server.Start()
