@@ -106,6 +106,26 @@ func (lifecycle *SessionLifecycle) InvalidateProject(ctx context.Context, projec
 	return lifecycle.invalidator.InvalidateProject(ctx, projectID, reason)
 }
 
+func (lifecycle *SessionLifecycle) InvalidateProjectReferences(ctx context.Context, projectID int64, reason string, references []SessionReference) error {
+	if err := lifecycle.validate(); err != nil {
+		return err
+	}
+	items := make([]vaultsessions.Reference, len(references))
+	for index, reference := range references {
+		items[index] = vaultsessions.Reference{
+			SessionID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
+		}
+	}
+	return lifecycle.invalidator.InvalidateProjectReferences(ctx, items, projectID, reason)
+}
+
+func (lifecycle *SessionLifecycle) RecoverPendingFinalizations(ctx context.Context) error {
+	if err := lifecycle.validate(); err != nil {
+		return err
+	}
+	return lifecycle.invalidator.RecoverPendingFinalizations(ctx)
+}
+
 func (lifecycle *SessionLifecycle) InvalidateRuntimes(ctx context.Context, runtimeIDs []int64, reason string) error {
 	if err := lifecycle.validate(); err != nil {
 		return err

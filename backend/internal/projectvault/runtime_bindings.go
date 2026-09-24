@@ -27,6 +27,9 @@ func (r *Runtime) SaveDefaultBinding(ctx context.Context, input DefaultBindingIn
 		return DefaultBinding{}, err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return DefaultBinding{}, err
+	}
 	if err := r.bindingTargets.ValidateDefaultBindingTarget(ctx, input.TargetID, input.ProfileID); err != nil {
 		return DefaultBinding{}, err
 	}
@@ -49,18 +52,23 @@ func (r *Runtime) SaveDefaultBinding(ctx context.Context, input DefaultBindingIn
 		}
 	}
 	var binding DefaultBinding
+	var finalizationID int64
 	err = r.mutations.WithMutation(ctx, "vault.binding.updated", func() any {
 		return BindingAuditPayload(binding)
 	}, func(tx *sql.Tx) error {
 		var saveErr error
 		binding, saveErr = r.store.WithTx(tx).SaveDefaultBinding(ctx, input)
+		if saveErr != nil {
+			return saveErr
+		}
+		finalizationID, saveErr = r.queueSessionFinalization(ctx, tx, sessions, SessionMutationScope{BindingID: binding.ID})
 		return saveErr
 	})
 	if err != nil {
 		return DefaultBinding{}, err
 	}
-	if err := r.invalidateSessions(ctx, sessions, SessionMutationScope{BindingID: binding.ID}); err != nil {
-		return DefaultBinding{}, err
+	if err := r.finishSessionFinalization(ctx, finalizationID, sessions, SessionMutationScope{BindingID: binding.ID}); err != nil {
+		return binding, err
 	}
 	return binding, nil
 }
@@ -74,6 +82,9 @@ func (r *Runtime) DeleteDefaultBinding(ctx context.Context, id, expectedRevision
 		return err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return err
+	}
 	binding, err := r.store.GetDefaultBinding(ctx, id)
 	if err != nil {
 		return err
@@ -86,14 +97,20 @@ func (r *Runtime) DeleteDefaultBinding(ctx context.Context, id, expectedRevision
 	if err != nil {
 		return err
 	}
+	var finalizationID int64
 	if err := r.mutations.WithMutation(ctx, "vault.binding.deleted", func() any {
 		return map[string]any{"binding_id": id}
 	}, func(tx *sql.Tx) error {
-		return r.store.WithTx(tx).DeleteDefaultBinding(ctx, id, expectedRevision)
+		if err := r.store.WithTx(tx).DeleteDefaultBinding(ctx, id, expectedRevision); err != nil {
+			return err
+		}
+		var err error
+		finalizationID, err = r.queueSessionFinalization(ctx, tx, sessions, scope)
+		return err
 	}); err != nil {
 		return err
 	}
-	return r.invalidateSessions(ctx, sessions, scope)
+	return r.finishSessionFinalization(ctx, finalizationID, sessions, scope)
 }
 
 func (r *Runtime) validateBindingMutation() error {

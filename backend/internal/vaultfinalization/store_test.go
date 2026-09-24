@@ -1,6 +1,7 @@
 package vaultfinalization_test
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -31,6 +32,29 @@ func TestIntentRollsBackWithMutation(t *testing.T) {
 	}
 }
 
+func TestFinalizeCompletesAfterRequestCancellation(t *testing.T) {
+	database, err := db.OpenEncrypted(filepath.Join(t.TempDir(), "cancel.aipdb"), "VaultFinalizationPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := vaultfinalization.NewStore(database)
+	id, err := store.Queue(t.Context(), vaultfinalization.Intent{Kind: "project", ProjectID: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := store.Finalize(ctx, id, func(cleanupCtx context.Context) error {
+		return cleanupCtx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RequireReady(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPendingIntentBlocksDeliveryUntilCompleted(t *testing.T) {
 	database, err := db.OpenEncrypted(filepath.Join(t.TempDir(), "vault.aipdb"), "VaultFinalizationPassword123")
 	if err != nil {
@@ -44,7 +68,7 @@ func TestPendingIntentBlocksDeliveryUntilCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RequireReady(t.Context()); !errors.Is(err, vaultfinalization.ErrPending) {
+	if err := store.RequireReady(t.Context()); !errors.Is(err, vaultfinalization.ErrBlocked) {
 		t.Fatalf("readiness = %v", err)
 	}
 	intents, err := store.Pending(t.Context())

@@ -63,6 +63,9 @@ func (r *Runtime) ReplaceValue(ctx context.Context, input ReplaceRuntimeValueInp
 		return Item{}, err
 	}
 	defer release()
+	if err := r.requireFinalizationsReady(ctx); err != nil {
+		return Item{}, err
+	}
 	current, err := r.store.Get(ctx, input.ID)
 	if err != nil {
 		return Item{}, err
@@ -90,18 +93,23 @@ func (r *Runtime) ReplaceValue(ctx context.Context, input ReplaceRuntimeValueInp
 		GeneratorParams: preview.GeneratorParameters, ExpectedValueVersion: input.ExpectedValueVersion,
 	}
 	var item Item
+	var finalizationID int64
 	err = r.mutations.WithMutation(ctx, "vault.item.value_replaced", func() any {
 		return ItemAuditPayload(item)
 	}, func(tx *sql.Tx) error {
 		var replaceErr error
 		item, replaceErr = r.store.WithTx(tx).ReplaceValue(ctx, storeInput)
+		if replaceErr != nil {
+			return replaceErr
+		}
+		finalizationID, replaceErr = r.queueSessionFinalization(ctx, tx, sessions, scope)
 		return replaceErr
 	})
 	if err != nil {
 		return Item{}, err
 	}
-	if err := r.invalidateSessions(ctx, sessions, scope); err != nil {
-		return Item{}, err
+	if err := r.finishSessionFinalization(ctx, finalizationID, sessions, scope); err != nil {
+		return item, err
 	}
 	r.clearPreview(input.ID)
 	return item, nil

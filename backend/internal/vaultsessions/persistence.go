@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/vaultfinalization"
 )
 
 var ErrPersistenceUnavailable = errors.New("Vault session lease persistence is unavailable")
@@ -76,16 +77,17 @@ func (p *Persistence) ActiveForProject(ctx context.Context, projectID int64) ([]
 	if p == nil || p.database == nil {
 		return nil, ErrPersistenceUnavailable
 	}
-	rows, err := p.database.QueryContext(ctx, `
-		SELECT DISTINCT session_id, runtime_id, session_generation
-		FROM vault_session_leases
-		WHERE project_id = ? AND status = 'active'
-		ORDER BY session_id`, projectID)
+	active, err := vaultfinalization.NewStore(p.database).ActiveProjectReferences(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("list active project Vault sessions: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-	return scanReferences(rows)
+	references := make([]Reference, len(active))
+	for index, reference := range active {
+		references[index] = Reference{
+			SessionID: reference.SessionID, RuntimeID: reference.RuntimeID, Generation: reference.Generation,
+		}
+	}
+	return references, nil
 }
 
 func (p *Persistence) RuntimeIDsForTargetProfile(ctx context.Context, targetID, profileID int64) ([]int64, error) {

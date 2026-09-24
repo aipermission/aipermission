@@ -106,6 +106,10 @@ For MCP, `restart_session_with_environment` is explicit:
    stop are serialized against secret delivery. They revoke affected leases,
    close active secret-bearing sessions, and stale pending requests before the
    changed context can be reused.
+   Vault item/binding changes and project archive persist a cleanup intent in
+   the same transaction as the change. If cleanup fails, the API reports that
+   the change was saved but finalization is pending, secret delivery is blocked,
+   and the next database unlock retries cleanup before the workspace opens.
 10. MCP console input and command delivery hold the same lifecycle gate from
     exact-session authorization through the PTY write. Permission or trust
     mutations therefore cannot cross the authorize-to-I/O boundary; output

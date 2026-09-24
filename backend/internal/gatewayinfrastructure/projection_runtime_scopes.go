@@ -338,7 +338,7 @@ func (component *OperationsOwner) MessageStore(handle *WorkspaceHandle, redact f
 }
 
 type ProjectPorts struct {
-	Invalidate func(context.Context, int64) error
+	Invalidate func(context.Context, int64, []gatewayvault.SessionReference) error
 }
 
 func (component *VaultOwner) projectScope(handle *WorkspaceHandle, ports ProjectPorts) (gatewayvault.ProjectScope, bool) {
