@@ -355,8 +355,8 @@ func TestGetKeyPropagatesCollectionPreviewFailures(t *testing.T) {
 			response: "+not-an-array\r\n", want: "expected an array",
 		},
 		{
-			name: "incomplete hash", keyType: "hash", command: "HGETALL",
-			response: "*1\r\n$5\r\nfield\r\n", want: "pairs are incomplete",
+			name: "incomplete hash", keyType: "hash", command: "HSCAN",
+			response: "*2\r\n$1\r\n0\r\n*1\r\n$5\r\nfield\r\n", want: "pairs are incomplete",
 		},
 		{
 			name: "incomplete sorted set", keyType: "zset", command: "ZRANGE",
@@ -607,7 +607,10 @@ func TestValkeyCompatibleKeyActions(t *testing.T) {
 				return "+string\r\n"
 			case "PTTL":
 				return ":60000\r\n"
-			case "GET":
+			case "GETRANGE":
+				if !reflect.DeepEqual(command, []string{"GETRANGE", "app:status", "0", "1024"}) {
+					t.Fatalf("command = %#v", command)
+				}
 				return respBulk(`{"ok":true}`)
 			default:
 				t.Fatalf("unexpected command = %#v", command)

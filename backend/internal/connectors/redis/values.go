@@ -143,6 +143,35 @@ func redisScanCollection(client *redisClient, command string, key string, limit 
 	return items, nil
 }
 
+func redisScanHash(client *redisClient, key string, limit int) (map[string]string, error) {
+	cursor := "0"
+	fields := make(map[string]string, limit)
+	for pages := 0; len(fields) < limit; pages++ {
+		if pages == maxScanPages {
+			return nil, fmt.Errorf("redis hash scan exceeded %d pages", maxScanPages)
+		}
+		value, err := client.Do("HSCAN", key, cursor, "COUNT", strconv.Itoa(min(limit-len(fields), 100)))
+		if err != nil {
+			return nil, err
+		}
+		nextCursor, items, err := redisScanPage(value, "HSCAN")
+		if err != nil {
+			return nil, err
+		}
+		if len(items)%2 != 0 {
+			return nil, fmt.Errorf("unexpected HSCAN response: field and value pairs are incomplete")
+		}
+		for index := 0; index < len(items) && len(fields) < limit; index += 2 {
+			fields[items[index]] = items[index+1]
+		}
+		cursor = nextCursor
+		if cursor == "0" {
+			break
+		}
+	}
+	return fields, nil
+}
+
 func redisScanPage(value respValue, command string) (string, []string, error) {
 	if value.kind != respArray || value.null || len(value.array) != 2 {
 		return "", nil, fmt.Errorf("unexpected %s response: expected cursor and items", command)
@@ -191,21 +220,6 @@ func redisStringSlice(value respValue, command string) ([]string, error) {
 			return nil, fmt.Errorf("unexpected %s response: expected scalar array items", command)
 		}
 		out = append(out, respString(item))
-	}
-	return out, nil
-}
-
-func redisStringMap(value respValue, command string) (map[string]string, error) {
-	items, err := redisStringSlice(value, command)
-	if err != nil {
-		return nil, err
-	}
-	if len(items)%2 != 0 {
-		return nil, fmt.Errorf("unexpected %s response: field and value pairs are incomplete", command)
-	}
-	out := make(map[string]string, len(items)/2)
-	for index := 0; index < len(items); index += 2 {
-		out[items[index]] = items[index+1]
 	}
 	return out, nil
 }

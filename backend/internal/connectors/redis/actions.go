@@ -193,19 +193,18 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 	case "none":
 		output["exists"] = false
 	case "string":
-		value, err := client.Do("GET", key)
+		value, err := client.Do("GETRANGE", key, "0", strconv.Itoa(maxBytes))
 		if err != nil {
 			return connectors.ActionResult{}, err
+		}
+		if value.kind != respBulkString && value.kind != respSimpleString {
+			return connectors.ActionResult{}, fmt.Errorf("unexpected GETRANGE response: expected a string")
 		}
 		text := truncateString(respString(value), maxBytes)
 		output["value"] = text
 		output["truncated"] = len(respString(value)) > maxBytes
 	case "hash":
-		value, err := client.Do("HGETALL", key)
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		fields, err := redisStringMap(value, "HGETALL")
+		fields, err := redisScanHash(client, key, limit)
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
