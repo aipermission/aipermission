@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -51,4 +52,16 @@ func FromResult(
 
 func Withhold(response *Response) {
 	actionresult.Withhold(response)
+}
+
+func ResponseRunningHint(request connectortargets.ActionRequest, resolve func(connectortargets.ActionRequest) string) string {
+	if request.Status != connectors.ResultRunning {
+		return ""
+	}
+	if resolve != nil {
+		if hint := strings.TrimSpace(resolve(request)); hint != "" {
+			return hint
+		}
+	}
+	return "Wait 3 seconds, then call get_connector_action_request again until this request is completed, failed, canceled, stale, or error."
 }
