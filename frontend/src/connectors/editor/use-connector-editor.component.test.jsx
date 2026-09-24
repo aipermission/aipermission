@@ -189,6 +189,19 @@ describe("useConnectorEditor", () => {
     expect(result.current.form.name).toBe("replacement");
   });
 
+  it("keeps cleared connector fields empty after a successful save", async () => {
+    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }) => form };
+    const { result } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.updateField("name", "secret-target"));
+    const staleUpdateField = result.current.updateField;
+
+    await act(async () => result.current.save({ preventDefault() {} }));
+    act(() => staleUpdateField("name", "secret-target"));
+
+    expect(result.current.form.name).toBe("");
+  });
+
   it("hands connector-owned recovery operations back to the route", async () => {
     const recovery = { open: true, connector_kind: "example", type: "trust" };
     const model = {
