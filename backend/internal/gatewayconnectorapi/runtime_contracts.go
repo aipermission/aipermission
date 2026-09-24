@@ -2,7 +2,6 @@ package gatewayconnectorapi
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -83,16 +82,10 @@ type Principal struct {
 }
 
 func (principal Principal) Validate() error {
-	if principal.Kind != PrincipalLocalOperator && principal.Kind != PrincipalMCPToken {
-		return ErrInvalidPrincipal
-	}
-	if strings.TrimSpace(principal.WorkspaceID) == "" || strings.TrimSpace(principal.RuntimeInstanceID) == "" {
-		return ErrInvalidPrincipal
-	}
-	if principal.Kind == PrincipalMCPToken && principal.TokenID < 1 {
-		return ErrInvalidPrincipal
-	}
-	if principal.Kind == PrincipalLocalOperator && principal.TokenID != 0 {
+	if err := (connectors.Principal{
+		Kind: connectors.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
+		WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
+	}).Validate(); err != nil {
 		return ErrInvalidPrincipal
 	}
 	return nil
