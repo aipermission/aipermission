@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPut } from "../../lib/api";
 import { updateTokenProjectVisibility } from "../../lib/project-scopes";
+import { tokenProjectScopes } from "../../lib/gateway-contracts/security-contracts";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -274,7 +275,7 @@ async function loadVaultPermissionData({ tokenID, requests, setLoad, setScopeDra
       apiGet(`/api/tokens/${tokenID}/project-capabilities`, { signal: request.signal }),
     ]);
     if (!request.isCurrent()) return;
-    const projects = projectScopes.items || [];
+    const projects = tokenProjectScopes(projectScopes);
     const definitions = projectCapabilities.definitions || [];
     const capabilities = projectCapabilities.items || [];
     setLoad({

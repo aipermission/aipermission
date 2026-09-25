@@ -16,12 +16,8 @@ export type ExecutionRule = (typeof executionRules)[number];
 export type ConnectorActionResponse = components["schemas"]["ConnectorActionResponse"];
 export type ConnectorRetryPolicy = ConnectorActionResponse["retry_policy"];
 
-export type TokenActionPermission = Record<string, unknown> & {
-  target_id: number;
-  profile_id: number;
-  action_name: string;
-  execution_rule: ExecutionRule;
-};
+export type TokenActionPermission = components["schemas"]["ConnectorPermission"];
+export type TokenProjectScope = components["schemas"]["TokenProjectScope"];
 
 export type ConnectorApproval = components["schemas"]["ConnectorActionApprovalDetail"];
 
@@ -100,18 +96,47 @@ function nonEmptyString(value: unknown): value is string {
 
 export function tokenActionPermissions(value: unknown): TokenActionPermission[] {
   const data = record(value, "token permissions");
+  if (!nonEmptyString(data.revision)) throw new Error("Invalid token permission response from gateway.");
   return array(data.items, "token permissions").map((entry) => {
     const item = record(entry, "token permission");
     if (
+      !positiveID(item.project_id) ||
+      !nonEmptyString(item.project_name) ||
+      !nonEmptyString(item.project_slug) ||
+      typeof item.project_enabled !== "boolean" ||
       !positiveID(item.target_id) ||
+      !nonEmptyString(item.target_name) ||
       !positiveID(item.profile_id) ||
-      typeof item.action_name !== "string" ||
-      !item.action_name ||
-      !executionRule(item.execution_rule)
+      !nonEmptyString(item.profile_label) ||
+      !nonEmptyString(item.target_ref) ||
+      !nonEmptyString(item.connector_kind) ||
+      !nonEmptyString(item.profile_kind) ||
+      !nonEmptyString(item.action_name) ||
+      !executionRule(item.execution_rule) ||
+      !optionalString(item.expires_at) ||
+      !nonEmptyString(item.created_at) ||
+      !nonEmptyString(item.updated_at)
     ) {
       throw new Error("Invalid token permission response from gateway.");
     }
     return item as TokenActionPermission;
+  });
+}
+
+export function tokenProjectScopes(value: unknown): TokenProjectScope[] {
+  const data = record(value, "project scopes");
+  if (!nonEmptyString(data.revision)) throw new Error("Invalid project scope response from gateway.");
+  return array(data.items, "project scopes").map((entry) => {
+    const item = record(entry, "project scope");
+    if (
+      !positiveID(item.project_id) ||
+      !nonEmptyString(item.project_name) ||
+      !nonEmptyString(item.project_slug) ||
+      typeof item.enabled !== "boolean"
+    ) {
+      throw new Error("Invalid project scope response from gateway.");
+    }
+    return item as TokenProjectScope;
   });
 }
 

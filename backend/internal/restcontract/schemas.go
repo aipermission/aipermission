@@ -18,7 +18,7 @@ type operationContract struct {
 func sharedSchemas() map[string]any {
 	stringMap := objectSchema(map[string]any{}, nil)
 	stringMap["additionalProperties"] = true
-	return map[string]any{
+	schemas := map[string]any{
 		"Error": objectSchema(map[string]any{
 			"error": stringSchema(),
 			"code":  stringSchema(),
@@ -83,11 +83,7 @@ func sharedSchemas() map[string]any {
 			"user_note":             stringSchema(),
 			"approval_context_hash": nonBlankStringSchema(),
 		}, []string{"approval_context_hash"}),
-		"VaultSessionItem": objectSchema(map[string]any{
-			"item_id": integerSchema(), "name": nonBlankStringSchema(), "source_project_id": integerSchema(),
-			"value_version": integerSchema(), "metadata_revision": integerSchema(), "replace_existing": boolSchema(),
-			"binding_id": integerSchema(), "binding_revision": integerSchema(),
-		}, []string{"item_id", "name", "source_project_id", "value_version", "metadata_revision", "replace_existing"}),
+		"VaultSessionItem":         vaultSessionItemSchema(),
 		"VaultApprovalContext":     vaultApprovalContextSchema(),
 		"SecuritySettingsDocument": securitySettingsSchema("revision"),
 		"SecuritySettingsUpdate":   securitySettingsUpdateSchema(),
@@ -192,6 +188,18 @@ func sharedSchemas() map[string]any {
 		}, []string{"connector_kind", "activity_type", "status", "category", "count"}),
 		"DiagnosticsReport": diagnosticsReportSchema(),
 	}
+	for name, schema := range permissionSchemas() {
+		schemas[name] = schema
+	}
+	return schemas
+}
+
+func vaultSessionItemSchema() map[string]any {
+	return objectSchema(map[string]any{
+		"item_id": integerSchema(), "name": nonBlankStringSchema(), "source_project_id": integerSchema(),
+		"value_version": integerSchema(), "metadata_revision": integerSchema(), "replace_existing": boolSchema(),
+		"binding_id": integerSchema(), "binding_revision": integerSchema(),
+	}, []string{"item_id", "name", "source_project_id", "value_version", "metadata_revision", "replace_existing"})
 }
 
 func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
@@ -215,8 +223,18 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/connector-targets/{id}"}:                               okContract(refSchema("ConnectorTarget")),
 		{Method: "GET", Path: "/api/connector-targets/{id}/profiles"}:                      okContract(itemsSchema(refSchema("ConnectorCredentialProfile"))),
 		{Method: "GET", Path: "/api/connector-targets/{id}/profiles/{profile_id}/actions"}: okContract(itemsSchema(refSchema("ConnectorActionDefinition"))),
-		{Method: "GET", Path: "/api/connector-action-approvals"}:                           okContract(arraySchema(refSchema("ConnectorActionApprovalSummary"))),
-		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}:                      okContract(refSchema("ConnectorActionApprovalDetail")),
+		{Method: "GET", Path: "/api/tokens/{id}/connector-permissions"}:                    okContract(refSchema("ConnectorPermissionsResponse")),
+		{Method: "PUT", Path: "/api/tokens/{id}/connector-permissions"}: {
+			StatusCode: "200", RequestSchema: refSchema("UpdateConnectorPermissionsRequest"), ResponseSchema: refSchema("ConnectorPermissionsResponse"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error")},
+		},
+		{Method: "GET", Path: "/api/tokens/{id}/project-scopes"}: okContract(refSchema("TokenProjectScopesResponse")),
+		{Method: "PUT", Path: "/api/tokens/{id}/project-scopes"}: {
+			StatusCode: "200", RequestSchema: refSchema("UpdateTokenProjectScopesRequest"), ResponseSchema: refSchema("TokenProjectScopesResponse"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error")},
+		},
+		{Method: "GET", Path: "/api/connector-action-approvals"}:      okContract(arraySchema(refSchema("ConnectorActionApprovalSummary"))),
+		{Method: "GET", Path: "/api/connector-action-approvals/{id}"}: okContract(refSchema("ConnectorActionApprovalDetail")),
 		{Method: "POST", Path: "/api/connector-action-approvals/{id}/run"}: {
 			StatusCode:     "200",
 			RequestSchema:  refSchema("ApprovalDecisionRequest"),

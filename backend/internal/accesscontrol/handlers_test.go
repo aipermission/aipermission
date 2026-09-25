@@ -17,6 +17,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/observability"
 	"github.com/aipermission/aipermission/backend/internal/projects"
+	"github.com/aipermission/aipermission/backend/internal/restcontract"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
@@ -132,6 +133,12 @@ func newHandlerFixtureWithOptions(t *testing.T, actionCount int, realAudit bool)
 func TestAuthorizationHTTPHandlersOwnLifecycleAndOptimisticConcurrency(t *testing.T) {
 	fixture := newHandlerFixture(t)
 	base := "/tokens/" + strconv.FormatInt(fixture.tokenID, 10)
+	assertTyped := func(method, path string, response *httptest.ResponseRecorder) {
+		t.Helper()
+		if err := restcontract.ValidateTypedResponse(method, path, response.Code, response.Body.Bytes()); err != nil {
+			t.Fatalf("%s %s response contract: %v", method, path, err)
+		}
+	}
 
 	list := performAccessRequest(t, fixture.mux, http.MethodGet, "/tokens", nil)
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"name":"access agent"`) {
@@ -139,11 +146,13 @@ func TestAuthorizationHTTPHandlersOwnLifecycleAndOptimisticConcurrency(t *testin
 	}
 
 	scopePath := base + "/project-scopes"
+	assertTyped(http.MethodGet, "/api/tokens/{id}/project-scopes", performAccessRequest(t, fixture.mux, http.MethodGet, scopePath, nil))
 	scopeRevision := responseRevision(t, fixture.mux, scopePath)
 	scopeUpdate := performAccessRequest(t, fixture.mux, http.MethodPut, scopePath, UpdateProjectScopesRequest{
 		EnabledProjectIDs: []int64{fixture.projectID}, ExpectedRevision: scopeRevision,
 	})
 	assertChangedResponse(t, scopeUpdate, true)
+	assertTyped(http.MethodPut, "/api/tokens/{id}/project-scopes", scopeUpdate)
 	scopeNoop := performAccessRequest(t, fixture.mux, http.MethodPut, scopePath, UpdateProjectScopesRequest{
 		EnabledProjectIDs: []int64{fixture.projectID}, ExpectedRevision: responseRevision(t, fixture.mux, scopePath),
 	})
@@ -159,6 +168,7 @@ func TestAuthorizationHTTPHandlersOwnLifecycleAndOptimisticConcurrency(t *testin
 	assertChangedResponse(t, capabilityUpdate, true)
 
 	permissionPath := base + "/connector-permissions"
+	assertTyped(http.MethodGet, "/api/tokens/{id}/connector-permissions", performAccessRequest(t, fixture.mux, http.MethodGet, permissionPath, nil))
 	staleRevision := responseRevision(t, fixture.mux, permissionPath)
 	permission := ConnectorPermissionInput{
 		TargetID: fixture.targetID, ProfileID: fixture.profileID,
@@ -168,6 +178,7 @@ func TestAuthorizationHTTPHandlersOwnLifecycleAndOptimisticConcurrency(t *testin
 		Permissions: []ConnectorPermissionInput{permission}, ExpectedRevision: staleRevision,
 	})
 	assertChangedResponse(t, permissionUpdate, true)
+	assertTyped(http.MethodPut, "/api/tokens/{id}/connector-permissions", permissionUpdate)
 	conflict := performAccessRequest(t, fixture.mux, http.MethodPut, permissionPath, UpdateConnectorPermissionsRequest{
 		Permissions: []ConnectorPermissionInput{permission}, ExpectedRevision: staleRevision,
 	})

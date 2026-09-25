@@ -766,6 +766,147 @@
         ],
         "type": "object"
       },
+      "ConnectorPermission": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "execution_rule": {
+            "enum": [
+              "always_run",
+              "approval_required",
+              "blocked"
+            ],
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "profile_kind": {
+            "type": "string"
+          },
+          "profile_label": {
+            "type": "string"
+          },
+          "project_enabled": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "project_slug": {
+            "type": "string"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_name": {
+            "type": "string"
+          },
+          "target_ref": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "project_slug",
+          "project_enabled",
+          "target_id",
+          "target_name",
+          "profile_id",
+          "profile_label",
+          "target_ref",
+          "connector_kind",
+          "profile_kind",
+          "action_name",
+          "execution_rule",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ConnectorPermissionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "action_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "execution_rule": {
+            "enum": [
+              "always_run",
+              "approval_required",
+              "blocked"
+            ],
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "target_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_id",
+          "profile_id",
+          "action_name",
+          "execution_rule"
+        ],
+        "type": "object"
+      },
+      "ConnectorPermissionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorPermission"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "revision"
+        ],
+        "type": "object"
+      },
       "ConnectorTarget": {
         "additionalProperties": false,
         "properties": {
@@ -1539,6 +1680,92 @@
           "status",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TokenProjectScope": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "project_slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "project_slug",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "TokenProjectScopesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TokenProjectScope"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "UpdateConnectorPermissionsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorPermissionInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
+      "UpdateTokenProjectScopesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled_project_ids": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "expected_revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled_project_ids",
+          "expected_revision"
         ],
         "type": "object"
       },
@@ -7115,6 +7342,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorPermissionsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -7129,7 +7366,7 @@
         "tags": [
           "tokens"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "put": {
         "operationId": "putApiTokensByIdConnectorPermissions",
@@ -7154,7 +7391,57 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectorPermissionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorPermissionsResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -7169,7 +7456,7 @@
         "tags": [
           "tokens"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/tokens/{id}/project-capabilities": {
@@ -7257,6 +7544,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenProjectScopesResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -7271,7 +7568,7 @@
         "tags": [
           "tokens"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-response"
       },
       "put": {
         "operationId": "putApiTokensByIdProjectScopes",
@@ -7296,7 +7593,57 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTokenProjectScopesRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenProjectScopesResponse"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -7311,7 +7658,7 @@
         "tags": [
           "tokens"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/tokens/{id}/revoke": {

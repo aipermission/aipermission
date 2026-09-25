@@ -10,7 +10,7 @@ describe("VaultPermissionDialog", () => {
   beforeEach(() => {
     apiGet.mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
-        return { items: [{ project_id: 3, project_name: "My Project", enabled: true }], revision: "scope-1" };
+        return { items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }], revision: "scope-1" };
       }
       if (path === "/api/tokens/7/project-capabilities") {
         return {
@@ -122,7 +122,7 @@ describe("VaultPermissionDialog", () => {
       }
       if (path === "/api/tokens/1/project-capabilities") return firstCapabilities.promise;
       if (path === "/api/tokens/2/project-scopes") {
-        return { items: [{ project_id: 4, project_name: "Second", enabled: true }], revision: "scope-2" };
+        return { items: [{ project_id: 4, project_name: "Second", project_slug: "second", enabled: true }], revision: "scope-2" };
       }
       if (path === "/api/tokens/2/project-capabilities") {
         return {
@@ -184,6 +184,19 @@ describe("VaultPermissionDialog", () => {
     render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     expect(await screen.findByText("Vault permissions unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save Vault capabilities" })).toBeDisabled();
+  });
+
+  it("does not enable saves for a malformed project scope response", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/tokens/7/project-scopes") return { items: [{ project_id: 3, enabled: true }], revision: "scope-1" };
+      if (path === "/api/tokens/7/project-capabilities") return { definitions: [], items: [], revision: "capability-1" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(await screen.findByText("Invalid project scope response from gateway.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save Vault capabilities" })).toBeDisabled();
   });
 });

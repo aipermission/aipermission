@@ -448,10 +448,10 @@
       "lines": 100
     },
     "src/components/tokens/vault-permission-dialog.jsx": {
-      "statements": 83.96,
-      "branches": 75.22,
+      "statements": 87.02,
+      "branches": 78.15,
       "functions": 89.18,
-      "lines": 87.85
+      "lines": 91.58
     },
     "src/components/transfer-center.jsx": {
       "statements": 87.96,
