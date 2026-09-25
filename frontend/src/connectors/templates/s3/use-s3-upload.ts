@@ -36,7 +36,7 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
     setUploadDialog((current) => (current.pending ? current : defaultUploadDialog));
   }
 
-  function addUploadFiles(fileList: FileList | null) {
+  function addUploadFiles(fileList: ArrayLike<File> | null) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
     setUploadDialog((current) => ({
@@ -65,7 +65,7 @@ export function useS3Upload({ scopeKey, active, prefix, runAction, refreshObject
     }));
   }
 
-  async function uploadObjects(event: FormEvent<HTMLFormElement>) {
+  async function uploadObjects(event: Pick<FormEvent<HTMLFormElement>, "preventDefault">) {
     event.preventDefault();
     if (!active || uploadDialog.pending) return;
     const preparedFiles = uploadDialog.files.map((item) => ({ ...item, key: normalizeObjectKey(item.key) })).filter((item) => item.key);

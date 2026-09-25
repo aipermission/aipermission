@@ -1,18 +1,33 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { saveBlob } from "../../../lib/api";
+import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { approvalsForTarget, base64Blob, filenameFromKey, parentPrefix, safeDownloadName, visibleObjectBytes } from "./helpers";
+import type { S3MetadataPanelProps } from "./metadata-panel";
 
-export function useS3Browser({ target, approvals, session, onRefreshActivity }) {
+type BrowserObject = { key: string; size?: number | string | null; last_modified?: string; etag?: string };
+type BrowserDirectory = { prefix: string; name?: string };
+type BrowserApproval = { target_ref: string; status: string; action_name: string };
+export type S3BrowserOptions = {
+  target: { ref: string };
+  approvals?: { data?: BrowserApproval[] } | null;
+  session?: { active: boolean; startedAt?: string } | null;
+  onRefreshActivity?: () => Promise<unknown> | void;
+};
+type RefreshOptions = { reset?: boolean; token?: string; nextPrefix?: string; nextSearch?: string };
+type NativeWritable = { write: (_blob: Blob) => Promise<void>; close: () => Promise<void>; abort?: () => Promise<void> };
+type NativeSaveHandle = { createWritable: () => Promise<NativeWritable> };
+
+export function useS3Browser({ target, approvals, session, onRefreshActivity }: S3BrowserOptions) {
   const activeSession = session || { active: false, startedAt: "" };
   const [prefix, setPrefix] = useState("");
   const [search, setSearch] = useState("");
-  const [directories, setDirectories] = useState([]);
-  const [objects, setObjects] = useState([]);
+  const [directories, setDirectories] = useState<BrowserDirectory[]>([]);
+  const [objects, setObjects] = useState<BrowserObject[]>([]);
   const [nextToken, setNextToken] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
-  const [metadata, setMetadata] = useState(null);
+  const [metadata, setMetadata] = useState<S3MetadataPanelProps["metadata"]>(null);
   const [metadataSearch, setMetadataSearch] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const scopeKey = `${target.ref}:${activeSession.active ? activeSession.startedAt || "active" : "inactive"}`;
@@ -21,7 +36,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   const selectedKeyRef = useRef(selectedKey);
   scopeKeyRef.current = scopeKey;
   selectedKeyRef.current = selectedKey;
-  const refreshObjectsForEffect = useEffectEvent((options) => refreshObjects(options));
+  const refreshObjectsForEffect = useEffectEvent((options: RefreshOptions) => refreshObjects(options));
 
   useEffect(() => {
     setPrefix("");
@@ -48,7 +63,21 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     setMetadataSearch("");
   }, [requestGuard, selectedKey]);
 
-  async function runS3Action({ actionName, input, reason, busy = "running", suppressError = false, channel = actionName }) {
+  async function runS3Action({
+    actionName,
+    input,
+    reason,
+    busy = "running",
+    suppressError = false,
+    channel = actionName,
+  }: {
+    actionName: string;
+    input: Record<string, unknown>;
+    reason: string;
+    busy?: string;
+    suppressError?: boolean;
+    channel?: string;
+  }) {
     return runGuardedConnectorAction({
       requestGuard,
       channel,
@@ -64,7 +93,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     });
   }
 
-  async function refreshObjects({ reset = true, token = "", nextPrefix = prefix, nextSearch = search } = {}) {
+  async function refreshObjects({ reset = true, token = "", nextPrefix = prefix, nextSearch = search }: RefreshOptions = {}) {
     if (!activeSession.active) return [];
     const item = await runS3Action({
       actionName: "list_objects",
@@ -74,8 +103,8 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
       channel: "objects",
     });
     if (!item) return [];
-    const nextDirectories = Array.isArray(item.output?.directories) ? item.output.directories : [];
-    const nextObjects = Array.isArray(item.output?.objects) ? item.output.objects : [];
+    const nextDirectories: BrowserDirectory[] = Array.isArray(item.output?.directories) ? item.output.directories : [];
+    const nextObjects: BrowserObject[] = Array.isArray(item.output?.objects) ? item.output.objects : [];
     setDirectories((current) => (reset ? nextDirectories : [...current, ...nextDirectories]));
     setObjects((current) => (reset ? nextObjects : [...current, ...nextObjects]));
     setNextToken(item.output?.next_cursor || "");
@@ -83,7 +112,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     return nextObjects;
   }
 
-  async function openDirectory(directoryPrefix) {
+  async function openDirectory(directoryPrefix: string) {
     if (!activeSession.active || !directoryPrefix) return;
     setPrefix(directoryPrefix);
     setSearch("");
@@ -99,7 +128,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     await refreshObjects({ reset: true, nextPrefix: parent, nextSearch: "" });
   }
 
-  async function selectObject(key) {
+  async function selectObject(key: string) {
     if (!activeSession.active || !key) return;
     if (selectedKey === key) {
       clearSelection();
@@ -108,7 +137,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
     await readObjectMetadata(key);
   }
 
-  async function readObjectMetadata(key) {
+  async function readObjectMetadata(key: string) {
     setSelectedKey(key);
     setMetadata(null);
     setMetadataSearch("");
@@ -156,7 +185,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
       await saveBlob(blob, output.filename || filename, { picker: false });
     } catch (error) {
       if (preparation.isCurrent()) {
-        setState({ state: "error", error: error?.message || "Download failed.", message: "" });
+        setState({ state: "error", error: errorMessage(error, "Download failed."), message: "" });
       }
     } finally {
       preparation.complete();
@@ -212,8 +241,8 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }) 
   };
 }
 
-async function writeNativeDownload(saveHandle, blob) {
-  let writable;
+async function writeNativeDownload(saveHandle: NativeSaveHandle, blob: Blob) {
+  let writable: NativeWritable | undefined;
   try {
     writable = await saveHandle.createWritable();
     await writable.write(blob);
@@ -230,12 +259,15 @@ async function writeNativeDownload(saveHandle, blob) {
   }
 }
 
-async function chooseSaveHandle(filename) {
-  if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function") return null;
+async function chooseSaveHandle(filename: string): Promise<NativeSaveHandle | false | null> {
+  if (typeof window === "undefined") return null;
+  const picker = (window as Window & { showSaveFilePicker?: (_options: { suggestedName: string }) => Promise<NativeSaveHandle> })
+    .showSaveFilePicker;
+  if (typeof picker !== "function") return null;
   try {
-    return await window.showSaveFilePicker({ suggestedName: safeDownloadName(filename) });
+    return await picker.call(window, { suggestedName: safeDownloadName(filename) });
   } catch (error) {
-    if (error?.name !== "AbortError") throw error;
+    if (!error || typeof error !== "object" || !("name" in error) || error.name !== "AbortError") throw error;
     return false;
   }
 }

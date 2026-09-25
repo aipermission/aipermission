@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { saveBlob } from "../../../lib/api";
+import type { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { defaultUploadDialog } from "./dialogs";
 import { useS3Browser } from "./use-s3-browser";
@@ -15,10 +16,14 @@ const objects = [
   { key: "backups/two.aipdb", size: 20 },
 ];
 
+type MockAction = { actionName: string; input: { key?: string }; requestGuard: ReturnType<typeof useRequestGuard>; channel: string };
+const mockedSaveBlob = vi.mocked(saveBlob);
+const mockedRunAction = vi.mocked(runGuardedConnectorAction);
+
 beforeEach(() => {
-  saveBlob.mockReset().mockResolvedValue(undefined);
-  runGuardedConnectorAction.mockReset();
-  runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
+  mockedSaveBlob.mockReset().mockResolvedValue({ saved: true, method: "download" });
+  mockedRunAction.mockReset();
+  mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
     if (actionName === "list_objects") {
       return { action_name: actionName, output: { directories: [{ prefix: "backups/archive/" }], objects, next_cursor: "next" } };
     }
@@ -29,7 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete window.showSaveFilePicker;
+  Reflect.deleteProperty(window, "showSaveFilePicker");
   vi.unstubAllGlobals();
 });
 
@@ -63,25 +68,28 @@ it("loads S3 objects and toggles metadata selection", async () => {
 });
 
 it("cancels an S3 download before dispatch when the file picker is dismissed", async () => {
-  window.showSaveFilePicker = vi.fn().mockRejectedValue(new DOMException("Canceled", "AbortError"));
+  vi.stubGlobal("showSaveFilePicker", vi.fn().mockRejectedValue(new DOMException("Canceled", "AbortError")));
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.objects).toHaveLength(2));
   await act(async () => result.current.selectObject(objects[0].key));
-  runGuardedConnectorAction.mockClear();
+  mockedRunAction.mockClear();
 
   await act(async () => result.current.downloadSelected());
 
   expect(result.current.state.message).toBe("Download canceled.");
-  expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+  expect(mockedRunAction).not.toHaveBeenCalled();
 });
 
 it("aborts a failed native S3 download writer and reports the error", async () => {
   const abort = vi.fn().mockResolvedValue(undefined);
   const write = vi.fn().mockRejectedValue(new Error("disk full"));
-  window.showSaveFilePicker = vi.fn().mockResolvedValue({
-    createWritable: vi.fn().mockResolvedValue({ write, close: vi.fn(), abort }),
-  });
-  runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
+  vi.stubGlobal(
+    "showSaveFilePicker",
+    vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({ write, close: vi.fn(), abort }),
+    }),
+  );
+  mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
     if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
     if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
     if (actionName === "download_object") {
@@ -101,18 +109,21 @@ it("aborts a failed native S3 download writer and reports the error", async () =
 });
 
 it("does not dispatch a download after the target changes while the picker is open", async () => {
-  let resolvePicker;
-  window.showSaveFilePicker = vi.fn().mockReturnValue(
-    new Promise((resolve) => {
-      resolvePicker = resolve;
-    }),
+  let resolvePicker: (_value: { createWritable: ReturnType<typeof vi.fn> }) => void = () => {};
+  vi.stubGlobal(
+    "showSaveFilePicker",
+    vi.fn().mockReturnValue(
+      new Promise<{ createWritable: ReturnType<typeof vi.fn> }>((resolve) => {
+        resolvePicker = resolve;
+      }),
+    ),
   );
   const { result, rerender } = renderBrowser();
   await waitFor(() => expect(result.current.objects).toHaveLength(2));
   await act(async () => result.current.selectObject(objects[0].key));
-  runGuardedConnectorAction.mockClear();
+  mockedRunAction.mockClear();
 
-  let download;
+  let download: Promise<void> = Promise.resolve();
   act(() => {
     download = result.current.downloadSelected();
   });
@@ -120,11 +131,11 @@ it("does not dispatch a download after the target changes while the picker is op
   await act(async () => resolvePicker({ createWritable: vi.fn() }));
   await download;
 
-  expect(runGuardedConnectorAction.mock.calls.some(([options]) => options.actionName === "download_object")).toBe(false);
+  expect(mockedRunAction).not.toHaveBeenCalledWith(expect.objectContaining({ actionName: "download_object" }));
 });
 
 it("reports picker and buffered download failures", async () => {
-  window.showSaveFilePicker = vi.fn().mockRejectedValue(new Error("picker unavailable"));
+  vi.stubGlobal("showSaveFilePicker", vi.fn().mockRejectedValue(new Error("picker unavailable")));
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.objects).toHaveLength(2));
   await act(async () => result.current.selectObject(objects[0].key));
@@ -132,8 +143,8 @@ it("reports picker and buffered download failures", async () => {
   await act(async () => result.current.downloadSelected());
   expect(result.current.state).toEqual({ state: "error", error: "picker unavailable", message: "" });
 
-  delete window.showSaveFilePicker;
-  runGuardedConnectorAction.mockImplementation(async ({ actionName, input }) => {
+  Reflect.deleteProperty(window, "showSaveFilePicker");
+  mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
     if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
     if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
     if (actionName === "download_object") {
@@ -141,7 +152,7 @@ it("reports picker and buffered download failures", async () => {
     }
     return null;
   });
-  saveBlob.mockRejectedValueOnce(new Error("local save failed"));
+  mockedSaveBlob.mockRejectedValueOnce(new Error("local save failed"));
   await act(async () => result.current.downloadSelected());
 
   expect(result.current.state).toEqual({ state: "error", error: "local save failed", message: "" });
@@ -198,7 +209,9 @@ it("rejects oversized S3 files before reading or dispatching them", async () => 
   );
   act(() => {
     result.current.openUploadDialog();
-    result.current.addUploadFiles([{ name: "large.bin", size: (16 << 20) + 1, lastModified: 1, type: "application/octet-stream" }]);
+    const largeFile = new File(["x"], "large.bin", { type: "application/octet-stream" });
+    Object.defineProperty(largeFile, "size", { value: (16 << 20) + 1 });
+    result.current.addUploadFiles([largeFile]);
   });
 
   await act(async () => result.current.uploadObjects({ preventDefault: vi.fn() }));
@@ -318,7 +331,9 @@ it("aborts file preparation before an old S3 target can dispatch an upload", asy
   class PendingFileReader {
     static EMPTY = 0;
     static LOADING = 1;
-    static instances = [];
+    static instances: PendingFileReader[] = [];
+    readyState: number;
+    onabort?: () => void;
 
     constructor() {
       this.readyState = PendingFileReader.EMPTY;
@@ -356,7 +371,7 @@ it("aborts file preparation before an old S3 target can dispatch an upload", asy
     });
   });
 
-  let upload;
+  let upload: Promise<void> = Promise.resolve();
   act(() => {
     upload = result.current.uploadObjects({ preventDefault: vi.fn() });
   });
@@ -369,11 +384,11 @@ it("aborts file preparation before an old S3 target can dispatch an upload", asy
 });
 
 it("keeps metadata empty when selection is cleared before detail completes", async () => {
-  let resolveMetadata;
-  const metadata = new Promise((resolve) => {
+  let resolveMetadata: (_value: { content_type: string }) => void = () => {};
+  const metadata = new Promise<{ content_type: string }>((resolve) => {
     resolveMetadata = resolve;
   });
-  runGuardedConnectorAction.mockImplementation(async ({ actionName, input, requestGuard, channel }) => {
+  mockedRunAction.mockImplementation(async ({ actionName, input, requestGuard, channel }: MockAction) => {
     if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
     const request = requestGuard.begin(channel);
     const item = await metadata;
@@ -384,7 +399,7 @@ it("keeps metadata empty when selection is cleared before detail completes", asy
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.objects).toHaveLength(2));
 
-  let selection;
+  let selection: Promise<void> = Promise.resolve();
   act(() => {
     selection = result.current.selectObject(objects[0].key);
   });
@@ -484,9 +499,9 @@ it("retains pending approval feedback and action failures inside the S3 confirma
 });
 
 it("does not dismiss a destructive confirmation during a running S3 request", async () => {
-  let resolveAction;
+  let resolveAction: (_value: null) => void = () => {};
   const runAction = vi.fn().mockReturnValue(
-    new Promise((resolve) => {
+    new Promise<null>((resolve) => {
       resolveAction = resolve;
     }),
   );
@@ -500,7 +515,7 @@ it("does not dismiss a destructive confirmation during a running S3 request", as
     }),
   );
   act(() => result.current.requestDelete());
-  let request;
+  let request: Promise<void> = Promise.resolve();
   act(() => {
     request = result.current.confirmPendingAction();
   });
