@@ -1,4 +1,4 @@
-export function connectorPermissionFixture(overrides = {}) {
+export function connectorPermissionFixture(overrides: Record<string, unknown> = {}) {
   return {
     project_id: 3,
     project_name: "My Project",
@@ -19,6 +19,6 @@ export function connectorPermissionFixture(overrides = {}) {
   };
 }
 
-export function connectorPermissionSnapshot(items, revision) {
+export function connectorPermissionSnapshot(items: unknown[], revision: string) {
   return { items, revision };
 }

@@ -87,6 +87,7 @@ export const riskCoverageTestIncludes = [
   "src/pages/unlock.component.test.jsx",
   "src/pages/remote-restore-panel.component.test.jsx",
   "src/pages/remote-restore-helpers.component.test.ts",
+  "src/lib/connector-permissions.component.test.ts",
   "src/components/transfer-center.component.test.jsx",
   "src/components/file-transfer/use-transfer-center-state.component.test.jsx",
   "src/components/file-transfer/file-transfer-actions.component.test.ts",

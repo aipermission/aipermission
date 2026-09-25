@@ -1,7 +1,20 @@
 import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { serverProductLabel } from "./model";
 
-export function RedisEndpointFooter({ target, borderClass, mutedClass }) {
+type RedisTarget = {
+  ref: string;
+  config?: { host?: string; port?: number; database?: number; server_family?: string };
+};
+
+export function RedisEndpointFooter({
+  target,
+  borderClass,
+  mutedClass,
+}: {
+  target: RedisTarget;
+  borderClass?: string;
+  mutedClass?: string;
+}) {
   return (
     <ConnectorEndpointFooter
       leading={target.ref}
