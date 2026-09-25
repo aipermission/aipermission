@@ -5,10 +5,10 @@ export function createRequestGuard(initialScope = "") {
   let lifecycle = 0;
   let scope = initialScope;
   let visibilityVersion = 0;
-  const versions = new Map();
-  const controllers = new Map();
+  const versions = new Map<string, number>();
+  const controllers = new Map<string, AbortController>();
 
-  function abortChannel(channel) {
+  function abortChannel(channel: string) {
     controllers.get(channel)?.abort();
     controllers.delete(channel);
   }
@@ -22,7 +22,7 @@ export function createRequestGuard(initialScope = "") {
     activate() {
       active = true;
     },
-    setScope(nextScope) {
+    setScope(nextScope: string) {
       if (scope === nextScope) return;
       abortAll();
       scope = nextScope;
@@ -41,7 +41,7 @@ export function createRequestGuard(initialScope = "") {
         },
       };
     },
-    begin(channel) {
+    begin(channel: string) {
       abortChannel(channel);
       const requestLifecycle = lifecycle;
       const requestScope = scope;
@@ -65,7 +65,7 @@ export function createRequestGuard(initialScope = "") {
         },
       };
     },
-    invalidate(channel) {
+    invalidate(channel: string) {
       abortChannel(channel);
       versions.set(channel, (versions.get(channel) || 0) + 1);
     },
@@ -79,8 +79,8 @@ export function createRequestGuard(initialScope = "") {
   };
 }
 
-export function useRequestGuard(scope) {
-  const guardRef = useRef(null);
+export function useRequestGuard(scope: string) {
+  const guardRef = useRef<ReturnType<typeof createRequestGuard> | null>(null);
   if (!guardRef.current) guardRef.current = createRequestGuard(scope);
   const guard = guardRef.current;
 
