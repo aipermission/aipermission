@@ -18,6 +18,7 @@ import { useRequestGuard } from "../../lib/request-guard";
 import { inferPermissionMode, tokenProfileModeKey } from "./connector-token-permission-model";
 import { isActiveToken } from "../../lib/token-status";
 import { useTokenExpiryClock } from "../../lib/use-token-expiry-clock";
+import { tokenProjectScopes } from "../../lib/gateway-contracts/security-contracts";
 
 export function useConnectorTokenPermissionState({
   connectorPermissionState,
@@ -125,8 +126,9 @@ export function useConnectorTokenPermissionState({
         try {
           const result = await apiGet(`/api/tokens/${token.id}/project-scopes`, { signal: request.signal });
           if (!request.isCurrent()) return;
-          setProjectScopesByToken((current) => ({ ...current, [token.id]: result.items || [] }));
-          setProjectScopeRevisionByToken((current) => ({ ...current, [token.id]: result.revision || "" }));
+          const items = tokenProjectScopes(result);
+          setProjectScopesByToken((current) => ({ ...current, [token.id]: items }));
+          setProjectScopeRevisionByToken((current) => ({ ...current, [token.id]: result.revision }));
           setProjectScopeStateByToken((current) => ({ ...current, [token.id]: "ready" }));
         } catch (error) {
           if (!request.isCurrent()) return;
@@ -139,14 +141,12 @@ export function useConnectorTokenPermissionState({
     ]);
   }
 
-  function projectEnabledForToken(tokenID) {
-    const scope = (projectScopesByToken[tokenID] || []).find((item) => Number(item.project_id) === Number(selectedTarget?.project_id));
-    return scope ? Boolean(scope.enabled) : false;
-  }
+  const projectEnabledForToken = (tokenID) =>
+    (projectScopesByToken[tokenID] || []).some(
+      (item) => Number(item.project_id) === Number(selectedTarget?.project_id) && Boolean(item.enabled),
+    );
 
-  function projectScopeReadyForToken(tokenID) {
-    return projectScopeStateByToken[tokenID] === "ready";
-  }
+  const projectScopeReadyForToken = (tokenID) => projectScopeStateByToken[tokenID] === "ready";
 
   async function setProjectVisibility(token, enabled) {
     if (!selectedTarget?.project_id || !projectScopeReadyForToken(token.id)) return;
