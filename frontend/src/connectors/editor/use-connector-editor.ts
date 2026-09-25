@@ -2,6 +2,37 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./editor-support";
 
+type ConnectorForm = { connector_kind: string; project_id?: string | number; [field: string]: unknown };
+type Target = {
+  id: number;
+  connector_kind: string;
+  project_id?: string | number;
+  profiles?: readonly unknown[];
+  [field: string]: unknown;
+};
+type Operation = { open?: boolean; connector_kind?: string; kind?: string; [field: string]: unknown };
+type Model = {
+  syncForm?: (_context: { form: ConnectorForm; firstCredentialID: string | number | null }) => ConnectorForm | null;
+  formFromTarget?: (_context: { target: Target; profile: Record<string, unknown> | null | undefined }) => ConnectorForm;
+  save?: (_context: { mode: "create" | "edit"; form: ConnectorForm; target: Target | null }) => void | Promise<unknown>;
+  operationFromError?: (
+    _error: unknown,
+    _context: { mode: "create" | "edit"; form: ConnectorForm; target: Target | null },
+  ) => Operation | null;
+  deleteTarget?: (_context: { target: Target; removeKey: boolean }) => void | Promise<unknown>;
+};
+type Props = {
+  defaultKind: string;
+  firstCredentialID: string | number | null;
+  defaultProjectID: string | number;
+  emptyFormForKind: (_kind: string, _context?: { firstCredentialID: string | number | null }) => ConnectorForm;
+  modelForKind: (_kind: string) => Model | null;
+  onRefresh?: () => void | Promise<void>;
+  onOperation?: (_operation: Operation) => boolean | void;
+};
+type Drawer = { open: boolean; mode: "create" | "edit"; kind: string; target: Target | null };
+type DeleteDialog = { open: boolean; target: Target | null };
+
 export function useConnectorEditor({
   defaultKind,
   firstCredentialID,
@@ -10,13 +41,13 @@ export function useConnectorEditor({
   modelForKind,
   onRefresh,
   onOperation,
-}) {
-  const [drawer, setDrawer] = useState({ open: false, mode: "create", kind: defaultKind, target: null });
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, target: null });
-  const deleteOwnerRef = useRef({ generation: 0, targetID: null });
-  const [form, setForm] = useState(() => emptyFormForKind(defaultKind));
+}: Props) {
+  const [drawer, setDrawer] = useState<Drawer>({ open: false, mode: "create", kind: defaultKind, target: null });
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({ open: false, target: null });
+  const deleteOwnerRef = useRef<{ generation: number; targetID: number | null }>({ generation: 0, targetID: null });
+  const [form, setForm] = useState<ConnectorForm>(() => emptyFormForKind(defaultKind));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
-  const pendingSaveRef = useRef(null);
+  const pendingSaveRef = useRef<symbol | null>(null);
   const editorEpochRef = useRef(0);
   const editorEpoch = editorEpochRef.current;
   const syncCredentialForEffect = useEffectEvent(() => {
@@ -28,11 +59,11 @@ export function useConnectorEditor({
     syncCredentialForEffect();
   }, [firstCredentialID]);
 
-  function resetForm(kind = defaultKind) {
+  function resetForm(kind: string = defaultKind) {
     setForm({ ...emptyFormForKind(kind, { firstCredentialID }), project_id: defaultProjectID });
   }
 
-  function openCreate(kind = defaultKind) {
+  function openCreate(kind: string = defaultKind) {
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
@@ -40,7 +71,7 @@ export function useConnectorEditor({
     setDrawer({ open: true, mode: "create", kind, target: null });
   }
 
-  function openEdit(target, profile) {
+  function openEdit(target: Target, profile: Record<string, unknown> | null | undefined) {
     const model = modelForKind(target.connector_kind);
     if (!model?.formFromTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(target.connector_kind), message: null });
@@ -66,7 +97,7 @@ export function useConnectorEditor({
     resetAction();
   }
 
-  function selectKind(kind) {
+  function selectKind(kind: string) {
     if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     editorEpochRef.current += 1;
     resetAction();
@@ -74,16 +105,17 @@ export function useConnectorEditor({
     setDrawer((current) => ({ ...current, kind }));
   }
 
-  function updateField(field, value) {
+  function updateField(field: string, value: unknown) {
     if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function save(event) {
+  async function save(event?: { preventDefault?: () => void } | null) {
     event?.preventDefault?.();
     if (pendingSaveRef.current !== null) return false;
     const model = modelForKind(form.connector_kind);
-    if (!model?.save) {
+    const saveTarget = model?.save;
+    if (!saveTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(form.connector_kind), message: null });
       return false;
     }
@@ -95,7 +127,7 @@ export function useConnectorEditor({
         pending: "saving",
         successMessage: message,
         action: async () => {
-          await model.save({ mode: drawer.mode, form, target: drawer.target });
+          await saveTarget.call(model, { mode: drawer.mode, form, target: drawer.target });
           return true;
         },
         onError: (error) => {
@@ -115,7 +147,7 @@ export function useConnectorEditor({
     }
   }
 
-  function requestDelete(target) {
+  function requestDelete(target: Target) {
     resetAction();
     deleteOwnerRef.current = {
       generation: deleteOwnerRef.current.generation + 1,
@@ -133,12 +165,13 @@ export function useConnectorEditor({
     setDeleteDialog({ open: false, target: null });
   }
 
-  async function remove(removeKey) {
+  async function remove(removeKey: boolean) {
     const target = deleteDialog.target;
     if (!target) return false;
     const owner = { ...deleteOwnerRef.current };
     const model = modelForKind(target.connector_kind);
-    if (!model?.deleteTarget) {
+    const deleteTarget = model?.deleteTarget;
+    if (!deleteTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(target.connector_kind), message: null });
       return false;
     }
@@ -147,7 +180,7 @@ export function useConnectorEditor({
       pending: "deleting",
       successMessage: message,
       action: async () => {
-        await model.deleteTarget({ target, removeKey });
+        await deleteTarget.call(model, { target, removeKey });
         return true;
       },
     });
@@ -159,7 +192,7 @@ export function useConnectorEditor({
     return true;
   }
 
-  function completeOperation(result, operation) {
+  function completeOperation(result: { message?: string } | null, operation: Operation | null) {
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     const kind = operation?.connector_kind || operation?.kind || form.connector_kind;
