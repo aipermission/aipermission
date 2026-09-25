@@ -145,7 +145,20 @@ test.beforeEach(async ({ page }) => {
         permissions: [{ target_id: 1, profile_id: 1, action_name: "exec", execution_rule: "approval_required" }],
         expected_revision: connectorPermissionRevision,
       });
-      connectorPermissions = body.permissions || [];
+      connectorPermissions = body.permissions.map((permission) => ({
+        project_id: 1,
+        project_name: "Ungrouped",
+        project_slug: "ungrouped",
+        project_enabled: true,
+        target_name: "worker-1",
+        profile_label: "main",
+        target_ref: "ssh:1:1",
+        connector_kind: "ssh",
+        profile_kind: "private_key",
+        created_at: "2026-05-31T00:00:00Z",
+        updated_at: "2026-05-31T00:00:00Z",
+        ...permission,
+      }));
       connectorPermissionRevision = "connector-permissions-2";
       await route.fulfill({ json: { items: connectorPermissions, revision: connectorPermissionRevision } });
       return;

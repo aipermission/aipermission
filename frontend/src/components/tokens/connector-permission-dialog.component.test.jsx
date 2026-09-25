@@ -84,6 +84,24 @@ describe("ConnectorPermissionDialog", () => {
     expect(screen.queryByText("Connector permissions saved.")).not.toBeInTheDocument();
   });
 
+  it("does not report success for a malformed permission save response", async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connector-targets/inventory") return inventory;
+      if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    apiPut.mockResolvedValueOnce({ items: [{ action_name: "exec" }], revision: "permissions-r3" });
+
+    render(<ConnectorPermissionDialog token={{ id: 2, name: "second" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByText("My Server");
+    await user.click(screen.getByRole("button", { name: "Save connector permissions" }));
+
+    expect(await screen.findByText("Invalid token permission response from gateway.")).toBeInTheDocument();
+    expect(screen.queryByText("Connector permissions saved.")).not.toBeInTheDocument();
+  });
+
   it("rejects malformed permission data and keeps saving disabled", async () => {
     apiGet.mockImplementation(async (path) => {
       if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
