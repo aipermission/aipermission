@@ -1,14 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { failedResource, pollReadOptions } from "../../lib/async-resource";
+import { errorMessage } from "../../lib/errors";
 import { useRequestGuard } from "../../lib/request-guard";
-import { consoleSessions } from "../../lib/gateway-contracts/security-contracts";
+import { consoleSessions, type ConsoleSession } from "../../lib/gateway-contracts/security-contracts";
 import { mergeConsoleSessionData } from "../app-shell-runtime";
 import { isLiveConsoleSession, latestSessionForRuntime } from "./helpers";
 import { useConsoleConnections } from "./use-console-connections";
 
-const initialSessions = { state: "loading", data: [], error: null };
-const initialVaultDialog = {
+type Runtime = { id: number; name: string };
+type Session = ConsoleSession & { runtime_id?: number; status?: string; name?: string };
+type SessionOptions = {
+  name?: string;
+  closeExisting?: boolean;
+  params?: Record<string, unknown>;
+  vaultItems?: readonly Record<string, unknown>[];
+  deferActivation?: boolean;
+};
+type VaultOptions = { supported: boolean; items?: unknown[]; defaults?: unknown[]; projects?: unknown[]; target_project_id?: number };
+type VaultDialog = {
+  open: boolean;
+  status: string;
+  runtime: Runtime | null;
+  options: VaultOptions | null;
+  sessionOptions: SessionOptions | null;
+  error: string | null;
+};
+type Resource<T> = { state: string; data: T[]; error: string | null };
+type Request = ReturnType<ReturnType<typeof useRequestGuard>["begin"]>;
+
+const initialSessions: Resource<Session> = { state: "loading", data: [], error: null };
+const initialVaultDialog: VaultDialog = {
   open: false,
   status: "idle",
   runtime: null,
@@ -17,22 +39,22 @@ const initialVaultDialog = {
   error: null,
 };
 
-export function useConsoleSessionCoordinator({ pollIsCurrent }) {
-  const [sessions, setSessions] = useState(initialSessions);
-  const [vaultDialog, setVaultDialog] = useState(initialVaultDialog);
-  const vaultResolverRef = useRef(null);
+export function useConsoleSessionCoordinator({ pollIsCurrent }: { pollIsCurrent: (_generation: number | undefined) => boolean }) {
+  const [sessions, setSessions] = useState<Resource<Session>>(initialSessions);
+  const [vaultDialog, setVaultDialog] = useState<VaultDialog>(initialVaultDialog);
+  const vaultResolverRef = useRef<{ resolve: (_session: Session | null) => void } | null>(null);
   const requests = useRequestGuard("console-sessions");
   const { attachSession, closeSession, disconnectAll, disconnectSessions, resizeSession, sendInput } = useConsoleConnections({
     setConsoleSessions: setSessions,
   });
 
   const loadSessions = useCallback(
-    async (generation) => {
+    async (generation?: number) => {
       const request = requests.begin("load");
       try {
         const data = await apiGet("/api/console/sessions", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        const verified = consoleSessions(data);
+        const verified = consoleSessions(data) as Session[];
         setSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(verified, current.data), error: null }));
         verified.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachSession(session.id));
       } catch (error) {
@@ -45,7 +67,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
     [attachSession, pollIsCurrent, requests],
   );
 
-  const upsertSession = useCallback((session) => {
+  const upsertSession = useCallback((session: Session) => {
     setSessions((current) => {
       const index = current.data.findIndex((item) => Number(item.id) === Number(session.id));
       const data = [...current.data];
@@ -56,7 +78,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   }, []);
 
   const activateSession = useCallback(
-    (session, request) => {
+    (session: Session, request?: Request) => {
       if (request && !request.isCurrent()) return;
       upsertSession(session);
       window.setTimeout(() => {
@@ -67,8 +89,8 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   );
 
   const createSession = useCallback(
-    async (runtime, options = {}, request) => {
-      const session = await apiPost(
+    async (runtime: Runtime, options: SessionOptions = {}, request?: Request): Promise<Session | null> => {
+      const response = await apiPost(
         "/api/console/sessions",
         {
           runtime_id: runtime.id,
@@ -80,6 +102,10 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
         request ? { signal: request.signal } : undefined,
       );
       if (request && !request.isCurrent()) return null;
+      const session = consoleSessions([response])[0] as Session;
+      if (!Number.isSafeInteger(session.runtime_id) || session.runtime_id !== runtime.id) {
+        throw new Error("Console session runtime does not match the requested runtime.");
+      }
       if (!options.deferActivation) activateSession(session, request);
       return session;
     },
@@ -87,7 +113,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   );
 
   const newSession = useCallback(
-    async (runtime, options = {}) => {
+    async (runtime: Runtime, options: SessionOptions = {}): Promise<Session | null> => {
       const request = requests.begin("new-session");
       requests.invalidate("vault-start");
       const previous = vaultResolverRef.current;
@@ -96,7 +122,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
       setVaultDialog(initialVaultDialog);
       try {
         if (options.vaultItems !== undefined) return await createSession(runtime, options, request);
-        let vaultOptions;
+        let vaultOptions: VaultOptions;
         try {
           vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(runtime.id)}`, {
             signal: request.signal,
@@ -108,7 +134,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
         }
         if (!request.isCurrent()) return null;
         if (vaultOptions.supported && ((vaultOptions.items || []).length > 0 || (vaultOptions.defaults || []).length > 0)) {
-          return await new Promise((resolve) => {
+          return await new Promise<Session | null>((resolve) => {
             vaultResolverRef.current = { resolve };
             setVaultDialog({
               open: true,
@@ -129,7 +155,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   );
 
   const ensureSession = useCallback(
-    async (runtime) => {
+    async (runtime: Runtime) => {
       const current = latestSessionForRuntime(sessions.data, runtime.id);
       if (!current) return newSession(runtime);
       if (isLiveConsoleSession(current)) attachSession(current.id);
@@ -139,7 +165,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
   );
 
   const startVaultSession = useCallback(
-    async (vaultItems) => {
+    async (vaultItems: readonly Record<string, unknown>[]) => {
       const current = vaultDialog;
       if (!current.runtime) return;
       const resolver = vaultResolverRef.current;
@@ -164,7 +190,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
         }
       } catch (error) {
         if (!request.isCurrent()) return;
-        setVaultDialog((value) => ({ ...value, status: "error", error: error.message }));
+        setVaultDialog((value) => ({ ...value, status: "error", error: errorMessage(error, "Console session could not be started.") }));
       } finally {
         request.complete();
       }
@@ -181,10 +207,10 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }) {
     setVaultDialog(initialVaultDialog);
   }, [requests]);
 
-  const cancelCommand = useCallback((sessionID) => sendInput(sessionID, "\u0003"), [sendInput]);
+  const cancelCommand = useCallback((sessionID: number) => sendInput(sessionID, "\u0003"), [sendInput]);
 
   const restartRuntime = useCallback(
-    async (runtimeID) => {
+    async (runtimeID: number) => {
       const affected = sessions.data.filter((session) => Number(session.runtime_id) === Number(runtimeID));
       disconnectSessions(affected.map((session) => session.id));
       const result = await apiPost(`/api/console/runtime-surfaces/${runtimeID}/restart`, {});
