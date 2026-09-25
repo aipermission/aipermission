@@ -22,7 +22,7 @@ test("treats production modules as owners by default", () => {
     "src/lib/mcp-client-catalog.js",
     "src/pages/history.component.test.jsx",
     "src/lib/smoke/app-smoke-fixtures.test.js",
-    "src/test/setup.js",
+    "src/test/setup.ts",
   ];
 
   owners.forEach((file) => assert.equal(isBehaviorOwner(file), true, file));

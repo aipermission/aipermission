@@ -68,7 +68,7 @@ export const asyncStateOwnerTests = {
   "src/lib/api.js": ["src/lib/gateway-contracts/api-transport.component.test.jsx"],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.js"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.jsx"],
-  "src/lib/load-project-options.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
+  "src/lib/load-project-options.ts": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
   "src/lib/use-connector-permissions.ts": ["src/lib/use-connector-permissions.component.test.jsx"],
   "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
   "src/pages/projects.jsx": ["src/pages/projects.component.test.jsx"],

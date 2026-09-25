@@ -20,7 +20,7 @@ export default defineConfig({
     fileParallelism: false,
     maxWorkers: 1,
     sequence: { sequencer: LexicalSequencer },
-    setupFiles: ["./src/test/setup.js"],
+    setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     unstubGlobals: true,
     coverage: {

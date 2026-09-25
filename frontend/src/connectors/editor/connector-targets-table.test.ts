@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectorTargetGroups } from "./connector-target-groups.js";
+import { connectorTargetGroups } from "./connector-target-groups.ts";
 
 test("connector target grouping remains project-scoped and searches profiles", () => {
   const projects = [

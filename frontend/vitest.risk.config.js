@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: riskCoverageTestIncludes,
-    setupFiles: ["./src/test/setup.js"],
+    setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     unstubGlobals: true,
     coverage: {

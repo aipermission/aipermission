@@ -1,5 +1,5 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.js";
+import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
 
 export function createDatabaseConnectorModel(config) {
   const {
