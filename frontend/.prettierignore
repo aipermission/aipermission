@@ -6,3 +6,4 @@ playwright-report
 test-results
 .jscpd
 src/lib/release.generated.json
+types/generated-openapi.d.ts
