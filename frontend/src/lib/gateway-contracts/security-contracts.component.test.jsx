@@ -5,6 +5,7 @@ import {
   connectorApprovals,
   consoleSessions,
   tokenActionPermissions,
+  tokenProjectScopes,
   vaultApproval as parseVaultApproval,
   vaultApprovals,
 } from "./security-contracts";
@@ -54,6 +55,9 @@ describe("typed untrusted gateway contracts", () => {
   });
 
   it("fails closed on malformed token permission and approval entries", () => {
+    expect(() => tokenProjectScopes(null)).toThrow(/Invalid project scopes/);
+    expect(() => tokenProjectScopes({ revision: "r1", items: null })).toThrow(/Invalid project scopes/);
+    expect(() => tokenProjectScopes({ revision: "", items: [] })).toThrow(/Invalid project scope/);
     expect(() => tokenActionPermissions({ items: null })).toThrow(/Invalid token/);
     expect(() => tokenActionPermissions({ items: [{ target_id: 1, profile_id: 2, action_name: "exec" }] })).toThrow(/Invalid token/);
     expect(() => connectorApprovals([{ id: 1, status: "approval_pending" }])).toThrow(/Invalid connector/);
@@ -67,11 +71,17 @@ describe("typed untrusted gateway contracts", () => {
     expect(() =>
       parseVaultApproval(vaultApproval({ status: "completed", approval_context_hash: "" }), { id: 2, statuses: ["completed"] }),
     ).toThrow(/Invalid Vault/);
-    expect(() =>
-      tokenActionPermissions({ items: [{ target_id: 1, profile_id: 2, action_name: "exec", execution_rule: "future_rule" }] }),
-    ).toThrow(/Invalid token/);
+    expect(() => tokenActionPermissions({ revision: "r1", items: [permission({ execution_rule: "future_rule" })] })).toThrow(
+      /Invalid token/,
+    );
+    expect(() => tokenActionPermissions({ revision: "r1", items: [permission({ project_enabled: "true" })] })).toThrow(/Invalid token/);
+    expect(tokenActionPermissions({ revision: "r1", items: [permission()] })).toHaveLength(1);
+    expect(() => tokenProjectScopes({ revision: "r1", items: [{ project_id: 1, enabled: "true" }] })).toThrow(/Invalid project scope/);
     expect(
-      tokenActionPermissions({ items: [{ target_id: 1, profile_id: 2, action_name: "exec", execution_rule: "approval_required" }] }),
+      tokenProjectScopes({
+        revision: "r1",
+        items: [{ project_id: 1, project_name: "My Project", project_slug: "my-project", enabled: true }],
+      }),
     ).toHaveLength(1);
   });
 
@@ -246,6 +256,27 @@ describe("typed untrusted gateway contracts", () => {
     expect(consoleSessions([{ id: 1, status: "active" }])).toHaveLength(1);
   });
 });
+
+function permission(overrides = {}) {
+  return {
+    project_id: 1,
+    project_name: "My Project",
+    project_slug: "my-project",
+    project_enabled: true,
+    target_id: 2,
+    target_name: "Fixture",
+    profile_id: 3,
+    profile_label: "default",
+    target_ref: "fixture:2:3",
+    connector_kind: "fixture",
+    profile_kind: "default",
+    action_name: "read",
+    execution_rule: "approval_required",
+    created_at: "2026-09-16T00:00:00Z",
+    updated_at: "2026-09-16T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function connectorApproval(overrides = {}) {
   return {

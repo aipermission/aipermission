@@ -2437,6 +2437,45 @@ export interface components {
             updated_at: string;
             vault_session_supported: boolean;
         };
+        ConnectorPermission: {
+            action_name: string;
+            connector_kind: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @enum {string} */
+            execution_rule: "always_run" | "approval_required" | "blocked";
+            expires_at?: string;
+            /** Format: int64 */
+            profile_id: number;
+            profile_kind: string;
+            profile_label: string;
+            project_enabled: boolean;
+            /** Format: int64 */
+            project_id: number;
+            project_name: string;
+            project_slug: string;
+            /** Format: int64 */
+            target_id: number;
+            target_name: string;
+            target_ref: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ConnectorPermissionInput: {
+            action_name: string;
+            /** @enum {string} */
+            execution_rule: "always_run" | "approval_required" | "blocked";
+            expires_at?: string;
+            /** Format: int64 */
+            profile_id: number;
+            /** Format: int64 */
+            target_id: number;
+        };
+        ConnectorPermissionsResponse: {
+            changed?: boolean;
+            items: components["schemas"]["ConnectorPermission"][];
+            revision: string;
+        };
         ConnectorTarget: {
             config?: {
                 [key: string]: unknown;
@@ -2667,6 +2706,26 @@ export interface components {
             transfer_runtime_id?: number;
             /** Format: date-time */
             updated_at: string;
+        };
+        TokenProjectScope: {
+            enabled: boolean;
+            /** Format: int64 */
+            project_id: number;
+            project_name: string;
+            project_slug: string;
+        };
+        TokenProjectScopesResponse: {
+            changed?: boolean;
+            items: components["schemas"]["TokenProjectScope"][];
+            revision: string;
+        };
+        UpdateConnectorPermissionsRequest: {
+            expected_revision: string;
+            permissions: components["schemas"]["ConnectorPermissionInput"][];
+        };
+        UpdateTokenProjectScopesRequest: {
+            enabled_project_ids: number[];
+            expected_revision: string;
         };
         VaultActionOutput: components["schemas"]["VaultGeneratedOutput"] | components["schemas"]["VaultSessionOutput"];
         VaultActionRequest: {
@@ -6303,6 +6362,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorPermissionsResponse"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {
@@ -6326,8 +6394,48 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateConnectorPermissionsRequest"];
+            };
+        };
         responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorPermissionsResponse"];
+                };
+            };
+            /** @description Documented error response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {
@@ -6397,6 +6505,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenProjectScopesResponse"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {
@@ -6420,8 +6537,48 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTokenProjectScopesRequest"];
+            };
+        };
         responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenProjectScopesResponse"];
+                };
+            };
+            /** @description Documented error response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {

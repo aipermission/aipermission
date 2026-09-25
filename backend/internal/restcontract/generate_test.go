@@ -496,6 +496,22 @@ func TestValidateTypedResponseRejectsShapeAndStatusDrift(t *testing.T) {
 	}
 }
 
+func TestValidateTypedResponseRejectsPermissionAndScopeDrift(t *testing.T) {
+	for _, test := range []struct {
+		name, path, body string
+	}{
+		{"permission without revision", "/api/tokens/{id}/connector-permissions", `{"items":[]}`},
+		{"permission with unknown rule", "/api/tokens/{id}/connector-permissions", `{"items":[{"action_name":"exec","execution_rule":"future"}],"revision":"r1"}`},
+		{"scope without enabled flag", "/api/tokens/{id}/project-scopes", `{"items":[{"project_id":1,"project_name":"My Project","project_slug":"my-project"}],"revision":"r1"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateTypedResponse("GET", test.path, 200, []byte(test.body)); err == nil {
+				t.Fatal("invalid response should violate the typed contract")
+			}
+		})
+	}
+}
+
 func TestValidateTypedResponseAcceptsDocumentedApprovalFailures(t *testing.T) {
 	conflict := []byte(`{"error":"connector action request is no longer pending"}`)
 	if err := ValidateTypedResponse("POST", "/api/connector-action-approvals/{id}/run", 409, conflict); err != nil {
