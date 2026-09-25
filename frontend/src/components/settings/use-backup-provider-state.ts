@@ -1,44 +1,61 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { useBackupRecordState } from "./use-backup-record-state";
+import {
+  backupItems,
+  isBackupCatalogItem,
+  isBackupProvider,
+  type BackupCatalogItem,
+  type BackupProvider,
+  type LoadState,
+} from "./backup-contracts";
 
 export { suggestedRestoreDatabaseName } from "./use-backup-record-state";
 
 const emptyState = { state: "idle", error: null, message: null };
 
-export function useBackupProviderState(database) {
+type DatabaseState = { data?: { database_name?: string } | null };
+type BackupProviderForm = { provider_type: string; name: string; base_url: string; token: string };
+type ProviderPayload = { provider_type: string; name: string; public: { base_url: string }; secret?: { token: string } };
+
+export function useBackupProviderState(database: DatabaseState) {
   const { actionState: backupState, runAction: runBackupAction } = useAsyncAction(emptyState);
   const {
     actionState: backupProviderState,
     runAction: runBackupProviderAction,
     resetAction: resetBackupProviderAction,
   } = useAsyncAction(emptyState);
-  const [backupProviderCatalog, setBackupProviderCatalog] = useState({ state: "loading", data: [], error: null });
-  const [backupProviders, setBackupProviders] = useState({ state: "loading", data: [], error: null });
+  const [backupProviderCatalog, setBackupProviderCatalog] = useState<LoadState<BackupCatalogItem>>({
+    state: "loading",
+    data: [],
+    error: null,
+  });
+  const [backupProviders, setBackupProviders] = useState<LoadState<BackupProvider>>({ state: "loading", data: [], error: null });
   const [backupProviderDialogOpen, setBackupProviderDialogOpen] = useState(false);
-  const [backupProviderArchiveTarget, setBackupProviderArchiveTarget] = useState(null);
-  const [backupProviderEditingID, setBackupProviderEditingID] = useState(null);
-  const [backupEnableTarget, setBackupEnableTarget] = useState(null);
+  const [backupProviderArchiveTarget, setBackupProviderArchiveTarget] = useState<BackupProvider | null>(null);
+  const [backupProviderEditingID, setBackupProviderEditingID] = useState<number | null>(null);
+  const [backupEnableTarget, setBackupEnableTarget] = useState<BackupProvider | null>(null);
   const [backupEnablePassword, setBackupEnablePassword] = useState("");
-  const [backupUploadTarget, setBackupUploadTarget] = useState(null);
-  const [backupProviderForm, setBackupProviderForm] = useState(emptyBackupProviderForm);
+  const [backupUploadTarget, setBackupUploadTarget] = useState<BackupProvider | null>(null);
+  const [backupProviderForm, setBackupProviderForm] = useState<BackupProviderForm>(emptyBackupProviderForm);
 
   async function loadBackupProviderCatalog() {
     try {
       const data = await apiGet("/api/backup/providers/catalog");
-      setBackupProviderCatalog({ state: "ready", data: data?.items || [], error: null });
+      setBackupProviderCatalog({ state: "ready", data: backupItems(data, isBackupCatalogItem), error: null });
     } catch (error) {
-      setBackupProviderCatalog({ state: "error", data: [], error: error.message });
+      setBackupProviderCatalog({ state: "error", data: [], error: errorMessage(error, "Unable to load backup catalog.") });
     }
   }
 
   async function loadBackupProviders() {
     try {
       const data = await apiGet("/api/backup/providers");
-      setBackupProviders({ state: "ready", data: data?.items || [], error: null });
+      setBackupProviders({ state: "ready", data: backupItems(data, isBackupProvider), error: null });
     } catch (error) {
-      setBackupProviders({ state: "error", data: [], error: error.message });
+      setBackupProviders({ state: "error", data: [], error: errorMessage(error, "Unable to load backup providers.") });
     }
   }
 
@@ -62,12 +79,12 @@ export function useBackupProviderState(database) {
     });
   }
 
-  function openBackupProviderDialog(provider = null) {
+  function openBackupProviderDialog(provider: BackupProvider | null = null) {
     resetBackupProviderAction();
     if (provider) {
       setBackupProviderEditingID(provider.id);
       setBackupProviderForm({
-        provider_type: provider.provider_type,
+        provider_type: provider.provider_type || "aipermission_backup",
         name: provider.name,
         base_url: provider.public?.base_url || "",
         token: "",
@@ -92,13 +109,13 @@ export function useBackupProviderState(database) {
     setBackupProviderForm(emptyBackupProviderForm());
   }
 
-  function updateBackupProviderField(field, value) {
+  function updateBackupProviderField(field: keyof BackupProviderForm, value: string) {
     setBackupProviderForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function saveBackupProvider(event) {
+  async function saveBackupProvider(event: FormEvent) {
     event.preventDefault();
-    const payload = {
+    const payload: ProviderPayload = {
       provider_type: backupProviderForm.provider_type,
       name: backupProviderForm.name,
       public: {
@@ -125,7 +142,7 @@ export function useBackupProviderState(database) {
     });
   }
 
-  async function testBackupProvider(provider) {
+  async function testBackupProvider(provider: BackupProvider) {
     await runBackupProviderAction({
       pending: `testing-${provider.id}`,
       successMessage: `${provider.name} is reachable and protocol-compatible.`,
@@ -134,7 +151,7 @@ export function useBackupProviderState(database) {
     await loadBackupProviders();
   }
 
-  async function disableBackupProvider(provider) {
+  async function disableBackupProvider(provider: BackupProvider) {
     await runBackupProviderAction({
       pending: `disabling-${provider.id}`,
       successMessage: `${provider.name} disabled.`,
@@ -143,7 +160,7 @@ export function useBackupProviderState(database) {
     await loadBackupProviders();
   }
 
-  function requestEnableBackupProvider(provider) {
+  function requestEnableBackupProvider(provider: BackupProvider) {
     resetBackupProviderAction();
     setBackupEnableTarget(provider);
     setBackupEnablePassword("");
@@ -155,7 +172,7 @@ export function useBackupProviderState(database) {
     setBackupEnablePassword("");
   }
 
-  async function enableBackupProvider(event) {
+  async function enableBackupProvider(event: FormEvent) {
     event.preventDefault();
     const provider = backupEnableTarget;
     if (!provider) return;
@@ -175,12 +192,12 @@ export function useBackupProviderState(database) {
     setBackupProviderArchiveTarget(null);
   }
 
-  function requestArchiveBackupProvider(provider) {
+  function requestArchiveBackupProvider(provider: BackupProvider) {
     resetBackupProviderAction();
     setBackupProviderArchiveTarget(provider);
   }
 
-  async function archiveBackupProvider(event) {
+  async function archiveBackupProvider(event: FormEvent) {
     event.preventDefault();
     const provider = backupProviderArchiveTarget;
     if (!provider) return;
@@ -195,7 +212,7 @@ export function useBackupProviderState(database) {
     });
   }
 
-  function requestUploadBackupProvider(provider) {
+  function requestUploadBackupProvider(provider: BackupProvider) {
     resetBackupProviderAction();
     setBackupUploadTarget(provider);
   }
@@ -205,13 +222,13 @@ export function useBackupProviderState(database) {
     setBackupUploadTarget(null);
   }
 
-  async function uploadBackupProvider(event) {
+  async function uploadBackupProvider(event: FormEvent) {
     event.preventDefault();
     const provider = backupUploadTarget;
     if (!provider) return;
     await runBackupProviderAction({
       pending: `uploading-${provider.id}`,
-      successMessage: (record) => `Uploaded ${record.filename} to ${provider.name}.`,
+      successMessage: (record: { filename: string }) => `Uploaded ${record.filename} to ${provider.name}.`,
       action: async () => {
         const record = await apiPost(`/api/backup/providers/${provider.id}/upload`, {});
         setBackupUploadTarget(null);
@@ -256,7 +273,7 @@ export function useBackupProviderState(database) {
   };
 }
 
-export function backupProviderLabel(providerType, catalog) {
+export function backupProviderLabel(providerType: string, catalog: BackupCatalogItem[]) {
   return catalog.find((item) => item.provider_type === providerType)?.label || providerType;
 }
 

@@ -1,21 +1,38 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { apiDownload, apiGet, apiPost } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
+import type { AsyncActionState } from "../../lib/use-async-action";
 import { backupRecordsActionBusy, parseBackupKeepLatest } from "./backup-state";
+import { backupItems, isBackupRecord, type BackupProvider, type BackupRecord, type LoadState } from "./backup-contracts";
 
-export function useBackupRecordState({ backupProviderState, runBackupProviderAction, resetBackupProviderAction }) {
-  const [backupRecordsProvider, setBackupRecordsProvider] = useState(null);
-  const [backupRecords, setBackupRecords] = useState({ state: "idle", data: [], error: null });
-  const [backupPruneTarget, setBackupPruneTarget] = useState(null);
+type RunAction = <T>(_options: {
+  pending?: string;
+  successMessage?: string | null | ((_result: T) => string | null | undefined);
+  action: () => T | Promise<T>;
+}) => Promise<T | undefined>;
+
+type BackupRecordOptions = {
+  backupProviderState: AsyncActionState;
+  runBackupProviderAction: RunAction;
+  resetBackupProviderAction: () => void;
+};
+
+type CountResult = { deleted_count: number; keep_latest: number };
+
+export function useBackupRecordState({ backupProviderState, runBackupProviderAction, resetBackupProviderAction }: BackupRecordOptions) {
+  const [backupRecordsProvider, setBackupRecordsProvider] = useState<BackupProvider | null>(null);
+  const [backupRecords, setBackupRecords] = useState<LoadState<BackupRecord>>({ state: "idle", data: [], error: null });
+  const [backupPruneTarget, setBackupPruneTarget] = useState<BackupProvider | null>(null);
   const [backupPruneKeepLatest, setBackupPruneKeepLatest] = useState("10");
-  const [selectedBackupRecordIDs, setSelectedBackupRecordIDs] = useState([]);
-  const [backupDeleteRecords, setBackupDeleteRecords] = useState([]);
-  const [restoreRecordTarget, setRestoreRecordTarget] = useState(null);
+  const [selectedBackupRecordIDs, setSelectedBackupRecordIDs] = useState<number[]>([]);
+  const [backupDeleteRecords, setBackupDeleteRecords] = useState<BackupRecord[]>([]);
+  const [restoreRecordTarget, setRestoreRecordTarget] = useState<BackupRecord | null>(null);
   const [restoreRecordForm, setRestoreRecordForm] = useState({ database_name: "", database_password: "" });
   const backupRecordsRequest = useRef(0);
   const parsedBackupPruneKeepLatest = parseBackupKeepLatest(backupPruneKeepLatest);
   const selectedBackupRecords = backupRecords.data.filter((record) => selectedBackupRecordIDs.includes(record.id));
 
-  async function openBackupRecordsDialog(provider) {
+  async function openBackupRecordsDialog(provider: BackupProvider) {
     resetBackupProviderAction();
     const requestID = backupRecordsRequest.current + 1;
     backupRecordsRequest.current = requestID;
@@ -25,10 +42,10 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     try {
       const data = await apiGet(`/api/backup/providers/${provider.id}/records`);
       if (backupRecordsRequest.current !== requestID) return;
-      setBackupRecords({ state: "ready", data: data?.items || [], error: null });
+      setBackupRecords({ state: "ready", data: backupItems(data, isBackupRecord), error: null });
     } catch (error) {
       if (backupRecordsRequest.current !== requestID) return;
-      setBackupRecords({ state: "error", data: [], error: error.message });
+      setBackupRecords({ state: "error", data: [], error: errorMessage(error, "Unable to load backup records.") });
     }
   }
 
@@ -46,7 +63,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     if (backupRecordsProvider) await openBackupRecordsDialog(backupRecordsProvider);
   }
 
-  function toggleBackupRecordSelection(recordID) {
+  function toggleBackupRecordSelection(recordID: number) {
     setSelectedBackupRecordIDs((current) => {
       if (current.includes(recordID)) return current.filter((id) => id !== recordID);
       if (current.length >= Math.max(0, backupRecords.data.length - 1)) return current;
@@ -58,7 +75,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     setSelectedBackupRecordIDs(backupRecords.data.slice(1, 101).map((record) => record.id));
   }
 
-  function requestDeleteBackupRecords(records) {
+  function requestDeleteBackupRecords(records: BackupRecord[]) {
     if (!records.length || records.length >= backupRecords.data.length) return;
     resetBackupProviderAction();
     setBackupDeleteRecords(records);
@@ -68,11 +85,11 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     if (backupProviderState.state !== "deleting-records") setBackupDeleteRecords([]);
   }
 
-  async function deleteBackupRecords(event) {
+  async function deleteBackupRecords(event: FormEvent) {
     event.preventDefault();
     if (!backupRecordsProvider || !backupDeleteRecords.length) return;
     const provider = backupRecordsProvider;
-    const result = await runBackupProviderAction({
+    const result = await runBackupProviderAction<CountResult>({
       pending: "deleting-records",
       successMessage: (response) => `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
       action: () =>
@@ -97,12 +114,12 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     if (backupProviderState.state !== "pruning") setBackupPruneTarget(null);
   }
 
-  async function pruneBackupRecords(event) {
+  async function pruneBackupRecords(event: FormEvent) {
     event.preventDefault();
     const provider = backupPruneTarget;
     const keepLatest = parseBackupKeepLatest(backupPruneKeepLatest);
     if (!provider || keepLatest === null) return;
-    const result = await runBackupProviderAction({
+    const result = await runBackupProviderAction<CountResult>({
       pending: "pruning",
       successMessage: (response) =>
         response.deleted_count > 0
@@ -115,7 +132,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     await openBackupRecordsDialog(provider);
   }
 
-  async function downloadBackupRecord(record) {
+  async function downloadBackupRecord(record: BackupRecord) {
     if (!backupRecordsProvider) return;
     await runBackupProviderAction({
       pending: `downloading-record-${record.id}`,
@@ -129,7 +146,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     });
   }
 
-  function requestRestoreBackupRecord(record) {
+  function requestRestoreBackupRecord(record: BackupRecord) {
     resetBackupProviderAction();
     setRestoreRecordTarget(record);
     setRestoreRecordForm({ database_name: suggestedRestoreDatabaseName(record), database_password: "" });
@@ -141,7 +158,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     setRestoreRecordForm({ database_name: "", database_password: "" });
   }
 
-  async function restoreBackupRecord(event) {
+  async function restoreBackupRecord(event: FormEvent) {
     event.preventDefault();
     if (!backupRecordsProvider || !restoreRecordTarget) return;
     const record = restoreRecordTarget;
@@ -192,7 +209,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
   };
 }
 
-export function suggestedRestoreDatabaseName(record) {
+export function suggestedRestoreDatabaseName(record: BackupRecord | null | undefined) {
   const base = String(record?.database_name || record?.database_id || "restored-backup")
     .trim()
     .replace(/[^a-zA-Z0-9._-]+/g, "-")

@@ -55,13 +55,13 @@ describe("useBackupProviderState", () => {
     expect(result.current.backupState.message).toBe("Encrypted database downloaded.");
 
     await act(async () => result.current.openBackupRecordsDialog({ id: 7, name: "Remote" }));
-    await act(async () => result.current.downloadBackupRecord({ id: "record-1", filename: "remote.aipdb" }));
-    expect(apiDownload).toHaveBeenLastCalledWith("/api/backup/providers/7/records/record-1/download", "remote.aipdb", {
+    await act(async () => result.current.downloadBackupRecord({ id: 1, filename: "remote.aipdb" }));
+    expect(apiDownload).toHaveBeenLastCalledWith("/api/backup/providers/7/records/1/download", "remote.aipdb", {
       picker: true,
       requireStreaming: true,
     });
     expect(result.current.backupProviderState).toEqual({ state: "idle", error: null, message: null });
-    await act(async () => result.current.downloadBackupRecord({ id: "record-1", filename: "remote.aipdb" }));
+    await act(async () => result.current.downloadBackupRecord({ id: 1, filename: "remote.aipdb" }));
     expect(result.current.backupProviderState.message).toBe("Downloaded remote.aipdb.");
   });
 
@@ -107,11 +107,27 @@ describe("useBackupProviderState", () => {
 
     act(() => void result.current.openBackupRecordsDialog({ id: 1, name: "Older" }));
     act(() => void result.current.openBackupRecordsDialog({ id: 2, name: "Newer" }));
-    await act(async () => newer.resolve({ items: [{ id: "newer-record" }] }));
-    await waitFor(() => expect(result.current.backupRecords.data).toEqual([{ id: "newer-record" }]));
-    await act(async () => older.resolve({ items: [{ id: "stale-record" }] }));
+    await act(async () => newer.resolve({ items: [{ id: 2 }] }));
+    await waitFor(() => expect(result.current.backupRecords.data).toEqual([{ id: 2 }]));
+    await act(async () => older.resolve({ items: [{ id: 1 }] }));
 
     expect(result.current.backupRecordsProvider.id).toBe(2);
-    expect(result.current.backupRecords.data).toEqual([{ id: "newer-record" }]);
+    expect(result.current.backupRecords.data).toEqual([{ id: 2 }]);
+  });
+
+  it("reports malformed provider and record lists instead of presenting them as empty", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/backup/providers/catalog") return { items: [] };
+      if (path === "/api/backup/providers") return { items: [{ id: "not-an-id", name: "Broken" }] };
+      if (path === "/api/backup/providers/7/records") return { items: null };
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    const { result } = renderBackupState();
+    await waitFor(() => expect(result.current.backupProviders.state).toBe("error"));
+    expect(result.current.backupProviders.error).toMatch(/Invalid backup items/);
+
+    await act(async () => result.current.openBackupRecordsDialog({ id: 7, name: "Remote" }));
+    expect(result.current.backupRecords.state).toBe("error");
+    expect(result.current.backupRecords.error).toMatch(/Invalid backup items/);
   });
 });
