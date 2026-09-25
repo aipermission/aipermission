@@ -4,7 +4,19 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Dialog } from "./dialog";
 
-function DialogHarness({ closeDisabled = false, closeOnOverlay = true, closeOnEscape = true, onClose = () => {}, size }) {
+function DialogHarness({
+  closeDisabled = false,
+  closeOnOverlay = true,
+  closeOnEscape = true,
+  onClose = () => {},
+  size,
+}: {
+  closeDisabled?: boolean;
+  closeOnOverlay?: boolean;
+  closeOnEscape?: boolean;
+  onClose?: () => void;
+  size?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -29,7 +41,13 @@ function DialogHarness({ closeDisabled = false, closeOnOverlay = true, closeOnEs
   );
 }
 
-function StackedDialogHarness({ onParentClose = () => {}, onChildClose = () => {} }) {
+function StackedDialogHarness({
+  onParentClose = () => {},
+  onChildClose = () => {},
+}: {
+  onParentClose?: () => void;
+  onChildClose?: () => void;
+}) {
   const [parentOpen, setParentOpen] = useState(false);
   const [childOpen, setChildOpen] = useState(false);
   return (

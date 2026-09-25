@@ -1,6 +1,7 @@
 import { cn } from "../../lib/utils";
+import type { InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
-export function Field({ className, children, ...props }) {
+export function Field({ className, children, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label className={cn("grid gap-2 text-sm font-medium text-stone-800", className)} {...props}>
       {children}
@@ -8,7 +9,7 @@ export function Field({ className, children, ...props }) {
   );
 }
 
-export function Input({ className, ...props }) {
+export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
@@ -20,7 +21,7 @@ export function Input({ className, ...props }) {
   );
 }
 
-export function Select({ className, ...props }) {
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       className={cn(
@@ -32,7 +33,7 @@ export function Select({ className, ...props }) {
   );
 }
 
-export function Textarea({ className, ...props }) {
+export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       className={cn(
@@ -44,7 +45,7 @@ export function Textarea({ className, ...props }) {
   );
 }
 
-export function Checkbox({ className, ...props }) {
+export function Checkbox({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       type="checkbox"

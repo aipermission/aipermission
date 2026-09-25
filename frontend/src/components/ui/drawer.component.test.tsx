@@ -17,7 +17,9 @@ it("traps focus and closes with Escape", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Close drawer" })).toHaveFocus());
   await user.tab({ shift: true });
   expect(screen.getByRole("button", { name: "Last action" })).toHaveFocus();
-  fireEvent.keyDown(document.activeElement, { key: "Escape" });
+  const activeElement = document.activeElement;
+  expect(activeElement).not.toBeNull();
+  if (activeElement) fireEvent.keyDown(activeElement, { key: "Escape" });
   expect(onClose).toHaveBeenCalledOnce();
 });
 

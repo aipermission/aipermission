@@ -2,14 +2,22 @@ import { CalendarClock, X } from "lucide-react";
 import { Button } from "./button";
 import { Input } from "./form";
 
-export function DateTimePicker({ value, onChange, disabled = false }) {
+export function DateTimePicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string | null | undefined;
+  onChange: (_value: string) => void;
+  disabled?: boolean;
+}) {
   const [date, time] = splitLocalDateTime(value);
 
-  function updateDate(nextDate) {
+  function updateDate(nextDate: string) {
     onChange(nextDate ? `${nextDate}T${time || "23:59"}` : "");
   }
 
-  function updateTime(nextTime) {
+  function updateTime(nextTime: string) {
     if (!date) return;
     onChange(`${date}T${nextTime || "00:00"}`);
   }
@@ -48,7 +56,7 @@ export function DateTimePicker({ value, onChange, disabled = false }) {
   );
 }
 
-function splitLocalDateTime(value) {
+function splitLocalDateTime(value: string | null | undefined): [string, string] {
   const normalized = String(value || "").trim();
   if (!normalized) return ["", ""];
   const [date = "", rawTime = ""] = normalized.split("T");

@@ -126,4 +126,4 @@ export function formatShortDate(value) {
 function downloadPathStorageKey(runtimeID) {
   return `aipermission-file-transfer-download-path:${runtimeID}`;
 }
-import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "./browser-storage.js";
+import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "./browser-storage.ts";

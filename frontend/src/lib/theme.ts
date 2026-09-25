@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { readLocalPreference, writeLocalPreference } from "./browser-storage.js";
+import { readLocalPreference, writeLocalPreference } from "./browser-storage";
 
-export const defaultTheme = "dark";
+export type Theme = "dark" | "light";
+export const defaultTheme: Theme = "dark";
 const storageKey = "aipermission-theme";
 
-export function readStoredTheme() {
+export function readStoredTheme(): Theme {
   const value = readLocalPreference(storageKey);
   return value === "light" || value === "dark" ? value : defaultTheme;
 }
 
-export function applyTheme(theme) {
+export function applyTheme(theme: Theme): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = theme;
 }
