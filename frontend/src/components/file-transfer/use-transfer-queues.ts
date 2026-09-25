@@ -1,19 +1,32 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { apiPost } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
 import { localFileID, mergeUploadQueue, relocateUploadQueue } from "../../lib/file-transfer-utils";
 import { useRequestGuard } from "../../lib/request-guard";
+import { remoteExpansionEntries, type RemoteEntry } from "./transfer-contracts";
 
 const maxTransferObjectBytes = 512 * 1024 * 1024;
 const maxTransferBatchBytes = 1024 * 1024 * 1024;
 const maxTransferBatchItems = 100;
 
-export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, joinRemotePath, onNotice }) {
-  const [mode, setMode] = useState("upload");
+type Notice = { tone: "bad"; message: string } | null;
+type UploadItem = { id: string; file: File; name: string; size: number; relative_path: string; remote_path: string };
+type DownloadItem = { id: string; path: string; name: string; size?: number };
+type Props = {
+  runtimeTarget: { id: number } | null;
+  defaultRemoteDir: string;
+  recursive: boolean;
+  joinRemotePath: (_directory: string, _name: string) => string;
+  onNotice: (_notice: Notice) => void;
+};
+
+export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, joinRemotePath, onNotice }: Props) {
+  const [mode, setMode] = useState<"upload" | "download">("upload");
   const [remoteDir, setRemoteDir] = useState(defaultRemoteDir);
-  const [uploadQueue, setUploadQueue] = useState([]);
-  const [downloadQueue, setDownloadQueue] = useState([]);
-  const fileInputRef = useRef(null);
-  const folderInputRef = useRef(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  const [downloadQueue, setDownloadQueue] = useState<DownloadItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
   const uploadQueueRef = useRef(uploadQueue);
   const downloadQueueRef = useRef(downloadQueue);
   const requestGuard = useRequestGuard(`transfer-queue:${runtimeTarget?.id || ""}`);
@@ -30,7 +43,7 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
     if (folderInputRef.current) folderInputRef.current.value = "";
   }
 
-  function clear(direction) {
+  function clear(direction: "upload" | "download") {
     if (direction === "upload") {
       setUploadQueue([]);
       setRemoteDir(defaultRemoteDir);
@@ -41,7 +54,7 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
     setDownloadQueue([]);
   }
 
-  function handleLocalFileChange(event) {
+  function handleLocalFileChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
     const oversized = files.find((file) => file.size > maxTransferObjectBytes);
@@ -70,7 +83,8 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
     event.target.value = "";
   }
 
-  async function addRemoteFiles(entries) {
+  async function addRemoteFiles(entries: RemoteEntry[]): Promise<boolean> {
+    if (!runtimeTarget) return false;
     const request = requestGuard.begin("expand");
     const selected = Array.isArray(entries) ? entries : [];
     const files = selected.filter((entry) => entry?.type === "file");
@@ -86,18 +100,18 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
           { signal: request.signal },
         );
         if (!request.isCurrent()) return false;
-        files.push(...(expanded.entries || []).filter((entry) => entry?.type === "file"));
+        files.push(...remoteExpansionEntries(expanded).filter((entry) => entry.type === "file"));
       }
     } catch (error) {
       if (!request.isCurrent()) return false;
-      onNotice({ tone: "bad", message: error.message || "Could not expand the selected folder." });
+      onNotice({ tone: "bad", message: errorMessage(error, "Could not expand the selected folder.") });
       return false;
     } finally {
       request.complete();
     }
     if (!request.isCurrent()) return false;
     const existing = new Set(downloadQueueRef.current.map((item) => item.path));
-    const nextFiles = [];
+    const nextFiles: RemoteEntry[] = [];
     for (const entry of files) {
       if (existing.has(entry.path)) continue;
       existing.add(entry.path);
@@ -125,24 +139,25 @@ export function useTransferQueues({ runtimeTarget, defaultRemoteDir, recursive, 
     return true;
   }
 
-  function removeQueueItem(id) {
-    const setter = mode === "upload" ? setUploadQueue : setDownloadQueue;
-    setter((current) => current.filter((item) => item.id !== id));
+  function removeQueueItem(id: string) {
+    if (mode === "upload") setUploadQueue((current) => current.filter((item) => item.id !== id));
+    else setDownloadQueue((current) => current.filter((item) => item.id !== id));
   }
 
-  function moveQueueItem(id, direction) {
-    const setter = mode === "upload" ? setUploadQueue : setDownloadQueue;
-    setter((current) => {
+  function moveQueueItem(id: string, direction: number) {
+    function move<T extends { id: string }>(current: T[]): T[] {
       const index = current.findIndex((item) => item.id === id);
       const nextIndex = index + direction;
       if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
       const next = [...current];
       [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
       return next;
-    });
+    }
+    if (mode === "upload") setUploadQueue(move);
+    else setDownloadQueue(move);
   }
 
-  function updateRemoteDirectory(pathValue) {
+  function updateRemoteDirectory(pathValue: string) {
     setRemoteDir(pathValue);
     setUploadQueue((current) => relocateUploadQueue(current, pathValue, joinRemotePath));
   }
