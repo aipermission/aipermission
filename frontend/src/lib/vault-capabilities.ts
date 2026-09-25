@@ -1,4 +1,11 @@
-export function vaultCapabilityDraftFromItems(items, definitions) {
+export type VaultCapabilityDefinition = { name: string; allowed_rules?: readonly string[] };
+export type VaultCapabilityGrant = { project_id: number; capability_name: string; execution_rule: string; expires_at?: string | null };
+export type VaultCapabilityDraft = Record<string, { execution_rule: string; expires_at: string }>;
+
+export function vaultCapabilityDraftFromItems(
+  items: readonly VaultCapabilityGrant[] | null | undefined,
+  definitions: readonly VaultCapabilityDefinition[] | null | undefined,
+): VaultCapabilityDraft {
   return Object.fromEntries(
     (items || []).flatMap((capability) => {
       const definition = (definitions || []).find((item) => item.name === capability.capability_name);
@@ -16,7 +23,11 @@ export function vaultCapabilityDraftFromItems(items, definitions) {
   );
 }
 
-export function vaultCapabilitiesFromDraft(projects, definitions, draft) {
+export function vaultCapabilitiesFromDraft(
+  projects: readonly { project_id: number }[] | null | undefined,
+  definitions: readonly VaultCapabilityDefinition[] | null | undefined,
+  draft: VaultCapabilityDraft,
+): VaultCapabilityGrant[] {
   return (projects || []).flatMap((project) =>
     (definitions || []).flatMap((definition) => {
       const permission = draft[vaultCapabilityKey(project.project_id, definition.name)];
@@ -33,6 +44,6 @@ export function vaultCapabilitiesFromDraft(projects, definitions, draft) {
   );
 }
 
-export function vaultCapabilityKey(projectID, capabilityName) {
+export function vaultCapabilityKey(projectID: number, capabilityName: string): string {
   return `${projectID}:${capabilityName}`;
 }

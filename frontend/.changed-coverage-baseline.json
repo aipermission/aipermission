@@ -1791,9 +1791,9 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/permissions.js": {
+    "src/lib/permissions.ts": {
       "statements": 100,
-      "branches": 98.14,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1875,11 +1875,11 @@
       "functions": 100,
       "lines": 90.9
     },
-    "src/lib/vault-capabilities.js": {
-      "statements": 84.61,
-      "branches": 50,
+    "src/lib/vault-capabilities.ts": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
-      "lines": 90
+      "lines": 100
     },
     "src/lib/vault-session-selection.js": {
       "statements": 0,

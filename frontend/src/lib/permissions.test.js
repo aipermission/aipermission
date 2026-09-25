@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { effectiveRule, maskedToken, permissionExpired, permissionLifetimeLabel, ruleLabel } from "./permissions.js";
+import { effectiveRule, maskedToken, permissionExpired, permissionLifetimeLabel, ruleLabel } from "./permissions.ts";
 
 test("permission helpers treat expired grants as ineffective", () => {
   const now = new Date("2026-06-07T11:00:00Z").getTime();
