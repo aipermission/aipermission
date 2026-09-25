@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { apiGet, apiPut } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
@@ -7,9 +8,29 @@ import { Notice } from "../ui/notice";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { useRequestGuard } from "../../lib/request-guard";
-import { tokenActionPermissions } from "../../lib/gateway-contracts/security-contracts";
+import { tokenActionPermissionSnapshot } from "../../lib/gateway-contracts/security-contracts";
+import type { ExecutionRule, TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
 
-const emptyLoad = {
+type Action = { name: string; description: string; risk: string };
+type Profile = { id: number; label: string; actions: Action[] };
+type Target = { id: number; name: string; connector_kind: string; profiles: Profile[] };
+type CatalogEntry = { kind: string; label: string };
+type PermissionDraft = { execution_rule: ExecutionRule | ""; expires_at: string };
+type Draft = Record<string, PermissionDraft>;
+type Load = {
+  state: "idle" | "loading" | "ready" | "error";
+  catalog: CatalogEntry[];
+  targets: Target[];
+  actionsByProfile: Record<string, Action[]>;
+  permissions: TokenActionPermission[];
+  revision: string;
+  error: string | null;
+};
+type Save = { state: "idle" | "saving" | "ready" | "error"; error: string | null };
+type Props = { token: { id: number; name: string } | null; onClose: () => void; onSaved?: () => void | Promise<void> };
+type ProfileGroup = { target: Target; profile: Profile; actions: Action[]; key: string };
+
+const emptyLoad: Load = {
   state: "idle",
   catalog: [],
   targets: [],
@@ -19,10 +40,10 @@ const emptyLoad = {
   error: null,
 };
 
-export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
-  const [load, setLoad] = useState(emptyLoad);
-  const [draft, setDraft] = useState({});
-  const [save, setSave] = useState({ state: "idle", error: null });
+export function ConnectorPermissionDialog({ token, onClose, onSaved }: Props) {
+  const [load, setLoad] = useState<Load>(emptyLoad);
+  const [draft, setDraft] = useState<Draft>({});
+  const [save, setSave] = useState<Save>({ state: "idle", error: null });
   const [selectedProfileKey, setSelectedProfileKey] = useState("");
   const tokenID = token?.id;
   const requests = useRequestGuard(`connector-permission-dialog:${tokenID || "closed"}`);
@@ -39,7 +60,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   }, [tokenID, requests]);
 
   const profileGroups = useMemo(() => {
-    const groups = [];
+    const groups: ProfileGroup[] = [];
     for (const target of load.targets) {
       for (const profile of target.profiles || []) {
         const key = profileActionKey(target.id, profile.id);
@@ -65,7 +86,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
     }
   }, [profileGroups, selectedProfileKey]);
 
-  function setRule(key, rule) {
+  function setRule(key: string, rule: ExecutionRule | "") {
     setDraft((current) => ({
       ...current,
       [key]: rule
@@ -74,7 +95,7 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
     }));
   }
 
-  async function savePermissions(event) {
+  async function savePermissions(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!tokenID) return;
     requests.invalidate("load");
@@ -103,8 +124,8 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
             expires_at: permission.execution_rule === "blocked" ? undefined : permission.expires_at || undefined,
           };
         })
-        .filter(Boolean);
-      const result = await apiPut(
+        .filter((permission): permission is NonNullable<typeof permission> => permission !== null);
+      const response = await apiPut(
         `/api/tokens/${tokenID}/connector-permissions`,
         {
           permissions: [...preserved, ...connectorPermissions],
@@ -113,17 +134,18 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
         { signal: request.signal },
       );
       if (!request.isCurrent()) return;
+      const result = tokenActionPermissionSnapshot(response);
       setLoad((current) => ({
         ...current,
-        permissions: result.items || [],
-        revision: result.revision || current.revision,
+        permissions: result.items,
+        revision: result.revision,
       }));
       await onSaved?.();
       if (!request.isCurrent()) return;
       setSave({ state: "ready", error: null });
     } catch (error) {
       if (!request.isCurrent()) return;
-      setSave({ state: "error", error: error.message });
+      setSave({ state: "error", error: error instanceof Error ? error.message : "Failed to save connector permissions." });
     } finally {
       request.complete();
     }
@@ -259,7 +281,17 @@ export function ConnectorPermissionDialog({ token, onClose, onSaved }) {
   );
 }
 
-async function loadConnectorPermissionData({ tokenID, requests, setLoad, setDraft }) {
+async function loadConnectorPermissionData({
+  tokenID,
+  requests,
+  setLoad,
+  setDraft,
+}: {
+  tokenID: number;
+  requests: ReturnType<typeof useRequestGuard>;
+  setLoad: Dispatch<SetStateAction<Load>>;
+  setDraft: Dispatch<SetStateAction<Draft>>;
+}) {
   const request = requests.begin("load");
   setLoad((current) => ({ ...current, state: "loading", error: null }));
   try {
@@ -269,19 +301,20 @@ async function loadConnectorPermissionData({ tokenID, requests, setLoad, setDraf
       apiGet(`/api/tokens/${tokenID}/connector-permissions`, { signal: request.signal }),
     ]);
     if (!request.isCurrent()) return;
-    const targets = targetList.items || [];
+    const targets: Target[] = targetList.items || [];
     const actionEntries = targets.flatMap((target) =>
       (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []]),
     );
     const actionsByProfile = Object.fromEntries(actionEntries);
-    const permissionItems = tokenActionPermissions(permissions);
+    const permissionSnapshot = tokenActionPermissionSnapshot(permissions);
+    const permissionItems = permissionSnapshot.items;
     setLoad({
       state: "ready",
       catalog: catalog.items || [],
       targets,
       actionsByProfile,
       permissions: permissionItems,
-      revision: permissions.revision || "",
+      revision: permissionSnapshot.revision,
       error: null,
     });
     setDraft(
@@ -297,26 +330,26 @@ async function loadConnectorPermissionData({ tokenID, requests, setLoad, setDraf
     );
   } catch (error) {
     if (!request.isCurrent()) return;
-    setLoad({ ...emptyLoad, state: "error", error: error.message });
+    setLoad({ ...emptyLoad, state: "error", error: error instanceof Error ? error.message : "Failed to load connector permissions." });
     setDraft({});
   } finally {
     request.complete();
   }
 }
 
-function permissionKey(targetID, profileID, actionName) {
+function permissionKey(targetID: number, profileID: number, actionName: string): string {
   return `${targetID}:${profileID}:${actionName}`;
 }
 
-function profileActionKey(targetID, profileID) {
+function profileActionKey(targetID: number, profileID: number): string {
   return `${targetID}:${profileID}`;
 }
 
-function connectorLabel(catalog, kind) {
+function connectorLabel(catalog: CatalogEntry[], kind: string): string {
   return catalog.find((item) => item.kind === kind)?.label || kind;
 }
 
-function activeRuleCount(group, draft) {
+function activeRuleCount(group: ProfileGroup, draft: Draft): number {
   return group.actions.filter((action) => Boolean(draft[permissionKey(group.target.id, group.profile.id, action.name)]?.execution_rule))
     .length;
 }
