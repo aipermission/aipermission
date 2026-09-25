@@ -307,7 +307,7 @@ make connector-conformance
 ```
 
 The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ, and
-MinIO (S3) fixtures on automatically assigned loopback ports, exercises real
+RustFS (S3) fixtures on automatically assigned loopback ports, exercises real
 connector actions, and removes the containers, network, and volumes afterward.
 The required `Connector Conformance` GitHub workflow runs for pull requests and
 pushes to `main` and `dev`, as well as weekly and on demand.

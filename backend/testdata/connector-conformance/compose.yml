@@ -52,30 +52,32 @@ services:
       timeout: 5s
       retries: 40
 
+  # Keep the service aliases used by the guarded release recipe; the S3 server is RustFS.
   minio:
-    image: quay.io/minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    command: ["server", "/data"]
+    image: rustfs/rustfs:1.0.0-rc.6@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035
     environment:
-      MINIO_ROOT_USER: conformance-access
-      MINIO_ROOT_PASSWORD: conformance-secret-key
+      RUSTFS_ACCESS_KEY: conformance-access
+      RUSTFS_SECRET_KEY: conformance-secret-key
+      RUSTFS_VOLUMES: /data
     ports:
       - "127.0.0.1::9000"
     tmpfs:
-      - /data:size=256m,mode=0700
+      - /data:size=256m,mode=1777
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
       interval: 2s
       timeout: 3s
       retries: 30
+      start_period: 30s
 
   minio-init:
-    image: quay.io/minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: amazon/aws-cli:2.31.7@sha256:8173c3c7c71e25b0824025b90a85df6e24c696f646498dca9dd370ea446e4fc8
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint:
-      - /bin/sh
-      - -ec
-      - |
-        mc alias set fixture http://minio:9000 conformance-access conformance-secret-key
-        mc mb --ignore-existing fixture/aipermission-conformance
+    environment:
+      AWS_ACCESS_KEY_ID: conformance-access
+      AWS_SECRET_ACCESS_KEY: conformance-secret-key
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+    command: ["--endpoint-url", "http://minio:9000", "s3api", "create-bucket", "--bucket", "aipermission-conformance"]
