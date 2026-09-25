@@ -19,7 +19,8 @@ function testFiles(root) {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) files.push(...testFiles(path));
-    else if (entry.name.endsWith(".test.js")) files.push(path);
+    else if (entry.name.endsWith(".test.js") || (entry.name.endsWith(".test.ts") && !entry.name.endsWith(".type.test.ts")))
+      files.push(path);
   }
   return files.sort();
 }

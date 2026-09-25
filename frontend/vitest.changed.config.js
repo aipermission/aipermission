@@ -14,7 +14,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    include: ["src/**/*.component.test.{js,jsx}"],
+    include: ["src/**/*.component.test.{js,jsx,ts,tsx}"],
     // The ratchet needs reproducible instrumentation and execution order.
     // Regular test suites remain parallel and continue to use V8 coverage.
     fileParallelism: false,
