@@ -9,6 +9,40 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.58] - 2026-09-25
+
+### Fixed
+
+- SSH key removal preserves unrelated authorized keys on interrupted writes, and
+  management requests reject oversized or trailing JSON.
+- File-transfer cleanup leaves active uploads alone and reports download close failures
+  instead of claiming success.
+- Vault and project mutations recover committed session invalidation after failure or
+  restart; in-flight credential, connector, and Vault edits preserve newer drafts.
+- RabbitMQ lists and Redis previews are bounded before materialization, while Kubernetes
+  connection tests work with namespace-scoped permissions.
+- MCP setup preserves VS Code JSONC comments, and gateway responses enforce a size limit
+  without hiding uncertain post-dispatch outcomes.
+
+### Changed
+
+- Vault session item selection searches and pages beyond the first 100 items; connector
+  principal validation and action response projection use shared contracts.
+
+### Security
+
+- Security-sensitive policy and request scans fail closed when SQL row iteration fails.
+
+### Maintenance
+
+- Deterministic regression tests cover interrupted writes, stale completion, pagination,
+  bounded responses, and recovery.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.57] - 2026-09-23
 
 ### Fixed
