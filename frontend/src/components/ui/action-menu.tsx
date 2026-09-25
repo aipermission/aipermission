@@ -1,34 +1,53 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Button } from "./button";
 import { cn } from "../../lib/utils";
 
-export function ActionMenu({ trigger, items, itemKey = (item) => item, renderItem, onSelect, label, empty, panelClassName }) {
+export function ActionMenu<Item extends string>({
+  trigger,
+  items,
+  itemKey = (item) => item,
+  renderItem,
+  onSelect,
+  label,
+  empty,
+  panelClassName,
+}: {
+  trigger: ReactNode;
+  items: Item[];
+  itemKey?: (_item: Item) => string;
+  renderItem: (_item: Item) => ReactNode;
+  onSelect: (_item: Item) => void;
+  label: string;
+  empty?: ReactNode;
+  panelClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const triggerRef = useRef(null);
-  const menuRef = useRef(null);
-  const initialFocusRef = useRef("first");
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const initialFocusRef = useRef<"first" | "last">("first");
   const menuID = useId();
 
   useEffect(() => {
     if (!open) return undefined;
-    const menuItems = menuRef.current?.querySelectorAll('[role="menuitem"]') || [];
+    const menuItems = menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') || [];
     const initialItem = initialFocusRef.current === "last" ? menuItems[menuItems.length - 1] : menuItems[0];
     (initialItem || menuRef.current)?.focus();
     initialFocusRef.current = "first";
-    function dismissOutside(event) {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    function dismissOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
     }
     document.addEventListener("pointerdown", dismissOutside);
     return () => document.removeEventListener("pointerdown", dismissOutside);
   }, [open]);
 
-  function close({ restoreFocus = false } = {}) {
+  function close({ restoreFocus = false }: { restoreFocus?: boolean } = {}) {
     setOpen(false);
     if (restoreFocus) triggerRef.current?.focus();
   }
 
-  function handleMenuKeyDown(event) {
+  function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
       close({ restoreFocus: true });
@@ -40,9 +59,9 @@ export function ActionMenu({ trigger, items, itemKey = (item) => item, renderIte
     }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const menuItems = [...(menuRef.current?.querySelectorAll('[role="menuitem"]') || [])];
+    const menuItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') || []);
     if (menuItems.length === 0) return;
-    const current = menuItems.indexOf(document.activeElement);
+    const current = document.activeElement instanceof HTMLButtonElement ? menuItems.indexOf(document.activeElement) : -1;
     const next =
       event.key === "Home"
         ? 0

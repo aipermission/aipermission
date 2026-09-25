@@ -3,8 +3,27 @@ import { X } from "lucide-react";
 import { Button } from "./button";
 import { useDialogFrame } from "./use-dialog-frame";
 import { cn } from "../../lib/utils";
+import type { ReactNode } from "react";
 
-export function Drawer({ open, title, description, children, onClose, closeDisabled = false, bodyClassName, className }) {
+export function Drawer({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+  closeDisabled = false,
+  bodyClassName,
+  className,
+}: {
+  open: boolean;
+  title: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+  onClose?: () => void;
+  closeDisabled?: boolean;
+  bodyClassName?: string;
+  className?: string;
+}) {
   const { closeButtonRef, descriptionID, titleID, requestClose, handleOpenAutoFocus, handleCloseAutoFocus } = useDialogFrame({ onClose });
 
   return (

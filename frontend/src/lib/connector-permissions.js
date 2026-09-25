@@ -1,5 +1,5 @@
 import { effectiveRule } from "./permissions";
-import { readLocalPreference, writeLocalPreference } from "./browser-storage.js";
+import { readLocalPreference, writeLocalPreference } from "./browser-storage.ts";
 
 const profileStoragePrefix = "aipermission.console.profile";
 

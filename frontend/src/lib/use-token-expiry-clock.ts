@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 const maximumTimerDelay = 2_147_483_647;
 
-export function useTokenExpiryClock(tokens) {
+export function useTokenExpiryClock(tokens: Array<{ revoked_at?: string | null; expires_at?: string | null }> | null | undefined): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {

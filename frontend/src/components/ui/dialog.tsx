@@ -3,8 +3,9 @@ import { X } from "lucide-react";
 import { Button } from "./button";
 import { useDialogFrame } from "./use-dialog-frame";
 import { cn } from "../../lib/utils";
+import type { ReactNode } from "react";
 
-const sizes = {
+const sizes: Record<string, string> = {
   sm: "max-w-md",
   md: "max-w-lg",
   lg: "max-w-2xl",
@@ -25,6 +26,19 @@ export function Dialog({
   closeOnOverlay = true,
   closeOnEscape = true,
   closeDisabled = false,
+}: {
+  open: boolean;
+  title: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+  onClose?: () => void;
+  size?: string;
+  className?: string;
+  bodyClassName?: string;
+  autoFocusClose?: boolean;
+  closeOnOverlay?: boolean;
+  closeOnEscape?: boolean;
+  closeDisabled?: boolean;
 }) {
   const { closeButtonRef, descriptionID, titleID, requestClose, handleOpenAutoFocus, handleCloseAutoFocus } = useDialogFrame({
     onClose,
