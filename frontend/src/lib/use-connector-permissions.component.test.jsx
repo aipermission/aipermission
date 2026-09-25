@@ -2,6 +2,10 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPut } from "./api";
 import { connectorActionCacheKey, useConnectorPermissions } from "./use-connector-permissions";
+import {
+  connectorPermissionFixture as permission,
+  connectorPermissionSnapshot as snapshot,
+} from "../test/connector-permission-fixtures.js";
 
 vi.mock("./api", () => ({
   apiGet: vi.fn(),
@@ -35,8 +39,8 @@ describe("useConnectorPermissions", () => {
     await act(async () => first.resolve({ items: [{ action_name: "old" }] }));
     expect(result.current.connectorPermissionState.data).toEqual({});
 
-    await act(async () => second.resolve({ items: [{ action_name: "new" }] }));
-    expect(result.current.connectorPermissionState.data).toEqual({ 2: [{ action_name: "new" }] });
+    await act(async () => second.resolve(snapshot([permission({ action_name: "new" })], "r2")));
+    expect(result.current.connectorPermissionState.data).toEqual({ 2: [permission({ action_name: "new" })] });
   });
 
   it("rejects a strict permission refresh when a newer load supersedes it", async () => {
@@ -68,6 +72,19 @@ describe("useConnectorPermissions", () => {
     expect(result.current.connectorPermissionState).toMatchObject({ state: "error", error: "permission service unavailable" });
   });
 
+  it("rejects a malformed current permission snapshot without committing it", async () => {
+    apiGet.mockResolvedValueOnce({ items: [permission({ execution_rule: "future" })], revision: "r1" });
+    const { result } = renderHook(() => useConnectorPermissions());
+
+    await act(async () => {
+      await expect(result.current.loadAllConnectorPermissions([{ id: 1 }], { requireCurrent: true })).rejects.toThrow(
+        "Invalid token permission response from gateway.",
+      );
+    });
+
+    expect(result.current.connectorPermissionState).toMatchObject({ state: "error", data: {} });
+  });
+
   it("keeps the newest action catalog for the same target profile", async () => {
     const first = deferred();
     const second = deferred();
@@ -85,6 +102,12 @@ describe("useConnectorPermissions", () => {
 
     await act(async () => first.resolve({ items: [{ name: "old" }] }));
     expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);
+    for (const invalid of [{ description: "missing name" }, { name: "" }]) {
+      apiGet.mockResolvedValueOnce({ items: [invalid] });
+      await act(async () => result.current.loadConnectorActions(target));
+      expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);
+      expect(result.current.connectorPermissionState.error).toBe("Invalid connector action catalog from gateway.");
+    }
   });
 
   it("does not let an older permission GET overwrite a successful mutation", async () => {
@@ -94,27 +117,27 @@ describe("useConnectorPermissions", () => {
       loadSignal = options.signal;
       return load.promise;
     });
-    apiPut.mockResolvedValueOnce({ items: [{ action_name: "write", execution_rule: "always" }] });
+    apiPut.mockResolvedValueOnce(snapshot([permission({ action_name: "write", execution_rule: "always_run" })], "r2"));
     const { result } = renderHook(() => useConnectorPermissions());
 
     let loadResult;
     await act(async () => {
       loadResult = result.current.loadAllConnectorPermissions([{ id: 1 }]);
       await result.current.replaceTokenConnectorPermissions(1, [
-        { target_id: 7, profile_id: 9, action_name: "write", execution_rule: "always" },
+        { target_id: 7, profile_id: 9, action_name: "write", execution_rule: "always_run" },
       ]);
     });
     expect(loadSignal.aborted).toBe(true);
-    expect(result.current.connectorPermissionState.data[1]).toEqual([{ action_name: "write", execution_rule: "always" }]);
+    expect(result.current.connectorPermissionState.data[1]).toEqual([permission({ action_name: "write", execution_rule: "always_run" })]);
 
     await act(async () => load.resolve({ items: [{ action_name: "old", execution_rule: "disabled" }] }));
     await loadResult;
-    expect(result.current.connectorPermissionState.data[1]).toEqual([{ action_name: "write", execution_rule: "always" }]);
+    expect(result.current.connectorPermissionState.data[1]).toEqual([permission({ action_name: "write", execution_rule: "always_run" })]);
   });
 
   it("submits the server revision and advances it after a permission update", async () => {
     apiGet.mockResolvedValueOnce({ items: [], revision: "permissions-1" });
-    apiPut.mockResolvedValueOnce({ items: [{ action_name: "read" }], revision: "permissions-2" });
+    apiPut.mockResolvedValueOnce(snapshot([permission({ action_name: "read" })], "permissions-2"));
     const { result } = renderHook(() => useConnectorPermissions());
 
     await act(async () => result.current.loadAllConnectorPermissions([{ id: 1 }]));
@@ -166,20 +189,20 @@ describe("useConnectorPermissions", () => {
     });
     expect(signals[0].aborted).toBe(true);
 
-    await act(async () => second.resolve({ items: [{ action_name: "read", execution_rule: "always" }] }));
+    await act(async () => second.resolve(snapshot([permission({ action_name: "read", execution_rule: "always_run" })], "r2")));
     await secondResult;
     await act(async () => first.resolve({ items: [{ action_name: "read", execution_rule: "prompt" }] }));
     await firstResult;
 
-    expect(result.current.connectorPermissionState.data[1]).toEqual([{ action_name: "read", execution_rule: "always" }]);
+    expect(result.current.connectorPermissionState.data[1]).toEqual([permission({ action_name: "read", execution_rule: "always_run" })]);
   });
 
   it("does not let a superseded mutation invalidate a later permission load", async () => {
     const staleMutation = deferred();
     const currentLoad = deferred();
-    apiPut.mockReturnValueOnce(staleMutation.promise).mockResolvedValueOnce({
-      items: [{ action_name: "read", execution_rule: "always" }],
-    });
+    apiPut
+      .mockReturnValueOnce(staleMutation.promise)
+      .mockResolvedValueOnce(snapshot([permission({ action_name: "read", execution_rule: "always_run" })], "r2"));
     apiGet.mockReturnValueOnce(currentLoad.promise);
     const { result } = renderHook(() => useConnectorPermissions());
 
@@ -199,10 +222,10 @@ describe("useConnectorPermissions", () => {
     });
     await act(async () => staleMutation.resolve({ items: [{ action_name: "read", execution_rule: "prompt" }] }));
     await staleResult;
-    await act(async () => currentLoad.resolve({ items: [{ action_name: "read", execution_rule: "always" }] }));
+    await act(async () => currentLoad.resolve(snapshot([permission({ action_name: "read", execution_rule: "always_run" })], "r3")));
     await loadResult;
 
     expect(result.current.connectorPermissionState.state).toBe("ready");
-    expect(result.current.connectorPermissionState.data[1]).toEqual([{ action_name: "read", execution_rule: "always" }]);
+    expect(result.current.connectorPermissionState.data[1]).toEqual([permission({ action_name: "read", execution_rule: "always_run" })]);
   });
 });
