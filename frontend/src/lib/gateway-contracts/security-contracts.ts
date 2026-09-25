@@ -18,6 +18,7 @@ export type ConnectorRetryPolicy = ConnectorActionResponse["retry_policy"];
 
 export type TokenActionPermission = components["schemas"]["ConnectorPermission"];
 export type TokenProjectScope = components["schemas"]["TokenProjectScope"];
+export type TokenActionPermissionSnapshot = components["schemas"]["ConnectorPermissionsResponse"];
 
 export type ConnectorApproval = components["schemas"]["ConnectorActionApprovalDetail"];
 
@@ -121,6 +122,15 @@ export function tokenActionPermissions(value: unknown): TokenActionPermission[] 
     }
     return item as TokenActionPermission;
   });
+}
+
+export function tokenActionPermissionSnapshot(value: unknown): TokenActionPermissionSnapshot {
+  const items = tokenActionPermissions(value);
+  const data = record(value, "token permissions");
+  if (data.changed !== undefined && typeof data.changed !== "boolean") {
+    throw new Error("Invalid token permission response from gateway.");
+  }
+  return { items, revision: data.revision as string, ...(data.changed === undefined ? {} : { changed: data.changed }) };
 }
 
 export function tokenProjectScopes(value: unknown): TokenProjectScope[] {

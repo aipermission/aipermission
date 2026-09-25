@@ -7,17 +7,30 @@ import {
 import { matchesConnectorTargetProfileAction } from "../../lib/connector-permissions";
 import { effectiveRule } from "../../lib/permissions";
 import { getConnectorModel } from "../../connectors/templates/registry";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
 
-export function matchesPermissionMutationError(value, tokenID, profileID, targetKey) {
+type Target = { connector_kind?: string; target_id?: number; runtime_id?: number };
+type Action = { name: string; category?: string; risk?: string };
+type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at">;
+type MutationError = { targetKey?: string; tokenID?: number; profileID?: number } | null | undefined;
+
+export type PermissionMode = "basic" | "grouped" | "advanced";
+
+export function matchesPermissionMutationError(value: MutationError, tokenID: number, profileID: number, targetKey: string): boolean {
   return value?.targetKey === targetKey && Number(value?.tokenID) === Number(tokenID) && Number(value?.profileID) === Number(profileID);
 }
 
-export function targetSupportsMessages(target) {
+export function targetSupportsMessages(target: Target | null | undefined): boolean {
   if (!target?.runtime_id) return false;
   return Boolean(getConnectorModel(target.connector_kind)?.usesLiveConsole?.({ target }));
 }
 
-export function ruleForActions(permissions, target, profileID, actions) {
+export function ruleForActions(
+  permissions: readonly Permission[],
+  target: Target | null | undefined,
+  profileID: number,
+  actions: readonly Action[],
+): string {
   if (!target || actions.length === 0) return "";
   const rules = actions.map((action) => {
     const permission = permissions.find((item) => matchesConnectorTargetProfileAction(item, target, profileID, action.name));
@@ -27,36 +40,45 @@ export function ruleForActions(permissions, target, profileID, actions) {
   return unique.size <= 1 ? rules[0] || "" : "mixed";
 }
 
-export function inferPermissionMode(permissions, target, profileID, actions) {
+export function inferPermissionMode(
+  permissions: readonly Permission[],
+  target: Target | null | undefined,
+  profileID: number,
+  actions: readonly Action[],
+): PermissionMode {
   if (!target || actions.length === 0) return "basic";
   if (ruleForActions(permissions, target, profileID, actions) !== "mixed") return "basic";
   const riskGroups = groupActionsByRisk(actions).filter((group) => group.actions.length > 0);
-  if (riskGroups.length === 0) return "basic";
   return riskGroups.every((group) => ruleForActions(permissions, target, profileID, group.actions) !== "mixed") ? "grouped" : "advanced";
 }
 
-export function tokenProfileModeKey(tokenID, target, profileID) {
+export function tokenProfileModeKey(tokenID: number, target: Target | null | undefined, profileID: number | string): string {
   return `${tokenID}:${target?.connector_kind || ""}:${target?.target_id || ""}:${profileID || ""}`;
 }
 
-export function groupActions(actions) {
-  const order = [];
-  const groups = new Map();
+export function groupActions<T extends Action>(actions: readonly T[]): { name: string; actions: T[] }[] {
+  const order: string[] = [];
+  const groups = new Map<string, T[]>();
   for (const action of actions) {
     const name = action.category || "actions";
-    if (!groups.has(name)) {
-      groups.set(name, []);
+    const group = groups.get(name);
+    if (group) {
+      group.push(action);
+    } else {
+      groups.set(name, [action]);
       order.push(name);
     }
-    groups.get(name).push(action);
   }
   return order.map((name) => ({ name, actions: groups.get(name) || [] }));
 }
 
-export function groupActionsByRisk(actions) {
-  const grouped = new Map(connectorActionRiskOrder.map((risk) => [risk, []]));
+export function groupActionsByRisk<T extends Action>(actions: readonly T[]) {
+  const grouped = new Map<string, T[]>();
   for (const action of actions) {
-    grouped.get(normalizeConnectorActionRisk(action.risk)).push(action);
+    const risk = normalizeConnectorActionRisk(action.risk);
+    const group = grouped.get(risk) || [];
+    group.push(action);
+    grouped.set(risk, group);
   }
   return connectorActionRiskOrder.map((risk) => {
     const actionsForRisk = grouped.get(risk) || [];

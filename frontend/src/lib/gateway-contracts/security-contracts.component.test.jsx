@@ -5,6 +5,7 @@ import {
   connectorApprovals,
   consoleSessions,
   tokenActionPermissions,
+  tokenActionPermissionSnapshot,
   tokenProjectScopes,
   vaultApproval as parseVaultApproval,
   vaultApprovals,
@@ -76,6 +77,11 @@ describe("typed untrusted gateway contracts", () => {
     );
     expect(() => tokenActionPermissions({ revision: "r1", items: [permission({ project_enabled: "true" })] })).toThrow(/Invalid token/);
     expect(tokenActionPermissions({ revision: "r1", items: [permission()] })).toHaveLength(1);
+    expect(tokenActionPermissionSnapshot({ revision: "r1", items: [permission()], changed: true })).toMatchObject({
+      revision: "r1",
+      changed: true,
+    });
+    expect(() => tokenActionPermissionSnapshot({ revision: "r1", items: [], changed: "true" })).toThrow(/Invalid token/);
     expect(() => tokenProjectScopes({ revision: "r1", items: [{ project_id: 1, enabled: "true" }] })).toThrow(/Invalid project scope/);
     expect(
       tokenProjectScopes({
