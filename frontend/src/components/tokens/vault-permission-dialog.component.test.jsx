@@ -37,7 +37,7 @@ describe("VaultPermissionDialog", () => {
           allowed_rules: ["approval_required", "always_run"],
         },
       ],
-      items: [{ project_id: 3, capability: "vault.inject", execution_rule: "always_run", expires_at: null }],
+      items: [{ project_id: 3, capability_name: "vault.inject", execution_rule: "always_run", expires_at: null }],
       revision: "capability-2",
     });
   });
@@ -76,7 +76,7 @@ describe("VaultPermissionDialog", () => {
     const onSaved = vi.fn();
     apiPut.mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
-        return { items: [{ project_id: 3, project_name: "My Project", enabled: false }], revision: "scope-2" };
+        return { items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: false }], revision: "scope-2" };
       }
       return {
         definitions: [
@@ -87,7 +87,7 @@ describe("VaultPermissionDialog", () => {
             allowed_rules: ["approval_required", "always_run"],
           },
         ],
-        items: [{ project_id: 3, capability: "vault.inject", execution_rule: "approval_required", expires_at: "future" }],
+        items: [{ project_id: 3, capability_name: "vault.inject", execution_rule: "approval_required", expires_at: "future" }],
         revision: "capability-2",
       };
     });
@@ -107,7 +107,7 @@ describe("VaultPermissionDialog", () => {
     await user.click(screen.getByRole("button", { name: "1h" }));
     await user.click(screen.getByRole("button", { name: "Save Vault capabilities" }));
     await waitFor(() => expect(apiPut).toHaveBeenCalledWith("/api/tokens/7/project-capabilities", expect.anything(), expect.anything()));
-    expect(onSaved).toHaveBeenCalled();
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
   it("does not submit Vault capabilities loaded for a previously open token", async () => {
@@ -198,6 +198,32 @@ describe("VaultPermissionDialog", () => {
 
     expect(await screen.findByText("Invalid project scope response from gateway.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save Vault capabilities" })).toBeDisabled();
+  });
+
+  it("does not enable saves for a malformed Vault capability response", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/tokens/7/project-scopes") return { items: [], revision: "scope-1" };
+      return { definitions: [{ name: "vault.inject", allowed_rules: ["always_run"] }], items: [], revision: "capability-1" };
+    });
+
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(await screen.findByText("Invalid Vault capability response from gateway.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save Vault capabilities" })).toBeDisabled();
+  });
+
+  it("does not report a malformed save response as a successful grant", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    apiPut.mockResolvedValue({ definitions: [], items: [], revision: "" });
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={onSaved} />);
+
+    await screen.findByText("Inject secrets");
+    await user.click(screen.getByRole("button", { name: "Always" }));
+    await user.click(screen.getByRole("button", { name: "Save Vault capabilities" }));
+
+    expect(await screen.findByText("Invalid Vault capability response from gateway.")).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
   });
 });
 
