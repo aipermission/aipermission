@@ -82,6 +82,34 @@ describe("useConsoleSessionCoordinator", () => {
     expect(apiPost).toHaveBeenCalledOnce();
   });
 
+  it("does not attach a malformed session response", async () => {
+    apiGet.mockResolvedValue({ supported: false });
+    apiPost.mockResolvedValue({ status: "connecting" });
+    const { result, connections } = renderCoordinator();
+
+    await act(async () => {
+      await expect(result.current.newSession(runtime)).rejects.toThrow(/Invalid console session response/);
+    });
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(result.current.sessions.data).toEqual([]);
+    expect(connections.attachSession).not.toHaveBeenCalled();
+  });
+
+  it("does not attach a session created for another runtime", async () => {
+    apiGet.mockResolvedValue({ supported: false });
+    apiPost.mockResolvedValue({ id: 14, runtime_id: 8, status: "connecting" });
+    const { result, connections } = renderCoordinator();
+
+    await act(async () => {
+      await expect(result.current.newSession(runtime)).rejects.toThrow(/runtime does not match/);
+    });
+    await act(async () => vi.runAllTimersAsync());
+
+    expect(result.current.sessions.data).toEqual([]);
+    expect(connections.attachSession).not.toHaveBeenCalled();
+  });
+
   it("does not open Vault selection from a superseded probe for the same runtime", async () => {
     const older = deferred();
     apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ supported: false });
