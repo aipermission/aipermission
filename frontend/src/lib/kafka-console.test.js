@@ -11,7 +11,7 @@ import {
   offsetSelectionValue,
   parseOffsetSelection,
 } from "../connectors/templates/kafka/console-helpers.js";
-import { credentialPayload } from "../connectors/templates/kafka/model-helpers.js";
+import { credentialPayload } from "../connectors/templates/kafka/model-helpers.ts";
 
 test("Kafka action helpers surface failed HTTP 200 responses", () => {
   assert.equal(connectorActionError({ status: "failed", error: "broker denied access" }), "broker denied access");
