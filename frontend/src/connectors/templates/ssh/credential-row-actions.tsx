@@ -1,6 +1,6 @@
 import { CopyButton } from "../../../components/ui/copy-button";
 
-export function SSHCredentialRowActionsTemplate({ row }) {
+export function SSHCredentialRowActionsTemplate({ row }: { row: { credential?: { install_command?: string } | null } }) {
   const installCommand = row.credential?.install_command || "";
   if (!installCommand) return null;
   return (

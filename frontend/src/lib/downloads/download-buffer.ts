@@ -2,7 +2,17 @@ const maxBufferedDownloadBytes = 64 * 1024 * 1024;
 const unsupportedDownloadMessage = "This browser cannot safely buffer this download. Use a browser with a streaming Save dialog.";
 const oversizedDownloadMessage = "This download exceeds the 64 MiB browser buffer limit. Use a browser with a streaming Save dialog.";
 
-export async function readBufferedDownload(response) {
+type DownloadReader = {
+  read: () => Promise<{ done: boolean; value?: Uint8Array<ArrayBuffer> }>;
+  cancel?: () => Promise<unknown>;
+  releaseLock: () => void;
+};
+type DownloadResponse = {
+  headers?: { get: (_name: string) => string | null };
+  body?: { getReader?: () => DownloadReader; cancel?: () => Promise<unknown> } | null;
+};
+
+export async function readBufferedDownload(response: DownloadResponse): Promise<Blob> {
   const lengthHeader = response.headers?.get("Content-Length");
   const declaredLength = lengthHeader === null || lengthHeader === undefined ? NaN : Number(lengthHeader);
   if (Number.isFinite(declaredLength) && declaredLength > maxBufferedDownloadBytes) {
@@ -11,16 +21,17 @@ export async function readBufferedDownload(response) {
   }
   if (response.body && typeof response.body.getReader === "function") {
     const reader = response.body.getReader();
-    const chunks = [];
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
     let size = 0;
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (!value) throw new Error("Download stream ended without a chunk.");
         size += value.byteLength;
         if (size > maxBufferedDownloadBytes) {
           try {
-            await reader.cancel();
+            await reader.cancel?.();
           } catch {
             // Report the size limit even when the stream cannot be canceled.
           }
@@ -36,7 +47,7 @@ export async function readBufferedDownload(response) {
   throw new Error(unsupportedDownloadMessage);
 }
 
-async function cancelResponseBody(response) {
+async function cancelResponseBody(response: DownloadResponse) {
   try {
     await response.body?.cancel?.();
   } catch {

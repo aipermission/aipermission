@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectorPermissionFixture as permission } from "../../test/connector-permission-fixtures.js";
+import { connectorPermissionFixture as permission } from "../../test/connector-permission-fixtures.ts";
 import {
   connectorActionResponse,
   connectorApproval as parseConnectorApproval,

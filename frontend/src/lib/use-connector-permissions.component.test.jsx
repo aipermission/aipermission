@@ -5,7 +5,7 @@ import { connectorActionCacheKey, useConnectorPermissions } from "./use-connecto
 import {
   connectorPermissionFixture as permission,
   connectorPermissionSnapshot as snapshot,
-} from "../test/connector-permission-fixtures.js";
+} from "../test/connector-permission-fixtures.ts";
 
 vi.mock("./api", () => ({
   apiGet: vi.fn(),

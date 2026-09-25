@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readBufferedDownload } from "./download-buffer.js";
+import { readBufferedDownload } from "./download-buffer.ts";
 
 test("buffered downloads accept a small response stream", async () => {
   const response = new Response("small download", { headers: { "Content-Type": "text/plain" } });

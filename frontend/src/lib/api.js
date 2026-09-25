@@ -9,7 +9,7 @@ import {
 import { APIError } from "./errors.ts";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
 import { scopedUICookieName } from "./ui-cookie.ts";
-import { readBufferedDownload } from "./downloads/download-buffer.js";
+import { readBufferedDownload } from "./downloads/download-buffer.ts";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
