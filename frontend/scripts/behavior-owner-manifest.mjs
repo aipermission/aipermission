@@ -91,7 +91,7 @@ export function behaviorOwnerManifestWeakening(base, current) {
 }
 
 function configuredTestSuiteIncludes(path) {
-  return /\.component\.test\.(?:js|jsx)$/.test(path) || /\.test\.js$/.test(path);
+  return /\.component\.test\.(?:js|jsx|ts|tsx)$/.test(path) || /\.test\.(?:js|ts)$/.test(path);
 }
 
 function hasExecutableTestDeclaration(source) {

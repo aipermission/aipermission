@@ -45,12 +45,12 @@ test("protected behavior tests must exist and reach their owner", (t) => {
     "protected behavior tests do not reach their owner: src/notice.jsx",
   ]);
 
-  writeFileSync(join(sourceRoot, "replacement.component.test.jsx"), 'import "./notice.jsx";\nit("covers notice", () => {});\n');
-  sourceFiles.add(join(sourceRoot, "replacement.component.test.jsx"));
-  graph.set(join(sourceRoot, "replacement.component.test.jsx"), [join(sourceRoot, "notice.jsx")]);
+  writeFileSync(join(sourceRoot, "replacement.component.test.tsx"), 'import "./notice.jsx";\nit("covers typed notice", () => {});\n');
+  sourceFiles.add(join(sourceRoot, "replacement.component.test.tsx"));
+  graph.set(join(sourceRoot, "replacement.component.test.tsx"), [join(sourceRoot, "notice.jsx")]);
   assert.deepEqual(
     validateBehaviorOwnerManifest(
-      { version: 1, owners: { "src/notice.jsx": ["src/replacement.component.test.jsx"] } },
+      { version: 1, owners: { "src/notice.jsx": ["src/replacement.component.test.tsx"] } },
       { frontendRoot, graph, sourceFiles },
     ),
     [],
