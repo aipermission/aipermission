@@ -1,5 +1,5 @@
 import { Database } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
@@ -10,12 +10,40 @@ import { S3ObjectBrowser } from "./object-browser";
 import { S3ObjectDetailPane } from "./object-detail-pane";
 import { S3PresignDialog } from "./presign-dialog";
 import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
-import { useS3Browser } from "./use-s3-browser";
+import { useS3Browser, type S3BrowserOptions } from "./use-s3-browser";
 import { useS3ObjectDelete } from "./use-s3-object-delete";
 import { useS3Upload } from "./use-s3-upload";
 import { S3VersionsDialog } from "./versions-dialog";
 
-export function S3ConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
+type S3ConsoleTarget = S3BrowserOptions["target"] & {
+  name?: string;
+  target_name?: string;
+  transfer_runtime_id?: number | null;
+  config?: {
+    bucket?: string;
+    scheme?: string;
+    host?: string;
+    port?: number | string;
+    connection_mode?: string;
+    transport_target_ref?: string;
+    trust_conditional_requests?: boolean;
+  };
+};
+
+type S3ConsoleProps = Omit<S3BrowserOptions, "target"> & {
+  target: S3ConsoleTarget;
+  theme: string;
+  onNewStructuredSession: () => void;
+};
+
+export function S3ConnectorConsoleTemplate({
+  target,
+  approvals,
+  theme,
+  session,
+  onNewStructuredSession,
+  onRefreshActivity,
+}: S3ConsoleProps) {
   const classes = connectorConsoleTheme(theme);
   const browser = useS3Browser({ target, approvals, session, onRefreshActivity });
   const scopeKey = `${target.ref}:${browser.activeSession.startedAt || "inactive"}`;
@@ -147,6 +175,21 @@ function S3ConsoleDialogs({
   setVersionsOpen,
   lifecycleOpen,
   setLifecycleOpen,
+}: {
+  target: S3ConsoleTarget;
+  theme: string;
+  classes: ReturnType<typeof connectorConsoleTheme>;
+  browser: ReturnType<typeof useS3Browser>;
+  upload: ReturnType<typeof useS3Upload>;
+  deletion: ReturnType<typeof useS3ObjectDelete>;
+  transferOpen: boolean;
+  setTransferOpen: Dispatch<SetStateAction<boolean>>;
+  presignOpen: boolean;
+  setPresignOpen: Dispatch<SetStateAction<boolean>>;
+  versionsOpen: boolean;
+  setVersionsOpen: Dispatch<SetStateAction<boolean>>;
+  lifecycleOpen: boolean;
+  setLifecycleOpen: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
     <>
@@ -222,7 +265,7 @@ function S3ConsoleDialogs({
   );
 }
 
-function s3TransferTarget(target) {
+function s3TransferTarget(target: S3ConsoleTarget) {
   if (!target.transfer_runtime_id) return null;
   return {
     id: target.transfer_runtime_id,

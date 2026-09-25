@@ -9,7 +9,7 @@ import { connectorConsoleTheme } from "../_shared/console-theme";
 import { parentPrefix, shortDate } from "./helpers";
 
 type BrowserDirectory = { prefix: string; name?: string };
-type BrowserObject = { key: string; size?: number; last_modified?: string };
+type BrowserObject = { key: string; size?: number | string | null; last_modified?: string };
 type S3ObjectBrowserProps = {
   target: { config?: { bucket?: string }; transfer_runtime_id?: number | null };
   directories: BrowserDirectory[];

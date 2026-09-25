@@ -14,10 +14,10 @@ export async function runGuardedConnectorAction({
   product,
   setState,
   onRefreshActivity,
-  onCompleted,
-  onPending,
+  onCompleted = null,
+  onPending = null,
   suppressError = false,
-  successMessage,
+  successMessage = null,
   post = apiPost,
 }) {
   const request = requestGuard.begin(channel || actionName);

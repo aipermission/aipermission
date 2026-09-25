@@ -12,7 +12,7 @@ import { VersionsIcon } from "./versions-dialog";
 
 type S3ObjectDetailPaneProps = S3MetadataPanelProps & {
   active: boolean;
-  selectedObject: { size?: number | string; last_modified?: string } | null;
+  selectedObject: { size?: number | string | null; last_modified?: string } | null;
   state: { state: string; error?: string | null };
   classes: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input">;
   onOpenLifecycle: () => void;
