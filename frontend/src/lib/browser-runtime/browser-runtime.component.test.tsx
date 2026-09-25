@@ -1,8 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "./browser-storage";
-import { applyTheme, defaultTheme, readStoredTheme, useTheme } from "./theme";
-import { checkForUpdates, compareVersions } from "./update-check";
+import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "../browser-storage";
+import { applyTheme, defaultTheme, readStoredTheme, useTheme } from "../theme";
+import { checkForUpdates, compareVersions } from "../update-check";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -22,7 +22,7 @@ it("tolerates blocked preferences and preserves normal storage behavior", () => 
     false,
     false,
   ]);
-  Object.defineProperty(window, "localStorage", descriptor);
+  if (descriptor) Object.defineProperty(window, "localStorage", descriptor);
   expect(writeLocalPreference("theme", "light")).toBe(true);
   expect(readLocalPreference("theme")).toBe("light");
   expect(removeLocalPreference("theme")).toBe(true);
@@ -69,7 +69,7 @@ it("follows SemVer prerelease precedence without numeric coercion", () => {
 });
 
 it("checks stable releases and falls back to the release list", async () => {
-  const release = (version) => ({ tag_name: `v${version}`, html_url: `https://example.test/${version}` });
+  const release = (version: string) => ({ tag_name: `v${version}`, html_url: `https://example.test/${version}` });
   const fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => release("0.2.54") });
   vi.stubGlobal("fetch", fetch);
   await expect(checkForUpdates("0.2.53")).resolves.toMatchObject({ latestVersion: "0.2.54", updateAvailable: true });
@@ -78,11 +78,17 @@ it("checks stable releases and falls back to the release list", async () => {
 });
 
 it("rejects release API failures and empty fallbacks", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 503 }));
+  const fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 });
+  vi.stubGlobal("fetch", fetch);
   await expect(checkForUpdates("0.2.53")).rejects.toThrow("503");
   fetch
     .mockReset()
     .mockResolvedValueOnce({ ok: false, status: 404 })
     .mockResolvedValueOnce({ ok: true, json: async () => [] });
   await expect(checkForUpdates("0.2.53")).rejects.toThrow(/No GitHub releases/);
+});
+
+it("rejects malformed release responses before reading version fields", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tag_name: 123 }) }));
+  await expect(checkForUpdates("0.2.53")).rejects.toThrow("Invalid GitHub release response.");
 });

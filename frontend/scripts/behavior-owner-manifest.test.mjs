@@ -15,11 +15,14 @@ test("protected behavior owners cannot be removed from the ratcheted manifest", 
 });
 
 test("protected behavior test mappings cannot be removed from the ratcheted manifest", () => {
-  const failures = behaviorOwnerManifestWeakening(
-    { version: 1, owners: { "src/notice.jsx": ["src/notice.component.test.jsx"] } },
-    { version: 1, owners: { "src/notice.jsx": ["src/replacement.component.test.jsx"] } },
-  );
+  const base = { version: 1, owners: { "src/notice.jsx": ["src/notice.component.test.jsx"] } };
+  const failures = behaviorOwnerManifestWeakening(base, {
+    version: 1,
+    owners: { "src/notice.jsx": ["src/replacement.component.test.jsx"] },
+  });
   assert.deepEqual(failures, ["protected behavior test mapping was removed: src/notice.jsx -> src/notice.component.test.jsx"]);
+  const migrated = { version: 1, owners: { "src/notice.tsx": ["src/notice.component.test.tsx"] } };
+  assert.deepEqual(behaviorOwnerManifestWeakening(base, migrated), []);
 });
 
 test("protected behavior tests must exist and reach their owner", (t) => {

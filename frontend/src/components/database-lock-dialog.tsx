@@ -2,7 +2,15 @@ import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
 
-export function DatabaseLockDialog({ state, onClose, onLock }) {
+export function DatabaseLockDialog({
+  state,
+  onClose,
+  onLock,
+}: {
+  state: { open: boolean; state: string; error?: string | null };
+  onClose: () => void;
+  onLock: (_scope: "current" | "all") => void;
+}) {
   return (
     <Dialog open={state.open} title="Lock database" description="Choose what should be locked." onClose={onClose} size="md">
       <div className="grid gap-4">

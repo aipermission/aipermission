@@ -75,19 +75,30 @@ export function behaviorOwnerManifestWeakening(base, current) {
     return ["protected behavior owner manifest is invalid"];
   }
   const failures = [];
+  const currentOwners = new Map();
+  for (const [owner, tests] of Object.entries(current.owners)) {
+    const key = sourceIdentity(owner);
+    if (currentOwners.has(key)) failures.push(`duplicate protected behavior owner identity: ${owner}`);
+    else currentOwners.set(key, tests);
+  }
   for (const [owner, tests] of Object.entries(base.owners)) {
-    if (!Object.hasOwn(current.owners, owner)) {
+    const mappedTests = currentOwners.get(sourceIdentity(owner));
+    if (!mappedTests) {
       failures.push(`protected behavior owner was removed: ${owner}`);
       continue;
     }
-    const currentTests = new Set(Array.isArray(current.owners[owner]) ? current.owners[owner] : []);
+    const currentTests = new Set(Array.isArray(mappedTests) ? mappedTests.map(sourceIdentity) : []);
     for (const testFile of Array.isArray(tests) ? tests : []) {
-      if (!currentTests.has(testFile)) {
+      if (!currentTests.has(sourceIdentity(testFile))) {
         failures.push(`protected behavior test mapping was removed: ${owner} -> ${testFile}`);
       }
     }
   }
   return failures;
+}
+
+function sourceIdentity(path) {
+  return path.replace(/\.(?:jsx?|tsx?)$/, "");
 }
 
 function configuredTestSuiteIncludes(path) {

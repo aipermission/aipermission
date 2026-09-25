@@ -5,7 +5,7 @@ import { CopyButton } from "../ui/copy-button";
 import { Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 
-export function CreatedTokenNotice({ token, onDismiss }) {
+export function CreatedTokenNotice({ token, onDismiss }: { token: { name: string; token: string } | null; onDismiss: () => void }) {
   if (!token) return null;
   return (
     <Notice tone="good" className="relative pr-12">

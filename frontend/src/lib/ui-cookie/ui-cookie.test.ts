@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { scopedUICookieName } from "./ui-cookie.ts";
+import { scopedUICookieName } from "../ui-cookie.ts";
 
 test("scopes UI cookie names by frontend port", () => {
   assert.equal(scopedUICookieName("aipermission_csrf", { protocol: "http:", port: "3210" }), "aipermission_csrf_3210");

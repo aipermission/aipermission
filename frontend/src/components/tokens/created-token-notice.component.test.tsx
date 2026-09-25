@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CreatedTokenNotice } from "./created-token-notice";
 
 function NoticeHarness() {
-  const [token, setToken] = useState({ name: "maintenance", token: "aip_generated_secret" });
+  const [token, setToken] = useState<{ name: string; token: string } | null>({ name: "maintenance", token: "aip_generated_secret" });
   return <CreatedTokenNotice token={token} onDismiss={() => setToken(null)} />;
 }
 

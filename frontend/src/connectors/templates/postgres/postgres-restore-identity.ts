@@ -1,6 +1,6 @@
 import { fileSHA256 } from "../../../lib/file-digest";
 
-export async function postgresRestoreRetryIdentity(path, confirmTarget, file, signal) {
+export async function postgresRestoreRetryIdentity(path: string, confirmTarget: string, file: File, signal?: AbortSignal) {
   return {
     path,
     body: {
