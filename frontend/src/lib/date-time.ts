@@ -1,4 +1,4 @@
-export function formatRelativeAge(value) {
+export function formatRelativeAge(value: string | null | undefined): string {
   if (!value) return "";
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return "";
@@ -11,13 +11,13 @@ export function formatRelativeAge(value) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function formatLocalTimestamp(value) {
-  const timestamp = Date.parse(value);
+export function formatLocalTimestamp(value: string | null | undefined): string {
+  const timestamp = Date.parse(value || "");
   if (!Number.isFinite(timestamp)) return "";
   return new Date(timestamp).toLocaleString();
 }
 
-export function formatRelativeDeadline(value) {
+export function formatRelativeDeadline(value: string | null | undefined): string {
   if (!value) return "";
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return "";
@@ -30,13 +30,13 @@ export function formatRelativeDeadline(value) {
   return `expires in ${hours}h`;
 }
 
-export function toRFC3339(value) {
+export function toRFC3339(value: string | null | undefined): string {
   if (!value) return "";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
 }
 
-export function toLocalDateTime(value) {
+export function toLocalDateTime(value: string | null | undefined): string {
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";

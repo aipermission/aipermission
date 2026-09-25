@@ -8,7 +8,7 @@ import {
 } from "./local-action-retry.js";
 import { APIError } from "./errors.js";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.js";
-import { scopedUICookieName } from "./ui-cookie.js";
+import { scopedUICookieName } from "./ui-cookie.ts";
 import { readBufferedDownload } from "./downloads/download-buffer.js";
 
 const viteEnv = import.meta.env || {};

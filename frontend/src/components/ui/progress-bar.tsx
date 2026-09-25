@@ -1,6 +1,8 @@
 import { cn } from "../../lib/utils";
 
-export function ProgressBar({ value, active = false, compact = false, className }) {
+type Props = { value: number; active?: boolean; compact?: boolean; className?: string };
+
+export function ProgressBar({ value, active = false, compact = false, className }: Props) {
   const normalized = Math.max(0, Math.min(100, Number(value) || 0));
   return (
     <progress

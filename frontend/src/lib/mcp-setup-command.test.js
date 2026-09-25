@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMCPSetupCommand } from "./mcp-setup-command.js";
+import { buildMCPSetupCommand } from "./mcp-setup-command.ts";
 
 test("MCP setup commands preserve the configured gateway origin", () => {
   const command = buildMCPSetupCommand({

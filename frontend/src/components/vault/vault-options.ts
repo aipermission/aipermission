@@ -1,4 +1,4 @@
-export const vaultSecretTypes = [
+export const vaultSecretTypes: [string, string][] = [
   ["generic_secret", "Generic secret"],
   ["api_key", "API key"],
   ["access_token", "Access token"],
@@ -8,7 +8,7 @@ export const vaultSecretTypes = [
   ["connection", "Connection string"],
 ];
 
-export const vaultGeneratorKinds = [
+export const vaultGeneratorKinds: [string, string][] = [
   ["random_token", "Random token (32 bytes)"],
   ["hex_secret", "Hex secret (32 bytes)"],
   ["password", "Password (32 characters)"],

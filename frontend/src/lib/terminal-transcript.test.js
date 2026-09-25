@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { syncTerminalTranscript } from "../components/console/terminal-transcript.js";
+import { syncTerminalTranscript } from "../components/console/terminal-transcript.ts";
 
 function fakeTerminal() {
   const calls = [];

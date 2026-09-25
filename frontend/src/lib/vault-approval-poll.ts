@@ -1,4 +1,11 @@
-export function reconcileVaultApprovalDialog(current, pending, seenRequestIDs) {
+type ApprovalItem = { id: number };
+type ApprovalDialog<Item extends ApprovalItem> = { approval: Item | null; note: string; state: string; error: string | null };
+
+export function reconcileVaultApprovalDialog<Item extends ApprovalItem>(
+  current: ApprovalDialog<Item>,
+  pending: Item[],
+  seenRequestIDs: Set<number>,
+): ApprovalDialog<Item> {
   const pendingIDs = new Set(pending.map((item) => item.id));
   for (const requestID of seenRequestIDs) {
     if (!pendingIDs.has(requestID) && current.approval?.id !== requestID) {
