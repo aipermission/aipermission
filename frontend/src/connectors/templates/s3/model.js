@@ -1,4 +1,10 @@
-import { connectorCredentialRows, createTargetProfileLifecycle, defaultTargetProfile } from "../_shared/target-profile-lifecycle";
+import {
+  connectorCredentialRows,
+  firstTargetCredentialForm,
+  standardSubmitLabel,
+  createTargetProfileLifecycle,
+  defaultTargetProfile,
+} from "../_shared/target-profile-lifecycle";
 
 const emptyS3CredentialForm = {
   target_id: "",
@@ -90,18 +96,11 @@ export function submitDisabled({ state }) {
 }
 
 export function submitLabel({ state, mode }) {
-  if (state.state === "saving") return "Saving...";
-  return mode === "edit" ? "Save changes" : "Create connector";
+  return standardSubmitLabel({ state, mode });
 }
 
 export function emptyCredentialState({ targets = [] } = {}) {
-  const firstTarget = targets.find((target) => target.connector_kind === "s3");
-  return {
-    form: {
-      ...emptyS3CredentialForm,
-      target_id: String(firstTarget?.id || ""),
-    },
-  };
+  return firstTargetCredentialForm(targets, "s3", emptyS3CredentialForm);
 }
 
 export function credentialStateFromRow({ row }) {

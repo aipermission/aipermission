@@ -9,6 +9,28 @@ export function defaultTargetProfile(target, profile, fallback = {}) {
   return target?.profiles?.length === 1 ? target.profiles[0] : fallback;
 }
 
+export function standardSubmitLabel({ state, mode }) {
+  if (state.state === "saving") return "Saving...";
+  return mode === "edit" ? "Save changes" : "Create connector";
+}
+
+export function firstTargetCredentialForm(targets, connectorKind, defaults) {
+  const firstTarget = targets.find((target) => target.connector_kind === connectorKind);
+  return { form: { ...defaults, target_id: String(firstTarget?.id || "") } };
+}
+
+export function usernameCredentialStateFromRow(row) {
+  return {
+    form: {
+      target_id: String(row.target_id || ""),
+      profile_label: row.name,
+      username: row.profile?.public?.username || "",
+      password: "",
+      risk_label: row.profile?.risk_label || "",
+    },
+  };
+}
+
 export function createTargetProfileLifecycle({
   connectorKind,
   connectorLabel,

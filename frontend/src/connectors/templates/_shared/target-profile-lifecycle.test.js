@@ -2,7 +2,40 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-import { createTargetProfileLifecycle, usesStandardTargetProfileLifecycle } from "./target-profile-lifecycle.js";
+import {
+  createTargetProfileLifecycle,
+  firstTargetCredentialForm,
+  standardSubmitLabel,
+  usernameCredentialStateFromRow,
+  usesStandardTargetProfileLifecycle,
+} from "./target-profile-lifecycle.js";
+
+test("shared connector defaults retain target order and form isolation", () => {
+  const defaults = { profile_label: "readonly", target_id: "" };
+  const formState = firstTargetCredentialForm(
+    [
+      { id: 1, connector_kind: "redis" },
+      { id: 2, connector_kind: "s3" },
+    ],
+    "s3",
+    defaults,
+  );
+  assert.deepEqual(formState, { form: { profile_label: "readonly", target_id: "2" } });
+  formState.form.profile_label = "changed";
+  assert.equal(defaults.profile_label, "readonly");
+  assert.equal(firstTargetCredentialForm([], "s3", defaults).form.target_id, "");
+  assert.equal(standardSubmitLabel({ state: { state: "saving" }, mode: "edit" }), "Saving...");
+  assert.equal(standardSubmitLabel({ state: { state: "idle" }, mode: "edit" }), "Save changes");
+  assert.equal(standardSubmitLabel({ state: { state: "idle" }, mode: "create" }), "Create connector");
+  assert.deepEqual(
+    usernameCredentialStateFromRow({
+      target_id: 2,
+      name: "readonly",
+      profile: { public: { username: "reader" }, risk_label: "read" },
+    }),
+    { form: { target_id: "2", profile_label: "readonly", username: "reader", password: "", risk_label: "read" } },
+  );
+});
 
 test("standard connector models keep generic target and profile CRUD in the shared lifecycle", () => {
   const templates = readdirSync(new URL("../", import.meta.url), { withFileTypes: true })

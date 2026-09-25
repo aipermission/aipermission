@@ -1,4 +1,10 @@
-import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
+import {
+  connectorCredentialRows,
+  firstTargetCredentialForm,
+  usernameCredentialStateFromRow,
+  standardSubmitLabel,
+  createTargetProfileLifecycle,
+} from "../_shared/target-profile-lifecycle";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };
 const defaultServerFamily = "redis";
@@ -70,30 +76,15 @@ export function submitDisabled({ state }) {
 }
 
 export function submitLabel({ state, mode }) {
-  if (state.state === "saving") return "Saving...";
-  return mode === "edit" ? "Save changes" : "Create connector";
+  return standardSubmitLabel({ state, mode });
 }
 
 export function emptyCredentialState({ targets = [] } = {}) {
-  const firstTarget = targets.find((target) => target.connector_kind === "redis");
-  return {
-    form: {
-      ...emptyRedisCredentialForm,
-      target_id: String(firstTarget?.id || ""),
-    },
-  };
+  return firstTargetCredentialForm(targets, "redis", emptyRedisCredentialForm);
 }
 
 export function credentialStateFromRow({ row }) {
-  return {
-    form: {
-      target_id: String(row.target_id || ""),
-      profile_label: row.name,
-      username: row.profile?.public?.username || "",
-      password: "",
-      risk_label: row.profile?.risk_label || "",
-    },
-  };
+  return usernameCredentialStateFromRow(row);
 }
 
 export function credentialRows({ targets }) {
