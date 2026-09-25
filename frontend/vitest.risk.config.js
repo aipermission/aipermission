@@ -15,7 +15,7 @@ export default defineConfig({
       include: [
         "src/pages/unlock.jsx",
         "src/components/transfer-center.jsx",
-        "src/components/file-transfer/file-transfer-actions.js",
+        "src/components/file-transfer/file-transfer-actions.ts",
         "src/components/file-transfer/file-transfer-list-state.js",
         "src/components/settings/maintenance-console-panel.jsx",
         "src/components/vault/vault-action-approval-dialog.jsx",
