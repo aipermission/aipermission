@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet, apiPost, apiPostForm } from "../../lib/api";
@@ -89,6 +89,51 @@ beforeEach(() => {
   apiPostForm.mockReset();
 });
 
+it("owns paused queue edits and preserves batch identity on failure", async () => {
+  const { result } = renderHook(() =>
+    useTransferBatch({
+      open: true,
+      runtimeTarget: { id: 7 },
+      mode: "download",
+      remoteDir: "/tmp",
+      uploadQueue: [],
+      downloadQueue: [],
+      queue: [],
+      onNotice: vi.fn(),
+    }),
+  );
+  await act(async () => {
+    await result.current.refreshBatch();
+    await result.current.updatePausedBatchQueue([]);
+    await result.current.cancelBatch();
+    await result.current.startQueue();
+  });
+  expect(apiPost).not.toHaveBeenCalled();
+  const item = {
+    id: 12,
+    status: "paused",
+    direction: "download",
+    items: [
+      { id: 1, status: "pending" },
+      { id: 2, status: "completed" },
+      { id: 3, status: "pending" },
+    ],
+  };
+  act(() => result.current.setBatch({ state: "ready", item, error: null }));
+  expect(result.current.pausedQueueWithout("1")).toEqual([3]);
+  expect(result.current.movePausedQueueItem(3, -1)).toEqual([3, 1]);
+  expect(result.current.movePausedQueueItem(1, -1)).toBeNull();
+  expect(result.current.movePausedQueueItem(3, 1)).toBeNull();
+  expect(result.current.movePausedQueueItem(99, 1)).toBeNull();
+  apiPost.mockResolvedValueOnce({ ...item, items: [{ id: 3, status: "pending" }] });
+  await act(async () => result.current.updatePausedBatchQueue([3]));
+  expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/queue", { item_ids: [3] }, { signal: expect.any(AbortSignal) });
+  expect(result.current.batch.item.items).toEqual([{ id: 3, status: "pending" }]);
+  apiPost.mockRejectedValueOnce(new Error("queue unavailable"));
+  await act(async () => result.current.updatePausedBatchQueue([3]));
+  expect(result.current.batch).toMatchObject({ state: "error", item: { id: 12 }, error: "queue unavailable" });
+});
+
 it("owns upload creation and ordered pause, resume, and cancel transitions", async () => {
   const user = userEvent.setup();
   const onNotice = vi.fn();
@@ -136,13 +181,23 @@ it("publishes an upload completion once", async () => {
 it("owns upload overwrite conflicts without creating a batch", async () => {
   const user = userEvent.setup();
   apiPostForm.mockRejectedValue(
-    Object.assign(new Error("conflict"), { status: 409, data: { code: "remote_files_exist", conflicts: [{}] } }),
+    Object.assign(new Error("conflict"), { status: 409, data: { code: "remote_files_exist", conflicts: [{ remote_path: "/tmp/a.txt" }] } }),
   );
   render(<BatchHarness />);
 
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(await screen.findByTestId("conflicts")).toHaveTextContent("1");
   expect(screen.getByTestId("status")).toHaveTextContent("idle");
+});
+
+it("does not accept a malformed batch creation response as a started transfer", async () => {
+  const user = userEvent.setup();
+  apiPostForm.mockResolvedValue({ id: 12, status: "running", items: [] });
+  render(<BatchHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Start" }));
+
+  expect(await screen.findByTestId("status")).toHaveTextContent("error");
 });
 
 it("reuses the upload idempotency key when a response is lost", async () => {

@@ -1,8 +1,22 @@
 import { useEffect, useEffectEvent, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { apiDownload } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
 import { useRequestGuard } from "../../lib/request-guard";
+import type { TransferBatchState, TransferDirection } from "./transfer-contracts";
 
-export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQueue, onNotice, onClose }) {
+type Notice = { tone: "good" | "warn"; message: string };
+type Props = {
+  batch: TransferBatchState;
+  setBatch: Dispatch<SetStateAction<TransferBatchState>>;
+  mode: TransferDirection;
+  clearBatch: () => void;
+  clearQueue: (_direction: TransferDirection) => void;
+  onNotice: (_notice: Notice | null) => void;
+  onClose: () => void;
+};
+
+export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQueue, onNotice, onClose }: Props) {
   const [downloadPrompted, setDownloadPrompted] = useState(false);
   const [downloadSaved, setDownloadSaved] = useState(false);
   const [clearDownloadPrompt, setClearDownloadPrompt] = useState(false);
@@ -26,7 +40,7 @@ export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQu
     setCloseDownloadPrompt(false);
   }
 
-  function clearFinishedQueue(options = {}) {
+  function clearFinishedQueue(options: { force?: boolean } = {}) {
     if (unsavedCompletedDownload && !options.force) {
       setClearDownloadPrompt(true);
       return;
@@ -45,7 +59,7 @@ export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQu
     onClose();
   }
 
-  async function saveDownloadBatch(options = {}) {
+  async function saveDownloadBatch(options: { clearAfterSave?: boolean; closeAfterSave?: boolean } = {}) {
     if (!batch.item) return false;
     const request = guard.begin("save");
     setBatch((current) => ({ ...current, state: "downloading", error: null }));
@@ -79,7 +93,7 @@ export function useTransferDownload({ batch, setBatch, mode, clearBatch, clearQu
     } catch (error) {
       if (!request.isCurrent()) return false;
       setDownloadPrompted(true);
-      setBatch((current) => ({ ...current, state: "error", error: error.message }));
+      setBatch((current) => ({ ...current, state: "error", error: errorMessage(error, "Download failed.") }));
       return false;
     } finally {
       request.complete();
