@@ -17,6 +17,7 @@ export type TransferBatch = {
   [field: string]: unknown;
 };
 export type TransferBatchState = { state: string; item: TransferBatch | null; error: string | null };
+export type RemoteEntry = { type: "file" | "directory"; path: string; name: string; size?: number };
 
 const statuses: ReadonlySet<string> = new Set(["pending", "pending_approval", "running", "paused", "completed", "failed", "canceled"]);
 
@@ -47,4 +48,25 @@ export function transferBatchResponse(value: unknown): TransferBatch {
     }
   }
   return batch as TransferBatch;
+}
+
+export function remoteExpansionEntries(value: unknown): RemoteEntry[] {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("entries" in value) || !Array.isArray(value.entries)) {
+    throw new Error("Invalid remote folder response from gateway.");
+  }
+  const entries = value.entries as unknown[];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("Invalid remote folder entry from gateway.");
+    const item = entry as Record<string, unknown>;
+    if (
+      (item.type !== "file" && item.type !== "directory") ||
+      typeof item.path !== "string" ||
+      !item.path.startsWith("/") ||
+      typeof item.name !== "string" ||
+      (item.size !== undefined && (typeof item.size !== "number" || !Number.isSafeInteger(item.size) || item.size < 0))
+    ) {
+      throw new Error("Invalid remote folder entry from gateway.");
+    }
+  }
+  return entries as RemoteEntry[];
 }

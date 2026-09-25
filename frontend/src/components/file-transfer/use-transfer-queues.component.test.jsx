@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -65,6 +65,51 @@ function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }) {
 }
 
 beforeEach(() => apiPost.mockReset());
+
+it("retains queue ownership while moving and removing downloads", async () => {
+  const onNotice = vi.fn();
+  const { result } = renderHook(() =>
+    useTransferQueues({ runtimeTarget: { id: 7 }, defaultRemoteDir: "/tmp", recursive: true, joinRemotePath, onNotice }),
+  );
+  const entries = [
+    { type: "file", path: "/remote/a.txt", name: "a.txt", size: 1 },
+    { type: "file", path: "/remote/b.txt", name: "b.txt", size: 2 },
+  ];
+  await act(async () => expect(await result.current.addRemoteFiles(entries)).toBe(true));
+  await act(async () => expect(await result.current.addRemoteFiles(entries)).toBe(true));
+  act(() => result.current.setMode("download"));
+  act(() => result.current.moveQueueItem("missing", 1));
+  act(() => result.current.moveQueueItem("remote-/remote/a.txt", -1));
+  act(() => result.current.moveQueueItem("remote-/remote/b.txt", 1));
+  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/a.txt", "/remote/b.txt"]);
+  act(() => result.current.moveQueueItem("remote-/remote/b.txt", -1));
+  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/b.txt", "/remote/a.txt"]);
+  act(() => result.current.removeQueueItem("remote-/remote/b.txt"));
+  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/a.txt"]);
+  expect(apiPost).not.toHaveBeenCalled();
+  expect(onNotice).not.toHaveBeenCalled();
+});
+
+it("resets both file inputs and clears upload ownership", () => {
+  const { result } = renderHook(() =>
+    useTransferQueues({ runtimeTarget: { id: 7 }, defaultRemoteDir: "/tmp", recursive: false, joinRemotePath, onNotice: vi.fn() }),
+  );
+  const fileInput = document.createElement("input");
+  const folderInput = document.createElement("input");
+  result.current.fileInputRef.current = fileInput;
+  result.current.folderInputRef.current = folderInput;
+  fileInput.value = "selected file";
+  folderInput.value = "selected folder";
+  act(() => result.current.resetQueues("/new"));
+  expect(fileInput.value).toBe("");
+  expect(folderInput.value).toBe("");
+  expect(result.current.remoteDir).toBe("/new");
+  fileInput.value = "another file";
+  act(() => result.current.clearQueue("upload"));
+  expect(fileInput.value).toBe("");
+  expect(result.current.remoteDir).toBe("/tmp");
+  expect(result.current.uploadQueue).toEqual([]);
+});
 
 function deferred() {
   let resolve;
@@ -238,5 +283,15 @@ it("reports a current recursive expansion failure", async () => {
 
   await user.click(screen.getByRole("button", { name: "Expand" }));
   expect(await screen.findByText("folder unavailable")).toBeVisible();
+  expect(screen.getByTestId("downloads")).toBeEmptyDOMElement();
+});
+
+it("rejects malformed recursive expansion results without queuing remote paths", async () => {
+  const user = userEvent.setup();
+  apiPost.mockResolvedValueOnce({ entries: [{ type: "file", path: "relative/path", name: "bad.txt" }] });
+  render(<QueueHarness />);
+
+  await user.click(screen.getByRole("button", { name: "Expand" }));
+  expect(await screen.findByText("Invalid remote folder entry from gateway.")).toBeVisible();
   expect(screen.getByTestId("downloads")).toBeEmptyDOMElement();
 });
