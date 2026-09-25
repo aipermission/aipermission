@@ -1,3 +1,5 @@
+export type PermissionValue = string | { execution_rule?: string; expires_at?: string } | null | undefined;
+
 export const permissionLifetimeOptions = [
   { value: "permanent", label: "Permanent", ms: 0 },
   { value: "1h", label: "1 hour", ms: 60 * 60 * 1000 },
@@ -5,7 +7,7 @@ export const permissionLifetimeOptions = [
   { value: "1d", label: "1 day", ms: 24 * 60 * 60 * 1000 },
 ];
 
-export function normalizePermission(value) {
+export function normalizePermission(value: PermissionValue): { execution_rule: string; expires_at: string } | null {
   if (!value) return null;
   if (typeof value === "string") {
     return { execution_rule: value, expires_at: "" };
@@ -16,20 +18,20 @@ export function normalizePermission(value) {
   };
 }
 
-export function permissionExpired(value, now = Date.now()) {
+export function permissionExpired(value: PermissionValue, now = Date.now()): boolean {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return false;
   const expiresAt = parseRFC3339Timestamp(permission.expires_at);
   return expiresAt === null || expiresAt <= now;
 }
 
-export function effectiveRule(value, now = Date.now()) {
+export function effectiveRule(value: PermissionValue, now = Date.now()): string {
   const permission = normalizePermission(value);
   if (!permission || permissionExpired(permission, now)) return "";
   return permission.execution_rule;
 }
 
-export function permissionLifetimeLabel(value, now = Date.now()) {
+export function permissionLifetimeLabel(value: PermissionValue, now = Date.now()): string {
   const permission = normalizePermission(value);
   if (!permission?.expires_at) return "Permanent";
   const expiresAt = parseRFC3339Timestamp(permission.expires_at);
@@ -44,7 +46,7 @@ export function permissionLifetimeLabel(value, now = Date.now()) {
   return `${days}d left`;
 }
 
-function parseRFC3339Timestamp(value) {
+function parseRFC3339Timestamp(value: string): number | null {
   if (typeof value !== "string") return null;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/);
   if (!match) return null;
@@ -63,34 +65,34 @@ function parseRFC3339Timestamp(value) {
   return Date.parse(value);
 }
 
-export function expiresAtFromLifetime(value, now = Date.now()) {
+export function expiresAtFromLifetime(value: string, now = Date.now()): string {
   const option = permissionLifetimeOptions.find((item) => item.value === value);
   if (!option?.ms) return "";
   return new Date(now + option.ms).toISOString();
 }
 
-export function ruleLabel(rule) {
+export function ruleLabel(rule: string): string {
   if (rule === "always_run") return "always run";
   if (rule === "approval_required") return "prompt";
   if (rule === "blocked") return "blocked";
   return "disabled";
 }
 
-export function ruleDotClass(rule) {
+export function ruleDotClass(rule: string): string {
   if (rule === "always_run") return "bg-emerald-500";
   if (rule === "approval_required") return "bg-amber-400";
   if (rule === "blocked") return "bg-red-500";
   return "bg-red-500";
 }
 
-export function permissionCardClass(rule) {
+export function permissionCardClass(rule: string): string {
   if (rule === "always_run") return "border-emerald-100 bg-emerald-50/45 permission-card-good";
   if (rule === "approval_required") return "border-amber-100 bg-amber-50/45 permission-card-warn";
   if (rule === "blocked") return "border-red-100 bg-red-50/45 permission-card-bad";
   return "border-red-100 bg-red-50/35 permission-card-bad";
 }
 
-export function maskedToken(value) {
+export function maskedToken(value?: string | null): string {
   if (!value) return "token value unavailable";
   if (value.length <= 14) return value;
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
