@@ -34,6 +34,16 @@ describe("useAsyncAction", () => {
     expect(result.current.actionState).toEqual(idleActionState);
   });
 
+  it("keeps a non-Error rejection visible instead of failing inside the error handler", async () => {
+    const { result } = renderHook(() => useAsyncAction());
+
+    await act(async () => {
+      await expect(result.current.runAction({ action: () => Promise.reject(null) })).resolves.toBeUndefined();
+    });
+
+    expect(result.current.actionState).toEqual({ state: "error", error: "Unknown error.", message: null });
+  });
+
   it("does not let an older action overwrite the latest action state", async () => {
     let resolveFirst;
     let resolveSecond;
