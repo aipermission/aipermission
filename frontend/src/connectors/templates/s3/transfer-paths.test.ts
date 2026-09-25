@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths.js";
+import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths.ts";
 import { rememberDownloadPath, rememberedDownloadPath } from "../../../lib/file-transfer-utils.js";
 
 test("transfer path callbacks preserve opaque prefix and filename components", () => {
@@ -12,14 +12,17 @@ test("transfer path callbacks preserve opaque prefix and filename components", (
 });
 
 test("remembered directory uses the supplied identity policy", () => {
-  const original = globalThis.window;
-  const values = new Map();
-  globalThis.window = { localStorage: { setItem: (key, value) => values.set(key, value), getItem: (key) => values.get(key) } };
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: { setItem: (key: string, value: string) => values.set(key, value), getItem: (key: string) => values.get(key) } },
+  });
   try {
     rememberDownloadPath({ id: 7 }, "//a// ", normalizeTransferDirectory);
     assert.equal(rememberedDownloadPath({ id: 7 }, "/", normalizeTransferDirectory), "//a// ");
   } finally {
-    if (original === undefined) delete globalThis.window;
-    else globalThis.window = original;
+    if (original === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Object.defineProperty(globalThis, "window", original);
   }
 });

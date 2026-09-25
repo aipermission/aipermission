@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { moduleSpecifiers, resolveSourceImport } from "./architecture-graph.mjs";
+import { moduleSpecifiers, parseModule, resolveSourceImport } from "./architecture-graph.mjs";
 
 export function testReachesOwner({ graph, ownerPath, sourceFiles, sourceRoot, testPath }) {
-  const direct = moduleSpecifiers(readFileSync(testPath, "utf8"))
+  const direct = moduleSpecifiers(parseModule(readFileSync(testPath, "utf8"), testPath))
     .map((specifier) => resolveSourceImport(sourceRoot, testPath, specifier, sourceFiles))
     .filter(Boolean);
   const visited = new Set();

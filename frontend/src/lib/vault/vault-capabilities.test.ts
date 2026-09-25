@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { vaultCapabilitiesFromDraft, vaultCapabilityDraftFromItems, vaultCapabilityKey } from "./vault-capabilities.ts";
+import { vaultCapabilitiesFromDraft, vaultCapabilityDraftFromItems, vaultCapabilityKey } from "../vault-capabilities.ts";
 
 test("Vault capability draft preserves temporary grant expiry", () => {
-  const definitions = [{ name: "vault.session_apply", allowed_rules: ["approval_required", "always_run"] }];
+  const definitions = [
+    {
+      name: "vault.session_apply",
+      label: "Apply to session",
+      description: "Use vault secrets in a session",
+      allowed_rules: ["approval_required", "always_run"],
+    },
+  ];
   const items = [
     {
       project_id: 7,

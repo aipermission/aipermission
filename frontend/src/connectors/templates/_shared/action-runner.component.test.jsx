@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { connectorActionBusy } from "./action-state.js";
+import { connectorActionBusy } from "./action-state.ts";
 import { runGuardedConnectorAction } from "./action-runner.js";
 import { createRequestGuard } from "../../../lib/request-guard";
 

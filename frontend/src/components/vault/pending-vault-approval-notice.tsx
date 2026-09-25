@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
 
-export function PendingVaultApprovalNotice({ count, onReview }) {
+export function PendingVaultApprovalNotice({ count, onReview }: { count: number; onReview: () => void }) {
   return (
     <Notice tone="warn" className="flex items-center justify-between gap-3">
       <span>
