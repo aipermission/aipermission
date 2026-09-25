@@ -12,7 +12,7 @@ import {
 } from "./network-transport-fields";
 
 vi.mock("../host-ping-button", () => ({
-  HostPingButton: (props) => <span data-testid="host-ping-props">{JSON.stringify(props)}</span>,
+  HostPingButton: (props: Record<string, unknown>) => <span data-testid="host-ping-props">{JSON.stringify(props)}</span>,
 }));
 
 const targets = [
@@ -100,7 +100,7 @@ describe("ConnectionModeFields", () => {
       />,
     );
 
-    const pingProps = JSON.parse(screen.getByTestId("host-ping-props").textContent);
+    const pingProps = JSON.parse(screen.getByTestId("host-ping-props").textContent || "null");
     expect(pingProps).toEqual({
       host: "cache.example",
       port: "6379",

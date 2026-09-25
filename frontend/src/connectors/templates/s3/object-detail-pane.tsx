@@ -1,11 +1,26 @@
 import { Download, Link2, Trash2 } from "lucide-react";
+import type { ComponentType } from "react";
 import { Button } from "../../../components/ui/button";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { connectorActionBusy } from "../_shared/action-state";
+import { connectorConsoleTheme } from "../_shared/console-theme";
 import { shortDate } from "./helpers";
 import { LifecycleIcon } from "./lifecycle-dialog";
 import { S3MetadataPanel } from "./metadata-panel";
+import type { S3MetadataPanelProps } from "./metadata-panel";
 import { VersionsIcon } from "./versions-dialog";
+
+type S3ObjectDetailPaneProps = S3MetadataPanelProps & {
+  active: boolean;
+  selectedObject: { size?: number | string; last_modified?: string } | null;
+  state: { state: string; error?: string | null };
+  classes: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input">;
+  onOpenLifecycle: () => void;
+  onOpenPresign: () => void;
+  onOpenVersions: () => void;
+  onDownload: () => void;
+  onDelete: () => void;
+};
 
 export function S3ObjectDetailPane({
   active,
@@ -26,7 +41,7 @@ export function S3ObjectDetailPane({
   onOpenVersions,
   onDownload,
   onDelete,
-}) {
+}: S3ObjectDetailPaneProps) {
   const disabled = connectorActionBusy(state);
   return (
     <section
@@ -76,7 +91,19 @@ export function S3ObjectDetailPane({
   );
 }
 
-function IconButton({ label, disabled, onClick, icon: Icon, danger = false }) {
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  icon: Icon,
+  danger = false,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  icon: ComponentType<{ className?: string }>;
+  danger?: boolean;
+}) {
   return (
     <Button
       type="button"

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filenameFromKey, joinObjectKey, normalizeObjectKey, parentPrefix, restoreDestinationGuard, safeDownloadName } from "./helpers.js";
+import { filenameFromKey, joinObjectKey, normalizeObjectKey, parentPrefix, restoreDestinationGuard, safeDownloadName } from "./helpers.ts";
 
 test("S3 object-key helpers preserve browser navigation boundaries", () => {
   assert.equal(normalizeObjectKey("  /reports/2026/file.csv  "), "  /reports/2026/file.csv  ");
