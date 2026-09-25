@@ -99,6 +99,23 @@ describe("useConsoleWorkspaceSession", () => {
     expect(result.current.restartAction).toEqual({ state: "error", error: "offline" });
   });
 
+  it("shows a safe fallback when a session start rejects without an Error", async () => {
+    const runtimeTarget = { id: 4, connector_kind: "connector" };
+    const { result } = renderHook(() =>
+      useConsoleWorkspaceSession(
+        props({
+          newConsoleSession: vi.fn().mockRejectedValue(null),
+          selectedRuntimeTarget: runtimeTarget,
+          selectedTargetUsesLiveConsole: true,
+        }),
+      ),
+    );
+
+    await act(async () => result.current.startNew(runtimeTarget));
+
+    expect(result.current.newSessionError).toBe("Console session could not be started.");
+  });
+
   it("ignores a session failure after ownership moves to another target", async () => {
     const pending = deferred();
     const initial = props({
