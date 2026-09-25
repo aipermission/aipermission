@@ -1,5 +1,5 @@
-import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.js";
-import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.js";
+import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.ts";
+import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
 import { entryID, newActionAttempt, newRetryEntry, sameRetryEntry, validActionAttempt, validRetryEntry } from "./records.js";
 import { notifyChanged, usesIndexedDB } from "./runtime.js";
 import {

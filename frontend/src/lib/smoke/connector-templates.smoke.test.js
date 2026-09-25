@@ -16,14 +16,14 @@ test("frontend templates exactly match the built-in backend connector catalog", 
 });
 
 test("connector templates are discovered dynamically", () => {
-  assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.jsx"/);
+  assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.ts"/);
   assert.match(connectorTemplateCatalogSource, /import\.meta\.glob\("\.\/\*\/metadata\.json"/);
   assert.doesNotMatch(connectorTemplateRegistrySource, /from "\.\/(ssh|postgres|redis|rabbitmq|kafka|mail|s3|docker|kubernetes)/);
 });
 
 test("frontend connector templates expose complete metadata", () => {
   for (const kind of connectorTemplateKinds) {
-    const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.jsx"), "utf8");
+    const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.ts"), "utf8");
     const metadata = JSON.parse(readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8"));
     assert.match(indexSource, /export default Object\.freeze/);
     assert.equal(metadata.kind, kind);
@@ -67,6 +67,6 @@ function sourceFiles(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const path = join(root, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);
-    return /\.(?:js|jsx)$/.test(entry.name) && !/\.test\.[^.]+$/.test(entry.name) ? [path] : [];
+    return /\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.test\.[^.]+$/.test(entry.name) ? [path] : [];
   });
 }

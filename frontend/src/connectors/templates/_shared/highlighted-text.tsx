@@ -1,11 +1,13 @@
-export function HighlightedText({ text, query }) {
+import type { ReactNode } from "react";
+
+export function HighlightedText({ text, query }: { text: string | number | null | undefined; query?: string | null }) {
   const value = String(text || "");
   const needle = String(query || "").trim();
   if (!needle) return value;
 
   const lowerValue = value.toLowerCase();
   const lowerNeedle = needle.toLowerCase();
-  const parts = [];
+  const parts: ReactNode[] = [];
   let cursor = 0;
   let match = lowerValue.indexOf(lowerNeedle);
   while (match >= 0) {

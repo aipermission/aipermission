@@ -1,4 +1,4 @@
-export function connectorConsoleTheme(theme) {
+export function connectorConsoleTheme(theme: string) {
   const light = theme === "light";
   return {
     panel: light ? "bg-white text-stone-900" : "bg-[#1e1e1e] text-stone-100",

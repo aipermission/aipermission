@@ -1,4 +1,18 @@
 import { Button } from "../../../components/ui/button";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+
+type StructuredSessionEmptyProps = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  buttonLabel: string;
+  onStart: () => void;
+  panelClass?: string;
+  mutedClass?: string;
+  footer?: ReactNode;
+  compact?: boolean;
+};
 
 export function StructuredSessionEmpty({
   icon: Icon,
@@ -10,7 +24,7 @@ export function StructuredSessionEmpty({
   mutedClass,
   footer,
   compact = false,
-}) {
+}: StructuredSessionEmptyProps) {
   return (
     <div className={`${footer ? "grid grid-rows-[minmax(0,1fr)_auto]" : "grid place-items-center"} h-full min-h-0 ${panelClass}`}>
       <div className="grid place-items-center p-6 text-center sm:p-8">

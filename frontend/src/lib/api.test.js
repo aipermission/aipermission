@@ -13,8 +13,8 @@ import {
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
 } from "./local-action-retry.js";
-import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.js";
-import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.js";
+import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.ts";
+import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.ts";
 import { requestReconciliation } from "./local-action-retry/runtime.js";
 import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.js";
 

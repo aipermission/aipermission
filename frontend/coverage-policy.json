@@ -9,5 +9,5 @@
   "excludedNames": ["mcp-client-catalog.js", "release.generated.json"],
   "excludedDirectories": ["src/test"],
   "separatelyCoveredDirectories": ["src/lib/local-action-retry"],
-  "excludedPatterns": ["^src/connectors/templates/[^/]+/index\\.jsx$"]
+  "excludedPatterns": ["^src/connectors/templates/[^/]+/index\\.ts$"]
 }

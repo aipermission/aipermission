@@ -29,8 +29,8 @@ test("treats production modules as owners by default", () => {
   exclusions.forEach((file) => assert.equal(isBehaviorOwner(file), false, file));
 });
 
-test("leaves connector manifests to the runtime architecture gate", () => {
-  assert.equal(isBehaviorOwner("src/connectors/templates/redis/index.jsx"), false);
+test("leaves typed connector manifests to the runtime architecture gate", () => {
+  assert.equal(isBehaviorOwner("src/connectors/templates/redis/index.ts"), false);
   assert.equal(isBehaviorOwner("src/connectors/templates/redis/model.js"), true);
 });
 

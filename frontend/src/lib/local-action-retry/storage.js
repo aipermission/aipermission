@@ -1,5 +1,5 @@
-import { attemptsStore, databaseName, databaseVersion, entriesStore, keysStore, reservationsStore } from "./constants.js";
-import { storageError } from "./errors.js";
+import { attemptsStore, databaseName, databaseVersion, entriesStore, keysStore, reservationsStore } from "./constants.ts";
+import { storageError } from "./errors.ts";
 import { validRetryDatabaseSchema } from "./records.js";
 import { isBrowserRuntime, requireBrowserIndexedDB } from "./runtime.js";
 

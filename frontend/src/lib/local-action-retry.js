@@ -1,4 +1,4 @@
-import { localActionReconciliationEvent, localActionRetryLedgerChangedEvent } from "./local-action-retry/constants.js";
+import { localActionReconciliationEvent, localActionRetryLedgerChangedEvent } from "./local-action-retry/constants.ts";
 import {
   allEntries,
   completeEntryAttempt,
@@ -10,7 +10,7 @@ import {
   retireEntryAttempt,
   updateEntryIfMatching,
 } from "./local-action-retry/entries.js";
-import { retryIdentityChangedError } from "./local-action-retry/errors.js";
+import { retryIdentityChangedError } from "./local-action-retry/errors.ts";
 import { stableRequestSignature, validRetryEntry } from "./local-action-retry/records.js";
 import {
   assertNoLegacyLedger,

@@ -9,6 +9,7 @@ import { findChangedOwnerEntries, readBaselineAt, resolveBootstrapRevision, reso
 import { createCoverageReportDirectory } from "./coverage-report-directory.mjs";
 import {
   coverageFloors as floors,
+  coverageMetricsForOwner,
   mergeChangedCoverageBaseline,
   requiredChangedMetrics,
   validateCoverageBaseline,
@@ -51,9 +52,11 @@ if (updateBaseline) {
       file,
       requiredChangedMetrics({
         baseBaselineAvailable: Boolean(comparison.baseline),
-        previous: comparison.baseline?.files?.[file],
-        added: changedStatus.get(file) === "A" || changedStatus.get(file) === "C",
-        accepted: currentBaseline?.files?.[file] || measuredFiles[file],
+        previous: coverageMetricsForOwner(comparison.baseline?.files, file, allOwners),
+        added:
+          (changedStatus.get(file) === "A" || changedStatus.get(file) === "C") &&
+          !coverageMetricsForOwner(currentBaseline?.files, file, allOwners),
+        accepted: coverageMetricsForOwner(currentBaseline?.files, file, allOwners) || measuredFiles[file],
       }),
     ]),
   );
@@ -75,7 +78,7 @@ const failures = [];
 for (const file of allOwners) {
   const actual = metricsFor(file, coverage);
   const accepted = baseline.files[file];
-  const previous = baseBaseline?.files?.[file];
+  const previous = coverageMetricsForOwner(baseBaseline?.files, file, allOwners);
   for (const metric of Object.keys(floors)) {
     if (actual[metric] + 0.001 < accepted[metric]) {
       failures.push(`${file} ${metric} ${actual[metric]}% is below checked baseline ${accepted[metric]}%`);
@@ -86,7 +89,7 @@ for (const file of allOwners) {
   }
 }
 for (const file of changedOwners) {
-  const previous = baseBaseline?.files?.[file];
+  const previous = coverageMetricsForOwner(baseBaseline?.files, file, allOwners);
   const required = requiredChangedMetrics({
     baseBaselineAvailable: Boolean(baseBaseline),
     previous,
