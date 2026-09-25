@@ -1,5 +1,51 @@
 import { describe, expect, it } from "vitest";
-import { vaultCapabilitiesFromDraft, vaultCapabilityDraftFromItems, vaultCapabilityKey } from "../vault-capabilities";
+import {
+  vaultCapabilitiesFromDraft,
+  vaultCapabilityDraftFromItems,
+  vaultCapabilityKey,
+  vaultCapabilitySnapshot,
+} from "../vault-capabilities";
+
+describe("Vault capability snapshot validation", () => {
+  const definition = { name: "vault.session_apply", label: "Apply", description: "Apply environment", allowed_rules: ["always_run"] };
+  const item = { project_id: 7, capability_name: definition.name, execution_rule: "always_run", expires_at: null };
+  const snapshot = { definitions: [definition], items: [item], revision: "r1" };
+
+  it("retains a validated snapshot and nullable expiry", () => {
+    expect(vaultCapabilitySnapshot(snapshot)).toEqual(snapshot);
+    expect(vaultCapabilitySnapshot({ ...snapshot, items: [{ ...item, expires_at: "2026-10-01" }] }).items[0].expires_at).toBe("2026-10-01");
+  });
+
+  it.each([null, [], "invalid", {}, { ...snapshot, revision: "" }, { ...snapshot, definitions: null }, { ...snapshot, items: null }])(
+    "rejects a malformed snapshot %j",
+    (value) => expect(() => vaultCapabilitySnapshot(value)).toThrow(/Invalid Vault capability/),
+  );
+
+  it.each([
+    null,
+    [],
+    { ...definition, name: "" },
+    { ...definition, label: null },
+    { ...definition, description: null },
+    { ...definition, allowed_rules: null },
+    { ...definition, allowed_rules: ["blocked"] },
+  ])("rejects a malformed definition %j", (value) => {
+    expect(() => vaultCapabilitySnapshot({ ...snapshot, definitions: [value] })).toThrow(/Invalid Vault capability/);
+  });
+
+  it.each([
+    null,
+    [],
+    { ...item, project_id: 0 },
+    { ...item, project_id: 1.5 },
+    { ...item, capability_name: null },
+    { ...item, capability_name: "unknown" },
+    { ...item, execution_rule: "blocked" },
+    { ...item, expires_at: 123 },
+  ])("rejects a malformed grant %j", (value) => {
+    expect(() => vaultCapabilitySnapshot({ ...snapshot, items: [value] })).toThrow(/Invalid Vault capability/);
+  });
+});
 
 describe("Vault capability drafts", () => {
   const definitions = [{ name: "vault.session_apply", allowed_rules: ["approval_required", "always_run"] }];
