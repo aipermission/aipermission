@@ -7,7 +7,7 @@ export const asyncStateOwnerTests = {
   ],
   "src/components/console/use-console-connections.ts": ["src/components/console/use-console-connections.component.test.jsx"],
   "src/components/console/use-console-messages.js": ["src/components/console/use-console-messages.component.test.jsx"],
-  "src/components/console/use-console-recovery-state.js": ["src/components/console/use-console-recovery-state.component.test.jsx"],
+  "src/components/console/use-console-recovery-state.ts": ["src/components/console/use-console-recovery-state.component.test.ts"],
   "src/components/console/use-console-session-coordinator.ts": [
     "src/components/console/use-console-session-coordinator.component.test.jsx",
   ],
@@ -86,9 +86,10 @@ export const asyncStateTestIncludes = [...new Set(Object.values(asyncStateOwnerT
 export const riskCoverageTestIncludes = [
   "src/pages/unlock.component.test.jsx",
   "src/pages/remote-restore-panel.component.test.jsx",
+  "src/pages/remote-restore-helpers.component.test.ts",
   "src/components/transfer-center.component.test.jsx",
   "src/components/file-transfer/use-transfer-center-state.component.test.jsx",
-  "src/components/file-transfer/file-transfer-actions.component.test.jsx",
+  "src/components/file-transfer/file-transfer-actions.component.test.ts",
   "src/components/file-transfer/file-transfer-list-state.component.test.jsx",
   "src/components/settings/maintenance-console-panel.component.test.jsx",
   "src/components/vault/vault-action-approval-dialog.component.test.jsx",

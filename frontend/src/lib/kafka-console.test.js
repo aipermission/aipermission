@@ -10,7 +10,7 @@ import {
   detailMatchesSelection,
   offsetSelectionValue,
   parseOffsetSelection,
-} from "../connectors/templates/kafka/console-helpers.js";
+} from "../connectors/templates/kafka/console-helpers.ts";
 import { credentialPayload } from "../connectors/templates/kafka/model-helpers.ts";
 
 test("Kafka action helpers surface failed HTTP 200 responses", () => {
@@ -43,6 +43,8 @@ test("Kafka offset controls preserve exact topic and partition selections", () =
   assert.deepEqual(parseOffsetSelection(value), { topic: "orders/priority", partition: 12 });
   assert.equal(parseOffsetSelection('["",1]'), null);
   assert.equal(parseOffsetSelection('["orders",-1]'), null);
+  assert.equal(parseOffsetSelection('[42,1]'), null);
+  assert.equal(parseOffsetSelection('["orders",1,"extra"]'), null);
   assert.equal(parseOffsetSelection("not-json"), null);
 });
 
