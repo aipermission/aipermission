@@ -107,11 +107,11 @@ test("container builds include the production source boundary", () => {
 
 test("collects literal import.meta.glob patterns from the AST", () => {
   const source = `
-    const modules = import.meta.glob("./*/index.jsx", { eager: true });
+    const modules = import.meta.glob("./*/index.ts", { eager: true });
     const metadata = import.meta.glob(["./*/metadata.js", "./*/catalog.js"]);
     const ignored = import.meta.glob(variable);
   `;
-  assert.deepEqual(moduleGlobSpecifiers(source), ["./*/index.jsx", "./*/metadata.js", "./*/catalog.js"]);
+  assert.deepEqual(moduleGlobSpecifiers(source), ["./*/index.ts", "./*/metadata.js", "./*/catalog.js"]);
 });
 
 test("finds dependency cycles without duplicating the same cycle", () => {

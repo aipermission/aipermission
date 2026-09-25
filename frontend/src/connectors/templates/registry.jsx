@@ -3,7 +3,7 @@ import { allowedConnectorIcons, connectorTemplateMetadata, getConnectorMetadata 
 import { assertNetworkTransportMetadata, uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
 import { usesStandardTargetProfileLifecycle } from "./_shared/target-profile-lifecycle";
 
-const templateModules = import.meta.glob("./*/index.jsx", { eager: true });
+const templateModules = import.meta.glob("./*/index.ts", { eager: true });
 
 const requiredModelFunctions = Object.freeze([
   "activeCredential",
@@ -62,7 +62,7 @@ export function getConnectorModel(kind) {
 }
 
 export function ConnectorTemplateNotFound({ kind, slot, as = "div", colSpan = 6 }) {
-  const message = `Connector template not found: ${kind}/${slot}. Add frontend/src/connectors/templates/${kind}/index.jsx and export the ${slot} slot.`;
+  const message = `Connector template not found: ${kind}/${slot}. Add frontend/src/connectors/templates/${kind}/index.ts and export the ${slot} slot.`;
   if (as === "tr") {
     return (
       <tr>
@@ -125,7 +125,7 @@ function assertConnectorTemplate(kind, template) {
 }
 
 function connectorKindFromPath(path) {
-  const match = String(path).match(/^\.\/([^/]+)\/index\.jsx$/);
+  const match = String(path).match(/^\.\/([^/]+)\/index\.ts$/);
   if (!match) {
     throw new Error(`Invalid connector template path: ${path}`);
   }

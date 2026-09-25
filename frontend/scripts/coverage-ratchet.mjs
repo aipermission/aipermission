@@ -51,6 +51,17 @@ export function validateCoverageBaselineForRun(baseline, owners, updateBaseline,
   validateCoverageBaseline(baseline, updateBaseline ? undefined : owners, floors);
 }
 
+export function coverageMetricsForOwner(files, file, currentOwners = []) {
+  if (!files) return undefined;
+  if (Object.hasOwn(files, file)) return files[file];
+  const identity = file.replace(/\.(?:jsx?|tsx?)$/, "");
+  const matches = Object.entries(files).filter(
+    ([candidate]) => !currentOwners.includes(candidate) && candidate.replace(/\.(?:jsx?|tsx?)$/, "") === identity,
+  );
+  if (matches.length > 1) throw new Error(`Ambiguous coverage baseline owner for ${file}`);
+  return matches[0]?.[1];
+}
+
 export function mergeCoverageMetrics(previous, actual, floors = coverageFloors) {
   return Object.fromEntries(
     Object.keys(floors).map((metric) => {
@@ -68,8 +79,11 @@ export function mergeChangedCoverageBaseline(owners, changedOwners, currentFiles
     owners.map((file) => [
       file,
       changed.has(file)
-        ? mergeCoverageMetrics(mergeCoverageMetrics(currentFiles?.[file], measuredFiles[file]), requiredFiles[file] || measuredFiles[file])
-        : currentFiles?.[file] || measuredFiles[file],
+        ? mergeCoverageMetrics(
+            mergeCoverageMetrics(coverageMetricsForOwner(currentFiles, file, owners), measuredFiles[file]),
+            requiredFiles[file] || measuredFiles[file],
+          )
+        : coverageMetricsForOwner(currentFiles, file, owners) || measuredFiles[file],
     ]),
   );
 }

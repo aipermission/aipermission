@@ -11,7 +11,7 @@ export function retryCoverageFiles(root = frontendRoot) {
   const directory = join(root, "src/lib/local-action-retry");
   files.push(
     ...readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".js") && !entry.name.includes(".test."))
+      .filter((entry) => entry.isFile() && /\.(?:js|ts)$/.test(entry.name) && !entry.name.includes(".test."))
       .map((entry) => join(directory, entry.name)),
   );
   return files.map((file) => relative(root, file).split(sep).join("/")).sort();

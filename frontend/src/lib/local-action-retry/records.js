@@ -5,7 +5,7 @@ import {
   keysStore,
   reservationsStore,
   signingReservationLifetimeMs,
-} from "./constants.js";
+} from "./constants.ts";
 
 export function newRetryEntry(scope, signature) {
   const now = new Date().toISOString();

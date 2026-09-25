@@ -1,5 +1,5 @@
-import { entriesStore, keysStore, maxRetryScopes, reservationsStore } from "./constants.js";
-import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.js";
+import { entriesStore, keysStore, maxRetryScopes, reservationsStore } from "./constants.ts";
+import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
 import { newSigningReservation, validSigningKeyRecord, validSigningReservation } from "./records.js";
 import { usesIndexedDB } from "./runtime.js";
 import {

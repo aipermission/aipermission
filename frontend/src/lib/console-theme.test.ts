@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connectorConsoleTheme } from "../connectors/templates/_shared/console-theme.js";
+import { connectorConsoleTheme } from "../connectors/templates/_shared/console-theme.ts";
 
 test("connector console theme exposes stable light and dark tokens", () => {
   const light = connectorConsoleTheme("light");

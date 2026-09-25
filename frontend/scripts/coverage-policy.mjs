@@ -29,6 +29,8 @@ export function readCoveragePolicy(source) {
 
 export function coveragePolicyWeakening(base, current) {
   const failures = [];
+  const oldManifestPattern = "^src/connectors/templates/[^/]+/index\\.jsx$";
+  const typedManifestPattern = "^src/connectors/templates/[^/]+/index\\.ts$";
   for (const [metric, value] of Object.entries(current.floors)) {
     if (value < base.floors[metric]) failures.push(`${metric} floor decreased from ${base.floors[metric]} to ${value}`);
   }
@@ -36,7 +38,12 @@ export function coveragePolicyWeakening(base, current) {
   for (const name of ["excludedNames", "excludedDirectories", "separatelyCoveredDirectories", "excludedPatterns"]) {
     const accepted = new Set(base[name]);
     for (const value of current[name]) {
-      if (!accepted.has(value)) failures.push(`${name} added unreviewed exclusion ${value}`);
+      const migratedManifest =
+        name === "excludedPatterns" &&
+        value === typedManifestPattern &&
+        accepted.has(oldManifestPattern) &&
+        !current.excludedPatterns.includes(oldManifestPattern);
+      if (!accepted.has(value) && !migratedManifest) failures.push(`${name} added unreviewed exclusion ${value}`);
     }
   }
   return failures;

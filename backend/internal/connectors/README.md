@@ -269,7 +269,7 @@ Expected files are:
 
 The page-level UI renders through the template registry instead of adding
 connector-specific branches to route components. `metadata.json` and
-`index.jsx` are auto-discovered with Vite `import.meta.glob`; normal
+`index.ts` are auto-discovered with Vite `import.meta.glob`; normal
 structured connectors do not manually edit `registry.jsx` or `catalog.js`.
 The registry validates required template slots, model exports, and supported
 metadata icons during frontend tests.
@@ -341,7 +341,7 @@ For a new connector:
 3. Store target/profile data through `internal/connectortargets`; do not create
    connector-specific permission tables.
 4. Add frontend templates under `frontend/src/connectors/templates/<kind>`.
-5. Add `metadata.json` and `index.jsx` so the frontend registry/catalog can
+5. Add `metadata.json` and `index.ts` so the frontend registry/catalog can
    discover the template folder.
 6. Update built-in registry/tests and frontend smoke/runtime tests that assert
    the shipped connector set.

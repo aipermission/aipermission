@@ -4,8 +4,8 @@ import {
   localActionReconciliationEvent,
   localActionRetryLedgerChangedEvent,
   workspaceCookieName,
-} from "./constants.js";
-import { storageError } from "./errors.js";
+} from "./constants.ts";
+import { storageError } from "./errors.ts";
 
 export function currentRetryScope(explicitWorkspaceID = "") {
   const workspaceID = String(explicitWorkspaceID || readCookie(scopedUICookieName(workspaceCookieName))).trim();
