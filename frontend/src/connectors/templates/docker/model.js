@@ -1,4 +1,9 @@
-import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
+import {
+  connectorCredentialRows,
+  firstTargetCredentialForm,
+  standardSubmitLabel,
+  createTargetProfileLifecycle,
+} from "../_shared/target-profile-lifecycle";
 
 const emptyDockerCredentialForm = {
   target_id: "",
@@ -71,18 +76,11 @@ export function submitDisabled({ state, form }) {
 }
 
 export function submitLabel({ state, mode }) {
-  if (state.state === "saving") return "Saving...";
-  return mode === "edit" ? "Save changes" : "Create connector";
+  return standardSubmitLabel({ state, mode });
 }
 
 export function emptyCredentialState({ targets = [] } = {}) {
-  const firstTarget = targets.find((target) => target.connector_kind === "docker");
-  return {
-    form: {
-      ...emptyDockerCredentialForm,
-      target_id: String(firstTarget?.id || ""),
-    },
-  };
+  return firstTargetCredentialForm(targets, "docker", emptyDockerCredentialForm);
 }
 
 export function credentialStateFromRow({ row }) {

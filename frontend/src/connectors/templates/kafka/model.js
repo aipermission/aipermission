@@ -1,4 +1,10 @@
-import { connectorCredentialRows, createTargetProfileLifecycle, defaultTargetProfile } from "../_shared/target-profile-lifecycle";
+import {
+  connectorCredentialRows,
+  firstTargetCredentialForm,
+  standardSubmitLabel,
+  createTargetProfileLifecycle,
+  defaultTargetProfile,
+} from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
 
 export { credentialPayload } from "./model-helpers";
@@ -82,22 +88,17 @@ export function submitDisabled({ state }) {
   return state.state === "saving";
 }
 export function submitLabel({ state, mode }) {
-  if (state.state === "saving") return "Saving...";
-  return mode === "edit" ? "Save changes" : "Create connector";
+  return standardSubmitLabel({ state, mode });
 }
 export function emptyCredentialState({ targets = [] } = {}) {
-  const firstTarget = targets.find((target) => target.connector_kind === "kafka");
-  return {
-    form: {
-      target_id: String(firstTarget?.id || ""),
-      profile_label: "monitor",
-      sasl_mechanism: "none",
-      existing_sasl_mechanism: "none",
-      username: "",
-      password: "",
-      risk_label: defaultRiskLabel,
-    },
-  };
+  return firstTargetCredentialForm(targets, "kafka", {
+    profile_label: "monitor",
+    sasl_mechanism: "none",
+    existing_sasl_mechanism: "none",
+    username: "",
+    password: "",
+    risk_label: defaultRiskLabel,
+  });
 }
 export function credentialStateFromRow({ row }) {
   return {

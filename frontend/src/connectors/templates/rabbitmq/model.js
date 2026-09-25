@@ -1,4 +1,10 @@
-import { connectorCredentialRows, createTargetProfileLifecycle } from "../_shared/target-profile-lifecycle";
+import {
+  connectorCredentialRows,
+  firstTargetCredentialForm,
+  usernameCredentialStateFromRow,
+  standardSubmitLabel,
+  createTargetProfileLifecycle,
+} from "../_shared/target-profile-lifecycle";
 
 const emptyRabbitCredentialForm = { target_id: "", profile_label: "monitor", username: "", password: "", risk_label: "queue access" };
 const lifecycle = createTargetProfileLifecycle({
@@ -70,30 +76,15 @@ export function submitDisabled({ state }) {
 }
 
 export function submitLabel({ state, mode }) {
-  if (state.state === "saving") return "Saving...";
-  return mode === "edit" ? "Save changes" : "Create connector";
+  return standardSubmitLabel({ state, mode });
 }
 
 export function emptyCredentialState({ targets = [] } = {}) {
-  const firstTarget = targets.find((target) => target.connector_kind === "rabbitmq");
-  return {
-    form: {
-      ...emptyRabbitCredentialForm,
-      target_id: String(firstTarget?.id || ""),
-    },
-  };
+  return firstTargetCredentialForm(targets, "rabbitmq", emptyRabbitCredentialForm);
 }
 
 export function credentialStateFromRow({ row }) {
-  return {
-    form: {
-      target_id: String(row.target_id || ""),
-      profile_label: row.name,
-      username: row.profile?.public?.username || "",
-      password: "",
-      risk_label: row.profile?.risk_label || "",
-    },
-  };
+  return usernameCredentialStateFromRow(row);
 }
 
 export function credentialRows({ targets }) {
