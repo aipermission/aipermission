@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRequestGuard } from "./request-guard.js";
+import { createRequestGuard } from "./request-guard.ts";
 
 test("request guard rejects older requests in the same channel", () => {
   const guard = createRequestGuard("target:1");
