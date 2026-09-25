@@ -1,24 +1,32 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { apiPost } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import { consoleSessionAttachUrl, limitTranscript, parseConsoleSocketMessage } from "../app-shell-runtime";
 
 const maxPendingConsoleInputBytes = 64 * 1024;
 
-export function useConsoleConnections({ setConsoleSessions }) {
-  const connectionsRef = useRef({});
-  const expectedClosuresRef = useRef(new WeakSet());
-  const pendingClosuresRef = useRef(new WeakSet());
-  const pendingInputRef = useRef({});
+type Session = { id: number; status?: string; transcript?: string; error?: string | null };
+type Resource<T> = { state: string; data: T[]; error: string | null };
+type PendingInput = { socket: WebSocket; items: string[]; bytes: number };
 
-  const closeExpected = useCallback((connection) => {
+export function useConsoleConnections<T extends Session>({
+  setConsoleSessions,
+}: {
+  setConsoleSessions: Dispatch<SetStateAction<Resource<T>>>;
+}) {
+  const connectionsRef = useRef<Record<number, WebSocket>>({});
+  const expectedClosuresRef = useRef<WeakSet<WebSocket>>(new WeakSet());
+  const pendingClosuresRef = useRef<WeakSet<WebSocket>>(new WeakSet());
+  const pendingInputRef = useRef<Record<number, PendingInput>>({});
+
+  const closeExpected = useCallback((connection: WebSocket | undefined) => {
     if (!connection) return;
     expectedClosuresRef.current.add(connection);
     connection.close();
   }, []);
 
   const patchSession = useCallback(
-    (sessionID, updater) => {
+    (sessionID: number, updater: (_session: T) => Record<string, unknown>) => {
       setConsoleSessions((current) => {
         const index = current.data.findIndex((session) => Number(session.id) === Number(sessionID));
         if (index === -1) return current;
@@ -37,7 +45,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
   }, [closeExpected]);
 
   const disconnectSessions = useCallback(
-    (sessionIDs) => {
+    (sessionIDs: number[]) => {
       for (const sessionID of sessionIDs) {
         const connection = connectionsRef.current[sessionID];
         if (!connection) continue;
@@ -50,7 +58,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
   );
 
   const attachSession = useCallback(
-    (sessionID, options = {}) => {
+    (sessionID: number, options: { force?: boolean } = {}) => {
       const existing = connectionsRef.current[sessionID];
       if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
         if (!options.force) return;
@@ -74,7 +82,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
           socket.send(JSON.stringify({ type: "input", data }));
         }
       };
-      socket.onmessage = (event) => {
+      socket.onmessage = (event: MessageEvent) => {
         if (connectionsRef.current[sessionID] !== socket) return;
         const message = parseConsoleSocketMessage(event.data);
         if (!message) {
@@ -140,7 +148,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
   );
 
   const sendInput = useCallback(
-    (sessionID, data) => {
+    (sessionID: number, data: string) => {
       let socket = connectionsRef.current[sessionID];
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "input", data }));
@@ -171,7 +179,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
     [attachSession, patchSession],
   );
 
-  const resizeSession = useCallback((sessionID, cols, rows) => {
+  const resizeSession = useCallback((sessionID: number, cols: number, rows: number) => {
     const socket = connectionsRef.current[sessionID];
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "resize", cols, rows }));
@@ -179,7 +187,7 @@ export function useConsoleConnections({ setConsoleSessions }) {
   }, []);
 
   const closeSession = useCallback(
-    async (sessionID) => {
+    async (sessionID: number) => {
       const connection = connectionsRef.current[sessionID];
       if (connection) pendingClosuresRef.current.add(connection);
       try {
