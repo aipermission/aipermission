@@ -8,6 +8,7 @@
     "checkJs": false,
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM"]

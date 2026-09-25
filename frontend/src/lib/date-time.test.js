@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatRelativeDeadline, toLocalDateTime, toRFC3339 } from "./date-time.js";
+import { formatRelativeDeadline, toLocalDateTime, toRFC3339 } from "./date-time.ts";
 
 test("date helpers normalize editor and API timestamps", () => {
   assert.equal(toRFC3339("2026-07-30T09:15"), new Date("2026-07-30T09:15").toISOString());

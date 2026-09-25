@@ -1,5 +1,5 @@
 import { apiUrl, currentWorkspaceBinding } from "../lib/api.js";
-import { isLiveConsoleSession } from "./console/helpers.js";
+import { isLiveConsoleSession } from "./console/helpers.ts";
 
 export function normalizeCredentialResources(connectorKind, items) {
   return (items || []).map((item) => {

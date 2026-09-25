@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isValidDatabasePassword } from "./password.js";
+import { isValidDatabasePassword } from "./password.ts";
 
 test("isValidDatabasePassword requires length, uppercase, lowercase, and number", () => {
   assert.equal(isValidDatabasePassword("short"), false);

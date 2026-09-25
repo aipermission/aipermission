@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { mcpPackageName, mcpPackageSpecifier } from "./mcp-package.js";
-import { buildMCPSetupCommand } from "./mcp-setup-command.js";
+import { mcpPackageName, mcpPackageSpecifier } from "./mcp-package.ts";
+import { buildMCPSetupCommand } from "./mcp-setup-command.ts";
 
 const releaseManifest = JSON.parse(readFileSync(new URL("../../../release-manifest.json", import.meta.url), "utf8"));
 const setupSource = readFileSync(new URL("../pages/mcp-setup.jsx", import.meta.url), "utf8");

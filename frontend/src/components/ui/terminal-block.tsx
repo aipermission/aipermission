@@ -1,7 +1,12 @@
 import { cn } from "../../lib/utils";
-import { forwardRef } from "react";
+import { forwardRef, type ComponentPropsWithRef } from "react";
 
-export const TerminalBlock = forwardRef(function TerminalBlock({ children, className, surface = "dark", ...props }, ref) {
+type Props = ComponentPropsWithRef<"pre"> & { surface?: "dark" | "log" };
+
+export const TerminalBlock = forwardRef<HTMLPreElement, Props>(function TerminalBlock(
+  { children, className, surface = "dark", ...props },
+  ref,
+) {
   return (
     <pre
       ref={ref}

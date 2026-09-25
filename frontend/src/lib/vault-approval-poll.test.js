@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reconcileVaultApprovalDialog } from "./vault-approval-poll.js";
+import { reconcileVaultApprovalDialog } from "./vault-approval-poll.ts";
 
 const closedDialog = { approval: null, note: "", state: "idle", error: null };
 

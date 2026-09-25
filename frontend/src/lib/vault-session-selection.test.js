@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { preferredDefaultBindings } from "./vault-session-selection.js";
+import { preferredDefaultBindings } from "./vault-session-selection.ts";
 
 test("preferredDefaultBindings prefers the target project and remains deterministic", () => {
   const defaults = [

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cn } from "./utils.js";
+import { cn } from "./utils.ts";
 
 test("cn merges conditional classes", () => {
   const showHiddenClass = false;

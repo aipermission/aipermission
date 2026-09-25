@@ -1,4 +1,4 @@
-import { scopedUICookieName } from "../ui-cookie.js";
+import { scopedUICookieName } from "../ui-cookie.ts";
 import {
   legacyStoragePrefix,
   localActionReconciliationEvent,
