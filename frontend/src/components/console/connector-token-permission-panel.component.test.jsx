@@ -20,6 +20,17 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
+function projectScopeResponse(items, revision) {
+  return {
+    items: items.map((item) => ({
+      project_name: `Project ${item.project_id}`,
+      project_slug: `project-${item.project_id}`,
+      ...item,
+    })),
+    revision,
+  };
+}
+
 function renderPanel({
   compact = false,
   onToggleCompact = () => {},
@@ -80,10 +91,9 @@ beforeEach(() => {
     vi.fn(
       async (_url, options = {}) =>
         new Response(
-          JSON.stringify({
-            items: [{ project_id: 3, enabled: options.method !== "PUT" }],
-            revision: options.method === "PUT" ? "scope-2" : "scope-1",
-          }),
+          JSON.stringify(
+            projectScopeResponse([{ project_id: 3, enabled: options.method !== "PUT" }], options.method === "PUT" ? "scope-2" : "scope-1"),
+          ),
           { status: 200 },
         ),
     ),
@@ -308,6 +318,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
         expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [], expected_revision: "scope-1" }) }),
       ),
     );
+    expect(await screen.findByRole("button", { name: "Enable" })).toBeEnabled();
   });
 
   it("does not replace project scopes before the initial snapshot is loaded", async () => {
@@ -325,7 +336,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     expect(fetch.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
 
     projectScopes.resolve(
-      new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 }),
+      new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 }),
     );
     expect(await screen.findByRole("button", { name: "Hide" })).toBeEnabled();
   });
@@ -338,6 +349,16 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
   });
 
+  it("rejects malformed project scopes before enabling visibility changes", async () => {
+    fetch.mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 }),
+    );
+    renderPanel();
+
+    expect(await screen.findByText("Invalid project scope response from gateway.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
+  });
+
   it("uses a complete refreshed project snapshot for visibility replacement", async () => {
     const user = userEvent.setup();
     const refreshedScopes = deferred();
@@ -345,13 +366,15 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     fetch.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") {
         return new Response(
-          JSON.stringify({
-            items: [
-              { project_id: 3, enabled: false },
-              { project_id: 4, enabled: true },
-            ],
-            revision: "scope-3",
-          }),
+          JSON.stringify(
+            projectScopeResponse(
+              [
+                { project_id: 3, enabled: false },
+                { project_id: 4, enabled: true },
+              ],
+              "scope-3",
+            ),
+          ),
           {
             status: 200,
           },
@@ -360,13 +383,15 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
       getCalls += 1;
       if (getCalls === 1) {
         return new Response(
-          JSON.stringify({
-            items: [
-              { project_id: 3, enabled: true },
-              { project_id: 4, enabled: true },
-            ],
-            revision: "scope-1",
-          }),
+          JSON.stringify(
+            projectScopeResponse(
+              [
+                { project_id: 3, enabled: true },
+                { project_id: 4, enabled: true },
+              ],
+              "scope-1",
+            ),
+          ),
           { status: 200 },
         );
       }
@@ -379,13 +404,15 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     expect(await screen.findByRole("button", { name: "Loading..." })).toBeDisabled();
     refreshedScopes.resolve(
       new Response(
-        JSON.stringify({
-          items: [
-            { project_id: 3, enabled: true },
-            { project_id: 4, enabled: true },
-          ],
-          revision: "scope-2",
-        }),
+        JSON.stringify(
+          projectScopeResponse(
+            [
+              { project_id: 3, enabled: true },
+              { project_id: 4, enabled: true },
+            ],
+            "scope-2",
+          ),
+        ),
         { status: 200 },
       ),
     );
@@ -403,7 +430,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     const user = userEvent.setup();
     fetch.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") throw new Error("scope update unavailable");
-      return new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 });
+      return new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 });
     });
     renderPanel();
 
