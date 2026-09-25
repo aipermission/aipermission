@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { coveragePolicyWeakening, legacyCoveragePolicy } from "../../../scripts/coverage-policy.mjs";
-import { coverageMetricsForOwner, mergeChangedCoverageBaseline, ratchetedMetrics } from "../../../scripts/coverage-ratchet.mjs";
+import { coveragePolicyWeakening, legacyCoveragePolicy } from "../coverage-policy.mjs";
+import { coverageMetricsForOwner, mergeChangedCoverageBaseline, ratchetedMetrics } from "../coverage-ratchet.mjs";
 
 const previous = { statements: 48, branches: 36, functions: 52, lines: 49 };
 const measured = { statements: 50, branches: 40, functions: 55, lines: 51 };

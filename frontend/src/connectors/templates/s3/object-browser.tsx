@@ -1,11 +1,38 @@
-import { CornerUpLeft, Database, Folder, Plus, RefreshCcw, Search, Upload } from "lucide-react";
+import { CornerUpLeft, Database, Folder, Plus, RefreshCcw, Search, Upload, type LucideIcon } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { connectorActionBusy } from "../_shared/action-state";
+import { connectorConsoleTheme } from "../_shared/console-theme";
 import { parentPrefix, shortDate } from "./helpers";
+
+type BrowserDirectory = { prefix: string; name?: string };
+type BrowserObject = { key: string; size?: number; last_modified?: string };
+type S3ObjectBrowserProps = {
+  target: { config?: { bucket?: string }; transfer_runtime_id?: number | null };
+  directories: BrowserDirectory[];
+  objects: BrowserObject[];
+  prefix: string;
+  search: string;
+  selectedKey: string;
+  nextToken: string;
+  latestAction: { status: string; action_name: string } | null;
+  state: { state: string; error?: string; message?: string; retryBlocked?: boolean };
+  classes: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input" | "rowHover" | "activeRow">;
+  onPrefixChange: (_value: string) => void;
+  onSearchChange: (_value: string) => void;
+  onSearch: () => void;
+  onBucketInfo: () => void;
+  onOpenTransfer: () => void;
+  onOpenUpload: () => void;
+  onRefresh: () => void;
+  onOpenParent: () => void;
+  onOpenDirectory: (_prefix: string) => void;
+  onSelectObject: (_key: string) => void;
+  onLoadMore: () => void;
+};
 
 export function S3ObjectBrowser({
   target,
@@ -29,7 +56,7 @@ export function S3ObjectBrowser({
   onOpenDirectory,
   onSelectObject,
   onLoadMore,
-}) {
+}: S3ObjectBrowserProps) {
   const disabled = connectorActionBusy(state);
   return (
     <section
@@ -78,7 +105,20 @@ export function S3ObjectBrowser({
   );
 }
 
-function ObjectBrowserHeader({ target, count, latestAction, disabled, classes, onBucketInfo, onOpenTransfer, onOpenUpload, onRefresh }) {
+function ObjectBrowserHeader({
+  target,
+  count,
+  latestAction,
+  disabled,
+  classes,
+  onBucketInfo,
+  onOpenTransfer,
+  onOpenUpload,
+  onRefresh,
+}: Pick<S3ObjectBrowserProps, "target" | "latestAction" | "classes" | "onBucketInfo" | "onOpenTransfer" | "onOpenUpload" | "onRefresh"> & {
+  count: number;
+  disabled: boolean;
+}) {
   return (
     <div className={`border-b p-3 ${classes.border}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -109,7 +149,19 @@ function ObjectBrowserHeader({ target, count, latestAction, disabled, classes, o
   );
 }
 
-function ObjectBrowserSearch({ prefix, search, loading, disabled, classes, onPrefixChange, onSearchChange, onSearch }) {
+function ObjectBrowserSearch({
+  prefix,
+  search,
+  loading,
+  disabled,
+  classes,
+  onPrefixChange,
+  onSearchChange,
+  onSearch,
+}: Pick<S3ObjectBrowserProps, "prefix" | "search" | "classes" | "onPrefixChange" | "onSearchChange" | "onSearch"> & {
+  loading: boolean;
+  disabled: boolean;
+}) {
   return (
     <form
       className={`grid gap-2 border-b p-3 ${classes.border}`}
@@ -153,7 +205,10 @@ function ObjectBrowserList({
   onOpenParent,
   onOpenDirectory,
   onSelectObject,
-}) {
+}: Pick<
+  S3ObjectBrowserProps,
+  "directories" | "objects" | "prefix" | "search" | "selectedKey" | "classes" | "onOpenParent" | "onOpenDirectory" | "onSelectObject"
+> & { loading: boolean }) {
   return (
     <div className="min-h-0 overflow-auto p-2">
       {prefix && !search ? (
@@ -213,7 +268,7 @@ function ObjectBrowserList({
   );
 }
 
-function IconButton({ label, disabled, onClick, icon: Icon }) {
+function IconButton({ label, disabled, onClick, icon: Icon }: { label: string; disabled: boolean; onClick: () => void; icon: LucideIcon }) {
   return (
     <Button type="button" variant="outline" className="h-8 w-8 px-0" title={label} onClick={onClick} disabled={disabled}>
       <Icon className="h-3.5 w-3.5" />

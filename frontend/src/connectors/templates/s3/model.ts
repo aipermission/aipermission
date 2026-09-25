@@ -6,6 +6,65 @@ import {
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 
+type S3Profile = {
+  id: number;
+  label: string;
+  kind: string;
+  risk_label?: string;
+  public?: { access_key_id?: string };
+};
+
+type S3Target = {
+  id?: number;
+  name: string;
+  connector_kind?: string;
+  target_name?: string;
+  profile_label?: string;
+  profiles?: S3Profile[];
+  config?: {
+    connection_mode?: string;
+    scheme?: string;
+    host?: string;
+    port?: number;
+    region?: string;
+    bucket?: string;
+    path_style?: boolean;
+    trust_conditional_requests?: boolean;
+    transport_target_ref?: string;
+  };
+};
+
+type S3Form = {
+  connector_kind: string;
+  name: string;
+  connection_mode: string;
+  scheme: string;
+  host: string;
+  port: number | string;
+  region: string;
+  bucket: string;
+  path_style: boolean;
+  trust_conditional_requests: boolean;
+  transport_target_ref: string;
+  profile_label: string;
+  access_key_id: string;
+  secret_access_key: string;
+  session_token: string;
+  risk_label: string;
+  profile_id?: string;
+  project_id?: number;
+};
+
+type S3CredentialForm = Pick<S3Form, "profile_label" | "access_key_id" | "secret_access_key" | "session_token" | "risk_label"> & {
+  target_id: string;
+};
+
+type S3CredentialRow = {
+  target_id: number;
+  name: string;
+  profile?: S3Profile;
+};
+
 const emptyS3CredentialForm = {
   target_id: "",
   profile_label: "default",
@@ -17,7 +76,7 @@ const emptyS3CredentialForm = {
 const lifecycle = createTargetProfileLifecycle({
   connectorKind: "s3",
   connectorLabel: "S3",
-  targetPayload: (form) => ({ name: form.name, config: s3TargetConfigFromForm(form) }),
+  targetPayload: (form: S3Form) => ({ name: form.name, config: s3TargetConfigFromForm(form) }),
   profilePayload: s3ProfilePayloadFromForm,
 });
 
@@ -44,7 +103,7 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
+export function formFromTarget({ target, profile }: { target?: S3Target | null; profile?: S3Profile | null }) {
   const selectedProfile = defaultTargetProfile(target, profile);
   const config = target?.config || {};
   const profilePublic = selectedProfile.public || {};
@@ -73,7 +132,7 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: S3Form }) {
   if (form.connector_kind !== "s3") return form;
   const next = { ...form };
   if (next.connection_mode === "direct") {
@@ -91,19 +150,19 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state }) {
+export function submitDisabled({ state }: { state: { state: string } }) {
   return state.state === "saving";
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: S3Target[] } = {}) {
   return firstTargetCredentialForm(targets, "s3", emptyS3CredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: S3CredentialRow }): { form: S3CredentialForm } {
   return {
     form: {
       target_id: String(row.target_id || ""),
@@ -116,7 +175,7 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: S3Target[] }) {
   return connectorCredentialRows({ targets, connectorKind: "s3", connectorLabel: "S3", targetEndpoint, credentialMetadata });
 }
 
@@ -132,7 +191,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: S3Target }) {
   const scheme = target.config?.scheme || "https";
   const host = target.config?.host || "s3.amazonaws.com";
   const port = target.config?.port || (scheme === "http" ? 80 : 443);
@@ -141,16 +200,16 @@ export function targetEndpoint({ target }) {
   return `${scheme}://${host}:${port}/${bucket} · ${mode}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: S3Target | null }) {
   if (!target) return "S3 target";
   return target.target_name || target.name || "S3 target";
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: S3Target }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: S3Target | null }) {
   return target?.profile_label || "default";
 }
 
@@ -162,7 +221,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: S3Target | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this S3 connector target, credential profiles, and token action permissions from AIPermission.",
@@ -182,7 +241,7 @@ export function operationFromError() {
   return null;
 }
 
-export function s3TargetConfigFromForm(form) {
+export function s3TargetConfigFromForm(form: S3Form) {
   return {
     connection_mode: form.connection_mode || "direct",
     scheme: form.scheme || "https",
@@ -196,7 +255,10 @@ export function s3TargetConfigFromForm(form) {
   };
 }
 
-function s3ProfilePayloadFromForm(form, { profile, operation }) {
+function s3ProfilePayloadFromForm(
+  form: S3Form | S3CredentialForm,
+  { profile, operation }: { profile: S3Profile | null; operation: string },
+) {
   const secret = s3SecretPayload(form);
   return {
     kind: profile?.kind || "access_key",
@@ -207,8 +269,8 @@ function s3ProfilePayloadFromForm(form, { profile, operation }) {
   };
 }
 
-function s3SecretPayload(form) {
-  const secret = {};
+function s3SecretPayload(form: S3Form | S3CredentialForm) {
+  const secret: { secret_access_key?: string; session_token?: string } = {};
   if (form.secret_access_key) {
     secret.secret_access_key = form.secret_access_key;
   }
@@ -218,7 +280,7 @@ function s3SecretPayload(form) {
   return secret;
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: S3Profile) {
   const values = [];
   if (profile.public?.access_key_id) {
     values.push(`access ${maskAccessKey(profile.public.access_key_id)}`);
@@ -229,7 +291,7 @@ function credentialMetadata(profile) {
   return values.join(" · ");
 }
 
-function maskAccessKey(value) {
+function maskAccessKey(value: string) {
   const text = String(value || "");
   if (text.length <= 8) return text;
   return `${text.slice(0, 4)}...${text.slice(-4)}`;

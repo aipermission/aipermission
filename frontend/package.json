@@ -28,7 +28,7 @@
     "test:coverage:focused": "vitest run --config vitest.config.js --coverage",
     "test:coverage:risk": "vitest run --config vitest.risk.config.js --coverage",
     "test:coverage:retry": "node --test scripts/retry-coverage.test.mjs && node scripts/retry-coverage.mjs",
-    "test:coverage:changed": "node --test scripts/coverage-config.test.mjs scripts/coverage-git-state.test.mjs scripts/coverage-owner-policy.test.mjs scripts/coverage-ratchet.test.mjs scripts/coverage-report-directory.test.mjs src/lib/coverage-ratchet-tests/extension-migration.test.ts && node scripts/changed-coverage.mjs",
+    "test:coverage:changed": "node --test scripts/coverage-config.test.mjs scripts/coverage-git-state.test.mjs scripts/coverage-owner-policy.test.mjs scripts/coverage-ratchet.test.mjs scripts/coverage-report-directory.test.mjs scripts/coverage-ratchet-tests/extension-migration.test.mjs && node scripts/changed-coverage.mjs",
     "test:coverage:changed:update": "node scripts/changed-coverage.mjs --update-baseline",
     "test:e2e:policy": "node scripts/playwright-gate.mjs",
     "test:e2e": "npm run test:e2e:policy && playwright test",

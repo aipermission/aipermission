@@ -40,8 +40,8 @@ export function createTargetProfileLifecycle({
   credentialUpdatedMessage = `${connectorLabel} credential updated.`,
   credentialMissingMessage = `${connectorLabel} credential is not loaded.`,
   unsupportedCredentialMessage = `Unsupported ${connectorLabel} credential operation.`,
-  beforeSave,
-  beforeSaveCredential,
+  beforeSave = null,
+  beforeSaveCredential = null,
 }) {
   function selectedProfile(target, profileID) {
     return (
