@@ -141,6 +141,7 @@
     "scripts/release/release-version.test.js",
     "scripts/release/source/verify-release-source.test.js",
     "scripts/verification/platform-coverage-ratchet.test.js",
+    "scripts/verification/mail-isolation.test.mjs",
     "scripts/verification/verification-policy.test.js",
     "scripts/verification/workflow-runtime-contract.test.js"
   ],

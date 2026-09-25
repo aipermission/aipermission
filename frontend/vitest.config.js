@@ -12,7 +12,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: [
-        "src/lib/use-connector-permissions.js",
+        "src/lib/use-connector-permissions.ts",
         "src/connectors/templates/_shared/action-runner.js",
         "src/connectors/templates/_shared/target-profile-lifecycle.js",
         "src/components/console/connector-action-approval-dialog.jsx",
