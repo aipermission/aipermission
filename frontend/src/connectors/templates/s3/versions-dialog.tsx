@@ -7,12 +7,56 @@ import { Notice } from "../../../components/ui/notice";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { restoreDestinationGuard } from "./helpers";
 
-export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedClass, onClose, onRun, onChanged }) {
-  const [versions, setVersions] = useState([]);
+type S3ObjectVersion = {
+  version_id: string;
+  is_latest?: boolean;
+  delete_marker?: boolean;
+  last_modified?: string;
+  size?: number;
+};
+
+type VersionAction = "list_object_versions" | "get_object_metadata" | "restore_object_version" | "delete_object_version";
+type VersionActionRequest = {
+  actionName: VersionAction;
+  input: {
+    key: string;
+    cursor?: string;
+    limit?: number;
+    version_id?: string;
+    expected_current_etag?: string;
+    expected_current_absent?: true;
+  };
+  reason: string;
+  busy: string;
+};
+type VersionActionResult = {
+  output?: {
+    versions?: S3ObjectVersion[];
+    next_cursor?: string;
+    etag?: string | null;
+  };
+};
+
+type S3VersionsDialogProps = {
+  open: boolean;
+  objectKey: string;
+  theme: string;
+  borderClass: string;
+  mutedClass: string;
+  onClose: () => void;
+  onRun: (_request: VersionActionRequest) => Promise<VersionActionResult | null>;
+  onChanged?: () => Promise<void> | void;
+};
+
+export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedClass, onClose, onRun, onChanged }: S3VersionsDialogProps) {
+  const [versions, setVersions] = useState<S3ObjectVersion[]>([]);
   const [nextCursor, setNextCursor] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [confirmation, setConfirmation] = useState(null);
+  const [confirmation, setConfirmation] = useState<{
+    action: "restore_object_version" | "delete_object_version";
+    version: S3ObjectVersion;
+  } | null>(null);
   const [confirmFeedback, setConfirmFeedback] = useState({ error: "", status: "" });
   const loadForEffect = useEffectEvent(() => loadVersions({ reset: true }));
 
@@ -28,7 +72,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
 
   if (!open) return null;
 
-  async function loadVersions({ reset, cursor = "" }) {
+  async function loadVersions({ reset, cursor = "" }: { reset: boolean; cursor?: string }) {
     setPending(true);
     setError("");
     setConfirmFeedback({ error: "", status: "" });
@@ -44,7 +88,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
       setVersions((current) => (reset ? nextVersions : [...current, ...nextVersions]));
       setNextCursor(item.output?.next_cursor || "");
     } catch (loadError) {
-      setError(loadError.message || "Object versions could not be loaded.");
+      setError(loadError instanceof Error ? loadError.message : "Object versions could not be loaded.");
     } finally {
       setPending(false);
     }
@@ -56,7 +100,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     setError("");
     setConfirmFeedback({ error: "", status: "" });
     try {
-      const input = { key: objectKey, version_id: confirmation.version.version_id };
+      const input: VersionActionRequest["input"] = { key: objectKey, version_id: confirmation.version.version_id };
       if (confirmation.action === "restore_object_version") {
         try {
           const metadata = await onRun({
@@ -84,7 +128,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
       await loadVersions({ reset: true });
       await onChanged?.();
     } catch (actionError) {
-      setConfirmFeedback({ error: actionError.message || "Object version action failed.", status: "" });
+      setConfirmFeedback({ error: actionError instanceof Error ? actionError.message : "Object version action failed.", status: "" });
     } finally {
       setPending(false);
     }

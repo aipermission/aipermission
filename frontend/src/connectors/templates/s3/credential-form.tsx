@@ -1,10 +1,36 @@
 import { Database, Plus } from "lucide-react";
+import type { FormEventHandler } from "react";
 import { Button } from "../../../components/ui/button";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 
-export function S3CredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+type S3CredentialForm = {
+  target_id: string;
+  profile_label: string;
+  risk_label: string;
+  access_key_id: string;
+  secret_access_key: string;
+  session_token: string;
+};
+
+type S3CredentialTarget = {
+  id: number | string;
+  name: string;
+  connector_kind: string;
+  config?: { scheme?: string; host?: string; port?: number | string; bucket?: string };
+};
+
+type S3CredentialFormProps = {
+  targets: S3CredentialTarget[];
+  form: S3CredentialForm;
+  formMode?: "create" | "edit";
+  state: { state: string; error?: string };
+  onChange: (_form: S3CredentialForm) => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+};
+
+export function S3CredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }: S3CredentialFormProps) {
   const s3Targets = targets.filter((target) => target.connector_kind === "s3");
   const editing = formMode === "edit";
   return (
@@ -24,7 +50,7 @@ export function S3CredentialFormTemplate({ targets, form, formMode = "create", s
         editing={editing}
         onChange={onChange}
         targetPlaceholder="Select S3 target"
-        targetOptionLabel={(target) =>
+        targetOptionLabel={(target: S3CredentialTarget) =>
           `${target.name} · ${target.config?.scheme || "https"}://${target.config?.host}:${target.config?.port || 443}/${target.config?.bucket || "bucket"}`
         }
       />

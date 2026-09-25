@@ -1,5 +1,5 @@
 import { Link2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Dialog } from "../../../components/ui/dialog";
@@ -8,14 +8,39 @@ import { Notice } from "../../../components/ui/notice";
 
 const defaultExpirySeconds = 900;
 
-export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderClass, mutedClass, onClose, onRun }) {
-  const [mode, setMode] = useState("download");
+type PresignResult = {
+  url: string;
+  operation?: string;
+  expires_at?: string;
+  required_headers?: Record<string, string>;
+};
+
+type PresignRequest = {
+  actionName: "presign_upload" | "presign_download";
+  input: { key: string; expires_seconds: number; overwrite?: boolean };
+  reason: string;
+  busy: string;
+};
+
+type S3PresignDialogProps = {
+  open: boolean;
+  selectedKey: string;
+  theme: string;
+  inputClass: string;
+  borderClass: string;
+  mutedClass: string;
+  onClose: () => void;
+  onRun: (_request: PresignRequest) => Promise<{ output?: PresignResult | null } | null>;
+};
+
+export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderClass, mutedClass, onClose, onRun }: S3PresignDialogProps) {
+  const [mode, setMode] = useState<"download" | "upload">("download");
   const [key, setKey] = useState("");
-  const [expiresSeconds, setExpiresSeconds] = useState(defaultExpirySeconds);
+  const [expiresSeconds, setExpiresSeconds] = useState<number | string>(defaultExpirySeconds);
   const [overwrite, setOverwrite] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState<PresignResult | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +55,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
 
   if (!open) return null;
 
-  async function submit(event) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedKey = key;
     const normalizedExpiry = Number(expiresSeconds);
@@ -59,7 +84,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
       if (!item) return;
       setResult(item.output || null);
     } catch (runError) {
-      setError(runError.message || "Presigned URL creation failed.");
+      setError(runError instanceof Error ? runError.message : "Presigned URL creation failed.");
     } finally {
       setPending(false);
     }
@@ -78,10 +103,12 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
     >
       <form className="grid gap-4" onSubmit={submit}>
         <div className={`grid grid-cols-2 rounded-lg border p-1 ${borderClass}`}>
-          {[
-            ["download", "Download"],
-            ["upload", "Upload"],
-          ].map(([value, label]) => (
+          {(
+            [
+              ["download", "Download"],
+              ["upload", "Upload"],
+            ] as const
+          ).map(([value, label]) => (
             <button
               type="button"
               key={value}
@@ -136,7 +163,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
             {Object.keys(result.required_headers || {}).length ? (
               <div className={`grid gap-2 border-t pt-3 ${borderClass}`}>
                 <p className="text-xs font-semibold uppercase">Required request headers</p>
-                {Object.entries(result.required_headers).map(([name, value]) => (
+                {Object.entries(result.required_headers || {}).map(([name, value]) => (
                   <div key={name} className="flex items-center justify-between gap-3">
                     <code className="min-w-0 break-all text-xs">
                       {name}: {value}
