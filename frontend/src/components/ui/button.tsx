@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import type { ButtonHTMLAttributes } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "../../lib/utils";
 
@@ -9,7 +10,12 @@ const variants = {
   danger: "bg-red-700 text-white hover:bg-red-800",
 };
 
-export const Button = forwardRef(function Button({ className, variant = "default", asChild = false, ...props }, ref) {
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof variants; asChild?: boolean };
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = "default", asChild = false, ...props },
+  ref,
+) {
   const Comp = asChild ? Slot : "button";
   return (
     <Comp
