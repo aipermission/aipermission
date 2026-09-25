@@ -5,9 +5,39 @@ import {
   sqlReferenceIdentifiersMatch,
   tableMatchesReference,
   tableReferenceKey,
-} from "./sql-console-data.js";
+} from "./sql-console-data.ts";
+import type { SQLIdentifierPolicy, SQLReference, SQLTableReference } from "./sql-console-data.ts";
 
-export function sqlCompletionItems(monaco, tables, keywords, model, position, identifierPolicy = "lowercase-unquoted") {
+type CompletionPosition = { lineNumber: number; column: number };
+type CompletionRange = { startLineNumber: number; endLineNumber: number; startColumn: number; endColumn: number };
+type CompletionItem = {
+  label: string;
+  kind: number;
+  insertText: string;
+  sortText: string;
+  range: CompletionRange;
+  detail?: string;
+  documentation?: string;
+};
+type CompletionMonaco = {
+  languages: { CompletionItemKind: { Keyword: number; Module: number; Class: number; Field: number } };
+};
+type CompletionModel = {
+  getValue(): string;
+  getLineContent(_lineNumber: number): string;
+  getWordUntilPosition(_position: CompletionPosition): { startColumn: number; endColumn: number };
+};
+type CompletionRow = SQLTableReference & { column?: string; dataType?: string; type?: string };
+type Qualifier = { value: string; quoted: boolean };
+
+export function sqlCompletionItems(
+  monaco: CompletionMonaco,
+  tables: readonly CompletionRow[],
+  keywords: readonly string[],
+  model: CompletionModel,
+  position: CompletionPosition,
+  identifierPolicy: SQLIdentifierPolicy = "lowercase-unquoted",
+): CompletionItem[] {
   const word = model.getWordUntilPosition(position);
   const range = {
     startLineNumber: position.lineNumber,
@@ -15,16 +45,16 @@ export function sqlCompletionItems(monaco, tables, keywords, model, position, id
     startColumn: word.startColumn,
     endColumn: word.endColumn,
   };
-  const suggestions = keywords.map((keyword) => ({
+  const suggestions: CompletionItem[] = keywords.map((keyword) => ({
     label: keyword.toUpperCase(),
     kind: monaco.languages.CompletionItemKind.Keyword,
     insertText: keyword,
     sortText: `2_${keyword}`,
     range,
   }));
-  const seenSchemas = new Set();
-  const seenTables = new Set();
-  const seenColumns = new Set();
+  const seenSchemas = new Set<string>();
+  const seenTables = new Set<string>();
+  const seenColumns = new Set<string>();
   const tableReferences = referencedTablesFromSQL(model.getValue());
   const dotReference = dotReferenceBeforePosition(model, position);
   const columnReferences = dotReference
@@ -41,7 +71,7 @@ export function sqlCompletionItems(monaco, tables, keywords, model, position, id
   return suggestions;
 }
 
-function addSchemaSuggestion(suggestions, seen, item, monaco, range) {
+function addSchemaSuggestion(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
   if (!item.schema || seen.has(item.schema)) return;
   seen.add(item.schema);
   suggestions.push({
@@ -54,7 +84,7 @@ function addSchemaSuggestion(suggestions, seen, item, monaco, range) {
   });
 }
 
-function addTableSuggestions(suggestions, seen, item, monaco, range) {
+function addTableSuggestions(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
   const tableKey = `${item.schema}.${item.table}`;
   const identity = JSON.stringify([item.schema, item.table]);
   if (seen.has(identity)) return;
@@ -80,30 +110,37 @@ function addTableSuggestions(suggestions, seen, item, monaco, range) {
   );
 }
 
-function addColumnSuggestion(suggestions, seen, item, monaco, range) {
+function addColumnSuggestion(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
+  const column = item.column;
+  if (!column) return;
   const tableKey = `${item.schema}.${item.table}`;
-  const columnKey = JSON.stringify([item.schema, item.table, item.column]);
+  const columnKey = JSON.stringify([item.schema, item.table, column]);
   if (seen.has(columnKey)) return;
   seen.add(columnKey);
   suggestions.push({
-    label: item.column,
+    label: column,
     kind: monaco.languages.CompletionItemKind.Field,
-    insertText: quoteSQLIdentifier(item.column),
+    insertText: quoteSQLIdentifier(column),
     detail: `${tableKey}${item.dataType ? ` / ${item.dataType}` : ""}`,
-    sortText: `0_column_${item.column}_${columnKey}`,
+    sortText: `0_column_${column}_${columnKey}`,
     range,
   });
 }
 
-function matchingReferencesForQualifier(qualifier, references, metadataRows, identifierPolicy) {
+function matchingReferencesForQualifier(
+  qualifier: Qualifier,
+  references: SQLReference[],
+  metadataRows: readonly CompletionRow[],
+  identifierPolicy: SQLIdentifierPolicy,
+): SQLReference[] {
   const matches = references.filter(
     (reference) =>
       sqlReferenceIdentifiersMatch(reference.alias, reference.aliasQuoted, qualifier.value, qualifier.quoted, identifierPolicy) ||
       sqlReferenceIdentifiersMatch(reference.table, reference.tableQuoted, qualifier.value, qualifier.quoted, identifierPolicy),
   );
   if (matches.length > 0) return matches;
-  const metadataMatches = [];
-  const seen = new Set();
+  const metadataMatches: SQLReference[] = [];
+  const seen = new Set<string>();
   for (const item of metadataRows || []) {
     if (!sqlIdentifierMatches(item.table, qualifier.value, qualifier.quoted, identifierPolicy)) continue;
     const reference = {
@@ -122,18 +159,18 @@ function matchingReferencesForQualifier(qualifier, references, metadataRows, ide
   return metadataMatches;
 }
 
-function dotReferenceBeforePosition(model, position) {
+function dotReferenceBeforePosition(model: CompletionModel, position: CompletionPosition): Qualifier | null {
   const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
   const match = prefix.match(/((?:"[^"]+"|`[^`]+`|[a-zA-Z_][\w$]*))\.\s*(?:"[^"]*"|`[^`]*`|[a-zA-Z_][\w$]*)?$/);
   if (!match) return null;
-  const raw = match[1];
+  const raw = match[1] || "";
   return {
     value: cleanSQLIdentifier(raw),
     quoted: (raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("`") && raw.endsWith("`")),
   };
 }
 
-function isTableCompletionContext(model, position) {
+function isTableCompletionContext(model: CompletionModel, position: CompletionPosition): boolean {
   const prefix = model
     .getLineContent(position.lineNumber)
     .slice(0, position.column - 1)
@@ -141,6 +178,6 @@ function isTableCompletionContext(model, position) {
   return /\b(from|join)\s+(?:"[^"]*"|`[^`]*`|[a-z_][\w$]*)?$/i.test(prefix);
 }
 
-function quoteSQLIdentifier(value) {
+function quoteSQLIdentifier(value: string): string {
   return /^[a-z_][a-z0-9_]*$/.test(value) ? value : `"${String(value).replaceAll('"', '""')}"`;
 }

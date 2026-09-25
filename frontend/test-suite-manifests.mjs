@@ -91,6 +91,7 @@ export const riskCoverageTestIncludes = [
   "src/components/transfer-center.component.test.jsx",
   "src/components/file-transfer/use-transfer-center-state.component.test.jsx",
   "src/components/file-transfer/file-transfer-actions.component.test.ts",
+  "src/components/use-local-action-reconciliation.component.test.ts",
   "src/components/file-transfer/file-transfer-list-state.component.test.jsx",
   "src/components/settings/maintenance-console-panel.component.test.jsx",
   "src/components/vault/vault-action-approval-dialog.component.test.jsx",

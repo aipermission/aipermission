@@ -1,6 +1,8 @@
-let monacoPromise = null;
+type Monaco = typeof import("monaco-editor/esm/vs/editor/editor.api");
 
-export function loadSQLMonaco() {
+let monacoPromise: Promise<Monaco> | null = null;
+
+export function loadSQLMonaco(): Promise<Monaco> {
   if (!monacoPromise) {
     monacoPromise = import("monaco-editor/esm/vs/editor/editor.worker?worker")
       .then((workerModule) => {
@@ -21,7 +23,7 @@ export function loadSQLMonaco() {
   return monacoPromise;
 }
 
-export function applySQLEditorTheme(monaco, theme) {
+export function applySQLEditorTheme(monaco: Monaco, theme: string): string {
   const dark = theme !== "light";
   const name = dark ? "aipermission-sql-dark" : "aipermission-sql-light";
   monaco.editor.defineTheme(name, {

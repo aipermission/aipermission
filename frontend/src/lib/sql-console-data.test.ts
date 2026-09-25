@@ -7,9 +7,9 @@ import {
   referencedTablesFromSQL,
   tableMatchesReference,
   tableReferenceKey,
-} from "../connectors/templates/_shared/sql-console-data.js";
-import { filteredTableBrowserRows, normalizeSQLConsoleConfig } from "../connectors/templates/_shared/sql-console-config.js";
-import { sqlCompletionItems } from "../connectors/templates/_shared/sql-editor-completions.js";
+} from "../connectors/templates/_shared/sql-console-data.ts";
+import { filteredTableBrowserRows, normalizeSQLConsoleConfig } from "../connectors/templates/_shared/sql-console-config.ts";
+import { sqlCompletionItems } from "../connectors/templates/_shared/sql-editor-completions.ts";
 
 test("SQL references support ANSI and ClickHouse quoted identifiers", () => {
   assert.deepEqual(referencedTablesFromSQL('SELECT * FROM "public"."users" AS u'), [
@@ -32,7 +32,7 @@ test("quoted SQL references match metadata exactly while unquoted references fol
 });
 
 test("metadata requests are not reserved until the caller dispatches them", () => {
-  const requested = new Set();
+  const requested = new Set<string>();
   const first = pendingMetadataReferences("SELECT * FROM analytics.events", [], requested);
   assert.equal(first.length, 1);
   assert.equal(requested.size, 0);
@@ -78,7 +78,7 @@ test("SQL metadata preserves whitespace-bearing database identities end to end",
     getWordUntilPosition: () => ({ startColumn: 15, endColumn: 15 }),
     getLineContent: () => "SELECT * FROM ",
   };
-  const suggestions = sqlCompletionItems(monaco, rows, [], model, { lineNumber: 1, column: 15 });
+  const suggestions: Array<{ label: string; insertText: string }> = sqlCompletionItems(monaco, rows, [], model, { lineNumber: 1, column: 15 });
   assert.equal(suggestions.find((item) => item.label === " order lines ")?.insertText, '" order lines "');
   assert.equal(suggestions.find((item) => item.label === " tenant . order lines ")?.insertText, '" tenant "." order lines "');
 });

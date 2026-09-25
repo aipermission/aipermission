@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filteredTableBrowserRows, mergeMetadataRows } from "./sql-console-config.js";
+import { filteredTableBrowserRows, mergeMetadataRows } from "./sql-console-config.ts";
 
 test("SQL browser identity preserves case-distinct and dotted identifiers", () => {
   const rows = filteredTableBrowserRows(
