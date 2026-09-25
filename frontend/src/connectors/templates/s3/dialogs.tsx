@@ -1,4 +1,5 @@
 import { FileUp, X } from "lucide-react";
+import type { Dispatch, FormEventHandler, SetStateAction } from "react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input, Textarea } from "../../../components/ui/form";
@@ -7,7 +8,40 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { joinObjectKey, normalizeObjectKey } from "./helpers";
 
-export const defaultUploadDialog = Object.freeze({
+export type S3UploadFile = {
+  id: string;
+  file: File;
+  key: string;
+  contentType: string;
+};
+
+export type S3UploadDialogState = {
+  open: boolean;
+  mode: "files" | "text";
+  prefix: string;
+  files: S3UploadFile[];
+  textKey: string;
+  textContent: string;
+  textContentType: string;
+  overwrite: boolean;
+  pending: boolean;
+  error: string;
+  message?: string;
+};
+
+export type S3ConfirmDialogState = {
+  open: boolean;
+  title: string;
+  description: string;
+  details: { label: string; value: string }[];
+  action: (() => Promise<boolean>) | null;
+  pending: boolean;
+  danger: boolean;
+  error: string;
+  status: string;
+};
+
+export const defaultUploadDialog: Readonly<S3UploadDialogState> = Object.freeze({
   open: false,
   mode: "files",
   prefix: "",
@@ -19,7 +53,7 @@ export const defaultUploadDialog = Object.freeze({
   pending: false,
   error: "",
 });
-export const defaultS3ConfirmDialog = Object.freeze({
+export const defaultS3ConfirmDialog: Readonly<S3ConfirmDialogState> = Object.freeze({
   open: false,
   title: "",
   description: "",
@@ -30,6 +64,21 @@ export const defaultS3ConfirmDialog = Object.freeze({
   error: "",
   status: "",
 });
+
+type S3UploadDialogProps = {
+  value: S3UploadDialogState;
+  theme: string;
+  inputClass: string;
+  borderClass: string;
+  mutedClass: string;
+  subtlePanelClass: string;
+  onClose: () => void;
+  onChange: Dispatch<SetStateAction<S3UploadDialogState>>;
+  onFiles: (_files: FileList | null) => void;
+  onRemoveFile: (_id: string) => void;
+  onUpdateFile: (_id: string, _patch: Partial<S3UploadFile>) => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+};
 
 export function S3UploadDialog({
   value,
@@ -44,7 +93,7 @@ export function S3UploadDialog({
   onRemoveFile,
   onUpdateFile,
   onSubmit,
-}) {
+}: S3UploadDialogProps) {
   if (!value.open) return null;
   const darkTextClass = theme === "light" ? "" : "text-stone-200";
   const fileMode = value.mode !== "text";
@@ -226,7 +275,14 @@ export function S3UploadDialog({
   );
 }
 
-export function S3ConfirmDialog({ value, theme, onClose, onConfirm }) {
+type S3ConfirmDialogProps = {
+  value: S3ConfirmDialogState;
+  theme: string;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+export function S3ConfirmDialog({ value, theme, onClose, onConfirm }: S3ConfirmDialogProps) {
   if (!value.open) return null;
   const detailClass = theme === "light" ? "border-stone-200 bg-stone-50 text-stone-700" : "border-stone-700 bg-stone-900 text-stone-200";
   return (

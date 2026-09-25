@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react";
 import { errorMessage } from "../../../lib/errors";
-import { defaultS3ConfirmDialog } from "./dialogs";
+import { defaultS3ConfirmDialog, type S3ConfirmDialogState } from "./dialogs";
+
+type S3ObjectDeleteOptions = {
+  scopeKey: string;
+  selectedKey: string;
+  selectedETag?: string | null;
+  trustConditionalRequests?: boolean;
+  runAction: (_request: {
+    actionName: "delete_object";
+    input: { key: string; expected_etag?: string };
+    reason: string;
+    busy: string;
+  }) => Promise<object | null>;
+  clearSelection: () => void;
+  refreshObjects: (_options: { reset: boolean }) => Promise<unknown>;
+};
 
 export function useS3ObjectDelete({
   scopeKey,
@@ -10,8 +25,8 @@ export function useS3ObjectDelete({
   runAction,
   clearSelection,
   refreshObjects,
-}) {
-  const [confirmDialog, setConfirmDialog] = useState(defaultS3ConfirmDialog);
+}: S3ObjectDeleteOptions) {
+  const [confirmDialog, setConfirmDialog] = useState<S3ConfirmDialogState>(defaultS3ConfirmDialog);
 
   useEffect(() => setConfirmDialog(defaultS3ConfirmDialog), [scopeKey]);
 

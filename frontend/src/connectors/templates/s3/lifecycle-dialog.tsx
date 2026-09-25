@@ -1,5 +1,5 @@
 import { Clock3, Trash2 } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
@@ -8,7 +8,55 @@ import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 
-const initialForm = {
+type LifecycleRuleData = {
+  id: string;
+  status: string;
+  prefix: string;
+  expire_current_after_days: number;
+  expire_noncurrent_after_days: number;
+  abort_incomplete_multipart_days: number;
+};
+
+type LifecyclePolicy = {
+  configured?: boolean;
+  rules?: LifecycleRuleData[];
+  raw_xml?: string;
+};
+
+type LifecycleRequest = {
+  actionName: "get_bucket_lifecycle" | "replace_bucket_lifecycle" | "delete_bucket_lifecycle";
+  input: {
+    rule_id?: string;
+    prefix?: string;
+    expire_current_after_days?: number;
+    expire_noncurrent_after_days?: number;
+    abort_incomplete_multipart_days?: number;
+    enabled?: boolean;
+  };
+  reason: string;
+  busy: string;
+};
+
+type S3LifecycleDialogProps = {
+  open: boolean;
+  bucket: string;
+  theme: string;
+  inputClass: string;
+  borderClass: string;
+  mutedClass: string;
+  onClose: () => void;
+  onRun: (_request: LifecycleRequest) => Promise<{ output?: LifecyclePolicy | null } | null>;
+};
+
+const initialForm: {
+  ruleId: string;
+  prefix: string;
+  expireCurrentDays: number | string;
+  expireNoncurrentDays: number | string;
+  abortMultipartDays: number | string;
+  enabled: boolean;
+  acknowledged: boolean;
+} = {
   ruleId: "aipermission-expiration",
   prefix: "",
   expireCurrentDays: 0,
@@ -18,8 +66,8 @@ const initialForm = {
   acknowledged: false,
 };
 
-export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass, mutedClass, onClose, onRun }) {
-  const [policy, setPolicy] = useState(null);
+export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass, mutedClass, onClose, onRun }: S3LifecycleDialogProps) {
+  const [policy, setPolicy] = useState<LifecyclePolicy | null>(null);
   const [form, setForm] = useState(initialForm);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -50,13 +98,13 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
       if (!item) return;
       setPolicy(item.output || { configured: false, rules: [], raw_xml: "" });
     } catch (loadError) {
-      setError(loadError.message || "Bucket lifecycle could not be read.");
+      setError(loadError instanceof Error ? loadError.message : "Bucket lifecycle could not be read.");
     } finally {
       setPending(false);
     }
   }
 
-  async function replacePolicy(event) {
+  async function replacePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || !form.acknowledged) return;
     const values = [form.expireCurrentDays, form.expireNoncurrentDays, form.abortMultipartDays].map(Number);
@@ -87,7 +135,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
       setForm((current) => ({ ...current, acknowledged: false }));
       await loadPolicy();
     } catch (replaceError) {
-      setError(replaceError.message || "Bucket lifecycle replacement failed.");
+      setError(replaceError instanceof Error ? replaceError.message : "Bucket lifecycle replacement failed.");
       setPending(false);
     }
   }
@@ -110,7 +158,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
       setConfirmDelete(false);
       await loadPolicy();
     } catch (deleteError) {
-      setError(deleteError.message || "Bucket lifecycle deletion failed.");
+      setError(deleteError instanceof Error ? deleteError.message : "Bucket lifecycle deletion failed.");
       setPending(false);
     }
   }
@@ -244,6 +292,17 @@ function CurrentLifecyclePolicy({
   borderClass,
   mutedClass,
   panelClass,
+}: {
+  policy: LifecyclePolicy | null;
+  rules: LifecycleRuleData[];
+  pending: boolean;
+  confirmDelete: boolean;
+  setConfirmDelete: Dispatch<SetStateAction<boolean>>;
+  loadPolicy: () => Promise<void>;
+  deletePolicy: () => Promise<void>;
+  borderClass: string;
+  mutedClass: string;
+  panelClass: string;
 }) {
   return (
     <section className="grid content-start gap-3">
@@ -288,7 +347,7 @@ function CurrentLifecyclePolicy({
   );
 }
 
-function LifecycleRule({ rule, borderClass, mutedClass }) {
+function LifecycleRule({ rule, borderClass, mutedClass }: { rule: LifecycleRuleData; borderClass: string; mutedClass: string }) {
   return (
     <div className={`grid gap-2 rounded-md border p-3 ${borderClass}`}>
       <div className="flex items-center justify-between gap-3">
@@ -305,7 +364,7 @@ function LifecycleRule({ rule, borderClass, mutedClass }) {
   );
 }
 
-function LifecycleRawXML({ value }) {
+function LifecycleRawXML({ value }: { value: string }) {
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-3">
@@ -323,7 +382,7 @@ export function LifecycleIcon() {
   return <Clock3 className="h-3.5 w-3.5" />;
 }
 
-function dayLabel(value) {
+function dayLabel(value: number) {
   const days = Number(value || 0);
   return days > 0 ? `${days}d` : "off";
 }
