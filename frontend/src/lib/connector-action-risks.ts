@@ -1,6 +1,7 @@
-export const connectorActionRiskOrder = ["read", "write", "destructive", "credential_sensitive", "other"];
+export const connectorActionRiskOrder = ["read", "write", "destructive", "credential_sensitive", "other"] as const;
+export type ConnectorActionRisk = (typeof connectorActionRiskOrder)[number];
 
-const riskLabels = {
+const riskLabels: Record<ConnectorActionRisk, string> = {
   read: "read",
   write: "write",
   destructive: "destructive",
@@ -8,7 +9,7 @@ const riskLabels = {
   other: "other",
 };
 
-const riskGroupLabels = {
+const riskGroupLabels: Record<ConnectorActionRisk, string> = {
   read: "Read operations",
   write: "Write operations",
   destructive: "Destructive operations",
@@ -16,7 +17,7 @@ const riskGroupLabels = {
   other: "Other operations",
 };
 
-const riskDescriptions = {
+const riskDescriptions: Record<ConnectorActionRisk, string> = {
   read: "read-only",
   write: "write-capable",
   destructive: "destructive",
@@ -24,16 +25,16 @@ const riskDescriptions = {
   other: "uncategorized",
 };
 
-export function normalizeConnectorActionRisk(risk) {
+export function normalizeConnectorActionRisk(risk: unknown): ConnectorActionRisk {
   const value = String(risk || "").trim();
-  return connectorActionRiskOrder.includes(value) && value !== "other" ? value : "other";
+  return connectorActionRiskOrder.find((candidate) => candidate === value) || "other";
 }
 
-export function connectorActionRiskLabel(risk) {
+export function connectorActionRiskLabel(risk: unknown): string {
   return riskLabels[normalizeConnectorActionRisk(risk)];
 }
 
-export function connectorActionRiskTone(risk) {
+export function connectorActionRiskTone(risk: unknown): "good" | "bad" | "warn" | "neutral" {
   switch (normalizeConnectorActionRisk(risk)) {
     case "read":
       return "good";
@@ -47,11 +48,11 @@ export function connectorActionRiskTone(risk) {
   }
 }
 
-export function connectorActionRiskGroupLabel(risk) {
+export function connectorActionRiskGroupLabel(risk: unknown): string {
   return riskGroupLabels[normalizeConnectorActionRisk(risk)];
 }
 
-export function connectorActionRiskDescription(risk, count) {
+export function connectorActionRiskDescription(risk: unknown, count: number): string {
   const normalized = normalizeConnectorActionRisk(risk);
   const descriptor = riskDescriptions[normalized];
   return count > 0 ? `${count} ${descriptor} action${count === 1 ? "" : "s"}` : `No ${descriptor} actions exposed.`;

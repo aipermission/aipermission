@@ -1,7 +1,21 @@
 import { RefreshCcw, TerminalSquare } from "lucide-react";
 import { Button } from "../ui/button";
 
-export function EmptySessionState({ title, description, detail, onStart, theme = "dark", buttonLabel = "New Session" }) {
+export function EmptySessionState({
+  title,
+  description,
+  detail,
+  onStart,
+  theme = "dark",
+  buttonLabel = "New Session",
+}: {
+  title: string;
+  description: string;
+  detail?: string;
+  onStart: () => void;
+  theme?: "dark" | "light";
+  buttonLabel?: string;
+}) {
   const light = theme === "light";
   return (
     <div className={`grid h-full min-h-0 place-items-center p-6 ${light ? "text-stone-700" : "text-stone-200"}`}>

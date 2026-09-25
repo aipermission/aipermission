@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { currentHistoryPage, firstHistoryPage, nextHistoryPage, previousHistoryPage, resolvedHistoryTotal } from "./history-pagination.js";
+import { currentHistoryPage, firstHistoryPage, nextHistoryPage, previousHistoryPage, resolvedHistoryTotal } from "./history-pagination.ts";
 
 test("history cursor navigation retains cursors for previous pages", () => {
   const first = { ...firstHistoryPage(25), nextCursor: "cursor-page-2" };
   const second = nextHistoryPage(first);
+  assert.ok(second);
   assert.deepEqual(second, {
     limit: 25,
     cursor: "cursor-page-2",
@@ -14,6 +15,7 @@ test("history cursor navigation retains cursors for previous pages", () => {
   });
 
   const third = nextHistoryPage({ ...second, nextCursor: "cursor-page-3" });
+  assert.ok(third);
   assert.deepEqual(previousHistoryPage(third), {
     limit: 25,
     cursor: "cursor-page-2",

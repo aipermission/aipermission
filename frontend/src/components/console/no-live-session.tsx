@@ -1,6 +1,18 @@
 import { EmptySessionState } from "./empty-session-state";
 
-export function NoLiveSession({ target, lastSession, onNewSession, theme = "dark" }) {
+type LastSession = { status?: string; closed_at?: string; updated_at?: string; created_at?: string };
+
+export function NoLiveSession({
+  target,
+  lastSession,
+  onNewSession,
+  theme = "dark",
+}: {
+  target: { name: string };
+  lastSession?: LastSession | null;
+  onNewSession: () => void;
+  theme?: "dark" | "light";
+}) {
   const closedAt = lastSession?.closed_at || lastSession?.updated_at || lastSession?.created_at;
   return (
     <EmptySessionState
@@ -17,7 +29,7 @@ export function NoLiveSession({ target, lastSession, onNewSession, theme = "dark
   );
 }
 
-function formatSessionTime(value) {
+function formatSessionTime(value: string): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
