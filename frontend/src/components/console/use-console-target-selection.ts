@@ -10,11 +10,30 @@ import {
 } from "./console-target-sidebar";
 import { isUnreadMessage } from "./helpers";
 
-export function useConsoleTargetSelection({ messages, pendingApprovals, selectedTargetRef, setSearchParams, targets }) {
-  const [profileByTarget, setProfileByTarget] = useState({});
+type Target = {
+  ref: string;
+  connector_kind: string;
+  target_id: number;
+  profile_id: number;
+  profile_label: string;
+  runtime_id?: number | string;
+  project_name?: string;
+  project_slug?: string;
+};
+type Message = { direction: string; consumed_at?: string | null };
+type Props = {
+  messages: { data: Message[] };
+  pendingApprovals: readonly unknown[];
+  selectedTargetRef: string;
+  setSearchParams: (_params: { target: string }, _options?: { replace: boolean }) => void;
+  targets: { data: Target[] } | null;
+};
+
+export function useConsoleTargetSelection({ messages, pendingApprovals, selectedTargetRef, setSearchParams, targets }: Props) {
+  const [profileByTarget, setProfileByTarget] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
-  const [collapsedProjects, setCollapsedProjects] = useState({});
-  const targetItems = useMemo(() => targets?.data || [], [targets?.data]);
+  const [collapsedProjects, setCollapsedProjects] = useState<Record<number, boolean>>({});
+  const targetItems = useMemo<Target[]>(() => targets?.data || [], [targets?.data]);
   const unreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
   const defaultTargetRef = useMemo(
     () => defaultConsoleTargetRef(targetItems, unreadMessages, pendingApprovals),
@@ -25,8 +44,8 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
     const exact = selectedTargetRef ? targetItems.find((target) => target.ref === selectedTargetRef) : null;
     return exact || targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
   }, [defaultTargetRef, selectedTargetRef, targetItems]);
-  const selectedProfiles = useMemo(() => profilesForConnectorTarget(targetItems, selectedTarget), [selectedTarget, targetItems]);
-  const targetRows = useMemo(
+  const selectedProfiles = useMemo<Target[]>(() => profilesForConnectorTarget(targetItems, selectedTarget), [selectedTarget, targetItems]);
+  const targetRows = useMemo<Target[]>(
     () => consoleTargetRows(targetItems, selectedTarget, profileByTarget),
     [profileByTarget, selectedTarget, targetItems],
   );
@@ -34,7 +53,7 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
     const query = search.trim().toLowerCase();
     return targetRows.filter((target) => {
       if (!query) return true;
-      const profiles = profilesForConnectorTarget(targetItems, target);
+      const profiles: Target[] = profilesForConnectorTarget(targetItems, target);
       return [
         target.project_name,
         target.project_slug,
@@ -66,9 +85,9 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
   }, [selectedTarget]);
 
   const selectTarget = useCallback(
-    (target) => {
+    (target: Target | null) => {
       if (!target) return;
-      const profiles = profilesForConnectorTarget(targetItems, target);
+      const profiles: Target[] = profilesForConnectorTarget(targetItems, target);
       const selectedProfileID = profileByTarget[connectorTargetKey(target)] || target.profile_id;
       const profileTarget = profiles.find((profile) => Number(profile.profile_id) === Number(selectedProfileID)) || profiles[0] || target;
       setSearchParams({ target: profileTarget.ref });
@@ -77,7 +96,7 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
   );
 
   const selectProfile = useCallback(
-    (profileID) => {
+    (profileID: number | string) => {
       if (!selectedTarget) return;
       const nextID = Number(profileID);
       if (!Number.isFinite(nextID) || nextID <= 0) return;
@@ -89,7 +108,7 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
     [selectedProfiles, selectedTarget, setSearchParams],
   );
 
-  const toggleProject = useCallback((projectID) => {
+  const toggleProject = useCallback((projectID: number) => {
     setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }));
   }, []);
 
@@ -101,7 +120,7 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
     selectProfile,
     selectTarget,
     selectedProfiles,
-    selectedRuntimeID: targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "",
+    selectedRuntimeID: selectedTarget && targetUsesLiveConsole(selectedTarget) ? String(selectedTarget.runtime_id || "") : "",
     selectedTarget,
     setSearch,
     targetItems,
