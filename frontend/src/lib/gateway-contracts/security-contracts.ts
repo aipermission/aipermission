@@ -5,6 +5,7 @@ import {
   executionRules,
 } from "./generated-connector-contract.js";
 import { assertConnectorActionResponse, isConnectorActionStatus, isConnectorRetryPolicy } from "./connector-action-contract.js";
+import type { components } from "../../../types/generated-openapi";
 
 export { connectorActionResponseRequiredFields, connectorActionStatuses, connectorRetryClasses, executionRules };
 
@@ -12,30 +13,8 @@ export type ConnectorActionStatus = (typeof connectorActionStatuses)[number];
 export type ConnectorRetryClass = (typeof connectorRetryClasses)[number];
 export type ExecutionRule = (typeof executionRules)[number];
 
-export type ConnectorRetryPolicy = {
-  class: ConnectorRetryClass;
-  guidance: string;
-  precondition_fields?: string[];
-};
-
-export type ConnectorActionResponse = Record<string, unknown> & {
-  status: ConnectorActionStatus;
-  request_id: number;
-  target_ref: string;
-  connector_kind: string;
-  action_name: string;
-  retry_policy: ConnectorRetryPolicy;
-  target_name?: string;
-  profile_label?: string;
-  input?: Record<string, unknown>;
-  display_text?: string;
-  output?: unknown;
-  error?: string;
-  retry_after_seconds?: number;
-  assistant_hint?: string;
-  output_withheld?: boolean;
-  replayed?: boolean;
-};
+export type ConnectorActionResponse = components["schemas"]["ConnectorActionResponse"];
+export type ConnectorRetryPolicy = ConnectorActionResponse["retry_policy"];
 
 export type TokenActionPermission = Record<string, unknown> & {
   target_id: number;
@@ -44,77 +23,12 @@ export type TokenActionPermission = Record<string, unknown> & {
   execution_rule: ExecutionRule;
 };
 
-export type ConnectorApproval = Record<string, unknown> & {
-  id: number;
-  status: ConnectorActionStatus;
-  token_id?: number;
-  token_name?: string;
-  target_id: number;
-  target_name: string;
-  target_ref: string;
-  profile_id: number;
-  profile_label: string;
-  connector_kind: string;
-  action_name: string;
-  title?: string;
-  summary?: string;
-  preview?: Record<string, unknown>;
-  input?: Record<string, unknown>;
-  output?: unknown;
-  reason?: string;
-  display_text?: string;
-  error?: string;
-  retry_policy: ConnectorRetryPolicy;
-  created_at: string;
-  completed_at?: string;
-  retry_after_seconds?: number;
-  assistant_hint?: string;
-  approval_context_hash?: string;
-};
+export type ConnectorApproval = components["schemas"]["ConnectorActionApprovalDetail"];
 
-export type VaultApproval = Record<string, unknown> & {
-  id: number;
-  status: string;
-  token_id: number;
-  token_name: string;
-  project_id: number;
-  project_name: string;
-  project_slug: string;
-  runtime_id?: number;
-  action_name: string;
-  source: string;
-  input: Record<string, unknown>;
-  reason: string;
-  approval_context?: VaultApprovalContext;
-  approval_context_hash: string;
-  idempotency_key: string;
-  error?: string;
-  output?: unknown;
-  user_note?: string;
-  created_at: string;
-  expires_at: string;
-  completed_at?: string;
-  updated_at: string;
-};
+export type VaultApproval = components["schemas"]["VaultActionRequest"];
 
-export type VaultSessionItem = {
-  item_id: number;
-  name: string;
-  source_project_id: number;
-  value_version: number;
-  metadata_revision: number;
-  replace_existing: boolean;
-  binding_id?: number;
-  binding_revision?: number;
-};
-
-export type VaultApprovalContext = Record<string, unknown> & {
-  items?: VaultSessionItem[];
-  target_id?: number;
-  profile_id?: number;
-  connector_kind?: string;
-  expected_session_id?: number;
-};
+export type VaultSessionItem = components["schemas"]["VaultSessionItem"];
+export type VaultApprovalContext = components["schemas"]["VaultApprovalContext"];
 
 type ExpectedVaultApproval = {
   id: number;
