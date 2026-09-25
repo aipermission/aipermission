@@ -1,4 +1,8 @@
-export function ConnectorRuleButton({ active, children, className = "", title, ...props }) {
+import type { ButtonHTMLAttributes } from "react";
+
+type ConnectorRuleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean };
+
+export function ConnectorRuleButton({ active, children, className = "", title, ...props }: ConnectorRuleButtonProps) {
   const label = typeof children === "string" ? children : "";
   return (
     <button

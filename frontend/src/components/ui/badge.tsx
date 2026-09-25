@@ -1,6 +1,11 @@
 import { cn } from "../../lib/utils";
+import type { HTMLAttributes } from "react";
 
-export function Badge({ className, tone = "neutral", ...props }) {
+type BadgeTone = "neutral" | "good" | "warn" | "bad";
+type BadgeProps = HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone };
+type CountBadgeProps = HTMLAttributes<HTMLSpanElement> & { tone?: "red" | "stone" | "emerald" };
+
+export function Badge({ className, tone = "neutral", ...props }: BadgeProps) {
   const tones = {
     neutral: "border-stone-200 bg-stone-100 text-stone-700 dark-badge-neutral",
     good: "border-emerald-200 bg-emerald-50 text-emerald-800 dark-badge-good",
@@ -15,7 +20,7 @@ export function Badge({ className, tone = "neutral", ...props }) {
   );
 }
 
-export function CountBadge({ className, children, tone = "red", ...props }) {
+export function CountBadge({ className, children, tone = "red", ...props }: CountBadgeProps) {
   const tones = {
     red: "bg-red-600 text-white dark-count-red",
     stone: "bg-stone-900 text-white dark-count-stone",

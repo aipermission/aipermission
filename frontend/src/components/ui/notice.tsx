@@ -1,6 +1,10 @@
 import { cn } from "../../lib/utils";
+import type { HTMLAttributes } from "react";
 
-export function Notice({ tone = "neutral", className, children }) {
+type NoticeTone = "neutral" | "good" | "warn" | "bad";
+type NoticeProps = HTMLAttributes<HTMLDivElement> & { tone?: NoticeTone };
+
+export function Notice({ tone = "neutral", className, children }: NoticeProps) {
   const tones = {
     neutral: "border-stone-200 bg-stone-50 text-stone-700 dark-notice-neutral",
     good: "border-emerald-200 bg-emerald-50 text-emerald-800 dark-notice-good",
