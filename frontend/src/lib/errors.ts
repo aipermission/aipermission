@@ -1,5 +1,14 @@
 export class APIError extends Error {
-  constructor(message, { status = 0, code = "", details = null, data = null } = {}) {
+  status: number;
+  code: string;
+  details: unknown;
+  data: unknown;
+  kind: string;
+
+  constructor(
+    message: string,
+    { status = 0, code = "", details = null, data = null }: { status?: number; code?: string; details?: unknown; data?: unknown } = {},
+  ) {
     super(message);
     this.name = "APIError";
     this.status = status;
@@ -10,7 +19,7 @@ export class APIError extends Error {
   }
 }
 
-export function classifyAPIError(status) {
+export function classifyAPIError(status: number): string {
   if (status === 401) return "authentication";
   if (status === 403) return "authorization";
   if (status === 404) return "not_found";
@@ -22,7 +31,7 @@ export function classifyAPIError(status) {
   return "http";
 }
 
-export function errorMessage(error, fallback = "unknown error") {
+export function errorMessage(error: unknown, fallback = "unknown error"): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error.trim();
   return fallback;

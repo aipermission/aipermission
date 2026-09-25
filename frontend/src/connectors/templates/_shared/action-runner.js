@@ -1,5 +1,5 @@
 import { apiPost } from "../../../lib/api.js";
-import { errorMessage } from "../../../lib/errors.js";
+import { errorMessage } from "../../../lib/errors.ts";
 import { connectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { requireCompletedConnectorAction } from "./action-result.js";
 

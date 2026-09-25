@@ -1,18 +1,21 @@
-function abortError() {
+function abortError(): DOMException {
   return new DOMException("The operation was aborted.", "AbortError");
 }
 
-async function blobArrayBuffer(blob) {
+async function blobArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   if (typeof blob?.arrayBuffer === "function") return blob.arrayBuffer();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error || new Error("Could not read the selected file."));
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error("Could not read the selected file."));
+    };
     reader.readAsArrayBuffer(blob);
   });
 }
 
-export async function fileSHA256(file, signal) {
+export async function fileSHA256(file: Blob, signal?: AbortSignal): Promise<string> {
   if (signal?.aborted) throw abortError();
   if (!globalThis.crypto?.subtle) throw new Error("Secure file hashing is unavailable; the file was not uploaded.");
   const bytes = await blobArrayBuffer(file);
