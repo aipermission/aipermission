@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { connectorPermissionFixture as permission } from "../../test/connector-permission-fixtures.js";
 import {
   connectorActionResponse,
   connectorApproval as parseConnectorApproval,
@@ -262,27 +263,6 @@ describe("typed untrusted gateway contracts", () => {
     expect(consoleSessions([{ id: 1, status: "active" }])).toHaveLength(1);
   });
 });
-
-function permission(overrides = {}) {
-  return {
-    project_id: 1,
-    project_name: "My Project",
-    project_slug: "my-project",
-    project_enabled: true,
-    target_id: 2,
-    target_name: "Fixture",
-    profile_id: 3,
-    profile_label: "default",
-    target_ref: "fixture:2:3",
-    connector_kind: "fixture",
-    profile_kind: "default",
-    action_name: "read",
-    execution_rule: "approval_required",
-    created_at: "2026-09-16T00:00:00Z",
-    updated_at: "2026-09-16T00:00:00Z",
-    ...overrides,
-  };
-}
 
 function connectorApproval(overrides = {}) {
   return {
