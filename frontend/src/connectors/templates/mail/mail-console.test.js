@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result.js";
+import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result.ts";
 import {
   addressLabel,
   mailActionResolution,

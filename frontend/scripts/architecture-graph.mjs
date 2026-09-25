@@ -331,7 +331,7 @@ function forbiddenDependency(sourceLayer, targetLayer) {
 function moduleLayer(sourceRoot, file, connectorKinds) {
   const path = displayPath(sourceRoot, file);
   if (path.startsWith("test/") || isTestModule(path)) return "test-support";
-  if (["App.jsx", "main.jsx"].includes(path)) return "app";
+  if (["App.jsx", "App.tsx", "main.jsx", "main.tsx"].includes(path)) return "app";
   const first = path.split("/")[0];
   if (genericRoots.includes(first)) return first;
   if (path.startsWith("connectors/editor/")) return "connector-editor";

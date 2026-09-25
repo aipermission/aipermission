@@ -4,7 +4,7 @@ import {
   connectorActionError,
   connectorActionPending,
   requireCompletedConnectorAction,
-} from "../connectors/templates/_shared/action-result.js";
+} from "../connectors/templates/_shared/action-result.ts";
 import {
   actionableOffsetPartitions,
   detailMatchesSelection,
@@ -25,6 +25,10 @@ test("completed action guard rejects failed results and withholds pending result
   assert.equal(requireCompletedConnectorAction({ status: "completed", output: { ok: true } }).output.ok, true);
   assert.equal(requireCompletedConnectorAction({ status: "approval_pending" }), null);
   assert.throws(() => requireCompletedConnectorAction({ status: "blocked", error: "permission blocked" }), /permission blocked/);
+  assert.throws(
+    () => requireCompletedConnectorAction({ status: "outcome_unknown", request_id: 42 }),
+    (error) => error.actionItem?.request_id === 42,
+  );
 });
 
 test("Kafka detail actions stay bound to the selected view and item", () => {
