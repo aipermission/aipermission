@@ -3,7 +3,25 @@ import { Input } from "../../../components/ui/form";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { HighlightedText } from "./highlighted-text";
 
-export function ConnectorResultHeader({ title, subtitle, copyValue, search, onSearch, inputClass, searchPlaceholder = "Search" }) {
+type ResultHeaderProps = {
+  title: string;
+  subtitle?: string;
+  copyValue?: string;
+  search?: string;
+  onSearch?: (_value: string) => void;
+  inputClass?: string;
+  searchPlaceholder?: string;
+};
+
+export function ConnectorResultHeader({
+  title,
+  subtitle,
+  copyValue,
+  search,
+  onSearch,
+  inputClass,
+  searchPlaceholder = "Search",
+}: ResultHeaderProps) {
   return (
     <div className="mb-2 flex items-center justify-between gap-3">
       <div className="min-w-0">
@@ -15,7 +33,7 @@ export function ConnectorResultHeader({ title, subtitle, copyValue, search, onSe
           {onSearch ? (
             <Input
               className={`h-8 w-56 text-xs ${inputClass || ""}`}
-              value={search}
+              value={search || ""}
               onChange={(event) => onSearch(event.target.value)}
               placeholder={searchPlaceholder}
             />
@@ -27,7 +45,13 @@ export function ConnectorResultHeader({ title, subtitle, copyValue, search, onSe
   );
 }
 
-export function DarkSummaryGrid({ rows, columns = "md:grid-cols-2 xl:grid-cols-3" }) {
+export function DarkSummaryGrid({
+  rows,
+  columns = "md:grid-cols-2 xl:grid-cols-3",
+}: {
+  rows: readonly { label: string; value: unknown }[];
+  columns?: string;
+}) {
   return (
     <div className="min-h-0 overflow-auto rounded-md border border-stone-700 bg-[#1a1a1a] p-3">
       <div className={`grid gap-2 ${columns}`}>
@@ -42,7 +66,23 @@ export function DarkSummaryGrid({ rows, columns = "md:grid-cols-2 xl:grid-cols-3
   );
 }
 
-export function RawDataSection({ title, value, search, onSearch, inputClass, className = "", blockClassName = "" }) {
+export function RawDataSection({
+  title,
+  value,
+  search,
+  onSearch,
+  inputClass,
+  className = "",
+  blockClassName = "",
+}: {
+  title: string;
+  value: string;
+  search?: string;
+  onSearch?: (_value: string) => void;
+  inputClass?: string;
+  className?: string;
+  blockClassName?: string;
+}) {
   return (
     <div className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden ${className}`}>
       <ConnectorResultHeader

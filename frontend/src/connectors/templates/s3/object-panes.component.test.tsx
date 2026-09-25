@@ -3,9 +3,32 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { S3ObjectBrowser } from "./object-browser";
 import { S3ObjectDetailPane } from "./object-detail-pane";
+import { S3MetadataPanel } from "./metadata-panel";
 
 const classes = { border: "border", muted: "muted", subtlePanel: "subtle", input: "input", rowHover: "hover", activeRow: "active" };
 const object = { key: "backups/current.aipdb", size: 1024, last_modified: "2026-01-01T00:00:00Z" };
+
+it("shows bucket metadata alongside searchable raw response data", async () => {
+  const onMetadataSearch = vi.fn();
+  render(
+    <S3MetadataPanel
+      metadata={{ bucket: "backups", endpoint: "https://s3.example.test", headers: { "X-Amz-Request-Id": "request-1" } }}
+      selectedKey=""
+      directories={[{ prefix: "archive/" }]}
+      objects={[object]}
+      visibleBytes={object.size}
+      prefix=""
+      search=""
+      metadataSearch="request"
+      onMetadataSearch={onMetadataSearch}
+    />,
+  );
+
+  expect(screen.getByText("Bucket summary")).toBeInTheDocument();
+  expect(screen.getByText("request-1")).toBeInTheDocument();
+  await userEvent.setup().type(screen.getByPlaceholderText("Search raw data"), "x");
+  expect(onMetadataSearch).toHaveBeenCalledWith("requestx");
+});
 
 it("routes S3 browser controls while preserving selected object identity", async () => {
   const user = userEvent.setup();

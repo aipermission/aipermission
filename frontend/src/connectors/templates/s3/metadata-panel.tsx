@@ -2,6 +2,29 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { ConnectorResultHeader, DarkSummaryGrid, RawDataSection } from "../_shared/result-sections";
 
+export type S3MetadataPanelProps = {
+  metadata: {
+    key?: string;
+    bucket?: string;
+    endpoint?: string;
+    region?: string;
+    headers?: Record<string, string>;
+    content_length?: number | string;
+    content_type?: string;
+    last_modified?: string;
+    etag?: string;
+  } | null;
+  selectedKey: string;
+  directories: readonly unknown[];
+  objects: readonly unknown[];
+  visibleBytes: number;
+  prefix: string;
+  search: string;
+  metadataSearch: string;
+  onMetadataSearch: (_value: string) => void;
+  inputClass?: string;
+};
+
 export function S3MetadataPanel({
   metadata,
   selectedKey,
@@ -13,7 +36,7 @@ export function S3MetadataPanel({
   metadataSearch,
   onMetadataSearch,
   inputClass,
-}) {
+}: S3MetadataPanelProps) {
   if (!metadata) {
     return (
       <TerminalBlock className="min-h-0 text-xs" surface="log">

@@ -5,8 +5,8 @@ import { S3VersionsDialog } from "./versions-dialog";
 
 const version = { version_id: "version-1", is_latest: true, delete_marker: false, size: 12 };
 
-function renderVersionDialog(actionResponse) {
-  const onRun = vi.fn(async ({ actionName }) =>
+function renderVersionDialog(actionResponse: () => Promise<unknown>) {
+  const onRun = vi.fn(async ({ actionName }: { actionName: string }) =>
     actionName === "list_object_versions" ? { output: { versions: [version], next_cursor: "" } } : actionResponse(),
   );
   render(
@@ -18,6 +18,7 @@ function renderVersionDialog(actionResponse) {
       mutedClass="text-stone-500"
       onClose={vi.fn()}
       onRun={onRun}
+      onChanged={vi.fn()}
     />,
   );
   return onRun;

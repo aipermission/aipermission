@@ -28,6 +28,7 @@ it("round-trips and wires verified conditional request trust", () => {
       config: { host: "s3.example.test", bucket: "artifacts", trust_conditional_requests: true },
       profiles: [],
     },
+    profile: null,
   });
   expect(restored.trust_conditional_requests).toBe(true);
   expect(s3TargetConfigFromForm(restored).trust_conditional_requests).toBe(true);

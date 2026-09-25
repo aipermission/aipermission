@@ -1,6 +1,17 @@
 import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 
-export function S3EndpointFooter({ target, borderClass, mutedClass }) {
+type S3Endpoint = {
+  config?: {
+    scheme?: string;
+    host?: string;
+    port?: number | string;
+    bucket?: string;
+    connection_mode?: string;
+    transport_target_ref?: string;
+  };
+};
+
+export function S3EndpointFooter({ target, borderClass, mutedClass }: { target: S3Endpoint; borderClass?: string; mutedClass?: string }) {
   const scheme = target.config?.scheme || "https";
   const host = target.config?.host || "s3.amazonaws.com";
   const port = target.config?.port || (scheme === "http" ? 80 : 443);
