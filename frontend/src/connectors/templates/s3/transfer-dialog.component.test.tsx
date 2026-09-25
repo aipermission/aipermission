@@ -7,23 +7,23 @@ import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
 
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn(), apiPostForm: vi.fn(), apiGet: vi.fn(), apiDownload: vi.fn() }));
 
-function deferred() {
-  let resolve;
-  const promise = new Promise((done) => {
+function deferred<T>() {
+  let resolve: (_value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
     resolve = done;
   });
   return { promise, resolve };
 }
 
 beforeEach(() => {
-  apiPost.mockReset();
-  apiPostForm.mockReset();
+  vi.mocked(apiPost).mockReset();
+  vi.mocked(apiPostForm).mockReset();
 });
 
 it("retains folder-relative identity in preview and multipart after prefix navigation", async () => {
   const user = userEvent.setup();
-  apiPost.mockResolvedValue({ path: "/next// ", parent: "/", entries: [] });
-  apiPostForm.mockResolvedValue({ id: 1, status: "completed", direction: "upload", items: [] });
+  vi.mocked(apiPost).mockResolvedValue({ path: "/next// ", parent: "/", entries: [] });
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 1, status: "completed", direction: "upload", items: [] });
   render(
     <FileTransferDialog
       open
@@ -40,11 +40,13 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   );
   const file = new File(["data"], " invoice ", { type: "text/plain" });
   Object.defineProperty(file, "webkitRelativePath", { value: "folder// invoice " });
-  fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+  const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!fileInput) throw new Error("File input is missing");
+  fireEvent.change(fileInput, { target: { files: [file] } });
   fireEvent.change(screen.getByLabelText("Remote folder"), { target: { value: "/prefix//" } });
   expect(screen.getByText("/prefix//folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Browse" }));
-  expect(apiPost).toHaveBeenCalledWith(
+  expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
     "/api/file-transfers/browse",
     { runtime_id: 7, path: "/prefix//" },
     { signal: expect.any(AbortSignal) },
@@ -53,15 +55,16 @@ it("retains folder-relative identity in preview and multipart after prefix navig
   expect(screen.getByText("/next// /folder// invoice ", { normalizer: (value) => value })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /Start upload/ }));
   await screen.findByRole("button", { name: "Clear" });
-  const form = apiPostForm.mock.calls[0][1];
+  const form = vi.mocked(apiPostForm).mock.calls[0]?.[1];
+  if (!(form instanceof FormData)) throw new Error("Upload form is missing");
   expect(form.get("remote_dir")).toBe("/next// ");
-  expect(JSON.parse(form.get("relative_paths"))).toEqual(["folder// invoice "]);
+  expect(JSON.parse(String(form.get("relative_paths")))).toEqual(["folder// invoice "]);
 });
 
 it("waits for the canonical browse path before using an upload folder", async () => {
   const user = userEvent.setup();
-  const pending = deferred();
-  apiPost.mockReturnValue(pending.promise);
+  const pending = deferred<{ path: string; parent: string; entries: never[] }>();
+  vi.mocked(apiPost).mockReturnValue(pending.promise);
   render(
     <FileTransferDialog
       open

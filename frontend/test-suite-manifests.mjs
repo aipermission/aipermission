@@ -62,7 +62,7 @@ export const asyncStateOwnerTests = {
   ],
   "src/connectors/templates/redis/use-redis-browser.js": ["src/connectors/templates/redis/use-redis-browser.component.test.jsx"],
   "src/connectors/templates/s3/use-s3-browser.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
-  "src/connectors/templates/s3/use-s3-upload.js": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
+  "src/connectors/templates/s3/use-s3-upload.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.jsx"],
   "src/connectors/templates/ssh/bulk-command-dialog.jsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.jsx"],
   "src/connectors/templates/ssh/operations.jsx": ["src/connectors/templates/ssh/console.component.test.jsx"],
   "src/lib/api.js": ["src/lib/gateway-contracts/api-transport.component.test.jsx"],
@@ -93,6 +93,6 @@ export const riskCoverageTestIncludes = [
   "src/components/settings/maintenance-console-panel.component.test.jsx",
   "src/components/vault/vault-action-approval-dialog.component.test.jsx",
   "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.jsx",
-  "src/connectors/templates/_shared/network-transport-fields.component.test.jsx",
+  "src/connectors/templates/_shared/network-transport-fields.component.test.tsx",
   "src/connectors/templates/{docker,kafka,kubernetes,mail,rabbitmq,redis,s3}/form.component.test.jsx",
 ];

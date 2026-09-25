@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -46,7 +46,9 @@ test("standard connector models keep generic target and profile CRUD in the shar
     const metadata = JSON.parse(readFileSync(new URL(`../${kind}/metadata.json`, import.meta.url), "utf8"));
     assert.ok(["standard", "custom"].includes(metadata.profile_lifecycle), `${kind} must declare its profile lifecycle`);
     if (metadata.profile_lifecycle === "custom") continue;
-    const source = readFileSync(new URL(`../${kind}/model.js`, import.meta.url), "utf8");
+    const typedModel = new URL(`../${kind}/model.ts`, import.meta.url);
+    const model = existsSync(typedModel) ? typedModel : new URL(`../${kind}/model.js`, import.meta.url);
+    const source = readFileSync(model, "utf8");
     assert.doesNotMatch(source, /target-profile-save/, `${kind} must not reimplement target/profile persistence`);
     assert.doesNotMatch(source, /\/api\/connector-targets\/.*\/profiles/, `${kind} must not call generic profile routes directly`);
   }
