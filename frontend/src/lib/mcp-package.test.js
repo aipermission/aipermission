@@ -7,7 +7,7 @@ import { buildMCPSetupCommand } from "./mcp-setup-command.ts";
 
 const releaseManifest = JSON.parse(readFileSync(new URL("../../../release-manifest.json", import.meta.url), "utf8"));
 const setupSource = readFileSync(new URL("../pages/mcp-setup.jsx", import.meta.url), "utf8");
-const tokenInstallSource = readFileSync(new URL("../components/tokens/token-install-dialog.jsx", import.meta.url), "utf8");
+const tokenInstallSource = readFileSync(new URL("../components/tokens/token-install-dialog.tsx", import.meta.url), "utf8");
 
 test("manual MCP runtime configs use the release-pinned package specifier", () => {
   assert.equal(mcpPackageName, "@aipermission/mcp");

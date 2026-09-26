@@ -1,7 +1,11 @@
 import { connectorActionResponseRequiredFields, connectorActionStatuses, connectorRetryClasses } from "./generated-connector-contract.js";
+import type { components } from "../../../types/generated-openapi";
 
-const connectorActionStatusSet = new Set(connectorActionStatuses);
-const connectorRetryClassSet = new Set(connectorRetryClasses);
+type ActionResponse = components["schemas"]["ConnectorActionResponse"];
+type RetryPolicy = ActionResponse["retry_policy"];
+
+const connectorActionStatusSet: ReadonlySet<string> = new Set(connectorActionStatuses);
+const connectorRetryClassSet: ReadonlySet<string> = new Set(connectorRetryClasses);
 const connectorActionResponseFields = new Set([
   "status",
   "request_id",
@@ -22,7 +26,7 @@ const connectorActionResponseFields = new Set([
 ]);
 const connectorRetryPolicyFields = new Set(["class", "guidance", "precondition_fields"]);
 
-export function assertConnectorActionResponse(value, expected) {
+export function assertConnectorActionResponse(value: unknown, expected?: { targetRef: string; actionName: string }): ActionResponse {
   const item = record(value);
   if (
     !hasOnlyKeys(item, connectorActionResponseFields) ||
@@ -47,54 +51,55 @@ export function assertConnectorActionResponse(value, expected) {
   ) {
     throw new Error("Invalid connector action response from gateway.");
   }
-  return item;
+  return item as ActionResponse;
 }
 
-export function isConnectorActionStatus(value) {
+export function isConnectorActionStatus(value: unknown): value is ActionResponse["status"] {
   return typeof value === "string" && connectorActionStatusSet.has(value);
 }
 
-export function isConnectorRetryPolicy(value) {
+export function isConnectorRetryPolicy(value: unknown): value is RetryPolicy {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
   return (
-    hasOnlyKeys(value, connectorRetryPolicyFields) &&
-    typeof value.class === "string" &&
-    connectorRetryClassSet.has(value.class) &&
-    typeof value.guidance === "string" &&
-    (value.precondition_fields === undefined ||
-      (Array.isArray(value.precondition_fields) && value.precondition_fields.every((field) => typeof field === "string")))
+    hasOnlyKeys(policy, connectorRetryPolicyFields) &&
+    typeof policy.class === "string" &&
+    connectorRetryClassSet.has(policy.class) &&
+    typeof policy.guidance === "string" &&
+    (policy.precondition_fields === undefined ||
+      (Array.isArray(policy.precondition_fields) && policy.precondition_fields.every((field: unknown) => typeof field === "string")))
   );
 }
 
-function hasOnlyKeys(value, allowed) {
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
   return Object.keys(value).every((field) => allowed.has(field));
 }
 
-function record(value) {
+function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid connector action response from gateway.");
-  return value;
+  return value as Record<string, unknown>;
 }
 
-function positiveID(value) {
-  return Number.isSafeInteger(value) && value > 0;
+function positiveID(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
-function nonEmptyString(value) {
+function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function optionalString(value) {
+function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-function optionalRecord(value) {
+function optionalRecord(value: unknown): boolean {
   return value === undefined || (!!value && typeof value === "object" && !Array.isArray(value));
 }
 
-function optionalRetryAfterSeconds(value) {
-  return value === undefined || (Number.isSafeInteger(value) && value >= 0 && value <= 3600);
+function optionalRetryAfterSeconds(value: unknown): boolean {
+  return value === undefined || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 3600);
 }
 
-function optionalBoolean(value) {
+function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";
 }

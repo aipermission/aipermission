@@ -3,7 +3,15 @@ import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 
-export function TokenRevokeDialog({ token, actionState, error, onClose, onConfirm }) {
+type TokenRevokeDialogProps = {
+  token: { name: string } | null;
+  actionState: string;
+  error?: string;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+export function TokenRevokeDialog({ token, actionState, error, onClose, onConfirm }: TokenRevokeDialogProps) {
   const revoking = actionState === "revoking";
   return (
     <Dialog

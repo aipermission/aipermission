@@ -9,6 +9,7 @@ import {
   type VaultApproval,
   type VaultSessionItem,
 } from "./security-contracts";
+import { assertConnectorActionResponse, isConnectorActionStatus, isConnectorRetryPolicy } from "./connector-action-contract";
 
 type Equal<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2 ? true : false;
 const actionStatusMatchesSchema: Equal<ConnectorActionStatus, ConnectorActionResponse["status"]> = true;
@@ -17,6 +18,19 @@ const retryClassMatchesSchema: Equal<ConnectorRetryClass, ConnectorRetryPolicy["
 void actionStatusMatchesSchema;
 void approvalStatusMatchesSchema;
 void retryClassMatchesSchema;
+const actionValidatorMatchesSchema: Equal<ReturnType<typeof assertConnectorActionResponse>, ConnectorActionResponse> = true;
+void actionValidatorMatchesSchema;
+
+const untrustedStatus: unknown = "completed";
+if (isConnectorActionStatus(untrustedStatus)) {
+  const validatedStatus: ConnectorActionStatus = untrustedStatus;
+  void validatedStatus;
+}
+const untrustedRetryPolicy: unknown = { class: "read_only", guidance: "Safe to retry." };
+if (isConnectorRetryPolicy(untrustedRetryPolicy)) {
+  const validatedPolicy: ConnectorRetryPolicy = untrustedRetryPolicy;
+  void validatedPolicy;
+}
 
 const response: ConnectorActionResponse = connectorActionResponse({
   status: "completed",

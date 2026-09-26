@@ -100,5 +100,6 @@ export const riskCoverageTestIncludes = [
   "src/components/vault/vault-action-approval-dialog.component.test.jsx",
   "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.jsx",
   "src/connectors/templates/_shared/network-transport-fields.component.test.tsx",
+  "src/connectors/templates/_shared/runtime-scope-forms.component.test.tsx",
   "src/connectors/templates/{docker,kafka,kubernetes,mail,rabbitmq,redis,s3}/form.component.test.{jsx,tsx}",
 ];

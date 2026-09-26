@@ -4,7 +4,7 @@ import {
   connectorRetryClasses,
   executionRules,
 } from "./generated-connector-contract.js";
-import { assertConnectorActionResponse, isConnectorActionStatus, isConnectorRetryPolicy } from "./connector-action-contract.js";
+import { assertConnectorActionResponse, isConnectorActionStatus, isConnectorRetryPolicy } from "./connector-action-contract.ts";
 import type { components } from "../../../types/generated-openapi";
 
 export { connectorActionResponseRequiredFields, connectorActionStatuses, connectorRetryClasses, executionRules };
@@ -60,7 +60,7 @@ function executionRule(value: unknown): value is ExecutionRule {
 }
 
 export function connectorActionResponse(value: unknown, expected?: { targetRef: string; actionName: string }): ConnectorActionResponse {
-  return assertConnectorActionResponse(value, expected) as ConnectorActionResponse;
+  return assertConnectorActionResponse(value, expected);
 }
 
 function optionalString(value: unknown): boolean {

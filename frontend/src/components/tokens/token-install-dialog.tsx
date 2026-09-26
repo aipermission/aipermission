@@ -1,3 +1,4 @@
+import type { Dispatch, SetStateAction } from "react";
 import { mcpApiUrl } from "../../lib/api";
 import { mcpClientCatalog } from "../../lib/mcp-client-catalog";
 import { mcpPackageSpecifier } from "../../lib/mcp-package";
@@ -11,7 +12,19 @@ export const installProviders = [
   { id: "manual", label: "Manual" },
   ...mcpClientCatalog.filter((client) => client.supportsMCP || client.id === "custom"),
 ];
-export function TokenInstallDialog({ state, onChange, onClose }) {
+export type TokenInstallState = {
+  open: boolean;
+  token: { name: string; token?: string } | null;
+  provider?: string;
+};
+
+type TokenInstallDialogProps = {
+  state: TokenInstallState;
+  onChange: Dispatch<SetStateAction<TokenInstallState>>;
+  onClose: () => void;
+};
+
+export function TokenInstallDialog({ state, onChange, onClose }: TokenInstallDialogProps) {
   const token = state.token;
   const provider = state.provider || "manual";
   const manualConfig = provider === "manual";
@@ -79,7 +92,7 @@ export function TokenInstallDialog({ state, onChange, onClose }) {
     </Dialog>
   );
 }
-function installTargetName(value) {
+function installTargetName(value: string): string {
   const slug = String(value || "default")
     .trim()
     .toLowerCase()
@@ -88,7 +101,7 @@ function installTargetName(value) {
   return `aipermission-${slug || "default"}`;
 }
 
-function manualConfigJSON(name, token) {
+function manualConfigJSON(name: string, token: string | undefined): string {
   return JSON.stringify(
     {
       mcpServers: {

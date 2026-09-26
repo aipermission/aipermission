@@ -3,8 +3,55 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { DockerCredentialFormTemplate } from "../docker/credential-form";
 import { KubernetesCredentialFormTemplate } from "../kubernetes/credential-form";
+import { DockerConnectorFormTemplate } from "../docker/form";
+import { KubernetesConnectorFormTemplate } from "../kubernetes/form";
+import { verifyTransportProfileForm } from "./network-transport-form.test";
 
 const profile = { target_id: "1", profile_label: "selected", risk_label: "local" };
+
+it("edits Docker connection fields and selected container scope", async () => {
+  await verifyTransportProfileForm(DockerConnectorFormTemplate, {
+    docker_command: "docker",
+    scope_mode: "selected",
+    allowed_containers: "api",
+    allowed_patterns: "worker-*",
+  });
+});
+
+it("edits Kubernetes connection fields and selected namespace scope", async () => {
+  await verifyTransportProfileForm(KubernetesConnectorFormTemplate, {
+    kubectl_command: "kubectl",
+    context: "local",
+    default_namespace: "default",
+    scope_mode: "selected",
+    namespaces: "production",
+  });
+});
+
+it("hides runtime allowlists when the connection profile permits all resources", () => {
+  const common = {
+    name: "My Connector",
+    profile_label: "main",
+    risk_label: "",
+    scope_mode: "all",
+    connection_mode: "over_ssh",
+    transport_target_ref: "",
+  };
+  const { rerender } = render(
+    <DockerConnectorFormTemplate
+      form={{ ...common, docker_command: "docker", allowed_containers: "", allowed_patterns: "" }}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText("Allowed containers")).not.toBeInTheDocument();
+  rerender(
+    <KubernetesConnectorFormTemplate
+      form={{ ...common, kubectl_command: "kubectl", context: "", default_namespace: "", namespaces: "" }}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText("Namespaces")).not.toBeInTheDocument();
+});
 
 it("edits container and pattern allowlists without permitting credential reassignment", async () => {
   const user = userEvent.setup();
