@@ -79,10 +79,11 @@ export function shortDate(value: string | null | undefined): string {
 }
 
 export function restoreDestinationGuard(
-  metadata: { output?: { etag?: string | null } } | null,
+  metadata: { output?: unknown } | null,
   error?: unknown,
 ): { expected_current_etag: string } | { expected_current_absent: true } {
-  const etag = String(metadata?.output?.etag || "").trim();
+  const output = s3OutputRecord(metadata?.output);
+  const etag = typeof output.etag === "string" ? output.etag.trim() : "";
   if (etag) return { expected_current_etag: etag };
   if (isNotFoundActionError(error)) return { expected_current_absent: true };
   if (error) throw error;
@@ -96,3 +97,4 @@ function isNotFoundActionError(error: unknown): boolean {
   const output = item.output;
   return Boolean(output && typeof output === "object" && "code" in output && output.code === "not_found");
 }
+import { s3OutputRecord } from "./output.ts";

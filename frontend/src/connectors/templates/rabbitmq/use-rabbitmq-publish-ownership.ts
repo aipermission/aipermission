@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../../../lib/api";
 import { connectorActionPending } from "../_shared/action-result";
+import { isRabbitRecord } from "./helpers";
+import type { RabbitActivity } from "./browser-types";
+
+type PublishOwner = { attemptID: number; requestID: number | null; observed: boolean };
+type ActionLookup = (_path: string, _options: { signal: AbortSignal }) => Promise<unknown>;
 
 const terminalPublishStatuses = new Set(["completed", "failed", "canceled", "blocked", "stale", "declined", "error"]);
 const discoveryRetryMilliseconds = 3000;
 
-export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState, getAction = apiGet) {
-  const ownerRef = useRef(null);
+export function useRabbitMQPublishOwnership(
+  scopeKey: string,
+  activeItems: readonly RabbitActivity[],
+  approvalState?: string,
+  getAction: ActionLookup = apiGet,
+) {
+  const ownerRef = useRef<PublishOwner | null>(null);
   const attemptSequenceRef = useRef(0);
   const discoveryGenerationRef = useRef(0);
-  const [owner, setOwner] = useState(null);
+  const [owner, setOwner] = useState<PublishOwner | null>(null);
   const [discovery, setDiscovery] = useState({ scopeKey: "", pending: true });
   const unresolved = useMemo(
     () =>
@@ -18,7 +28,7 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
       ) || null,
     [activeItems],
   );
-  const replace = useCallback((next) => {
+  const replace = useCallback((next: PublishOwner | null) => {
     ownerRef.current = next;
     setOwner(next);
   }, []);
@@ -28,7 +38,7 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
     return attemptID;
   }, [replace]);
   const update = useCallback(
-    (attemptID, next) => {
+    (attemptID: number, next: Omit<PublishOwner, "attemptID">) => {
       if (ownerRef.current?.attemptID !== attemptID) return false;
       replace({ attemptID, ...next });
       return true;
@@ -36,7 +46,7 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
     [replace],
   );
   const release = useCallback(
-    (attemptID) => {
+    (attemptID?: number) => {
       if (attemptID !== undefined && ownerRef.current?.attemptID !== attemptID) return false;
       replace(null);
       return true;
@@ -55,8 +65,8 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
       return;
     }
     const generation = ++discoveryGenerationRef.current;
-    let controller = null;
-    let retryTimer = null;
+    let controller: AbortController | null = null;
+    let retryTimer: number | null = null;
     setDiscovery({ scopeKey, pending: true });
     const discover = () => {
       controller = new AbortController();
@@ -64,15 +74,19 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
       void getAction(`/api/connector-action-approvals?${query.toString()}`, { signal: controller.signal })
         .then((items) => {
           if (generation !== discoveryGenerationRef.current) return;
-          const active = Array.isArray(items) ? items[0] : null;
-          if (active && !ownerRef.current) {
+          if (!Array.isArray(items)) throw new Error("Invalid publish ownership discovery response.");
+          const active: unknown = items[0] ?? null;
+          if (items.length && !isRabbitRecord(active)) throw new Error("Invalid publish ownership discovery response.");
+          if (isRabbitRecord(active) && !ownerRef.current) {
+            const requestID = Number(active.id || active.request_id);
+            if (!Number.isSafeInteger(requestID) || requestID < 1) throw new Error("Invalid publish ownership request identity.");
             const attemptID = ++attemptSequenceRef.current;
-            replace({ attemptID, requestID: Number(active.id || active.request_id), observed: true });
+            replace({ attemptID, requestID, observed: true });
           }
           setDiscovery({ scopeKey, pending: false });
         })
         .catch(() => {
-          if (generation !== discoveryGenerationRef.current || controller.signal.aborted) return;
+          if (generation !== discoveryGenerationRef.current || controller?.signal.aborted) return;
           retryTimer = window.setTimeout(discover, discoveryRetryMilliseconds);
         });
     };
@@ -98,7 +112,7 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
       if (!owner.observed) update(owner.attemptID, { requestID: owner.requestID, observed: true });
       return;
     }
-    if (action && terminalPublishStatuses.has(action.status)) {
+    if (action && terminalPublishStatuses.has(action.status || "")) {
       release(owner.attemptID);
       return;
     }
@@ -106,7 +120,7 @@ export function useRabbitMQPublishOwnership(scopeKey, activeItems, approvalState
     const controller = new AbortController();
     void getAction(`/api/connector-action-approvals/${owner.requestID}`, { signal: controller.signal })
       .then((exact) => {
-        if (!terminalPublishStatuses.has(exact?.status)) {
+        if (!isRabbitRecord(exact) || typeof exact.status !== "string" || !terminalPublishStatuses.has(exact.status)) {
           return;
         }
         release(owner.attemptID);

@@ -6,6 +6,8 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
 import { formatBytes } from "../../../lib/file-transfer-utils";
 import { restoreDestinationGuard } from "./helpers";
+import { readS3Versions } from "./output";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 type S3ObjectVersion = {
   version_id: string;
@@ -30,25 +32,32 @@ type VersionActionRequest = {
   busy: string;
 };
 type VersionActionResult = {
-  output?: {
-    versions?: S3ObjectVersion[];
-    next_cursor?: string;
-    etag?: string | null;
-  };
+  output?: unknown;
 };
 
 type S3VersionsDialogProps = {
   open: boolean;
+  scopeKey?: string;
   objectKey: string;
   theme: string;
   borderClass: string;
   mutedClass: string;
   onClose: () => void;
   onRun: (_request: VersionActionRequest) => Promise<VersionActionResult | null>;
-  onChanged?: () => Promise<void> | void;
+  onChanged?: (_isCurrent: () => boolean) => Promise<void> | void;
 };
 
-export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedClass, onClose, onRun, onChanged }: S3VersionsDialogProps) {
+export function S3VersionsDialog({
+  open,
+  scopeKey,
+  objectKey,
+  theme,
+  borderClass,
+  mutedClass,
+  onClose,
+  onRun,
+  onChanged,
+}: S3VersionsDialogProps) {
   const [versions, setVersions] = useState<S3ObjectVersion[]>([]);
   const [nextCursor, setNextCursor] = useState("");
   const [pending, setPending] = useState(false);
@@ -58,6 +67,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     version: S3ObjectVersion;
   } | null>(null);
   const [confirmFeedback, setConfirmFeedback] = useState({ error: "", status: "" });
+  const requestGuard = useRequestGuard(JSON.stringify([open, scopeKey, objectKey]));
   const loadForEffect = useEffectEvent(() => loadVersions({ reset: true }));
 
   useEffect(() => {
@@ -68,11 +78,21 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
     setConfirmation(null);
     setConfirmFeedback({ error: "", status: "" });
     void loadForEffect();
-  }, [open, objectKey]);
+  }, [open, scopeKey, objectKey]);
 
   if (!open) return null;
 
-  async function loadVersions({ reset, cursor = "" }: { reset: boolean; cursor?: string }) {
+  async function loadVersions({
+    reset,
+    cursor = "",
+    parentRequest,
+  }: {
+    reset: boolean;
+    cursor?: string;
+    parentRequest?: ReturnType<typeof requestGuard.begin>;
+  }) {
+    const request = parentRequest || requestGuard.begin("versions");
+    const ownsRequest = !parentRequest;
     setPending(true);
     setError("");
     setConfirmFeedback({ error: "", status: "" });
@@ -83,19 +103,24 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         reason: "manual S3 object version list",
         busy: "reading versions",
       });
-      if (!item) return;
-      const nextVersions = Array.isArray(item.output?.versions) ? item.output.versions : [];
+      if (!request.isCurrent() || !item) return;
+      const output = readS3Versions(item.output);
+      const nextVersions = output.versions;
       setVersions((current) => (reset ? nextVersions : [...current, ...nextVersions]));
-      setNextCursor(item.output?.next_cursor || "");
+      setNextCursor(output.next_cursor);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Object versions could not be loaded.");
+      if (request.isCurrent()) setError(loadError instanceof Error ? loadError.message : "Object versions could not be loaded.");
     } finally {
-      setPending(false);
+      if (ownsRequest) {
+        if (request.isCurrent()) setPending(false);
+        request.complete();
+      }
     }
   }
 
   async function confirmAction() {
     if (!confirmation || pending) return;
+    const request = requestGuard.begin("versions");
     setPending(true);
     setError("");
     setConfirmFeedback({ error: "", status: "" });
@@ -109,8 +134,10 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
             reason: "manual S3 restore precondition check",
             busy: "checking current object",
           });
+          if (!request.isCurrent()) return;
           Object.assign(input, restoreDestinationGuard(metadata));
         } catch (metadataError) {
+          if (!request.isCurrent()) return;
           Object.assign(input, restoreDestinationGuard(null, metadataError));
         }
       }
@@ -120,17 +147,20 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         reason: `manual S3 object version ${confirmation.action === "restore_object_version" ? "restore" : "delete"}`,
         busy: confirmation.action === "restore_object_version" ? "restoring version" : "deleting version",
       });
+      if (!request.isCurrent()) return;
       if (!item) {
         setConfirmFeedback({ error: "", status: "Approval or completion is pending. Review activity before trying again." });
         return;
       }
       setConfirmation(null);
-      await loadVersions({ reset: true });
-      await onChanged?.();
+      await loadVersions({ reset: true, parentRequest: request });
+      if (request.isCurrent()) await onChanged?.(request.isCurrent);
     } catch (actionError) {
-      setConfirmFeedback({ error: actionError instanceof Error ? actionError.message : "Object version action failed.", status: "" });
+      if (request.isCurrent())
+        setConfirmFeedback({ error: actionError instanceof Error ? actionError.message : "Object version action failed.", status: "" });
     } finally {
-      setPending(false);
+      if (request.isCurrent()) setPending(false);
+      request.complete();
     }
   }
 
@@ -236,14 +266,7 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
         closeOnEscape={false}
       >
         <div className="grid gap-4">
-          <div className={`grid gap-2 rounded-md border p-3 ${detailClass}`}>
-            <p className="break-all text-xs">
-              <strong>Object:</strong> {JSON.stringify(objectKey)}
-            </p>
-            <p className="break-all text-xs">
-              <strong>Version:</strong> {JSON.stringify(confirmation?.version?.version_id)}
-            </p>
-          </div>
+          <VersionConfirmationDetails objectKey={objectKey} versionID={confirmation?.version.version_id} className={detailClass} />
           <Notice tone={confirmation?.action === "delete_object_version" ? "bad" : "warn"}>
             {confirmation?.action === "delete_object_version"
               ? "Permanent deletion requires explicit confirmation."
@@ -280,4 +303,17 @@ export function S3VersionsDialog({ open, objectKey, theme, borderClass, mutedCla
 
 export function VersionsIcon() {
   return <History className="h-3.5 w-3.5" />;
+}
+
+function VersionConfirmationDetails({ objectKey, versionID, className }: { objectKey: string; versionID?: string; className: string }) {
+  return (
+    <div className={`grid gap-2 rounded-md border p-3 ${className}`}>
+      <p className="break-all text-xs">
+        <strong>Object:</strong> {JSON.stringify(objectKey)}
+      </p>
+      <p className="break-all text-xs">
+        <strong>Version:</strong> {JSON.stringify(versionID)}
+      </p>
+    </div>
+  );
 }

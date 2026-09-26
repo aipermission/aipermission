@@ -38,7 +38,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/editor/use-connector-inventory.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
   "src/connectors/editor/use-connector-editor.ts": ["src/connectors/editor/use-connector-editor.component.test.jsx"],
   "src/connectors/editor/use-credential-profile-editor.ts": ["src/connectors/editor/use-credential-profile-editor.component.test.jsx"],
-  "src/connectors/templates/_shared/action-runner.js": ["src/connectors/templates/_shared/action-runner.component.test.jsx"],
+  "src/connectors/templates/_shared/action-runner.ts": ["src/connectors/templates/_shared/action-runner.component.test.tsx"],
   "src/connectors/templates/_shared/use-sql-metadata.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
   "src/connectors/templates/_shared/use-sql-console.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
   "src/connectors/templates/host-ping-button.jsx": ["src/connectors/templates/host-ping-button.component.test.jsx"],
@@ -54,14 +54,17 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/postgres/use-postgres-provisioning.ts": [
     "src/connectors/templates/postgres/use-postgres-provisioning.component.test.tsx",
   ],
-  "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": [
-    "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.jsx",
+  "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": [
+    "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.tsx",
   ],
-  "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.js": [
-    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.component.test.jsx",
+  "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.ts": [
+    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.component.test.tsx",
   ],
   "src/connectors/templates/redis/use-redis-browser.js": ["src/connectors/templates/redis/use-redis-browser.component.test.jsx"],
   "src/connectors/templates/s3/use-s3-browser.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
+  "src/connectors/templates/s3/lifecycle-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
+  "src/connectors/templates/s3/presign-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
+  "src/connectors/templates/s3/versions-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/use-s3-upload.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
   "src/connectors/templates/ssh/bulk-command-dialog.jsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.jsx"],
   "src/connectors/templates/ssh/operations.jsx": ["src/connectors/templates/ssh/console.component.test.jsx"],

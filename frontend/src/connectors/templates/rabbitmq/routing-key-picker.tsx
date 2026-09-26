@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "../../../components/ui/form";
 import { uniqueQueueNames } from "./helpers";
+import type { KeyboardEvent, MouseEvent } from "react";
+import type { RabbitQueue, RabbitStyles } from "./browser-types";
 
-export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, styles, disabled = false }) {
+type RoutingOption = { kind: "custom" | "queue"; label: string; help: string };
+type RoutingKeyPickerProps = {
+  queues: readonly Pick<RabbitQueue, "name">[];
+  value: string;
+  custom: boolean;
+  onQueue: (_name: string) => void;
+  onCustom: () => void;
+  styles: Pick<RabbitStyles, "input" | "border" | "subtlePanel" | "activeRow" | "rowHover" | "muted">;
+  disabled?: boolean;
+};
+
+export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, styles, disabled = false }: RoutingKeyPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -12,10 +25,10 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
     const needle = query.trim().toLowerCase();
     return (needle ? queueNames.filter((name) => name.toLowerCase().includes(needle)) : queueNames).slice(0, 80);
   }, [queueNames, query]);
-  const options = useMemo(
+  const options = useMemo<RoutingOption[]>(
     () => [
       { kind: "custom", label: "Custom routing key", help: "Type an exchange-specific routing key manually." },
-      ...visibleQueues.map((name) => ({ kind: "queue", label: name, help: "Queue routing key via amq.default" })),
+      ...visibleQueues.map<RoutingOption>((name) => ({ kind: "queue", label: name, help: "Queue routing key via amq.default" })),
     ],
     [visibleQueues],
   );
@@ -24,7 +37,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
     if (open) setActiveIndex((index) => Math.min(Math.max(index, 0), Math.max(options.length - 1, 0)));
   }, [open, options.length]);
 
-  function choose(event, option) {
+  function choose(event: Pick<MouseEvent | KeyboardEvent, "preventDefault">, option: RoutingOption | undefined) {
     event.preventDefault();
     if (!option) return;
     if (option.kind === "custom") onCustom();
@@ -33,7 +46,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
     setQuery("");
   }
 
-  function handleKeyDown(event) {
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);

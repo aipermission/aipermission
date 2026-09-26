@@ -5,6 +5,8 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import { readS3Presign } from "./output";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 const defaultExpirySeconds = 900;
 
@@ -24,16 +26,27 @@ type PresignRequest = {
 
 type S3PresignDialogProps = {
   open: boolean;
+  scopeKey?: string;
   selectedKey: string;
   theme: string;
   inputClass: string;
   borderClass: string;
   mutedClass: string;
   onClose: () => void;
-  onRun: (_request: PresignRequest) => Promise<{ output?: PresignResult | null } | null>;
+  onRun: (_request: PresignRequest) => Promise<{ output?: unknown } | null>;
 };
 
-export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderClass, mutedClass, onClose, onRun }: S3PresignDialogProps) {
+export function S3PresignDialog({
+  open,
+  scopeKey = "",
+  selectedKey,
+  theme,
+  inputClass,
+  borderClass,
+  mutedClass,
+  onClose,
+  onRun,
+}: S3PresignDialogProps) {
   const [mode, setMode] = useState<"download" | "upload">("download");
   const [key, setKey] = useState("");
   const [expiresSeconds, setExpiresSeconds] = useState<number | string>(defaultExpirySeconds);
@@ -41,6 +54,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<PresignResult | null>(null);
+  const requestGuard = useRequestGuard(JSON.stringify([open, scopeKey, selectedKey]));
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +65,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
     setPending(false);
     setError("");
     setResult(null);
-  }, [open, selectedKey]);
+  }, [open, scopeKey, selectedKey]);
 
   if (!open) return null;
 
@@ -68,6 +82,7 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
       return;
     }
     setPending(true);
+    const request = requestGuard.begin("presign");
     setError("");
     setResult(null);
     try {
@@ -81,12 +96,13 @@ export function S3PresignDialog({ open, selectedKey, theme, inputClass, borderCl
         reason: `manual S3 presigned ${mode} URL`,
         busy: "signing",
       });
-      if (!item) return;
-      setResult(item.output || null);
+      if (!request.isCurrent() || !item) return;
+      setResult(readS3Presign(item.output));
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "Presigned URL creation failed.");
+      if (request.isCurrent()) setError(runError instanceof Error ? runError.message : "Presigned URL creation failed.");
     } finally {
-      setPending(false);
+      if (request.isCurrent()) setPending(false);
+      request.complete();
     }
   }
 

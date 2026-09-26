@@ -8,8 +8,12 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { connectorActionBusy } from "../_shared/action-state";
 import { formatMessages, queueMetaText } from "./helpers";
 import { RabbitPublishForm } from "./publish-form";
+import type { RabbitBrowser } from "./use-rabbitmq-browser";
+import type { RabbitStyles } from "./browser-types";
 
-export function QueueDetail({ browser, styles }) {
+type RabbitViewProps = { browser: RabbitBrowser; styles: RabbitStyles };
+
+export function QueueDetail({ browser, styles }: RabbitViewProps) {
   const publishing = browser.detailMode === "publish";
   return (
     <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${styles.border}`}>
@@ -51,7 +55,7 @@ export function QueueDetail({ browser, styles }) {
   );
 }
 
-function DetailToolbar({ browser, styles }) {
+function DetailToolbar({ browser, styles }: RabbitViewProps) {
   const publishing = browser.detailMode === "publish";
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2 border-b p-3 ${styles.border}`}>
@@ -116,7 +120,7 @@ function DetailToolbar({ browser, styles }) {
   );
 }
 
-function QueueInspection({ browser, styles }) {
+function QueueInspection({ browser, styles }: RabbitViewProps) {
   return (
     <div className="grid h-full min-h-0 gap-4 overflow-hidden lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -135,7 +139,7 @@ function QueueInspection({ browser, styles }) {
   );
 }
 
-function detailHelp(browser) {
+function detailHelp(browser: RabbitBrowser) {
   if (browser.detailMode === "publish")
     return browser.activeQueue
       ? `Publishing to ${browser.activeQueue} through amq.default uses routing_key=${browser.activeQueue}.`

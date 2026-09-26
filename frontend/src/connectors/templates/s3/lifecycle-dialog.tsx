@@ -7,6 +7,8 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
+import { readS3Lifecycle } from "./output";
+import { useRequestGuard } from "../../../lib/request-guard";
 
 type LifecycleRuleData = {
   id: string;
@@ -39,13 +41,14 @@ type LifecycleRequest = {
 
 type S3LifecycleDialogProps = {
   open: boolean;
+  scopeKey?: string;
   bucket: string;
   theme: string;
   inputClass: string;
   borderClass: string;
   mutedClass: string;
   onClose: () => void;
-  onRun: (_request: LifecycleRequest) => Promise<{ output?: LifecyclePolicy | null } | null>;
+  onRun: (_request: LifecycleRequest) => Promise<{ output?: unknown } | null>;
 };
 
 const initialForm: {
@@ -66,13 +69,24 @@ const initialForm: {
   acknowledged: false,
 };
 
-export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass, mutedClass, onClose, onRun }: S3LifecycleDialogProps) {
+export function S3LifecycleDialog({
+  open,
+  scopeKey = "",
+  bucket,
+  theme,
+  inputClass,
+  borderClass,
+  mutedClass,
+  onClose,
+  onRun,
+}: S3LifecycleDialogProps) {
   const [policy, setPolicy] = useState<LifecyclePolicy | null>(null);
   const [form, setForm] = useState(initialForm);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const loadForEffect = useEffectEvent(loadPolicy);
+  const requestGuard = useRequestGuard(JSON.stringify([open, scopeKey, bucket]));
+  const loadForEffect = useEffectEvent(() => loadPolicy());
 
   useEffect(() => {
     if (!open) return;
@@ -81,11 +95,13 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     setError("");
     setConfirmDelete(false);
     void loadForEffect();
-  }, [open, bucket]);
+  }, [open, scopeKey, bucket]);
 
   if (!open) return null;
 
-  async function loadPolicy() {
+  async function loadPolicy(parentRequest?: ReturnType<typeof requestGuard.begin>) {
+    const request = parentRequest || requestGuard.begin("lifecycle");
+    const ownsRequest = !parentRequest;
     setPending(true);
     setError("");
     try {
@@ -95,12 +111,15 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         reason: "manual S3 lifecycle review",
         busy: "reading lifecycle",
       });
-      if (!item) return;
-      setPolicy(item.output || { configured: false, rules: [], raw_xml: "" });
+      if (!request.isCurrent() || !item) return;
+      setPolicy(readS3Lifecycle(item.output));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Bucket lifecycle could not be read.");
+      if (request.isCurrent()) setError(loadError instanceof Error ? loadError.message : "Bucket lifecycle could not be read.");
     } finally {
-      setPending(false);
+      if (ownsRequest) {
+        if (request.isCurrent()) setPending(false);
+        request.complete();
+      }
     }
   }
 
@@ -114,6 +133,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
     }
     setPending(true);
     setError("");
+    const request = requestGuard.begin("lifecycle");
     try {
       const item = await onRun({
         actionName: "replace_bucket_lifecycle",
@@ -128,20 +148,24 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         reason: "manual S3 lifecycle policy replacement",
         busy: "replacing lifecycle",
       });
+      if (!request.isCurrent()) return;
       if (!item) {
         setPending(false);
         return;
       }
       setForm((current) => ({ ...current, acknowledged: false }));
-      await loadPolicy();
+      await loadPolicy(request);
     } catch (replaceError) {
-      setError(replaceError instanceof Error ? replaceError.message : "Bucket lifecycle replacement failed.");
-      setPending(false);
+      if (request.isCurrent()) setError(replaceError instanceof Error ? replaceError.message : "Bucket lifecycle replacement failed.");
+    } finally {
+      if (request.isCurrent()) setPending(false);
+      request.complete();
     }
   }
 
   async function deletePolicy() {
     if (pending || !confirmDelete) return;
+    const request = requestGuard.begin("lifecycle");
     setPending(true);
     setError("");
     try {
@@ -151,15 +175,18 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
         reason: "manual S3 lifecycle policy deletion",
         busy: "deleting lifecycle",
       });
+      if (!request.isCurrent()) return;
       if (!item) {
         setPending(false);
         return;
       }
       setConfirmDelete(false);
-      await loadPolicy();
+      await loadPolicy(request);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Bucket lifecycle deletion failed.");
-      setPending(false);
+      if (request.isCurrent()) setError(deleteError instanceof Error ? deleteError.message : "Bucket lifecycle deletion failed.");
+    } finally {
+      if (request.isCurrent()) setPending(false);
+      request.complete();
     }
   }
 
@@ -182,7 +209,7 @@ export function S3LifecycleDialog({ open, bucket, theme, inputClass, borderClass
           pending={pending}
           confirmDelete={confirmDelete}
           setConfirmDelete={setConfirmDelete}
-          loadPolicy={loadPolicy}
+          loadPolicy={() => loadPolicy()}
           deletePolicy={deletePolicy}
           borderClass={borderClass}
           mutedClass={mutedClass}

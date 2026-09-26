@@ -1,18 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { connectorActionBusy } from "./action-state.ts";
-import { runGuardedConnectorAction } from "./action-runner.js";
+import { runGuardedConnectorAction } from "./action-runner";
+import type { GuardedConnectorActionOptions } from "./action-runner";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { createRequestGuard } from "../../../lib/request-guard";
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((done) => {
+  let resolve: (_value: unknown) => void = () => {};
+  const promise = new Promise<unknown>((done) => {
     resolve = done;
   });
   return { promise, resolve };
 }
 
-function runnerOptions(overrides = {}) {
+function runnerOptions(overrides: Partial<GuardedConnectorActionOptions> = {}) {
   const setState = vi.fn();
   return {
     setState,
@@ -29,7 +31,7 @@ function runnerOptions(overrides = {}) {
   };
 }
 
-function actionResponse(overrides = {}) {
+function actionResponse(overrides: Partial<ConnectorActionResponse> = {}): ConnectorActionResponse {
   return {
     request_id: 1,
     target_ref: "test:1:1",
@@ -46,7 +48,8 @@ describe("runGuardedConnectorAction", () => {
     expect(connectorActionBusy({ state: "idle" })).toBe(false);
     expect(connectorActionBusy({ state: "error" })).toBe(false);
     expect(connectorActionBusy({ state: "loading" })).toBe(true);
-    expect(connectorActionBusy({ state: "error", retryBlocked: true })).toBe(false);
+    const retriableFailure = { state: "error", retryBlocked: true };
+    expect(connectorActionBusy(retriableFailure)).toBe(false);
     expect(connectorActionBusy(null)).toBe(true);
   });
 
@@ -82,18 +85,18 @@ describe("runGuardedConnectorAction", () => {
   });
 
   it("ignores a response after the target scope changes", async () => {
-    let resolveResponse;
-    let requestSignal;
-    const post = (_path, _body, options) => {
-      requestSignal = options.signal;
-      return new Promise((resolve) => (resolveResponse = resolve));
+    const response = deferred();
+    const signals: AbortSignal[] = [];
+    const post: NonNullable<GuardedConnectorActionOptions["post"]> = (_path, _body, options) => {
+      signals.push(options.signal);
+      return response.promise;
     };
     const { setState, options } = runnerOptions({ post });
     const result = runGuardedConnectorAction(options);
 
     options.requestGuard.setScope("target:2");
-    expect(requestSignal.aborted).toBe(true);
-    resolveResponse(actionResponse({ output: { ok: true } }));
+    expect(signals[0].aborted).toBe(true);
+    response.resolve(actionResponse({ output: { ok: true } }));
 
     await expect(result).resolves.toBeNull();
     expect(setState).toHaveBeenCalledTimes(1);
@@ -186,5 +189,82 @@ describe("runGuardedConnectorAction", () => {
       error: "The action may have completed. Request 91. Inspect external state before retrying.",
       message: "",
     });
+  });
+});
+
+it("returns the completed result and calls the completion handler even when activity refresh fails", async () => {
+  const item = actionResponse({ output: { affected: 1 }, display_text: "Server message" });
+  const onCompleted = vi.fn();
+  const successMessage = vi.fn(() => "Saved locally");
+  const { setState, options } = runnerOptions({
+    post: async () => item,
+    onCompleted,
+    successMessage,
+    onRefreshActivity: async () => Promise.reject(new Error("Activity unavailable")),
+  });
+  await expect(runGuardedConnectorAction(options)).resolves.toEqual(item);
+  expect(onCompleted).toHaveBeenCalledExactlyOnceWith(item);
+  expect(successMessage).toHaveBeenCalledExactlyOnceWith(item);
+  expect(setState).toHaveBeenLastCalledWith({
+    state: "idle",
+    error: "Action completed, but activity refresh failed: Activity unavailable",
+    message: "Saved locally",
+  });
+});
+
+it("uses the product approval message without dispatching completion", async () => {
+  const onCompleted = vi.fn();
+  const { setState, options } = runnerOptions({
+    post: async () => actionResponse({ status: "approval_pending" }),
+    onCompleted,
+  });
+  await expect(runGuardedConnectorAction(options)).resolves.toBeNull();
+  expect(onCompleted).not.toHaveBeenCalled();
+  expect(setState).toHaveBeenLastCalledWith({ state: "idle", error: "", message: "Test action is awaiting approval." });
+});
+
+it("does not overwrite a new scope when a pending approval refresh fails late", async () => {
+  const refresh = deferred();
+  const { setState, options } = runnerOptions({
+    post: async () => actionResponse({ status: "approval_pending" }),
+    onRefreshActivity: () => refresh.promise.then(() => Promise.reject(new Error("Retired refresh"))),
+  });
+  await runGuardedConnectorAction(options);
+  options.requestGuard.setScope("target:2");
+  setState.mockClear();
+  refresh.resolve(undefined);
+  await refresh.promise;
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(setState).not.toHaveBeenCalled();
+});
+
+it("drops a completed result whose scope is retired during activity refresh", async () => {
+  const refresh = deferred();
+  const onRefreshActivity = vi.fn(() => refresh.promise);
+  const { setState, options } = runnerOptions({ post: async () => actionResponse(), onRefreshActivity });
+  const running = runGuardedConnectorAction(options);
+  await vi.waitFor(() => expect(onRefreshActivity).toHaveBeenCalledOnce());
+  options.requestGuard.setScope("target:2");
+  setState.mockClear();
+  refresh.resolve(undefined);
+  await expect(running).resolves.toBeNull();
+  expect(setState).not.toHaveBeenCalled();
+});
+
+it("preserves an action-result uncertain outcome and appends a refresh failure without retrying", async () => {
+  const failure = Object.assign(new Error("Lost result"), {
+    actionItem: { status: "outcome_unknown", request_id: 12, assistant_hint: "Inspect external state." },
+  });
+  const post = vi.fn(async () => Promise.reject(failure));
+  const { setState, options } = runnerOptions({
+    post,
+    onRefreshActivity: async () => Promise.reject(new Error("Offline")),
+  });
+  await expect(runGuardedConnectorAction(options)).rejects.toBe(failure);
+  expect(post).toHaveBeenCalledOnce();
+  expect(setState).toHaveBeenLastCalledWith({
+    state: "error",
+    error: "Lost result Request 12. Inspect external state. Activity refresh failed: Offline",
+    message: "",
   });
 });
