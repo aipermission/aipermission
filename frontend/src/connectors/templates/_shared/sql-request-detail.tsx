@@ -3,8 +3,9 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { ActivityStatusBadge, formatConnectorTime, ResultViewToggle } from "./sql-console-chrome";
 import { ActivityBlock, SQLOutputBlock } from "./sql-result-output";
+import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
-export function SQLRequestDetail({ controller, styles, theme }) {
+export function SQLRequestDetail({ controller, styles, theme }: SQLConsoleViewProps) {
   const selected = controller.selected;
   if (!selected)
     return (

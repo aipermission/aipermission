@@ -3,10 +3,15 @@ import { SQLConsoleWorkspace } from "./sql-console-workspace";
 import { SQLEndpointFooter, SQLNoSessionPlaceholder } from "./sql-console-chrome";
 import { SQLQueryForm } from "./sql-query-form";
 import { useSQLConsole } from "./use-sql-console";
+import type { SQLConsoleProps } from "./use-sql-console";
+import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
 export { SQLConnectorToolbarActions } from "./sql-console-chrome";
 
-export function SQLConnectorConsole(props) {
+export function SQLConnectorConsole(props: SQLConsoleProps & {
+  theme: SQLConsoleViewProps["theme"];
+  onNewStructuredSession?: () => void;
+}) {
   const { target, theme, onNewStructuredSession } = props;
   const controller = useSQLConsole(props);
   const styles = connectorConsoleTheme(theme);

@@ -3,8 +3,14 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { metadataStatusText } from "./sql-console-config";
 import { SQLEditor } from "./sql-editor";
+import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
-export function SQLQueryForm({ controller, styles, theme }) {
+type QueryController = Pick<SQLConsoleViewProps["controller"],
+  "runState" | "sql" | "recentQueries" | "loadSQL" | "maxRows" | "setMaxRows" | "setSQL" | "runQuery" | "editorFocusTick" | "metadata" | "connector"
+>;
+export type SQLQueryFormProps = Omit<SQLConsoleViewProps, "controller"> & { controller: QueryController };
+
+export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
   const running = controller.runState.state === "running";
   return (
     <form className={`grid gap-2 border-b p-3 ${styles.border} ${styles.subtlePanel}`} onSubmit={controller.runQuery}>
@@ -71,7 +77,11 @@ export function SQLQueryForm({ controller, styles, theme }) {
   );
 }
 
-function RecentQueries({ controller, mutedClass, theme }) {
+function RecentQueries({ controller, mutedClass, theme }: {
+  controller: Pick<QueryController, "recentQueries" | "loadSQL">;
+  mutedClass: string;
+  theme: SQLConsoleViewProps["theme"];
+}) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <span className={`shrink-0 text-[11px] font-semibold uppercase ${mutedClass}`}>Recent</span>

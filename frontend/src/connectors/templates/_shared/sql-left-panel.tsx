@@ -1,10 +1,11 @@
 import { ActivityStatusBadge, formatConnectorTime } from "./sql-console-chrome";
 import { tableBrowserSummary } from "./sql-console-config";
 import { SQLSchemaBrowser } from "./sql-schema-browser";
+import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
-const panelModes = ["browser", "requests"];
+const panelModes = ["browser", "requests"] as const;
 
-export function SQLLeftPanel({ controller, styles, theme }) {
+export function SQLLeftPanel({ controller, styles, theme }: SQLConsoleViewProps) {
   return (
     <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${styles.border}`}>
       <header className={`border-b px-4 py-3 ${styles.border} ${styles.subtlePanel}`}>
@@ -51,11 +52,11 @@ export function SQLLeftPanel({ controller, styles, theme }) {
   );
 }
 
-function SQLRequestList({ controller, styles, theme }) {
+function SQLRequestList({ controller, styles, theme }: SQLConsoleViewProps) {
   return (
     <div className={`h-full min-h-0 overflow-y-auto divide-y ${theme === "light" ? "divide-stone-200" : "divide-stone-700"}`}>
       {controller.items.map((item) => {
-        const active = controller.selected && Number(controller.selected.id) === Number(item.id);
+        const active = controller.selected !== null && Number(controller.selected.id) === Number(item.id);
         return (
           <button
             key={item.id}
@@ -79,7 +80,7 @@ function SQLRequestList({ controller, styles, theme }) {
   );
 }
 
-function panelSummary(controller) {
+function panelSummary(controller: SQLConsoleViewProps["controller"]): string {
   if (controller.leftPanel === "browser")
     return tableBrowserSummary(controller.metadata, controller.browserTables, controller.connector.browserLabel);
   return `${controller.items.length} request${controller.items.length === 1 ? "" : "s"} since ${formatConnectorTime(controller.activeSession.startedAt)}.`;
