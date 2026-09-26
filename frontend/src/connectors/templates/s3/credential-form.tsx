@@ -25,7 +25,7 @@ type S3CredentialFormProps = {
   targets: S3CredentialTarget[];
   form: S3CredentialForm;
   formMode?: "create" | "edit";
-  state: { state: string; error?: string };
+  state: { state: string; error?: string | null };
   onChange: (_form: S3CredentialForm) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
 };

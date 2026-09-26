@@ -104,8 +104,12 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; name
   };
 }
 
-export function credentialRows({ targets }: { targets: KubernetesTarget[] }) {
-  return connectorCredentialRows({
+export function credentialRows<Profile extends KubernetesProfile, Target extends KubernetesTarget & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string[]>({
     targets,
     connectorKind: "kubernetes",
     connectorLabel: "Kubernetes",

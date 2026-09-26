@@ -98,8 +98,18 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; name
   };
 }
 
-export function credentialRows({ targets }: { targets: DockerTarget[] }) {
-  return connectorCredentialRows({ targets, connectorKind: "docker", connectorLabel: "Docker", targetEndpoint, credentialMetadata });
+export function credentialRows<Profile extends DockerProfile, Target extends DockerTarget & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string[]>({
+    targets,
+    connectorKind: "docker",
+    connectorLabel: "Docker",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 
 export function canEdit() {
