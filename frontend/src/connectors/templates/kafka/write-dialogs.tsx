@@ -4,8 +4,33 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { offsetSelectionValue } from "./console-helpers";
+import type { ReactNode } from "react";
+import type { KafkaOffsetForm, KafkaPartition, KafkaPublishForm, KafkaWriteDialog } from "./console-types";
 
-export function KafkaPublishDialog({ value, theme, product, topic, partitions, pending, actionError, onChange, onClose, onConfirm }) {
+interface WriteDialogProps<Form> {
+  value: KafkaWriteDialog<Form>;
+  theme?: string;
+  product: string;
+  partitions: KafkaPartition[];
+  pending: boolean;
+  actionError: string;
+  onChange: (_form: Form) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+export function KafkaPublishDialog({
+  value,
+  theme,
+  product,
+  topic,
+  partitions,
+  pending,
+  actionError,
+  onChange,
+  onClose,
+  onConfirm,
+}: WriteDialogProps<KafkaPublishForm> & { topic: string }) {
   const dark = theme !== "light";
   const inputClass = dark ? "border-stone-700 bg-[#1a1a1a] text-stone-100" : "";
   return (
@@ -115,7 +140,18 @@ export function KafkaPublishDialog({ value, theme, product, topic, partitions, p
   );
 }
 
-export function KafkaOffsetDialog({ value, theme, product, group, partitions, pending, actionError, onChange, onClose, onConfirm }) {
+export function KafkaOffsetDialog({
+  value,
+  theme,
+  product,
+  group,
+  partitions,
+  pending,
+  actionError,
+  onChange,
+  onClose,
+  onConfirm,
+}: WriteDialogProps<KafkaOffsetForm> & { group: string }) {
   const dark = theme !== "light";
   const inputClass = dark ? "border-stone-700 bg-[#1a1a1a] text-stone-100" : "";
   const selected = partitions.find((partition) => offsetSelectionValue(partition) === value.form.selection);
@@ -206,7 +242,7 @@ export function KafkaOffsetDialog({ value, theme, product, group, partitions, pe
   );
 }
 
-function FieldBlock({ label, children }) {
+function FieldBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid gap-1.5 text-xs font-semibold">
       <span className="uppercase text-stone-500">{label}</span>

@@ -44,7 +44,8 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/host-ping-button.tsx": ["src/connectors/templates/host-ping-button.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-browser.ts": ["src/connectors/templates/docker/use-docker-browser.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-lifecycle.ts": ["src/connectors/templates/docker/use-docker-browser.component.test.tsx"],
-  "src/connectors/templates/kafka/use-kafka-browser.js": ["src/connectors/templates/kafka/use-kafka-browser.component.test.jsx"],
+  "src/connectors/templates/kafka/use-kafka-browser.ts": ["src/connectors/templates/kafka/use-kafka-browser.component.test.tsx"],
+  "src/connectors/templates/kafka/use-kafka-writes.ts": ["src/connectors/templates/kafka/use-kafka-browser.component.test.tsx"],
   "src/connectors/templates/kubernetes/use-kubernetes-browser.ts": [
     "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.tsx",
   ],

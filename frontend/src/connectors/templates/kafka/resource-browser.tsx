@@ -3,8 +3,22 @@ import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import type { useKafkaBrowser } from "./use-kafka-browser";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
+import type { KafkaResource, KafkaView } from "./console-types";
 
-export function KafkaResourceBrowser({ browser, styles }) {
+export function KafkaResourceBrowser({
+  browser,
+  styles,
+}: {
+  browser: Pick<
+    ReturnType<typeof useKafkaBrowser>,
+    "product" | "view" | "query" | "filteredItems" | "selectedName" | "state" | "changeView" | "setQuery" | "refreshList" | "selectItem"
+  >;
+  styles: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input" | "activeRow" | "rowHover">;
+}) {
   return (
     <section
       className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${styles.border} ${styles.subtlePanel}`}
@@ -65,7 +79,17 @@ export function KafkaResourceBrowser({ browser, styles }) {
   );
 }
 
-function ViewButton({ selected, onClick, icon: Icon, children }) {
+function ViewButton({
+  selected,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
   return (
     <Button type="button" role="tab" aria-selected={selected} variant={selected ? "default" : "outline"} className="h-9" onClick={onClick}>
       <Icon className="h-4 w-4" />
@@ -74,7 +98,7 @@ function ViewButton({ selected, onClick, icon: Icon, children }) {
   );
 }
 
-function itemSummary(view, item) {
+function itemSummary(view: KafkaView, item: KafkaResource) {
   return view === "topics"
     ? `${item.partition_count || 0} partitions · replication ${item.replication_factor || 0}`
     : `${item.state || "unknown"} · ${item.protocol_type || "unknown"}`;

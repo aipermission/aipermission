@@ -26,8 +26,8 @@ export function parseOffsetSelection(value: string) {
   }
 }
 
-export function actionableOffsetPartitions(partitions: Array<Partition | null> = []): Partition[] {
-  return partitions.filter((partition): partition is Partition => {
+export function actionableOffsetPartitions<T extends Partition>(partitions: Array<T | null> = []): T[] {
+  return partitions.filter((partition): partition is T => {
     if (!partition || partition.error || !partition.topic) return false;
     const partitionID = Number(partition.partition);
     return Number.isInteger(partitionID) && partitionID >= 0 && partition.committed_offset != null && partition.end_offset != null;

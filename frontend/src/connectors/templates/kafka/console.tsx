@@ -8,8 +8,17 @@ import { KafkaResourceDetail } from "./resource-detail";
 import { useKafkaBrowser } from "./use-kafka-browser";
 import { useKafkaWrites } from "./use-kafka-writes";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
+import type { KafkaBrowserProps } from "./console-types";
+import type { ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
 
-export function KafkaConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
+export function KafkaConnectorConsoleTemplate({
+  target,
+  approvals,
+  theme = "dark",
+  session,
+  onNewStructuredSession,
+  onRefreshActivity,
+}: KafkaBrowserProps & { theme?: string; onNewStructuredSession?: () => void }) {
   const browser = useKafkaBrowser({ target, approvals, session, onRefreshActivity });
   const writes = useKafkaWrites({ browser });
   const styles = connectorConsoleTheme(theme);
@@ -21,7 +30,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
         title={`No active ${browser.product} session`}
         description="Start a structured session to browse topics, consumer groups, lag, and bounded message samples."
         buttonLabel="New session"
-        onStart={onNewStructuredSession}
+        onStart={() => onNewStructuredSession?.()}
         panelClass={styles.panel}
         mutedClass={styles.muted}
         compact
@@ -53,7 +62,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
         product={browser.product}
         topic={browser.selectedName}
         partitions={browser.activeDetail?.partitions || []}
-        pending={browser.state.state === "writing"}
+        pending={writes.publishPending || browser.state.state === "writing"}
         actionError={browser.state.error}
         onChange={writes.updatePublishForm}
         onClose={writes.closePublish}
@@ -65,7 +74,7 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
         product={browser.product}
         group={browser.selectedName}
         partitions={writes.offsetPartitions}
-        pending={browser.state.state === "writing"}
+        pending={writes.offsetPending || browser.state.state === "writing"}
         actionError={browser.state.error}
         onChange={writes.updateOffsetForm}
         onClose={writes.closeOffset}
@@ -75,12 +84,12 @@ export function KafkaConnectorConsoleTemplate({ target, approvals, theme, sessio
   );
 }
 
-function LatestAction({ value }) {
+function LatestAction({ value }: { value: Pick<ConnectorApproval, "status" | "action_name"> | null }) {
   if (!value) return <Activity className="h-3.5 w-3.5" />;
   return <Badge tone={value.status === "completed" ? "good" : value.status === "failed" ? "bad" : "warn"}>{value.action_name}</Badge>;
 }
 
-function brokerList(target) {
+function brokerList(target: KafkaBrowserProps["target"]) {
   return String(target.config?.bootstrap_brokers || "")
     .split(/[\s,]+/)
     .filter(Boolean)

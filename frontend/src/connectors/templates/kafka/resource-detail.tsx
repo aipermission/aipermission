@@ -5,8 +5,20 @@ import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { connectorActionBusy } from "../_shared/action-state";
+import type { useKafkaBrowser } from "./use-kafka-browser";
+import type { useKafkaWrites } from "./use-kafka-writes";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
 
-export function KafkaResourceDetail({ browser, writes, styles }) {
+type DetailProps = {
+  browser: Pick<
+    ReturnType<typeof useKafkaBrowser>,
+    "view" | "selectedName" | "activeDetail" | "messages" | "readForm" | "setReadForm" | "state" | "readMessages"
+  >;
+  writes: Pick<ReturnType<typeof useKafkaWrites>, "openPublishDialog" | "openOffsetDialog" | "offsetPartitions">;
+  styles: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input">;
+};
+
+export function KafkaResourceDetail({ browser, writes, styles }: DetailProps) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${styles.border}`}>
       <DetailHeader browser={browser} writes={writes} styles={styles} />
@@ -36,7 +48,7 @@ export function KafkaResourceDetail({ browser, writes, styles }) {
   );
 }
 
-function DetailHeader({ browser, writes, styles }) {
+function DetailHeader({ browser, writes, styles }: DetailProps) {
   return (
     <div className={`flex items-center justify-between gap-3 border-b p-3 ${styles.border} ${styles.subtlePanel}`}>
       <div className="min-w-0">
@@ -90,7 +102,7 @@ function DetailHeader({ browser, writes, styles }) {
   );
 }
 
-function DetailOutput({ browser, styles }) {
+function DetailOutput({ browser, styles }: Omit<DetailProps, "writes">) {
   return (
     <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-2">
       <p className={`text-xs font-semibold uppercase ${styles.muted}`}>{browser.view === "topics" ? "Message sample" : "Assignments"}</p>
@@ -102,8 +114,8 @@ function DetailOutput({ browser, styles }) {
   );
 }
 
-function ReadControls({ browser, styles }) {
-  const update = (values) => browser.setReadForm((current) => ({ ...current, ...values }));
+function ReadControls({ browser, styles }: Omit<DetailProps, "writes">) {
+  const update = (values: Partial<DetailProps["browser"]["readForm"]>) => browser.setReadForm((current) => ({ ...current, ...values }));
   const numberField = browser.readForm.start_position === "offset" ? "offset" : "max_records";
   return (
     <div className="grid gap-2 sm:grid-cols-[100px_140px_110px_minmax(0,1fr)_auto]">
@@ -151,7 +163,7 @@ function ReadControls({ browser, styles }) {
   );
 }
 
-function outputText(browser) {
+function outputText(browser: DetailProps["browser"]) {
   if (browser.view === "topics") return browser.messages ? JSON.stringify(browser.messages, null, 2) : "No messages read in this session.";
   return browser.activeDetail
     ? JSON.stringify({ members: browser.activeDetail.members || [], partitions: browser.activeDetail.partitions || [] }, null, 2)
