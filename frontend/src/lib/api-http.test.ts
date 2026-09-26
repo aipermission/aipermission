@@ -7,13 +7,13 @@ import { APIError } from "./errors.ts";
 test("all API helpers forward the caller AbortSignal", async () => {
   const originalFetch = globalThis.fetch;
   const controller = new AbortController();
-  const calls = [];
-  globalThis.fetch = async (url, options = {}) => {
+  const calls: RequestInit[] = [];
+  Reflect.set(globalThis, "fetch", async (url: RequestInfo | URL, options: RequestInit = {}) => {
     calls.push(options);
     if (options.method === "DELETE") return response(null, 204);
-    if (url.endsWith("/api/download")) return response({ error: "download unavailable" }, 503);
+    if (String(url).endsWith("/api/download")) return response({ error: "download unavailable" }, 503);
     return response({ ok: true });
-  };
+  });
   try {
     await apiGet("/api/test", { signal: controller.signal });
     await apiPost("/api/test", {}, { signal: controller.signal });
@@ -23,7 +23,7 @@ test("all API helpers forward the caller AbortSignal", async () => {
     await assert.rejects(() => apiDownload("/api/download", "test.txt", { signal: controller.signal }), /download unavailable/);
     assert.deepEqual([calls.length, calls.every((options) => options.signal === controller.signal)], [6, true]);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
   }
 });
 
@@ -31,11 +31,11 @@ test("a rejected stale download cannot adopt another workspace for retry", async
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
-  const requestBindings = [];
-  globalThis.window = { location: { protocol: "http:", port: "3210" } };
-  globalThis.document = { cookie: "aipermission_workspace_3210=workspace-a" };
-  globalThis.fetch = async (_url, options = {}) => {
-    requestBindings.push(options.headers?.["X-AIPermission-Workspace"]);
+  const requestBindings: (string | null)[] = [];
+  Reflect.set(globalThis, "window", { location: { protocol: "http:", port: "3210" } });
+  Reflect.set(globalThis, "document", { cookie: "aipermission_workspace_3210=workspace-a" });
+  Reflect.set(globalThis, "fetch", async (_url: RequestInfo | URL, options: RequestInit = {}) => {
+    requestBindings.push(new Headers(options.headers).get("X-AIPermission-Workspace"));
     return new Response(JSON.stringify({ error: "workspace changed" }), {
       status: 409,
       headers: {
@@ -44,16 +44,16 @@ test("a rejected stale download cannot adopt another workspace for retry", async
         "X-AIPermission-Workspace-Changed": "true",
       },
     });
-  };
+  });
   try {
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb"), /workspace changed/);
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb"), /workspace changed/);
     assert.deepEqual(requestBindings, ["workspace-a", "workspace-a"]);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
-    if (originalDocument === undefined) delete globalThis.document;
-    else globalThis.document = originalDocument;
+    if (originalDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+    else Reflect.set(globalThis, "document", originalDocument);
   }
 });
 
@@ -61,20 +61,22 @@ test("bounded GET requests abort delayed reads without changing mutation behavio
   t.mock.method(
     globalThis,
     "fetch",
-    async (_url, { signal }) =>
-      new Promise((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true })),
+    async (_url: RequestInfo | URL, { signal }: RequestInit) => {
+      assert.ok(signal);
+      return new Promise<Response>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }));
+    },
   );
   await assert.rejects(() => apiGet("/api/slow", { timeoutMs: 5 }), /Gateway read timed out after 5ms/);
 });
 
 test("API failures retain structured status and classification", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => response({ error: "invalid input", code: "invalid_scope", details: { field: "scope" } }, 422);
+  Reflect.set(globalThis, "fetch", async () => response({ error: "invalid input", code: "invalid_scope", details: { field: "scope" } }, 422));
   try {
     await assert.rejects(
       () => apiGet("/api/test"),
       (error) => {
-        assert.equal(error instanceof APIError, true);
+        assert.ok(error instanceof APIError);
         assert.equal(error.name, "APIError");
         assert.equal(error.message, "invalid input");
         assert.equal(error.status, 422);
@@ -86,7 +88,7 @@ test("API failures retain structured status and classification", async () => {
       },
     );
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
   }
 });
 
@@ -96,12 +98,12 @@ test("malformed API failures retain HTTP status and classification", async () =>
     for (const [body, status, kind, message] of [
       ["", 401, "authentication", /Empty JSON response/],
       ["<html>proxy unavailable</html>", 503, "unavailable", /HTML instead of JSON/],
-    ]) {
-      globalThis.fetch = async () => new Response(body, { status });
+    ] as const) {
+      Reflect.set(globalThis, "fetch", async () => new Response(body, { status }));
       await assert.rejects(
         () => apiGet("/api/test"),
         (error) => {
-          assert.equal(error instanceof APIError, true);
+          assert.ok(error instanceof APIError);
           assert.equal(error.status, status);
           assert.equal(error.kind, kind);
           assert.match(error.message, message);
@@ -110,7 +112,7 @@ test("malformed API failures retain HTTP status and classification", async () =>
       );
     }
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
   }
 });
 
@@ -121,27 +123,27 @@ test("JSON API helpers reject malformed successful responses by default", async 
       ["<html>gateway fallback</html>", /HTML instead of JSON/],
       ['{"partial":', /Invalid JSON response/],
       ["", /Empty JSON response/],
-    ]) {
-      globalThis.fetch = async () => new Response(body, { status: 200 });
+    ] as const) {
+      Reflect.set(globalThis, "fetch", async () => new Response(body, { status: 200 }));
       await assert.rejects(() => apiGet("/api/test"), expected);
       await assert.rejects(() => apiPost("/api/test", {}), expected);
       await assert.rejects(() => apiPostForm("/api/test", new FormData()), expected);
       await assert.rejects(() => apiPut("/api/test", {}), expected);
     }
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
   }
 });
 
 test("JSON parsing precedes HTML detection and DELETE explicitly accepts 204", async () => {
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = async () => new Response(JSON.stringify({ value: "remote output contains <body text" }), { status: 200 });
+    Reflect.set(globalThis, "fetch", async () => new Response(JSON.stringify({ value: "remote output contains <body text" }), { status: 200 }));
     assert.deepEqual(await apiGet("/api/test"), { value: "remote output contains <body text" });
-    globalThis.fetch = async () => new Response(null, { status: 204 });
+    Reflect.set(globalThis, "fetch", async () => new Response(null, { status: 204 }));
     assert.equal(await apiDelete("/api/test"), null);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
   }
 });
 
@@ -149,32 +151,32 @@ test("picker downloads stream the response directly to the selected file", async
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const writable = {};
-  let destination = null;
+  let destination: unknown = null;
   let suggestedName = "";
-  globalThis.window = {
-    showSaveFilePicker: async ({ suggestedName: value }) => {
+  Reflect.set(globalThis, "window", {
+    showSaveFilePicker: async ({ suggestedName: value }: { suggestedName: string }) => {
       suggestedName = value;
       return { createWritable: async () => writable };
     },
-  };
-  globalThis.fetch = async () => ({
+  });
+  Reflect.set(globalThis, "fetch", async () => ({
     ok: true,
     body: {
-      async pipeTo(value) {
+      async pipeTo(value: unknown) {
         destination = value;
       },
     },
     async blob() {
       throw new Error("streaming download must not buffer a Blob");
     },
-  });
+  }));
   try {
     const result = await apiDownload("/api/file-transfer-batches/1/download", "backup:latest.zip", { picker: true });
     assert.deepEqual(result, { saved: true, method: "picker" });
     assert.equal(suggestedName, "backup-latest.zip");
     assert.equal(destination, writable);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
@@ -182,25 +184,25 @@ test("picker downloads stream the response directly to the selected file", async
 test("picker downloads reject unavailable response streams without buffering", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     showSaveFilePicker: async () => ({
       createWritable: async () => {
         throw new Error("must not open a writer");
       },
     }),
-  };
-  globalThis.fetch = async () => ({
+  });
+  Reflect.set(globalThis, "fetch", async () => ({
     ok: true,
     headers: new Headers({ "Content-Length": "42" }),
     body: null,
     blob: async () => {
       throw new Error("must not buffer");
     },
-  });
+  }));
   try {
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { picker: true }), /streaming Save dialog/);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
@@ -212,19 +214,19 @@ test("picker downloads cancel the response when opening the destination fails", 
   const cancel = async () => {
     cancelCalls += 1;
   };
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     showSaveFilePicker: async () => ({
       createWritable: async () => {
         throw new Error("destination unavailable");
       },
     }),
-  };
-  globalThis.fetch = async () => ({ ok: true, body: { pipeTo: async () => {}, cancel } });
+  });
+  Reflect.set(globalThis, "fetch", async () => ({ ok: true, body: { pipeTo: async () => {}, cancel } }));
   try {
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }), /destination unavailable/);
     assert.equal(cancelCalls, 1);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
@@ -240,10 +242,10 @@ test("picker downloads abort the destination after a streaming write failure", a
   const cancel = async () => {
     cancelCalls += 1;
   };
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     showSaveFilePicker: async () => ({ createWritable: async () => ({ abort }) }),
-  };
-  globalThis.fetch = async () => ({
+  });
+  Reflect.set(globalThis, "fetch", async () => ({
     ok: true,
     body: {
       async pipeTo() {
@@ -251,13 +253,13 @@ test("picker downloads abort the destination after a streaming write failure", a
       },
       cancel,
     },
-  });
+  }));
   try {
     await assert.rejects(() => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }), /stream write failed/);
     assert.equal(abortCalls, 1);
     assert.equal(cancelCalls, 1);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
@@ -265,12 +267,12 @@ test("picker downloads abort the destination after a streaming write failure", a
 test("required streaming downloads fail before fetching when the native picker is unavailable", async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
-  const fetchCalls = [];
-  globalThis.window = {};
-  globalThis.fetch = async (...args) => {
+  const fetchCalls: unknown[][] = [];
+  Reflect.set(globalThis, "window", {});
+  Reflect.set(globalThis, "fetch", async (...args: unknown[]) => {
     fetchCalls.push(args);
     throw new Error("fetch must not start");
-  };
+  });
   try {
     await assert.rejects(
       () => apiDownload("/api/backup/download", "backup.aipdb", { picker: true, requireStreaming: true }),
@@ -278,7 +280,7 @@ test("required streaming downloads fail before fetching when the native picker i
     );
     assert.equal(fetchCalls.length, 0);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
@@ -287,20 +289,20 @@ test("required streaming implies picker use and preserves compatibility errors w
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   let pickerCalls = 0;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     showSaveFilePicker: async () => {
       pickerCalls += 1;
       return { createWritable: async () => ({}) };
     },
-  };
-  globalThis.fetch = async () => ({
+  });
+  Reflect.set(globalThis, "fetch", async () => ({
     ok: true,
     body: {
       async cancel() {
         throw new Error("cancel failed");
       },
     },
-  });
+  }));
   try {
     await assert.rejects(
       () => apiDownload("/api/backup/download", "backup.aipdb", { requireStreaming: true }),
@@ -308,22 +310,16 @@ test("required streaming implies picker use and preserves compatibility errors w
     );
     assert.equal(pickerCalls, 1);
   } finally {
-    globalThis.fetch = originalFetch;
+    Reflect.set(globalThis, "fetch", originalFetch);
     restoreWindow(originalWindow);
   }
 });
 
-function response(body, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async text() {
-      return JSON.stringify(body);
-    },
-  };
+function response(body: unknown, status = 200) {
+  return new Response(status === 204 ? null : JSON.stringify(body), { status });
 }
 
-function restoreWindow(value) {
-  if (value === undefined) delete globalThis.window;
-  else globalThis.window = value;
+function restoreWindow(value: unknown) {
+  if (value === undefined) Reflect.deleteProperty(globalThis, "window");
+  else Reflect.set(globalThis, "window", value);
 }

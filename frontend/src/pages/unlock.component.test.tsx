@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost, apiPostForm } from "../lib/api";
 import { UnlockPage } from "./unlock";
 
-// async-owner: src/pages/use-unlock-lifecycle-mutation.js
+// async-owner: src/pages/use-unlock-lifecycle-mutation.ts
 
 vi.mock("../lib/api", () => ({
   apiPost: vi.fn(),
@@ -14,20 +14,26 @@ vi.mock("../lib/api", () => ({
 const status = {
   database_id: "db-1",
   databases: [{ id: "db-1", name: "Default", state: "locked" }],
-};
+} satisfies NonNullable<React.ComponentProps<typeof UnlockPage>["status"]>;
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((resolvePromise) => {
+  let resolve: (_value?: unknown) => void = () => {};
+  const promise = new Promise<unknown>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
 }
 
+function requiredForm(element: HTMLElement) {
+  const form = element.closest("form");
+  if (!form) throw new Error("Expected a form");
+  return form;
+}
+
 function resetMocks() {
   vi.useRealTimers();
-  apiPost.mockReset();
-  apiPostForm.mockReset();
+  vi.mocked(apiPost).mockReset();
+  vi.mocked(apiPostForm).mockReset();
 }
 
 describe("UnlockPage workflows", () => {
@@ -36,19 +42,19 @@ describe("UnlockPage workflows", () => {
   it("unlocks the selected encrypted database and preserves backend failures", async () => {
     const user = userEvent.setup();
     const onUnlocked = vi.fn();
-    apiPost.mockRejectedValueOnce(new Error("Invalid password")).mockResolvedValueOnce({});
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("Invalid password")).mockResolvedValueOnce({});
     render(<UnlockPage status={status} onUnlocked={onUnlocked} />);
 
     const password = screen.getByLabelText("Database password");
     await user.click(screen.getByText("Database password", { selector: "label" }));
     expect(password).toHaveFocus();
     await user.type(password, "wrong-password");
-    await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
     expect(await screen.findByText("Invalid password")).toBeVisible();
 
     await user.clear(password);
     await user.type(password, "CorrectPassword123");
-    await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
     expect(apiPost).toHaveBeenLastCalledWith(
       "/api/unlock",
@@ -98,11 +104,11 @@ describe("UnlockPage workflows", () => {
     const user = userEvent.setup();
     const onUnlocked = vi.fn();
     const migrationError = Object.assign(new Error("database uses a pre-0.2 schema; use migration helper"), { status: 409 });
-    apiPost.mockRejectedValueOnce(migrationError).mockResolvedValueOnce({});
+    vi.mocked(apiPost).mockRejectedValueOnce(migrationError).mockResolvedValueOnce({});
     render(<UnlockPage status={status} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "OldPassword123");
-    await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
     expect(await screen.findByRole("link", { name: "Open migration helper" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Delete old local copy" }));
     const confirm = screen.getByLabelText("Type the database name to confirm");
@@ -136,7 +142,7 @@ describe("UnlockPage workflows", () => {
     expect(create).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Import Database" }));
-    fireEvent.submit(screen.getByRole("button", { name: "Import database" }).closest("form"));
+    fireEvent.submit(requiredForm(screen.getByRole("button", { name: "Import database" })));
     expect(await screen.findByText("Database file is required")).toBeVisible();
     expect(apiPostForm).not.toHaveBeenCalled();
   });
@@ -144,7 +150,7 @@ describe("UnlockPage workflows", () => {
   it("owns create failures and successful completion within the create workflow", async () => {
     const user = userEvent.setup();
     const onUnlocked = vi.fn();
-    apiPost.mockRejectedValueOnce(new Error("Create failed")).mockResolvedValueOnce({});
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("Create failed")).mockResolvedValueOnce({});
     render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
@@ -164,7 +170,7 @@ describe("UnlockPage workflows", () => {
   it("owns import failures and successful completion within the import workflow", async () => {
     const user = userEvent.setup();
     const onUnlocked = vi.fn();
-    apiPostForm.mockRejectedValueOnce(new Error("Import failed")).mockResolvedValueOnce({});
+    vi.mocked(apiPostForm).mockRejectedValueOnce(new Error("Import failed")).mockResolvedValueOnce({});
     render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
     await user.click(screen.getByRole("button", { name: "Import Database" }));
     await user.type(screen.getByLabelText("Database name"), "Imported");
@@ -173,17 +179,20 @@ describe("UnlockPage workflows", () => {
     });
     await user.type(screen.getByLabelText("Database password"), "ImportPassword123");
     const submit = screen.getByRole("button", { name: "Import database" });
-    fireEvent.submit(submit.closest("form"));
+    fireEvent.submit(requiredForm(submit));
     expect(await screen.findByText("Import failed")).toBeVisible();
-    fireEvent.submit(submit.closest("form"));
+    fireEvent.submit(requiredForm(submit));
 
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
-    const [requestPath, body, options] = apiPostForm.mock.calls.at(-1);
+    const call = vi.mocked(apiPostForm).mock.calls.at(-1);
+    expect(call).toBeDefined();
+    if (!call) throw new Error("Expected an import request");
+    const [requestPath, body, options] = call;
     expect(requestPath).toBe("/api/backup/import");
     expect(body.get("database_name")).toBe("Imported");
     expect(body.get("database_password")).toBe("ImportPassword123");
     expect(body.get("sqlite")).toBeInstanceOf(File);
-    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 });
 
@@ -194,7 +203,7 @@ describe("UnlockPage lifecycle ownership", () => {
     const user = userEvent.setup();
     const pending = deferred();
     const onUnlocked = vi.fn();
-    apiPost.mockReturnValueOnce(pending.promise);
+    vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
     render(
       <UnlockPage
         status={{
@@ -209,11 +218,11 @@ describe("UnlockPage lifecycle ownership", () => {
     );
 
     await user.type(screen.getByLabelText("Database password"), "FirstPassword123");
-    await user.click(screen.getByRole("button", { name: "Unlock", exact: true }));
-    const requestOptions = apiPost.mock.calls[0][2];
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
+    const requestOptions = vi.mocked(apiPost).mock.calls[0][2];
     expect(screen.getByLabelText("Database")).toBeDisabled();
     expect(screen.getByRole("button", { name: "New Database" })).toBeDisabled();
-    expect(requestOptions.signal.aborted).toBe(false);
+    expect(requestOptions?.signal?.aborted).toBe(false);
 
     pending.resolve({});
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
@@ -241,7 +250,7 @@ describe("UnlockPage lifecycle ownership", () => {
 
   it("validates, cancels, and reports failures from the split delete action", async () => {
     const user = userEvent.setup();
-    apiPost.mockRejectedValueOnce(new Error("Delete failed"));
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("Delete failed"));
     render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Choose database action" }));
@@ -252,7 +261,7 @@ describe("UnlockPage lifecycle ownership", () => {
     await user.type(screen.getByLabelText("Database password"), "DeletePassword123");
     await user.click(screen.getByRole("button", { name: "Delete this local database" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Unlock" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Choose database action" }));
     await user.click(screen.getByRole("button", { name: "Delete this local database" }));
@@ -265,7 +274,7 @@ describe("UnlockPage lifecycle ownership", () => {
 
   it("removes the deletion toast after its display interval", async () => {
     vi.useFakeTimers();
-    apiPost.mockResolvedValueOnce({});
+    vi.mocked(apiPost).mockResolvedValueOnce({});
     const onUnlocked = vi.fn();
     render(<UnlockPage status={status} onUnlocked={onUnlocked} />);
 
@@ -288,13 +297,13 @@ describe("UnlockPage lifecycle ownership", () => {
     const user = userEvent.setup();
     const createPending = deferred();
     const onUnlocked = vi.fn();
-    apiPost.mockReturnValueOnce(createPending.promise);
+    vi.mocked(apiPost).mockReturnValueOnce(createPending.promise);
     const view = render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
     await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
     await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
-    const createOptions = apiPost.mock.calls[0][2];
+    const createOptions = vi.mocked(apiPost).mock.calls[0][2];
     view.rerender(
       <UnlockPage
         status={{ database_id: "created-db", databases: [{ id: "created-db", name: "Created", state: "locked" }] }}
@@ -302,28 +311,28 @@ describe("UnlockPage lifecycle ownership", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "Working..." })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Unlock", exact: true })).not.toBeInTheDocument();
-    expect(createOptions.signal.aborted).toBe(false);
+    expect(screen.queryByRole("button", { name: "Unlock" })).not.toBeInTheDocument();
+    expect(createOptions?.signal?.aborted).toBe(false);
 
     createPending.resolve({});
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
-    await waitFor(() => expect(screen.getByRole("button", { name: "Unlock", exact: true })).toBeVisible());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Unlock" })).toBeVisible());
   });
 
   it("aborts lifecycle reconciliation when the unlock page unmounts", async () => {
     const user = userEvent.setup();
     const createPending = deferred();
     const onUnlocked = vi.fn();
-    apiPost.mockReturnValueOnce(createPending.promise);
+    vi.mocked(apiPost).mockReturnValueOnce(createPending.promise);
     const view = render(<UnlockPage status={{ databases: [] }} onUnlocked={onUnlocked} />);
 
     await user.type(screen.getByLabelText("Database password"), "StrongDatabase123");
     await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
     await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
-    const requestOptions = apiPost.mock.calls[0][2];
+    const requestOptions = vi.mocked(apiPost).mock.calls[0][2];
     view.unmount();
 
-    expect(requestOptions.signal.aborted).toBe(true);
+    expect(requestOptions?.signal?.aborted).toBe(true);
     createPending.resolve({});
     await Promise.resolve();
     expect(onUnlocked).not.toHaveBeenCalled();
@@ -332,9 +341,9 @@ describe("UnlockPage lifecycle ownership", () => {
   it("aborts status reconciliation after a completed lifecycle mutation unmounts", async () => {
     const user = userEvent.setup();
     const reconciliation = deferred();
-    let reconciliationSignal;
-    apiPost.mockResolvedValueOnce({});
-    const onUnlocked = vi.fn((signal) => {
+    let reconciliationSignal: AbortSignal | undefined;
+    vi.mocked(apiPost).mockResolvedValueOnce({});
+    const onUnlocked = vi.fn((signal: AbortSignal) => {
       reconciliationSignal = signal;
       return reconciliation.promise;
     });
@@ -344,17 +353,17 @@ describe("UnlockPage lifecycle ownership", () => {
     await user.type(screen.getByLabelText("Confirm password"), "StrongDatabase123");
     await user.click(screen.getByRole("button", { name: "Create encrypted database" }));
     await waitFor(() => expect(onUnlocked).toHaveBeenCalledOnce());
-    expect(reconciliationSignal.aborted).toBe(false);
+    expect(reconciliationSignal?.aborted).toBe(false);
 
     view.unmount();
-    expect(reconciliationSignal.aborted).toBe(true);
+    expect(reconciliationSignal?.aborted).toBe(true);
     reconciliation.resolve();
     await Promise.resolve();
   });
 
   it("requires a name when creating another encrypted database", async () => {
     const user = userEvent.setup();
-    apiPost.mockResolvedValueOnce({});
+    vi.mocked(apiPost).mockResolvedValueOnce({});
     render(<UnlockPage status={status} onUnlocked={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "New Database" }));

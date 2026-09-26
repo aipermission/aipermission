@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
+import { APIError } from "./errors.ts";
 import { apiPost } from "./api.ts";
 import {
   completeLocalActionRetry,
@@ -15,9 +16,9 @@ const fakeRetryIndexedDB = new IDBFactory();
 
 test("backup upload retries rotate an expired remote operation identity", async () => {
   const originalFetch = globalThis.fetch;
-  const bodies = [];
+  const bodies: Record<string, unknown>[] = [];
   globalThis.fetch = async (_url, options) => {
-    bodies.push(JSON.parse(options.body));
+    bodies.push(JSON.parse(String(options?.body)));
     if (bodies.length === 1) throw new TypeError("backup response lost");
     if (bodies.length === 2) {
       return response({ error: "the original backup upload result is no longer available", code: "operation_expired" }, 410);
@@ -29,6 +30,7 @@ test("backup upload retries rotate an expired remote operation identity", async 
     await assert.rejects(
       () => apiPost("/api/backup/providers/3/upload", {}),
       (error) => {
+        assert.ok(error instanceof APIError);
         assert.equal(error.status, 410);
         assert.equal(error.code, "operation_expired");
         return true;
@@ -46,26 +48,26 @@ test("backup upload retries rotate an expired remote operation identity", async 
 test("an expired backup identity immediately releases concurrent attempts for a fresh request", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-expired-backup-race");
-  const keys = [];
-  let releaseExpired;
-  let releaseSibling;
-  let signalExpiredStarted;
-  let signalSiblingStarted;
-  const expiredGate = new Promise((resolve) => {
+  const keys: unknown[] = [];
+  let releaseExpired!: () => void;
+  let releaseSibling!: () => void;
+  let signalExpiredStarted!: () => void;
+  let signalSiblingStarted!: () => void;
+  const expiredGate = new Promise<void>((resolve) => {
     releaseExpired = resolve;
   });
-  const siblingGate = new Promise((resolve) => {
+  const siblingGate = new Promise<void>((resolve) => {
     releaseSibling = resolve;
   });
-  const expiredStarted = new Promise((resolve) => {
+  const expiredStarted = new Promise<void>((resolve) => {
     signalExpiredStarted = resolve;
   });
-  const siblingStarted = new Promise((resolve) => {
+  const siblingStarted = new Promise<void>((resolve) => {
     signalSiblingStarted = resolve;
   });
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) {
       signalExpiredStarted();
@@ -92,14 +94,18 @@ test("an expired backup identity immediately releases concurrent attempts for a 
     await siblingStarted;
 
     releaseExpired();
-    assert.equal((await first).code, "operation_expired");
+    const firstError: unknown = await first;
+    assert.ok(firstError instanceof APIError);
+    assert.equal(firstError.code, "operation_expired");
     await apiPost("/api/backup/providers/3/upload", {});
     assert.equal(calls, 3);
     assert.equal(keys[0], keys[1]);
     assert.notEqual(keys[1], keys[2]);
 
     releaseSibling();
-    assert.match((await sibling).message, /retry identity changed/i);
+    const siblingError: unknown = await sibling;
+    assert.ok(siblingError instanceof Error);
+    assert.match(siblingError.message, /retry identity changed/i);
   } finally {
     releaseExpired?.();
     releaseSibling?.();
@@ -112,8 +118,8 @@ test("an expired backup identity immediately releases concurrent attempts for a 
 test("memory retry storage releases concurrent attempts before issuing a fresh key", async () => {
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
-  delete globalThis.window;
-  delete globalThis.document;
+  Reflect.deleteProperty(globalThis, "window");
+  Reflect.deleteProperty(globalThis, "document");
   const body = { path: "/api/backup/providers/3/upload", body: {} };
   try {
     await resetLocalActionRetryLedger();
@@ -162,27 +168,21 @@ for (const storage of ["memory", "indexeddb"]) {
   });
 }
 
-function response(body, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async text() {
-      return JSON.stringify(body);
-    },
-  };
+function response(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status });
 }
 
-function installFakeBrowserRetryStorage(workspaceID) {
+function installFakeBrowserRetryStorage(workspaceID: string) {
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
   const originalIndexedDB = globalThis.indexedDB;
   const originalIDBKeyRange = globalThis.IDBKeyRange;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     localStorage: memoryStorage(),
     location: { protocol: "http:", port: "3210" },
     dispatchEvent() {},
-  };
-  globalThis.document = { cookie: `aipermission_workspace_3210=${workspaceID}` };
+  });
+  Reflect.set(globalThis, "document", { cookie: `aipermission_workspace_3210=${workspaceID}` });
   globalThis.indexedDB = fakeRetryIndexedDB;
   globalThis.IDBKeyRange = IDBKeyRange;
   return () => {
@@ -196,29 +196,29 @@ function installFakeBrowserRetryStorage(workspaceID) {
 function installMemoryRetryStorage() {
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
-  delete globalThis.window;
-  delete globalThis.document;
+  Reflect.deleteProperty(globalThis, "window");
+  Reflect.deleteProperty(globalThis, "document");
   return () => {
     restoreGlobal("window", originalWindow);
     restoreGlobal("document", originalDocument);
   };
 }
 
-function restoreGlobal(name, value) {
-  if (value === undefined) delete globalThis[name];
-  else globalThis[name] = value;
+function restoreGlobal(name: string, value: unknown) {
+  if (value === undefined) Reflect.deleteProperty(globalThis, name);
+  else Reflect.set(globalThis, name, value);
 }
 
 function memoryStorage() {
-  const values = new Map();
+  const values = new Map<string, string>();
   return {
-    getItem(key) {
+    getItem(key: string) {
       return values.has(key) ? values.get(key) : null;
     },
-    setItem(key, value) {
+    setItem(key: string, value: string) {
       values.set(key, String(value));
     },
-    removeItem(key) {
+    removeItem(key: string) {
       values.delete(key);
     },
   };

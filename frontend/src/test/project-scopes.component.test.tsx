@@ -18,7 +18,7 @@ describe("updateTokenProjectVisibility", () => {
   });
 
   it("returns a validated scope snapshot", async () => {
-    apiPut.mockResolvedValueOnce({
+    vi.mocked(apiPut).mockResolvedValueOnce({
       items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }],
       revision: "scope-2",
     });
@@ -31,7 +31,7 @@ describe("updateTokenProjectVisibility", () => {
   });
 
   it("rejects a malformed response without committing a scope change", async () => {
-    apiPut.mockResolvedValueOnce({ items: [{ project_id: 3, enabled: true }], revision: "scope-2" });
+    vi.mocked(apiPut).mockResolvedValueOnce({ items: [{ project_id: 3, enabled: true }], revision: "scope-2" });
 
     await expect(updateTokenProjectVisibility(7, projects, 3, true)).rejects.toThrow("Invalid project scope response from gateway.");
   });

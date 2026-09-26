@@ -19,6 +19,6 @@
       "src/connectors/templates/_shared/network-transport-fields.component.test.tsx"
     ],
     "src/pages/remote-restore-panel.tsx": ["src/pages/remote-restore-panel.component.test.tsx"],
-    "src/pages/unlock.tsx": ["src/pages/unlock.component.test.jsx"]
+    "src/pages/unlock.tsx": ["src/pages/unlock.component.test.tsx"]
   }
 }

@@ -114,7 +114,7 @@ export function useBackupProviderState(database: DatabaseState) {
     setBackupProviderForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function saveBackupProvider(event: FormEvent) {
+  async function saveBackupProvider(event: Pick<FormEvent, "preventDefault">) {
     event.preventDefault();
     const payload: ProviderPayload = {
       provider_type: backupProviderForm.provider_type,

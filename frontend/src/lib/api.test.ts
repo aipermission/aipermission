@@ -16,6 +16,7 @@ import {
 import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.ts";
 import { requestReconciliation } from "./local-action-retry/runtime.ts";
+import type { ReconciliationDetail } from "./local-action-retry/runtime.ts";
 import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.ts";
 
 const fakeRetryIndexedDB = new IDBFactory();
@@ -33,17 +34,10 @@ test("retry helpers ignore absent prepared identities and expose stable errors",
 test("browser reconciliation only continues after an explicit event decision", async () => {
   const originalWindow = globalThis.window;
   const originalCustomEvent = globalThis.CustomEvent;
-  globalThis.CustomEvent = class {
-    constructor(type, options) {
-      this.type = type;
-      this.detail = options.detail;
-      this.cancelable = options.cancelable;
-    }
-  };
   const entry = { request_id: 42, operation_ref: "restore:42", assistant_hint: "Inspect the target", created_at: "2026-09-15" };
   try {
-    globalThis.window = {
-      dispatchEvent(event) {
+    Reflect.set(globalThis, "window", {
+      dispatchEvent(event: CustomEvent<ReconciliationDetail>) {
         assert.equal(event.type, localActionReconciliationEvent);
         assert.equal(event.cancelable, true);
         assert.equal(event.detail.requestID, entry.request_id);
@@ -52,13 +46,13 @@ test("browser reconciliation only continues after an explicit event decision", a
         event.detail.resolve(false);
         return false;
       },
-    };
+    });
     assert.equal(await requestReconciliation(entry), true);
     globalThis.window.dispatchEvent = () => true;
     assert.equal(await requestReconciliation(entry), false);
   } finally {
     restoreWindow(originalWindow);
-    if (originalCustomEvent === undefined) delete globalThis.CustomEvent;
+    if (originalCustomEvent === undefined) Reflect.deleteProperty(globalThis, "CustomEvent");
     else globalThis.CustomEvent = originalCustomEvent;
   }
 });
@@ -70,6 +64,7 @@ test("legacy retry entries remain visible until explicit reconciliation", async 
     globalThis.window.localStorage.setItem(`${legacyStoragePrefix}${workspaceID}`, "protected");
     const [entry] = await listLocalActionRetryEntries();
     assert.equal(entry.signature, "legacy-v2-ledger");
+    assert.ok("invalid" in entry);
     assert.equal(entry.invalid, true);
     assert.equal(await resolveLocalActionRetryEntry(entry), true);
     assert.deepEqual(await listLocalActionRetryEntries(), []);
@@ -80,23 +75,21 @@ test("legacy retry entries remain visible until explicit reconciliation", async 
 });
 
 test("retry storage supports the single-store transaction adapter and memory reset", async () => {
-  const stores = { entries: { marker: true } };
-  const database = {
-    transaction(_storeNames) {
-      const transaction = {
-        objectStore(name) {
-          return stores[name];
-        },
-        abort() {},
-      };
-      setTimeout(() => transaction.oncomplete(), 0);
-      return transaction;
-    },
-  };
-  assert.equal(await transactionPromise(database, "entries", "readonly", (store) => store.marker), true);
+  const factory = new IDBFactory();
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = factory.open("single-store-adapter", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("entries");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    assert.equal(await transactionPromise(database, "entries", "readonly", (store) => store.name), "entries");
+  } finally {
+    database.close();
+  }
 
   const originalWindow = globalThis.window;
-  delete globalThis.window;
+  Reflect.deleteProperty(globalThis, "window");
   try {
     await resetRetryStorage();
   } finally {
@@ -106,10 +99,10 @@ test("retry storage supports the single-store transaction adapter and memory res
 
 test("local connector action retries retain idempotency after uncertain transport failure", async () => {
   const originalFetch = globalThis.fetch;
-  const bodies = [];
+  const bodies: Record<string, unknown>[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    bodies.push(JSON.parse(options.body));
+    bodies.push(JSON.parse(String(options?.body)));
     calls += 1;
     if (calls === 1) throw new TypeError("network disconnected");
     return response(localActionResponse(options));
@@ -130,9 +123,9 @@ test("local connector action retries retain idempotency after uncertain transpor
 
 test("backup upload retries retain one idempotency identity after response loss", async () => {
   const originalFetch = globalThis.fetch;
-  const bodies = [];
+  const bodies: Record<string, unknown>[] = [];
   globalThis.fetch = async (_url, options) => {
-    bodies.push(JSON.parse(options.body));
+    bodies.push(JSON.parse(String(options?.body)));
     if (bodies.length === 1) throw new TypeError("backup response lost");
     return response({ id: 7, provider_file_id: "backup-stable" });
   };
@@ -150,10 +143,10 @@ test("backup upload retries retain one idempotency identity after response loss"
 test("bulk command retries retain idempotency across an uncertain response and reload", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-bulk-response-loss");
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) throw new TypeError("response lost");
     return response({
@@ -182,10 +175,10 @@ test("bulk command retries retain idempotency across an uncertain response and r
 
 test("local connector action retries retain idempotency after server failures", async () => {
   const originalFetch = globalThis.fetch;
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     return calls === 1 ? response({ error: "gateway failed" }, 502) : response(localActionResponse(options));
   };
@@ -202,9 +195,9 @@ test("local connector action retries retain idempotency after server failures", 
 test("concurrent local connector action submissions share one retry identity", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-concurrent");
-  const keys = [];
+  const keys: unknown[] = [];
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     return response({ error: "gateway failed" }, 502);
   };
   try {
@@ -228,26 +221,26 @@ test("concurrent local connector action submissions share one retry identity", a
 test("a fresh client rejection cannot retire a retry identity used by another active attempt", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-concurrent-rejection");
-  const keys = [];
-  let releaseFirst;
-  let releaseSecond;
-  let signalFirstStarted;
-  let signalSecondStarted;
-  const firstGate = new Promise((resolve) => {
+  const keys: unknown[] = [];
+  let releaseFirst: () => void = () => {};
+  let releaseSecond: () => void = () => {};
+  let signalFirstStarted: () => void = () => {};
+  let signalSecondStarted: () => void = () => {};
+  const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  const firstStarted = new Promise((resolve) => {
+  const firstStarted = new Promise<void>((resolve) => {
     signalFirstStarted = resolve;
   });
-  const secondStarted = new Promise((resolve) => {
+  const secondStarted = new Promise<void>((resolve) => {
     signalSecondStarted = resolve;
   });
-  const secondGate = new Promise((resolve) => {
+  const secondGate = new Promise<void>((resolve) => {
     releaseSecond = resolve;
   });
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) {
       signalFirstStarted();
@@ -271,7 +264,9 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
     const second = apiPost("/api/connector-actions/local-run", body);
     await secondStarted;
     releaseFirst();
-    assert.match((await first).message, /invalid request/);
+    const failure: unknown = await first;
+    assert.ok(failure instanceof Error);
+    assert.match(failure.message, /invalid request/);
 
     await apiPost("/api/connector-actions/local-run", body);
     assert.equal(keys[0], keys[1]);
@@ -293,18 +288,18 @@ test("a fresh client rejection cannot retire a retry identity used by another ac
 test("a completed uncertain attempt keeps its retry identity after another attempt is rejected", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-completed-uncertain-attempt");
-  const keys = [];
-  let releaseFirst;
-  let signalFirstStarted;
-  const firstGate = new Promise((resolve) => {
+  const keys: unknown[] = [];
+  let releaseFirst: () => void = () => {};
+  let signalFirstStarted: () => void = () => {};
+  const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  const firstStarted = new Promise((resolve) => {
+  const firstStarted = new Promise<void>((resolve) => {
     signalFirstStarted = resolve;
   });
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) {
       signalFirstStarted();
@@ -324,7 +319,9 @@ test("a completed uncertain attempt keeps its retry identity after another attem
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /network disconnected after dispatch/);
 
     releaseFirst();
-    assert.match((await first).message, /invalid request/);
+    const failure: unknown = await first;
+    assert.ok(failure instanceof Error);
+    assert.match(failure.message, /invalid request/);
 
     await apiPost("/api/connector-actions/local-run", body);
     assert.equal(keys[0], keys[1]);
@@ -367,6 +364,7 @@ test("retry storage upgrade preserves version-one unresolved identities", async 
     await resetLocalActionRetryLedger();
     await seedRetryDatabase(workspaceID, 1);
     const [entry] = await listLocalActionRetryEntries();
+    assert.ok("scope" in entry);
     assert.equal(entry.scope, workspaceID);
     assert.equal(entry.state, "pending");
     const records = await readRetryDatabaseRecords();
@@ -388,6 +386,7 @@ test("retry storage upgrade preserves version-two unresolved identities", async 
     await resetLocalActionRetryLedger();
     await seedRetryDatabase(workspaceID, 2);
     const [entry] = await listLocalActionRetryEntries();
+    assert.ok("scope" in entry);
     assert.equal(entry.scope, workspaceID);
     assert.equal(entry.state, "pending");
     const records = await readRetryDatabaseRecords();
@@ -404,7 +403,7 @@ test("retry storage upgrade preserves version-two unresolved identities", async 
 
 test("unresolved retry scopes remain protected when signing-key capacity is reclaimed", async () => {
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-protected-0");
-  const prepared = [];
+  const prepared: Awaited<ReturnType<typeof prepareLocalActionRetry>>[] = [];
   try {
     for (let index = 0; index < 64; index += 1) {
       globalThis.document.cookie = `aipermission_workspace_3210=workspace-protected-${index}`;
@@ -432,18 +431,18 @@ test("a concurrent signing reservation prevents premature key reclamation", asyn
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-signing-race");
   const originalCrypto = globalThis.crypto;
   let signCalls = 0;
-  let releaseSign;
-  let signalSignStarted;
-  const signStarted = new Promise((resolve) => {
+  let releaseSign: () => void = () => {};
+  let signalSignStarted: () => void = () => {};
+  const signStarted = new Promise<void>((resolve) => {
     signalSignStarted = resolve;
   });
-  const signGate = new Promise((resolve) => {
+  const signGate = new Promise<void>((resolve) => {
     releaseSign = resolve;
   });
   const subtle = new Proxy(originalCrypto.subtle, {
     get(target, property) {
       if (property === "sign") {
-        return async (...args) => {
+        return async (...args: Parameters<SubtleCrypto["sign"]>) => {
           signCalls += 1;
           if (signCalls === 2) {
             signalSignStarted();
@@ -516,19 +515,17 @@ test("definitive client rejections do not consume retry ledger capacity", async 
 
 test("local connector action retains idempotency when a successful body cannot be read", async () => {
   const originalFetch = globalThis.fetch;
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) {
-      return {
-        ok: true,
-        status: 200,
-        async text() {
-          throw new TypeError("response stream disconnected");
-        },
+      const result = response({});
+      result.text = async () => {
+        throw new TypeError("response stream disconnected");
       };
+      return result;
     }
     return response(localActionResponse(options));
   };
@@ -544,10 +541,10 @@ test("local connector action retains idempotency when a successful body cannot b
 
 test("local connector action retains idempotency after malformed or incomplete success JSON", async () => {
   const originalFetch = globalThis.fetch;
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) return rawResponse('{"status":"completed"');
     if (calls === 2) return response({ status: "completed" });
@@ -587,10 +584,10 @@ test("caller-provided connector idempotency keys still require a valid action ac
 
 test("local connector action requires explicit reconciliation after an unknown outcome", async () => {
   const originalFetch = globalThis.fetch;
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     return response(calls === 1 ? localActionResponse(options, "outcome_unknown") : localActionResponse(options));
   };
@@ -615,15 +612,15 @@ test("local connector action retry keys survive browser reload until acknowledge
   const originalDocument = globalThis.document;
   const originalIndexedDB = globalThis.indexedDB;
   const originalIDBKeyRange = globalThis.IDBKeyRange;
-  const keys = [];
+  const keys: unknown[] = [];
   const storage = memoryStorage();
-  globalThis.window = { localStorage: storage, location: { protocol: "http:", port: "3210" } };
-  globalThis.document = { cookie: "aipermission_workspace_3210=workspace-one" };
+  Reflect.set(globalThis, "window", { localStorage: storage, location: { protocol: "http:", port: "3210" } });
+  Reflect.set(globalThis, "document", { cookie: "aipermission_workspace_3210=workspace-one" });
   globalThis.indexedDB = fakeRetryIndexedDB;
   globalThis.IDBKeyRange = IDBKeyRange;
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) throw new TypeError("network disconnected");
     return response(localActionResponse(options));
@@ -655,25 +652,25 @@ test("browser retry keys are isolated by persistent workspace identity", async (
   const originalDocument = globalThis.document;
   const originalIndexedDB = globalThis.indexedDB;
   const originalIDBKeyRange = globalThis.IDBKeyRange;
-  const keys = [];
+  const keys: unknown[] = [];
   const firstWindow = { localStorage: memoryStorage(), location: { protocol: "http:", port: "3210" } };
   const secondWindow = { localStorage: memoryStorage(), location: { protocol: "http:", port: "3210" } };
-  globalThis.window = firstWindow;
+  Reflect.set(globalThis, "window", firstWindow);
   globalThis.indexedDB = fakeRetryIndexedDB;
   globalThis.IDBKeyRange = IDBKeyRange;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     if (keys.length < 3) throw new TypeError("network disconnected");
     return response(localActionResponse(options));
   };
   const body = { target_ref: "fixture:1:1", action_name: "mutate", input: {}, reason: "test" };
   try {
-    globalThis.document = { cookie: "aipermission_workspace_3210=workspace-one" };
+    Reflect.set(globalThis, "document", { cookie: "aipermission_workspace_3210=workspace-one" });
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
-    globalThis.window = secondWindow;
+    Reflect.set(globalThis, "window", secondWindow);
     globalThis.document.cookie = "aipermission_workspace_3210=workspace-two";
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body));
-    globalThis.window = firstWindow;
+    Reflect.set(globalThis, "window", firstWindow);
     globalThis.document.cookie = "aipermission_workspace_3210=workspace-one";
     await apiPost("/api/connector-actions/local-run", body);
     assert.notEqual(keys[0], keys[1]);
@@ -691,11 +688,11 @@ test("local connector action fails closed when browser retry storage is unavaila
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   let fetched = false;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     get localStorage() {
       throw new Error("denied");
     },
-  };
+  });
   globalThis.fetch = async (_url, options) => {
     fetched = true;
     return response(localActionResponse(options));
@@ -719,13 +716,13 @@ test("browser connector mutations fail closed when IndexedDB is absent", async (
   const originalDocument = globalThis.document;
   const originalIndexedDB = globalThis.indexedDB;
   let fetched = false;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     localStorage: memoryStorage(),
     location: { protocol: "http:", port: "3210" },
     dispatchEvent() {},
-  };
-  globalThis.document = { cookie: "aipermission_workspace_3210=workspace-no-indexeddb" };
-  delete globalThis.indexedDB;
+  });
+  Reflect.set(globalThis, "document", { cookie: "aipermission_workspace_3210=workspace-no-indexeddb" });
+  Reflect.deleteProperty(globalThis, "indexedDB");
   globalThis.fetch = async (_url, options) => {
     fetched = true;
     return response(localActionResponse(options));
@@ -747,10 +744,10 @@ test("browser connector mutations fail closed when IndexedDB is absent", async (
 test("a carried browser retry key survives pre-handler authorization errors", async () => {
   const originalFetch = globalThis.fetch;
   const restoreBrowser = installFakeBrowserRetryStorage("workspace-auth-retry");
-  const keys = [];
+  const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
-    keys.push(JSON.parse(options.body).idempotency_key);
+    keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) throw new TypeError("response lost");
     if (calls === 2) return response({ error: "ui session required" }, 401);
@@ -818,34 +815,22 @@ test("missing browser signing key with unresolved entries fails closed", async (
   }
 });
 
-function response(body, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async text() {
-      return JSON.stringify(body);
-    },
-  };
+function response(body: unknown, status = 200) {
+  return new Response(status === 204 ? null : JSON.stringify(body), { status });
 }
 
-function rawResponse(body, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async text() {
-      return body;
-    },
-  };
+function rawResponse(body: string, status = 200) {
+  return new Response(body, { status });
 }
 
 async function readRetryStoreRecords() {
   return (await readRetryDatabaseRecords()).entries;
 }
 
-async function seedRetryDatabase(scope, version) {
+async function seedRetryDatabase(scope: string, version: number) {
   const signature = "a".repeat(64);
   const key = await globalThis.crypto.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const database = await new Promise((resolve, reject) => {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = globalThis.indexedDB.open("aipermission-local-action-retry", version);
     request.onupgradeneeded = () => {
       const entries = request.result.createObjectStore("entries", { keyPath: "id" });
@@ -861,7 +846,7 @@ async function seedRetryDatabase(scope, version) {
     request.onerror = () => reject(request.error);
   });
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(["entries", "keys"], "readwrite");
       const now = new Date().toISOString();
       transaction.objectStore("entries").add({
@@ -875,7 +860,7 @@ async function seedRetryDatabase(scope, version) {
         updated_at: now,
       });
       transaction.objectStore("keys").add({ scope, key, updated_at: now });
-      transaction.oncomplete = resolve;
+      transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
     });
@@ -885,15 +870,15 @@ async function seedRetryDatabase(scope, version) {
 }
 
 async function readRetryDatabaseRecords() {
-  const database = await new Promise((resolve, reject) => {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = globalThis.indexedDB.open("aipermission-local-action-retry", 3);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   try {
     const transaction = database.transaction(["entries", "keys", "reservations", "attempts"]);
-    const readAll = (storeName) =>
-      new Promise((resolve, reject) => {
+    const readAll = (storeName: string) =>
+      new Promise<unknown[]>((resolve, reject) => {
         const request = transaction.objectStore(storeName).getAll();
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -910,17 +895,17 @@ async function readRetryDatabaseRecords() {
   }
 }
 
-async function deleteRetrySigningKey(scope) {
-  const database = await new Promise((resolve, reject) => {
+async function deleteRetrySigningKey(scope: string) {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = globalThis.indexedDB.open("aipermission-local-action-retry", 3);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction("keys", "readwrite");
       transaction.objectStore("keys").delete(scope);
-      transaction.oncomplete = resolve;
+      transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });
   } finally {
@@ -928,22 +913,22 @@ async function deleteRetrySigningKey(scope) {
   }
 }
 
-function restoreGlobal(name, value) {
-  if (value === undefined) delete globalThis[name];
-  else globalThis[name] = value;
+function restoreGlobal(name: string, value: unknown) {
+  if (value === undefined) Reflect.deleteProperty(globalThis, name);
+  else Reflect.set(globalThis, name, value);
 }
 
-function installFakeBrowserRetryStorage(workspaceID) {
+function installFakeBrowserRetryStorage(workspaceID: string) {
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
   const originalIndexedDB = globalThis.indexedDB;
   const originalIDBKeyRange = globalThis.IDBKeyRange;
-  globalThis.window = {
+  Reflect.set(globalThis, "window", {
     localStorage: memoryStorage(),
     location: { protocol: "http:", port: "3210" },
     dispatchEvent() {},
-  };
-  globalThis.document = { cookie: `aipermission_workspace_3210=${workspaceID}` };
+  });
+  Reflect.set(globalThis, "document", { cookie: `aipermission_workspace_3210=${workspaceID}` });
   globalThis.indexedDB = fakeRetryIndexedDB;
   globalThis.IDBKeyRange = IDBKeyRange;
   return () => {
@@ -954,8 +939,8 @@ function installFakeBrowserRetryStorage(workspaceID) {
   };
 }
 
-function localActionResponse(options, status = "completed") {
-  const body = JSON.parse(options.body);
+function localActionResponse(options: RequestInit | undefined, status = "completed") {
+  const body = JSON.parse(String(options?.body));
   return {
     request_id: 41,
     status,
@@ -966,26 +951,24 @@ function localActionResponse(options, status = "completed") {
   };
 }
 
-function restoreWindow(value) {
-  if (value === undefined) delete globalThis.window;
-  else globalThis.window = value;
+function restoreWindow(value: unknown) {
+  restoreGlobal("window", value);
 }
 
-function restoreDocument(value) {
-  if (value === undefined) delete globalThis.document;
-  else globalThis.document = value;
+function restoreDocument(value: unknown) {
+  restoreGlobal("document", value);
 }
 
 function memoryStorage() {
-  const values = new Map();
+  const values = new Map<string, string>();
   return {
-    getItem(key) {
+    getItem(key: string) {
       return values.has(key) ? values.get(key) : null;
     },
-    setItem(key, value) {
+    setItem(key: string, value: string) {
       values.set(key, String(value));
     },
-    removeItem(key) {
+    removeItem(key: string) {
       values.delete(key);
     },
     values() {

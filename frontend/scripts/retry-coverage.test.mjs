@@ -17,7 +17,7 @@ test("checks retry coverage one production file at a time", () => {
     spawn: (_command, args) => {
       const include = args.find((argument) => argument.startsWith("--test-coverage-include="));
       checked.push(include);
-      assert.deepEqual(args.slice(-3), ["src/lib/api.test.js", "src/lib/api-backup-retry.test.js", "src/lib/local-action-retry/records.test.ts"]);
+      assert.deepEqual(args.slice(-3), ["src/lib/api.test.ts", "src/lib/api-backup-retry.test.ts", "src/lib/local-action-retry/records.test.ts"]);
       return { status: include.endsWith("errors.ts") ? 1 : 0, stdout: "", stderr: "" };
     },
   });

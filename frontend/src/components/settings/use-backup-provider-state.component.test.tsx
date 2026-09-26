@@ -12,8 +12,8 @@ vi.mock("../../lib/api", () => ({
 }));
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((next) => {
+  let resolve!: (_value: unknown) => void;
+  const promise = new Promise<unknown>((next) => {
     resolve = next;
   });
   return { promise, resolve };
@@ -21,14 +21,14 @@ function deferred() {
 
 function renderBackupState() {
   return renderHook(() =>
-    useBackupProviderState({ state: "ready", data: { database_name: "Default", database_size_bytes: 1024 }, error: null }),
+    useBackupProviderState({ data: { database_name: "Default" } }),
   );
 }
 
 describe("useBackupProviderState", () => {
   beforeEach(() => {
-    apiDownload.mockReset();
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiDownload).mockReset();
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/backup/providers/catalog")
         return { items: [{ provider_type: "aipermission_backup", label: "AIPermission Backup" }] };
       if (path === "/api/backup/providers") return { items: [] };
@@ -37,7 +37,7 @@ describe("useBackupProviderState", () => {
   });
 
   it("streams database and provider-record downloads without reporting canceled saves as successful", async () => {
-    apiDownload
+    vi.mocked(apiDownload)
       .mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" })
       .mockResolvedValueOnce({ saved: true, method: "picker" })
       .mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" })
@@ -66,7 +66,7 @@ describe("useBackupProviderState", () => {
   });
 
   it("clears provider tokens when the editor closes or saves", async () => {
-    apiPost.mockResolvedValue({ id: 4 });
+    vi.mocked(apiPost).mockResolvedValue({ id: 4 });
     const { result } = renderBackupState();
     await waitFor(() => expect(result.current.backupProviderCatalog.state).toBe("ready"));
 
@@ -97,7 +97,7 @@ describe("useBackupProviderState", () => {
   it("ignores backup records returned for an older provider selection", async () => {
     const older = deferred();
     const newer = deferred();
-    apiGet.mockImplementation((path) => {
+    vi.mocked(apiGet).mockImplementation((path) => {
       if (path === "/api/backup/providers/catalog" || path === "/api/backup/providers") return Promise.resolve({ items: [] });
       if (path === "/api/backup/providers/1/records") return older.promise;
       if (path === "/api/backup/providers/2/records") return newer.promise;
@@ -111,12 +111,12 @@ describe("useBackupProviderState", () => {
     await waitFor(() => expect(result.current.backupRecords.data).toEqual([{ id: 2 }]));
     await act(async () => older.resolve({ items: [{ id: 1 }] }));
 
-    expect(result.current.backupRecordsProvider.id).toBe(2);
+    expect(result.current.backupRecordsProvider?.id).toBe(2);
     expect(result.current.backupRecords.data).toEqual([{ id: 2 }]);
   });
 
   it("reports malformed provider and record lists instead of presenting them as empty", async () => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/backup/providers/catalog") return { items: [] };
       if (path === "/api/backup/providers") return { items: [{ id: "not-an-id", name: "Broken" }] };
       if (path === "/api/backup/providers/7/records") return { items: null };
