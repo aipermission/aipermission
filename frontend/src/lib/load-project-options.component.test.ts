@@ -22,3 +22,19 @@ it("does not publish project options from an invalidated request", async () => {
   expect(setProjects).not.toHaveBeenCalledWith(expect.objectContaining({ state: "ready" }));
   guard.dispose();
 });
+
+it("validates current project metadata before publishing options", async () => {
+  const guard = createRequestGuard("projects");
+  const setProjects = vi.fn();
+  vi.mocked(apiGet).mockResolvedValue({ items: [{ id: 1, name: "My Project", slug: "my-project", target_count: 2 }] });
+  await loadProjectOptions(guard, setProjects);
+  expect(setProjects).toHaveBeenLastCalledWith({
+    state: "ready",
+    data: [{ id: 1, name: "My Project", slug: "my-project", target_count: 2 }],
+    error: null,
+  });
+  vi.mocked(apiGet).mockResolvedValue({ items: [{ id: "1", slug: "my-project" }] });
+  await loadProjectOptions(guard, setProjects);
+  expect(setProjects).toHaveBeenLastCalledWith({ state: "error", data: [], error: "Invalid project list response." });
+  guard.dispose();
+});

@@ -4,6 +4,12 @@ export type GatewayTarget = components["schemas"]["TargetProfile"] & { id?: numb
 export type GatewayToken = {
   id: number; name: string; token?: string; revoked_at?: string; expires_at?: string; created_at?: string; updated_at?: string;
 };
+export type CreatedGatewayToken = GatewayToken & { token: string };
+
+export function gatewayCreatedTokenResponse(value: unknown): CreatedGatewayToken {
+  if (!validToken(value) || typeof value.token !== "string" || !value.token) throw new Error("Invalid created token response.");
+  return { ...value, token: value.token };
+}
 export type GatewayStatus = { status: string; service?: string; config?: Record<string, unknown>; features?: string[]; audit?: unknown };
 export type MCPRuntime = { enabled: boolean; start_enabled: boolean; updated_at?: string };
 export type CredentialResource = {

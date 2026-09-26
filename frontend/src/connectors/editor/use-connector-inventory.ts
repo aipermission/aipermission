@@ -4,18 +4,35 @@ import { loadProjectOptions } from "../../lib/load-project-options";
 import { useRequestGuard } from "../../lib/request-guard";
 import { supportedConnectorKinds } from "../templates/catalog";
 
-const loadingCatalog = { state: "loading", data: [], details: {}, detailFailures: [], error: null };
+import { errorMessage } from "../../lib/errors";
+import type { ProjectOptionsState } from "../../lib/load-project-options";
+import { connectorInventoryResponse, type InventoryTarget } from "../../lib/gateway-contracts/connector-inventory-contract";
+import {
+  connectorCatalogResponse,
+  connectorCatalogDetailResponse,
+  type ConnectorCatalogItem,
+  type ConnectorCatalogDetail,
+} from "../../lib/gateway-contracts/connector-catalog-contract";
+export type ConnectorCatalogState = {
+  state: string;
+  data: ConnectorCatalogItem[];
+  details: Record<string, ConnectorCatalogDetail>;
+  detailFailures: { kind: string; error: string }[];
+  error: string | null;
+};
+export type ConnectorInventoryState = { state: string; data: InventoryTarget[]; error: string | null };
+const loadingCatalog: ConnectorCatalogState = { state: "loading", data: [], details: {}, detailFailures: [], error: null };
 const loadingCollection = { state: "loading", data: [], error: null };
 
-export function targetProfileSelectionKey(target) {
+export function targetProfileSelectionKey(target: Pick<InventoryTarget, "id" | "connector_kind"> | null | undefined) {
   return `${target?.connector_kind || ""}:${target?.id || ""}`;
 }
 
-export function useConnectorInventory({ loadUnifiedTargets }) {
+export function useConnectorInventory({ loadUnifiedTargets }: { loadUnifiedTargets: () => unknown | Promise<unknown> }) {
   const [catalog, setCatalog] = useState(loadingCatalog);
-  const [targets, setTargets] = useState(loadingCollection);
-  const [projects, setProjects] = useState(loadingCollection);
-  const [profileSelections, setProfileSelections] = useState({});
+  const [targets, setTargets] = useState<ConnectorInventoryState>(loadingCollection);
+  const [projects, setProjects] = useState<ProjectOptionsState>(loadingCollection);
+  const [profileSelections, setProfileSelections] = useState<Record<string, string>>({});
   const guard = useRequestGuard("connector-inventory");
   const initialize = useEffectEvent(() => {
     void loadCatalog();
@@ -23,7 +40,7 @@ export function useConnectorInventory({ loadUnifiedTargets }) {
   });
   const reconcileProfileSelections = useEffectEvent(() => {
     setProfileSelections((current) => {
-      const next = {};
+      const next: Record<string, string> = {};
       for (const target of targets.data) {
         const key = targetProfileSelectionKey(target);
         const profiles = target.profiles || [];
@@ -69,21 +86,24 @@ export function useConnectorInventory({ loadUnifiedTargets }) {
     setCatalog((current) => ({ ...current, state: "loading", error: null }));
     try {
       const data = await apiGet("/api/connectors", { signal: request.signal });
-      const details = {};
-      const detailFailures = [];
+      if (!request.isCurrent()) return;
+      const items = connectorCatalogResponse(data);
+      const details: Record<string, ConnectorCatalogDetail> = {};
+      const detailFailures: ConnectorCatalogState["detailFailures"] = [];
       await Promise.all(
-        (data.items || []).map(async (item) => {
+        items.map(async (item) => {
           try {
-            details[item.kind] = await apiGet(`/api/connectors/${item.kind}`, { signal: request.signal });
+            const detail = await apiGet(`/api/connectors/${item.kind}`, { signal: request.signal });
+            if (request.isCurrent()) details[item.kind] = connectorCatalogDetailResponse(detail, item.kind);
           } catch (error) {
             if (!request.signal.aborted)
-              detailFailures.push({ kind: item.kind, error: error.message || "failed to load connector details" });
+              detailFailures.push({ kind: item.kind, error: errorMessage(error, "failed to load connector details") });
           }
         }),
       );
-      if (request.isCurrent()) setCatalog({ state: "ready", data: data.items || [], details, detailFailures, error: null });
+      if (request.isCurrent()) setCatalog({ state: "ready", data: items, details, detailFailures, error: null });
     } catch (error) {
-      if (request.isCurrent()) setCatalog({ state: "error", data: [], details: {}, detailFailures: [], error: error.message });
+      if (request.isCurrent()) setCatalog({ state: "error", data: [], details: {}, detailFailures: [], error: errorMessage(error) });
     } finally {
       request.complete();
     }
@@ -94,15 +114,15 @@ export function useConnectorInventory({ loadUnifiedTargets }) {
     setTargets((current) => ({ ...current, state: "loading", error: null }));
     try {
       const data = await apiGet("/api/connector-targets/inventory", { signal: request.signal });
-      if (request.isCurrent()) setTargets({ state: "ready", data: data.items || [], error: null });
+      if (request.isCurrent()) setTargets({ state: "ready", data: connectorInventoryResponse(data), error: null });
     } catch (error) {
-      if (request.isCurrent()) setTargets({ state: "error", data: [], error: error.message });
+      if (request.isCurrent()) setTargets({ state: "error", data: [], error: errorMessage(error) });
     } finally {
       request.complete();
     }
   }
 
-  function selectProfile(target, profileID) {
+  function selectProfile(target: InventoryTarget, profileID: number | string) {
     setProfileSelections((current) => ({ ...current, [targetProfileSelectionKey(target)]: String(profileID || "") }));
   }
 
@@ -119,7 +139,7 @@ export function useConnectorInventory({ loadUnifiedTargets }) {
   };
 }
 
-function connectorCatalogWarnings(catalog) {
+function connectorCatalogWarnings(catalog: ConnectorCatalogState) {
   if (catalog.state !== "ready") return [];
   const backendKinds = new Set(catalog.data.map((item) => item.kind));
   const frontendKinds = new Set(supportedConnectorKinds);

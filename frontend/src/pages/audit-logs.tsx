@@ -1,3 +1,8 @@
+import type { ComponentProps, Dispatch, SetStateAction } from "react";
+import { errorMessage } from "../lib/errors";
+import { formatDateTime, formatShortTime } from "../lib/activity-date";
+import { auditEntryResponse, auditPageResponse, type AuditEntry } from "../lib/gateway-contracts/audit-resource-contract";
+import { projectListResponse, type ProjectSummary } from "../lib/gateway-contracts/project-list-contract";
 import { RefreshCcw, Search } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { apiGet } from "../lib/api";
@@ -12,6 +17,19 @@ import { Notice } from "../components/ui/notice";
 import { PaginationBar } from "../components/ui/pagination-bar";
 import { TerminalBlock } from "../components/ui/terminal-block";
 
+type BadgeTone = ComponentProps<typeof Badge>["tone"];
+type Filters = { query: string; projectID: string; actor: string; connectorKind: string; targetID: string };
+type ProjectsResource = { state: string; data: ProjectSummary[]; error: string | null };
+type AuditResource = {
+  state: string;
+  data: AuditEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  next_offset: number | null;
+  error: string | null;
+};
+
 const actorOptions = [
   { value: "", label: "All actors" },
   { value: "user", label: "User" },
@@ -20,9 +38,9 @@ const actorOptions = [
 
 export function AuditLogsPage() {
   const { targets } = useGateway();
-  const [filters, setFilters] = useState({ query: "", projectID: "", actor: "", connectorKind: "", targetID: "" });
-  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
-  const [state, setState] = useState({
+  const [filters, setFilters] = useState<Filters>({ query: "", projectID: "", actor: "", connectorKind: "", targetID: "" });
+  const [projects, setProjects] = useState<ProjectsResource>({ state: "loading", data: [], error: null });
+  const [state, setState] = useState<AuditResource>({
     state: "idle",
     data: [],
     total: 0,
@@ -31,10 +49,10 @@ export function AuditLogsPage() {
     next_offset: null,
     error: null,
   });
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
   const requests = useRequestGuard("audit-logs");
   const loadProjectsForEffect = useEffectEvent(() => loadAuditProjects(requests, setProjects));
-  const loadAuditLogsForEffect = useEffectEvent((offset) => loadAuditLogs(offset));
+  const loadAuditLogsForEffect = useEffectEvent((offset: number) => loadAuditLogs(offset));
 
   useEffect(() => {
     void loadProjectsForEffect();
@@ -49,7 +67,7 @@ export function AuditLogsPage() {
   }, [filters.query, filters.projectID, filters.actor, filters.connectorKind, filters.targetID, requests]);
 
   const targetOptions = useMemo(() => {
-    const options = new Map();
+    const options = new Map<string, string>();
     (targets.data || []).forEach((target) => {
       if (filters.projectID && String(target.project_id) !== String(filters.projectID)) return;
       const id = target.target_id || target.id;
@@ -66,7 +84,7 @@ export function AuditLogsPage() {
   }, [targets.data, state.data, filters.projectID]);
 
   const connectorKindOptions = useMemo(() => {
-    const kinds = new Set();
+    const kinds = new Set<string>();
     (targets.data || []).forEach((target) => {
       if (target.connector_kind) kinds.add(target.connector_kind);
     });
@@ -102,30 +120,31 @@ export function AuditLogsPage() {
     try {
       const data = await apiGet(`/api/audit-logs?${params.toString()}`, { signal: request.signal });
       if (!request.isCurrent()) return;
+      const verified = auditPageResponse(data);
       setState({
         state: "ready",
-        data: data.items || [],
-        total: data.total || 0,
-        limit: data.limit || state.limit,
-        offset: data.offset || 0,
-        next_offset: data.next_offset ?? null,
+        data: verified.items,
+        total: verified.total,
+        limit: verified.limit,
+        offset: verified.offset,
+        next_offset: verified.next_offset ?? null,
         error: null,
       });
     } catch (error) {
       if (!request.isCurrent()) return;
-      setState((current) => ({ ...current, state: "error", data: [], total: 0, error: error.message }));
+      setState((current) => ({ ...current, state: "error", data: [], total: 0, error: errorMessage(error) }));
     } finally {
       request.complete();
     }
   }
 
-  async function openAuditItem(item) {
+  async function openAuditItem(item: AuditEntry) {
     const request = requests.begin("detail");
     setSelected(item);
     try {
       const detail = await apiGet(`/api/audit-logs/${item.id}`, { signal: request.signal });
       if (!request.isCurrent()) return;
-      setSelected(detail);
+      setSelected(auditEntryResponse(detail, item.id));
     } catch {
       if (!request.isCurrent()) return;
       setSelected(item);
@@ -239,7 +258,9 @@ export function AuditLogsPage() {
         total={state.total}
         disabled={state.state === "loading"}
         onPrevious={() => loadAuditLogs(Math.max(0, state.offset - state.limit))}
-        onNext={() => loadAuditLogs(state.next_offset)}
+        onNext={() => {
+          if (state.next_offset !== null) void loadAuditLogs(state.next_offset);
+        }}
         hasPrevious={state.offset > 0}
         hasNext={state.next_offset !== null && state.next_offset !== undefined}
       />
@@ -249,8 +270,20 @@ export function AuditLogsPage() {
   );
 }
 
-function AuditFilters({ filters, setFilters, projects, connectorKinds, targets }) {
-  const update = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+function AuditFilters({
+  filters,
+  setFilters,
+  projects,
+  connectorKinds,
+  targets,
+}: {
+  filters: Filters;
+  setFilters: Dispatch<SetStateAction<Filters>>;
+  projects: ProjectSummary[];
+  connectorKinds: string[];
+  targets: [string, string][];
+}) {
+  const update = (field: keyof Filters, value: string) => setFilters((current) => ({ ...current, [field]: value }));
   return (
     <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4 lg:grid-cols-5">
       <div className="relative">
@@ -310,21 +343,21 @@ function AuditFilters({ filters, setFilters, projects, connectorKinds, targets }
   );
 }
 
-async function loadAuditProjects(requests, setProjects) {
+async function loadAuditProjects(requests: ReturnType<typeof useRequestGuard>, setProjects: Dispatch<SetStateAction<ProjectsResource>>) {
   const request = requests.begin("projects");
   try {
     const data = await apiGet("/api/projects", { signal: request.signal });
     if (!request.isCurrent()) return;
-    setProjects({ state: "ready", data: data.items || [], error: null });
+    setProjects({ state: "ready", data: projectListResponse(data), error: null });
   } catch (error) {
     if (!request.isCurrent()) return;
-    setProjects({ state: "error", data: [], error: error.message });
+    setProjects({ state: "error", data: [], error: errorMessage(error) });
   } finally {
     request.complete();
   }
 }
 
-function AuditStat({ label, value, tone = "neutral" }) {
+function AuditStat({ label, value, tone = "neutral" }: { label: string; value: number; tone?: BadgeTone }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
@@ -335,7 +368,7 @@ function AuditStat({ label, value, tone = "neutral" }) {
   );
 }
 
-function AuditDialog({ item, onClose }) {
+function AuditDialog({ item, onClose }: { item: AuditEntry | null; onClose: () => void }) {
   if (!item) return null;
   const payload = prettyPayload(item.payload_json);
 
@@ -372,16 +405,16 @@ function AuditDialog({ item, onClose }) {
   );
 }
 
-function ActorBadge({ actor }) {
+function ActorBadge({ actor }: { actor: string }) {
   const tone = actor === "user" ? "good" : actor === "mcp" ? "warn" : "neutral";
   return <Badge tone={tone}>{actor || "unknown"}</Badge>;
 }
 
-function ActionBadge({ action }) {
+function ActionBadge({ action }: { action: string }) {
   return <Badge tone={actionTone(action)}>{action || "unknown"}</Badge>;
 }
 
-function actionTone(action) {
+function actionTone(action: string): BadgeTone {
   const value = action || "";
   if (value.includes(".blocked") || value.includes(".error") || value.includes(".failed")) return "bad";
   if (value.includes(".decline") || value.includes(".pending")) return "warn";
@@ -389,28 +422,29 @@ function actionTone(action) {
   return "neutral";
 }
 
-function payloadPreview(value) {
+function payloadPreview(value: string) {
   const parsed = parsePayload(value);
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const payload = parsed as Record<string, unknown>;
     const parts = ["request_id", "session_id", "command", "reason", "exit_code", "user_note"]
-      .filter((key) => parsed[key] !== undefined && parsed[key] !== null && parsed[key] !== "")
-      .map((key) => `${key}: ${oneLine(parsed[key])}`);
+      .filter((key) => payload[key] !== undefined && payload[key] !== null && payload[key] !== "")
+      .map((key) => `${key}: ${oneLine(payload[key])}`);
     if (parts.length > 0) return parts.join(", ");
   }
   return oneLine(value || "{}");
 }
 
-function auditTargetLabel(item) {
+function auditTargetLabel(item: AuditEntry) {
   return item.target_name || item.target_ref || (item.target_id ? `target ${item.target_id}` : "-");
 }
 
-function prettyPayload(value) {
+function prettyPayload(value: string) {
   const parsed = parsePayload(value);
   if (parsed && typeof parsed === "object") return JSON.stringify(parsed, null, 2);
   return String(parsed || "{}");
 }
 
-function parsePayload(value) {
+function parsePayload(value: string): unknown {
   if (!value) return {};
   try {
     return JSON.parse(value);
@@ -419,22 +453,8 @@ function parsePayload(value) {
   }
 }
 
-function oneLine(value) {
+function oneLine(value: unknown) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function formatShortTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDateTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
 }

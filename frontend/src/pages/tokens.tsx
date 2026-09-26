@@ -1,5 +1,5 @@
 import { Ban, CalendarClock, Database, KeyRound, LockKeyhole, PlugZap, Plus, RefreshCcw, TicketCheck } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
 import { effectiveRule, maskedToken } from "../lib/permissions";
@@ -19,6 +19,16 @@ import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
 import { TokenRevokeDialog } from "../components/tokens/token-revoke-dialog";
 import { VaultPermissionDialog } from "../components/tokens/vault-permission-dialog";
 
+import type { ComponentProps, Dispatch, FormEvent, SetStateAction } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { TokenInstallState } from "../components/tokens/token-install-dialog";
+import type { AsyncActionState } from "../lib/use-async-action";
+import type { TokenActionPermission } from "../lib/gateway-contracts/security-contracts";
+import { gatewayCreatedTokenResponse, type CreatedGatewayToken, type GatewayToken } from "../lib/gateway-contracts/core-resource-contracts";
+type TokenForm = typeof emptyForm;
+type TokenStatistics = { total: number; active: number; expired: number; revoked: number };
+type Tone = NonNullable<ComponentProps<typeof Badge>["tone"]>;
+
 const tokenExpiryOptions = [
   { value: "never", label: "Never expires", ms: 0 },
   { value: "1h", label: "1 hour", ms: 60 * 60 * 1000 },
@@ -32,11 +42,11 @@ export function TokensPage() {
   const { tokens, loadTokens, loadTargets } = useGateway();
   const issuance = useTokenIssuance(loadTokens);
   const state = issuance.actionState;
-  const [connectorPermissionDialog, setConnectorPermissionDialog] = useState(null);
-  const [vaultPermissionDialog, setVaultPermissionDialog] = useState(null);
+  const [connectorPermissionDialog, setConnectorPermissionDialog] = useState<GatewayToken | null>(null);
+  const [vaultPermissionDialog, setVaultPermissionDialog] = useState<GatewayToken | null>(null);
   const { connectorPermissionState, loadAllConnectorPermissions } = useConnectorPermissions(tokens.data);
-  const [installDialog, setInstallDialog] = useState({ open: false, token: null, provider: "manual" });
-  const [revokeDialog, setRevokeDialog] = useState(null);
+  const [installDialog, setInstallDialog] = useState<TokenInstallState>({ open: false, token: null, provider: "manual" });
+  const [revokeDialog, setRevokeDialog] = useState<GatewayToken | null>(null);
   const { actionState: revokeState, runAction: runRevokeAction, resetAction: resetRevokeAction } = useAsyncAction();
   const [tokenFilter, setTokenFilter] = useState("active");
   const loadPermissionsForEffect = useEffectEvent(() => loadAllConnectorPermissions(tokens.data));
@@ -71,7 +81,8 @@ export function TokensPage() {
     await Promise.all([loadTargets(), loadAllConnectorPermissions(tokenItems)]);
   }
 
-  async function revokeToken(token) {
+  async function revokeToken(token: GatewayToken | null) {
+    if (!token) return;
     const revoked = await runRevokeAction({
       pending: "revoking",
       successMessage: `${token.name} revoked.`,
@@ -84,7 +95,7 @@ export function TokensPage() {
     if (revoked === true) setRevokeDialog(null);
   }
 
-  function openRevokeDialog(token) {
+  function openRevokeDialog(token: GatewayToken) {
     resetRevokeAction();
     setRevokeDialog(token);
   }
@@ -252,13 +263,17 @@ export function TokensPage() {
         key={connectorPermissionDialog?.id || "closed-connector-permissions"}
         token={connectorPermissionDialog}
         onClose={() => setConnectorPermissionDialog(null)}
-        onSaved={() => loadAllConnectorPermissions(tokens.data)}
+        onSaved={async () => {
+          await loadAllConnectorPermissions(tokens.data);
+        }}
       />
       <VaultPermissionDialog
         key={vaultPermissionDialog?.id || "closed-vault-permissions"}
         token={vaultPermissionDialog}
         onClose={() => setVaultPermissionDialog(null)}
-        onSaved={() => loadAllConnectorPermissions(tokens.data)}
+        onSaved={async () => {
+          await loadAllConnectorPermissions(tokens.data);
+        }}
       />
       <TokenInstallDialog
         state={installDialog}
@@ -268,7 +283,7 @@ export function TokensPage() {
       <TokenRevokeDialog
         token={revokeDialog}
         actionState={revokeState.state}
-        error={revokeState.state === "error" ? revokeState.error : ""}
+        error={revokeState.state === "error" ? revokeState.error || "" : ""}
         onClose={closeRevokeDialog}
         onConfirm={() => revokeToken(revokeDialog)}
       />
@@ -276,30 +291,37 @@ export function TokensPage() {
   );
 }
 
-function useTokenIssuance(loadTokens) {
+function useTokenIssuance(loadTokens: () => Promise<GatewayToken[]>) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [createdToken, setCreatedToken] = useState(null);
+  const [createdToken, setCreatedToken] = useState<CreatedGatewayToken | null>(null);
+  const issuancePending = useRef(false);
   const { actionState, runAction, resetAction } = useAsyncAction();
 
-  async function createToken(event) {
+  async function createToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = await runAction({
-      pending: "saving",
-      successMessage: "Token created.",
-      action: async () => {
-        const created = await apiPost("/api/tokens", tokenCreatePayload(form));
-        await loadTokens();
-        return created;
-      },
-    });
-    if (!token) return;
-    setCreatedToken(token);
-    setForm(emptyForm);
-    setDrawerOpen(false);
+    if (issuancePending.current) return;
+    issuancePending.current = true;
+    try {
+      const token = await runAction({
+        pending: "saving",
+        successMessage: "Token created.",
+        action: async () => {
+          const created = gatewayCreatedTokenResponse(await apiPost("/api/tokens", tokenCreatePayload(form)));
+          await loadTokens();
+          return created;
+        },
+      });
+      if (!token) return;
+      setCreatedToken(token);
+      setForm(emptyForm);
+      setDrawerOpen(false);
+    } finally {
+      issuancePending.current = false;
+    }
   }
 
-  function setDrawer(open) {
+  function setDrawer(open: boolean) {
     if (actionState.state === "saving") return;
     resetAction();
     setDrawerOpen(open);
@@ -318,7 +340,7 @@ function useTokenIssuance(loadTokens) {
   };
 }
 
-function TokenPageHeader({ onRefresh, onAdd }) {
+function TokenPageHeader({ onRefresh, onAdd }: { onRefresh: () => unknown | Promise<unknown>; onAdd: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -339,7 +361,7 @@ function TokenPageHeader({ onRefresh, onAdd }) {
   );
 }
 
-function TokenStats({ stats, filter, onFilter }) {
+function TokenStats({ stats, filter, onFilter }: { stats: TokenStatistics; filter: string; onFilter: (_value: string) => void }) {
   return (
     <div className="grid gap-3 md:grid-cols-4">
       <TokenStat icon={TicketCheck} label="Total tokens" value={stats.total} selected={filter === "all"} onClick={() => onFilter("all")} />
@@ -371,7 +393,21 @@ function TokenStats({ stats, filter, onFilter }) {
   );
 }
 
-function TokenCreateDrawer({ open, form, setForm, state, onClose, onSubmit }) {
+function TokenCreateDrawer({
+  open,
+  form,
+  setForm,
+  state,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  form: TokenForm;
+  setForm: Dispatch<SetStateAction<TokenForm>>;
+  state: AsyncActionState;
+  onClose: () => void;
+  onSubmit: (_event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
   return (
     <Drawer
       open={open}
@@ -383,11 +419,20 @@ function TokenCreateDrawer({ open, form, setForm, state, onClose, onSubmit }) {
       <form className="grid gap-4" onSubmit={onSubmit}>
         <Field>
           Name
-          <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
+          <Input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            required
+            disabled={state.state === "saving"}
+          />
         </Field>
         <Field>
           Expiration
-          <Select value={form.expires_in} onChange={(event) => setForm({ ...form, expires_in: event.target.value })}>
+          <Select
+            value={form.expires_in}
+            onChange={(event) => setForm({ ...form, expires_in: event.target.value })}
+            disabled={state.state === "saving"}
+          >
             {tokenExpiryOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -406,7 +451,7 @@ function TokenCreateDrawer({ open, form, setForm, state, onClose, onSubmit }) {
   );
 }
 
-function connectorGrantSummary(permissions) {
+function connectorGrantSummary(permissions: TokenActionPermission[]) {
   const active = permissions.filter((permission) => Boolean(effectiveRule(permission)));
   const kinds = [...new Set(active.map((permission) => permission.connector_kind).filter(Boolean))].sort();
   const targetProfiles = new Set(
@@ -419,7 +464,21 @@ function connectorGrantSummary(permissions) {
   };
 }
 
-function TokenStat({ icon: Icon, label, value, tone = "neutral", selected = false, onClick }) {
+function TokenStat({
+  icon: Icon,
+  label,
+  value,
+  tone = "neutral",
+  selected = false,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  tone?: Tone;
+  selected?: boolean;
+  onClick: () => void;
+}) {
   const tones = {
     neutral: selected
       ? "token-stat-neutral-selected border-stone-500 bg-stone-50 text-stone-950 ring-stone-300"
@@ -449,8 +508,8 @@ function TokenStat({ icon: Icon, label, value, tone = "neutral", selected = fals
   );
 }
 
-function tokenCreatePayload(form) {
-  const payload = { name: form.name };
+function tokenCreatePayload(form: TokenForm) {
+  const payload: { name: string; expires_at?: string } = { name: form.name };
   const option = tokenExpiryOptions.find((item) => item.value === form.expires_in);
   if (option?.ms) {
     payload.expires_at = new Date(Date.now() + option.ms).toISOString();
@@ -458,7 +517,7 @@ function tokenCreatePayload(form) {
   return payload;
 }
 
-function formatDate(value) {
+function formatDate(value?: string) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, {
     year: "numeric",

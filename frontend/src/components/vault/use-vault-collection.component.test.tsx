@@ -78,7 +78,7 @@ beforeEach(() => {
   apiPost.mockReset();
   apiPut.mockReset();
   apiGet.mockImplementation((path) => {
-    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
+    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project", target_count: 0 }] });
     if (path.startsWith("/api/vault-items")) return Promise.resolve({ items: [fixtureItem(1, "KEY")], total: 1 });
     throw new Error(`Unexpected path ${path}`);
   });
@@ -168,7 +168,7 @@ it("creates a generated item with metadata and no imported secret value", async 
 
 it("does not expose a malformed current Vault revision as an editable item", async () => {
   apiGet.mockImplementation((path) => Promise.resolve(path === "/api/projects"
-    ? { items: [{ id: 4, name: "My Project", slug: "my-project" }] }
+    ? { items: [{ id: 4, name: "My Project", slug: "my-project", target_count: 0 }] }
     : { items: [{ ...fixtureItem(1, "KEY"), metadata_revision: "1" }], total: 1 }));
   render(<CollectionHarness />);
   await waitFor(() => expect(screen.getByTestId("items-state")).toHaveTextContent("error:Invalid Vault metadata revision"));
@@ -277,7 +277,7 @@ it.each([
   const user = userEvent.setup();
   const pending = deferred();
   apiGet.mockImplementation((path) => {
-    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
+    if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project", target_count: 0 }] });
     if (path === "/api/vault-items") return pending.promise;
     if (path === "/api/vault-items?q=current") return Promise.resolve({ items: [fixtureItem(10, "CURRENT")], total: 1 });
     throw new Error(`Unexpected path ${path}`);

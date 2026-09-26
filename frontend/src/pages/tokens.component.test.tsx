@@ -1,10 +1,21 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiPost } from "../lib/api";
+import { apiPost as realPost } from "../lib/api";
 import { TokensPage } from "./tokens";
 
-const gateway = {
+import type { GatewayToken } from "../lib/gateway-contracts/core-resource-contracts";
+import type { PermissionState } from "../lib/use-connector-permissions";
+import type { TokenActionPermission } from "../lib/gateway-contracts/security-contracts";
+import type { Mock } from "vitest";
+const apiPost = vi.mocked(realPost);
+const emptyPermissions = (): PermissionState => ({ state: "ready", data: {}, error: null, revisionsByToken: {}, actionsByTargetRef: {} });
+
+const gateway: {
+  tokens: { state: string; data: GatewayToken[]; error: string | null };
+  loadTokens: Mock<() => Promise<GatewayToken[]>>;
+  loadTargets: Mock<() => Promise<unknown[]>>;
+} = {
   tokens: {
     state: "ready",
     data: [{ id: 7, name: "maintenance", token: "aip_masked", created_at: "2026-08-31T00:00:00Z" }],
@@ -14,8 +25,8 @@ const gateway = {
   loadTargets: vi.fn(async () => []),
 };
 const connectorPermissions = {
-  state: { state: "ready", data: {}, error: null },
-  load: vi.fn(async () => ({})),
+  state: emptyPermissions(),
+  load: vi.fn(async (_tokens: GatewayToken[]) => ({})),
 };
 
 vi.mock("../lib/api", async () => ({ ...(await vi.importActual("../lib/api")), apiPost: vi.fn() }));
@@ -28,8 +39,8 @@ vi.mock("../lib/use-connector-permissions", () => ({
 }));
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((resolvePromise) => {
+  let resolve!: (_value: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
@@ -41,7 +52,7 @@ describe("TokensPage", () => {
     gateway.loadTokens.mockClear();
     gateway.loadTargets.mockClear();
     connectorPermissions.load.mockClear();
-    connectorPermissions.state = { state: "ready", data: {}, error: null };
+    connectorPermissions.state = emptyPermissions();
     gateway.tokens.data = [{ id: 7, name: "maintenance", token: "aip_masked", created_at: "2026-08-31T00:00:00Z" }];
   });
 
@@ -76,6 +87,21 @@ describe("TokensPage", () => {
     expect(apiPost).toHaveBeenCalledWith("/api/tokens", expect.objectContaining({ name: "review-agent", expires_at: expect.any(String) }));
     expect(await screen.findByText("Token created.")).toBeVisible();
     expect(gateway.loadTokens).toHaveBeenCalled();
+  });
+
+  it("keeps the creation form open when a response has no show-once token", async () => {
+    const user = userEvent.setup();
+    apiPost.mockResolvedValue({ id: 8, name: "review-agent" });
+    render(<TokensPage />);
+    await user.click(screen.getByRole("button", { name: "Add token" }));
+    await user.click(screen.getByRole("button", { name: "Create token" }));
+    expect(await screen.findAllByText("Invalid created token response.")).not.toHaveLength(0);
+    expect(screen.getByRole("heading", { name: "Add API token" })).toBeVisible();
+    expect(screen.queryByText("Token created.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toBeEnabled();
+    apiPost.mockResolvedValueOnce({ id: 8, name: "retry-agent", token: "fixture-retry" });
+    await user.click(screen.getByRole("button", { name: "Create token" }));
+    expect(await screen.findByText("retry-agent token created.")).toBeVisible();
   });
 
   it("moves a token to expired state at its expiry boundary", async () => {
@@ -120,6 +146,24 @@ describe("TokensPage", () => {
     expect(screen.getByText("old-agent token created.")).toBeVisible();
     expect(screen.getByDisplayValue("aip_old_secret")).toBeVisible();
     expect(screen.getByText("Token created.")).toBeVisible();
+  });
+
+  it("locks the submitted draft and rejects duplicate token issuance", async () => {
+    const user = userEvent.setup();
+    const pending = deferred();
+    apiPost.mockReturnValueOnce(pending.promise);
+    render(<TokensPage />);
+    await user.click(screen.getByRole("button", { name: "Add token" }));
+    const name = screen.getByLabelText("Name");
+    const form = name.closest("form");
+    if (!form) throw new Error("Missing token form");
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(name).toBeDisabled();
+    expect(screen.getByLabelText("Expiration")).toBeDisabled();
+    await act(async () => pending.resolve({ id: 8, name: "cursor-maintenance", token: "fixture-created" }));
+    expect(screen.getByText("cursor-maintenance token created.")).toBeVisible();
   });
 
   it("filters expired and revoked tokens without enabling their actions", async () => {
@@ -168,13 +212,12 @@ describe("TokensPage", () => {
 
   it("summarizes active connector grants by kind and target profile", () => {
     connectorPermissions.state = {
-      state: "ready",
-      error: null,
+      ...emptyPermissions(),
       data: {
         7: [
-          { connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "always_run" },
-          { connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "approval_required" },
-          { connector_kind: "ssh", target_id: 4, profile_id: 5, execution_rule: "blocked" },
+          permissionFixture({ connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "always_run" }),
+          permissionFixture({ connector_kind: "postgres", target_id: 2, profile_id: 3, execution_rule: "approval_required" }),
+          permissionFixture({ connector_kind: "ssh", target_id: 4, profile_id: 5, execution_rule: "blocked" }),
         ],
       },
     };
@@ -186,3 +229,24 @@ describe("TokensPage", () => {
     expect(screen.getByText("3 action grants / 2 target profiles")).toBeVisible();
   });
 });
+
+function permissionFixture(overrides: Partial<TokenActionPermission>): TokenActionPermission {
+  return {
+    connector_kind: "fixture",
+    target_id: 1,
+    profile_id: 1,
+    action_name: "inspect",
+    execution_rule: "always_run",
+    created_at: "2026-09-26",
+    updated_at: "2026-09-26",
+    profile_kind: "default",
+    profile_label: "main",
+    target_name: "Target",
+    target_ref: "fixture:1:1",
+    project_id: 1,
+    project_name: "My Project",
+    project_slug: "my-project",
+    project_enabled: true,
+    ...overrides,
+  };
+}

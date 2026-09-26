@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { credentialResourcesResponse, gatewayStatusResponse, gatewayTargetsResponse, gatewayTokensResponse, mcpRuntimeResponse } from "./core-resource-contracts.ts";
+import { credentialResourcesResponse, gatewayCreatedTokenResponse, gatewayStatusResponse, gatewayTargetsResponse, gatewayTokensResponse, mcpRuntimeResponse } from "./core-resource-contracts.ts";
 
 const target = { target_id: 1, profile_id: 2, project_id: 3, connector_kind: "fixture", ref: "fixture:1:2", target_name: "Target",
   profile_kind: "default", profile_label: "main", project_name: "My Project", project_slug: "my-project", status: "active",
@@ -21,6 +21,14 @@ it("validates token identity and lifecycle metadata", () => {
   const token = { id: 1, name: "Client", token: "fixture-token", expires_at: "", revoked_at: "", created_at: "now", updated_at: "now" };
   expect(gatewayTokensResponse([token])).toEqual([token]);
   expect(gatewayTokensResponse([])).toEqual([]);
+});
+
+it("requires a show-once token value in creation responses", () => {
+  const token = { id: 1, name: "Client", token: "fixture-token" };
+  expect(gatewayCreatedTokenResponse(token)).toEqual(token);
+  for (const invalid of [{ ...token, token: undefined }, { ...token, token: "" }, { ...token, id: "1" }]) {
+    expect(() => gatewayCreatedTokenResponse(invalid)).toThrow("Invalid created token");
+  }
 });
 
 it.each([null, {}, [{}], [{ id: 1, name: null }], [{ id: 0, name: "Client" }], [{ id: 1, name: "Client", expires_at: {} }]])(
