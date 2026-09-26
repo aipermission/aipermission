@@ -32,9 +32,9 @@ describe("permission helpers", () => {
       "2099-01-01T00:00:00+00:60",
     ]) {
       const malformed = { execution_rule: "always_run", expires_at };
-      expect(permissionExpired(malformed, now)).toBe(true);
-      expect(effectiveRule(malformed, now)).toBe("");
-      expect(permissionLifetimeLabel(malformed, now)).toBe("Invalid expiry");
+      expect(Reflect.apply(permissionExpired, null, [malformed, now])).toBe(true);
+      expect(Reflect.apply(effectiveRule, null, [malformed, now])).toBe("");
+      expect(Reflect.apply(permissionLifetimeLabel, null, [malformed, now])).toBe("Invalid expiry");
     }
     expect(permissionExpired(expired, now)).toBe(true);
     expect(effectiveRule(expired, now)).toBe("");

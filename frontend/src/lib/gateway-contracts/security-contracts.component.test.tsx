@@ -13,7 +13,7 @@ import {
 } from "./security-contracts";
 
 describe("typed untrusted gateway contracts", () => {
-  const action = (overrides = {}) => ({
+  const action = (overrides: Record<string, unknown> = {}) => ({
     status: "completed",
     request_id: 1,
     target_ref: "test:1:1",
@@ -93,7 +93,7 @@ describe("typed untrusted gateway contracts", () => {
   });
 
   it("binds connector decision envelopes to the displayed approval", () => {
-    const expected = { id: 1, targetRef: "fixture:2:3", actionName: "read", statuses: ["completed", "running"] };
+    const expected = { id: 1, targetRef: "fixture:2:3", actionName: "read", statuses: ["completed", "running"] as const };
     expect(parseConnectorApproval(connectorApproval({ status: "completed", approval_context_hash: "" }), expected)).toMatchObject({
       id: 1,
       status: "completed",
@@ -264,7 +264,7 @@ describe("typed untrusted gateway contracts", () => {
   });
 });
 
-function connectorApproval(overrides = {}) {
+function connectorApproval(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     status: "approval_pending",
@@ -282,7 +282,7 @@ function connectorApproval(overrides = {}) {
   };
 }
 
-function vaultApproval(overrides = {}) {
+function vaultApproval(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     status: "approval_pending",

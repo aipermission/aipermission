@@ -4,13 +4,13 @@ import { idleActionState, useAsyncAction } from "./use-async-action";
 
 describe("useAsyncAction", () => {
   it("exposes pending state and resolves with a success message", async () => {
-    let resolveAction;
-    const action = new Promise((resolve) => {
+    let resolveAction!: (_value: string) => void;
+    const action = new Promise<string>((resolve) => {
       resolveAction = resolve;
     });
     const { result } = renderHook(() => useAsyncAction());
 
-    let run;
+    let run: Promise<string | undefined> | undefined;
     act(() => {
       run = result.current.runAction({ pending: "uploading", successMessage: (value) => `Saved ${value}`, action: () => action });
     });
@@ -45,12 +45,12 @@ describe("useAsyncAction", () => {
   });
 
   it("does not let an older action overwrite the latest action state", async () => {
-    let resolveFirst;
-    let resolveSecond;
-    const first = new Promise((resolve) => {
+    let resolveFirst!: (_value: string) => void;
+    let resolveSecond!: (_value: string) => void;
+    const first = new Promise<string>((resolve) => {
       resolveFirst = resolve;
     });
-    const second = new Promise((resolve) => {
+    const second = new Promise<string>((resolve) => {
       resolveSecond = resolve;
     });
     const { result } = renderHook(() => useAsyncAction());
@@ -69,13 +69,13 @@ describe("useAsyncAction", () => {
   });
 
   it("invalidates an in-flight action when reset", async () => {
-    let resolveAction;
-    const action = new Promise((resolve) => {
+    let resolveAction!: (_value: string) => void;
+    const action = new Promise<string>((resolve) => {
       resolveAction = resolve;
     });
     const { result } = renderHook(() => useAsyncAction());
 
-    let run;
+    let run: Promise<string | undefined> | undefined;
     act(() => {
       run = result.current.runAction({ successMessage: "late", action: () => action });
       result.current.resetAction();
