@@ -9,8 +9,12 @@ import { KubernetesResourceWorkspace } from "./kubernetes/resource-workspace";
 import { RedisKeyBrowser } from "./redis/key-browser";
 import { RedisValueWorkspace } from "./redis/value-workspace";
 import { S3ConnectorConsoleTemplate } from "./s3/console";
+import type { ComponentProps } from "react";
+import { connectorConsoleTheme } from "./_shared/console-theme";
+import { emptyRedisConfirmDialog } from "./redis/use-redis-mutations";
+import { connectorActionFixture } from "../../test/connector-action-fixtures";
 
-const styles = { border: "border", subtlePanel: "panel", muted: "muted", input: "input", rowHover: "hover", activeRow: "active" };
+const styles = connectorConsoleTheme("dark");
 
 vi.mock("./s3/use-s3-browser", () => ({
   useS3Browser: () => ({ activeSession: { active: false, startedAt: "" } }),
@@ -32,13 +36,13 @@ it("drives the split Kafka browser and detail controls", async () => {
     messages: [{ offset: 4 }],
     readForm: { partition: "0", start_position: "recent", max_records: "10", offset: "0" },
     state: { state: "idle", error: "", message: "" },
-    changeView: vi.fn(),
+    changeView: vi.fn<ComponentProps<typeof KafkaResourceBrowser>["browser"]["changeView"]>(),
     setQuery: vi.fn(),
     refreshList: vi.fn(),
     selectItem: vi.fn(),
     setReadForm: vi.fn(),
-    readMessages: vi.fn(),
-  };
+    readMessages: vi.fn().mockResolvedValue(undefined),
+  } satisfies ComponentProps<typeof KafkaResourceBrowser>["browser"] & ComponentProps<typeof KafkaResourceDetail>["browser"];
   const writes = { openPublishDialog: vi.fn(), openOffsetDialog: vi.fn(), offsetPartitions: [] };
   const { rerender } = render(
     <>
@@ -58,16 +62,21 @@ it("drives the split Kafka browser and detail controls", async () => {
   expect(writes.openPublishDialog).toHaveBeenCalledOnce();
   expect(browser.readMessages).toHaveBeenCalledOnce();
 
-  rerender(<KafkaResourceBrowser browser={{ ...browser, filteredItems: [], state: { state: "loading" } }} styles={styles} />);
+  rerender(
+    <KafkaResourceBrowser
+      browser={{ ...browser, filteredItems: [], state: { state: "loading", error: "", message: "" } }}
+      styles={styles}
+    />,
+  );
   expect(screen.getByText("Loading topics...")).toBeVisible();
 });
 
 it("drives the split Kubernetes browser, detail, and workspace", async () => {
   const user = userEvent.setup();
-  const pod = { name: "api-1", namespace: "default", status: "Running", ready: "1/1", restarts: 0 };
+  const pod = { name: "api-1", namespace: "default", phase: "Running", ready: "1/1", restarts: 0 };
   const browser = {
     tab: "pods",
-    activeTab: { label: "Pods" },
+    activeTab: { key: "pods", label: "Pods", action: "list_pods", output: "pods" },
     namespace: "",
     namespaces: [{ name: "default" }],
     filter: "",
@@ -76,9 +85,9 @@ it("drives the split Kubernetes browser, detail, and workspace", async () => {
     selectedKey: "default/api-1",
     selectedResource: pod,
     latestAction: { status: "completed", action_name: "get_logs" },
-    state: { state: "idle" },
+    state: { state: "idle", error: "", message: "" },
     viewMode: "detail",
-    detail: { output: { resource: pod } },
+    detail: connectorActionFixture({ output: { resource: pod } }),
     logs: "ready",
     resultSearch: "",
     selectedPodConsoleLive: false,
@@ -89,22 +98,22 @@ it("drives the split Kubernetes browser, detail, and workspace", async () => {
     setFilter: vi.fn(),
     selectResource: vi.fn(),
     setResultSearch: vi.fn(),
-    readLogs: vi.fn(),
-    openPodConsole: vi.fn(),
-    startPodConsole: vi.fn(),
-  };
+    readLogs: vi.fn().mockResolvedValue(undefined),
+    openPodConsole: vi.fn().mockResolvedValue(undefined),
+    startPodConsole: vi.fn().mockResolvedValue(undefined),
+  } satisfies ComponentProps<typeof KubernetesResourceBrowser>["browser"] & ComponentProps<typeof KubernetesResourceWorkspace>["browser"];
   const restart = { open: vi.fn() };
   render(
     <>
       <KubernetesResourceBrowser browser={browser} styles={styles} theme="dark" />
-      <KubernetesResourceWorkspace browser={browser} restart={restart} target={{}} theme="dark" session={{}} styles={styles} />
+      <KubernetesResourceWorkspace browser={browser} restart={restart} theme="dark" styles={styles} />
     </>,
   );
 
   await user.click(screen.getByRole("tab", { name: "Nodes" }));
   await user.selectOptions(screen.getByRole("combobox", { name: "Kubernetes namespace" }), "default");
   await user.type(screen.getByRole("textbox", { name: "Filter pods" }), "api");
-  await user.click(screen.getAllByRole("button", { name: /api-1/ })[0]);
+  await user.click(screen.getByRole("button", { name: /api-1/ }));
   await user.click(screen.getByRole("button", { name: "Logs" }));
   await user.click(screen.getByRole("button", { name: "Open live console inside this pod" }));
   expect(browser.switchTab).toHaveBeenCalledWith("nodes");
@@ -115,7 +124,7 @@ it("drives the split Kubernetes browser, detail, and workspace", async () => {
   const { rerender } = render(
     <KubernetesResourceDetail
       tab="nodes"
-      resource={{ name: "worker-1", status: "Ready" }}
+      resource={{ name: "worker-1", ready: "Ready" }}
       detail={null}
       logs=""
       search=""
@@ -145,7 +154,7 @@ it("drives the split Redis key and value surfaces", async () => {
     state: { state: "idle", error: "", message: "" },
     resultMode: "value",
     creatingKey: false,
-    keyResult: { type: "string", value: "hello", ttl: 60 },
+    keyResult: { key: "user:1", type: "string", value: "hello", ttl_ms: 60000 },
     ttlDraft: "60",
     canUpdateTTL: true,
     canSaveString: true,
@@ -158,7 +167,7 @@ it("drives the split Redis key and value surfaces", async () => {
     startNewKey: vi.fn(),
     canStartNewKey: true,
     setSelectedKeys: vi.fn(),
-    loadKey: vi.fn(),
+    loadKey: vi.fn().mockResolvedValue(undefined),
     toggleSelection: vi.fn(),
     deleteSelected: vi.fn(),
     setResultMode: vi.fn(),
@@ -166,7 +175,14 @@ it("drives the split Redis key and value surfaces", async () => {
     updateTTL: vi.fn(),
     saveStringValue: vi.fn(),
     setValueDraft: vi.fn(),
-  };
+    activeSession: { active: true, startedAt: "2026-01-01T00:00:00Z" },
+    activeStringIsEditable: true,
+    setNewKey: vi.fn(),
+    setNewValue: vi.fn(),
+    confirmDialog: emptyRedisConfirmDialog,
+    closeConfirmDialog: vi.fn(),
+    confirmPendingAction: vi.fn().mockResolvedValue(undefined),
+  } satisfies ComponentProps<typeof RedisKeyBrowser>["browser"] & ComponentProps<typeof RedisValueWorkspace>["browser"];
   const view = render(
     <>
       <RedisKeyBrowser browser={browser} styles={styles} />
@@ -201,7 +217,7 @@ it("renders the split S3 console empty-session contract", async () => {
   render(
     <S3ConnectorConsoleTemplate
       target={{ ref: "s3:1:1", config: { host: "s3.example", bucket: "docs" } }}
-      approvals={[]}
+      approvals={{ data: [] }}
       theme="dark"
       session={{ active: false }}
       onNewStructuredSession={onStart}

@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
+import type { Browser } from "@playwright/test";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = join(currentDir, "..", "..");
@@ -26,19 +27,21 @@ test("connector template registry evaluates at runtime", async () => {
   const address = server.httpServer?.address();
   assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
   const baseURL = `http://127.0.0.1:${address.port}/`;
-  let browser;
+  let browser: Browser | undefined;
   try {
     browser = await chromium.launch();
     const page = await browser.newPage();
-    const pageErrors = [];
+    const pageErrors: Error[] = [];
     page.on("pageerror", (error) => pageErrors.push(error));
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     const registryResult = await page.evaluate(async (expectedKinds) => {
       const registry = await import("/src/connectors/templates/registry.jsx");
       const redisTemplate = registry.getConnectorTemplate("redis");
-      const redisModel = redisTemplate.model;
-      const clickHouseModel = registry.getConnectorModel("clickhouse");
-      const rabbitMQModel = registry.getConnectorModel("rabbitmq");
+      if (!redisTemplate) throw new Error("Redis template is missing");
+      const redisModel = await import("/src/connectors/templates/redis/model.ts");
+      const clickHouseModel = await import("/src/connectors/templates/clickhouse/model.ts");
+      const rabbitMQModel = await import("/src/connectors/templates/rabbitmq/model.ts");
+      if (redisTemplate.model !== redisModel) throw new Error("Redis registry does not expose the owned model");
       const valkeyTarget = {
         id: 8,
         connector_kind: "redis",
@@ -58,7 +61,7 @@ test("connector template registry evaluates at runtime", async () => {
           defaultFamily: redisModel.emptyForm().server_family,
           valkeyLabel: redisModel.serverProductLabel(valkeyTarget),
           formFamily: redisModel.formFromTarget({ target: valkeyTarget, profile: valkeyTarget.profiles[0] }).server_family,
-          credentialLabel: redisModel.credentialRows({ targets: [valkeyTarget] })[0].connector_label,
+          credentialLabel: redisModel.credentialRows({ targets: [valkeyTarget] })[0]?.connector_label,
           targetSubtitle: redisModel.targetSubtitle({ target: valkeyTarget }),
           blankValueError: redisModel.validateStringWrite({ key: "smoke:key", value: "" }),
           validValueError: redisModel.validateStringWrite({ key: "smoke:key", value: "ready" }),
@@ -70,16 +73,22 @@ test("connector template registry evaluates at runtime", async () => {
             rabbitmq: rabbitMQModel.emptyForm().scheme,
           },
           legacyTarget: {
-            clickhouse: clickHouseModel.formFromTarget({ target: { name: "legacy", config: {}, profiles: [] } }).tls_mode,
+            clickhouse: clickHouseModel.formFromTarget({
+              target: { id: 1, connector_kind: "clickhouse", name: "legacy", config: {}, profiles: [] },
+            }).tls_mode,
             redis: redisModel.formFromTarget({ target: { name: "legacy", config: {}, profiles: [] } }).tls_mode,
-            rabbitmq: rabbitMQModel.formFromTarget({ target: { name: "legacy", config: {}, profiles: [] } }).scheme,
+            rabbitmq: rabbitMQModel.formFromTarget({
+              target: { id: 1, connector_kind: "rabbitmq", name: "legacy", config: {}, profiles: [] },
+            }).scheme,
           },
           explicitTarget: {
             clickhouse: clickHouseModel.formFromTarget({
-              target: { name: "saved", config: { tls_mode: "verify_full" }, profiles: [] },
+              target: { id: 1, connector_kind: "clickhouse", name: "saved", config: { tls_mode: "verify_full" }, profiles: [] },
             }).tls_mode,
             redis: redisModel.formFromTarget({ target: { name: "saved", config: { tls_mode: "verify_full" }, profiles: [] } }).tls_mode,
-            rabbitmq: rabbitMQModel.formFromTarget({ target: { name: "saved", config: { scheme: "https" }, profiles: [] } }).scheme,
+            rabbitmq: rabbitMQModel.formFromTarget({
+              target: { id: 1, connector_kind: "rabbitmq", name: "saved", config: { scheme: "https" }, profiles: [] },
+            }).scheme,
           },
         },
       };
