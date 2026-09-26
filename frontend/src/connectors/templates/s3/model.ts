@@ -5,6 +5,7 @@ import {
   createTargetProfileLifecycle,
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 export type S3Profile = {
   id: number;
@@ -52,7 +53,7 @@ export type S3Form = {
   session_token: string;
   risk_label: string;
   profile_id?: string;
-  project_id?: number;
+  project_id?: string | number;
 };
 
 type S3CredentialForm = Pick<S3Form, "profile_label" | "access_key_id" | "secret_access_key" | "session_token" | "risk_label"> & {
@@ -231,7 +232,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }: { target?: S3Target | null }) {
+export function deleteDialog({ target }: { target?: S3Target | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this S3 connector target, credential profiles, and token action permissions from AIPermission.",

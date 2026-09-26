@@ -3,6 +3,7 @@ import { MailCredentialFormTemplate } from "./credential-form";
 import { mailCredentialFamily } from "./credential-family";
 
 export { mailCredentialFamily as credentialFamily } from "./credential-family";
+export { mailConnectorFamily as connectorFamily } from "./connector-family";
 import { MailConnectorFormTemplate } from "./form";
 import { MailConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";

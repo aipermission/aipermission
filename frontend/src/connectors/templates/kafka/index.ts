@@ -3,6 +3,7 @@ import { KafkaCredentialFormTemplate } from "./credential-form";
 import { kafkaCredentialFamily } from "./credential-family";
 
 export { kafkaCredentialFamily as credentialFamily } from "./credential-family";
+export { kafkaConnectorFamily as connectorFamily } from "./connector-family";
 import { KafkaConnectorFormTemplate } from "./form";
 import { KafkaConnectorRowActionsTemplate } from "./list-item";
 import { KafkaConnectorOperationsTemplate } from "./operations";
