@@ -1,17 +1,17 @@
-import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useGateway } from "../lib/gateway-context";
-import { Badge } from "../components/ui/badge";
-import { ActionMenu } from "../components/ui/action-menu";
-import { Button } from "../components/ui/button";
-import { Dialog } from "../components/ui/dialog";
 import { Drawer } from "../components/ui/drawer";
 import { Notice } from "../components/ui/notice";
-import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../connectors/templates/common";
+import { connectorKindLabel } from "../connectors/templates/common";
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 import { useCredentialProfileEditor } from "../connectors/editor/use-credential-profile-editor";
 import { useCredentialInventory } from "../connectors/editor/use-credential-inventory";
+import { AddCredentialMenu } from "../connectors/editor/credential-menu";
+import { CredentialRow as CredentialDisplayRow } from "../connectors/editor/credential-row";
+import { DeleteCredentialDialog, defaultCredentialDeleteDialog } from "../connectors/editor/credential-delete-dialog";
+
+export { AddCredentialMenu } from "../connectors/editor/credential-menu";
 
 function emptyCredentialState(kind, options = {}) {
   return getConnectorModel(kind)?.emptyCredentialState?.(options) || {};
@@ -169,150 +169,15 @@ export function CredentialsPage() {
   );
 }
 
-function defaultCredentialDeleteDialog(row) {
-  return {
-    title: `Delete ${row.name}`,
-    description: "Remove this connector credential profile from aipermission.",
-    details: [
-      { label: "Connector", value: row.connector_label },
-      { label: "Credential", value: row.name },
-      { label: "Target", value: row.target_label },
-    ],
-    notice:
-      "This removes the locally stored credential profile. Connector-provisioned credentials may perform connector-owned external cleanup first.",
-    confirmLabel: "Delete credential",
-  };
-}
-
-function DeleteCredentialDialog({ value, state, onClose, onDelete }) {
-  const dialog = value.dialog;
-  const deleting = state.state === "deleting";
-  return (
-    <Dialog
-      open={value.open}
-      title={dialog?.title || "Delete credential"}
-      description={dialog?.description}
-      onClose={onClose}
-      closeDisabled={deleting}
-      size="md"
-    >
-      {value.row ? (
-        <div className="grid gap-4">
-          <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
-            {(dialog?.details || [])
-              .filter((item) => item.value)
-              .map((item) => (
-                <p className="mt-1 first:mt-0" key={item.label}>
-                  <span className="font-semibold">{item.label}: </span>
-                  <span>{item.value}</span>
-                </p>
-              ))}
-          </div>
-          {dialog?.notice ? <Notice tone="warn">{dialog.notice}</Notice> : null}
-          {value.attempted && state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button type="button" variant="danger" onClick={onDelete} disabled={deleting}>
-              {deleting ? "Deleting..." : dialog?.confirmLabel || "Delete credential"}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </Dialog>
-  );
-}
-
-export function AddCredentialMenu({ kinds, onAdd }) {
-  return (
-    <ActionMenu
-      trigger={
-        <>
-          <Plus className="h-4 w-4" />
-          Add credential
-          <ChevronDown className="h-4 w-4" />
-        </>
-      }
-      items={kinds}
-      renderItem={(kind) => (
-        <span className="flex gap-3">
-          <ConnectorIcon kind={kind} className="mt-0.5 h-4 w-4 shrink-0 text-emerald-900" />
-          <span className="min-w-0">
-            <span className="block font-semibold">{connectorKindLabel(kind)}</span>
-            <span className="mt-1 block text-xs text-stone-500">{connectorSummary(kind)}</span>
-          </span>
-        </span>
-      )}
-      onSelect={onAdd}
-      label="Credential connector types"
-      panelClassName="w-[min(320px,calc(100vw-32px))]"
-      empty={<div className="px-2 py-1 text-sm text-stone-500">No backend-supported connector templates are available.</div>}
-    />
-  );
-}
-
 function CredentialRow({ row, onEdit, onDelete, busy }) {
   const CredentialRowActionsTemplate = getConnectorTemplate(row.connector_kind)?.CredentialRowActions || null;
   return (
-    <tr className="align-top" key={row.row_id}>
-      <td className="px-4 py-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <ConnectorIcon kind={row.connector_kind} className="h-4 w-4 shrink-0 text-emerald-900" />
-          <span className="truncate font-semibold">{row.connector_label}</span>
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="grid gap-1">
-          <span className="truncate font-semibold">{row.name}</span>
-          <Badge className="w-fit">{row.kind}</Badge>
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="grid gap-1">
-          <span className="truncate text-sm text-stone-700">{row.target_label}</span>
-          {row.target_detail ? <span className="truncate font-mono text-xs text-stone-500">{row.target_detail}</span> : null}
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="grid gap-1 text-xs text-stone-500">
-          {row.metadata.map((item) => (
-            <span className="truncate" key={item}>
-              {item}
-            </span>
-          ))}
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="flex justify-end gap-2">
-          {CredentialRowActionsTemplate ? <CredentialRowActionsTemplate row={row} /> : null}
-          {!CredentialRowActionsTemplate ? <span className="text-xs text-stone-400">None</span> : null}
-        </div>
-      </td>
-      <td className="px-4 py-4">
-        <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 w-9 px-0"
-            title="Edit credential"
-            onClick={() => onEdit(row)}
-            disabled={busy}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 w-9 px-0"
-            title={row.delete_disabled ? row.delete_disabled : "Delete credential"}
-            onClick={() => onDelete(row)}
-            disabled={Boolean(row.delete_disabled) || busy}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </td>
-    </tr>
+    <CredentialDisplayRow
+      row={row}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      busy={busy}
+      operations={CredentialRowActionsTemplate ? <CredentialRowActionsTemplate row={row} /> : null}
+    />
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
+import { Link, Outlet, useLocation } from "react-router";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -7,11 +8,50 @@ import App from "./App";
 import { apiGet } from "./lib/api";
 import { errorMessage } from "./lib/errors.ts";
 import type { UnlockPage, UnlockShell } from "./pages/unlock.tsx";
+import type { Shell } from "./components/app-shell.tsx";
+
+const { setTheme, consoleModule } = vi.hoisted(() => {
+  let resolve!: () => void;
+  const ready = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { setTheme: vi.fn(), consoleModule: { ready, resolve } };
+});
 
 vi.mock("./lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./lib/api")>()), apiGet: vi.fn() }));
-vi.mock("./lib/theme", () => ({ useTheme: () => ({ theme: "dark", setTheme: vi.fn() }) }));
-vi.mock("./pages/settings", () => ({ SettingsPage: () => null }));
-vi.mock("./components/app-shell", () => ({ Shell: () => <span>Unlocked workspace</span> }));
+vi.mock("./lib/theme", () => ({ useTheme: () => ({ theme: "dark", setTheme }) }));
+vi.mock("./pages/dashboard", () => ({ DashboardPage: () => <h1>Dashboard route</h1> }));
+vi.mock("./pages/credentials", () => ({ CredentialsPage: () => <h1>Credentials route</h1> }));
+vi.mock("./pages/connectors", () => ({ ConnectorsPage: () => <h1>Connectors route</h1> }));
+vi.mock("./pages/projects", () => ({ ProjectsPage: () => <h1>Projects route</h1> }));
+vi.mock("./pages/vault", () => ({ VaultPage: () => <h1>Vault route</h1> }));
+vi.mock("./pages/history", () => ({ HistoryPage: () => <h1>History route</h1> }));
+vi.mock("./pages/audit-logs", () => ({ AuditLogsPage: () => <h1>Audit logs route</h1> }));
+vi.mock("./pages/tokens", () => ({ TokensPage: () => <h1>Tokens route</h1> }));
+vi.mock("./pages/security", () => ({ SecurityPage: () => <h1>Security route</h1> }));
+vi.mock("./pages/settings", () => ({ SettingsPage: () => <h1>Settings route</h1> }));
+vi.mock("./pages/mcp-setup", () => ({ MCPSetupPage: () => <h1>MCP setup route</h1> }));
+vi.mock("./pages/console", async () => {
+  await consoleModule.ready;
+  return { ConsolePage: () => <h1>Console route</h1> };
+});
+vi.mock("./components/app-shell", () => ({
+  Shell: ({ theme, setTheme }: ComponentProps<typeof Shell>) => {
+    const location = useLocation();
+    return (
+      <div>
+        <span>Unlocked workspace</span>
+        <span>Theme: {theme}</span>
+        <output aria-label="Current route">{location.pathname}</output>
+        <Link to="/credentials">Credentials</Link>
+        <button type="button" onClick={() => setTheme("light")}>
+          Use light theme
+        </button>
+        <Outlet />
+      </div>
+    );
+  },
+}));
 vi.mock("./pages/unlock", () => ({
   UnlockShell: ({ title, children }: ComponentProps<typeof UnlockShell>) => (
     <div>
@@ -19,10 +59,11 @@ vi.mock("./pages/unlock", () => ({
       {children}
     </div>
   ),
-  UnlockPage: ({ onUnlocked }: ComponentProps<typeof UnlockPage>) => {
+  UnlockPage: ({ status, onUnlocked }: ComponentProps<typeof UnlockPage>) => {
     const [error, setError] = useState("");
     return (
       <div>
+        <span>Unlock state: {status?.state}</span>
         <button
           type="button"
           onClick={() =>
@@ -38,7 +79,101 @@ vi.mock("./pages/unlock", () => ({
 }));
 
 const get = vi.mocked(apiGet);
-beforeEach(() => get.mockReset());
+beforeEach(() => {
+  get.mockReset();
+  setTheme.mockReset();
+  window.history.replaceState(null, "", "/");
+});
+
+it.each([
+  ["/", "Dashboard route"],
+  ["/credentials", "Credentials route"],
+  ["/connectors", "Connectors route"],
+  ["/projects", "Projects route"],
+  ["/vault", "Vault route"],
+  ["/history", "History route"],
+  ["/audit-logs", "Audit logs route"],
+  ["/tokens", "Tokens route"],
+  ["/security", "Security route"],
+  ["/settings", "Settings route"],
+  ["/mcp-setup", "MCP setup route"],
+])("renders %s inside the unlocked workspace", async (path, heading) => {
+  window.history.replaceState(null, "", path);
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+  expect(screen.getByText("Unlocked workspace")).toBeVisible();
+  expect(screen.getByLabelText("Current route").textContent).toBe(path);
+});
+
+it.each([
+  ["/servers", "/connectors", "Connectors route"],
+  ["/backup", "/settings", "Settings route"],
+  ["/not-a-route", "/", "Dashboard route"],
+])("replaces %s with %s", async (path, destination, heading) => {
+  window.history.replaceState(null, "", path);
+  const historyLength = window.history.length;
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+  expect(window.location.pathname).toBe(destination);
+  expect(window.history.length).toBe(historyLength);
+});
+
+it("shows the console loading notice until the lazy page is available", async () => {
+  window.history.replaceState(null, "", "/console");
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+
+  render(<App />);
+
+  expect(await screen.findByText("Loading console...")).toBeVisible();
+  expect(screen.getByText("Unlocked workspace")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Console route" })).not.toBeInTheDocument();
+
+  await act(async () => consoleModule.resolve());
+
+  expect(await screen.findByRole("heading", { name: "Console route" })).toBeVisible();
+  expect(screen.queryByText("Loading console...")).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe("/console");
+});
+
+it("passes the theme callback to the shell and navigates without rechecking unlock status", async () => {
+  const user = userEvent.setup();
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Dashboard route" })).toBeVisible();
+  expect(screen.getByText("Theme: dark")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Use light theme" }));
+  expect(setTheme).toHaveBeenCalledExactlyOnceWith("light");
+
+  await user.click(screen.getByRole("link", { name: "Credentials" }));
+  expect(await screen.findByRole("heading", { name: "Credentials route" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Dashboard route" })).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe("/credentials");
+  expect(apiGet).toHaveBeenCalledTimes(1);
+});
+
+it("opens the requested route after the unlock callback reconciles the status", async () => {
+  const user = userEvent.setup();
+  window.history.replaceState(null, "", "/vault");
+  get.mockResolvedValueOnce({ state: "session_required", databases: [] }).mockResolvedValueOnce({ state: "unlocked", databases: [] });
+  render(<App />);
+  expect(await screen.findByText("Unlock state: session_required")).toBeVisible();
+  expect(screen.queryByText("Unlocked workspace")).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Vault route" })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Refresh unlock status" }));
+
+  expect(await screen.findByRole("heading", { name: "Vault route" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Refresh unlock status" })).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe("/vault");
+  expect(apiGet).toHaveBeenCalledTimes(2);
+});
 
 it("loads unlock status and forwards lifecycle cancellation to reconciliation", async () => {
   const user = userEvent.setup();

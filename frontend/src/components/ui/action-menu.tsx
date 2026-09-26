@@ -14,7 +14,7 @@ export function ActionMenu<Item extends string>({
   panelClassName,
 }: {
   trigger: ReactNode;
-  items: Item[];
+  items: readonly Item[];
   itemKey?: (_item: Item) => string;
   renderItem: (_item: Item) => ReactNode;
   onSelect: (_item: Item) => void;
