@@ -8,8 +8,8 @@ const idleBatch = { state: "idle", item: null, error: null };
 
 it("renders connector-neutral upload controls and preserves recursive folder selection", async () => {
   const user = userEvent.setup();
-  const fileInputRef = createRef();
-  const folderInputRef = createRef();
+  const fileInputRef = createRef<HTMLInputElement>();
+  const folderInputRef = createRef<HTMLInputElement>();
   const onModeChange = vi.fn();
   const onOpenBrowser = vi.fn();
   const onLocalFileChange = vi.fn();
@@ -21,7 +21,7 @@ it("renders connector-neutral upload controls and preserves recursive folder sel
       batch={idleBatch}
       activeBatch={null}
       queue={[]}
-      progress={{ percent: 0, processed: 0, total: 0, bytes: 0 }}
+      progress={{ percent: 0 }}
       notice={null}
       transferNotice="Transfer policy"
       remoteDir="/tmp"
@@ -46,6 +46,7 @@ it("renders connector-neutral upload controls and preserves recursive folder sel
   await user.type(screen.getByPlaceholderText("/home"), "/incoming");
   expect(onRemoteDirectoryChange).toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "Add files" }));
+  if (!fileInputRef.current) throw new Error("File input was not mounted");
   fireEvent.change(fileInputRef.current, { target: { files: [new File(["data"], "one.txt")] } });
   expect(onLocalFileChange).toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "Download" }));
@@ -65,13 +66,13 @@ it("opens the remote browser in download mode", async () => {
       batch={idleBatch}
       activeBatch={null}
       queue={[]}
-      progress={{ percent: 0, processed: 0, total: 0, bytes: 0 }}
+      progress={{ percent: 0 }}
       transferNotice="Transfer policy"
       remoteDir="/tmp"
       defaultRemoteDir="/home"
       recursive={false}
-      fileInputRef={createRef()}
-      folderInputRef={createRef()}
+      fileInputRef={createRef<HTMLInputElement>()}
+      folderInputRef={createRef<HTMLInputElement>()}
       onModeChange={vi.fn()}
       onRemoteDirectoryChange={vi.fn()}
       onOpenBrowser={onOpenBrowser}
@@ -152,14 +153,14 @@ it("keeps the transfer mode fixed while a batch start is pending", async () => {
       batch={{ state: "starting", item: null, error: null }}
       activeBatch={false}
       queue={[]}
-      progress={{ percent: 0, processed: 0, total: 0, bytes: 0 }}
+      progress={{ percent: 0 }}
       notice={null}
       transferNotice="Transfer policy"
       remoteDir="/tmp"
       defaultRemoteDir="/home"
       recursive={false}
-      fileInputRef={createRef()}
-      folderInputRef={createRef()}
+      fileInputRef={createRef<HTMLInputElement>()}
+      folderInputRef={createRef<HTMLInputElement>()}
       onModeChange={onModeChange}
       onRemoteDirectoryChange={vi.fn()}
       onOpenBrowser={vi.fn()}

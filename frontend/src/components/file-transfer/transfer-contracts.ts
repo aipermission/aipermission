@@ -1,12 +1,13 @@
 export type TransferDirection = "upload" | "download";
 export type TransferStatus = "pending" | "pending_approval" | "running" | "paused" | "completed" | "failed" | "canceled";
+type TransferFailure = { failure_kind?: string; error?: string | null };
 export type TransferBatchItem = {
   id: number;
   status: TransferStatus;
   file_name?: string;
   [field: string]: unknown;
 };
-export type TransferBatch = {
+export type TransferBatch = TransferFailure & {
   id: number;
   status: TransferStatus;
   direction: TransferDirection;
@@ -17,9 +18,17 @@ export type TransferBatch = {
   [field: string]: unknown;
 };
 export type TransferBatchState = { state: string; item: TransferBatch | null; error: string | null };
-export type RemoteEntry = { type: "file" | "directory"; path: string; name: string; size?: number };
+export type RemoteEntry = { type: "file" | "directory" | "other"; path: string; name: string; size?: number; modified_at?: string };
+export type RemoteBrowserData = { entries: RemoteEntry[]; path?: string; parent?: string; has_more?: boolean; next_cursor?: string };
+export type RemoteBrowserState = { open: boolean; purpose: TransferDirection; path: string; state: string; data: RemoteBrowserData | null; error: string | null };
+export type RemoteBrowserOptions = { append?: boolean; cursor?: string; fallbackToDefault?: boolean };
 
 const statuses: ReadonlySet<string> = new Set(["pending", "pending_approval", "running", "paused", "completed", "failed", "canceled"]);
+
+function validTransferFailure(value: Record<string, unknown>) {
+  return (value.failure_kind === undefined || typeof value.failure_kind === "string") &&
+    (value.error === undefined || value.error === null || typeof value.error === "string");
+}
 
 export function transferBatchResponse(value: unknown): TransferBatch {
   const invalid = () => new Error("Invalid transfer batch response from gateway.");
@@ -31,7 +40,7 @@ export function transferBatchResponse(value: unknown): TransferBatch {
     !statuses.has(String(batch.status)) ||
     (batch.direction !== "upload" && batch.direction !== "download") ||
     (batch.archive_name !== undefined && typeof batch.archive_name !== "string") ||
-    (batch.items !== undefined && !Array.isArray(batch.items))
+    (batch.items !== undefined && !Array.isArray(batch.items)) || !validTransferFailure(batch)
   )
     throw invalid();
   if (Array.isArray(batch.items)) {
@@ -50,7 +59,7 @@ export function transferBatchResponse(value: unknown): TransferBatch {
   return batch as TransferBatch;
 }
 
-export function remoteExpansionEntries(value: unknown): RemoteEntry[] {
+function remoteEntries(value: unknown, allowOther: boolean): RemoteEntry[] {
   if (!value || typeof value !== "object" || Array.isArray(value) || !("entries" in value) || !Array.isArray(value.entries)) {
     throw new Error("Invalid remote folder response from gateway.");
   }
@@ -59,14 +68,29 @@ export function remoteExpansionEntries(value: unknown): RemoteEntry[] {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("Invalid remote folder entry from gateway.");
     const item = entry as Record<string, unknown>;
     if (
-      (item.type !== "file" && item.type !== "directory") ||
+      (item.type !== "file" && item.type !== "directory" && !(allowOther && item.type === "other")) ||
       typeof item.path !== "string" ||
       !item.path.startsWith("/") ||
       typeof item.name !== "string" ||
-      (item.size !== undefined && (typeof item.size !== "number" || !Number.isSafeInteger(item.size) || item.size < 0))
+      (item.size !== undefined && (typeof item.size !== "number" || !Number.isSafeInteger(item.size) || item.size < 0)) ||
+      (item.modified_at !== undefined && typeof item.modified_at !== "string")
     ) {
       throw new Error("Invalid remote folder entry from gateway.");
     }
   }
   return entries as RemoteEntry[];
+}
+
+export function remoteExpansionEntries(value: unknown): RemoteEntry[] {
+  return remoteEntries(value, false);
+}
+
+export function remoteBrowserResponse(value: unknown): RemoteBrowserData {
+  const entries = remoteEntries(value, true);
+  const data = value as Record<string, unknown>;
+  for (const field of ["path", "parent", "next_cursor"] as const) {
+    if (field in data && typeof data[field] !== "string") throw new Error("Invalid remote browser response from gateway.");
+  }
+  if ("has_more" in data && typeof data.has_more !== "boolean") throw new Error("Invalid remote browser response from gateway.");
+  return { ...data, entries };
 }

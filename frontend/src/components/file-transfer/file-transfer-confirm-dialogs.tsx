@@ -3,7 +3,9 @@ import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 
-export function ClearDownloadDialog({ open, onCancel, onContinue, onSave }) {
+type DownloadConfirmationProps = { open: boolean; onCancel: () => void; onSave: () => void };
+
+export function ClearDownloadDialog({ open, onCancel, onContinue, onSave }: DownloadConfirmationProps & { onContinue: () => void }) {
   return (
     <Dialog
       open={open}
@@ -36,7 +38,7 @@ export function ClearDownloadDialog({ open, onCancel, onContinue, onSave }) {
   );
 }
 
-export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSave }) {
+export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSave }: DownloadConfirmationProps & { onCloseAnyway: () => void }) {
   return (
     <Dialog
       open={open}
@@ -67,7 +69,12 @@ export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSa
   );
 }
 
-export function OverwriteConfirmDialog({ open, conflicts, onCancel, onOverwrite }) {
+export function OverwriteConfirmDialog({ open, conflicts, onCancel, onOverwrite }: {
+  open: boolean;
+  conflicts: { remote_path: string }[];
+  onCancel: () => void;
+  onOverwrite: () => void;
+}) {
   return (
     <Dialog
       open={open}

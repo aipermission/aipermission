@@ -9,10 +9,23 @@ import { useTransferDownload } from "./use-transfer-download";
 import { useTransferQueues } from "./use-transfer-queues";
 import { defaultRemoteDirectory, fileTransferPathPolicy } from "../../lib/file-transfer-utils";
 
-export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }) {
+type TransferOptions = Parameters<typeof fileTransferPathPolicy>[0] & {
+  defaultDirectory?: string;
+  recursive?: boolean;
+  transportLabel?: string;
+  notice?: string;
+  onUploadCompleted?: () => void | Promise<void>;
+};
+
+export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }: {
+  open: boolean;
+  runtimeTarget: { id: number; name?: string; subtitle?: string } | null;
+  options?: TransferOptions;
+  onClose: () => void;
+}) {
   const defaultRemoteDir = options.defaultDirectory || defaultRemoteDirectory();
   const { joinRemotePath, normalizeRemoteDirectoryInput } = fileTransferPathPolicy(options);
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; message: string } | null>(null);
   const {
     mode,
     setMode,
@@ -86,7 +99,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     onClose,
   });
   const closeDisabled = Boolean(activeBatch) || ["starting", "pausing", "resuming", "canceling", "downloading"].includes(batch.state);
-  const resetDialogForEffect = useEffectEvent((nextRemoteDir) => resetDialog(nextRemoteDir));
+  const resetDialogForEffect = useEffectEvent((nextRemoteDir: string) => resetDialog(nextRemoteDir));
 
   useEffect(() => {
     if (!open) {
@@ -105,30 +118,30 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
     setNotice(null);
   }
 
-  function removeQueueItem(id) {
+  function removeQueueItem(id: string | number) {
     if (batch.item?.status === "paused") {
       const nextIDs = pausedQueueWithout(id);
       void updatePausedBatchQueue(nextIDs);
       return;
     }
-    removePendingQueueItem(id);
+    removePendingQueueItem(String(id));
   }
 
-  function moveQueueItem(id, direction) {
+  function moveQueueItem(id: string | number, direction: number) {
     if (batch.item?.status === "paused") {
       const next = movePausedQueueItem(id, direction);
       if (next) void updatePausedBatchQueue(next);
       return;
     }
-    movePendingQueueItem(id, direction);
+    movePendingQueueItem(String(id), direction);
   }
 
-  async function startQueue(options = {}) {
+  async function startQueue(options: Parameters<typeof startBatchQueue>[0] = {}) {
     download.prepareStart();
     await startBatchQueue(options);
   }
 
-  function switchMode(nextMode) {
+  function switchMode(nextMode: "upload" | "download") {
     setMode(nextMode);
     setOverwritePrompt(null);
     setNotice(null);
@@ -177,7 +190,7 @@ export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose 
             queue={queue}
             batch={batch}
             activeBatch={activeBatch}
-            canStart={canStart}
+            canStart={Boolean(canStart)}
             onRefresh={() => refreshBatch()}
             onRemove={removeQueueItem}
             onMove={moveQueueItem}
