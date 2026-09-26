@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { readBufferedDownload } from "./download-buffer";
 
-function response(body, headers = {}) {
+function response(body: Parameters<typeof readBufferedDownload>[0]["body"], headers: Record<string, string> = {}) {
   return {
     body,
-    headers: { get: (name) => headers[name] ?? null },
+    headers: { get: (name: string) => headers[name] ?? null },
   };
 }
 

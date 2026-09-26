@@ -80,7 +80,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/ssh/operations.jsx": ["src/connectors/templates/ssh/console.component.test.jsx"],
   "src/lib/api.js": ["src/lib/gateway-contracts/api-transport.component.test.jsx"],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
-  "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.jsx"],
+  "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.tsx"],
   "src/lib/load-project-options.ts": ["src/connectors/editor/use-connector-inventory.component.test.tsx"],
   "src/lib/use-connector-permissions.ts": ["src/lib/use-connector-permissions.component.test.jsx"],
   "src/pages/remote-restore-panel.tsx": ["src/pages/remote-restore-panel.component.test.tsx"],
