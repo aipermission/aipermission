@@ -3,6 +3,8 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { connectorActionBusy } from "../_shared/action-state";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
+import type { DockerResource, DockerResourceKind } from "./resource-types";
 import {
   resourceKey,
   resourceLabel,
@@ -14,7 +16,24 @@ import {
   resourceTone,
 } from "./helpers";
 
-const resourceKinds = ["containers", "images", "networks", "volumes"];
+const resourceKinds: readonly DockerResourceKind[] = ["containers", "images", "networks", "volumes"];
+
+interface DockerResourceBrowserProps {
+  resourceView: DockerResourceKind;
+  items: DockerResource[];
+  visibleCount: number;
+  selectedContainer: DockerResource | null;
+  selectedResourceID: string;
+  filter: string;
+  state: { state: string };
+  latestAction: { status: string; action_name: string } | null;
+  theme: string;
+  classes: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input" | "rowHover" | "activeRow">;
+  onRefresh: () => void;
+  onSwitchView: (_kind: DockerResourceKind) => void;
+  onFilter: (_filter: string) => void;
+  onSelect: (_resource: DockerResource) => void;
+}
 
 export function DockerResourceBrowser({
   resourceView,
@@ -31,7 +50,7 @@ export function DockerResourceBrowser({
   onSwitchView,
   onFilter,
   onSelect,
-}) {
+}: DockerResourceBrowserProps) {
   return (
     <section
       className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${classes.border} ${classes.subtlePanel}`}

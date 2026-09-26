@@ -1,4 +1,9 @@
-import { LiveConsolePanel } from "../_shared/live-console-panel";
+import { LiveConsolePanel, type LiveConsolePanelProps } from "../_shared/live-console-panel";
+import type { KubernetesResource } from "./resource-types";
+
+type KubernetesPodConsolePanelProps = Omit<LiveConsolePanelProps, "subject" | "subjectRef" | "emptyMessage" | "warning"> & {
+  pod: KubernetesResource | null;
+};
 
 export function KubernetesPodConsolePanel({
   children,
@@ -11,7 +16,7 @@ export function KubernetesPodConsolePanel({
   borderClass,
   onStart,
   onEnd,
-}) {
+}: KubernetesPodConsolePanelProps) {
   const podRef = pod ? `${pod.namespace}/${pod.name}` : "";
   return (
     <LiveConsolePanel
@@ -32,6 +37,6 @@ export function KubernetesPodConsolePanel({
   );
 }
 
-export function kubernetesConsoleSessionName(target, pod) {
+export function kubernetesConsoleSessionName(target: { ref?: string } | null | undefined, pod: KubernetesResource | null | undefined) {
   return `kubernetes:${target?.ref || "target"}:${pod?.namespace || "namespace"}:${pod?.name || "pod"}`;
 }

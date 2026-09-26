@@ -1,4 +1,13 @@
-import { LiveConsolePanel } from "../_shared/live-console-panel";
+import { LiveConsolePanel, type LiveConsolePanelProps } from "../_shared/live-console-panel";
+import type { ConsoleSession } from "../../../lib/gateway-contracts/security-contracts";
+import type { DockerResource } from "./resource-types";
+
+type DockerContainerConsolePanelProps = Omit<LiveConsolePanelProps, "subject" | "subjectRef" | "emptyMessage" | "warning"> & {
+  target?: { ref?: string } | null;
+  container: DockerResource | null;
+  containerRef: string;
+  session?: Pick<ConsoleSession, "id" | "name"> | null;
+};
 
 export function DockerContainerConsolePanel({
   children,
@@ -14,7 +23,7 @@ export function DockerContainerConsolePanel({
   borderClass,
   onStart,
   onEnd,
-}) {
+}: DockerContainerConsolePanelProps) {
   const lastSessionForOtherContainer = session?.id && session?.name !== dockerConsoleSessionName(target, containerRef);
   return (
     <LiveConsolePanel
@@ -36,6 +45,6 @@ export function DockerContainerConsolePanel({
   );
 }
 
-export function dockerConsoleSessionName(target, containerRef) {
+export function dockerConsoleSessionName(target: { ref?: string } | null | undefined, containerRef: string) {
   return `docker:${target?.ref || "target"}:${containerRef}`;
 }
