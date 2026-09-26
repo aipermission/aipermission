@@ -1,4 +1,7 @@
-export const defaultProvisionForm = { role_name: "", profile_label: "", preset: "read_only" };
+import { normalizeConnectorOutput } from "../_shared/sql-console-data.ts";
+import type { MetadataSchema, ProvisionForm, ProvisionSchema, ProvisionScope, ProvisionTable, SchemaSelection, ScopeSelection, TableSelection } from "./provisioning-types";
+
+export const defaultProvisionForm: ProvisionForm = { role_name: "", profile_label: "", preset: "read_only" };
 
 export const metadataSQL = `
 SELECT
@@ -18,17 +21,19 @@ GROUP BY n.nspname, c.relname
 ORDER BY n.nspname, c.relname
 `;
 
-export function groupMetadataRows(rows) {
-  const schemas = new Map();
-  for (const row of rows || []) {
+export function groupMetadataRows(rows: unknown): MetadataSchema[] {
+  const schemas = new Map<string, Map<string, string[]>>();
+  if (!Array.isArray(rows)) return [];
+  for (const value of rows) {
+    const row = normalizeConnectorOutput(value);
     const schemaName = String(row.table_schema || "").trim();
     const tableName = String(row.table_name || "").trim();
     const columns = metadataColumns(row);
     if (!schemaName || !tableName) continue;
-    if (!schemas.has(schemaName)) schemas.set(schemaName, new Map());
-    const tables = schemas.get(schemaName);
+    const tables = schemas.get(schemaName) || new Map<string, string[]>();
+    schemas.set(schemaName, tables);
     if (!tables.has(tableName)) tables.set(tableName, []);
-    if (columns.length > 0) tables.set(tableName, uniqueStrings([...tables.get(tableName), ...columns]));
+    if (columns.length > 0) tables.set(tableName, uniqueStrings([...(tables.get(tableName) || []), ...columns]));
   }
   return [...schemas.entries()].map(([name, tables]) => ({
     name,
@@ -36,15 +41,15 @@ export function groupMetadataRows(rows) {
   }));
 }
 
-export function buildProvisionScope(scope) {
+export function buildProvisionScope(scope: ScopeSelection): ProvisionScope | null {
   if (scope.all_schemas) return { all_schemas: true };
   const schemas = Object.entries(scope.schemas || {})
     .filter(([, schema]) => schema.selected)
-    .map(([schemaName, schema]) => {
+    .map(([schemaName, schema]): ProvisionSchema => {
       if (schema.all_tables) return { schema: schemaName, all_tables: true };
       const tables = Object.entries(schema.tables || {})
         .filter(([, table]) => table.selected)
-        .map(([tableName, table]) => {
+        .map(([tableName, table]): ProvisionTable => {
           if (table.all_columns) return { table: tableName, all_columns: true };
           return {
             table: tableName,
@@ -59,35 +64,35 @@ export function buildProvisionScope(scope) {
   return schemas.length === 0 ? null : { all_schemas: false, schemas };
 }
 
-export function provisionScopeSupportsPreset(scope, preset) {
+export function provisionScopeSupportsPreset(scope: ProvisionScope | null, preset: string): boolean {
   if (preset !== "read_write" || !scope || scope.all_schemas) return true;
   return (scope.schemas || []).every((schema) => schema.all_tables || (schema.tables || []).every((table) => table.all_columns));
 }
 
-export function toggleSchema(scope, schemaName, selected) {
+export function toggleSchema(scope: ScopeSelection, schemaName: string, selected: boolean): ScopeSelection {
   return updateScopeSchema(scope, schemaName, (current) => ({ ...current, selected, all_tables: current.all_tables ?? true }));
 }
 
-export function updateSchema(scope, schemaName, patch) {
+export function updateSchema(scope: ScopeSelection, schemaName: string, patch: Partial<SchemaSelection>): ScopeSelection {
   return updateScopeSchema(scope, schemaName, (current) => ({ ...current, ...patch }));
 }
 
-export function toggleTable(scope, schemaName, tableName, selected) {
+export function toggleTable(scope: ScopeSelection, schemaName: string, tableName: string, selected: boolean): ScopeSelection {
   return updateScopeTable(scope, schemaName, tableName, (current) => ({ ...current, selected, all_columns: current.all_columns ?? true }));
 }
 
-export function updateTable(scope, schemaName, tableName, patch) {
+export function updateTable(scope: ScopeSelection, schemaName: string, tableName: string, patch: Partial<TableSelection>): ScopeSelection {
   return updateScopeTable(scope, schemaName, tableName, (current) => ({ ...current, ...patch }));
 }
 
-export function toggleColumn(scope, schemaName, tableName, columnName, selected) {
+export function toggleColumn(scope: ScopeSelection, schemaName: string, tableName: string, columnName: string, selected: boolean): ScopeSelection {
   return updateScopeTable(scope, schemaName, tableName, (current) => ({
     ...current,
     columns: { ...(current.columns || {}), [columnName]: selected },
   }));
 }
 
-export function readableScopeSummary(scope, preset) {
+export function readableScopeSummary(scope: ProvisionScope | null, preset: string): string {
   const privilege = preset === "read_write" ? "read and change rows" : "read rows";
   if (!scope) return "Choose at least one schema/table scope before creating the managed credential.";
   if (scope.all_schemas) {
@@ -102,7 +107,7 @@ export function readableScopeSummary(scope, preset) {
   return `The generated role can ${privilege} on ${tableCount} selected table${tableCount === 1 ? "" : "s"} across ${schemaCount} schema${schemaCount === 1 ? "" : "s"}.`;
 }
 
-export function buildProvisionSQLPreview({ roleName, preset, database, scope }) {
+export function buildProvisionSQLPreview({ roleName, preset, database, scope }: { roleName: string; preset: string; database: string; scope: ProvisionScope | null }): string {
   const role = quotePreviewIdentifier(cleanPreviewIdentifier(roleName) || "role_name");
   const cleanDatabase = cleanPreviewIdentifier(database) || "database";
   const privileges = preset === "read_write" ? "SELECT, INSERT, UPDATE, DELETE" : "SELECT";
@@ -124,7 +129,7 @@ export function buildProvisionSQLPreview({ roleName, preset, database, scope }) 
   return lines.join("\n");
 }
 
-export function safeBackupFilename(value) {
+export function safeBackupFilename(value: unknown): string {
   const text = String(value || "")
     .trim()
     .toLowerCase()
@@ -133,7 +138,7 @@ export function safeBackupFilename(value) {
   return text || "postgres-backup";
 }
 
-function appendScopedGrantPreview(lines, schemas, role, privileges) {
+function appendScopedGrantPreview(lines: string[], schemas: ProvisionSchema[], role: string, privileges: string): void {
   for (const schema of schemas || []) {
     const schemaSQL = quotePreviewIdentifier(schema.schema);
     lines.push(`GRANT USAGE ON SCHEMA ${schemaSQL} TO ${role};`);
@@ -153,11 +158,11 @@ function appendScopedGrantPreview(lines, schemas, role, privileges) {
   }
 }
 
-function metadataColumns(row) {
+function metadataColumns(row: Record<string, unknown>): string[] {
   if (Array.isArray(row.columns)) return row.columns.map(cleanColumn).filter(Boolean);
   if (typeof row.columns === "string" && row.columns.trim()) {
     try {
-      const parsed = JSON.parse(row.columns);
+      const parsed: unknown = JSON.parse(row.columns);
       if (Array.isArray(parsed)) return parsed.map(cleanColumn).filter(Boolean);
     } catch {
       return row.columns.split(",").map(cleanColumn).filter(Boolean);
@@ -167,31 +172,31 @@ function metadataColumns(row) {
   return columnName ? [columnName] : [];
 }
 
-function cleanColumn(value) {
+function cleanColumn(value: unknown): string {
   return String(value || "").trim();
 }
 
-function uniqueStrings(items) {
+function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.filter(Boolean))];
 }
 
-function updateScopeSchema(scope, schemaName, updater) {
+function updateScopeSchema(scope: ScopeSelection, schemaName: string, updater: (_schema: SchemaSelection) => SchemaSelection): ScopeSelection {
   const current = scope.schemas?.[schemaName] || { selected: false, all_tables: true, tables: {} };
   return { ...scope, schemas: { ...(scope.schemas || {}), [schemaName]: updater(current) } };
 }
 
-function updateScopeTable(scope, schemaName, tableName, updater) {
+function updateScopeTable(scope: ScopeSelection, schemaName: string, tableName: string, updater: (_table: TableSelection) => TableSelection): ScopeSelection {
   return updateScopeSchema(scope, schemaName, (schema) => {
     const current = schema.tables?.[tableName] || { selected: false, all_columns: true, columns: {} };
     return { ...schema, tables: { ...(schema.tables || {}), [tableName]: updater(current) } };
   });
 }
 
-function cleanPreviewIdentifier(value) {
+function cleanPreviewIdentifier(value: string): string {
   const text = String(value || "").trim();
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(text) ? text : "";
 }
 
-function quotePreviewIdentifier(value) {
+function quotePreviewIdentifier(value: string): string {
   return `"${String(value || "").replaceAll('"', '""')}"`;
 }

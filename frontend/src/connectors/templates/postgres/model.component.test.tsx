@@ -24,6 +24,7 @@ describe("Postgres credential deletion", () => {
       ],
     });
 
+    if (!dialog) throw new Error("Managed-role confirmation was not created");
     expect(dialog.details.find((item) => item.label === "Managed role")?.value).toBe("app_reader");
     expect(dialog.details.find((item) => item.label === "Ownership target")?.value).toBe("postgres_admin");
     expect(dialog.notice).toMatch(/reassigned to postgres_admin/);

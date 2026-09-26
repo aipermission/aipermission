@@ -6,7 +6,8 @@ import {
   groupMetadataRows,
   provisionScopeSupportsPreset,
   safeBackupFilename,
-} from "./provisioning.js";
+} from "./provisioning.ts";
+import type { ProvisionScope } from "./provisioning-types";
 
 test("Postgres provisioning metadata preserves schema, table, and column order", () => {
   assert.deepEqual(
@@ -50,11 +51,11 @@ test("Postgres provisioning drops incomplete nested scope selections", () => {
 });
 
 test("Postgres read and change preset rejects column-scoped tables", () => {
-  const columnScope = {
+  const columnScope: ProvisionScope = {
     all_schemas: false,
     schemas: [{ schema: "public", all_tables: false, tables: [{ table: "users", all_columns: false, columns: ["id"] }] }],
   };
-  const tableScope = {
+  const tableScope: ProvisionScope = {
     all_schemas: false,
     schemas: [{ schema: "public", all_tables: false, tables: [{ table: "users", all_columns: true }] }],
   };

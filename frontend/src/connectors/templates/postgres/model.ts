@@ -1,4 +1,5 @@
 import { createDatabaseConnectorModel } from "../_shared/database-connector-model";
+import type { DatabaseProfile } from "../_shared/database-model-types";
 
 const kind = "postgres";
 const defaultPort = 5432;
@@ -32,7 +33,7 @@ const model = createDatabaseConnectorModel({
     port: target.config?.port || defaultPort,
     database: target.config?.database || "",
     // Targets created before ssl_mode was persisted used require at runtime.
-    ssl_mode: target.config?.ssl_mode || "require",
+    ssl_mode: String(target.config?.ssl_mode || "require"),
     transport_target_ref: target.config?.transport_target_ref || "",
   }),
   targetConfig: (form) => ({
@@ -90,7 +91,10 @@ export const {
   operationFromError,
 } = model;
 
-export function credentialDeleteDialog({ row, targets = [] }) {
+export function credentialDeleteDialog({ row, targets = [] }: {
+  row: { name?: string; target_id?: number; target_label?: string; profile?: Pick<DatabaseProfile, "public"> };
+  targets?: { id: number; profiles?: Pick<DatabaseProfile, "id" | "public">[] }[];
+}) {
   if (!row.profile?.public?.managed_by_aipermission) return null;
   const publicMetadata = row.profile.public || {};
   const target = targets.find((item) => Number(item.id) === Number(row.target_id));

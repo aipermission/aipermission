@@ -1,7 +1,9 @@
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
+import type { DatabaseCredentialForm } from "./database-form-types";
+import type { CredentialFormArguments, DatabaseCredentialRow, DatabaseModelConfig, DatabaseModelForm, DatabaseProfile, DatabaseTarget, DatabaseTargetDefaults, DatabaseTransportForm, SyncedDatabaseForm } from "./database-model-types";
 
-export function createDatabaseConnectorModel(config) {
+export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaults, Credential extends DatabaseCredentialForm>(config: DatabaseModelConfig<Fields, Credential>) {
   const {
     kind,
     label,
@@ -12,12 +14,13 @@ export function createDatabaseConnectorModel(config) {
     targetConfig,
     targetEndpoint,
     credentialExtras = () => ({}),
-    credentialPublic = (form) => ({ username: form.username }),
+    credentialPublic = defaultCredentialPublic,
+    targetCredentialPublic = defaultCredentialPublic,
     credentialMetadata = defaultCredentialMetadata,
     includeEmptyPassword = false,
   } = config;
 
-  function emptyForm() {
+  function emptyForm(): DatabaseModelForm<Fields> {
     return {
       connector_kind: kind,
       ...targetDefaults,
@@ -28,8 +31,8 @@ export function createDatabaseConnectorModel(config) {
     };
   }
 
-  function formFromTarget({ target, profile }) {
-    const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+  function formFromTarget({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
+    const selectedProfile: Partial<DatabaseProfile> = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
     return {
       connector_kind: kind,
       profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -46,7 +49,7 @@ export function createDatabaseConnectorModel(config) {
     return null;
   }
 
-  function syncForm({ form }) {
+  function syncForm<Form extends DatabaseTransportForm>({ form }: { form: Form }): SyncedDatabaseForm<Form> {
     if (form.connector_kind !== kind) return form;
     const next = { ...form };
     if (next.connection_mode === "direct") next.transport_target_ref = "";
@@ -54,16 +57,16 @@ export function createDatabaseConnectorModel(config) {
     return next;
   }
 
-  function submitDisabled({ state }) {
+  function submitDisabled({ state }: { state: { state: string } }): boolean {
     return state.state === "saving";
   }
 
-  function submitLabel({ state, mode }) {
+  function submitLabel({ state, mode }: { state: { state: string }; mode: string }): string {
     if (state.state === "saving") return "Saving...";
     return mode === "edit" ? "Save changes" : "Create connector";
   }
 
-  async function save({ mode, form, target }) {
+  async function save({ mode, form, target }: { mode: string; form: DatabaseModelForm<Fields>; target?: DatabaseTarget | null }): Promise<void> {
     if (mode === "edit") {
       await updateTarget(form, target);
       return;
@@ -71,16 +74,16 @@ export function createDatabaseConnectorModel(config) {
     await createTarget(form);
   }
 
-  async function deleteTarget({ target }) {
+  async function deleteTarget({ target }: { target: DatabaseTarget }): Promise<void> {
     await apiDelete(`/api/connector-targets/${target.id}`);
   }
 
-  function emptyCredentialState({ targets = [] } = {}) {
+  function emptyCredentialState({ targets = [] }: { targets?: DatabaseTarget[] } = {}) {
     const firstTarget = targets.find((target) => target.connector_kind === kind);
     return { form: { ...credentialDefaults, target_id: String(firstTarget?.id || "") } };
   }
 
-  function credentialStateFromRow({ row }) {
+  function credentialStateFromRow({ row }: { row: DatabaseCredentialRow }) {
     return {
       form: {
         ...credentialDefaults,
@@ -94,36 +97,36 @@ export function createDatabaseConnectorModel(config) {
     };
   }
 
-  function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }) {
+  function credentialFormProps({ targets, formState, setFormState, formMode, state, onSubmit }: CredentialFormArguments<Credential>) {
     return {
       form: formState.form,
       formMode,
       targets,
       state,
-      onChange: (form) => setFormState({ form }),
-      onSubmit: (event) => onSubmit(event, formMode === "edit" ? "update" : "create"),
+      onChange: (form: Credential) => setFormState({ form }),
+      onSubmit: (event: Parameters<CredentialFormArguments<Credential>["onSubmit"]>[0]) => onSubmit(event, formMode === "edit" ? "update" : "create"),
     };
   }
 
-  async function saveCredential({ operation, row, formState }) {
+  async function saveCredential({ operation, row, formState }: { operation: string; row?: DatabaseCredentialRow | null; formState: { form: Credential } }) {
     const form = formState.form;
     if (operation === "create") {
-      await apiPost(`/api/connector-targets/${form.target_id}/profiles`, profilePayload(form, null, true));
+      await apiPost(`/api/connector-targets/${form.target_id}/profiles`, profilePayload(form, null, true, credentialPublic(form)));
       return { message: `${label} credential created.` };
     }
     if (operation === "update") {
       if (!row) throw new Error(`${label} credential is not loaded.`);
-      await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, profilePayload(form, row.profile, false));
+      await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, profilePayload(form, row.profile ?? null, false, credentialPublic(form)));
       return { message: `${label} credential updated.` };
     }
     throw new Error(`Unsupported ${label} credential operation.`);
   }
 
-  async function deleteCredential({ row }) {
+  async function deleteCredential({ row }: { row: Pick<DatabaseCredentialRow, "id" | "target_id"> }): Promise<void> {
     await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
   }
 
-  function credentialRows({ targets }) {
+  function credentialRows({ targets }: { targets: DatabaseTarget[] }) {
     return targets.flatMap((target) =>
       (target.profiles || [])
         .filter(() => target.connector_kind === kind)
@@ -145,27 +148,27 @@ export function createDatabaseConnectorModel(config) {
     );
   }
 
-  async function test({ target, profile }) {
+  async function test({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
     const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
     if (!selectedProfile) throw new Error("Connector profile is not loaded.");
     const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
     return { ok: data.ok, error: data.message || null, data };
   }
 
-  function targetDisplayName({ target }) {
+  function targetDisplayName({ target }: { target?: DatabaseTarget | null }): string {
     if (!target) return `${label} target`;
     return target.target_name || target.name || `${label} target`;
   }
 
-  function targetSubtitle({ target }) {
+  function targetSubtitle({ target }: { target: DatabaseTarget }): string {
     return targetEndpoint({ target });
   }
 
-  function targetProfileLabel({ target }) {
+  function targetProfileLabel({ target }: { target?: DatabaseTarget | null }): string {
     return target?.profile_label || "default";
   }
 
-  function deleteDialog({ target }) {
+  function deleteDialog({ target }: { target?: DatabaseTarget | null }) {
     return {
       title: target ? `Delete ${target.name}` : "Delete connector",
       description: `Remove this ${label} connector target, credential profiles, and token action permissions from aipermission.`,
@@ -181,15 +184,15 @@ export function createDatabaseConnectorModel(config) {
     };
   }
 
-  async function createTarget(form) {
+  async function createTarget(form: DatabaseModelForm<Fields>): Promise<void> {
     await createTargetWithProfile({
       projectID: form.project_id,
       targetPayload: { connector_kind: kind, name: form.name, config: targetConfig(form) },
-      profilePayload: profilePayload(form, null, true),
+      profilePayload: profilePayload(form, null, true, targetCredentialPublic(form)),
     });
   }
 
-  async function updateTarget(form, target) {
+  async function updateTarget(form: DatabaseModelForm<Fields>, target?: DatabaseTarget | null): Promise<void> {
     const profile =
       target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
       (target?.profiles?.length === 1 ? target.profiles[0] : null);
@@ -197,18 +200,23 @@ export function createDatabaseConnectorModel(config) {
     await updateTargetWithProfile({
       projectID: form.project_id,
       targetID: target.id,
-      previousTarget: target,
       profileID: profile.id,
       targetPayload: { name: form.name, config: targetConfig(form) },
-      profilePayload: profilePayload(form, profile, false),
+      profilePayload: profilePayload(form, profile, false, targetCredentialPublic(form)),
     });
   }
 
-  function profilePayload(form, profile, creating) {
-    const payload = {
+  function profilePayload(form: Pick<DatabaseCredentialForm, "username" | "password" | "profile_label" | "risk_label">, profile: DatabaseProfile | null, creating: boolean, publicMetadata: Record<string, unknown>) {
+    const payload: {
+      kind: string;
+      label: string;
+      public: Record<string, unknown>;
+      risk_label: string;
+      secret?: { password?: string };
+    } = {
       kind: profile?.kind || "username_password",
       label: form.profile_label,
-      public: credentialPublic(form),
+      public: publicMetadata,
       risk_label: form.risk_label || defaultRiskLabel,
     };
     if (form.password || (creating && includeEmptyPassword)) {
@@ -249,10 +257,14 @@ export function createDatabaseConnectorModel(config) {
   };
 }
 
-function defaultCredentialMetadata(profile) {
+function defaultCredentialMetadata(profile: DatabaseProfile): string[] {
   const items = [];
   if (profile.public?.username) items.push(`username: ${profile.public.username}`);
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
   if (items.length === 0) items.push("No public metadata");
   return items;
+}
+
+function defaultCredentialPublic(form: Pick<DatabaseCredentialForm, "username">): Record<string, unknown> {
+  return { username: form.username };
 }
