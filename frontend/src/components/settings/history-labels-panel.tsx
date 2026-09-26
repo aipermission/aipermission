@@ -1,6 +1,8 @@
 import { Tags, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { apiDelete, apiGet } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
+import { useRequestGuard } from "../../lib/request-guard";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -8,38 +10,62 @@ import { Dialog } from "../ui/dialog";
 import { Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 
+type HistoryLabel = { id: number; name: string };
+type LabelResource = { state: "loading" | "ready" | "error"; data: HistoryLabel[]; error: string | null };
+
+function historyLabelsResponse(value: unknown): HistoryLabel[] {
+  if (value === null) return [];
+  if (!Array.isArray(value)) throw new Error("History label response is invalid.");
+  return value.map((entry: unknown) => {
+    if (!entry || typeof entry !== "object" || !("id" in entry) || typeof entry.id !== "number" || !Number.isSafeInteger(entry.id) || entry.id <= 0 || !("name" in entry) || typeof entry.name !== "string") {
+      throw new Error("History label response is invalid.");
+    }
+    return { id: entry.id, name: entry.name };
+  });
+}
+
 export function HistoryLabelsPanel() {
-  const [labels, setLabels] = useState({ state: "loading", data: [], error: null });
+  const [labels, setLabels] = useState<LabelResource>({ state: "loading", data: [], error: null });
+  const requestGuard = useRequestGuard("history-labels-settings");
   const [selectedID, setSelectedID] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { actionState, runAction } = useAsyncAction();
   const selectedLabel = useMemo(() => labels.data.find((label) => String(label.id) === String(selectedID)), [labels.data, selectedID]);
 
+  const loadLabels = useCallback(async () => {
+    const request = requestGuard.begin("labels");
+    try {
+      const data = historyLabelsResponse(await apiGet("/api/history-labels", { signal: request.signal }));
+      if (request.isCurrent()) setLabels({ state: "ready", data, error: null });
+    } catch (error) {
+      if (request.isCurrent()) setLabels({ state: "error", data: [], error: errorMessage(error, "Unable to load history labels.") });
+    } finally {
+      request.complete();
+    }
+  }, [requestGuard]);
+
   useEffect(() => {
     void loadLabels();
-  }, []);
+  }, [loadLabels]);
 
-  async function loadLabels() {
-    try {
-      const data = await apiGet("/api/history-labels");
-      setLabels({ state: "ready", data: data || [], error: null });
-    } catch (error) {
-      setLabels({ state: "error", data: [], error: error.message });
-    }
-  }
-
-  async function deleteLabel(event) {
+  async function deleteLabel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedLabel) return;
+    if (!selectedLabel || actionState.state === "deleting") return;
     const deleted = selectedLabel;
     await runAction({
       pending: "deleting",
       successMessage: `Deleted history label "${deleted.name}".`,
       action: async () => {
-        await apiDelete(`/api/history-labels/${deleted.id}`);
-        setSelectedID("");
-        setDeleteOpen(false);
-        await loadLabels();
+        const request = requestGuard.begin("delete");
+        try {
+          await apiDelete(`/api/history-labels/${deleted.id}`);
+          if (!request.isCurrent()) return;
+          setSelectedID("");
+          setDeleteOpen(false);
+          await loadLabels();
+        } finally {
+          request.complete();
+        }
       },
     });
   }

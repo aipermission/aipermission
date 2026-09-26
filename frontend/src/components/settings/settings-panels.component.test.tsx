@@ -14,14 +14,15 @@ vi.mock("../../lib/api", () => ({
 
 describe("settings panels", () => {
   beforeEach(() => {
-    apiGet.mockReset();
-    apiPost.mockReset();
-    apiPut.mockReset();
+    vi.restoreAllMocks();
+    vi.mocked(apiGet).mockReset();
+    vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPut).mockReset();
   });
 
   it("keeps password fields available after failure and clears them after success", async () => {
     const user = userEvent.setup();
-    apiPost.mockRejectedValueOnce(new Error("Current password is invalid")).mockResolvedValueOnce({ ok: true });
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("Current password is invalid")).mockResolvedValueOnce({ ok: true });
     render(<PasswordSettingsPanel />);
 
     await user.type(screen.getByLabelText("Current password"), "CurrentPassword123");
@@ -39,8 +40,8 @@ describe("settings panels", () => {
 
   it("loads and saves retention settings without coupling to the settings page", async () => {
     const user = userEvent.setup();
-    apiGet.mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
-    apiPut.mockResolvedValue({ history_days: 30, audit_days: 14, console_days: 3, message_days: 2 });
+    vi.mocked(apiGet).mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
+    vi.mocked(apiPut).mockResolvedValue({ history_days: 30, audit_days: 14, console_days: 3, message_days: 2 });
     render(<HistoryRetentionPanel />);
 
     await waitFor(() => expect(screen.getByLabelText("Command history days")).toHaveValue(7));
@@ -59,7 +60,7 @@ describe("settings panels", () => {
 
   it("does not submit default retention values after load failure and retries before saving", async () => {
     const user = userEvent.setup();
-    apiGet.mockRejectedValueOnce(new Error("Retention unavailable")).mockResolvedValueOnce({
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error("Retention unavailable")).mockResolvedValueOnce({
       history_days: 7,
       audit_days: 14,
       console_days: 3,
@@ -79,8 +80,8 @@ describe("settings panels", () => {
 
   it("confirms and reports a manual retention purge", async () => {
     const user = userEvent.setup();
-    apiGet.mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
-    apiPost.mockResolvedValue({ deleted: 4 });
+    vi.mocked(apiGet).mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
+    vi.mocked(apiPost).mockResolvedValue({ deleted: 4 });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<HistoryRetentionPanel />);
 
@@ -89,5 +90,49 @@ describe("settings panels", () => {
 
     expect(apiPost).toHaveBeenCalledWith("/api/settings/retention/purge", { target: "history", days: 30 });
     expect(await screen.findByText("Deleted 4 history records.")).toBeVisible();
+  });
+
+  it("retains editable settings after an invalid save response and permits retry", async () => {
+    const user = userEvent.setup();
+    const settings = { history_days: 7, audit_days: 14, console_days: 3, message_days: 2 };
+    vi.mocked(apiGet).mockResolvedValue(settings);
+    vi.mocked(apiPut).mockResolvedValueOnce({ history_days: "7" }).mockResolvedValueOnce(settings);
+    render(<HistoryRetentionPanel />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save retention" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Save retention" }));
+    expect(await screen.findByText("Retention settings response is invalid.")).toBeVisible();
+    expect(screen.getByLabelText("Audit log days")).toHaveValue(14);
+    await user.click(screen.getByRole("button", { name: "Save retention" }));
+    expect(await screen.findByText("Retention settings saved and cleanup ran.")).toBeVisible();
+  });
+
+  it("does not report malformed purge counts as a successful deletion", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiGet).mockResolvedValue({ history_days: 7, audit_days: 14, console_days: 3, message_days: 2 });
+    vi.mocked(apiPost).mockResolvedValue({ deleted: -1 });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<HistoryRetentionPanel />);
+    await user.click(screen.getByRole("button", { name: "Purge history older than 30 days" }));
+    expect(await screen.findByText("Retention purge response is invalid.")).toBeVisible();
+    expect(screen.queryByText(/Deleted /)).not.toBeInTheDocument();
+  });
+
+  it("does not dispatch a purge when confirmation is canceled", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiGet).mockResolvedValue({ history_days: 0, audit_days: 0, console_days: 0, message_days: 0 });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<HistoryRetentionPanel />);
+    await user.click(screen.getByRole("button", { name: "Purge messages older than 7 days" }));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it("aborts the owned retention read when the panel unmounts", () => {
+    vi.mocked(apiGet).mockReturnValue(new Promise(() => {}));
+    const { unmount } = render(<HistoryRetentionPanel />);
+    const options: unknown = vi.mocked(apiGet).mock.calls[0]?.[1];
+    if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal)) throw new Error("Expected an owned retention read.");
+    expect(options.signal.aborted).toBe(false);
+    unmount();
+    expect(options.signal.aborted).toBe(true);
   });
 });

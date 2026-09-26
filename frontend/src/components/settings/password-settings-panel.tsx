@@ -1,5 +1,6 @@
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { apiPost } from "../../lib/api";
 import { isValidDatabasePassword } from "../../lib/password";
 import { useAsyncAction } from "../../lib/use-async-action";
@@ -15,11 +16,11 @@ export function PasswordSettingsPanel() {
   const { actionState, runAction } = useAsyncAction();
   const newPasswordValid = isValidDatabasePassword(form.new_password);
 
-  function updateField(field, value) {
+  function updateField(field: keyof typeof emptyPasswordForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function changePassword(event) {
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runAction({
       pending: "saving",
