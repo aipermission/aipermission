@@ -1,17 +1,22 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { LockKeyhole } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPost } from "../lib/api";
 import { isValidDatabasePassword } from "../lib/password";
+import { errorMessage } from "../lib/errors.ts";
+import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
 
-export function UnlockCreatePanel({ hasDatabase, runLifecycleMutation }) {
+type Props = { hasDatabase: boolean; runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"] };
+
+export function UnlockCreatePanel({ hasDatabase, runLifecycleMutation }: Props) {
   const [form, setForm] = useState({ database_name: "", password: "", confirm_password: "" });
-  const [state, setState] = useState({ state: "idle", error: null });
+  const [state, setState] = useState<{ state: "idle" | "saving" | "error"; error: string | null }>({ state: "idle", error: null });
   const passwordValid = isValidDatabasePassword(form.password);
 
-  async function createDatabase(event) {
+  async function createDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setState({ state: "saving", error: null });
     try {
@@ -27,7 +32,7 @@ export function UnlockCreatePanel({ hasDatabase, runLifecycleMutation }) {
         ),
       );
     } catch (error) {
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not create the database.") });
     }
   }
 
