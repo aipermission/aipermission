@@ -32,7 +32,7 @@ export const asyncStateOwnerTests = {
   "src/components/tokens/connector-permission-dialog.tsx": ["src/components/tokens/connector-permission-dialog.component.test.jsx"],
   "src/components/tokens/vault-permission-dialog.tsx": ["src/components/tokens/vault-permission-dialog.component.test.jsx"],
   "src/components/transfer-center.jsx": ["src/components/transfer-center.component.test.jsx"],
-  "src/components/use-gateway-activity-resources.js": ["src/components/use-gateway-resources.component.test.jsx"],
+  "src/components/use-gateway-activity-resources.ts": ["src/components/use-gateway-resources.component.test.jsx", "src/components/use-gateway-activity-resources.component.test.tsx"],
   "src/components/use-gateway-core-resources.js": ["src/components/use-gateway-resources.component.test.jsx"],
   "src/components/vault/use-vault-action-approvals.js": ["src/components/vault/use-vault-action-approvals.component.test.jsx"],
   "src/components/vault/use-vault-bindings.js": ["src/components/vault/use-vault-bindings.component.test.jsx"],

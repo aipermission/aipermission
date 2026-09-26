@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { getClientCatalog } from "../packages/mcp/src/client-registry.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outputPath = path.join(root, "frontend/src/lib/mcp-client-catalog.js");
+const outputPath = path.join(root, "frontend/src/lib/mcp-client-catalog.ts");
 
-function renderCatalog(catalog) {
+export function renderCatalog(catalog) {
   const clients = catalog.map(({ id, label, supportsMCP, supportsSkill }) => ({
     id,
     label,
@@ -26,21 +26,23 @@ function renderCatalog(catalog) {
   },`,
     )
     .join("\n");
-  return `// Generated from packages/mcp/src/client-registry.js. Do not edit directly.\n\nexport const mcpClientCatalog = Object.freeze([\n${entries}\n]);\n`;
+  return `// Generated from packages/mcp/src/client-registry.js. Do not edit directly.\n\nexport const mcpClientCatalog = Object.freeze([\n${entries}\n] as const);\n`;
 }
 
-const expected = renderCatalog(getClientCatalog());
-if (process.argv[2] === "--check") {
-  const current = fs.existsSync(outputPath)
-    ? fs.readFileSync(outputPath, "utf8")
-    : "";
-  if (current !== expected) {
-    throw new Error(
-      "frontend MCP client catalog is stale; run npm run mcp-client-catalog",
-    );
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const expected = renderCatalog(getClientCatalog());
+  if (process.argv[2] === "--check") {
+    const current = fs.existsSync(outputPath)
+      ? fs.readFileSync(outputPath, "utf8")
+      : "";
+    if (current !== expected) {
+      throw new Error(
+        "frontend MCP client catalog is stale; run npm run mcp-client-catalog",
+      );
+    }
+    console.log("Generated MCP client catalog is current.");
+  } else {
+    fs.writeFileSync(outputPath, expected);
+    console.log(`Updated ${path.relative(root, outputPath)}.`);
   }
-  console.log("Generated MCP client catalog is current.");
-} else {
-  fs.writeFileSync(outputPath, expected);
-  console.log(`Updated ${path.relative(root, outputPath)}.`);
 }

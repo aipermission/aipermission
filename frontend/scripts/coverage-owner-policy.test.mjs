@@ -19,7 +19,7 @@ test("treats production modules as owners by default", () => {
   const exclusions = [
     "src/lib/gateway-contracts/runtime-contract.d.ts",
     "src/lib/release.generated.json",
-    "src/lib/mcp-client-catalog.js",
+    "src/lib/mcp-client-catalog.ts",
     "src/pages/history.component.test.jsx",
     "src/lib/smoke/app-smoke-fixtures.test.js",
     "src/test/setup.ts",

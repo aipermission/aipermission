@@ -3,7 +3,7 @@ import {
   connectorActionStatuses,
   connectorRetryClasses,
   executionRules,
-} from "./generated-connector-contract.js";
+} from "./generated-connector-contract.ts";
 import { assertConnectorActionResponse, isConnectorActionStatus, isConnectorRetryPolicy } from "./connector-action-contract.ts";
 import type { components } from "../../../types/generated-openapi";
 

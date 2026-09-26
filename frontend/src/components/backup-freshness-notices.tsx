@@ -1,8 +1,12 @@
 import { Link } from "react-router";
 import { formatRelativeAge } from "../lib/date-time";
 import { Notice } from "./ui/notice";
+import type { useGatewayActivityResources } from "./use-gateway-activity-resources.ts";
 
-export function BackupFreshnessNotices({ value, onChange }) {
+type Resources = ReturnType<typeof useGatewayActivityResources>;
+type Props = { value: Resources["backupFreshness"]; onChange: Resources["setBackupFreshness"] };
+
+export function BackupFreshnessNotices({ value, onChange }: Props) {
   return (
     <>
       {value.data.length > 0 ? (
@@ -29,7 +33,7 @@ export function BackupFreshnessNotices({ value, onChange }) {
   );
 }
 
-function NoticeActions({ onDismiss }) {
+function NoticeActions({ onDismiss }: { onDismiss: () => void }) {
   return (
     <span className="flex items-center gap-3">
       <Link className="font-semibold underline underline-offset-2" to="/settings">

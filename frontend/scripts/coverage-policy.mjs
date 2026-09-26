@@ -43,7 +43,9 @@ export function coveragePolicyWeakening(base, current) {
         value === typedManifestPattern &&
         accepted.has(oldManifestPattern) &&
         !current.excludedPatterns.includes(oldManifestPattern);
-      if (!accepted.has(value) && !migratedManifest) failures.push(`${name} added unreviewed exclusion ${value}`);
+      const migratedCatalog = name === "excludedNames" && value === "mcp-client-catalog.ts" &&
+        accepted.has("mcp-client-catalog.js") && !current.excludedNames.includes("mcp-client-catalog.js");
+      if (!accepted.has(value) && !migratedManifest && !migratedCatalog) failures.push(`${name} added unreviewed exclusion ${value}`);
     }
   }
   return failures;

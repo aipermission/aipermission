@@ -3,20 +3,24 @@ import { apiGet, apiPost } from "../lib/api";
 import { failedResource, pollReadOptions } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { connectorApproval, connectorApprovals } from "../lib/gateway-contracts/security-contracts";
+import type { ConnectorApproval } from "../lib/gateway-contracts/security-contracts";
+import { backupFreshnessResponse, runtimeMessagesResponse } from "../lib/gateway-contracts/activity-resource-contracts.ts";
+import type { BackupCheckError, BackupFreshnessItem, RuntimeMessage } from "../lib/gateway-contracts/activity-resource-contracts.ts";
 
-const runApprovalStatuses = ["completed", "failed", "canceled", "running", "blocked", "stale", "error", "outcome_unknown"];
-const declineApprovalStatuses = ["declined"];
+const runApprovalStatuses = ["completed", "failed", "canceled", "running", "blocked", "stale", "error", "outcome_unknown"] as const;
+const declineApprovalStatuses = ["declined"] as const;
 
-const loadingList = { state: "loading", data: [], error: null };
+type ListResource<Item> = { state: "loading" | "ready" | "error"; data: Item[]; error: string | null };
+type Props = { pollIsCurrent: (_generation?: number) => boolean };
 
-export function useGatewayActivityResources({ pollIsCurrent }) {
-  const [connectorActionApprovals, setConnectorActionApprovals] = useState(loadingList);
-  const [messages, setMessages] = useState(loadingList);
-  const [backupFreshness, setBackupFreshness] = useState({ state: "loading", data: [], checkErrors: [], error: null });
+export function useGatewayActivityResources({ pollIsCurrent }: Props) {
+  const [connectorActionApprovals, setConnectorActionApprovals] = useState<ListResource<ConnectorApproval>>({ state: "loading", data: [], error: null });
+  const [messages, setMessages] = useState<ListResource<RuntimeMessage>>({ state: "loading", data: [], error: null });
+  const [backupFreshness, setBackupFreshness] = useState<ListResource<BackupFreshnessItem> & { checkErrors: BackupCheckError[] }>({ state: "loading", data: [], checkErrors: [], error: null });
   const requests = useRequestGuard("gateway-activity-resources");
 
   const loadConnectorActionApprovals = useCallback(
-    async (generation) => {
+    async (generation?: number) => {
       const request = requests.begin("connector-approvals");
       try {
         const data = await apiGet("/api/connector-action-approvals", pollReadOptions(request.signal, generation));
@@ -33,12 +37,12 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   );
 
   const loadMessages = useCallback(
-    async (generation) => {
+    async (generation?: number) => {
       const request = requests.begin("messages");
       try {
         const data = await apiGet("/api/messages", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        setMessages({ state: "ready", data, error: null });
+        setMessages({ state: "ready", data: runtimeMessagesResponse(data), error: null });
       } catch (error) {
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
         setMessages((current) => failedResource(current, error));
@@ -54,7 +58,8 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
     try {
       const data = await apiGet("/api/backup/freshness", { signal: request.signal });
       if (!request.isCurrent()) return;
-      setBackupFreshness({ state: "ready", data: data?.items || [], checkErrors: data?.check_errors || [], error: null });
+      const freshness = backupFreshnessResponse(data);
+      setBackupFreshness({ state: "ready", data: freshness.items, checkErrors: freshness.checkErrors, error: null });
     } catch (error) {
       if (!request.isCurrent()) return;
       setBackupFreshness((current) => failedResource(current, error));
@@ -64,7 +69,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   }, [requests]);
 
   const runConnectorActionApproval = useCallback(
-    async (approval, userNote = "") => {
+    async (approval: ConnectorApproval, userNote = "") => {
       try {
         const item = connectorApproval(
           await apiPost(`/api/connector-action-approvals/${approval.id}/run`, {
@@ -89,7 +94,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   );
 
   const declineConnectorActionApproval = useCallback(
-    async (approval, userNote = "") => {
+    async (approval: ConnectorApproval, userNote = "") => {
       const item = connectorApproval(
         await apiPost(`/api/connector-action-approvals/${approval.id}/decline`, {
           user_note: userNote,
@@ -109,7 +114,7 @@ export function useGatewayActivityResources({ pollIsCurrent }) {
   );
 
   const markRuntimeMessagesRead = useCallback(
-    async (runtimeID) => {
+    async (runtimeID: string | number) => {
       const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID) });
       await loadMessages();
       return result;
