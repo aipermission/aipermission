@@ -28,8 +28,8 @@ export const asyncStateOwnerTests = {
   "src/components/settings/history-labels-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx", "src/components/settings/history-labels-panel.component.test.tsx"],
   "src/components/settings/history-retention-panel.tsx": ["src/components/settings/settings-panels.component.test.tsx"],
   "src/components/settings/password-settings-panel.tsx": ["src/components/settings/settings-panels.component.test.tsx", "src/components/settings/password-settings-panel.component.test.tsx"],
-  "src/components/settings/use-backup-provider-state.ts": ["src/components/settings/use-backup-provider-state.component.test.jsx"],
-  "src/components/settings/use-backup-record-state.ts": ["src/components/settings/use-backup-provider-state.component.test.jsx"],
+  "src/components/settings/use-backup-provider-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
+  "src/components/settings/use-backup-record-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
   "src/components/tokens/connector-permission-dialog.tsx": ["src/components/tokens/connector-permission-dialog.component.test.tsx"],
   "src/components/tokens/vault-permission-dialog.tsx": ["src/components/tokens/vault-permission-dialog.component.test.tsx"],
   "src/components/transfer-center.tsx": ["src/components/transfer-center.component.test.tsx"],
@@ -88,7 +88,7 @@ export const asyncStateOwnerTests = {
   "src/pages/tokens.tsx": ["src/pages/tokens.component.test.tsx"],
   "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
   "src/pages/audit-logs.tsx": ["src/pages/audit-logs.component.test.tsx"],
-  "src/pages/use-unlock-lifecycle-mutation.ts": ["src/pages/unlock.component.test.jsx", "src/pages/use-unlock-lifecycle-mutation.component.test.ts"],
+  "src/pages/use-unlock-lifecycle-mutation.ts": ["src/pages/unlock.component.test.tsx", "src/pages/use-unlock-lifecycle-mutation.component.test.ts"],
   "src/pages/use-history-page-state.ts": ["src/pages/history.component.test.tsx"],
 };
 
@@ -97,7 +97,7 @@ export const asyncStateTestIncludes = [...new Set(Object.values(asyncStateOwnerT
   .sort();
 
 export const riskCoverageTestIncludes = [
-  "src/pages/unlock.component.test.jsx",
+  "src/pages/unlock.component.test.tsx",
   "src/pages/remote-restore-panel.component.test.tsx",
   "src/pages/remote-restore-helpers.component.test.ts",
   "src/lib/connector-permissions.component.test.ts",
