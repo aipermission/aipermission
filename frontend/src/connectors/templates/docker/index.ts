@@ -3,6 +3,7 @@ import { DockerCredentialFormTemplate } from "./credential-form";
 import { dockerCredentialFamily } from "./credential-family";
 
 export { dockerCredentialFamily as credentialFamily } from "./credential-family";
+export { dockerConnectorFamily as connectorFamily } from "./connector-family";
 import { DockerConnectorFormTemplate } from "./form";
 import { DockerConnectorRowActionsTemplate } from "./list-item";
 import { DockerConnectorOperationsTemplate } from "./operations";

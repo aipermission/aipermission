@@ -12,6 +12,7 @@ import type {
   KubernetesRuntimeTarget,
   KubernetesTarget,
 } from "./form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyKubernetesCredentialForm = {
   target_id: "",
@@ -174,7 +175,7 @@ export function liveConsoleRuntimeTarget({ target }: { target: KubernetesRuntime
   };
 }
 
-export function deleteDialog({ target }: { target?: KubernetesTarget | null }) {
+export function deleteDialog({ target }: { target?: KubernetesTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Kubernetes connector target, namespace scopes, and token action permissions from aipermission.",

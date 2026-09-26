@@ -3,12 +3,11 @@ import type { InventoryProfile, InventoryTarget } from "../../lib/gateway-contra
 import type { CredentialResource, GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
 import type { ProjectOptionsState } from "../../lib/load-project-options";
 import type { ConnectorCatalogState, ConnectorInventoryState } from "./use-connector-inventory";
-import type { ConnectorRecoveryOperation, ConnectorTestState } from "./use-connector-connection-tests";
+import type { ConnectorTestState } from "./use-connector-connection-tests";
 
 export type TargetRowActionsProps = {
   target: InventoryTarget;
   profile: InventoryProfile | null;
-  onOperation: (_operation: ConnectorRecoveryOperation) => boolean | void;
   onUnderConstruction: (_label: string) => void;
 };
 type TargetContext = {
@@ -40,7 +39,6 @@ export type ConnectorTargetsTableProps = {
   tests: Record<string, ConnectorTestState>;
   onSelectProfile: (_target: InventoryTarget, _profileID: string) => void;
   onTestConnector: (_target: InventoryTarget, _profile: InventoryProfile | null) => unknown;
-  onOperation: TargetRowActionsProps["onOperation"];
   onUnderConstruction: TargetRowActionsProps["onUnderConstruction"];
   onEdit: (_target: InventoryTarget, _profile: InventoryProfile | null) => unknown;
   onDelete: (_target: InventoryTarget) => void;

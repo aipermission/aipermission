@@ -1,30 +1,10 @@
-import { useCallback, useRef, useState } from "react";
-import { idleActionState, type AsyncActionState } from "../../lib/use-async-action";
+import { useCallback, useState } from "react";
 import type { CredentialFamilyCommands } from "./credential-family-types";
+import { useFamilyCommandHost } from "./use-family-command-host";
 
 export function useCredentialFamilyHost() {
-  const commands = useRef(new Map<string, CredentialFamilyCommands>());
-  const activeKind = useRef("");
-  const [state, setState] = useState(idleActionState);
+  const { commands, ...host } = useFamilyCommandHost<CredentialFamilyCommands>();
   const [rowCounts, setRowCounts] = useState<ReadonlyMap<string, number>>(new Map());
-  const register = useCallback((kind: string, value: CredentialFamilyCommands | null) => {
-    if (value) commands.current.set(kind, value);
-    else {
-      commands.current.delete(kind);
-      if (activeKind.current === kind) {
-        activeKind.current = "";
-        setState(idleActionState);
-      }
-    }
-  }, []);
-  const onOpen = useCallback((kind: string) => {
-    activeKind.current = kind;
-    setState(idleActionState);
-    for (const [otherKind, value] of commands.current) if (otherKind !== kind) value.close();
-  }, []);
-  const onStateChange = useCallback((kind: string, next: AsyncActionState) => {
-    if (kind === activeKind.current) setState(next);
-  }, []);
   const onRowsChange = useCallback((kind: string, count: number | null) => {
     setRowCounts((current) => {
       if ((count === null && !current.has(kind)) || current.get(kind) === count) return current;
@@ -34,14 +14,10 @@ export function useCredentialFamilyHost() {
       return next;
     });
   }, []);
-  const openCreate = useCallback((kind: string) => commands.current.get(kind)?.openCreate(), []);
+  const openCreate = useCallback((kind: string) => commands.current.get(kind)?.openCreate(), [commands]);
   return {
-    state,
-    busy: state.state !== "idle" && state.state !== "error",
+    ...host,
     rowCounts,
-    register,
-    onOpen,
-    onStateChange,
     onRowsChange,
     openCreate,
   };

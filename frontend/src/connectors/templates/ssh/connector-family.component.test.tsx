@@ -40,9 +40,7 @@ function Host() {
   const RowActions = family.tableTemplate.RowActions;
   return (
     <MemoryRouter>
-      <Provider {...props}>
-        {RowActions ? <RowActions target={target} profile={profile} onOperation={vi.fn()} onUnderConstruction={vi.fn()} /> : null}
-      </Provider>
+      <Provider {...props}>{RowActions ? <RowActions target={target} profile={profile} onUnderConstruction={vi.fn()} /> : null}</Provider>
     </MemoryRouter>
   );
 }

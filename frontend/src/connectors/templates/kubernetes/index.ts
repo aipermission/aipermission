@@ -3,6 +3,7 @@ import { KubernetesCredentialFormTemplate } from "./credential-form";
 import { kubernetesCredentialFamily } from "./credential-family";
 
 export { kubernetesCredentialFamily as credentialFamily } from "./credential-family";
+export { kubernetesConnectorFamily as connectorFamily } from "./connector-family";
 import { KubernetesConnectorFormTemplate } from "./form";
 import { KubernetesConnectorRowActionsTemplate } from "./list-item";
 import { KubernetesConnectorOperationsTemplate } from "./operations";

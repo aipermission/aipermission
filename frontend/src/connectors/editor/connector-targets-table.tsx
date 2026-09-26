@@ -33,7 +33,6 @@ export function ConnectorTargetsTable({
   tests,
   onSelectProfile,
   onTestConnector,
-  onOperation,
   onUnderConstruction,
   onEdit,
   onDelete,
@@ -74,7 +73,6 @@ export function ConnectorTargetsTable({
               tests={tests}
               onSelectProfile={onSelectProfile}
               onTestConnector={onTestConnector}
-              onOperation={onOperation}
               onUnderConstruction={onUnderConstruction}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -139,7 +137,6 @@ function ConnectorTargetRow({
   tests,
   onSelectProfile,
   onTestConnector,
-  onOperation,
   onUnderConstruction,
   onEdit,
   onDelete,
@@ -174,7 +171,7 @@ function ConnectorTargetRow({
       <td className="px-4 py-4">
         <div className="flex justify-end gap-2">
           {RowActionsTemplate ? (
-            <RowActionsTemplate target={target} profile={profile} onOperation={onOperation} onUnderConstruction={onUnderConstruction} />
+            <RowActionsTemplate target={target} profile={profile} onUnderConstruction={onUnderConstruction} />
           ) : (
             <ConnectorTemplateNotFound kind={target.connector_kind} slot="row-actions" />
           )}
@@ -245,6 +242,7 @@ function ConnectorProfilesCell({
   }
   return (
     <Select
+      aria-label={`Credential profile for ${target.name}`}
       value={selectedProfileID ? String(selectedProfileID) : ""}
       onChange={(event) => onSelectProfile(target, event.target.value)}
       className="h-9 text-xs"

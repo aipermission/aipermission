@@ -340,7 +340,12 @@ function moduleLayer(sourceRoot, file, connectorKinds) {
     if (path.startsWith(`connectors/templates/${kind}/`)) return `connector-template:${kind}`;
   }
   if (
-    ["connectors/templates/catalog.ts", "connectors/templates/registry.jsx", "connectors/templates/credential-registry.ts"].includes(path)
+    [
+      "connectors/templates/catalog.ts",
+      "connectors/templates/registry.jsx",
+      "connectors/templates/credential-registry.ts",
+      "connectors/templates/connector-family-registry.ts",
+    ].includes(path)
   )
     return "connector-registry";
   if (path.startsWith("connectors/templates/")) return "connector-shared";
