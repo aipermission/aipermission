@@ -15,7 +15,7 @@ export type CredentialFormProps<Form extends CredentialProfileForm> = {
   form: Form;
   formMode?: "create" | "edit";
   targets: readonly NetworkTarget[];
-  state: { state: string; error?: string };
+  state: { state: string; error?: string | null };
   onChange: (_form: Form) => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
 };

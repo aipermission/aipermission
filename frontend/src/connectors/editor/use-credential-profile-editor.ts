@@ -6,7 +6,7 @@ import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./edit
 type CredentialRow = { connector_kind: string };
 type CredentialTarget = { [field: string]: unknown };
 type SaveResult = { message?: string } | undefined;
-type CredentialModel<FormState, Row, Target, Operation> = {
+export type CredentialModel<FormState, Row, Target, Operation> = {
   credentialStateFromRow?: (_context: { row: Row; targets: Target[] }) => FormState;
   saveCredential?: (_context: {
     operation: Operation;

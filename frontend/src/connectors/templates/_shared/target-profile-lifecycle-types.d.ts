@@ -37,6 +37,23 @@ export interface LifecycleCredentialRow<Profile extends LifecycleProfile, Target
   target?: Target;
 }
 
+export interface LifecycleDisplayRow<Profile extends LifecycleProfile, Target extends LifecycleTarget<Profile>, Metadata> {
+  row_id: string;
+  connector_kind: string;
+  resource_kind: string;
+  connector_label: string;
+  id: Profile["id"];
+  target_id: Target["id"];
+  name: Profile["label"];
+  kind: Profile["kind"];
+  profile: Profile;
+  target?: Target;
+  target_label: Target["name"];
+  target_detail: string;
+  metadata: Metadata;
+  delete_disabled: string;
+}
+
 export interface LifecycleSaveContext<Form, Target> {
   mode: string;
   form: Form;

@@ -8,6 +8,7 @@ import type {
   LifecycleCredentialContext,
   LifecycleCredentialForm,
   LifecycleCredentialRow,
+  LifecycleDisplayRow,
   LifecycleMessage,
   LifecycleMessageContext,
   LifecycleOptions,
@@ -104,17 +105,17 @@ export function createTargetProfileLifecycle<
     await apiDelete(`/api/connector-targets/${target.id}`);
   }
 
-  function credentialFormProps<FormState extends { form: object }, Status>({
+  function credentialFormProps<FormState extends { form: object }, Status, FormTarget extends Target>({
     targets,
     formState,
     setFormState,
     formMode,
     state,
     onSubmit,
-  }: CredentialFormPropsContext<FormState["form"], FormState, Status, Target>): LifecycleCredentialFormProps<
+  }: CredentialFormPropsContext<FormState["form"], FormState, Status, FormTarget>): LifecycleCredentialFormProps<
     FormState["form"],
     Status,
-    Target
+    FormTarget
   > {
     return {
       form: formState.form,
@@ -196,13 +197,13 @@ export function connectorCredentialRows<Profile extends LifecycleProfile, Target
   targetEndpoint: (_context: { target: Target }) => string;
   credentialMetadata: (_profile: Profile) => Metadata;
   includeTarget?: boolean;
-}) {
+}): LifecycleDisplayRow<Profile, Target, Metadata>[] {
   return targets
     .filter((target) => target.connector_kind === connectorKind)
     .flatMap((target) =>
       (target.profiles || []).map((profile) => ({
         row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-        connector_kind: target.connector_kind,
+        connector_kind: connectorKind,
         resource_kind: "credential_profile",
         connector_label: typeof connectorLabel === "function" ? connectorLabel(target) : connectorLabel,
         id: profile.id,
