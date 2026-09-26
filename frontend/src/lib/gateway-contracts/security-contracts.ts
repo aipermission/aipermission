@@ -150,6 +150,12 @@ export function tokenProjectScopes(value: unknown): TokenProjectScope[] {
   });
 }
 
+export function tokenProjectScopeSnapshot(value: unknown): { items: TokenProjectScope[]; revision: string } {
+  const items = tokenProjectScopes(value);
+  const data = record(value, "project scopes");
+  return { items, revision: data.revision as string };
+}
+
 export function connectorApprovals(value: unknown, context = "connector approvals"): ConnectorApproval[] {
   return array(value, context).map((entry) => {
     return connectorApproval(entry, undefined, context);

@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 
 import config, { LexicalSequencer } from "../vitest.changed.config.js";
 import riskConfig from "../vitest.risk.config.js";
+import focusedConfig from "../vitest.config.js";
 import { riskCoverageTestIncludes } from "../test-suite-manifests.mjs";
+
+test("every focused coverage owner exists after extension migrations", () => {
+  for (const owner of focusedConfig.test.coverage.include) {
+    assert.ok(existsSync(new URL(`../${owner}`, import.meta.url)), `Missing focused coverage owner: ${owner}`);
+  }
+  assert.ok(focusedConfig.test.coverage.include.includes("src/components/console/connector-token-permission-panel.tsx"));
+});
 
 test("runs changed coverage in a deterministic worker order", () => {
   assert.equal(config.test.fileParallelism, false);

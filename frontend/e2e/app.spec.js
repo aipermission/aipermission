@@ -136,7 +136,7 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: { items: [] } });
   });
   await page.route(/http:\/\/localhost:8080\/api\/history\?.*/, async (route) => {
-    await route.fulfill({ json: { items: [], total: 0, limit: 50, has_more: false, next_cursor: null } });
+    await route.fulfill({ json: { items: [], total: 0, limit: 50, has_more: false } });
   });
   await page.route("http://localhost:8080/api/tokens/1/connector-permissions", async (route) => {
     if (route.request().method() === "PUT") {

@@ -16,7 +16,7 @@ export default defineConfig({
         "src/connectors/templates/_shared/action-runner.ts",
         "src/connectors/templates/_shared/target-profile-lifecycle.ts",
         "src/components/console/connector-action-approval-dialog.tsx",
-        "src/components/console/connector-token-permission-panel.jsx",
+        "src/components/console/connector-token-permission-panel.tsx",
         "src/components/console/use-console-page-state.ts",
       ],
       reporter: ["text"],

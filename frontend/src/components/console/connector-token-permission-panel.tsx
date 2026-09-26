@@ -5,14 +5,11 @@ import {
   matchesConnectorTargetProfileAction,
   selectedConnectorProfile,
 } from "../../lib/connector-permissions";
-import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
-import { effectiveRule, expiresAtFromLifetime, maskedToken, permissionLifetimeLabel, ruleLabel } from "../../lib/permissions";
+import { effectiveRule, expiresAtFromLifetime, maskedToken, ruleLabel } from "../../lib/permissions";
 import { Badge, CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Select } from "../ui/form";
 import { Notice } from "../ui/notice";
-import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import {
   groupActions,
   groupActionsByRisk,
@@ -23,6 +20,43 @@ import {
   tokenProfileModeKey,
 } from "./connector-token-permission-model";
 import { useConnectorTokenPermissionState } from "./use-connector-token-permission-state";
+import type { ConnectorTokenPermissionOptions, PermissionTarget } from "./use-connector-token-permission-state";
+import type { GatewayToken } from "../../lib/gateway-contracts/core-resource-contracts";
+import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
+import {
+  ActionPermissionCard,
+  PermissionMutationError,
+  PermissionModeTabs,
+  PermissionRuleGroup,
+  ProfileLifetimeControls,
+  ProfileSelect,
+  ProjectVisibilityControl,
+} from "./connector-token-permission-controls";
+
+export type ConnectorTokenPermissionPanelProps = Omit<ConnectorTokenPermissionOptions, "tokens"> & {
+  tokens: ConnectorTokenPermissionOptions["tokens"] & { state: string; error?: string | null };
+  unreadMessages?: Pick<RuntimeMessage, "runtime_id" | "token_id">[];
+  compact?: boolean;
+  onToggleCompact?: () => void;
+  onOpenMessages?: (_id: number) => void;
+};
+type Panel = ReturnType<typeof useConnectorTokenPermissionState>;
+type ActionProps = {
+  panel: Panel;
+  selectedTarget: PermissionTarget | null;
+  token: GatewayToken;
+  profile: PermissionTarget;
+  compactPopover?: boolean;
+};
+type RuleGroupProps = {
+  groups: ReturnType<typeof groupActions>;
+  permissions: TokenActionPermission[];
+  profile: PermissionTarget;
+  saving: boolean;
+  selectedTarget: PermissionTarget;
+  token: GatewayToken;
+};
 
 export function ConnectorTokenPermissionPanel({
   tokens,
@@ -37,7 +71,7 @@ export function ConnectorTokenPermissionPanel({
   onToggleCompact,
   onRefresh,
   onOpenMessages,
-}) {
+}: ConnectorTokenPermissionPanelProps) {
   const panel = useConnectorTokenPermissionState({
     connectorPermissionState,
     loadAllConnectorPermissions,
@@ -187,7 +221,7 @@ export function ConnectorTokenPermissionPanel({
             const unreadCount = targetSupportsMessages(selectedTarget)
               ? unreadMessages.filter(
                   (message) =>
-                    Number(message.runtime_id) === Number(profile?.runtime_id || selectedTarget.runtime_id) &&
+                    Number(message.runtime_id) === Number(profile?.runtime_id || selectedTarget?.runtime_id) &&
                     Number(message.token_id) === Number(token.id),
                 ).length
               : 0;
@@ -235,7 +269,7 @@ export function ConnectorTokenPermissionPanel({
   );
 }
 
-function TokenPermissionActions({ panel, selectedTarget, token, profile, compactPopover = false }) {
+function TokenPermissionActions({ panel, selectedTarget, token, profile, compactPopover = false }: ActionProps) {
   const {
     load,
     permissionModeByKey,
@@ -252,6 +286,7 @@ function TokenPermissionActions({ panel, selectedTarget, token, profile, compact
     setProfileLifetime,
     setProjectVisibility,
   } = panel;
+  if (!selectedTarget) return null;
   const permissions = permissionsByToken[token.id] || [];
   const actions = load.actionsByTargetRef?.[connectorActionCacheKey(selectedTarget, profile.profile_id)] || [];
   const activePermissions = currentConnectorTargetProfilePermissions(permissions, selectedTarget, profile.profile_id);
@@ -326,7 +361,15 @@ function TokenPermissionActions({ panel, selectedTarget, token, profile, compact
   );
 }
 
-function GroupedPermissionRules({ groups, permissions, profile, saving, selectedTarget, setConnectorRules, token }) {
+function GroupedPermissionRules({
+  groups,
+  permissions,
+  profile,
+  saving,
+  selectedTarget,
+  setConnectorRules,
+  token,
+}: Omit<RuleGroupProps, "groups"> & { groups: ReturnType<typeof groupActionsByRisk>; setConnectorRules: Panel["setConnectorRules"] }) {
   return (
     <div className="grid gap-2">
       {groups.map((group) => (
@@ -344,7 +387,16 @@ function GroupedPermissionRules({ groups, permissions, profile, saving, selected
   );
 }
 
-function AdvancedPermissionRules({ compactPopover, groups, permissions, profile, saving, selectedTarget, setConnectorRule, token }) {
+function AdvancedPermissionRules({
+  compactPopover,
+  groups,
+  permissions,
+  profile,
+  saving,
+  selectedTarget,
+  setConnectorRule,
+  token,
+}: RuleGroupProps & { compactPopover: boolean; setConnectorRule: Panel["setConnectorRule"] }) {
   return groups.map((group) => (
     <div key={group.name} className="grid gap-2">
       {groups.length > 1 ? <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">{group.name}</p> : null}
@@ -365,181 +417,4 @@ function AdvancedPermissionRules({ compactPopover, groups, permissions, profile,
       })}
     </div>
   ));
-}
-
-function PermissionMutationError({ value, onRetry }) {
-  return (
-    <div role="alert">
-      <Notice tone="bad" className="grid gap-2">
-        <p>{value.message}</p>
-        {value.retryable !== false ? (
-          <Button type="button" variant="outline" className="h-8 justify-self-start" onClick={onRetry}>
-            <RefreshCcw className="h-3.5 w-3.5" />
-            Retry
-          </Button>
-        ) : null}
-      </Notice>
-    </div>
-  );
-}
-
-function ProjectVisibilityControl({ projectName, enabled, ready, saving, onChange }) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${enabled ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
-    >
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-stone-800">{projectName}</p>
-        <p className="truncate text-stone-500">
-          {enabled ? "Visible to this token through MCP" : "Hidden from this token's MCP target list"}
-        </p>
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-8 shrink-0 px-2 text-xs"
-        disabled={saving || !ready}
-        onClick={() => onChange(!enabled)}
-      >
-        {!ready ? "Loading..." : saving ? "Saving..." : enabled ? "Hide" : "Enable"}
-      </Button>
-    </div>
-  );
-}
-
-function ProfileSelect({ profiles, value, onChange, disabled = false }) {
-  if (profiles.length === 0) return null;
-  return (
-    <label className="grid gap-1 text-xs font-semibold text-stone-600">
-      Profile
-      <Select value={value ? String(value) : ""} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Select profile</option>
-        {profiles.map((profile) => (
-          <option key={profile.profile_id} value={profile.profile_id}>
-            {profile.profile_label || `Profile ${profile.profile_id}`}
-          </option>
-        ))}
-      </Select>
-    </label>
-  );
-}
-
-function ProfileLifetimeControls({ value, saving, disabled, onSetPermanent, onSetTemporary }) {
-  const controlsDisabled = saving || disabled;
-  return (
-    <div className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-stone-700">Lifetime</span>
-        <span className="text-stone-500">{permissionLifetimeLabel(value)}</span>
-      </div>
-      <div className="grid grid-cols-4 gap-1">
-        <ConnectorRuleButton active={!disabled && !value?.expires_at} disabled={controlsDisabled} onClick={onSetPermanent}>
-          Keep
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("1h")}>
-          1h
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("4h")}>
-          4h
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={false} disabled={controlsDisabled} onClick={() => onSetTemporary("1d")}>
-          1d
-        </ConnectorRuleButton>
-      </div>
-    </div>
-  );
-}
-
-function PermissionModeTabs({ value, onChange, disabled = false }) {
-  const modes = [
-    { id: "basic", label: "Basic", title: "Apply one rule to every connector action." },
-    { id: "grouped", label: "Grouped", title: "Apply separate rules to read and write actions." },
-    { id: "advanced", label: "Advanced", title: "Configure every connector action separately." },
-  ];
-  return (
-    <div className="grid grid-cols-3 gap-1 rounded-md border border-stone-200 bg-white/70 p-1 dark-panel-subtle">
-      {modes.map((mode) => (
-        <button
-          key={mode.id}
-          type="button"
-          disabled={disabled}
-          title={mode.title}
-          className={`h-8 rounded px-2 text-xs font-semibold transition ${
-            value === mode.id ? "permission-button-active bg-emerald-950 text-white" : "text-stone-600 hover:bg-stone-100"
-          }`}
-          onClick={() => onChange(mode.id)}
-        >
-          {mode.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function PermissionRuleGroup({ title, description, rule, saving, disabled = false, onSetRule }) {
-  return (
-    <div
-      role="group"
-      aria-label={`${title} permission`}
-      className="dark-panel-subtle grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2"
-    >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-stone-900">{title}</p>
-          <p className="truncate text-xs text-stone-500">{description}</p>
-        </div>
-        {rule === "mixed" ? <Badge tone="warn">mixed</Badge> : null}
-      </div>
-      <div className="grid grid-cols-4 gap-1">
-        <ConnectorRuleButton active={!rule && !disabled} disabled={saving || disabled} onClick={() => onSetRule("")}>
-          Disabled
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "blocked"} disabled={saving || disabled} onClick={() => onSetRule("blocked")}>
-          Blocked
-        </ConnectorRuleButton>
-        <ConnectorRuleButton
-          active={rule === "approval_required"}
-          disabled={saving || disabled}
-          onClick={() => onSetRule("approval_required")}
-        >
-          Prompt
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "always_run"} disabled={saving || disabled} onClick={() => onSetRule("always_run")}>
-          Always
-        </ConnectorRuleButton>
-      </div>
-    </div>
-  );
-}
-
-function ActionPermissionCard({ action, rule, saving, compactPopover, onSetRule }) {
-  return (
-    <div
-      role="group"
-      aria-label={`${action.name} permission`}
-      className={`grid gap-2 rounded-md border border-stone-200 bg-white/70 p-2 ${compactPopover ? "" : "dark-panel-subtle"}`}
-    >
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-mono text-xs font-semibold text-stone-900">{action.name}</p>
-          <p className="line-clamp-2 text-xs text-stone-500">{action.description}</p>
-        </div>
-        <Badge tone={connectorActionRiskTone(action.risk)}>{connectorActionRiskLabel(action.risk)}</Badge>
-      </div>
-      <div className="grid grid-cols-4 gap-1">
-        <ConnectorRuleButton active={!rule} disabled={saving} onClick={() => onSetRule("")}>
-          Disabled
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "blocked"} disabled={saving} onClick={() => onSetRule("blocked")}>
-          Blocked
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "approval_required"} disabled={saving} onClick={() => onSetRule("approval_required")}>
-          Prompt
-        </ConnectorRuleButton>
-        <ConnectorRuleButton active={rule === "always_run"} disabled={saving} onClick={() => onSetRule("always_run")}>
-          Always
-        </ConnectorRuleButton>
-      </div>
-    </div>
-  );
 }

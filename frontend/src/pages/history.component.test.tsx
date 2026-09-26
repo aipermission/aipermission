@@ -1,47 +1,51 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiGet } from "../lib/api";
+import { apiGet as realGet } from "../lib/api";
 import { HistoryPage } from "./history";
-
-// async-owner: src/pages/use-history-page-state.js
+import { historyEntryFixture } from "../test/history-fixtures";
+import type { HistoryEntry } from "../lib/gateway-contracts/history-resource-contract";
 
 vi.mock("../lib/api", () => ({
   apiDelete: vi.fn(),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
 }));
+const apiGet = vi.mocked(realGet);
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
 }
 
-function historyResponse(name, overrides = {}) {
+function historyResponse(
+  name: string,
+  overrides: { id?: number; status?: HistoryEntry["status"]; total?: number; nextCursor?: string } = {},
+) {
   return {
     items: [
-      {
-        id: overrides.id || name,
+      historyEntryFixture({
+        id: overrides.id || 1,
         status: overrides.status || "completed",
         connector_kind: "ssh",
         target_name: name,
-        action: "exec",
+        action_name: "exec",
         created_at: "2026-09-05T12:00:00Z",
-      },
+      }),
     ],
     total: overrides.total || 1,
     limit: 50,
     has_more: Boolean(overrides.nextCursor),
-    next_cursor: overrides.nextCursor || null,
+    ...(overrides.nextCursor ? { next_cursor: overrides.nextCursor } : {}),
   };
 }
 
-function installHistoryMock(responses = {}) {
+function installHistoryMock(responses: Record<string, ReturnType<typeof deferred>> = {}) {
   apiGet.mockImplementation((path) => {
     if (path === "/api/history-labels") return Promise.resolve([]);
     if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
@@ -51,7 +55,7 @@ function installHistoryMock(responses = {}) {
   });
 }
 
-async function waitForHistoryRequest(query) {
+async function waitForHistoryRequest(query: string) {
   await waitFor(() =>
     expect(
       apiGet.mock.calls.some(
@@ -62,8 +66,123 @@ async function waitForHistoryRequest(query) {
   );
 }
 
+describe("HistoryPage validated references", () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+  });
+
+  it("shows independent label, project and target reference failures without losing a valid history page", async () => {
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/history-labels") throw new Error("Label reference unavailable");
+      if (path === "/api/projects") throw new Error("Project reference unavailable");
+      if (path === "/api/history/targets") throw new Error("Target reference unavailable");
+      return historyResponse("Available history");
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("Available history")).toBeVisible();
+    expect(screen.getByText("Label reference unavailable")).toBeVisible();
+    expect(screen.getByText("Project reference unavailable")).toBeVisible();
+    expect(screen.getByText("Target reference unavailable")).toBeVisible();
+  });
+
+  it("shows loading before an empty verified page and disables unavailable pagination", async () => {
+    const list = deferred();
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/history-labels") return [];
+      if (path === "/api/projects" || path === "/api/history/targets") return { items: [] };
+      return list.promise;
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("Loading history...")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+    await act(async () => list.resolve({ items: [], total: 0, limit: 50, has_more: false }));
+    expect(await screen.findByText("No history yet.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  });
+
+  it("keeps a nameless verified target keyboard-accessible and labels unavailable metadata clearly", async () => {
+    const entry = historyEntryFixture({ target_name: "", profile_label: "", project_name: "", labels: [] });
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/history-labels") return [];
+      if (path === "/api/projects" || path === "/api/history/targets") return { items: [] };
+      if (path === `/api/history/${entry.id}`) return entry;
+      return { items: [entry], total: 1, limit: 50, has_more: false };
+    });
+    render(<HistoryPage />);
+    const target = await screen.findByRole("button", { name: "Open history details for unknown target" });
+    expect(within(target).getByText("-")).toBeVisible();
+    await userEvent.click(target);
+    expect(await screen.findByRole("dialog")).toBeVisible();
+    expect(apiGet).toHaveBeenCalledWith(`/api/history/${entry.id}`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it("reports invalid list metadata instead of rendering an unverified entry", async () => {
+    installHistoryMock();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
+      return Promise.resolve({ ...historyResponse("unsafe"), items: [{ id: "unsafe" }] });
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("Invalid history response from gateway.")).toBeVisible();
+    expect(screen.queryByText("unsafe")).not.toBeInTheDocument();
+  });
+
+  it("keeps refreshed target facets when an older reference request completes late", async () => {
+    const older = deferred();
+    let targetReads = 0;
+    installHistoryMock();
+    apiGet.mockImplementation((path) => {
+      if (path === "/api/history-labels") return Promise.resolve([]);
+      if (path === "/api/projects") return Promise.resolve({ items: [] });
+      if (path === "/api/history/targets") {
+        targetReads++;
+        return targetReads === 1
+          ? older.promise
+          : Promise.resolve({
+              items: [
+                {
+                  ref: "fixture:2:2",
+                  connector_kind: "fixture",
+                  target_id: 2,
+                  profile_id: 2,
+                  target_name: "Current target",
+                  last_seen_at: "2026-09-26",
+                },
+              ],
+            });
+      }
+      return Promise.resolve(historyResponse("initial"));
+    });
+    render(<HistoryPage />);
+    expect(await screen.findByText("initial")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByRole("option", { name: "Current target / default" })).toBeInTheDocument();
+    await act(async () =>
+      older.resolve({
+        items: [
+          {
+            ref: "fixture:1:1",
+            connector_kind: "fixture",
+            target_id: 1,
+            profile_id: 1,
+            target_name: "Older target",
+            last_seen_at: "2026-09-25",
+          },
+        ],
+      }),
+    );
+    expect(screen.queryByRole("option", { name: "Older target / default" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Current target / default" })).toBeInTheDocument();
+  });
+});
+
 describe("HistoryPage request ownership", () => {
-  beforeEach(() => apiGet.mockReset());
+  beforeEach(() => {
+    apiGet.mockReset();
+  });
 
   it("ignores an older filter response that resolves after the current result", async () => {
     const older = deferred();
@@ -84,7 +203,9 @@ describe("HistoryPage request ownership", () => {
 
     expect(screen.queryByText("older")).not.toBeInTheDocument();
     expect(screen.getByText("current")).toBeVisible();
-    expect(within(screen.getByText("Total").parentElement).getByText("7")).toBeVisible();
+    const total = screen.getByText("Total").parentElement;
+    if (!total) throw new Error("Missing total stat");
+    expect(within(total).getByText("7")).toBeVisible();
   });
 
   it("does not describe a failed history request as an empty history", async () => {
@@ -129,10 +250,22 @@ describe("HistoryPage request ownership", () => {
   it("updates and clears every connector-aware history filter", async () => {
     const user = userEvent.setup();
     apiGet.mockImplementation((path) => {
-      if (path === "/api/history-labels") return Promise.resolve([{ id: 5, name: "Investigate" }]);
-      if (path === "/api/projects") return Promise.resolve({ items: [{ id: 3, name: "My Project" }] });
+      if (path === "/api/history-labels") return Promise.resolve([{ id: 5, name: "Investigate", color: "#ffffff" }]);
+      if (path === "/api/projects") return Promise.resolve({ items: [{ id: 3, name: "My Project", slug: "my-project", target_count: 1 }] });
       if (path === "/api/history/targets") {
-        return Promise.resolve({ items: [{ ref: "ssh:1:1", connector_kind: "ssh", target_name: "Host", project_id: 3 }] });
+        return Promise.resolve({
+          items: [
+            {
+              ref: "ssh:1:1",
+              connector_kind: "ssh",
+              target_name: "Host",
+              project_id: 3,
+              target_id: 1,
+              profile_id: 1,
+              last_seen_at: "2026-09-26",
+            },
+          ],
+        });
       }
       if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
       return Promise.resolve({});
@@ -199,7 +332,7 @@ describe("HistoryPage request ownership", () => {
     apiGet.mockImplementation((path) => {
       if (path === "/api/history-labels") return Promise.resolve([]);
       if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
-      if (path === "/api/history/initial") return detail.promise;
+      if (path === "/api/history/1") return detail.promise;
       if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
       return Promise.resolve({});
     });
@@ -208,7 +341,7 @@ describe("HistoryPage request ownership", () => {
     fireEvent.click(await screen.findByText("initial"));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
-    await act(async () => detail.resolve({ ...historyResponse("detail").items[0], id: "initial" }));
+    await act(async () => detail.resolve({ ...historyResponse("detail").items[0], id: 1 }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -219,7 +352,7 @@ describe("HistoryPage request ownership", () => {
     apiGet.mockImplementation((path) => {
       if (path === "/api/history-labels") return Promise.resolve([]);
       if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
-      if (path === "/api/history/initial") return Promise.resolve(historyResponse("initial").items[0]);
+      if (path === "/api/history/1") return Promise.resolve(historyResponse("initial").items[0]);
       if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
       return Promise.resolve({});
     });
@@ -237,13 +370,14 @@ describe("HistoryPage request ownership", () => {
     apiGet.mockImplementation((path) => {
       if (path === "/api/history-labels") return Promise.resolve([]);
       if (path === "/api/history/targets" || path === "/api/projects") return Promise.resolve({ items: [] });
-      if (path === "/api/history/initial") return Promise.resolve(historyResponse("initial").items[0]);
+      if (path === "/api/history/1") return Promise.resolve(historyResponse("initial").items[0]);
       if (typeof path === "string" && path.startsWith("/api/history?")) return Promise.resolve(historyResponse("initial"));
       return Promise.resolve({});
     });
     render(<HistoryPage />);
 
     const row = (await screen.findByText("initial")).closest("tr");
+    if (!row) throw new Error("Missing history row");
     fireEvent.click(row.cells[0]);
 
     expect(await screen.findByRole("dialog")).toBeVisible();

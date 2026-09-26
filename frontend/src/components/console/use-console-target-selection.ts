@@ -9,8 +9,11 @@ import {
   targetUsesLiveConsole,
 } from "./console-target-sidebar";
 import { isUnreadMessage } from "./helpers";
+import type { ConsoleNavigationTarget } from "./console-target-sidebar";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts";
+import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts";
 
-type Target = {
+type SelectionTarget = ConsoleNavigationTarget & {
   ref: string;
   connector_kind: string;
   target_id: number;
@@ -20,19 +23,19 @@ type Target = {
   project_name?: string;
   project_slug?: string;
 };
-type Message = { direction: string; consumed_at?: string | null };
-type Props = {
+type Message = Pick<RuntimeMessage, "direction" | "consumed_at" | "runtime_id">;
+type Props<Target> = {
   messages: { data: Message[] };
-  pendingApprovals: readonly unknown[];
+  pendingApprovals: readonly Pick<ConnectorApproval, "target_ref">[];
   selectedTargetRef: string;
   setSearchParams: (_params: { target: string }, _options?: { replace: boolean }) => void;
   targets: { data: Target[] } | null;
 };
 
-export function useConsoleTargetSelection({ messages, pendingApprovals, selectedTargetRef, setSearchParams, targets }: Props) {
+export function useConsoleTargetSelection<Target extends SelectionTarget>({ messages, pendingApprovals, selectedTargetRef, setSearchParams, targets }: Props<Target>) {
   const [profileByTarget, setProfileByTarget] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<number, boolean>>({});
+  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const targetItems = useMemo<Target[]>(() => targets?.data || [], [targets?.data]);
   const unreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
   const defaultTargetRef = useMemo(
@@ -108,7 +111,7 @@ export function useConsoleTargetSelection({ messages, pendingApprovals, selected
     [selectedProfiles, selectedTarget, setSearchParams],
   );
 
-  const toggleProject = useCallback((projectID: number) => {
+  const toggleProject = useCallback((projectID: string) => {
     setCollapsedProjects((current) => ({ ...current, [projectID]: !current[projectID] }));
   }, []);
 

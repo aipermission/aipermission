@@ -1,5 +1,5 @@
 import { apiPut } from "./api.js";
-import { tokenProjectScopes } from "./gateway-contracts/security-contracts.js";
+import { tokenProjectScopeSnapshot } from "./gateway-contracts/security-contracts.js";
 
 type ProjectVisibility = { project_id: number; enabled: boolean };
 type UpdateOptions = { expectedRevision?: string; signal?: AbortSignal };
@@ -20,8 +20,7 @@ export async function updateTokenProjectVisibility(
     },
     requestOptions,
   );
-  const items = tokenProjectScopes(response);
-  return { items, revision: response.revision as string };
+  return tokenProjectScopeSnapshot(response);
 }
 
 export function enabledProjectIDsForVisibility(projects: readonly ProjectVisibility[], projectID: number, enabled: boolean): number[] {

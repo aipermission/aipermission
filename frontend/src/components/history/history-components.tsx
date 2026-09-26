@@ -11,7 +11,18 @@ import { Notice } from "../ui/notice";
 import { ProgressBar } from "../ui/progress-bar";
 import { TerminalBlock } from "../ui/terminal-block";
 import { useHistoryTransferDownload } from "./use-history-transfer-download";
-function HistoryStat({ label, value, tone = "neutral" }) {
+import type { ComponentProps, KeyboardEvent, ReactNode, RefObject } from "react";
+import type { components } from "../../../types/generated-openapi";
+import type { ConsoleNavigationTarget } from "../console/console-target-sidebar";
+import { errorMessage } from "../../lib/errors";
+type Entry = components["schemas"]["HistoryEntry"];
+type HistoryItem = Pick<Entry, "id"> & Partial<Omit<Entry, "labels">> & { labels?: (Pick<Entry["labels"][number], "id" | "name"> & { color?: string })[] };
+type Label = NonNullable<HistoryItem["labels"]>[number];
+type Tone = NonNullable<ComponentProps<typeof Badge>["tone"]>;
+type LabelOwner = { generation: number; itemID: number | null };
+type LabelOperations = { item: HistoryItem | null; onAttachLabel: (_id: number, _payload: { name: string }) => unknown; onDetachLabel: (_id: number, _labelID: number) => unknown };
+type HistoryDialogProps = LabelOperations & { labels?: Label[]; onClose: () => void };
+function HistoryStat({ label, value, tone = "neutral" }: { label: string; value: ReactNode; tone?: Tone }) {
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3">
@@ -22,16 +33,16 @@ function HistoryStat({ label, value, tone = "neutral" }) {
   );
 }
 
-function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }) {
+function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabel }: HistoryDialogProps) {
   const [labelName, setLabelName] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
-  const labelInputRef = useRef(null);
-  const blurTimerRef = useRef(null);
-  const focusTimerRef = useRef(null);
+  const labelInputRef = useRef<HTMLInputElement | null>(null);
+  const blurTimerRef = useRef<number | null>(null);
+  const focusTimerRef = useRef<number | null>(null);
   const { labelState, attachLabel, detachLabel } = useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel });
 
-  function cancelTimer(timerRef) {
+  function cancelTimer(timerRef: RefObject<number | null>) {
     if (timerRef.current === null) return;
     window.clearTimeout(timerRef.current);
     timerRef.current = null;
@@ -97,12 +108,12 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
     focusLabelInput();
   }
 
-  async function removeLabel(labelID) {
+  async function removeLabel(labelID: number) {
     const detached = await detachLabel(labelID);
     if (detached !== undefined) focusLabelInput();
   }
 
-  function handleLabelKeyDown(event) {
+  function handleLabelKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown" && suggestions.length > 0) {
       event.preventDefault();
       setSuggestionsOpen(true);
@@ -250,9 +261,9 @@ function HistoryDialog({ item, labels = [], onClose, onAttachLabel, onDetachLabe
   );
 }
 
-function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }) {
-  const [labelState, setLabelState] = useState({ state: "idle", error: null });
-  const ownerRef = useRef({ generation: 0, itemID: null });
+function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }: LabelOperations) {
+  const [labelState, setLabelState] = useState<{ state: string; error: string | null }>({ state: "idle", error: null });
+  const ownerRef = useRef<LabelOwner>({ generation: 0, itemID: null });
 
   useEffect(() => {
     ownerRef.current = { generation: ownerRef.current.generation + 1, itemID: item?.id ?? null };
@@ -262,7 +273,8 @@ function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }) {
     };
   }, [item?.id]);
 
-  async function run(operation) {
+  async function run(operation: () => unknown) {
+    if (!item) return undefined;
     const owner = { generation: ownerRef.current.generation + 1, itemID: item.id };
     ownerRef.current = owner;
     setLabelState({ state: "saving", error: null });
@@ -273,25 +285,26 @@ function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }) {
       return true;
     } catch (error) {
       if (!isCurrentLabelOwner(ownerRef, owner)) return undefined;
-      setLabelState({ state: "error", error: error.message });
+      setLabelState({ state: "error", error: errorMessage(error) });
       return false;
     }
   }
 
   return {
     labelState,
-    attachLabel: (name) => run(() => onAttachLabel(item.id, { name })),
-    detachLabel: (labelID) => run(() => onDetachLabel(item.id, labelID)),
+    attachLabel: (name: string) => item ? run(() => onAttachLabel(item.id, { name })) : Promise.resolve(undefined),
+    detachLabel: (labelID: number) => item ? run(() => onDetachLabel(item.id, labelID)) : Promise.resolve(undefined),
   };
 }
 
-function isCurrentLabelOwner(ownerRef, owner) {
+function isCurrentLabelOwner(ownerRef: RefObject<LabelOwner>, owner: LabelOwner) {
   return ownerRef.current.generation === owner.generation && ownerRef.current.itemID === owner.itemID;
 }
 
-function HistoryDownloadAction({ item }) {
-  const { downloadTransfer, downloadState } = useHistoryTransferDownload(item, transferFileName(item));
-  if (item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed") return null;
+function HistoryDownloadAction({ item }: { item: HistoryItem }) {
+  const downloadItem = item.source_ref_id ? { id: item.id, source_ref_id: item.source_ref_id } : null;
+  const { downloadTransfer, downloadState } = useHistoryTransferDownload(downloadItem, transferFileName(item));
+  if (!downloadItem || item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed") return null;
   return (
     <div className="grid gap-2 border-t border-stone-200 px-5 py-3">
       {downloadState.state === "error" ? <Notice tone="bad">{downloadState.error}</Notice> : null}
@@ -305,7 +318,7 @@ function HistoryDownloadAction({ item }) {
   );
 }
 
-function TransferDetail({ item }) {
+function TransferDetail({ item }: { item: HistoryItem }) {
   const percent = progressPercent(item);
   return (
     <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
@@ -325,7 +338,7 @@ function TransferDetail({ item }) {
   );
 }
 
-function TransferField({ label, value, mono = false }) {
+function TransferField({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="grid min-w-0 gap-1">
       <span className="text-xs font-semibold uppercase text-stone-500">{label}</span>
@@ -334,7 +347,7 @@ function TransferField({ label, value, mono = false }) {
   );
 }
 
-function LabelPreview({ labels }) {
+function LabelPreview({ labels }: { labels: Label[] }) {
   if (!labels.length) {
     return <span className="text-xs text-stone-400">-</span>;
   }
@@ -350,7 +363,7 @@ function LabelPreview({ labels }) {
   );
 }
 
-function SectionHeader({ label, value }) {
+function SectionHeader({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs font-semibold uppercase text-stone-500">{label}</span>
@@ -359,9 +372,8 @@ function SectionHeader({ label, value }) {
   );
 }
 
-function StatusBadge({ status }) {
-  const tone =
-    {
+function StatusBadge({ status }: { status?: string }) {
+  const tones: Record<string, Tone> = {
       completed: "good",
       canceled: "warn",
       paused: "warn",
@@ -374,33 +386,34 @@ function StatusBadge({ status }) {
       untracked: "warn",
       failed: "bad",
       error: "bad",
-    }[status] || "neutral";
+    };
+  const tone = tones[status || ""] || "neutral";
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }
 
-function ConnectorBadge({ kind }) {
-  return <Badge tone={connectorBadgeTone(kind)}>{connectorKindLabel(kind || "connector")}</Badge>;
+function ConnectorBadge({ kind }: { kind?: string }) {
+  return <Badge tone={connectorBadgeTone(kind || "")}>{connectorKindLabel(kind || "connector")}</Badge>;
 }
 
-function ActionBadge({ item }) {
-  const label =
-    {
+function ActionBadge({ item }: { item: HistoryItem }) {
+  const labels: Record<string, string> = {
       command: item.source === "manual" ? "manual" : item.action_name || "exec",
       action: item.action_name || "action",
       file_transfer: item.action_name || "transfer",
-    }[item.activity_type] ||
+    };
+  const label = labels[item.activity_type || ""] ||
     item.action_name ||
     "activity";
   return <Badge tone={item.activity_type === "file_transfer" ? "warn" : "neutral"}>{label}</Badge>;
 }
 
-function SourceBadge({ source }) {
+function SourceBadge({ source }: { source?: string }) {
   const value = source || "mcp";
   const tone = value === "manual" ? "warn" : value === "ui" ? "good" : "neutral";
   return <Badge tone={tone}>{value}</Badge>;
 }
 
-function labelStyle(label) {
+function labelStyle(label: Label) {
   const color = label?.color || "#0f766e";
   return {
     borderColor: color,
@@ -408,39 +421,39 @@ function labelStyle(label) {
   };
 }
 
-function statusLabel(status) {
+function statusLabel(status?: string) {
   if (status === "pending_approval") return "pending";
   if (status === "untracked") return "not tracked";
   return status || "unknown";
 }
 
-function entrySummary(item) {
+function entrySummary(item: Partial<HistoryItem>) {
   return item.summary || item.title || item.action_name || item.input_text || item.error || "-";
 }
 
-function entryInput(item) {
+function entryInput(item: HistoryItem) {
   if (item.input_text) return item.input_text;
   return prettyJSON(item.input_json);
 }
 
-function entryOutput(item) {
+function entryOutput(item: HistoryItem) {
   if (item.output_text) return item.output_text;
   const json = prettyJSON(item.output_json);
   if (json && json !== "{}") return json;
   return item.error || "";
 }
 
-function inputLabel(item) {
+function inputLabel(item: HistoryItem) {
   if (item.activity_type === "file_transfer") return item.action_name === "upload" ? "Upload" : "Download";
   if (item.activity_type === "action") return `Input: ${item.action_name}`;
   return "Command";
 }
 
-function prettyJSON(value) {
+function prettyJSON(value: unknown): string {
   if (!value) return "";
   if (typeof value !== "string") {
     try {
-      return JSON.stringify(value, null, 2);
+      return JSON.stringify(value, null, 2) || "";
     } catch {
       return String(value);
     }
@@ -452,33 +465,33 @@ function prettyJSON(value) {
   }
 }
 
-function retryPolicyGuidance(item) {
+function retryPolicyGuidance(item: Pick<HistoryItem, "retry_policy_json">): string {
   try {
-    const value = typeof item.retry_policy_json === "string" ? JSON.parse(item.retry_policy_json) : item.retry_policy_json;
-    if (value?.guidance) return value.guidance;
+    const value: unknown = typeof item.retry_policy_json === "string" ? JSON.parse(item.retry_policy_json) : item.retry_policy_json;
+    if (value && typeof value === "object" && "guidance" in value && typeof value.guidance === "string" && value.guidance) return value.guidance;
   } catch {
     // The API normalizes connector retry policies; retain a safe UI fallback.
   }
   return "Inspect the target state before deciding whether to submit a new request.";
 }
 
-function historyErrorCode(item) {
+function historyErrorCode(item: Pick<HistoryItem, "output_json">) {
   try {
-    const output = JSON.parse(item?.output_json || "{}");
-    return typeof output?.code === "string" ? output.code : "";
+    const output: unknown = JSON.parse(item?.output_json || "{}");
+    return output && typeof output === "object" && "code" in output && typeof output.code === "string" ? output.code : "";
   } catch {
     return "";
   }
 }
 
-function progressPercent(item) {
+function progressPercent(item: HistoryItem) {
   const total = Number(item.bytes_total || item.progress_total || 0);
   const done = Number(item.bytes_done || item.progress_current || 0);
   if (total <= 0) return item.status === "completed" ? 100 : 0;
   return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
 }
 
-function transferFileName(item) {
+function transferFileName(item: HistoryItem) {
   const summary = String(item.summary || "")
     .split("/")
     .filter(Boolean)
@@ -486,7 +499,7 @@ function transferFileName(item) {
   return summary || item.title || "aipermission-download";
 }
 
-function targetOptionLabel(target) {
+function targetOptionLabel(target: ConsoleNavigationTarget | null | undefined) {
   if (!target) return "Unknown connector";
   const model = getConnectorModel(target.connector_kind);
   const name = model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "connector";
@@ -494,14 +507,14 @@ function targetOptionLabel(target) {
   return `${name} / ${profile}`;
 }
 
-function formatShortTime(value) {
+function formatShortTime(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatDateTime(value) {
+function formatDateTime(value?: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;

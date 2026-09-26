@@ -102,7 +102,7 @@ describe("useConnectorPermissions", () => {
 
     await act(async () => first.resolve({ items: [{ name: "old" }] }));
     expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);
-    for (const invalid of [{ description: "missing name" }, { name: "" }]) {
+    for (const invalid of [{ description: "missing name" }, { name: "" }, { name: "read", risk: true }, { name: "read", category: [] }, { name: "read", description: {} }]) {
       apiGet.mockResolvedValueOnce({ items: [invalid] });
       await act(async () => result.current.loadConnectorActions(target));
       expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);

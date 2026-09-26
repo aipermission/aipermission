@@ -15,6 +15,10 @@ import {
   targetOptionLabel,
 } from "../components/history/history-components";
 import { useHistoryPageState } from "./use-history-page-state";
+import type { HistoryResource } from "./use-history-page-state";
+import type { HistoryEntry } from "../lib/gateway-contracts/history-resource-contract";
+import type { ReactNode } from "react";
+type HistoryView = ReturnType<typeof useHistoryPageState>;
 
 const statusOptions = [
   ["", "All statuses"],
@@ -70,7 +74,7 @@ export function HistoryPage() {
   );
 }
 
-function HistoryHeader({ state, onRefresh }) {
+function HistoryHeader({ state, onRefresh }: { state: HistoryResource; onRefresh: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -85,7 +89,7 @@ function HistoryHeader({ state, onRefresh }) {
   );
 }
 
-function HistoryStats({ stats }) {
+function HistoryStats({ stats }: { stats: HistoryView["stats"] }) {
   return (
     <div className="grid gap-3 md:grid-cols-4">
       <HistoryStat label="Total" value={stats.total} />
@@ -96,9 +100,9 @@ function HistoryStats({ stats }) {
   );
 }
 
-function HistoryFilters({ view }) {
+function HistoryFilters({ view }: { view: HistoryView }) {
   const { filters, updateFilters, projects, connectorKindOptions, targetItems, labels } = view;
-  const update = (field, value) => updateFilters((current) => ({ ...current, [field]: value }));
+  const update = (field: keyof HistoryView["filters"], value: string) => updateFilters((current) => ({ ...current, [field]: value }));
   return (
     <div className="grid gap-3 rounded-lg border border-stone-200 bg-white p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_.8fr_.8fr_.8fr_1.2fr_.9fr]">
@@ -174,7 +178,17 @@ function HistoryFilters({ view }) {
   );
 }
 
-function FilterSelect({ label, value, options, onChange }) {
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (_value: string) => void;
+}) {
   return (
     <Select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
@@ -186,17 +200,18 @@ function FilterSelect({ label, value, options, onChange }) {
   );
 }
 
-function HistoryErrors({ view }) {
+function HistoryErrors({ view }: { view: HistoryView }) {
   return (
     <>
       {view.state.state === "error" ? <Notice tone="bad">{view.state.error}</Notice> : null}
       {view.labels.state === "error" ? <Notice tone="bad">{view.labels.error}</Notice> : null}
       {view.projects.state === "error" ? <Notice tone="bad">{view.projects.error}</Notice> : null}
+      {view.targets.state === "error" ? <Notice tone="bad">{view.targets.error}</Notice> : null}
     </>
   );
 }
 
-function HistoryTable({ state, onOpen }) {
+function HistoryTable({ state, onOpen }: { state: HistoryResource; onOpen: (_item: HistoryEntry) => unknown }) {
   return (
     <div data-testid="history-table-scroll" className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
       <table className="w-full min-w-[960px] table-fixed border-collapse text-left text-sm">
@@ -221,7 +236,7 @@ function HistoryTable({ state, onOpen }) {
   );
 }
 
-function EmptyHistoryRow({ children }) {
+function EmptyHistoryRow({ children }: { children: ReactNode }) {
   return (
     <tr>
       <td className="px-4 py-8 text-center text-sm text-stone-500" colSpan={7}>
@@ -231,7 +246,7 @@ function EmptyHistoryRow({ children }) {
   );
 }
 
-function HistoryRow({ item, onOpen }) {
+function HistoryRow({ item, onOpen }: { item: HistoryEntry; onOpen: (_item: HistoryEntry) => unknown }) {
   return (
     <tr className="cursor-pointer transition hover:bg-stone-50" onClick={() => onOpen(item)}>
       <td className="px-4 py-3">

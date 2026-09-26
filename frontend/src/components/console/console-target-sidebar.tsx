@@ -6,6 +6,29 @@ import { CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
 import { emptySession, latestSessionForRuntime } from "./helpers";
+import type { ReactNode } from "react";
+import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts.ts";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts.ts";
+import type { ConsoleRuntimeTarget } from "../use-gateway-resources.ts";
+
+export type ConsoleNavigationTarget = {
+  connector_kind: string; ref: string; target_id?: number; id?: number; profile_id?: number; profile_label?: string;
+  runtime_id?: number | string; project_id?: number | null; project_name?: string; target_name?: string; name?: string;
+};
+type Group<Target> = { id: string; name: string; targets: Target[] };
+type Session = { runtime_id?: number | string; status?: string };
+type TargetProps = {
+  target: GatewayTarget; profileTargets: GatewayTarget[]; liveConsoleTargets: { data: ConsoleRuntimeTarget[] }; sessions: Session[];
+  selectedTarget: GatewayTarget | null; compact: boolean; pendingConnectorApprovals: Pick<ConnectorApproval, "target_ref">[];
+  connectorActionApprovals: { data: Pick<ConnectorApproval, "status" | "target_ref">[] }; unreadMessages: Pick<RuntimeMessage, "runtime_id">[];
+  onSelect: (_target: GatewayTarget) => void;
+};
+type SidebarProps = Omit<TargetProps, "target" | "profileTargets"> & {
+  onCompactChange: (_compact: boolean) => void; targetRows: GatewayTarget[]; search: string; onSearch: (_search: string) => void;
+  groups: Group<GatewayTarget>[]; collapsedProjects: Record<string, boolean>; onToggleProject: (_id: string) => void;
+  targetItems: GatewayTarget[]; targetsState: string; targetsError: string | null; filteredTargetCount: number;
+};
 
 export function ConsoleTargetSidebar({
   compact,
@@ -27,7 +50,7 @@ export function ConsoleTargetSidebar({
   targetsState,
   targetsError,
   filteredTargetCount,
-}) {
+}: SidebarProps) {
   return (
     <aside className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-stone-200 bg-white">
       <div className={`border-b border-stone-200 ${compact ? "grid gap-2 p-2" : "flex items-center justify-between gap-3 px-4 py-3"}`}>
@@ -100,7 +123,9 @@ export function ConsoleTargetSidebar({
   );
 }
 
-function ConsoleProjectGroup({ group, collapsed, compact, onToggle, children }) {
+function ConsoleProjectGroup({ group, collapsed, compact, onToggle, children }: {
+  group: Group<GatewayTarget>; collapsed: boolean; compact: boolean; onToggle: () => void; children: ReactNode;
+}) {
   return (
     <div className="grid gap-1">
       <button
@@ -136,7 +161,7 @@ function TargetListItem({
   connectorActionApprovals,
   unreadMessages,
   onSelect,
-}) {
+}: TargetProps) {
   const runtimeID = targetUsesLiveConsole(target) ? target.runtime_id : null;
   const runtimeTarget = runtimeID ? liveConsoleTargets.data.find((item) => Number(item.id) === Number(runtimeID)) : null;
   const session = runtimeID ? latestSessionForRuntime(sessions, runtimeID) || emptySession : emptySession;
@@ -209,16 +234,16 @@ function TargetListItem({
   );
 }
 
-export function consoleTargetRows(targets, selectedTarget, selectedProfileByTarget = {}) {
-  const rows = [];
-  const byKey = new Map();
+export function consoleTargetRows<Target extends ConsoleNavigationTarget>(targets: Target[], selectedTarget: Target | null, selectedProfileByTarget: Record<string, number> = {}): Target[] {
+  const rows: { key: string; first: Target }[] = [];
+  const byKey = new Map<string, Target[]>();
   for (const target of targets) {
     const key = connectorTargetKey(target);
     if (!byKey.has(key)) {
       byKey.set(key, []);
       rows.push({ key, first: target });
     }
-    byKey.get(key).push(target);
+    byKey.get(key)?.push(target);
   }
   return rows.map(({ key, first }) => {
     const profiles = byKey.get(key) || [first];
@@ -228,17 +253,17 @@ export function consoleTargetRows(targets, selectedTarget, selectedProfileByTarg
   });
 }
 
-export function groupConsoleTargetsByProject(targets) {
-  const groups = new Map();
+export function groupConsoleTargetsByProject<Target extends ConsoleNavigationTarget>(targets: Target[]): Group<Target>[] {
+  const groups = new Map<string, Group<Target>>();
   for (const target of targets) {
     const id = String(target.project_id || "ungrouped");
     if (!groups.has(id)) groups.set(id, { id, name: target.project_name || "Ungrouped", targets: [] });
-    groups.get(id).targets.push(target);
+    groups.get(id)?.targets.push(target);
   }
   return [...groups.values()];
 }
 
-export function defaultConsoleTargetRef(targets, unreadMessages, pendingConnectorApprovals) {
+export function defaultConsoleTargetRef(targets: ConsoleNavigationTarget[], unreadMessages: Pick<RuntimeMessage, "runtime_id">[], pendingConnectorApprovals: readonly Pick<ConnectorApproval, "target_ref">[]): string {
   if (!targets.length) return "";
   const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
   if (pendingConnector) return pendingConnector.target_ref;
@@ -252,14 +277,14 @@ export function defaultConsoleTargetRef(targets, unreadMessages, pendingConnecto
   return targets[0].ref;
 }
 
-export function targetDisplayName(target) {
+export function targetDisplayName(target: ConsoleNavigationTarget | null | undefined): string {
   if (!target) return "Target";
   return (
     getConnectorModel(target.connector_kind)?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target"
   );
 }
 
-export function targetSubtitle(target, runtimeTarget) {
+export function targetSubtitle(target: ConsoleNavigationTarget | null | undefined, runtimeTarget?: ConsoleRuntimeTarget | null): string {
   if (!target) return "";
   return (
     getConnectorModel(target.connector_kind)?.targetSubtitle?.({ target, runtimeTarget }) ||
@@ -267,30 +292,33 @@ export function targetSubtitle(target, runtimeTarget) {
   );
 }
 
-export function targetProfileLabel(target) {
+export function targetProfileLabel(target: ConsoleNavigationTarget | null | undefined): string {
   if (!target) return "default";
   return getConnectorModel(target.connector_kind)?.targetProfileLabel?.({ target }) || target.profile_label || "default";
 }
 
-export function targetUsesLiveConsole(target) {
+export function targetUsesLiveConsole(target: ConsoleNavigationTarget | null | undefined): boolean {
   if (!target) return false;
   return Boolean(getConnectorModel(target.connector_kind)?.usesLiveConsole?.({ target }));
 }
 
-export function recoverableRunningActions(target) {
+export function recoverableRunningActions(target: ConsoleNavigationTarget | null | undefined): string[] {
   if (!target) return [];
   const actions = getConnectorModel(target.connector_kind)?.recoverableRunningActions?.({ target });
   return Array.isArray(actions) ? actions.filter(Boolean).map(String) : [];
 }
 
-export function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }) {
+export function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }: {
+  target: ConsoleNavigationTarget | null; session?: { status?: string } | null; pendingCount?: number; runningCount?: number;
+}): ConsoleTargetStatus {
   if (pendingCount > 0 || runningCount > 0) return "busy";
   if (target?.connector_kind && !targetUsesLiveConsole(target)) return "idle";
   if (session?.status === "connected" || session?.status === "connecting") return "idle";
   return "offline";
 }
 
-export function ConsoleStatusDot({ status, className = "" }) {
+type ConsoleTargetStatus = "offline" | "idle" | "busy";
+export function ConsoleStatusDot({ status, className = "" }: { status: ConsoleTargetStatus; className?: string }) {
   const colors = {
     offline: "fill-red-500 text-red-500",
     idle: "fill-emerald-500 text-emerald-500",
@@ -302,5 +330,5 @@ export function ConsoleStatusDot({ status, className = "" }) {
     busy: "Pending or running work",
   };
   const title = labels[status] || labels.offline;
-  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title} title={title} />;
+  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title}><title>{title}</title></Circle>;
 }
