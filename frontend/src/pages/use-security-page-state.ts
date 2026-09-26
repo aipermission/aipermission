@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
+import { errorMessage } from "../lib/errors";
+import { securitySettingsResponse, redactionRulesResponse, type RedactionForm, type RedactionRule, type SecuritySettings } from "../lib/gateway-contracts/security-settings-contract";
 
 const emptyActionState = { state: "idle", error: null, message: null };
-const defaultSecurity = {
+const defaultSecurity: SecuritySettings = {
   reusable_tokens: false,
   expose_mcp_server_metadata: false,
   mcp_start_enabled: false,
@@ -11,40 +14,29 @@ const defaultSecurity = {
   revision: "",
 };
 
-function requireSecurityDocument(data) {
-  const validMode = data?.redaction_mode === "basic" || data?.redaction_mode === "off";
-  const validBooleans = ["reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled"].every(
-    (field) => typeof data?.[field] === "boolean",
-  );
-  if (!validMode || !validBooleans || typeof data?.revision !== "string" || data.revision.trim() === "") {
-    throw new Error("Security settings response is invalid.");
-  }
-  return data;
-}
-
 export function useSecurityPageState() {
-  const [security, setSecurity] = useState({ state: "loading", data: defaultSecurity, error: null });
+  const [security, setSecurity] = useState<{ state: string; data: SecuritySettings; error: string | null }>({ state: "loading", data: defaultSecurity, error: null });
   const securitySavingRef = useRef(false);
   const { actionState: securityAction, runAction: runSecurityAction } = useAsyncAction(emptyActionState);
-  const [redactionRules, setRedactionRules] = useState({ state: "loading", data: [], error: null });
+  const [redactionRules, setRedactionRules] = useState<{ state: string; data: RedactionRule[]; error: string | null }>({ state: "loading", data: [], error: null });
   const { actionState: redactionAction, runAction: runRedactionAction } = useAsyncAction(emptyActionState);
   const [redactionForm, setRedactionForm] = useState({ name: "", pattern: "", enabled: true });
 
   async function loadSecurity() {
     try {
-      const data = requireSecurityDocument(await apiGet("/api/settings/security"));
+      const data = securitySettingsResponse(await apiGet("/api/settings/security"));
       setSecurity({ state: "ready", data, error: null });
     } catch (error) {
-      setSecurity({ state: "error", data: defaultSecurity, error: error.message });
+      setSecurity({ state: "error", data: defaultSecurity, error: errorMessage(error, "Could not load security settings.") });
     }
   }
 
   async function loadRedactionRules() {
     try {
-      const data = await apiGet("/api/settings/redaction-rules");
+      const data = redactionRulesResponse(await apiGet("/api/settings/redaction-rules"));
       setRedactionRules({ state: "ready", data, error: null });
     } catch (error) {
-      setRedactionRules({ state: "error", data: [], error: error.message });
+      setRedactionRules({ state: "error", data: [], error: errorMessage(error, "Could not load redaction rules.") });
     }
   }
 
@@ -53,7 +45,7 @@ export function useSecurityPageState() {
     void loadRedactionRules();
   }, []);
 
-  async function updateSecurity(patch, message) {
+  async function updateSecurity(patch: Partial<Omit<SecuritySettings, "revision">>, message: string) {
     if (security.state !== "ready" || !security.data.revision || securitySavingRef.current) return;
     const nextData = { ...security.data, ...patch };
     const request = {
@@ -69,10 +61,10 @@ export function useSecurityPageState() {
       successMessage: message,
       action: async () => {
         try {
-          const data = requireSecurityDocument(await apiPut("/api/settings/security", request));
+          const data = securitySettingsResponse(await apiPut("/api/settings/security", request));
           setSecurity({ state: "ready", data, error: null });
         } catch (error) {
-          if (error?.status === 409) await loadSecurity();
+          if (error && typeof error === "object" && "status" in error && error.status === 409) await loadSecurity();
           throw error;
         } finally {
           securitySavingRef.current = false;
@@ -81,11 +73,11 @@ export function useSecurityPageState() {
     });
   }
 
-  function updateRedactionForm(field, value) {
+  function updateRedactionForm<Key extends keyof RedactionForm>(field: Key, value: RedactionForm[Key]) {
     setRedactionForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function createRedactionRule(event) {
+  async function createRedactionRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runRedactionAction({
       pending: "saving",
@@ -98,7 +90,7 @@ export function useSecurityPageState() {
     });
   }
 
-  async function toggleRedactionRule(rule, enabled) {
+  async function toggleRedactionRule(rule: RedactionRule, enabled: boolean) {
     await runRedactionAction({
       pending: "saving",
       successMessage: enabled ? "Custom rule enabled." : "Custom rule disabled.",
@@ -109,7 +101,7 @@ export function useSecurityPageState() {
     });
   }
 
-  async function deleteRedactionRule(rule) {
+  async function deleteRedactionRule(rule: RedactionRule) {
     await runRedactionAction({
       pending: "deleting",
       successMessage: "Custom redaction rule deleted.",

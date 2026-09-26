@@ -3,6 +3,20 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
+import type { FormEventHandler } from "react";
+import type { AsyncActionState } from "../../lib/use-async-action";
+import type { SecuritySettings, RedactionForm, RedactionRule } from "../../lib/gateway-contracts/security-settings-contract";
+
+type RedactionEditorProps = {
+  rules: { state: string; data: RedactionRule[]; error: string | null };
+  action: AsyncActionState;
+  form: RedactionForm;
+  onUpdate: <Key extends keyof RedactionForm>(_field: Key, _value: RedactionForm[Key]) => void;
+  onCreate: FormEventHandler<HTMLFormElement>;
+  onToggle: (_rule: RedactionRule, _enabled: boolean) => void;
+  onDelete: (_rule: RedactionRule) => void;
+};
+type UpdateSecurity = (_patch: Partial<Omit<SecuritySettings, "revision">>, _message: string) => void;
 
 const toggleSettings = {
   reusable_tokens: {
@@ -40,7 +54,7 @@ const toggleSettings = {
   },
 };
 
-export function SecurityToggleCard({ setting, value, disabled, onUpdate }) {
+export function SecurityToggleCard({ setting, value, disabled, onUpdate }: { setting: keyof typeof toggleSettings; value: boolean; disabled: boolean; onUpdate: UpdateSecurity }) {
   const copy = toggleSettings[setting];
   return (
     <Card>
@@ -82,6 +96,12 @@ export function RedactionSettingsCard({
   onCreate,
   onToggle,
   onDelete,
+}: Omit<RedactionEditorProps, "action" | "onUpdate"> & {
+  security: { state: string; data: SecuritySettings };
+  securityAction: AsyncActionState;
+  ruleAction: AsyncActionState;
+  onUpdateSecurity: UpdateSecurity;
+  onUpdateForm: RedactionEditorProps["onUpdate"];
 }) {
   const busy = security.state !== "ready" || securityAction.state === "saving";
   const basic = security.data?.redaction_mode === "basic";
@@ -98,7 +118,7 @@ export function RedactionSettingsCard({
             className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
             value={security.data?.redaction_mode || "basic"}
             disabled={busy}
-            onChange={(event) => onUpdateSecurity({ redaction_mode: event.target.value }, `Redaction mode set to ${event.target.value}.`)}
+            onChange={(event) => onUpdateSecurity({ redaction_mode: event.target.value === "off" ? "off" : "basic" }, `Redaction mode set to ${event.target.value}.`)}
           >
             <option value="basic">Basic</option>
             <option value="off">Off</option>
@@ -126,7 +146,7 @@ export function RedactionSettingsCard({
   );
 }
 
-function RedactionRuleEditor({ rules, action, form, onUpdate, onCreate, onToggle, onDelete }) {
+function RedactionRuleEditor({ rules, action, form, onUpdate, onCreate, onToggle, onDelete }: RedactionEditorProps) {
   return (
     <div className="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
       <div>
@@ -175,7 +195,7 @@ function RedactionRuleEditor({ rules, action, form, onUpdate, onCreate, onToggle
   );
 }
 
-function RedactionRuleList({ rules, action, onToggle, onDelete }) {
+function RedactionRuleList({ rules, action, onToggle, onDelete }: Pick<RedactionEditorProps, "rules" | "action" | "onToggle" | "onDelete">) {
   if (rules.state === "ready" && rules.data.length === 0) return <Notice>No custom redaction rules yet.</Notice>;
   return (
     <div className="grid gap-2">

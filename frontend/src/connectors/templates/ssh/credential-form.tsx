@@ -2,6 +2,8 @@ import { Plus, Upload } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Field, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import type { ChangeEventHandler, FormEventHandler } from "react";
+import type { SSHKeyForm, SSHImportForm } from "./form-types";
 
 const privateKeyPlaceholder = "-----BEGIN OPENSSH " + "PRIVATE KEY-----";
 
@@ -18,6 +20,19 @@ export function SSHCredentialFormTemplate({
   onCreate,
   onImport,
   onUpdate,
+}: {
+  formMode?: "create" | "edit";
+  mode: "generate" | "import";
+  form: SSHKeyForm;
+  importForm: SSHImportForm;
+  state: { state: string; error?: string | null };
+  onModeChange: (_mode: "generate" | "import") => void;
+  onFormChange: (_form: SSHKeyForm) => void;
+  onImportFormChange: (_form: SSHImportForm) => void;
+  onReadImportFile: ChangeEventHandler<HTMLInputElement>;
+  onCreate: FormEventHandler<HTMLFormElement>;
+  onImport: FormEventHandler<HTMLFormElement>;
+  onUpdate: FormEventHandler<HTMLFormElement>;
 }) {
   if (formMode === "edit") {
     return (
@@ -51,7 +66,7 @@ export function SSHCredentialFormTemplate({
             }`}
             key={value}
             type="button"
-            onClick={() => onModeChange(value)}
+            onClick={() => onModeChange(value === "generate" ? "generate" : "import")}
           >
             {label}
           </button>
@@ -64,7 +79,7 @@ export function SSHCredentialFormTemplate({
             <Input value={form.name} onChange={(event) => onFormChange({ ...form, name: event.target.value })} required />
           </Field>
           <div className="grid grid-cols-2 gap-2 rounded-md bg-stone-100 p-1">
-            {["ed25519", "rsa"].map((type) => (
+            {(["ed25519", "rsa"] as const).map((type) => (
               <button
                 className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
                   form.key_type === type ? "bg-white text-emerald-950 shadow-sm" : "text-stone-500 hover:text-stone-900"

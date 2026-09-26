@@ -1,0 +1,20 @@
+export type SSHKey = { id: number; name: string; key_type: string; fingerprint?: string; install_command?: string };
+export type SSHProfile = { id: string | number; label?: string; ref?: string; kind?: string; public?: { username?: string; ssh_key_id?: string | number } };
+export type SSHTarget = { id: string | number; name: string; connector_kind: string; profiles?: SSHProfile[]; config?: { host?: string; port?: string | number; description?: string; startup_input_after_connect?: string; force_shell_command?: string } };
+export type SSHForm = {
+  connector_kind: string;
+  name: string;
+  host: string;
+  port: string | number;
+  username: string;
+  ssh_key_id: string | number;
+  description: string;
+  startup_input_after_connect: string;
+  force_shell_command: string;
+  setup_later: boolean;
+  profile_id?: string;
+  project_id?: string | number | null;
+};
+export type SSHKeyForm = { name: string; key_type: "ed25519" | "rsa" };
+export type SSHImportForm = { name: string; private_key: string; passphrase: string };
+export type SSHCredentialState = { mode: "generate" | "import"; form: SSHKeyForm; importForm: SSHImportForm };

@@ -2,7 +2,7 @@ import { RedactionSettingsCard, SecurityToggleCard } from "../components/securit
 import { Notice } from "../components/ui/notice";
 import { useSecurityPageState } from "./use-security-page-state";
 
-const securityToggleSettings = ["reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled"];
+const securityToggleSettings = ["reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled"] as const;
 
 export function SecurityPage() {
   const state = useSecurityPageState();
@@ -39,7 +39,7 @@ export function SecurityPage() {
   );
 }
 
-function SecurityNotices({ state }) {
+function SecurityNotices({ state }: { state: ReturnType<typeof useSecurityPageState> }) {
   return (
     <>
       {state.security.state === "error" ? <Notice tone="bad">{state.security.error}</Notice> : null}
