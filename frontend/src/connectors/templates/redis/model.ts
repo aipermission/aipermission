@@ -6,7 +6,7 @@ import {
   createTargetProfileLifecycle,
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
-import type { RedisConfig, RedisModelForm, RedisProfile, RedisTarget } from "./form-types";
+import type { RedisConfig, RedisModelForm, RedisPresentationTarget, RedisProfile, RedisTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
@@ -115,7 +115,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }: { target: RedisTarget }) {
+export function targetEndpoint({ target }: { target: RedisPresentationTarget }) {
   const host = target.config?.host || "127.0.0.1";
   const port = target.config?.port || 6379;
   const database = target.config?.database || 0;
@@ -123,16 +123,16 @@ export function targetEndpoint({ target }: { target: RedisTarget }) {
   return `${host}:${port}/${database} · ${mode}`;
 }
 
-export function targetDisplayName({ target }: { target?: RedisTarget | null }) {
+export function targetDisplayName({ target }: { target?: RedisPresentationTarget | null }) {
   if (!target) return `${connectorProductLabel} target`;
   return target.target_name || target.name || `${serverProductLabel(target)} target`;
 }
 
-export function targetSubtitle({ target }: { target: RedisTarget }) {
+export function targetSubtitle({ target }: { target: RedisPresentationTarget }) {
   return `${serverProductLabel(target)} · ${targetEndpoint({ target })}`;
 }
 
-export function targetProfileLabel({ target }: { target?: RedisTarget | null }) {
+export function targetProfileLabel({ target }: { target?: RedisPresentationTarget | null }) {
   return target?.profile_label || "default";
 }
 

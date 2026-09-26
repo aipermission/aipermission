@@ -26,3 +26,7 @@ export interface RabbitMQTarget {
     transport_target_ref?: string;
   };
 }
+
+export type RabbitMQPresentationTarget = Pick<RabbitMQTarget, "name" | "target_name" | "profile_label"> & {
+  config?: Omit<NonNullable<RabbitMQTarget["config"]>, "port"> & { port?: string | number };
+};

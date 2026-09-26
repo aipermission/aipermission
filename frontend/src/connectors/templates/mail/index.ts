@@ -17,3 +17,4 @@ export default Object.freeze({
   model,
   RowActions: MailConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { mailConsoleModel as consoleModel } from "./console-model";

@@ -41,3 +41,5 @@ export interface KafkaTarget extends LifecycleTarget<KafkaProfile> {
     tls_ca_pem?: string;
   };
 }
+
+export type KafkaPresentationTarget = Pick<KafkaTarget, "target_name" | "profile_label" | "config"> & { name?: string };

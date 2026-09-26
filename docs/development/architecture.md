@@ -301,6 +301,17 @@ Route-level pages should render connector-specific UI through
 `src/connectors/templates/registry.jsx`. Avoid adding new `if kind === "..."`
 branches to pages when the behavior belongs to a connector template.
 
+Target and credential editors use the typed native-family registries
+`connector-family-registry.ts` and `credential-registry.ts`. Connector-owned
+factory registrations retain native form, row, target, profile, and operation
+types inside captured closures. The generic pages receive common lifecycle
+commands and presentation projections rather than calling heterogeneous native
+model functions. Native row operations stay inside their family provider;
+neither the table nor the page dispatches raw operation payloads. The shared
+command host coordinates exclusive drafts and active-family status without
+depending on connector-specific fields. Template factories may import editor
+contract types, but not captured registries or orchestration at runtime.
+
 ## MCP Package
 
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:

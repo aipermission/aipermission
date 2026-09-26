@@ -27,7 +27,7 @@ export type RabbitActivity = {
 };
 export type RabbitTarget = {
   ref: string;
-  config?: { vhost?: string; scheme?: string; host?: string; port?: string | number };
+  config?: { vhost?: string; scheme?: string; host?: string; port?: string | number; connection_mode?: string };
 };
 export type RabbitSession = { active: boolean; startedAt?: string };
 export type RabbitBrowserProps = {
