@@ -3,7 +3,7 @@ import test from "node:test";
 import { isNodeUnitTest } from "./test-discovery.mjs";
 
 test("discovers JavaScript and TypeScript Node unit suites", () => {
-  for (const name of ["policy.test.js", "policy.test.ts", "connector-registry-runtime.test.js"]) {
+  for (const name of ["policy.test.js", "policy.test.ts", "connector-registry-runtime.test.ts"]) {
     assert.equal(isNodeUnitTest(name), true, name);
   }
 });

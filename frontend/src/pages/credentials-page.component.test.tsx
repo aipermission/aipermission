@@ -10,20 +10,25 @@ vi.mock("../lib/api", () => ({ apiGet: vi.fn() }));
 vi.mock("../lib/gateway-context", () => ({ useGateway: vi.fn() }));
 vi.mock("../connectors/editor/use-credential-profile-editor", () => ({ useCredentialProfileEditor: vi.fn() }));
 
+const editorFixture: ReturnType<typeof useCredentialProfileEditor> = {
+  drawer: { open: false, mode: "create", kind: "ssh", row: null },
+  formState: {},
+  setFormState: vi.fn(),
+  actionState: { state: "idle", error: "", message: "" },
+  openCreate: vi.fn(),
+  openEdit: vi.fn().mockReturnValue(true),
+  closeEditor: vi.fn(),
+  save: vi.fn().mockResolvedValue(true),
+  remove: vi.fn().mockResolvedValue(true),
+};
+
 beforeEach(() => {
-  apiGet.mockImplementation(async (path) => (path === "/api/connectors" ? { items: [] } : { items: [] }));
-  useGateway.mockReturnValue({ credentials: { state: "ready", data: [], errors: [] }, loadCredentials: vi.fn() });
-  useCredentialProfileEditor.mockReturnValue({
-    drawer: { open: false, mode: "create", kind: "ssh" },
-    formState: {},
-    setFormState: vi.fn(),
-    actionState: { state: "idle", error: "", message: "" },
-    openCreate: vi.fn(),
-    openEdit: vi.fn(),
-    closeEditor: vi.fn(),
-    save: vi.fn(),
-    remove: vi.fn(),
+  vi.mocked(apiGet).mockResolvedValue({ items: [] });
+  vi.mocked(useGateway, { partial: true }).mockReturnValue({
+    credentials: { state: "ready", data: [], errors: [], error: null },
+    loadCredentials: vi.fn().mockResolvedValue([]),
   });
+  vi.mocked(useCredentialProfileEditor).mockReturnValue(editorFixture);
 });
 
 it("loads the generic credential inventories and shows the empty state", async () => {
@@ -34,9 +39,9 @@ it("loads the generic credential inventories and shows the empty state", async (
 });
 
 it("disables credential fields and mode changes while a save is pending", () => {
-  useCredentialProfileEditor.mockReturnValue({
-    ...useCredentialProfileEditor(),
-    drawer: { open: true, mode: "create", kind: "ssh" },
+  vi.mocked(useCredentialProfileEditor).mockReturnValue({
+    ...editorFixture,
+    drawer: { open: true, mode: "create", kind: "ssh", row: null },
     formState: emptyCredentialState(),
     actionState: { state: "saving", error: null, message: null },
   });
@@ -44,6 +49,6 @@ it("disables credential fields and mode changes while a save is pending", () => 
   render(<CredentialsPage />);
 
   expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   expect(screen.getByRole("button", { name: /Generating|Creating|Generate .* credential/ })).toBeDisabled();
 });

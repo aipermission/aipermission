@@ -5,7 +5,7 @@ import { isNodeUnitTest } from "./test-discovery.mjs";
 
 const files = testFiles(join(process.cwd(), "src"));
 // Keep the real browser/Vite registry check out of the parallel Node worker pool.
-const serialFiles = new Set([join(process.cwd(), "src", "lib", "connector-registry-runtime.test.js")]);
+const serialFiles = new Set([join(process.cwd(), "src", "lib", "connector-registry-runtime.test.ts")]);
 const suites = [files.filter((file) => !serialFiles.has(file)), files.filter((file) => serialFiles.has(file))];
 
 for (const suite of suites) {
