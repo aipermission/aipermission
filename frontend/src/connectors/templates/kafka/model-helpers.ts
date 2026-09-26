@@ -1,13 +1,9 @@
-type KafkaCredentialForm = {
-  profile_label: string;
-  sasl_mechanism: string;
-  existing_sasl_mechanism?: string;
-  username?: string;
-  password?: string;
-  risk_label?: string;
-};
+import type { KafkaCredentialForm } from "./form-types";
 
-export function credentialPayload(form: KafkaCredentialForm, existingKind = "sasl") {
+type KafkaCredentialPayloadForm = Pick<KafkaCredentialForm, "profile_label" | "sasl_mechanism" | "existing_sasl_mechanism"> &
+  Partial<Pick<KafkaCredentialForm, "username" | "password" | "risk_label">>;
+
+export function credentialPayload(form: KafkaCredentialPayloadForm, existingKind = "sasl") {
   const payload: {
     kind: string;
     label: string;

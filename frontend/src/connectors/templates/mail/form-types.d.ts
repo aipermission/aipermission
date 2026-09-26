@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import type { CredentialProfileForm } from "../_shared/connector-form-types";
 import type { ConnectionModeFields } from "../_shared/network-transport-fields";
+import type { LifecycleTarget } from "../_shared/target-profile-lifecycle-types";
 
 export type MailProfileForm = Omit<CredentialProfileForm, "target_id"> & {
   mailbox_address: string;
@@ -31,3 +32,26 @@ export type MailConnectionForm = MailProfileForm &
     project_id?: string | number;
     allowed_recipient_domains: string;
   };
+
+export type MailModelForm = MailConnectionForm & { connector_kind: string; profile_id?: string };
+type MailFolderPolicy = "allowed_read_folders" | "allowed_mutation_source_folders" | "allowed_mutation_destination_folders";
+type MailSecretField = "imap_username" | "imap_password" | "smtp_username" | "smtp_password";
+export type MailLoginSecrets = Partial<Pick<MailCredentialForm, MailSecretField>>;
+export interface MailProfile {
+  id: number;
+  label: string;
+  kind: string;
+  risk_label?: string;
+  public?: Partial<Omit<MailProfileForm, MailFolderPolicy | MailSecretField | "profile_label" | "risk_label">> & {
+    [_Field in MailFolderPolicy]?: string | string[];
+  };
+}
+export interface MailTarget extends LifecycleTarget<MailProfile> {
+  target_name?: string;
+  profile_label?: string;
+  config?: Partial<MailEndpointFields> & {
+    connection_mode?: string;
+    transport_target_ref?: string;
+    allowed_recipient_domains?: string | string[];
+  };
+}

@@ -6,11 +6,12 @@ import {
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
+import type { KafkaCredentialForm, KafkaModelForm, KafkaProfile, KafkaTarget } from "./form-types";
 
 export { credentialPayload } from "./model-helpers";
 
 const defaultRiskLabel = "stream read";
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<KafkaModelForm, KafkaCredentialForm, KafkaProfile, KafkaTarget>({
   connectorKind: "kafka",
   connectorLabel: "Kafka",
   targetPayload: (form) => ({ name: form.name, config: targetConfig(form) }),
@@ -19,7 +20,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): KafkaModelForm {
   return {
     connector_kind: "kafka",
     name: "event-stream",
@@ -40,7 +41,7 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
+export function formFromTarget({ target, profile }: { target?: KafkaTarget | null; profile?: KafkaProfile | null }): KafkaModelForm {
   const selectedProfile = defaultTargetProfile(target, profile);
   const config = target?.config || {};
   const profilePublic = selectedProfile.public || {};
@@ -69,7 +70,7 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: KafkaModelForm }) {
   if (form.connector_kind !== "kafka") return form;
   const next = { ...form };
   if (next.connection_mode === "direct") next.transport_target_ref = "";
@@ -84,13 +85,13 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state }) {
+export function submitDisabled({ state }: { state: { state: string } }) {
   return state.state === "saving";
 }
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: KafkaTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "kafka", {
     profile_label: "monitor",
     sasl_mechanism: "none",
@@ -100,7 +101,7 @@ export function emptyCredentialState({ targets = [] } = {}) {
     risk_label: defaultRiskLabel,
   });
 }
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; name: string; profile?: KafkaProfile } }) {
   return {
     form: {
       target_id: String(row.target_id || ""),
@@ -113,7 +114,7 @@ export function credentialStateFromRow({ row }) {
     },
   };
 }
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: KafkaTarget[] }) {
   return connectorCredentialRows({
     targets,
     connectorKind: "kafka",
@@ -131,21 +132,21 @@ export function canDelete() {
 export function credentialHint() {
   return null;
 }
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: KafkaTarget }) {
   return targetEndpointValue(target);
 }
-function targetEndpointValue(target) {
+function targetEndpointValue(target: KafkaTarget) {
   const brokers = brokerEndpoint(target);
   const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
   return `${brokers} · ${mode}`;
 }
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: KafkaTarget | null }) {
   return target?.target_name || target?.name || "Kafka target";
 }
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: KafkaTarget }) {
   return targetEndpoint({ target });
 }
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: KafkaTarget | null }) {
   return target?.profile_label || "monitor";
 }
 export function usesLiveConsole() {
@@ -154,7 +155,7 @@ export function usesLiveConsole() {
 export function recoverableRunningActions() {
   return [];
 }
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: KafkaTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Kafka / Redpanda target, credential profiles, and token action permissions from aipermission.",
@@ -173,7 +174,7 @@ export function operationFromError() {
   return null;
 }
 
-function targetConfig(form) {
+function targetConfig(form: KafkaModelForm) {
   return {
     server_family: form.server_family === "redpanda" ? "redpanda" : "kafka",
     connection_mode: form.connection_mode || "direct",
@@ -185,7 +186,7 @@ function targetConfig(form) {
     tls_ca_pem: form.tls_enabled ? form.tls_ca_pem || "" : "",
   };
 }
-function credentialMetadata(profile) {
+function credentialMetadata(profile: KafkaProfile) {
   const mechanism = profile.public?.mechanism || "none";
   const items = [`SASL: ${mechanism}`];
   if (profile.public?.username) items.push(`username: ${profile.public.username}`);
