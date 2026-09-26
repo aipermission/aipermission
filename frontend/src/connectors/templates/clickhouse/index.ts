@@ -7,6 +7,7 @@ import type { ConsoleTemplateContract } from "../console-template-contract";
 import { clickHouseCredentialFamily } from "./credential-family";
 
 export { clickHouseCredentialFamily as credentialFamily } from "./credential-family";
+export { clickHouseConnectorFamily as connectorFamily } from "./connector-family";
 
 export default Object.freeze({
   credentialFamily: clickHouseCredentialFamily,

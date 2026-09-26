@@ -19,8 +19,14 @@ export type ConnectorFormSlotProps<Form extends EditorForm, Credential, Target e
   onChange: ConnectorFieldChange<Form>;
 };
 
-export type ConnectorEditorDrawerProps<Form extends EditorForm, Credential, Target extends EditorTarget, Active> = {
-  drawer: { open: boolean; mode: "create" | "edit"; target: Target | null };
+export type ConnectorEditorDrawerProps<
+  Form extends EditorForm,
+  Credential,
+  Target extends EditorTarget,
+  Active,
+  DrawerTarget extends EditorTarget = Target,
+> = {
+  drawer: { open: boolean; mode: "create" | "edit"; target: DrawerTarget | null };
   form: Form;
   state: EditorActionState;
   connectorOptions: { kind: string; label: string }[];

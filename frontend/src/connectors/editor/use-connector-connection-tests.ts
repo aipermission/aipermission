@@ -13,24 +13,26 @@ export type ConnectorTestState = {
   cooldown?: boolean;
   completedAt?: number;
 };
-type TestModel<Target, Profile> = {
+type RecoveryIdentity = Pick<ConnectorRecoveryOperation, "open" | "connector_kind">;
+type TestModel<Target, Profile, Operation> = {
   test?: (_context: { target: Target; profile: Profile }) => Promise<ConnectorConnectionResult>;
   operationFromError?: (
     _error: unknown,
     _context: { operation: "test"; target: Target; profile: Profile; testKey: string },
-  ) => ConnectorRecoveryOperation | null;
+  ) => Operation | null;
 };
-type Props<Target, Profile> = {
-  modelForKind: (_kind: string) => TestModel<Target, Profile> | null | undefined;
-  onOperation?: (_operation: ConnectorRecoveryOperation) => boolean | void;
+type Props<Target, Profile, Operation> = {
+  modelForKind: (_kind: string) => TestModel<Target, Profile, Operation> | null | undefined;
+  onOperation?: (_operation: Operation) => boolean | void;
+  claimRecovery?: () => () => boolean;
   cooldownMs?: number;
 };
 
-export function useConnectorConnectionTests<Target extends TargetIdentity, Profile extends ProfileIdentity>({
-  modelForKind,
-  onOperation,
-  cooldownMs = 1500,
-}: Props<Target, Profile>) {
+export function useConnectorConnectionTests<
+  Target extends TargetIdentity,
+  Profile extends ProfileIdentity,
+  Operation extends RecoveryIdentity = ConnectorRecoveryOperation,
+>({ modelForKind, onOperation, claimRecovery, cooldownMs = 1500 }: Props<Target, Profile, Operation>) {
   const [tests, setTests] = useState<Record<string, ConnectorTestState>>({});
   const cooldownTimers = useRef(new Map<string, number>());
   const pendingTests = useRef(new Set<string>());
@@ -77,6 +79,7 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
       return false;
     }
     const request = requests.begin(testKey);
+    const recoveryIsCurrent = claimRecovery?.();
     pendingTests.current.add(testKey);
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
     try {
@@ -87,7 +90,7 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
     } catch (error) {
       if (!request.isCurrent()) return false;
       const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
-      if (operation?.open && onOperation?.(operation)) {
+      if (operation?.open && (!recoveryIsCurrent || recoveryIsCurrent()) && onOperation?.(operation)) {
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
         return false;
       }
