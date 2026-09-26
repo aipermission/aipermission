@@ -13,12 +13,12 @@ function renderLifecycle(pollIsCurrent = () => true) {
 
 describe("useDatabaseLifecycle", () => {
   beforeEach(() => {
-    apiGet.mockReset();
-    apiPost.mockReset();
+    vi.mocked(apiGet).mockReset();
+    vi.mocked(apiPost).mockReset();
   });
 
   it("ignores a database status response from a stale poll generation", async () => {
-    apiGet.mockResolvedValue({ database_id: "stale" });
+    vi.mocked(apiGet).mockResolvedValue({ database_id: "stale" });
     const { result } = renderLifecycle(() => false);
 
     await act(async () => result.current.loadStatus(1));
@@ -27,8 +27,25 @@ describe("useDatabaseLifecycle", () => {
     expect(apiGet).toHaveBeenCalledWith("/api/unlock/status", { signal: undefined, timeoutMs: 4000 });
   });
 
+  it("ignores a status error from a stale poll generation", async () => {
+    vi.mocked(apiGet).mockRejectedValue(new Error("stale failure"));
+    const { result } = renderLifecycle(() => false);
+    await act(async () => result.current.loadStatus(1));
+    expect(result.current.status).toEqual({ state: "loading", data: null, error: null });
+  });
+
+  it("retains the last verified catalog when a later response is malformed", async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ database_id: "one", databases: catalog(true, false) })
+      .mockResolvedValueOnce({ database_id: "other", databases: [{ id: "other", unlocked: "yes" }] });
+    const { result, disconnectAllConsoleSessions } = renderLifecycle();
+    await act(async () => result.current.loadStatus());
+    await act(async () => result.current.loadStatus());
+    expect(result.current.status).toMatchObject({ state: "error", data: { database_id: "one", databases: catalog(true, false) }, error: "Invalid database catalog response." });
+    expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
+  });
+
   it("asks which database to lock when multiple databases are unlocked", async () => {
-    apiGet.mockResolvedValue({ databases: [{ unlocked: true }, { unlocked: true }] });
+    vi.mocked(apiGet).mockResolvedValue({ databases: catalog(true, true) });
     const { result, disconnectAllConsoleSessions } = renderLifecycle();
     await act(async () => result.current.loadStatus());
 
@@ -40,8 +57,8 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("keeps the last database snapshot through a transient poll failure", async () => {
-    apiGet
-      .mockResolvedValueOnce({ databases: [{ unlocked: true }, { unlocked: true }] })
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce({ databases: catalog(true, true) })
       .mockRejectedValueOnce(new Error("status timeout"));
     const { result } = renderLifecycle();
 
@@ -49,7 +66,7 @@ describe("useDatabaseLifecycle", () => {
     await act(async () => result.current.loadStatus(2));
     expect(result.current.status).toEqual({
       state: "error",
-      data: { databases: [{ unlocked: true }, { unlocked: true }] },
+      data: { state: undefined, database_id: undefined, database_name: undefined, unlocked: undefined, databases: catalog(true, true) },
       error: "status timeout",
     });
 
@@ -59,8 +76,8 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("locks the current database directly when it is the only unlocked database", async () => {
-    apiGet.mockResolvedValue({ databases: [{ unlocked: true }, { unlocked: false }] });
-    apiPost.mockRejectedValue(new Error("lock failed"));
+    vi.mocked(apiGet).mockResolvedValue({ databases: catalog(true, false) });
+    vi.mocked(apiPost).mockRejectedValue(new Error("lock failed"));
     const { result, disconnectAllConsoleSessions } = renderLifecycle();
     await act(async () => result.current.loadStatus());
 
@@ -72,7 +89,7 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("closes without switching when the current database is selected", async () => {
-    apiGet.mockResolvedValue({ database_id: "one", databases: [{ id: "one", unlocked: true }] });
+    vi.mocked(apiGet).mockResolvedValue({ database_id: "one", databases: [catalog(true, true)[0]] });
     const { result, disconnectAllConsoleSessions } = renderLifecycle();
     await act(async () => result.current.loadStatus());
     act(() => result.current.openSwitch());
@@ -85,14 +102,11 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("keeps the switch dialog open with the backend failure", async () => {
-    apiGet.mockResolvedValue({
+    vi.mocked(apiGet).mockResolvedValue({
       database_id: "one",
-      databases: [
-        { id: "one", unlocked: true },
-        { id: "two", unlocked: true },
-      ],
+      databases: catalog(true, true),
     });
-    apiPost.mockRejectedValue(new Error("invalid password"));
+    vi.mocked(apiPost).mockRejectedValue(new Error("invalid password"));
     const { result, disconnectAllConsoleSessions } = renderLifecycle();
     await act(async () => result.current.loadStatus());
     act(() => result.current.openSwitch());
@@ -106,8 +120,8 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("shows status failures and resets abandoned switch and lock dialogs", async () => {
-    apiGet.mockRejectedValue(new Error("status unavailable"));
-    apiPost.mockRejectedValue(new Error("lock unavailable"));
+    vi.mocked(apiGet).mockRejectedValue(new Error("status unavailable"));
+    vi.mocked(apiPost).mockRejectedValue(new Error("lock unavailable"));
     const { result } = renderLifecycle();
 
     await act(async () => result.current.loadStatus());
@@ -124,3 +138,7 @@ describe("useDatabaseLifecycle", () => {
     expect(result.current.lockDialog).toMatchObject({ open: false, state: "idle", error: null });
   });
 });
+
+function catalog(first: boolean, second: boolean) {
+  return [{ id: "one", name: "One", unlocked: first }, { id: "two", name: "Two", unlocked: second }];
+}

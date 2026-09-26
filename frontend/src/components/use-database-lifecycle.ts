@@ -1,38 +1,46 @@
 import { useCallback, useState } from "react";
+import type { FormEvent } from "react";
 import { apiGet, apiPost } from "../lib/api";
 import { pollReadOptions } from "../lib/async-resource";
+import { databaseStatusResponse } from "../lib/gateway-contracts/database-status-contract.ts";
+import type { DatabaseStatus } from "../lib/gateway-contracts/database-status-contract.ts";
+import { errorMessage } from "../lib/errors.ts";
 
-const initialSwitchDialog = { open: false, database_id: "", password: "", state: "idle", error: null };
-const initialLockDialog = { open: false, state: "idle", error: null };
+type SwitchDialogState = { open: boolean; database_id: string; password: string; state: "idle" | "switching" | "error"; error: string | null };
+type LockDialogState = { open: boolean; state: "idle" | "locking" | "error"; error: string | null };
+type Props = { disconnectAllConsoleSessions: () => void; pollIsCurrent: (_generation?: number) => boolean };
+const initialSwitchDialog: SwitchDialogState = { open: false, database_id: "", password: "", state: "idle", error: null };
+const initialLockDialog: LockDialogState = { open: false, state: "idle", error: null };
 
-export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent }) {
-  const [status, setStatus] = useState({ state: "loading", data: null, error: null });
+export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent }: Props) {
+  const [status, setStatus] = useState<{ state: "loading" | "ready" | "error"; data: DatabaseStatus | null; error: string | null }>({ state: "loading", data: null, error: null });
   const [switchDialog, setSwitchDialog] = useState(initialSwitchDialog);
   const [lockDialog, setLockDialog] = useState(initialLockDialog);
 
   const loadStatus = useCallback(
-    async (generation) => {
+    async (generation?: number) => {
       try {
-        const data = await apiGet("/api/unlock/status", pollReadOptions(undefined, generation));
+        const response: unknown = await apiGet("/api/unlock/status", pollReadOptions(undefined, generation));
         if (!pollIsCurrent(generation)) return;
+        const data = databaseStatusResponse(response);
         setStatus({ state: "ready", data, error: null });
       } catch (error) {
         if (!pollIsCurrent(generation)) return;
-        setStatus((current) => ({ state: "error", data: current.data, error: error.message }));
+        setStatus((current) => ({ state: "error", data: current.data, error: errorMessage(error, "Could not read database status.") }));
       }
     },
     [pollIsCurrent],
   );
 
   const lock = useCallback(
-    async (scope) => {
+    async (scope: "current" | "all") => {
       setLockDialog((current) => ({ ...current, state: "locking", error: null }));
       try {
         await apiPost("/api/lock", { scope });
         disconnectAllConsoleSessions();
         window.location.reload();
       } catch (error) {
-        setLockDialog((current) => ({ ...current, open: true, state: "error", error: error.message }));
+        setLockDialog((current) => ({ ...current, open: true, state: "error", error: errorMessage(error, "Could not lock the database.") }));
       }
     },
     [disconnectAllConsoleSessions],
@@ -58,7 +66,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
   }, [status.data]);
 
   const switchDatabase = useCallback(
-    async (event) => {
+    async (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault?.();
       if (switchDialog.database_id === status.data?.database_id) {
         setSwitchDialog((current) => ({ ...current, open: false }));
@@ -73,7 +81,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
         disconnectAllConsoleSessions();
         window.location.reload();
       } catch (error) {
-        setSwitchDialog((current) => ({ ...current, state: "error", error: error.message }));
+        setSwitchDialog((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not switch databases.") }));
       }
     },
     [disconnectAllConsoleSessions, status.data?.database_id, switchDialog.database_id, switchDialog.password],

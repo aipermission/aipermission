@@ -9,7 +9,7 @@ import {
   preserveLocalActionRetryAttempt,
   resetLocalActionRetryLedger,
   retireLocalActionRetryAttempt,
-} from "./local-action-retry.js";
+} from "./local-action-retry.ts";
 
 const fakeRetryIndexedDB = new IDBFactory();
 

@@ -12,7 +12,7 @@ import {
   releaseLocalActionRetryAttempt,
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
-} from "./local-action-retry.js";
+} from "./local-action-retry.ts";
 import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.ts";
 import { requestReconciliation } from "./local-action-retry/runtime.ts";

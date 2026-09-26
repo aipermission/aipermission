@@ -7,7 +7,7 @@ const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const retryCoverageTests = ["src/lib/api.test.js", "src/lib/api-backup-retry.test.js", "src/lib/local-action-retry/records.test.ts"];
 
 export function retryCoverageFiles(root = frontendRoot) {
-  const files = [join(root, "src/lib/local-action-retry.js")];
+  const files = [join(root, "src/lib/local-action-retry.ts")];
   const directory = join(root, "src/lib/local-action-retry");
   files.push(
     ...readdirSync(directory, { withFileTypes: true })

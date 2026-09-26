@@ -12,6 +12,7 @@ import {
 } from "./local-action-retry/entries.ts";
 import { retryIdentityChangedError } from "./local-action-retry/errors.ts";
 import { stableRequestSignature, validRetryEntry } from "./local-action-retry/records.ts";
+import type { PreparedRetry, RetryEntry, RetryScope } from "./local-action-retry/records.ts";
 import {
   assertNoLegacyLedger,
   currentRetryScope,
@@ -25,7 +26,18 @@ import { resetRetryStorage } from "./local-action-retry/storage.ts";
 
 export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent };
 
-export async function prepareLocalActionRetry(body, options = {}) {
+export type LegacyRetryEntry = {
+  signature: "legacy-v2-ledger";
+  key: string;
+  state: "outcome_unknown";
+  created_at: string;
+  updated_at: string;
+  assistant_hint: string;
+  invalid: true;
+};
+export type RetryListEntry = RetryEntry | LegacyRetryEntry;
+
+export async function prepareLocalActionRetry(body: unknown, options: { workspaceID?: string } = {}): Promise<PreparedRetry> {
   const scope = currentRetryScope(options.workspaceID);
   assertNoLegacyLedger(scope);
   const signedRequest = await requestSignature(scope, body || {});
@@ -36,9 +48,9 @@ export async function prepareLocalActionRetry(body, options = {}) {
     if (existing?.state === "outcome_unknown") {
       const confirmed = await requestReconciliation(existing);
       if (!confirmed) {
-        const error = new Error("A new external attempt was canceled. The unresolved request remains protected.");
-        error.code = "local_action_reconciliation_canceled";
-        throw error;
+        throw Object.assign(new Error("A new external attempt was canceled. The unresolved request remains protected."), {
+          code: "local_action_reconciliation_canceled",
+        });
       }
       existing = await replaceReconciledEntry(scope, existing);
       reconciled = true;
@@ -58,13 +70,14 @@ export async function prepareLocalActionRetry(body, options = {}) {
   }
 }
 
-export async function markLocalActionRetryOutcome(prepared, data) {
-  if (!prepared?.scope || !prepared.signature) return;
+export async function markLocalActionRetryOutcome(prepared: unknown, value: unknown) {
+  if (!validPreparedRetry(prepared)) return;
+  const data = objectRecord(value);
   const changed = await updateEntryIfMatching(prepared, (entry) => ({
     ...entry,
     state: "outcome_unknown",
     revision: entry.revision + 1,
-    request_id: Number.isSafeInteger(data?.request_id) ? data.request_id : null,
+    request_id: typeof data?.request_id === "number" && Number.isSafeInteger(data.request_id) ? data.request_id : null,
     operation_ref: localActionOperationRef(data),
     assistant_hint: String(data?.assistant_hint || "").slice(0, 1024),
     updated_at: new Date().toISOString(),
@@ -82,29 +95,29 @@ export async function markLocalActionRetryOutcome(prepared, data) {
   throw retryIdentityChangedError();
 }
 
-function localActionOperationRef(data) {
+function localActionOperationRef(data: Record<string, unknown> | null) {
   if (typeof data?.operation_ref === "string") return data.operation_ref.trim().slice(0, 128);
-  if (Number.isSafeInteger(data?.operation_id) && data.operation_id > 0) return `operation:${data.operation_id}`;
+  if (typeof data?.operation_id === "number" && Number.isSafeInteger(data.operation_id) && data.operation_id > 0) return `operation:${data.operation_id}`;
   return "";
 }
 
-export async function completeLocalActionRetry(prepared) {
-  if (!prepared?.scope || !prepared.signature) return;
+export async function completeLocalActionRetry(prepared: unknown) {
+  if (!validPreparedRetry(prepared)) return;
   return completeEntryAttempt(prepared);
 }
 
-export async function releaseLocalActionRetryAttempt(prepared) {
-  if (!prepared?.scope || !prepared.signature) return;
+export async function releaseLocalActionRetryAttempt(prepared: unknown) {
+  if (!validPreparedRetry(prepared)) return;
   await releaseEntryAttempt(prepared);
 }
 
-export async function retireLocalActionRetryAttempt(prepared) {
-  if (!prepared?.scope || !prepared.signature) return;
+export async function retireLocalActionRetryAttempt(prepared: unknown) {
+  if (!validPreparedRetry(prepared)) return;
   return retireEntryAttempt(prepared);
 }
 
-export async function preserveLocalActionRetryAttempt(prepared) {
-  if (!prepared?.scope || !prepared.signature) return;
+export async function preserveLocalActionRetryAttempt(prepared: unknown) {
+  if (!validPreparedRetry(prepared)) return;
   const changed = await updateEntryIfMatching(prepared, (entry) => ({
     ...entry,
     revision: entry.revision + 1,
@@ -122,7 +135,7 @@ export async function preserveLocalActionRetryAttempt(prepared) {
   throw retryIdentityChangedError();
 }
 
-export async function listLocalActionRetryEntries() {
+export async function listLocalActionRetryEntries(): Promise<RetryListEntry[]> {
   const scope = currentRetryScope();
   if (readLegacyLedger(scope)) {
     return [
@@ -141,9 +154,9 @@ export async function listLocalActionRetryEntries() {
   return entries.sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
 }
 
-export async function resolveLocalActionRetryEntry(entry) {
+export async function resolveLocalActionRetryEntry(entry: unknown) {
   const scope = currentRetryScope();
-  if (entry?.signature === "legacy-v2-ledger") {
+  if (objectRecord(entry)?.signature === "legacy-v2-ledger") {
     removeLegacyLedger(scope);
     notifyChanged();
     return true;
@@ -159,7 +172,7 @@ export async function resetLocalActionRetryLedger() {
   notifyChanged();
 }
 
-async function requestSignature(scope, body) {
+async function requestSignature(scope: RetryScope, body: unknown) {
   const cryptoAPI = globalThis.crypto;
   if (!cryptoAPI?.subtle || typeof TextEncoder === "undefined") {
     throw new Error("Secure request hashing is unavailable; the connector action was not sent.");
@@ -175,4 +188,19 @@ async function requestSignature(scope, body) {
     await releaseSigningReservation(scope, reservation.id);
     throw error;
   }
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function validPreparedRetry(value: unknown): value is PreparedRetry {
+  const prepared = objectRecord(value);
+  const scope = objectRecord(prepared?.scope);
+  return !!prepared && !!scope && typeof scope.key === "string" && scope.key.length > 0 &&
+    (scope.legacyKey === undefined || typeof scope.legacyKey === "string") &&
+    typeof prepared.signature === "string" && /^[a-f0-9]{64}$/.test(prepared.signature) &&
+    typeof prepared.idempotencyKey === "string" && prepared.idempotencyKey.length > 0 &&
+    typeof prepared.revision === "number" && Number.isSafeInteger(prepared.revision) && prepared.revision > 0 &&
+    typeof prepared.attemptID === "string" && prepared.attemptID.length > 0 && typeof prepared.reused === "boolean";
 }
