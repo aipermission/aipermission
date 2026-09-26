@@ -3,32 +3,37 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../lib/api";
 import { RemoteRestorePanel } from "./remote-restore-panel";
+import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
+
+type Mutation = ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
 
 vi.mock("../lib/api", () => ({ apiPost: vi.fn(), apiPostForm: vi.fn() }));
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_error: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
 }
 
-beforeEach(() => apiPost.mockReset());
+const post = vi.mocked(apiPost);
+beforeEach(() => post.mockReset());
 
 it("ignores stale service responses and restores only with the current credential fingerprint", async () => {
   const user = userEvent.setup();
   const stale = deferred();
   const restore = deferred();
   const onUnlocked = vi.fn();
-  const runLifecycleMutation = async (_name, execute) => {
-    await execute(new AbortController().signal);
+  const runLifecycleMutation: Mutation = async (_name, execute) => {
+    const result = await execute(new AbortController().signal);
     await onUnlocked();
+    return result;
   };
-  const requests = [];
-  apiPost.mockImplementation((requestPath, body) => {
+  const requests: unknown[][] = [];
+  post.mockImplementation((requestPath, body) => {
     if (!body) return Promise.resolve({});
     requests.push([requestPath, body]);
     if (body.token === "token-a") return stale.promise;
@@ -45,14 +50,16 @@ it("ignores stale service responses and restores only with the current credentia
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup-a.example.com");
   await user.type(screen.getByLabelText("Service token"), "token-a");
   await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
-  const staleSignal = apiPost.mock.calls[0][2].signal;
+  const staleOptions = post.mock.calls[0][2];
+  const staleSignal = staleOptions && "signal" in staleOptions && staleOptions.signal instanceof AbortSignal ? staleOptions.signal : null;
+  expect(staleSignal).toBeInstanceOf(AbortSignal);
   await user.clear(screen.getByLabelText("Backup service URL"));
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup-b.example.com");
   await user.clear(screen.getByLabelText("Service token"));
   await user.type(screen.getByLabelText("Service token"), "token-b");
   await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
 
-  expect(staleSignal.aborted).toBe(true);
+  expect(staleSignal?.aborted).toBe(true);
   expect(await screen.findByRole("option", { name: /Database B/ })).toBeVisible();
   stale.resolve({ items: [{ id: "stream-a", database_name: "Database A" }] });
   await waitFor(() => expect(screen.queryByRole("option", { name: /Database A/ })).not.toBeInTheDocument());
@@ -79,29 +86,31 @@ it("ignores stale service responses and restores only with the current credentia
 it("aborts a pending backup listing when the panel unmounts", async () => {
   const user = userEvent.setup();
   const pending = deferred();
-  apiPost.mockReturnValueOnce(pending.promise);
+  post.mockReturnValueOnce(pending.promise);
   const view = render(<RemoteRestorePanel runLifecycleMutation={vi.fn()} />);
 
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup.example.com");
   await user.type(screen.getByLabelText("Service token"), "token");
   await user.click(screen.getByRole("button", { name: "Connect and list backups" }));
-  const signal = apiPost.mock.calls[0][2].signal;
+  const options = post.mock.calls[0][2];
+  const signal = options && "signal" in options && options.signal instanceof AbortSignal ? options.signal : null;
+  expect(signal).toBeInstanceOf(AbortSignal);
   view.unmount();
 
-  expect(signal.aborted).toBe(true);
+  expect(signal?.aborted).toBe(true);
   pending.resolve({ items: [] });
   await Promise.resolve();
 });
 
 it("retains restore credentials and reports a failed lifecycle reconciliation", async () => {
   const user = userEvent.setup();
-  apiPost.mockImplementation((_requestPath, body) => {
+  post.mockImplementation((_requestPath, body) => {
     if (body?.stream_id) {
       return Promise.resolve({ items: [{ backups: [{ id: "backup-1", filename: "backup.aipdb", created_at: "2026-01-01T00:00:00Z" }] }] });
     }
     return Promise.resolve({ items: [{ id: "stream-1", database_name: "Restored" }] });
   });
-  const runLifecycleMutation = async (_name, execute) => {
+  const runLifecycleMutation: Mutation = async (_name, execute) => {
     await execute(new AbortController().signal);
     throw new Error("Status reconciliation failed");
   };
@@ -123,14 +132,14 @@ it("retains restore credentials and reports a failed lifecycle reconciliation", 
 it("locks remote credentials while restore outcome is authoritative", async () => {
   const user = userEvent.setup();
   const restore = deferred();
-  apiPost.mockImplementation((_requestPath, body) => {
+  post.mockImplementation((_requestPath, body) => {
     if (body?.backup_id) return restore.promise;
     if (body?.stream_id) {
       return Promise.resolve({ items: [{ backups: [{ id: "backup-1", filename: "backup.aipdb", created_at: "2026-01-01T00:00:00Z" }] }] });
     }
     return Promise.resolve({ items: [{ id: "stream-1", database_name: "Restored" }] });
   });
-  const runLifecycleMutation = async (_name, execute) => execute(new AbortController().signal);
+  const runLifecycleMutation: Mutation = async (_name, execute) => execute(new AbortController().signal);
   render(<RemoteRestorePanel runLifecycleMutation={runLifecycleMutation} />);
 
   await user.type(screen.getByLabelText("Backup service URL"), "https://backup.example.com");
@@ -151,7 +160,7 @@ it("locks remote credentials while restore outcome is authoritative", async () =
 
 it("loads the selected stream and lets the operator choose a version and local name", async () => {
   const user = userEvent.setup();
-  apiPost.mockImplementation((_requestPath, body) => {
+  post.mockImplementation((_requestPath, body) => {
     if (body?.stream_id === "stream-a") {
       return Promise.resolve({ items: [{ backups: [{ id: "backup-a", filename: "a.aipdb", created_at: "2026-01-01T00:00:00Z" }] }] });
     }

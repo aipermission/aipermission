@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
+import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { remoteBackupStreams, remoteBackupVersions } from "./remote-restore-contract.ts";
+import type { RemoteBackupStream, RemoteBackupVersion } from "./remote-restore-contract.ts";
 import { CloudDownload, RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/form";
@@ -15,12 +20,20 @@ import {
   shortBackupStreamID,
 } from "./remote-restore-helpers";
 
-export function RemoteRestorePanel({ runLifecycleMutation }) {
+type RestoreForm = { base_url: string; token: string; database_name: string; database_password: string };
+type RestoreStatus = "idle" | "restoring" | "loading_versions" | "ready" | "connecting" | "error";
+type FieldChange = (_field: keyof RestoreForm, _value: string) => void;
+type Submit = (_event: FormEvent<HTMLFormElement>) => Promise<void>;
+type LoadVersions = (_streamID: string, _credentials?: RestoreForm, _databaseName?: string, _generation?: number) => Promise<void>;
+
+export function RemoteRestorePanel({ runLifecycleMutation }: {
+  runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
+}) {
   const [form, setForm] = useState({ base_url: "", token: "", database_name: "", database_password: "" });
-  const [state, setState] = useState({ state: "idle", error: null });
-  const [streams, setStreams] = useState([]);
+  const [state, setState] = useState<{ state: RestoreStatus; error: string | null }>({ state: "idle", error: null });
+  const [streams, setStreams] = useState<RemoteBackupStream[]>([]);
   const [selectedStreamID, setSelectedStreamID] = useState("");
-  const [versions, setVersions] = useState([]);
+  const [versions, setVersions] = useState<RemoteBackupVersion[]>([]);
   const [selectedBackupID, setSelectedBackupID] = useState("");
   const [versionCredentialFingerprint, setVersionCredentialFingerprint] = useState("");
   const requestGeneration = useRef(0);
@@ -35,7 +48,7 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
     [],
   );
 
-  function updateField(field, value) {
+  function updateField(field: keyof RestoreForm, value: string) {
     if (restoring) return;
     const nextForm = { ...formRef.current, [field]: value };
     formRef.current = nextForm;
@@ -54,7 +67,7 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
     }
   }
 
-  async function loadVersions(streamID, credentials = formRef.current, databaseName = "", generation = ++requestGeneration.current) {
+  async function loadVersions(streamID: string, credentials = formRef.current, databaseName = "", generation = ++requestGeneration.current) {
     const fingerprint = remoteCredentialFingerprint(credentials);
     const request = listRequestGuard.begin("versions");
     setState({ state: "loading_versions", error: null });
@@ -78,20 +91,20 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
         { signal: request.signal },
       );
       if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
-      const nextVersions = response?.items?.[0]?.backups || [];
+      const nextVersions = remoteBackupVersions(response);
       setVersions(nextVersions);
       setSelectedBackupID(nextVersions[0]?.id || "");
       setVersionCredentialFingerprint(fingerprint);
       setState({ state: "ready", error: null });
     } catch (error) {
       if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not load backup versions.") });
     } finally {
       request.complete();
     }
   }
 
-  async function connectService(event) {
+  async function connectService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const credentials = { ...formRef.current };
     const fingerprint = remoteCredentialFingerprint(credentials);
@@ -113,7 +126,7 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
         { signal: request.signal },
       );
       if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
-      const nextStreams = response?.items || [];
+      const nextStreams = remoteBackupStreams(response);
       setStreams(nextStreams);
       if (nextStreams.length === 0) {
         setState({ state: "ready", error: null });
@@ -122,13 +135,13 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
       await loadVersions(nextStreams[0].id, credentials, nextStreams[0].database_name, generation);
     } catch (error) {
       if (!request.isCurrent() || !remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not connect to the backup service.") });
     } finally {
       request.complete();
     }
   }
 
-  async function restoreRemoteBackup(event) {
+  async function restoreRemoteBackup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const credentials = { ...formRef.current };
     const fingerprint = remoteCredentialFingerprint(credentials);
@@ -157,7 +170,7 @@ export function RemoteRestorePanel({ runLifecycleMutation }) {
       }
     } catch (error) {
       if (!remoteRequestIsCurrent(requestGeneration, generation, formRef, fingerprint)) return;
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not restore the remote backup.") });
     }
   }
 
@@ -222,6 +235,11 @@ function RemoteBackupSelectionForm({
   versionCredentialFingerprint,
   versionGroups,
   versions,
+}: {
+  form: RestoreForm; loadVersions: LoadVersions; onChange: FieldChange; onSubmit: Submit; restoring: boolean;
+  selectedBackupID: string; selectedStream?: RemoteBackupStream; selectedStreamID: string; selectedVersion?: RemoteBackupVersion;
+  setSelectedBackupID: Dispatch<SetStateAction<string>>; state: RestoreStatus; streams: RemoteBackupStream[];
+  versionCredentialFingerprint: string; versionGroups: ReturnType<typeof groupBackupVersions<RemoteBackupVersion>>; versions: RemoteBackupVersion[];
 }) {
   return (
     <form className="grid gap-4 border-t border-stone-200 pt-4" onSubmit={onSubmit}>
@@ -315,7 +333,9 @@ function RemoteBackupSelectionForm({
   );
 }
 
-function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }) {
+function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }: {
+  form: RestoreForm; state: RestoreStatus; hasStreams: boolean; onChange: FieldChange; onSubmit: Submit;
+}) {
   const restoring = state === "restoring";
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
@@ -356,7 +376,7 @@ function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }) {
   );
 }
 
-function RemoteBackupDetails({ version }) {
+function RemoteBackupDetails({ version }: { version: RemoteBackupVersion }) {
   return (
     <div className="grid gap-1 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 sm:grid-cols-2">
       <span className="truncate">

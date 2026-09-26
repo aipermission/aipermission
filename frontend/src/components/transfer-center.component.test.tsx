@@ -21,10 +21,10 @@ const batch = {
 };
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
+  let resolve!: (_value?: unknown) => void;
+  let reject!: (_error: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
+    resolve = (value) => resolvePromise(value);
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
@@ -33,7 +33,7 @@ function deferred() {
 it("awaits approval, blocks duplicate decisions, reports failure, and permits retry", async () => {
   const user = userEvent.setup();
   const first = deferred();
-  const onApprove = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce();
+  const onApprove = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined);
   const onDecline = vi.fn();
   render(<TransferCenter open batches={[batch]} state="ready" onApprove={onApprove} onDecline={onDecline} />);
 
@@ -56,7 +56,7 @@ it("awaits approval, blocks duplicate decisions, reports failure, and permits re
 it("declines a batch with its note without calling approval", async () => {
   const user = userEvent.setup();
   const onApprove = vi.fn();
-  const onDecline = vi.fn().mockResolvedValue();
+  const onDecline = vi.fn().mockResolvedValue(undefined);
   render(<TransferCenter open batches={[batch]} state="ready" onApprove={onApprove} onDecline={onDecline} />);
   await user.type(screen.getByPlaceholderText("Optional approval or rejection note."), "send newer files");
   await user.click(screen.getByRole("button", { name: "Decline all" }));
@@ -122,7 +122,7 @@ it.each([
   ["Cancel", "cancel", "Cancel failed"],
 ])("reports a rejected %s control and clears it after a successful retry", async (title, status, message) => {
   const user = userEvent.setup();
-  const handler = vi.fn().mockRejectedValueOnce(new Error(message)).mockResolvedValueOnce();
+  const handler = vi.fn().mockRejectedValueOnce(new Error(message)).mockResolvedValueOnce(undefined);
   const controlBatch = {
     ...batch,
     id: 61,

@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
         : {
             state: "session_required",
             database_id: "default",
-            databases: [{ id: "default", name: "Default", state: "locked" }],
+            databases: [{ id: "default", name: "Default", state: "locked", unlocked: false }],
           },
     });
   });
@@ -653,7 +653,7 @@ function unlockedStatus() {
     database_id: "default",
     database_name: "Default",
     unlocked_databases: [{ id: "default", name: "Default", current: true }],
-    databases: [{ id: "default", name: "Default", state: "unlocked" }],
+    databases: [{ id: "default", name: "Default", state: "unlocked", unlocked: true }],
   };
 }
 
@@ -768,6 +768,13 @@ function targetProfile() {
     runtime_id: 1,
     target_name: "worker-1",
     profile_label: "main",
+    profile_kind: "ssh_user",
+    project_id: 1,
+    project_name: "Ungrouped",
+    project_slug: "ungrouped",
+    status: "active",
+    created_at: "2026-09-07T12:00:00Z",
+    updated_at: "2026-09-07T12:00:00Z",
     server_id: 1,
     config: { host: "127.0.0.1", port: 22 },
     public: { username: "root", ssh_key_id: 1 },
