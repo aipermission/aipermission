@@ -34,7 +34,7 @@ function renderCoordinator() {
 }
 
 const runtime = { id: 7, name: "My Server" };
-const vaultOptions = { supported: true, items: [{ id: 1 }], defaults: [] };
+const vaultOptions = { supported: true, target_project_id: 4, items: [{ id: 1, name: "PROJECT_API_KEY", owner_project_id: 4 }], total: 1, defaults: [], projects: [{ id: 4, name: "My Project" }] };
 
 describe("useConsoleSessionCoordinator", () => {
   beforeEach(() => {

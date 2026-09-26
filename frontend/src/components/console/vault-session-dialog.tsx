@@ -5,13 +5,23 @@ import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Checkbox, Input, Select } from "../ui/form";
 import { Notice } from "../ui/notice";
-import { preferredDefaultBindings } from "../../lib/vault-session-selection";
+import { preferredDefaultBindings, selectionFromDefaultBinding } from "../../lib/vault-session-selection";
 import { useVaultSessionItems } from "./use-vault-session-items";
+import type { useConsoleSessionCoordinator } from "./use-console-session-coordinator.ts";
+import type { VaultItemSummary } from "../../lib/gateway-contracts/vault-item-list-contract.ts";
+import type { VaultSessionSelection } from "../../lib/gateway-contracts/vault-session-options-contract.ts";
 
-export function VaultSessionDialog({ state, onClose, onStart }) {
+type Coordinator = ReturnType<typeof useConsoleSessionCoordinator>;
+type Props = {
+  state: Coordinator["vaultDialog"];
+  onClose: Coordinator["closeVaultDialog"];
+  onStart: (_items: VaultSessionSelection[]) => void | Promise<unknown>;
+};
+
+export function VaultSessionDialog({ state, onClose, onStart }: Props) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState({});
-  const [selectedLabels, setSelectedLabels] = useState({});
+  const [selected, setSelected] = useState<Record<number, VaultSessionSelection>>({});
+  const [selectedLabels, setSelectedLabels] = useState<Record<number, VaultItemSummary>>({});
   const [projectID, setProjectID] = useState("");
   const page = useVaultSessionItems({ open: state.open, runtimeID: state.runtime?.id, projectID, query });
   const items = page.items;
@@ -36,15 +46,9 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
 
   useEffect(() => {
     if (!state.open) return;
-    const next = {};
+    const next: Record<number, VaultSessionSelection> = {};
     preferredDefaultBindings(defaults, state.options?.target_project_id).forEach((binding) => {
-      next[binding.vault_item_id] = {
-        item_id: Number(binding.vault_item_id),
-        source_project_id: Number(binding.source_project_id),
-        replace_existing: Boolean(binding.replace_existing),
-        binding_id: Number(binding.id),
-        binding_revision: Number(binding.binding_revision),
-      };
+      next[binding.vault_item_id] = selectionFromDefaultBinding(binding);
     });
     setSelected(next);
     setSelectedLabels(
@@ -82,7 +86,7 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
       .sort((left, right) => String(left.item.name).localeCompare(String(right.item.name)));
   }, [selected, selectedLabels]);
 
-  function toggle(item) {
+  function toggle(item: VaultItemSummary) {
     setSelectedLabels((current) => ({ ...current, [item.id]: item }));
     setSelected((current) => {
       const next = { ...current };
@@ -94,14 +98,8 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
         (binding) => Number(binding.vault_item_id) === Number(item.id),
       );
       const selectedFromDefaultProject = Number(defaultBinding?.source_project_id) === Number(projectID);
-      next[item.id] = selectedFromDefaultProject
-        ? {
-            item_id: Number(item.id),
-            source_project_id: Number(defaultBinding.source_project_id),
-            replace_existing: Boolean(defaultBinding.replace_existing),
-            binding_id: Number(defaultBinding.id),
-            binding_revision: Number(defaultBinding.binding_revision),
-          }
+      next[item.id] = defaultBinding && selectedFromDefaultProject
+        ? selectionFromDefaultBinding(defaultBinding)
         : {
             item_id: Number(item.id),
             source_project_id: Number(projectID),
@@ -111,11 +109,14 @@ export function VaultSessionDialog({ state, onClose, onStart }) {
     });
   }
 
-  function update(itemID, patch) {
-    setSelected((current) => ({ ...current, [itemID]: { ...current[itemID], ...patch } }));
+  function update(itemID: number, patch: Partial<Pick<VaultSessionSelection, "replace_existing" | "binding_id" | "binding_revision">>) {
+    setSelected((current) => {
+      const selection = current[itemID];
+      return selection ? { ...current, [itemID]: { ...selection, ...patch } } : current;
+    });
   }
 
-  function removeSelection(itemID) {
+  function removeSelection(itemID: number) {
     setSelected((current) => {
       const next = { ...current };
       delete next[itemID];
