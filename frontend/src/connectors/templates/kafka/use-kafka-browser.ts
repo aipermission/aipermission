@@ -2,21 +2,23 @@ import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { detailMatchesSelection } from "./console-helpers";
+import { kafkaOutputDetail, kafkaOutputResources } from "./resource-output";
+import type { KafkaBrowserProps, KafkaDetail, KafkaResource, KafkaView } from "./console-types";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
 
-export function useKafkaBrowser({ target, approvals, session, onRefreshActivity }) {
+export function useKafkaBrowser({ target, approvals, session, onRefreshActivity }: KafkaBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
   const product = target.config?.server_family === "redpanda" ? "Redpanda" : "Kafka";
-  const [view, setView] = useState("topics");
+  const [view, setView] = useState<KafkaView>("topics");
   const [query, setQuery] = useState("");
-  const [topics, setTopics] = useState([]);
-  const [groups, setGroups] = useState([]);
+  const [topics, setTopics] = useState<KafkaResource[]>([]);
+  const [groups, setGroups] = useState<KafkaResource[]>([]);
   const [selectedName, setSelectedName] = useState("");
-  const [detail, setDetail] = useState(null);
+  const [detail, setDetail] = useState<KafkaDetail | null>(null);
   const [detailIdentity, setDetailIdentity] = useState("");
-  const [messages, setMessages] = useState(null);
-  const [readForm, setReadForm] = useState(defaultRead);
+  const [messages, setMessages] = useState<unknown>(null);
+  const [readForm, setReadForm] = useState<{ partition: string; start_position: string; offset: string; max_records: string }>(defaultRead);
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const scopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
   const requestGuard = useRequestGuard(scopeKey);
@@ -27,7 +29,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
     () => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null,
     [approvals?.data, target.ref],
   );
-  const refreshForEffect = useEffectEvent((nextView) => refreshList(nextView));
+  const refreshForEffect = useEffectEvent((nextView: KafkaView) => refreshList(nextView));
 
   useEffect(() => {
     setView("topics");
@@ -47,7 +49,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
     if (activeSession.active) void refreshForEffect("topics");
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
-  async function runAction(actionName, input, reason, busy = "loading", channel = actionName) {
+  async function runAction(actionName: string, input: Record<string, unknown>, reason: string, busy = "loading", channel = actionName) {
     try {
       const item = await runGuardedConnectorAction({
         requestGuard,
@@ -78,18 +80,18 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
       `list:${nextView}`,
     );
     if (!output) return;
-    if (topicMode) setTopics(Array.isArray(output.topics) ? output.topics : []);
-    else setGroups(Array.isArray(output.consumer_groups) ? output.consumer_groups : []);
+    if (topicMode) setTopics(kafkaOutputResources(output, "topics"));
+    else setGroups(kafkaOutputResources(output, "consumer_groups"));
   }
 
-  async function changeView(nextView) {
+  async function changeView(nextView: KafkaView) {
     if (nextView === view) return;
     setView(nextView);
     clearSelection();
     if ((nextView === "topics" ? topics : groups).length === 0) await refreshList(nextView);
   }
 
-  async function selectItem(item) {
+  async function selectItem(item: KafkaResource) {
     if (selectedName === item.name) {
       clearSelection();
       return;
@@ -102,7 +104,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
     await loadDetail(item.name, view);
   }
 
-  async function loadDetail(name, detailView = view) {
+  async function loadDetail(name: string, detailView = view) {
     setDetail(null);
     setDetailIdentity("");
     const output = await runAction(
@@ -112,18 +114,19 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
       "reading",
       "detail",
     );
-    if (!output) return null;
-    setDetail(output);
+    const next = kafkaOutputDetail(output);
+    if (!next) return null;
+    setDetail(next);
     setDetailIdentity(`${detailView}:${name}`);
-    if (detailView === "topics" && Array.isArray(output.partitions) && output.partitions.length > 0) {
-      setReadForm((current) => ({ ...current, partition: String(output.partitions[0].partition) }));
+    if (detailView === "topics" && next.partitions?.length) {
+      setReadForm((current) => ({ ...current, partition: String(next.partitions?.[0].partition) }));
     }
-    return output;
+    return next;
   }
 
   async function readMessages() {
     if (!selectedName) return;
-    const input = {
+    const input: Record<string, unknown> = {
       topic: selectedName,
       partition: Number(readForm.partition),
       start_position: readForm.start_position,
@@ -137,7 +140,9 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
   }
 
   function clearSelection() {
+    requestGuard.invalidate("detail");
     requestGuard.invalidate("messages");
+    setState((current) => (current.state === "reading" ? { state: "idle", error: "", message: "" } : current));
     setSelectedName("");
     setDetail(null);
     setDetailIdentity("");
@@ -169,7 +174,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
   };
 }
 
-function filterItems(items, query) {
+function filterItems(items: KafkaResource[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return items;
   return items.filter((item) =>
