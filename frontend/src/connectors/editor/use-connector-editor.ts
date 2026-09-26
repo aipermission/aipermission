@@ -43,15 +43,15 @@ export function useConnectorEditor<
     syncCredentialForEffect();
   }, [firstCredentialID]);
 
-  function resetForm(kind: string = defaultKind) {
-    setForm({ ...emptyFormForKind(kind, { firstCredentialID }), project_id: defaultProjectID });
+  function resetForm(kind: string = defaultKind, projectID: string | number = defaultProjectID) {
+    setForm({ ...emptyFormForKind(kind, { firstCredentialID }), project_id: projectID });
   }
 
-  function openCreate(kind: string = defaultKind) {
+  function openCreate(kind: string = defaultKind, projectID: string | number = defaultProjectID) {
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
-    resetForm(kind);
+    resetForm(kind, projectID);
     setDrawer({ open: true, mode: "create", kind, target: null });
   }
 
@@ -176,7 +176,7 @@ export function useConnectorEditor<
     return true;
   }
 
-  function completeOperation(result: { message?: string } | null, operation: Operation | null) {
+  function completeOperation(result: { message?: string } | null, operation: ConnectorEditorOperation | null) {
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     const kind = operation?.connector_kind || operation?.kind || form.connector_kind;

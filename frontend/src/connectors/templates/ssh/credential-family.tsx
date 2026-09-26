@@ -37,7 +37,7 @@ export const sshCredentialFamily = defineCredentialFamily<SSHCredentialState, Ro
   ),
 });
 
-export function sshCredentialTargets(targets: readonly InventoryTarget[]): SSHModelTarget[] {
+export function sshCredentialTargets(targets: readonly InventoryTarget[]) {
   return targets
     .filter((target) => target.connector_kind === "ssh")
     .map((target) => {

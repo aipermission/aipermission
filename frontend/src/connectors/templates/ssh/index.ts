@@ -8,6 +8,7 @@ import { SSHConnectorOperationsTemplate } from "./operations";
 import type { ConsoleTemplateContract } from "../console-template-contract";
 import { sshCredentialFamily } from "./credential-family";
 export { sshCredentialFamily as credentialFamily } from "./credential-family";
+export { sshConnectorFamily as connectorFamily } from "./connector-family";
 
 export default Object.freeze({
   Console: SSHConnectorConsoleTemplate,

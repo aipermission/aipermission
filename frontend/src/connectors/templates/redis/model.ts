@@ -9,6 +9,7 @@ import {
 import type { RedisConfig, RedisModelForm, RedisProfile, RedisTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };
 const defaultServerFamily = "redis";
@@ -143,7 +144,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }: { target?: RedisTarget | null }) {
+export function deleteDialog({ target }: { target?: RedisTarget | null }): ConnectorDeleteDialog {
   const product = serverProductLabel(target);
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",

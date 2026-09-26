@@ -11,6 +11,7 @@ import {
   sshCredentialResourcesResponse,
 } from "./model-helpers";
 import type { SSHCredentialState, SSHForm, SSHImportForm, SSHKeyForm, SSHProfile } from "./form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 import type {
   SSHCredentialResource,
   SSHCredentialRow,
@@ -309,7 +310,7 @@ export function liveConsoleRuntimeTarget({ target }: { target: SSHModelTarget })
   };
 }
 
-export function deleteDialog({ target }: { target?: SSHModelTarget | null }) {
+export function deleteDialog({ target }: { target?: SSHModelTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description:

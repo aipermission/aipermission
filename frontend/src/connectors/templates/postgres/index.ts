@@ -6,6 +6,7 @@ import { PostgresConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
 import type { ConsoleTemplateContract } from "../console-template-contract";
 import { postgresCredentialFamily } from "./credential-family";
+export { postgresConnectorFamily as connectorFamily } from "./connector-family";
 
 export { postgresCredentialFamily as credentialFamily } from "./credential-family";
 

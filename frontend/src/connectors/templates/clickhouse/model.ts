@@ -48,6 +48,7 @@ export const {
   formFromTarget,
   activeCredential,
   syncForm,
+  syncEditorForm,
   submitDisabled,
   submitLabel,
   save,
