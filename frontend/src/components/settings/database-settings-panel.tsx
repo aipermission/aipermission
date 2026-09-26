@@ -1,5 +1,5 @@
 import { Edit3, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { apiPost } from "../../lib/api";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { Button } from "../ui/button";
@@ -10,23 +10,24 @@ import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { PasswordSettingsPanel } from "./password-settings-panel";
 
-export function DatabaseSettingsPanel({ databaseName }) {
+export function DatabaseSettingsPanel({ databaseName }: { databaseName: string }) {
   const [renameName, setRenameName] = useState(databaseName);
   const [renamePassword, setRenamePassword] = useState("");
   const [deleteName, setDeleteName] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
-  const deletePasswordRef = useRef(null);
+  const deletePasswordRef = useRef<HTMLInputElement | null>(null);
   const { actionState: renameState, runAction: runRenameAction } = useAsyncAction();
   const { actionState: deleteState, runAction: runDeleteAction } = useAsyncAction();
 
   useEffect(() => setRenameName(databaseName), [databaseName]);
   useEffect(() => {
     if (!deleteDialogOpen) return;
-    window.setTimeout(() => deletePasswordRef.current?.focus(), 0);
+    const timer = window.setTimeout(() => deletePasswordRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
   }, [deleteDialogOpen]);
 
-  async function renameDatabase(event) {
+  async function renameDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = await runRenameAction({
       pending: "saving",
@@ -42,7 +43,7 @@ export function DatabaseSettingsPanel({ databaseName }) {
     if (result !== undefined) window.setTimeout(() => window.location.reload(), 800);
   }
 
-  async function deleteDatabase(event) {
+  async function deleteDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = await runDeleteAction({
       pending: "deleting",

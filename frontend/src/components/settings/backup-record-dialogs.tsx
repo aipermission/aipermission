@@ -8,8 +8,14 @@ import { Checkbox, Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { BackupRetentionPanel } from "./backup-retention-panel";
 import { backupRecordsActionBusy } from "./backup-state";
+import type { BackupRecord } from "./backup-contracts";
+import type { useBackupProviderState } from "./use-backup-provider-state";
+import type { AsyncActionState } from "../../lib/use-async-action";
 
-export function BackupRecordDialogs({ state }) {
+type ProviderState = ReturnType<typeof useBackupProviderState>;
+type StateProps = { state: ProviderState };
+
+export function BackupRecordDialogs({ state }: StateProps) {
   const [retentionBusy, setRetentionBusy] = useState(false);
   return (
     <>
@@ -21,7 +27,7 @@ export function BackupRecordDialogs({ state }) {
   );
 }
 
-function BackupRecordsBrowserDialog({ state, retentionBusy, setRetentionBusy }) {
+function BackupRecordsBrowserDialog({ state, retentionBusy, setRetentionBusy }: StateProps & { retentionBusy: boolean; setRetentionBusy: (_busy: boolean) => void }) {
   const {
     backupProviderState,
     backupRecordsProvider,
@@ -86,7 +92,7 @@ function BackupRecordsBrowserDialog({ state, retentionBusy, setRetentionBusy }) 
   );
 }
 
-function BackupRecordsToolbar({ state, retentionBusy }) {
+function BackupRecordsToolbar({ state, retentionBusy }: StateProps & { retentionBusy: boolean }) {
   const {
     backupProviderState,
     selectedBackupRecordIDs,
@@ -143,7 +149,11 @@ function BackupRecordsToolbar({ state, retentionBusy }) {
   );
 }
 
-function BackupRecordRow({ record, total, selectedIDs, state, retentionBusy, onToggle, onDownload, onRestore, onDelete }) {
+function BackupRecordRow({ record, total, selectedIDs, state, retentionBusy, onToggle, onDownload, onRestore, onDelete }: {
+  record: BackupRecord; total: number; selectedIDs: number[]; state: string; retentionBusy: boolean;
+  onToggle: ProviderState["toggleBackupRecordSelection"]; onDownload: ProviderState["downloadBackupRecord"];
+  onRestore: ProviderState["requestRestoreBackupRecord"]; onDelete: ProviderState["requestDeleteBackupRecords"];
+}) {
   const selected = selectedIDs.includes(record.id);
   const lastRecord = total <= 1;
   return (
@@ -159,7 +169,7 @@ function BackupRecordRow({ record, total, selectedIDs, state, retentionBusy, onT
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-stone-950">{record.filename}</p>
           <p className="mt-1 text-xs text-stone-500">
-            {formatBytes(record.size_bytes)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from{" "}
+            {formatBytes(record.size_bytes ?? 0)} · {formatRelativeAge(record.backup_created_at || record.uploaded_at)} · from{" "}
             {record.source_machine || "unknown machine"}
           </p>
           <p className="mt-1 text-[11px] text-stone-400">
@@ -207,7 +217,7 @@ function BackupRecordRow({ record, total, selectedIDs, state, retentionBusy, onT
   );
 }
 
-function DeleteBackupRecordsDialog({ state }) {
+function DeleteBackupRecordsDialog({ state }: StateProps) {
   const { backupProviderState, backupDeleteRecords, closeDeleteBackupRecordsDialog, deleteBackupRecords } = state;
   const pending = backupProviderState.state === "deleting-records";
   return (
@@ -253,7 +263,7 @@ function DeleteBackupRecordsDialog({ state }) {
   );
 }
 
-function PruneBackupRecordsDialog({ state }) {
+function PruneBackupRecordsDialog({ state }: StateProps) {
   const {
     backupProviderState,
     backupPruneTarget,
@@ -312,7 +322,7 @@ function PruneBackupRecordsDialog({ state }) {
   );
 }
 
-function RestoreBackupRecordDialog({ state }) {
+function RestoreBackupRecordDialog({ state }: StateProps) {
   const {
     backupProviderState,
     restoreRecordTarget,
@@ -373,7 +383,7 @@ function RestoreBackupRecordDialog({ state }) {
   );
 }
 
-function ConfirmActions({ pending, onCancel, disabled, label }) {
+function ConfirmActions({ pending, onCancel, disabled, label }: { pending: boolean; onCancel: () => void; disabled: boolean; label: string }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
@@ -387,6 +397,6 @@ function ConfirmActions({ pending, onCancel, disabled, label }) {
   );
 }
 
-function StateError({ state }) {
+function StateError({ state }: { state: AsyncActionState }) {
   return state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null;
 }

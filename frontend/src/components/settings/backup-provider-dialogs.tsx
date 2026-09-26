@@ -1,14 +1,20 @@
 import { Archive, Cloud, Upload } from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
+import type { AsyncActionState } from "../../lib/use-async-action";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input, Select } from "../ui/form";
 import { Notice } from "../ui/notice";
-import { backupProviderLabel } from "./use-backup-provider-state";
+import { backupProviderLabel, type useBackupProviderState } from "./use-backup-provider-state";
 
 const backupServiceGuideURL = "https://github.com/aipermission/aipermission/blob/main/docs/providers/aipermission-backup.md";
 
-export function BackupProviderDialogs({ state, database }) {
+type ProviderState = ReturnType<typeof useBackupProviderState>;
+type StateProps = { state: ProviderState };
+type DatabaseSummary = { data?: { database_size_bytes?: number } | null };
+
+export function BackupProviderDialogs({ state, database }: StateProps & { database: DatabaseSummary }) {
   return (
     <>
       <ProviderEditorDialog state={state} />
@@ -19,7 +25,7 @@ export function BackupProviderDialogs({ state, database }) {
   );
 }
 
-function ProviderEditorDialog({ state }) {
+function ProviderEditorDialog({ state }: StateProps) {
   const {
     backupProviderDialogOpen,
     backupProviderEditingID,
@@ -115,7 +121,7 @@ function ProviderEditorDialog({ state }) {
   );
 }
 
-function ProviderArchiveDialog({ state }) {
+function ProviderArchiveDialog({ state }: StateProps) {
   const { backupProviderArchiveTarget: target, closeBackupProviderArchiveDialog, archiveBackupProvider, backupProviderState } = state;
   const pending = backupProviderState.state === "archiving";
   return (
@@ -146,7 +152,7 @@ function ProviderArchiveDialog({ state }) {
   );
 }
 
-function BackupUploadDialog({ state, database }) {
+function BackupUploadDialog({ state, database }: StateProps & { database: DatabaseSummary }) {
   const { backupUploadTarget: target, databaseName, closeUploadBackupDialog, uploadBackupProvider, backupProviderState } = state;
   const pending = backupProviderState.state === `uploading-${target?.id}`;
   return (
@@ -166,7 +172,7 @@ function BackupUploadDialog({ state, database }) {
         </Notice>
         <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
           <SummaryRow label="Database" value={databaseName} />
-          <SummaryRow label="Estimated upload size" value={formatBytes(database.data?.database_size_bytes)} />
+          <SummaryRow label="Estimated upload size" value={formatBytes(database.data?.database_size_bytes ?? 0)} />
           <SummaryRow label="Provider" value={target?.name || "-"} />
         </div>
         <ProviderError state={backupProviderState} />
@@ -182,7 +188,7 @@ function BackupUploadDialog({ state, database }) {
   );
 }
 
-function ProviderEnableDialog({ state }) {
+function ProviderEnableDialog({ state }: StateProps) {
   const {
     backupEnableTarget: target,
     closeEnableBackupProviderDialog,
@@ -234,7 +240,7 @@ function ProviderEnableDialog({ state }) {
   );
 }
 
-function DialogActions({ onCancel, pending, submitDisabled, variant, icon, label }) {
+function DialogActions({ onCancel, pending, submitDisabled, variant, icon, label }: { onCancel: () => void; pending: boolean; submitDisabled: boolean; variant?: ComponentProps<typeof Button>["variant"]; icon: ReactNode; label: string }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
@@ -248,11 +254,11 @@ function DialogActions({ onCancel, pending, submitDisabled, variant, icon, label
   );
 }
 
-function ProviderError({ state }) {
+function ProviderError({ state }: { state: AsyncActionState }) {
   return state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null;
 }
 
-function SummaryRow({ label, value }) {
+function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-stone-500">{label}</span>
