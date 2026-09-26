@@ -6,7 +6,7 @@
     "lines": 75
   },
   "debtStep": 1,
-  "excludedNames": ["mcp-client-catalog.js", "release.generated.json"],
+  "excludedNames": ["mcp-client-catalog.ts", "release.generated.json"],
   "excludedDirectories": ["src/test"],
   "separatelyCoveredDirectories": ["src/lib/local-action-retry"],
   "excludedPatterns": ["^src/connectors/templates/[^/]+/index\\.ts$"]

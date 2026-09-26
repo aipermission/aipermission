@@ -31,27 +31,47 @@ func TestGenerateContractRejectsInvalidRoutes(t *testing.T) {
 }
 
 func TestGenerateFrontendContractUsesCanonicalEnums(t *testing.T) {
-	output := string(generateFrontendContract())
+	output := string(generateFrontendContract(false))
 	for _, expected := range []string{`"approval_pending"`, `"outcome_unknown"`, `"non_idempotent"`, `"target_ref"`, "DO NOT EDIT"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("generated frontend contract does not contain %s", expected)
 		}
 	}
-	declaration := string(generateFrontendContractDeclaration())
-	for _, expected := range []string{`readonly [`, `"completed"`, `"non_idempotent"`, `"target_ref"`} {
-		if !strings.Contains(declaration, expected) {
-			t.Fatalf("generated frontend declaration does not contain %s", expected)
+	typed := string(generateFrontendContract(true))
+	for _, expected := range []string{`as const`, `"completed"`, `"non_idempotent"`, `"target_ref"`} {
+		if !strings.Contains(typed, expected) {
+			t.Fatalf("generated TypeScript contract does not contain %s", expected)
 		}
+	}
+	if strings.Contains(output, "as const") {
+		t.Fatal("MCP JavaScript contract must not contain TypeScript syntax")
 	}
 }
 
 func TestCommittedFrontendContractIsCurrent(t *testing.T) {
-	contractPath := filepath.Join("..", "..", "..", "frontend", "src", "lib", "gateway-contracts", "generated-connector-contract.js")
+	contractPath := filepath.Join("..", "..", "..", "frontend", "src", "lib", "gateway-contracts", "generated-connector-contract.ts")
 	mcpPath := filepath.Join("..", "..", "..", "packages", "mcp", "src", "generated-connector-contract.js")
-	declarationPath := frontendDeclarationPath(contractPath)
-	assertGeneratedFile(t, contractPath, generateFrontendContract())
-	assertGeneratedFile(t, mcpPath, generateFrontendContract())
-	assertGeneratedFile(t, declarationPath, generateFrontendContractDeclaration())
+	assertGeneratedFile(t, contractPath, generateFrontendContract(true))
+	assertGeneratedFile(t, mcpPath, generateFrontendContract(false))
+}
+
+func TestRuntimeListUsesFrontendWidthWithoutChangingMCPFormat(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		typescript bool
+		multiline  bool
+	}{
+		{name: "typescript", typescript: true},
+		{name: "javascript", multiline: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output strings.Builder
+			writeRuntimeList(&output, "formatBoundary", []string{strings.Repeat("x", 80)}, tc.typescript)
+			if strings.Contains(output.String(), "[\n") != tc.multiline {
+				t.Fatalf("unexpected runtime list layout: %s", output.String())
+			}
+		})
+	}
 }
 
 func assertGeneratedFile(t *testing.T, path string, expected []byte) {

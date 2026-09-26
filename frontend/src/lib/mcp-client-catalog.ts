@@ -73,4 +73,4 @@ export const mcpClientCatalog = Object.freeze([
     supportsMCP: false,
     supportsSkill: false,
   },
-]);
+] as const);

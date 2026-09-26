@@ -1,4 +1,4 @@
-import { connectorActionResponseRequiredFields, connectorActionStatuses, connectorRetryClasses } from "./generated-connector-contract.js";
+import { connectorActionResponseRequiredFields, connectorActionStatuses, connectorRetryClasses } from "./generated-connector-contract.ts";
 import type { components } from "../../../types/generated-openapi";
 
 type ActionResponse = components["schemas"]["ConnectorActionResponse"];

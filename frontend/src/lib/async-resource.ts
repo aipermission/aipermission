@@ -2,7 +2,7 @@ export function failedResource<Resource extends object>(current: Resource, error
   return {
     ...current,
     ...overrides,
-    state: "error",
+    state: "error" as const,
     error: error instanceof Error ? error.message : String(error),
   };
 }
