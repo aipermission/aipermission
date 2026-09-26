@@ -1,15 +1,18 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiGet as realGet, apiPost as realPost } from "../../lib/api";
 import { APIError } from "../../lib/errors";
 import { useVaultActionApprovals } from "./use-vault-action-approvals";
+import type { VaultApproval } from "../../lib/gateway-contracts/security-contracts.ts";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+const apiGet = vi.mocked(realGet);
+const apiPost = vi.mocked(realPost);
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason?: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
@@ -22,7 +25,7 @@ function renderApprovals() {
   return { ...hook, refreshConsoleSessions };
 }
 
-const pendingApproval = {
+const pendingApproval: VaultApproval = {
   id: 42,
   status: "approval_pending",
   token_id: 7,
@@ -53,7 +56,7 @@ const pendingApproval = {
   updated_at: "2026-09-16T00:00:00Z",
 };
 
-function decisionApproval(status, overrides = {}) {
+function decisionApproval(status: VaultApproval["status"], overrides: Partial<VaultApproval> = {}): VaultApproval {
   return { ...pendingApproval, status, approval_context_hash: "", ...overrides };
 }
 
@@ -68,7 +71,7 @@ describe("useVaultActionApprovals", () => {
     apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce([pendingApproval]);
     const { result } = renderApprovals();
 
-    let olderLoad;
+    let olderLoad: ReturnType<ReturnType<typeof useVaultActionApprovals>["load"]> | undefined;
     await act(async () => {
       olderLoad = result.current.load();
       await result.current.load();
@@ -85,7 +88,7 @@ describe("useVaultActionApprovals", () => {
     apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce([pendingApproval]);
     const { result } = renderApprovals();
 
-    let olderLoad;
+    let olderLoad: ReturnType<ReturnType<typeof useVaultActionApprovals>["load"]> | undefined;
     await act(async () => {
       olderLoad = result.current.load();
       await result.current.load();
@@ -131,7 +134,7 @@ describe("useVaultActionApprovals", () => {
     const { result } = renderApprovals();
     await act(async () => result.current.load());
 
-    let run;
+    let run: Promise<void> | undefined;
     act(() => {
       run = result.current.run();
     });
@@ -168,7 +171,7 @@ describe("useVaultActionApprovals", () => {
     const { result, refreshConsoleSessions } = renderApprovals();
     await act(async () => result.current.load());
 
-    let run;
+    let run: Promise<void> | undefined;
     act(() => {
       run = result.current.run();
     });

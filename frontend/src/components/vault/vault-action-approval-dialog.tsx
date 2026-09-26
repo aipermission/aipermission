@@ -6,10 +6,21 @@ import { Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { TerminalBlock } from "../ui/terminal-block";
 import { formatLocalTimestamp, formatRelativeAge, formatRelativeDeadline } from "../../lib/date-time";
+import type { VaultApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import type { VaultApprovalDialogState } from "./use-vault-action-approvals.ts";
 
 const terminalStates = new Set(["stale", "failed", "load_error"]);
 
-export function VaultActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
+type Props = {
+  approval: VaultApproval | null;
+  note: string;
+  action: Pick<VaultApprovalDialogState, "state" | "error">;
+  onNoteChange: (_note: string) => void;
+  onRun: () => unknown | Promise<unknown>;
+  onDecline: () => unknown | Promise<unknown>;
+  onClose: () => void;
+};
+export function VaultActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }: Props) {
   const input = approval ? JSON.stringify(approval.input || {}, null, 2) : "";
   const age = approval ? formatRelativeAge(approval.created_at) : "";
   const timestamp = approval ? formatLocalTimestamp(approval.created_at) : "";
@@ -115,6 +126,6 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
   );
 }
 
-function vaultApprovalGridClass(itemCount) {
+function vaultApprovalGridClass(itemCount: number) {
   return itemCount > 0 ? "grid-rows-[auto_auto_auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_auto_minmax(0,1fr)]";
 }

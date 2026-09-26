@@ -1,5 +1,5 @@
 type ApprovalItem = { id: number };
-type ApprovalDialog<Item extends ApprovalItem> = { approval: Item | null; note: string; state: string; error: string | null };
+export type ApprovalDialog<Item extends ApprovalItem> = { approval: Item | null; note: string; state: string; error: string | null };
 
 export function reconcileVaultApprovalDialog<Item extends ApprovalItem>(
   current: ApprovalDialog<Item>,

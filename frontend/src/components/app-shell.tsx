@@ -18,14 +18,17 @@ import { useConsoleSessionCoordinator } from "./console/use-console-session-coor
 import { useDatabaseLifecycle } from "./use-database-lifecycle";
 import { useGatewayResources } from "./use-gateway-resources";
 import { useVaultActionApprovals } from "./vault/use-vault-action-approvals";
-export function Shell({ theme, setTheme }) {
+import type { Dispatch, SetStateAction } from "react";
+import type { Theme } from "../lib/theme.ts";
+import type { GatewayContext } from "../lib/gateway-context.ts";
+export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<SetStateAction<Theme>> }) {
   const location = useLocation();
   function toggleTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
   const [actionRetryDialog, closeActionRetryDialog] = useLocalActionReconciliation();
   const pollGenerationGuard = useRef(createPollGenerationGuard()).current;
-  const pollIsCurrent = useCallback((generation) => pollGenerationGuard.isCurrent(generation), [pollGenerationGuard]);
+  const pollIsCurrent = useCallback((generation?: number) => pollGenerationGuard.isCurrent(generation), [pollGenerationGuard]);
   const resources = useGatewayResources({ pollIsCurrent });
   const { loadBackupFreshness } = resources;
   const transferCenter = useTransferCenterState({ pollIsCurrent });
@@ -33,7 +36,7 @@ export function Shell({ theme, setTheme }) {
   const database = useDatabaseLifecycle({ disconnectAllConsoleSessions: consoleCoordinator.disconnectAll, pollIsCurrent });
   const vaultApprovals = useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions: consoleCoordinator.loadSessions });
 
-  async function refreshAll(generation) {
+  async function refreshAll(generation?: number) {
     await Promise.allSettled([
       resources.loadStatus(generation),
       database.loadStatus(generation),
@@ -49,7 +52,7 @@ export function Shell({ theme, setTheme }) {
     ]);
   }
 
-  const refreshCurrentRoute = useEffectEvent(async (pathname, firstLoad, generation) => {
+  const refreshCurrentRoute = useEffectEvent(async (pathname: string, firstLoad: boolean, generation: number) => {
     if (firstLoad || pathname !== "/console") {
       await refreshAll(generation);
       return;
@@ -213,7 +216,7 @@ export function Shell({ theme, setTheme }) {
               declineConnectorActionApproval: resources.declineConnectorActionApproval,
               theme,
               toggleTheme,
-            }}
+            } satisfies GatewayContext}
           />
         </div>
       </section>

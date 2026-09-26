@@ -18,7 +18,7 @@ export default defineConfig({
         "src/components/file-transfer/file-transfer-actions.ts",
         "src/components/file-transfer/file-transfer-list-state.ts",
         "src/components/settings/maintenance-console-panel.tsx",
-        "src/components/vault/vault-action-approval-dialog.jsx",
+        "src/components/vault/vault-action-approval-dialog.tsx",
         "src/components/file-transfer/file-transfer-confirm-dialogs.tsx",
         "src/connectors/templates/_shared/network-transport-fields.{jsx,tsx}",
         "src/connectors/templates/{docker,kafka,kubernetes,mail,rabbitmq,redis,s3}/form.{jsx,tsx}",
