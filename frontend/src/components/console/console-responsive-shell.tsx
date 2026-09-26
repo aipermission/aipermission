@@ -1,19 +1,35 @@
 import { cloneElement, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Database, TicketCheck } from "lucide-react";
 import { useMediaQuery } from "../../lib/use-media-query";
 import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
 import { consoleShellGridClass } from "./console-layout";
 
-export function ConsoleResponsiveShell({ targetsCompact, tokensCompact, targetSidebar, workspace, tokenPanel, dialogs }) {
+type TargetPanelProps<Target> = {
+  compact?: boolean;
+  onCompactChange?: (_compact: boolean) => void;
+  onSelect?: (_target: Target) => void;
+};
+type TokenPanelProps = { compact?: boolean; onToggleCompact?: () => void };
+type Props<Target> = {
+  targetsCompact: boolean;
+  tokensCompact: boolean;
+  targetSidebar: ReactElement<TargetPanelProps<Target>>;
+  workspace: ReactNode;
+  tokenPanel: ReactElement<TokenPanelProps>;
+  dialogs?: ReactNode;
+};
+
+export function ConsoleResponsiveShell<Target>({ targetsCompact, tokensCompact, targetSidebar, workspace, tokenPanel, dialogs }: Props<Target>) {
   const [targetsDrawerOpen, setTargetsDrawerOpen] = useState(false);
   const [tokensDrawerOpen, setTokensDrawerOpen] = useState(false);
   const wide = useMediaQuery("(min-width: 1536px)");
   const targets = cloneElement(targetSidebar, {
     compact: wide && targetsCompact,
     onCompactChange: wide ? targetSidebar.props.onCompactChange : undefined,
-    onSelect: (...args) => {
-      targetSidebar.props.onSelect?.(...args);
+    onSelect: (target: Target) => {
+      targetSidebar.props.onSelect?.(target);
       setTargetsDrawerOpen(false);
     },
   });

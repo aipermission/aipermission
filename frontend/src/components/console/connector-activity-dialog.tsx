@@ -4,10 +4,19 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { TerminalBlock } from "../ui/terminal-block";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import type { useGatewayActivityResources } from "../use-gateway-activity-resources.ts";
 
-export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose }) {
+type Props = {
+  open: boolean;
+  approvals: ReturnType<typeof useGatewayActivityResources>["connectorActionApprovals"];
+  onRefresh: () => void | Promise<unknown>;
+  onClose: () => void;
+};
+
+export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose }: Props) {
   const items = useMemo(() => approvals?.data || [], [approvals?.data]);
-  const [selectedID, setSelectedID] = useState(null);
+  const [selectedID, setSelectedID] = useState<number | null>(null);
   const selected = useMemo(() => {
     if (selectedID) return items.find((item) => Number(item.id) === Number(selectedID)) || items[0] || null;
     return items[0] || null;
@@ -98,7 +107,7 @@ export function ConnectorActivityDialog({ open, approvals, onRefresh, onClose })
   );
 }
 
-function ActivityBlock({ title, value }) {
+function ActivityBlock({ title, value }: { title: string; value: unknown }) {
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
       <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
@@ -107,7 +116,7 @@ function ActivityBlock({ title, value }) {
   );
 }
 
-function ActivityBadge({ status }) {
+function ActivityBadge({ status }: Pick<ConnectorApproval, "status">) {
   const tone =
     status === "completed"
       ? "good"
@@ -119,7 +128,7 @@ function ActivityBadge({ status }) {
   return <Badge tone={tone}>{status}</Badge>;
 }
 
-function formatJSON(value) {
+function formatJSON(value: unknown) {
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value ?? {}, null, 2);
@@ -128,7 +137,7 @@ function formatJSON(value) {
   }
 }
 
-function formatTime(value) {
+function formatTime(value: string) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
 }

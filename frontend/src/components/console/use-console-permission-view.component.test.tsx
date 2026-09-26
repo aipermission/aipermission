@@ -1,6 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useConsolePermissionView } from "./use-console-permission-view";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts.ts";
 
 const now = Date.parse("2026-08-01T12:00:00Z");
 const profiles = [
@@ -15,7 +16,8 @@ const tokens = [
   { id: 4, name: "project-disabled" },
 ];
 
-function permission(tokenID, overrides = {}) {
+type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled"> & { token_id: number };
+function permission(tokenID: number, overrides: Partial<Permission> = {}): Permission {
   return {
     token_id: tokenID,
     target_id: 4,
@@ -81,11 +83,11 @@ describe("useConsolePermissionView", () => {
     const { result, rerender } = renderHook(
       ({ nextTokens }) =>
         useConsolePermissionView({ connectorPermissions: {}, mcpEnabled: true, now, profiles: [], target: null, tokens: nextTokens }),
-      { initialProps: { nextTokens: [] } },
+      { initialProps: { nextTokens: [] as { id: number; name: string }[] } },
     );
     const first = result.current;
 
-    rerender({ nextTokens: [{ id: 9 }] });
+    rerender({ nextTokens: [{ id: 9, name: "Agent" }] });
 
     expect(result.current).toBe(first);
     expect(result.current.selectedTokenOptions).toEqual([]);
