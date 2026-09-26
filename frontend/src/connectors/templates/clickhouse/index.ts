@@ -3,6 +3,7 @@ import { ClickHouseCredentialFormTemplate } from "./credential-form";
 import { ClickHouseConnectorFormTemplate } from "./form";
 import { ClickHouseConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: ClickHouseConnectorConsoleTemplate,
@@ -11,4 +12,4 @@ export default Object.freeze({
   model,
   RowActions: ClickHouseConnectorRowActionsTemplate,
   ToolbarActions: ClickHouseConnectorToolbarActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
 import { gatewayTargetFixture } from "../../../test/connector-inventory-fixtures";
+import { consoleWorkspaceFixture } from "../../../test/console-workspace-fixtures";
 import { createSQLConsoleSlot } from "./sql-console-slot";
 import { SQLConnectorConsole } from "./sql-console";
 import { structuredConsoleSlotSession } from "./console-slot-session";
@@ -9,25 +10,15 @@ import { structuredConsoleSlotSession } from "./console-slot-session";
 vi.mock("./sql-console", () => ({ SQLConnectorConsole: vi.fn(() => <div />) }));
 
 function slotProps(overrides: Partial<ConsoleWorkspaceSlotProps> = {}): ConsoleWorkspaceSlotProps {
-  return {
+  return consoleWorkspaceFixture({
     target: gatewayTargetFixture({
       connector_kind: "example",
       target_name: "My database",
       config: { host: "db.test", port: 5432, database: "main" },
     }),
-    approvals: { state: "ready", data: [], error: null },
-    theme: "dark",
     session: { active: true, startedAt: "2026-09-26" },
-    selectedSessionLive: false,
-    selectedRuntimeTarget: null,
-    onNewStructuredSession: vi.fn(),
-    onNewLiveSession: vi.fn(),
-    onSelectLiveSessionName: vi.fn(),
-    onEndLiveSession: vi.fn(),
-    onOpenActivity: vi.fn(),
-    onRefreshActivity: vi.fn(),
     ...overrides,
-  };
+  });
 }
 
 beforeEach(() => {

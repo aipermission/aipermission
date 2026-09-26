@@ -5,6 +5,8 @@ import { ConsoleWorkspacePanel } from "./console-workspace-panel";
 import type { ConsoleToolbarSlotProps, ConsoleWorkspacePanelProps, ConsoleWorkspaceSlotProps } from "./console-workspace-types";
 import { gatewayTargetFixture } from "../../test/connector-inventory-fixtures";
 import { connectorApprovalFixture } from "../../test/connector-action-fixtures";
+import { MailConnectorConsoleTemplate } from "../../connectors/templates/mail/console";
+import { gatewayTargetsResponse } from "../../lib/gateway-contracts/core-resource-contracts";
 
 vi.mock("./pty-console", () => ({ PtyConsole: () => <div data-testid="pty-console" /> }));
 
@@ -31,7 +33,9 @@ function panelProps(overrides: Partial<ConsoleWorkspacePanelProps> = {}): Consol
     },
     approvals: { state: "ready", data: [], error: null },
     connectorView: {
-      Console: ({ children, session }: ConsoleWorkspaceSlotProps) => <div data-testid="connector-console">{session && "active" in session && session.active ? "active" : children}</div>,
+      Console: ({ children, session }: ConsoleWorkspaceSlotProps) => (
+        <div data-testid="connector-console">{session && "active" in session && session.active ? "active" : children}</div>
+      ),
       ToolbarActions: null,
     },
     liveConsoleTargets: [],
@@ -66,6 +70,50 @@ function panelProps(overrides: Partial<ConsoleWorkspacePanelProps> = {}): Consol
 }
 
 describe("ConsoleWorkspacePanel", () => {
+  it("contains invalid connector-owned data and recovers after the saved target is corrected", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const value = panelProps();
+    const invalidTarget = gatewayTargetFixture({ connector_kind: "mail", config: { imap_host: 42 } });
+    expect(gatewayTargetsResponse({ items: [invalidTarget] })).toEqual([invalidTarget]);
+    value.connectorView.Console = MailConnectorConsoleTemplate;
+    value.targetView.selectedTarget = invalidTarget;
+    value.targetView.selectedTargetProfiles = [invalidTarget];
+    value.sessionView.selectedStructuredSession = { active: false, startedAt: "" };
+    const view = render(<ConsoleWorkspacePanel {...value} />);
+    expect(screen.getByText("Connector console unavailable.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument();
+    const correctedTarget = { ...invalidTarget, config: { imap_host: "imap.test" }, updated_at: "corrected" };
+    view.rerender(
+      <ConsoleWorkspacePanel
+        {...value}
+        targetView={{ ...value.targetView, selectedTarget: correctedTarget, selectedTargetProfiles: [correctedTarget] }}
+      />,
+    );
+    expect(screen.getByText("No active Mail session")).toBeInTheDocument();
+    expect(screen.queryByText("Connector console unavailable.")).not.toBeInTheDocument();
+  });
+
+  it("contains a failed toolbar while keeping the console usable and recovers on profile selection", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const value = panelProps();
+    value.connectorView.ToolbarActions = ({ selectedTarget }) => {
+      if (selectedTarget?.profile_id === 1) throw new Error("invalid toolbar data");
+      return <button>Healthy toolbar</button>;
+    };
+    const view = render(<ConsoleWorkspacePanel {...value} />);
+    expect(screen.getByText("Connector toolbar unavailable.")).toBeInTheDocument();
+    expect(screen.getByTestId("connector-console")).toBeInTheDocument();
+    const nextTarget = gatewayTargetFixture({ ref: "example:1:2", profile_id: 2 });
+    view.rerender(
+      <ConsoleWorkspacePanel
+        {...value}
+        targetView={{ ...value.targetView, selectedTarget: nextTarget, selectedTargetProfiles: [nextTarget] }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Healthy toolbar" })).toBeInTheDocument();
+    expect(screen.queryByText("Connector toolbar unavailable.")).not.toBeInTheDocument();
+  });
+
   it("renders the selected connector template without connector-kind branching", () => {
     render(<ConsoleWorkspacePanel {...panelProps()} />);
 
@@ -99,10 +147,7 @@ describe("ConsoleWorkspacePanel", () => {
     const value = panelProps();
     const target = value.targetView.selectedTarget;
     if (!target) throw new Error("Expected a selected target fixture");
-    value.targetView.selectedTargetProfiles = [
-      target,
-      { ...target, profile_id: 2, profile_label: "Read only" },
-    ];
+    value.targetView.selectedTargetProfiles = [target, { ...target, profile_id: 2, profile_label: "Read only" }];
     render(<ConsoleWorkspacePanel {...value} />);
 
     await user.selectOptions(screen.getByLabelText("Profile"), "2");
@@ -173,7 +218,11 @@ describe("ConsoleWorkspacePanel", () => {
 
   it("passes workspace-owned session controls to connector-owned toolbar slots", () => {
     const value = panelProps();
-    value.connectorView.ToolbarActions = ({ structuredSession, onNewStructuredSession, onEndStructuredSession }: ConsoleToolbarSlotProps) => (
+    value.connectorView.ToolbarActions = ({
+      structuredSession,
+      onNewStructuredSession,
+      onEndStructuredSession,
+    }: ConsoleToolbarSlotProps) => (
       <div>
         <span>{structuredSession?.active ? "Session active" : "No structured session"}</span>
         <button onClick={onNewStructuredSession}>Start fixture session</button>
@@ -192,7 +241,10 @@ describe("ConsoleWorkspacePanel", () => {
   it("keeps simultaneous safety and recovery notices visible without replacing the console", () => {
     const value = panelProps();
     value.warnings = {
-      ...value.warnings, bannerCount: 3, showAlwaysRun: true, alwaysRunTokenCount: 2,
+      ...value.warnings,
+      bannerCount: 3,
+      showAlwaysRun: true,
+      alwaysRunTokenCount: 2,
       temporaryAlwaysRunLabels: ["Temporary fixture grant"],
       runningRequest: { created_at: new Date(value.warnings.now - 30000).toISOString(), action_name: "inspect", input: {} },
       newSessionError: "Fixture session failed",

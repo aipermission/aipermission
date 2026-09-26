@@ -4,6 +4,7 @@ import { KubernetesConnectorFormTemplate } from "./form";
 import { KubernetesConnectorRowActionsTemplate } from "./list-item";
 import { KubernetesConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: KubernetesConnectorConsoleTemplate,
@@ -12,4 +13,4 @@ export default Object.freeze({
   model,
   Operations: KubernetesConnectorOperationsTemplate,
   RowActions: KubernetesConnectorRowActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

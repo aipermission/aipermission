@@ -4,6 +4,7 @@ import { RabbitMQConnectorFormTemplate } from "./form";
 import { RabbitMQConnectorRowActionsTemplate } from "./list-item";
 import { RabbitMQConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: RabbitMQConnectorConsoleTemplate,
@@ -12,4 +13,4 @@ export default Object.freeze({
   model,
   Operations: RabbitMQConnectorOperationsTemplate,
   RowActions: RabbitMQConnectorRowActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

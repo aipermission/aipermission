@@ -4,26 +4,24 @@ import { DockerResourceBrowser } from "./resource-browser";
 import { DockerResourcePane } from "./resource-pane";
 import { useDockerBrowser } from "./use-docker-browser";
 import type { DockerBrowserProps } from "./use-docker-browser";
-import type { ComponentProps, ReactNode } from "react";
-
-type DockerConsoleProps = DockerBrowserProps & Pick<ComponentProps<typeof DockerResourcePane>, "theme" | "selectedRuntimeTarget"> & {
-  children?: ReactNode;
-  onEndLiveSession?: () => unknown;
-};
+import { liveConsoleSlotSession, runtimeConsoleSlotTarget } from "../_shared/runtime-console-slot";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
 
 export function DockerConnectorConsoleTemplate({
   children,
-  target,
+  target: gatewayTarget,
   approvals,
   theme,
-  session,
+  session: workspaceSession,
   selectedSessionLive,
   selectedRuntimeTarget,
   onNewLiveSession,
   onSelectLiveSessionName,
   onEndLiveSession,
   onRefreshActivity,
-}: DockerConsoleProps) {
+}: ConsoleWorkspaceSlotProps) {
+  const target = runtimeConsoleSlotTarget(gatewayTarget, "Docker");
+  const session = liveConsoleSlotSession(workspaceSession);
   const classes = connectorConsoleTheme(theme);
   const browser = useDockerBrowser({
     target,
@@ -90,7 +88,15 @@ export function DockerConnectorConsoleTemplate({
   );
 }
 
-function DockerEndpointFooter({ target, borderClass, mutedClass }: { target: DockerBrowserProps["target"]; borderClass: string; mutedClass: string }) {
+function DockerEndpointFooter({
+  target,
+  borderClass,
+  mutedClass,
+}: {
+  target: DockerBrowserProps["target"];
+  borderClass: string;
+  mutedClass: string;
+}) {
   return (
     <div className={`flex min-h-[44px] items-center justify-between gap-3 border-t px-4 py-2 text-xs ${borderClass}`}>
       <span className={mutedClass}>Docker transport</span>

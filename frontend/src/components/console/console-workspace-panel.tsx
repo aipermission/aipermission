@@ -7,12 +7,22 @@ import { ConsoleRecoveryPanel } from "./console-recovery-panel";
 import { ConsoleStatusDot, selectedTargetStatus, targetDisplayName, targetProfileLabel, targetSubtitle } from "./console-target-sidebar";
 import { NoLiveSession } from "./no-live-session";
 import { PtyConsole } from "./pty-console";
+import { ConnectorSlotBoundary } from "./connector-slot-boundary";
 import type { ReactNode } from "react";
 import type { ConsoleRuntimeTarget } from "../use-gateway-resources";
 import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
 import type { ConsoleWorkspacePanelProps } from "./console-workspace-types";
 
-export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveConsoleTargets, sessionView, targetView, theme, warnings }: ConsoleWorkspacePanelProps) {
+export function ConsoleWorkspacePanel({
+  actions,
+  approvals,
+  connectorView,
+  liveConsoleTargets,
+  sessionView,
+  targetView,
+  theme,
+  warnings,
+}: ConsoleWorkspacePanelProps) {
   const ConsoleTemplate = connectorView.Console;
   const ToolbarActions = connectorView.ToolbarActions;
 
@@ -43,8 +53,9 @@ export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveC
   );
 }
 
-type HeaderProps = Pick<ConsoleWorkspacePanelProps, "actions" | "liveConsoleTargets" | "sessionView" | "targetView" | "theme"> &
-  { ToolbarActions: ConsoleWorkspacePanelProps["connectorView"]["ToolbarActions"] };
+type HeaderProps = Pick<ConsoleWorkspacePanelProps, "actions" | "liveConsoleTargets" | "sessionView" | "targetView" | "theme"> & {
+  ToolbarActions: ConsoleWorkspacePanelProps["connectorView"]["ToolbarActions"];
+};
 
 function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView, theme, ToolbarActions }: HeaderProps) {
   const { selectedRuntimeTarget, selectedTarget, selectedTargetProfiles, selectedPendingApprovals } = targetView;
@@ -91,31 +102,40 @@ function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView,
           </Button>
         ) : null}
         {ToolbarActions ? (
-          <ToolbarActions
-            theme={theme}
-            selectedTarget={selectedTarget}
-            selectedRuntimeTarget={selectedRuntimeTarget}
-            selectedSession={selectedSession}
-            selectedSessionLive={selectedSessionLive}
-            selectedUnreadMessages={targetView.selectedUnreadMessages}
-            liveConsoleTargets={liveConsoleTargets}
-            onOpenMessages={actions.openMessages}
-            onRefreshSessions={actions.refreshSessions}
-            onNewSession={actions.startLiveSession}
-            onEndSession={actions.endLiveSession}
-            onInterrupt={actions.interruptSession}
-            structuredSession={selectedStructuredSession}
-            onNewStructuredSession={actions.startStructuredSession}
-            onEndStructuredSession={actions.endStructuredSession}
-          />
+          <ConnectorSlotBoundary key={`${selectedTarget?.ref}:toolbar`} resetKey={selectedTarget?.updated_at} slot="toolbar">
+            <ToolbarActions
+              theme={theme}
+              selectedTarget={selectedTarget}
+              selectedRuntimeTarget={selectedRuntimeTarget}
+              selectedSession={selectedSession}
+              selectedSessionLive={selectedSessionLive}
+              selectedUnreadMessages={targetView.selectedUnreadMessages}
+              liveConsoleTargets={liveConsoleTargets}
+              onOpenMessages={actions.openMessages}
+              onRefreshSessions={actions.refreshSessions}
+              onNewSession={actions.startLiveSession}
+              onEndSession={actions.endLiveSession}
+              onInterrupt={actions.interruptSession}
+              structuredSession={selectedStructuredSession}
+              onNewStructuredSession={actions.startStructuredSession}
+              onEndStructuredSession={actions.endStructuredSession}
+            />
+          </ConnectorSlotBoundary>
         ) : null}
       </div>
     </header>
   );
 }
 
-function WorkspaceProfileSelect({ profiles, target, theme, onChange }: {
-  profiles: GatewayTarget[]; target: GatewayTarget | null; theme: ConsoleWorkspacePanelProps["theme"];
+function WorkspaceProfileSelect({
+  profiles,
+  target,
+  theme,
+  onChange,
+}: {
+  profiles: GatewayTarget[];
+  target: GatewayTarget | null;
+  theme: ConsoleWorkspacePanelProps["theme"];
   onChange: ConsoleWorkspacePanelProps["actions"]["selectProfile"];
 }) {
   if (profiles.length <= 1) return null;
@@ -139,8 +159,9 @@ function WorkspaceProfileSelect({ profiles, target, theme, onChange }: {
   );
 }
 
-type ContentProps = Pick<ConsoleWorkspacePanelProps, "actions" | "approvals" | "sessionView" | "targetView" | "theme" | "warnings"> &
-  { ConsoleTemplate: ConsoleWorkspacePanelProps["connectorView"]["Console"] };
+type ContentProps = Pick<ConsoleWorkspacePanelProps, "actions" | "approvals" | "sessionView" | "targetView" | "theme" | "warnings"> & {
+  ConsoleTemplate: ConsoleWorkspacePanelProps["connectorView"]["Console"];
+};
 
 function WorkspaceContent({ actions, approvals, ConsoleTemplate, sessionView, targetView, theme, warnings }: ContentProps) {
   const { selectedRuntimeTarget, selectedTarget } = targetView;
@@ -188,10 +209,18 @@ function WorkspaceWarnings({ actions, theme, warnings }: Pick<ConsoleWorkspacePa
   );
 }
 
-function ConnectorConsole({ actions, approvals, ConsoleTemplate, sessionView, selectedRuntimeTarget, selectedTarget, theme }:
-  Pick<ContentProps, "actions" | "approvals" | "ConsoleTemplate" | "sessionView" | "theme"> & {
-    selectedRuntimeTarget: ConsoleRuntimeTarget | null; selectedTarget: GatewayTarget | null;
-  }) {
+function ConnectorConsole({
+  actions,
+  approvals,
+  ConsoleTemplate,
+  sessionView,
+  selectedRuntimeTarget,
+  selectedTarget,
+  theme,
+}: Pick<ContentProps, "actions" | "approvals" | "ConsoleTemplate" | "sessionView" | "theme"> & {
+  selectedRuntimeTarget: ConsoleRuntimeTarget | null;
+  selectedTarget: GatewayTarget | null;
+}) {
   const { selectedSession, selectedSessionLive, selectedStructuredSession, targetUsesLiveConsole } = sessionView;
   if (!selectedTarget)
     return (
@@ -207,27 +236,33 @@ function ConnectorConsole({ actions, approvals, ConsoleTemplate, sessionView, se
     );
   }
   return (
-    <ConsoleTemplate
-      target={selectedTarget}
-      approvals={approvals}
-      theme={theme}
-      session={targetUsesLiveConsole ? selectedSession : selectedStructuredSession}
-      selectedSessionLive={selectedSessionLive}
-      selectedRuntimeTarget={selectedRuntimeTarget}
-      onNewStructuredSession={actions.startStructuredSession}
-      onNewLiveSession={actions.startLiveSessionWithOptions}
-      onSelectLiveSessionName={actions.selectLiveSessionName}
-      onEndLiveSession={actions.endLiveSession}
-      onOpenActivity={actions.openActivity}
-      onRefreshActivity={actions.refreshActivity}
-    >
-      <LiveConsoleContent actions={actions} sessionView={sessionView} target={selectedRuntimeTarget} theme={theme} />
-    </ConsoleTemplate>
+    <ConnectorSlotBoundary key={`${selectedTarget.ref}:console`} resetKey={selectedTarget.updated_at} slot="console">
+      <ConsoleTemplate
+        target={selectedTarget}
+        approvals={approvals}
+        theme={theme}
+        session={targetUsesLiveConsole ? selectedSession : selectedStructuredSession}
+        selectedSessionLive={selectedSessionLive}
+        selectedRuntimeTarget={selectedRuntimeTarget}
+        onNewStructuredSession={actions.startStructuredSession}
+        onNewLiveSession={actions.startLiveSessionWithOptions}
+        onSelectLiveSessionName={actions.selectLiveSessionName}
+        onEndLiveSession={actions.endLiveSession}
+        onOpenActivity={actions.openActivity}
+        onRefreshActivity={actions.refreshActivity}
+      >
+        <LiveConsoleContent actions={actions} sessionView={sessionView} target={selectedRuntimeTarget} theme={theme} />
+      </ConsoleTemplate>
+    </ConnectorSlotBoundary>
   );
 }
 
-function LiveConsoleContent({ actions, sessionView, target, theme }:
-  Pick<ConsoleWorkspacePanelProps, "actions" | "sessionView" | "theme"> & { target: ConsoleRuntimeTarget | null }) {
+function LiveConsoleContent({
+  actions,
+  sessionView,
+  target,
+  theme,
+}: Pick<ConsoleWorkspacePanelProps, "actions" | "sessionView" | "theme"> & { target: ConsoleRuntimeTarget | null }) {
   const { selectedSession, selectedSessionLive, sessionsState, targetUsesLiveConsole } = sessionView;
   if (!targetUsesLiveConsole) return null;
   if (!target) return <PanelMessage theme={theme}>Select a live-console connector.</PanelMessage>;
@@ -253,8 +288,14 @@ function LiveConsoleContent({ actions, sessionView, target, theme }:
   );
 }
 
-function PanelMessage({ children, centered = true, theme }: {
-  children: ReactNode; centered?: boolean; theme: ConsoleWorkspacePanelProps["theme"];
+function PanelMessage({
+  children,
+  centered = true,
+  theme,
+}: {
+  children: ReactNode;
+  centered?: boolean;
+  theme: ConsoleWorkspacePanelProps["theme"];
 }) {
   return (
     <div

@@ -3,15 +3,27 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { MailConnectorConsoleTemplate } from "./console";
 import { connectorActionFixture } from "../../../test/connector-action-fixtures";
+import { gatewayTargetFixture } from "../../../test/connector-inventory-fixtures";
 
 const api = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ apiPost: api.post, apiPut: vi.fn(), apiDelete: vi.fn() }));
 const props: ComponentProps<typeof MailConnectorConsoleTemplate> = {
-  target: { id: 1, name: "mail", connector_kind: "mail", ref: "mail:1:1", profile_label: "mailbox", public: { imap_enabled: true, smtp_auth_mode: "disabled" } },
-  approvals: { data: [] }, theme: "dark", onNewStructuredSession: vi.fn(), onRefreshActivity: vi.fn(),
+  target: gatewayTargetFixture({
+    connector_kind: "mail",
+    ref: "mail:1:1",
+    profile_label: "mailbox",
+    public: { imap_enabled: true, smtp_auth_mode: "disabled" },
+  }),
+  session: null,
+  approvals: { state: "ready", data: [], error: null },
+  theme: "dark",
+  onNewStructuredSession: vi.fn(),
+  onRefreshActivity: vi.fn(),
 };
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 it("opens no connector action until the local structured session starts", () => {
   render(<MailConnectorConsoleTemplate {...props} />);
@@ -22,10 +34,16 @@ it("opens no connector action until the local structured session starts", () => 
 });
 
 it("renders the server folder and message projections in an active IMAP session", async () => {
-  api.post.mockImplementation(async (_path: string, payload: { target_ref: string; action_name: string }) => connectorActionFixture({
-    target_ref: payload.target_ref, action_name: payload.action_name,
-    output: payload.action_name === "list_folders" ? { folders: [{ name: "INBOX" }], count: 1 } : { messages: [{ subject: "Status", message_ref: { folder: "INBOX", uidvalidity: 1, uid: 1 } }], total: 1, unread: 1 },
-  }));
+  api.post.mockImplementation(async (_path: string, payload: { target_ref: string; action_name: string }) =>
+    connectorActionFixture({
+      target_ref: payload.target_ref,
+      action_name: payload.action_name,
+      output:
+        payload.action_name === "list_folders"
+          ? { folders: [{ name: "INBOX" }], count: 1 }
+          : { messages: [{ subject: "Status", message_ref: { folder: "INBOX", uidvalidity: 1, uid: 1 } }], total: 1, unread: 1 },
+    }),
+  );
   render(<MailConnectorConsoleTemplate {...props} session={{ active: true, startedAt: "now" }} />);
   await waitFor(() => expect(screen.getByRole("button", { name: /Status/ })).toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Compose" })).toBeDisabled();
@@ -33,7 +51,14 @@ it("renders the server folder and message projections in an active IMAP session"
 });
 
 it("shows the SMTP-only workspace without issuing mailbox reads", () => {
-  render(<MailConnectorConsoleTemplate {...props} target={{ ...props.target, public: { imap_enabled: false, smtp_auth_mode: "separate" } }} theme="light" session={{ active: true, startedAt: "now" }} />);
+  render(
+    <MailConnectorConsoleTemplate
+      {...props}
+      target={{ ...props.target, public: { imap_enabled: false, smtp_auth_mode: "separate" } }}
+      theme="light"
+      session={{ active: true, startedAt: "now" }}
+    />,
+  );
   expect(screen.getByText("SMTP-only Mail profile")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Refresh mailbox" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Compose message" }));

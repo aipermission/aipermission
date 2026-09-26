@@ -13,16 +13,16 @@ import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
 import { targetEndpoint } from "./model";
 import { useMailWorkspace } from "./use-mail-workspace";
-import type { MailWorkspaceProps, MailWorkspaceTarget } from "./use-mail-workspace";
-import type { MailTarget } from "./form-types";
 import type { MailActionItem, MailRunnerState } from "./action-types";
+import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
+import { mailConsoleTarget } from "./console-target";
+import type { MailConsoleTarget } from "./console-target";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
 
-type MailConsoleTarget = MailTarget & MailWorkspaceTarget;
-interface MailConsoleProps extends Omit<MailWorkspaceProps, "target"> {
-  target: MailConsoleTarget;
-  theme: string;
-  onNewStructuredSession: () => void;
-}
+type MailConsoleProps = Pick<
+  ConsoleWorkspaceSlotProps,
+  "target" | "approvals" | "theme" | "session" | "onNewStructuredSession" | "onRefreshActivity"
+>;
 interface MailToolbarProps {
   target: MailConsoleTarget;
   latestAction: MailActionItem | null;
@@ -37,9 +37,21 @@ interface MailToolbarProps {
   onCompose: () => void;
   borderClass: string;
 }
-type SMTPPanelProps = Pick<MailToolbarProps, "busy" | "outboundPending" | "smtpEnabled" | "onCompose" | "borderClass"> & { mutedClass: string; subtlePanelClass: string };
+type SMTPPanelProps = Pick<MailToolbarProps, "busy" | "outboundPending" | "smtpEnabled" | "onCompose" | "borderClass"> & {
+  mutedClass: string;
+  subtlePanelClass: string;
+};
 
-export function MailConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }: MailConsoleProps) {
+export function MailConnectorConsoleTemplate({
+  target: gatewayTarget,
+  approvals,
+  theme,
+  session: workspaceSession,
+  onNewStructuredSession,
+  onRefreshActivity,
+}: MailConsoleProps) {
+  const target = mailConsoleTarget(gatewayTarget);
+  const session = structuredConsoleSlotSession(workspaceSession);
   const workspace = useMailWorkspace({ target, approvals, session, onRefreshActivity });
   const { runner, mailbox, compose } = workspace;
   const styles = connectorConsoleTheme(theme);
@@ -243,7 +255,15 @@ function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderCl
   );
 }
 
-function MailEndpointFooter({ target, borderClass = "", mutedClass }: { target: MailConsoleTarget; borderClass?: string; mutedClass: string }) {
+function MailEndpointFooter({
+  target,
+  borderClass = "",
+  mutedClass,
+}: {
+  target: MailConsoleTarget;
+  borderClass?: string;
+  mutedClass: string;
+}) {
   return (
     <ConnectorEndpointFooter leading={target.ref} trailing={targetEndpoint({ target })} borderClass={borderClass} mutedClass={mutedClass} />
   );
