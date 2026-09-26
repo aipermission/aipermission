@@ -3,12 +3,13 @@ import { Notice } from "../../../components/ui/notice";
 import { emptyForm } from "./model";
 import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
 import type { NetworkTarget } from "../_shared/network-transport-fields";
+import type { ConnectorFieldChange } from "../_shared/connector-form-types";
 
 type S3ConnectorFormProps = {
   form: ReturnType<typeof emptyForm>;
   mode?: "create" | "edit";
   targets?: readonly NetworkTarget[];
-  onChange: (_field: string, _value: string | boolean) => void;
+  onChange: ConnectorFieldChange<ReturnType<typeof emptyForm>>;
 };
 
 export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: S3ConnectorFormProps) {

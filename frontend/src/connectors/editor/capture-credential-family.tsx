@@ -13,7 +13,7 @@ export function captureCredentialFamily<
   Target extends object,
   Operation extends string,
 >(definition: CredentialFamilyDefinition<State, Row, Target, Operation>): RegisteredCredentialFamily {
-  function Rows({ targets: inventory, credentials, busy, register, onOpen, onStateChange, refresh }: CredentialFamilyProps) {
+  function Rows({ targets: inventory, credentials, busy, register, onOpen, onStateChange, onRowsChange, refresh }: CredentialFamilyProps) {
     const targets = useMemo(() => definition.decodeTargets(inventory), [inventory]);
     const rows = useMemo(() => definition.rows({ targets, credentials }), [targets, credentials]);
     const [deletion, setDeletion] = useState<{
@@ -45,6 +45,11 @@ export function captureCredentialFamily<
     useEffect(() => {
       reportState();
     }, [editor.actionState]);
+    const reportRows = useEffectEvent((count: number | null) => onRowsChange?.(definition.kind, count));
+    useEffect(() => {
+      reportRows(rows.length);
+      return () => reportRows(null);
+    }, [rows.length]);
     const closeDelete = useCallback(() => {
       setDeletion({ open: false, row: null, dialog: null, attempted: false });
     }, []);

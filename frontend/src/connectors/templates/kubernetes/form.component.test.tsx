@@ -2,9 +2,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { verifyTransportProfileForm } from "../_shared/network-transport-form.test";
 import { KubernetesConnectorFormTemplate } from "./form";
+import { emptyForm } from "./model";
 
 it("keeps Kubernetes wired to the shared transport profile contract", async () => {
   await verifyTransportProfileForm(KubernetesConnectorFormTemplate, {
+    ...emptyForm(),
     kubectl_command: "kubectl",
     context: "",
     default_namespace: "",

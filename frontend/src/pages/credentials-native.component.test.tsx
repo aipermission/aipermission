@@ -179,3 +179,61 @@ it("blocks native form changes and duplicate submits while the save is unresolve
   await act(async () => finish({}));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
+
+it("shows the empty state after the last native profile is deleted and inventory refresh completes", async () => {
+  vi.mocked(useGateway, { partial: true }).mockReturnValue({
+    credentials: { state: "ready", data: [], errors: [], error: null },
+    loadCredentials,
+  });
+  vi.mocked(apiGet).mockImplementation(async (path) => {
+    if (path === "/api/connectors") return { items: [{ kind: "redis", label: "Redis", version: "0.2" }] };
+    if (path === "/api/connector-targets/inventory")
+      return {
+        items: [{ ...redisTarget, profiles: vi.mocked(apiDelete).mock.calls.length ? [] : redisTarget.profiles }],
+      };
+    throw new Error(`Unexpected test request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<CredentialsPage />);
+  await screen.findByText("Reader");
+  expect(screen.queryByText("Create your first connector credential.")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Delete credential" }));
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete credential" }));
+  expect(await screen.findByText("Create your first connector credential.")).toBeVisible();
+  expect(screen.queryByText("Reader")).not.toBeInTheDocument();
+});
+
+it.each([false, true])("does not report a failed family as empty and recovers after refresh (retired: %s)", async (retire) => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.mocked(useGateway, { partial: true }).mockReturnValue({
+    credentials: { state: "ready", data: [], errors: [], error: null },
+    loadCredentials,
+  });
+  vi.mocked(apiGet).mockImplementation(async (path) => {
+    const refreshed = vi.mocked(apiPost).mock.calls.length > 0;
+    if (path === "/api/connectors")
+      return {
+        items: [
+          { kind: "ssh", label: "SSH", version: "0.2" },
+          ...(!refreshed || !retire ? [{ kind: "redis", label: "Redis", version: "0.2" }] : []),
+        ],
+      };
+    if (path === "/api/connector-targets/inventory")
+      return { items: [{ ...redisTarget, profiles: [], config: { port: refreshed ? 6379 : [] } }] };
+    throw new Error(`Unexpected test request: ${path}`);
+  });
+  try {
+    const user = userEvent.setup();
+    render(<CredentialsPage />);
+    expect(await screen.findByText(/Connector credentials unavailable: redis/)).toBeVisible();
+    expect(screen.queryByText("Create your first connector credential.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add credential" }));
+    await user.click(screen.getByRole("menuitem", { name: /SSH/ }));
+    await user.type(within(screen.getByRole("dialog")).getByRole("textbox", { name: "Name" }), "Test recovery");
+    await user.click(screen.getByRole("button", { name: "Generate ed25519 credential" }));
+    expect(await screen.findByText("Create your first connector credential.")).toBeVisible();
+    expect(screen.queryByText(/Connector credentials unavailable: redis/)).not.toBeInTheDocument();
+  } finally {
+    consoleError.mockRestore();
+  }
+});

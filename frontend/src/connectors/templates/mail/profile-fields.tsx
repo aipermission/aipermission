@@ -1,10 +1,11 @@
 import { Checkbox, Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import type { MailProfileForm } from "./form-types";
+import type { ConnectorFieldChange } from "../_shared/connector-form-types";
 type ProfileFieldsProps = {
   form: MailProfileForm;
   editing: boolean;
-  onChange: (_field: keyof MailProfileForm, _value: string | boolean) => void;
+  onChange: ConnectorFieldChange<MailProfileForm>;
 };
 
 export function MailCredentialFields({ form, editing, onChange }: ProfileFieldsProps) {

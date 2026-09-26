@@ -1,10 +1,11 @@
 import { Link } from "react-router";
 import { useId } from "react";
-import { Checkbox, Field, Input, Select, Textarea } from "../../../components/ui/form";
+import { Checkbox, Field, FieldWithAction, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { InstallCommandPanel } from "../common";
 import { HostPingButton } from "../host-ping-button";
 import type { SSHForm, SSHKey } from "./form-types";
+import type { ConnectorFieldChange } from "../_shared/connector-form-types";
 
 export function SSHConnectorFormTemplate({
   form,
@@ -15,7 +16,7 @@ export function SSHConnectorFormTemplate({
   form: SSHForm;
   credentials: readonly SSHKey[];
   activeCredential: SSHKey | null;
-  onChange: (_field: string, _value: string | boolean) => void;
+  onChange: ConnectorFieldChange<SSHForm>;
 }) {
   const hostID = useId();
   return (
@@ -38,11 +39,7 @@ export function SSHConnectorFormTemplate({
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="worker-1" required />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
-        <Field htmlFor={hostID}>
-          <span className="flex items-center justify-between gap-2">
-            <span>Host</span>
-            <HostPingButton host={form.host} port={form.port} />
-          </span>
+        <FieldWithAction htmlFor={hostID} label="Host" action={<HostPingButton host={form.host} port={form.port} />}>
           <Input
             id={hostID}
             value={form.host}
@@ -50,7 +47,7 @@ export function SSHConnectorFormTemplate({
             placeholder="203.0.113.10"
             required
           />
-        </Field>
+        </FieldWithAction>
         <Field>
           Port
           <Input type="number" min="1" max="65535" value={form.port} onChange={(event) => onChange("port", event.target.value)} required />

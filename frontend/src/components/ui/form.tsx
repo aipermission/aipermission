@@ -1,11 +1,44 @@
 import { cn } from "../../lib/utils";
-import type { ComponentPropsWithRef, InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type {
+  ComponentPropsWithRef,
+  InputHTMLAttributes,
+  LabelHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
+
+const fieldClassName = "grid gap-2 text-sm font-medium text-stone-800";
 
 export function Field({ className, children, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label className={cn("grid gap-2 text-sm font-medium text-stone-800", className)} {...props}>
+    <label className={cn(fieldClassName, className)} {...props}>
       {children}
     </label>
+  );
+}
+
+export function FieldWithAction({
+  label,
+  action,
+  htmlFor,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  action: ReactNode;
+  htmlFor: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn(fieldClassName, className)}>
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={htmlFor}>{label}</label>
+        {action}
+      </div>
+      {children}
+    </div>
   );
 }
 

@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { verifyTransportProfileForm } from "../_shared/network-transport-form.test";
 import { DockerConnectorFormTemplate } from "./form";
+import { emptyForm } from "./model";
 
 it("keeps Docker wired to the shared transport profile contract", async () => {
   await verifyTransportProfileForm(DockerConnectorFormTemplate, {
+    ...emptyForm(),
     docker_command: "docker",
     scope_mode: "all",
     allowed_containers: "",

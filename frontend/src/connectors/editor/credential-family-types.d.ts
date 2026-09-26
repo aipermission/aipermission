@@ -14,6 +14,7 @@ export type CredentialFamilyProps = {
   register: (_kind: string, _commands: CredentialFamilyCommands | null) => void;
   onOpen: (_kind: string) => void;
   onStateChange: (_kind: string, _state: AsyncActionState) => void;
+  onRowsChange?: (_kind: string, _count: number | null) => void;
   refresh: () => Promise<void>;
 };
 export type RegisteredCredentialFamily = { kind: string; Rows: ComponentType<CredentialFamilyProps> };

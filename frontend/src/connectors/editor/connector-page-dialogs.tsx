@@ -60,7 +60,7 @@ export function AddConnectorMenu({ catalog, onAdd }: { catalog: ConnectorMenuCat
   );
 }
 
-export function ConnectorEditorDrawer<Form extends EditorForm, Credential, Target extends EditorTarget, Active, Value>({
+export function ConnectorEditorDrawer<Form extends EditorForm, Credential, Target extends EditorTarget, Active>({
   drawer,
   form,
   state,
@@ -73,7 +73,7 @@ export function ConnectorEditorDrawer<Form extends EditorForm, Credential, Targe
   FormTemplate,
   onProjectChange,
   editor,
-}: ConnectorEditorDrawerProps<Form, Credential, Target, Active, Value>) {
+}: ConnectorEditorDrawerProps<Form, Credential, Target, Active>) {
   return (
     <Drawer
       open={drawer.open}

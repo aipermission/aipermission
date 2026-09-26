@@ -3,11 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { verifyConnectionModeForm } from "../_shared/network-transport-form.test";
 import { KafkaConnectorFormTemplate } from "./form";
+import { emptyForm } from "./model";
 
 it("keeps Kafka wired to the shared connection mode contract", async () => {
   await verifyConnectionModeForm(
     KafkaConnectorFormTemplate,
     {
+      ...emptyForm(),
       bootstrap_brokers: "broker:9092",
       server_family: "kafka",
       sasl_mechanism: "none",
@@ -50,6 +52,10 @@ it("renders TLS and edit-mode SASL credential branches", async () => {
     />,
   );
 
+  const brokers = screen.getByRole("textbox", { name: "Bootstrap brokers" });
+  expect(brokers).toHaveValue("[2001:db8::1]:9093");
+  await user.click(screen.getByText("Bootstrap brokers", { selector: "label" }));
+  expect(brokers).toHaveFocus();
   expect(screen.getByLabelText("Custom CA certificate")).toHaveValue("CA");
   expect(screen.getByLabelText("New password")).not.toBeRequired();
   await user.selectOptions(screen.getByLabelText("TLS"), "disabled");

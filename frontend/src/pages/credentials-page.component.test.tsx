@@ -1,26 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiGet } from "../lib/api";
+import { apiGet, apiPost } from "../lib/api";
 import { useGateway } from "../lib/gateway-context";
-import { useCredentialProfileEditor } from "../connectors/editor/use-credential-profile-editor";
-import { emptyCredentialState } from "../connectors/templates/ssh/model";
 import { CredentialsPage } from "./credentials";
 
-vi.mock("../lib/api", () => ({ apiGet: vi.fn() }));
+vi.mock("../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiDelete: vi.fn() }));
 vi.mock("../lib/gateway-context", () => ({ useGateway: vi.fn() }));
-vi.mock("../connectors/editor/use-credential-profile-editor", () => ({ useCredentialProfileEditor: vi.fn() }));
-
-const editorFixture: ReturnType<typeof useCredentialProfileEditor> = {
-  drawer: { open: false, mode: "create", kind: "ssh", row: null },
-  formState: {},
-  setFormState: vi.fn(),
-  actionState: { state: "idle", error: "", message: "" },
-  openCreate: vi.fn(),
-  openEdit: vi.fn().mockReturnValue(true),
-  closeEditor: vi.fn(),
-  save: vi.fn().mockResolvedValue(true),
-  remove: vi.fn().mockResolvedValue(true),
-};
 
 beforeEach(() => {
   vi.mocked(apiGet).mockResolvedValue({ items: [] });
@@ -28,7 +14,7 @@ beforeEach(() => {
     credentials: { state: "ready", data: [], errors: [], error: null },
     loadCredentials: vi.fn().mockResolvedValue([]),
   });
-  vi.mocked(useCredentialProfileEditor).mockReturnValue(editorFixture);
+  vi.mocked(apiPost).mockReset().mockResolvedValue({});
 });
 
 it("loads the generic credential inventories and shows the empty state", async () => {
@@ -38,17 +24,30 @@ it("loads the generic credential inventories and shows the empty state", async (
   expect(apiGet).toHaveBeenCalledWith("/api/connector-targets/inventory", { signal: expect.any(AbortSignal) });
 });
 
-it("disables credential fields and mode changes while a save is pending", () => {
-  vi.mocked(useCredentialProfileEditor).mockReturnValue({
-    ...editorFixture,
-    drawer: { open: true, mode: "create", kind: "ssh", row: null },
-    formState: emptyCredentialState(),
-    actionState: { state: "saving", error: null, message: null },
-  });
-
+it("disables credential fields and mode changes while a save is pending", async () => {
+  const user = userEvent.setup();
+  vi.mocked(apiGet).mockImplementation(async (path) => ({
+    items: path === "/api/connectors" ? [{ kind: "ssh", label: "SSH", version: "0.2" }] : [],
+  }));
+  let finish: (_value: object) => void = () => {
+    throw new Error("Native save is not pending");
+  };
+  vi.mocked(apiPost).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
   render(<CredentialsPage />);
-
+  await screen.findByText("Create your first connector credential.");
+  await user.click(screen.getByRole("button", { name: "Add credential" }));
+  await user.click(screen.getByRole("menuitem", { name: /SSH/ }));
+  await user.type(screen.getByRole("textbox", { name: "Name" }), "Test key");
+  await user.click(screen.getByRole("button", { name: /Generate .* credential/ }));
   expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   expect(screen.getByRole("button", { name: /Generating|Creating|Generate .* credential/ })).toBeDisabled();
+  expect(apiPost).toHaveBeenCalledOnce();
+  await act(async () => finish({}));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });

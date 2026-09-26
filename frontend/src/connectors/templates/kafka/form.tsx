@@ -1,4 +1,5 @@
-import { Field, Input, Select, Textarea } from "../../../components/ui/form";
+import { useId } from "react";
+import { Field, FieldWithAction, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
@@ -6,13 +7,9 @@ import { KafkaSASLFields } from "./sasl-fields";
 import type { ConnectorFormProps } from "../_shared/connector-form-types";
 import type { KafkaConnectionForm } from "./form-types";
 
-export function KafkaConnectorFormTemplate({
-  form,
-  mode = "create",
-  targets = [],
-  onChange,
-}: ConnectorFormProps<KafkaConnectionForm, string | boolean>) {
+export function KafkaConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: ConnectorFormProps<KafkaConnectionForm>) {
   const editing = mode === "edit";
+  const brokersID = useId();
   return (
     <>
       <Notice tone="good">
@@ -37,9 +34,10 @@ export function KafkaConnectorFormTemplate({
         transportNotice="Every broker address advertised by the cluster is reached through the selected SSH transport. Broker hostnames must resolve on that remote host."
         directNotice="The gateway must reach bootstrap and advertised broker addresses. For a broker on the Docker host, use host.docker.internal instead of localhost."
       />
-      <Field>
-        <span className="flex items-center justify-between gap-2">
-          <span>Bootstrap brokers</span>
+      <FieldWithAction
+        htmlFor={brokersID}
+        label="Bootstrap brokers"
+        action={
           <HostPingButton
             host={firstBrokerHost(form.bootstrap_brokers)}
             port={firstBrokerPort(form.bootstrap_brokers)}
@@ -47,8 +45,10 @@ export function KafkaConnectorFormTemplate({
             transportTargetRef={form.transport_target_ref}
             projectID={Number(form.project_id) || 0}
           />
-        </span>
+        }
+      >
         <Textarea
+          id={brokersID}
           className="min-h-24 font-mono text-xs"
           value={form.bootstrap_brokers}
           onChange={(event) => onChange("bootstrap_brokers", event.target.value)}
@@ -56,7 +56,7 @@ export function KafkaConnectorFormTemplate({
           required
         />
         <span className="text-xs text-stone-500">One host:port per line, or a comma-separated list.</span>
-      </Field>
+      </FieldWithAction>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           TLS
