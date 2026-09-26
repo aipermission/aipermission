@@ -1,12 +1,28 @@
 import { useEffect, useRef, useState } from "react";
+import type { editor as MonacoEditor, IDisposable } from "monaco-editor";
+import { errorMessage } from "../../../lib/errors";
 import { sqlCompletionItems } from "./sql-editor-completions";
 import { applySQLEditorTheme, loadSQLMonaco } from "./sql-editor-runtime";
+import type { SQLIdentifierPolicy } from "./sql-console-data";
 
-export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keywords, identifierPolicy, disabled }) {
-  const containerRef = useRef(null);
-  const editorRef = useRef(null);
-  const changeRef = useRef(null);
-  const providerRef = useRef(null);
+type Monaco = Awaited<ReturnType<typeof loadSQLMonaco>>;
+export type SQLEditorProps = {
+  value: string;
+  onChange: (_value: string) => void;
+  onSubmit?: () => unknown;
+  focusSignal: number;
+  theme: "dark" | "light";
+  tables: Parameters<typeof sqlCompletionItems>[1];
+  keywords: readonly string[];
+  identifierPolicy?: SQLIdentifierPolicy;
+  disabled: boolean;
+};
+
+export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, tables, keywords, identifierPolicy, disabled }: SQLEditorProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const changeRef = useRef<IDisposable | null>(null);
+  const providerRef = useRef<IDisposable | null>(null);
   const submitRef = useRef(onSubmit);
   const onChangeRef = useRef(onChange);
   const tablesRef = useRef(tables);
@@ -14,7 +30,7 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   const identifierPolicyRef = useRef(identifierPolicy);
   const latestOptionsRef = useRef({ value, theme, disabled });
   latestOptionsRef.current = { value, theme, disabled };
-  const [monaco, setMonaco] = useState(null);
+  const [monaco, setMonaco] = useState<Monaco | null>(null);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
@@ -63,8 +79,8 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
         editor.addCommand(instance.KeyMod.CtrlCmd | instance.KeyCode.Enter, () => submitRef.current?.());
         changeRef.current = editor.onDidChangeModelContent(() => onChangeRef.current(editor.getValue()));
       })
-      .catch((error) => {
-        if (!canceled) setLoadError(error?.message || "SQL editor could not be loaded.");
+      .catch((error: unknown) => {
+        if (!canceled) setLoadError(errorMessage(error, "SQL editor could not be loaded."));
       });
     return () => {
       canceled = true;
@@ -110,7 +126,7 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   );
 }
 
-function editorOptions(monaco, value, theme, disabled) {
+function editorOptions(monaco: Monaco, value: string, theme: SQLEditorProps["theme"], disabled: boolean): MonacoEditor.IStandaloneEditorConstructionOptions {
   return {
     value: value || "",
     language: "sql",

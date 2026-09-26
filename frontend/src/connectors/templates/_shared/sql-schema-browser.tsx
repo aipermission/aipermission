@@ -1,7 +1,26 @@
 import { ChevronDown, ChevronRight, Database } from "lucide-react";
 import { useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
+import type { BrowserTable } from "./sql-console-config";
+import type { SQLMetadataState } from "./use-sql-metadata";
+
+export type SQLSchemaBrowserProps = {
+  rows: BrowserTable[];
+  search: string;
+  onSearch: (_search: string) => void;
+  onPrepareQuery: (_table: BrowserTable) => void;
+  metadata: Pick<SQLMetadataState, "state" | "error">;
+  theme: "dark" | "light";
+  inputClass: string;
+  mutedClass: string;
+  hoverClass: string;
+  namespaceLabel: string;
+};
+type SchemaGroupData = { schema: string; tables: BrowserTable[] };
+type TablePresentation = Pick<SQLSchemaBrowserProps, "theme" | "mutedClass" | "hoverClass" | "onPrepareQuery">;
+type ExpandedTables = Record<string, boolean>;
 
 export function SQLSchemaBrowser({
   rows,
@@ -14,8 +33,8 @@ export function SQLSchemaBrowser({
   mutedClass,
   hoverClass,
   namespaceLabel,
-}) {
-  const [expandedTables, setExpandedTables] = useState({});
+}: SQLSchemaBrowserProps) {
+  const [expandedTables, setExpandedTables] = useState<ExpandedTables>({});
   const grouped = groupTableBrowserRows(rows);
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 p-3">
@@ -54,7 +73,11 @@ export function SQLSchemaBrowser({
   );
 }
 
-function SchemaGroup({ group, expandedTables, setExpandedTables, theme, mutedClass, hoverClass, onPrepareQuery }) {
+function SchemaGroup({ group, expandedTables, setExpandedTables, theme, mutedClass, hoverClass, onPrepareQuery }: TablePresentation & {
+  group: SchemaGroupData;
+  expandedTables: ExpandedTables;
+  setExpandedTables: Dispatch<SetStateAction<ExpandedTables>>;
+}) {
   return (
     <div className="mb-3">
       <p className={`mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wide ${mutedClass}`}>{group.schema}</p>
@@ -76,7 +99,11 @@ function SchemaGroup({ group, expandedTables, setExpandedTables, theme, mutedCla
   );
 }
 
-function TableRow({ table, expanded, onToggle, theme, mutedClass, hoverClass, onPrepareQuery }) {
+function TableRow({ table, expanded, onToggle, theme, mutedClass, hoverClass, onPrepareQuery }: TablePresentation & {
+  table: BrowserTable;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const key = tableBrowserKey(table);
   const columns = table.columns || [];
   return (
@@ -128,12 +155,12 @@ function TableRow({ table, expanded, onToggle, theme, mutedClass, hoverClass, on
   );
 }
 
-function tableBrowserKey(table) {
+function tableBrowserKey(table: BrowserTable): string {
   return JSON.stringify([table.schema, table.table]);
 }
 
-function groupTableBrowserRows(rows) {
-  const bySchema = new Map();
+function groupTableBrowserRows(rows: BrowserTable[]): SchemaGroupData[] {
+  const bySchema = new Map<string, SchemaGroupData>();
   for (const row of rows) {
     const schema = row.schema || "public";
     const group = bySchema.get(schema) || { schema, tables: [] };

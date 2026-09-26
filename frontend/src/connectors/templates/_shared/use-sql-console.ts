@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { components } from "../../../../types/generated-openapi";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
@@ -11,17 +12,33 @@ import {
   recentSQLQueries,
 } from "./sql-console-config";
 import { useSQLMetadata } from "./use-sql-metadata";
+import type { SQLConsoleConfigInput } from "./sql-console-config";
+import type { SQLTableReference } from "./sql-console-data";
 
-export function useSQLConsole({ config, target, approvals, session, onRefreshActivity }) {
+type ApprovalSummary = components["schemas"]["ConnectorActionApprovalSummary"];
+export type SQLActivityItem = Pick<ApprovalSummary, "id" | "action_name" | "target_ref" | "created_at" | "status"> &
+  Partial<Pick<ApprovalSummary, "input" | "output" | "error" | "display_text" | "reason">>;
+export type SQLActivitySession = { active: boolean; startedAt: string };
+export type SQLConsoleProps = {
+  config?: SQLConsoleConfigInput;
+  target: { ref: string; name: string; config?: { host?: string; port?: number; database?: string } };
+  approvals?: { data?: SQLActivityItem[] };
+  session?: SQLActivitySession | null;
+  onRefreshActivity?: () => unknown;
+};
+export type SQLConsoleController = ReturnType<typeof useSQLConsole>;
+type ActionResponse = Parameters<typeof requireCompletedConnectorAction>[0];
+
+export function useSQLConsole({ config, target, approvals, session, onRefreshActivity }: SQLConsoleProps) {
   const connector = useMemo(() => normalizeSQLConsoleConfig(config), [config]);
   const activeSession = useMemo(() => session || { active: false, startedAt: "" }, [session]);
-  const [selectedID, setSelectedID] = useState(null);
+  const [selectedID, setSelectedID] = useState<number | string | null>(null);
   const [sql, setSQL] = useState("");
-  const [maxRows, setMaxRows] = useState(100);
-  const [runState, setRunState] = useState({ state: "idle", error: "" });
+  const [maxRows, setMaxRows] = useState<number | string>(100);
+  const [runState, setRunState] = useState<{ state: "idle" | "running" | "error"; error: string }>({ state: "idle", error: "" });
   const [editorFocusTick, setEditorFocusTick] = useState(0);
   const [resultView, setResultView] = useState(false);
-  const [leftPanel, setLeftPanel] = useState("browser");
+  const [leftPanel, setLeftPanel] = useState<"browser" | "requests">("browser");
   const [browserSearch, setBrowserSearch] = useState("");
   const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
   const rawItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
@@ -40,13 +57,13 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     setRunState({ state: "idle", error: "" });
   }, [target.ref, activeSession.active, activeSession.startedAt]);
 
-  async function runQuery(event) {
+  async function runQuery(event?: { preventDefault?: () => void }): Promise<void> {
     event?.preventDefault?.();
     if (!activeSession.active || !sql.trim()) return;
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
-      const response = await apiPost(
+      const response: ActionResponse = await apiPost(
         "/api/connector-actions/local-run",
         {
           target_ref: target.ref,
@@ -79,7 +96,7 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     }
   }
 
-  function loadSQL(value) {
+  function loadSQL(value: string): void {
     if (!value) return;
     setSQL(value);
     setEditorFocusTick((current) => current + 1);
@@ -110,11 +127,11 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     recentQueries,
     runQuery,
     loadSQL,
-    prepareTableQuery: (table) => loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : ""),
+    prepareTableQuery: (table: SQLTableReference | null) => loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : ""),
   };
 }
 
-function sessionItems(items, session, metadataReason) {
+function sessionItems(items: SQLActivityItem[], session: SQLActivitySession, metadataReason: string): SQLActivityItem[] {
   if (!session.active) return [];
   const startedAt = new Date(session.startedAt).getTime();
   return items.filter((item) => {
@@ -124,7 +141,7 @@ function sessionItems(items, session, metadataReason) {
   });
 }
 
-function selectActivity(items, selectedID) {
+function selectActivity(items: SQLActivityItem[], selectedID: number | string | null): SQLActivityItem | null {
   if (selectedID) {
     const exact = items.find((item) => Number(item.id) === Number(selectedID));
     if (exact) return exact;
@@ -132,7 +149,7 @@ function selectActivity(items, selectedID) {
   return items[0] || null;
 }
 
-async function refreshActivitySafely(refresh) {
+async function refreshActivitySafely(refresh?: () => unknown): Promise<void> {
   try {
     await refresh?.();
   } catch {

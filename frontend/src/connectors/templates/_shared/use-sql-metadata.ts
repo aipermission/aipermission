@@ -1,20 +1,41 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { requireCompletedConnectorAction } from "./action-result";
 import { extractTableSuggestions, normalizeConnectorOutput, pendingMetadataReferences, tableReferenceKey } from "./sql-console-data";
 import { mergeMetadataRows } from "./sql-console-config";
+import type { normalizeSQLConsoleConfig } from "./sql-console-config";
+import type { createRequestGuard } from "../../../lib/request-guard";
+import type { SQLIdentifierPolicy, SQLMetadataRow, SQLReference } from "./sql-console-data";
 
-const emptyMetadata = { state: "idle", tables: [], error: "", truncated: false };
+export type SQLMetadataState = {
+  state: "idle" | "loading" | "pending" | "ready" | "error";
+  tables: SQLMetadataRow[];
+  error: string;
+  truncated: boolean;
+};
+type MetadataConnector = ReturnType<typeof normalizeSQLConsoleConfig>;
+type RequestGuard = ReturnType<typeof createRequestGuard>;
+type ActionResponse = Parameters<typeof requireCompletedConnectorAction>[0];
+type MetadataProps = {
+  activeSession: { active: boolean; startedAt: string };
+  connector: MetadataConnector;
+  onRefreshActivity?: () => unknown;
+  requestGuard: RequestGuard;
+  sql: string;
+  targetRef: string;
+};
+const emptyMetadata: SQLMetadataState = { state: "idle", tables: [], error: "", truncated: false };
 
-export function useSQLMetadata({ activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef }) {
+export function useSQLMetadata({ activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef }: MetadataProps): SQLMetadataState {
   const [metadata, setMetadata] = useState(emptyMetadata);
-  const metadataRowsRef = useRef([]);
-  const columnRequestsRef = useRef(new Set());
-  const refreshActivity = useEffectEvent(() => Promise.resolve(onRefreshActivity?.()).catch(() => undefined));
+  const metadataRowsRef = useRef<SQLMetadataRow[]>([]);
+  const columnRequestsRef = useRef(new Set<string>());
+  const refreshActivity = useEffectEvent(() => Promise.resolve().then(() => onRefreshActivity?.()).catch(() => undefined));
 
   useEffect(() => {
-    columnRequestsRef.current = new Set();
+    columnRequestsRef.current = new Set<string>();
     if (!activeSession.active) setMetadata(emptyMetadata);
   }, [activeSession.active, activeSession.startedAt, targetRef]);
 
@@ -27,7 +48,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", tables: [], error: "", truncated: false });
     apiPost("/api/connector-actions/local-run", metadataPayload(targetRef, connector), { signal: request.signal })
-      .then((response) => {
+      .then((response: ActionResponse) => {
         if (!request.isCurrent()) return;
         const item = requireCompletedConnectorAction(response, "Could not load metadata suggestions.");
         if (!item) {
@@ -85,7 +106,18 @@ function requestColumnMetadata({
   metadataRowsRef,
   refreshActivity,
   identifierPolicy,
-}) {
+}: {
+  connector: MetadataConnector;
+  reference: SQLReference;
+  requestGuard: RequestGuard;
+  requests: Set<string>;
+  requestSetRef: RefObject<Set<string>>;
+  targetRef: string;
+  setMetadata: Dispatch<SetStateAction<SQLMetadataState>>;
+  metadataRowsRef: RefObject<SQLMetadataRow[]>;
+  refreshActivity: () => Promise<unknown>;
+  identifierPolicy: SQLIdentifierPolicy;
+}): void {
   const requestKey = tableReferenceKey(reference, identifierPolicy);
   if (requests.has(requestKey)) return;
   requests.add(requestKey);
@@ -100,7 +132,7 @@ function requestColumnMetadata({
     },
     { signal: request.signal },
   )
-    .then((response) => {
+    .then((response: ActionResponse) => {
       if (requestSetRef.current !== requests || !request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Could not load column metadata.");
       if (!item) {
@@ -119,7 +151,7 @@ function requestColumnMetadata({
     .finally(() => request.complete());
 }
 
-function metadataPayload(targetRef, connector) {
+function metadataPayload(targetRef: string, connector: MetadataConnector) {
   return {
     target_ref: targetRef,
     action_name: connector.queryAction,
