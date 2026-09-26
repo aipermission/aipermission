@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { DockerLifecycleDialog } from "./lifecycle-dialog";
+import { DockerLifecycleDialog, emptyDockerLifecycleDialog } from "./lifecycle-dialog";
 import { DockerResourcePane } from "./resource-pane";
+import type { ComponentProps } from "react";
 
 const classes = { border: "border", muted: "muted", subtlePanel: "subtle", input: "input" };
 const container = { id: "one", name: "api", image: "example/api", state: "running", status: "Up" };
 
-function renderPane(overrides = {}) {
+function renderPane(overrides: Partial<ComponentProps<typeof DockerResourcePane>> = {}) {
   const callbacks = {
     onTailChange: vi.fn(),
     onResultSearch: vi.fn(),
@@ -86,4 +87,37 @@ it("keeps Docker lifecycle confirmation controlled by its owner", async () => {
   expect(screen.getByText("api")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Run action" }));
   expect(onConfirm).toHaveBeenCalledOnce();
+});
+
+it("prevents repeated Docker lifecycle submission and cancellation while pending", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const onConfirm = vi.fn();
+  render(
+    <DockerLifecycleDialog
+      dialog={{
+        open: true,
+        title: "Restart container",
+        description: "Restart selected container.",
+        details: [{ label: "Status" }],
+        pending: true,
+      }}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />,
+  );
+  expect(screen.getByText("-")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Running..." }));
+  await user.keyboard("{Escape}");
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+it("creates independent closed Docker confirmation states", () => {
+  const first = emptyDockerLifecycleDialog();
+  first.open = true;
+  first.pending = true;
+  expect(emptyDockerLifecycleDialog()).toMatchObject({ open: false, pending: false, actionName: "", title: "" });
 });

@@ -3,6 +3,13 @@ import { DockerLifecycleDialog } from "./lifecycle-dialog";
 import { DockerResourceBrowser } from "./resource-browser";
 import { DockerResourcePane } from "./resource-pane";
 import { useDockerBrowser } from "./use-docker-browser";
+import type { DockerBrowserProps } from "./use-docker-browser";
+import type { ComponentProps, ReactNode } from "react";
+
+type DockerConsoleProps = DockerBrowserProps & Pick<ComponentProps<typeof DockerResourcePane>, "theme" | "selectedRuntimeTarget"> & {
+  children?: ReactNode;
+  onEndLiveSession?: () => unknown;
+};
 
 export function DockerConnectorConsoleTemplate({
   children,
@@ -16,8 +23,8 @@ export function DockerConnectorConsoleTemplate({
   onSelectLiveSessionName,
   onEndLiveSession,
   onRefreshActivity,
-}) {
-  const classes = dockerConsoleClasses(theme);
+}: DockerConsoleProps) {
+  const classes = connectorConsoleTheme(theme);
   const browser = useDockerBrowser({
     target,
     approvals,
@@ -83,20 +90,7 @@ export function DockerConnectorConsoleTemplate({
   );
 }
 
-function dockerConsoleClasses(theme) {
-  const classes = connectorConsoleTheme(theme);
-  return {
-    panel: classes.panel,
-    muted: classes.muted,
-    border: classes.border,
-    subtlePanel: classes.subtlePanel,
-    input: classes.input,
-    rowHover: classes.rowHover,
-    activeRow: classes.activeRow,
-  };
-}
-
-function DockerEndpointFooter({ target, borderClass, mutedClass }) {
+function DockerEndpointFooter({ target, borderClass, mutedClass }: { target: DockerBrowserProps["target"]; borderClass: string; mutedClass: string }) {
   return (
     <div className={`flex min-h-[44px] items-center justify-between gap-3 border-t px-4 py-2 text-xs ${borderClass}`}>
       <span className={mutedClass}>Docker transport</span>

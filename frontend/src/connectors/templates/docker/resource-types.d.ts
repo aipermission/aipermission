@@ -5,6 +5,9 @@ export interface DockerResource {
   name?: string;
   repository?: string;
   tag?: string;
+  digest?: string;
+  ipv6?: string;
+  internal?: string;
   image?: string;
   compose_project?: string;
   compose_service?: string;

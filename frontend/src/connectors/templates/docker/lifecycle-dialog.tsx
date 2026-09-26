@@ -2,9 +2,18 @@ import { Power } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 
-const emptyDialog = { open: false, title: "", description: "", details: [], actionName: "", pending: false };
+export type DockerLifecycleAction = "start_container" | "stop_container" | "restart_container";
+export type DockerLifecycleDialogState = {
+  open: boolean;
+  title: string;
+  description: string;
+  details: { label: string; value?: string }[];
+  actionName?: DockerLifecycleAction | "";
+  pending: boolean;
+};
+const emptyDialog: DockerLifecycleDialogState = { open: false, title: "", description: "", details: [], actionName: "", pending: false };
 
-export function DockerLifecycleDialog({ dialog, onClose, onConfirm }) {
+export function DockerLifecycleDialog({ dialog, onClose, onConfirm }: { dialog: DockerLifecycleDialogState; onClose: () => unknown; onConfirm: () => unknown }) {
   return (
     <Dialog
       open={dialog.open}
