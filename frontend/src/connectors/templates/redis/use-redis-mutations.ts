@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { validateStringWrite } from "./model";
 import { uniqueRedisKeys } from "./browser-helpers";
+import { errorMessage } from "../../../lib/errors";
+import { useRequestGuard } from "../../../lib/request-guard";
+import type { RedisConfirmState, RedisMutationOptions } from "./browser-types";
 
-export const emptyRedisConfirmDialog = Object.freeze({
+export const emptyRedisConfirmDialog: Readonly<RedisConfirmState> = Object.freeze({
   open: false,
   type: "",
   title: "",
@@ -14,7 +17,7 @@ export const emptyRedisConfirmDialog = Object.freeze({
   onConfirm: null,
 });
 
-export function useRedisMutations(options) {
+export function useRedisMutations(options: RedisMutationOptions) {
   const {
     resetKey,
     product,
@@ -36,11 +39,13 @@ export function useRedisMutations(options) {
     runAction,
     loadKey,
   } = options;
-  const [confirmDialog, setConfirmDialog] = useState(emptyRedisConfirmDialog);
+  const [confirmDialog, setConfirmDialog] = useState<RedisConfirmState>(emptyRedisConfirmDialog);
+  const requests = useRequestGuard(resetKey);
+  const pendingAction = useRef<ReturnType<typeof requests.begin> | null>(null);
 
   useEffect(() => setConfirmDialog(emptyRedisConfirmDialog), [resetKey]);
 
-  function saveStringValue(event) {
+  function saveStringValue(event?: { preventDefault?: () => void }) {
     event?.preventDefault?.();
     const key = activeKey || newKey;
     const value = activeKey ? valueDraft : newValue;
@@ -63,19 +68,19 @@ export function useRedisMutations(options) {
         { label: "Key", value: key },
         { label: "TTL", value: ttlSeconds > 0 ? `${ttlSeconds}s` : "persistent" },
       ],
-      onConfirm: async () => {
+      onConfirm: async (isCurrent) => {
         const written = await runAction({
           actionName: "set_string",
           input: { key, value, ttl_seconds: ttlSeconds },
           reason: `manual ${product} browser string write`,
           busy: "writing",
         });
-        if (!written) return false;
+        if (!written || !isCurrent()) return false;
         setNewKey("");
         setNewValue("");
         setKeys((current) => uniqueRedisKeys([...current, key]).sort());
         await loadKey(key);
-        return true;
+        return isCurrent();
       },
     });
   }
@@ -93,16 +98,16 @@ export function useRedisMutations(options) {
         { label: "Key", value: activeKey },
         { label: "TTL", value: normalizedTTL < 0 ? "persistent" : `${normalizedTTL}s` },
       ],
-      onConfirm: async () => {
+      onConfirm: async (isCurrent) => {
         const updated = await runAction({
           actionName: "expire_key",
           input: { key: activeKey, ttl_seconds: normalizedTTL },
           reason: `manual ${product} browser TTL update`,
           busy: "writing",
         });
-        if (!updated) return false;
+        if (!updated || !isCurrent()) return false;
         await loadKey(activeKey);
-        return true;
+        return isCurrent();
       },
     });
   }
@@ -119,14 +124,14 @@ export function useRedisMutations(options) {
         .slice(0, 8)
         .map((key) => ({ label: "Key", value: key }))
         .concat(keys.length > 8 ? [{ label: "More", value: `${keys.length - 8} additional key(s)` }] : []),
-      onConfirm: async () => {
+      onConfirm: async (isCurrent) => {
         const deleted = await runAction({
           actionName: "delete_keys",
           input: { keys },
           reason: `manual ${product} browser key delete`,
           busy: "deleting",
         });
-        if (!deleted) return false;
+        if (!deleted || !isCurrent()) return false;
         setKeys((current) => current.filter((key) => !keys.includes(key)));
         setSelectedKeys([]);
         if (keys.includes(activeKey)) {
@@ -139,24 +144,35 @@ export function useRedisMutations(options) {
     });
   }
 
-  function openConfirm(value) {
+  function openConfirm(value: Omit<RedisConfirmState, "open" | "pending" | "error">) {
+    requests.invalidate("confirm");
     setConfirmDialog({ open: true, ...value, pending: false, error: "" });
   }
 
   async function confirmPendingAction() {
-    if (!confirmDialog.onConfirm) return;
+    if (!confirmDialog.onConfirm || pendingAction.current?.isCurrent()) return;
+    const request = requests.begin("confirm");
+    pendingAction.current = request;
     setConfirmDialog((current) => ({ ...current, pending: true }));
     try {
-      const completed = await confirmDialog.onConfirm();
+      const completed = await confirmDialog.onConfirm(request.isCurrent);
+      if (!request.isCurrent()) return;
       setConfirmDialog(completed === false ? (current) => ({ ...current, pending: false }) : emptyRedisConfirmDialog);
     } catch (error) {
-      setConfirmDialog((current) => ({ ...current, pending: false, error: error.message || `${product} action failed.` }));
+      if (!request.isCurrent()) return;
+      setConfirmDialog((current) => ({ ...current, pending: false, error: errorMessage(error, `${product} action failed.`) }));
+    } finally {
+      request.complete();
+      if (pendingAction.current === request) pendingAction.current = null;
     }
   }
 
   return {
     confirmDialog,
-    closeConfirmDialog: () => setConfirmDialog(emptyRedisConfirmDialog),
+    closeConfirmDialog: () => {
+      requests.invalidate("confirm");
+      setConfirmDialog(emptyRedisConfirmDialog);
+    },
     saveStringValue,
     updateTTL,
     deleteSelected,

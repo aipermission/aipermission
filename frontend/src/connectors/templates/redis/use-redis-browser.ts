@@ -4,17 +4,19 @@ import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { defaultRedisLimit, defaultRedisPattern, redisScanPattern, uniqueRedisKeys, valueToEditableText } from "./browser-helpers";
 import { serverProductLabel } from "./model";
 import { useRedisMutations } from "./use-redis-mutations";
+import { readRedisKey, readRedisScan } from "./browser-output";
+import type { RedisActionOptions, RedisBrowserProps, RedisKeyResult } from "./browser-types";
 
-export function useRedisBrowser({ target, approvals, session, onRefreshActivity }) {
+export function useRedisBrowser({ target, approvals, session, onRefreshActivity }: RedisBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
   const resetKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
   const product = serverProductLabel(target);
   const [pattern, setPattern] = useState(defaultRedisPattern);
   const [cursor, setCursor] = useState("0");
-  const [keys, setKeys] = useState([]);
-  const [selectedKeys, setSelectedKeys] = useState([]);
+  const [keys, setKeys] = useState<string[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [activeKey, setActiveKey] = useState("");
-  const [keyResult, setKeyResult] = useState(null);
+  const [keyResult, setKeyResult] = useState<RedisKeyResult | null>(null);
   const [valueDraft, setValueDraft] = useState("");
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -26,7 +28,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     () => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null,
     [approvals?.data, target.ref],
   );
-  const scanKeysForEffect = useEffectEvent((options) => scanKeys(options));
+  const scanKeysForEffect = useEffectEvent((options: { reset?: boolean }) => scanKeys(options));
 
   useEffect(() => {
     setCursor("0");
@@ -46,7 +48,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     if (activeSession.active) void scanKeysForEffect({ reset: true });
   }, [activeSession.active, resetKey]);
 
-  async function runRedisAction({ actionName, input, reason, busy = "running", channel = actionName }) {
+  async function runRedisAction({ actionName, input, reason, busy = "running", channel = actionName }: RedisActionOptions) {
     return runGuardedConnectorAction({
       requestGuard,
       channel,
@@ -75,10 +77,9 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
       return;
     }
     if (!item) return;
-    const output = item.output || {};
-    const nextKeys = Array.isArray(output.keys) ? output.keys : [];
-    setCursor(String(output.next_cursor || "0"));
-    setKeys((current) => uniqueRedisKeys(reset ? nextKeys : [...current, ...nextKeys]));
+    const output = readRedisScan(item.output);
+    setCursor(output.nextCursor);
+    setKeys((current) => uniqueRedisKeys(reset ? output.keys : [...current, ...output.keys]));
   }
 
   function startNewKey() {
@@ -94,7 +95,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     if (state.state === "reading") setState({ state: "idle", error: "", message: "" });
   }
 
-  async function loadKey(key) {
+  async function loadKey(key: string) {
     if (!activeSession.active || !key) return;
     setActiveKey(key);
     setKeyResult(null);
@@ -113,17 +114,17 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
       return;
     }
     if (!item) return;
-    const output = item.output || {};
-    if (output.key !== key) {
+    const output = readRedisKey(item.output);
+    if (!output || output.key !== key) {
       setState({ state: "error", error: `${product} returned a different key than the one requested.`, message: "" });
       return;
     }
     setKeyResult(output);
     setValueDraft(valueToEditableText(output));
-    setTTLDraft(output.ttl_ms > 0 ? String(Math.ceil(output.ttl_ms / 1000)) : "");
+    setTTLDraft(output.ttl_ms !== undefined && output.ttl_ms > 0 ? String(Math.ceil(output.ttl_ms / 1000)) : "");
   }
 
-  function toggleSelection(key) {
+  function toggleSelection(key: string) {
     setSelectedKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
   }
 
@@ -176,7 +177,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     setResultMode,
     latestAction,
     canSaveString: mutations.creatingKey ? newKey !== "" : activeStringIsEditable,
-    canUpdateTTL: activeResultIsCurrent && keyResult.type !== "none" && state.state === "idle",
+    canUpdateTTL: activeResultIsCurrent && keyResult?.type !== "none" && state.state === "idle",
     canStartNewKey: state.state === "idle" || state.state === "error" || state.state === "reading",
     activeStringIsEditable,
     scanKeys,
@@ -188,3 +189,4 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
 }
 
 export { formatRedisValue, keyMetaText } from "./browser-helpers";
+export type RedisBrowser = ReturnType<typeof useRedisBrowser>;

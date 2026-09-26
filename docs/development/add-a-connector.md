@@ -348,7 +348,7 @@ frontend/src/connectors/templates/<kind>/
 
 The folder is discovered automatically. Do not manually edit
 `frontend/src/connectors/templates/registry.jsx` or
-`frontend/src/connectors/templates/catalog.js` for a normal connector. The Vite
+`frontend/src/connectors/templates/catalog.ts` for a normal connector. The Vite
 bundle discovers `index.jsx` and `metadata.json` through `import.meta.glob`.
 
 Expected files:

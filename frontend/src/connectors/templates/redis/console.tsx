@@ -6,8 +6,19 @@ import { RedisEndpointFooter } from "./endpoint-footer";
 import { RedisKeyBrowser } from "./key-browser";
 import { useRedisBrowser } from "./use-redis-browser";
 import { RedisValueWorkspace } from "./value-workspace";
+import type { RedisBrowserProps } from "./browser-types";
 
-export function RedisConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
+export function RedisConnectorConsoleTemplate({
+  target,
+  approvals,
+  theme,
+  session,
+  onNewStructuredSession,
+  onRefreshActivity,
+}: RedisBrowserProps & {
+  theme: string;
+  onNewStructuredSession: () => unknown;
+}) {
   const browser = useRedisBrowser({ target, approvals, session, onRefreshActivity });
   const styles = connectorConsoleTheme(theme);
   const footer = <RedisEndpointFooter target={target} borderClass={styles.border} mutedClass={styles.muted} />;
