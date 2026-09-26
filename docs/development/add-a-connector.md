@@ -424,7 +424,7 @@ declaration is missing or a standard model bypasses the shared lifecycle.
 
 For the standard target plus credential-profile lifecycle, use
 `createTargetProfileLifecycle` and `connectorCredentialRows` from
-`frontend/src/connectors/templates/_shared/target-profile-lifecycle.js`. Supply
+`frontend/src/connectors/templates/_shared/target-profile-lifecycle.ts`. Supply
 connector-owned target and profile payload builders; do not copy the generic
 create/update/delete/test routes into each model. Keep a custom lifecycle only
 when the remote system has materially different cleanup or provisioning

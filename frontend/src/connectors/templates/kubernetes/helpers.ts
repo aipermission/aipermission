@@ -1,4 +1,13 @@
-export const resourceTabs = Object.freeze([
+import type { KubernetesResource, KubernetesResourceKind } from "./resource-types";
+
+interface ResourceTab {
+  key: KubernetesResourceKind;
+  label: string;
+  action: string;
+  output: KubernetesResourceKind;
+}
+
+export const resourceTabs: readonly ResourceTab[] = Object.freeze([
   { key: "workloads", label: "Workloads", action: "list_workloads", output: "workloads" },
   { key: "pods", label: "Pods", action: "list_pods", output: "pods" },
   { key: "services", label: "Services", action: "list_services", output: "services" },
@@ -7,7 +16,7 @@ export const resourceTabs = Object.freeze([
   { key: "events", label: "Events", action: "list_events", output: "events" },
 ]);
 
-export function resourceKey(tab, item) {
+export function resourceKey(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   if (!item) return "";
   if (tab === "nodes") return item.name || "";
   if (tab === "events") {
@@ -16,7 +25,7 @@ export function resourceKey(tab, item) {
   return `${item.namespace || ""}/${item.kind || tab}/${item.name || item.reason || item.message || ""}`;
 }
 
-export function resourceTitle(tab, item) {
+export function resourceTitle(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   if (!item) return "";
   if (tab === "events") return `${item.type || "Event"} ${item.reason || ""}`.trim();
   if (tab === "workloads") return `${item.namespace}/${item.kind}/${item.name}`;
@@ -25,7 +34,7 @@ export function resourceTitle(tab, item) {
   return `${item.namespace}/${item.name}`;
 }
 
-export function resourceSubtitle(tab, item) {
+export function resourceSubtitle(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   if (!item) return "";
   if (tab === "workloads") return `ready ${item.ready || "-"} · image ${item.image || "-"}`;
   if (tab === "pods") return `${item.namespace}/${item.name}`;
@@ -35,7 +44,7 @@ export function resourceSubtitle(tab, item) {
   return `${item.namespace || "-"} · ${item.object || "-"} · ${item.message || ""}`;
 }
 
-export function resourceTertiary(tab, item) {
+export function resourceTertiary(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   if (!item) return "";
   if (tab === "pods") return `ready ${item.ready || "-"} · restarts ${item.restarts || 0} · ${item.phase || "-"}`;
   if (tab === "workloads") return `${item.namespace || "-"} · age ${item.age || "-"}`;
@@ -45,7 +54,7 @@ export function resourceTertiary(tab, item) {
   return item.message || "";
 }
 
-export function resourceStatus(tab, item) {
+export function resourceStatus(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   if (!item) return "";
   if (tab === "pods") return item.phase || "";
   if (tab === "workloads") return item.ready || "";
@@ -55,7 +64,7 @@ export function resourceStatus(tab, item) {
   return "";
 }
 
-export function resourceTone(tab, item) {
+export function resourceTone(tab: KubernetesResourceKind, item: KubernetesResource | null | undefined) {
   const value = String(resourceStatus(tab, item)).toLowerCase();
   if (tab === "events" && value === "warning") return "warn";
   if (tab === "workloads") {
@@ -74,7 +83,7 @@ export function resourceTone(tab, item) {
   return "neutral";
 }
 
-export function resourceSearchValues(tab, item) {
+export function resourceSearchValues(tab: KubernetesResourceKind, item: KubernetesResource) {
   return [
     resourceTitle(tab, item),
     resourceSubtitle(tab, item),
@@ -90,7 +99,7 @@ export function resourceSearchValues(tab, item) {
   ];
 }
 
-export function resourceTypeForWorkload(resource) {
+export function resourceTypeForWorkload(resource: KubernetesResource | null | undefined) {
   const kind = String(resource?.kind || "").toLowerCase();
   if (kind === "statefulset") return "statefulset";
   if (kind === "daemonset") return "daemonset";
