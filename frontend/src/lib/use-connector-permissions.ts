@@ -4,6 +4,8 @@ import { useRequestGuard } from "./request-guard";
 import { tokenActionPermissionSnapshot } from "./gateway-contracts/security-contracts";
 import type { TokenActionPermission } from "./gateway-contracts/security-contracts";
 import type { components } from "../../types/generated-openapi";
+import { connectorActionsResponse as connectorActions, type ConnectorPermissionAction } from "./gateway-contracts/connector-catalog-contract";
+export type { ConnectorPermissionAction } from "./gateway-contracts/connector-catalog-contract";
 
 type Token = { id: number };
 type Target = {
@@ -13,7 +15,6 @@ type Target = {
   profile_id?: number;
   profiles?: { id: number }[];
 };
-export type ConnectorPermissionAction = { name: string; category?: string; risk?: string; description?: string; [field: string]: unknown };
 type Action = ConnectorPermissionAction;
 type PermissionInput = components["schemas"]["ConnectorPermissionInput"];
 
@@ -203,24 +204,4 @@ function permissionInput(permission: PermissionInput): PermissionInput {
     execution_rule: permission.execution_rule,
     expires_at: permission.expires_at || undefined,
   };
-}
-
-function connectorActions(value: unknown): Action[] {
-  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray((value as { items?: unknown }).items)) {
-    throw new Error("Invalid connector action catalog from gateway.");
-  }
-  return (value as { items: unknown[] }).items.map((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error("Invalid connector action catalog from gateway.");
-    }
-    const name = (entry as { name?: unknown }).name;
-    if (typeof name !== "string" || name.length === 0) {
-      throw new Error("Invalid connector action catalog from gateway.");
-    }
-    for (const field of ["category", "risk", "description"]) {
-      const value = (entry as Record<string, unknown>)[field];
-      if (value !== undefined && typeof value !== "string") throw new Error("Invalid connector action catalog from gateway.");
-    }
-    return entry as Action;
-  });
 }

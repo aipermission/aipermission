@@ -49,4 +49,23 @@ describe("useConnectorConnectionTests", () => {
     expect(onOperation).toHaveBeenCalledWith(recovery);
     expect(result.current.tests[connectorTestKey(target, profile)].state).toBe("idle");
   });
+
+  it("reports an unavailable connector model without attempting a connection", async () => {
+    const { result } = renderHook(() => useConnectorConnectionTests({ modelForKind: () => null }));
+    await act(async () => result.current.run(target, profile));
+    expect(result.current.tests[connectorTestKey(target, profile)]).toMatchObject({
+      state: "error",
+      error: "Connector model not found for example.",
+    });
+  });
+
+  it("normalizes non-Error rejections and permits a recovered test result", async () => {
+    const model = { test: vi.fn(async () => Promise.reject("Connection refused")) };
+    const { result } = renderHook(() => useConnectorConnectionTests({ modelForKind: () => model }));
+    await act(async () => result.current.run(target, profile));
+    const key = connectorTestKey(target, profile);
+    expect(result.current.tests[key].error).toBe("Connection refused");
+    act(() => result.current.applyOperationResult(key, { ok: true, data: { duration_ms: 4 } }));
+    expect(result.current.tests[key]).toMatchObject({ state: "ok", error: null, data: { duration_ms: 4 } });
+  });
 });

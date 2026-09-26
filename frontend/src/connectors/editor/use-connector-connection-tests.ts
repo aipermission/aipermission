@@ -1,8 +1,37 @@
 import { useEffect, useRef, useState } from "react";
+import { errorMessage } from "../../lib/errors";
 
-export function useConnectorConnectionTests({ modelForKind, onOperation, cooldownMs = 1500 }) {
-  const [tests, setTests] = useState({});
-  const cooldownTimers = useRef(new Map());
+type TargetIdentity = { id: number; connector_kind: string };
+type ProfileIdentity = { id: number };
+export type ConnectorRecoveryOperation = { open?: boolean; connector_kind?: string; [field: string]: unknown };
+export type ConnectorConnectionResult = { ok: boolean; error?: string | null; data?: unknown };
+export type ConnectorTestState = {
+  state: "idle" | "testing" | "ok" | "error";
+  error: string | null;
+  data: unknown;
+  cooldown?: boolean;
+  completedAt?: number;
+};
+type TestModel<Target, Profile> = {
+  test?: (_context: { target: Target; profile: Profile }) => Promise<ConnectorConnectionResult>;
+  operationFromError?: (
+    _error: unknown,
+    _context: { operation: "test"; target: Target; profile: Profile; testKey: string },
+  ) => ConnectorRecoveryOperation | null;
+};
+type Props<Target, Profile> = {
+  modelForKind: (_kind: string) => TestModel<Target, Profile> | null | undefined;
+  onOperation?: (_operation: ConnectorRecoveryOperation) => boolean | void;
+  cooldownMs?: number;
+};
+
+export function useConnectorConnectionTests<Target extends TargetIdentity, Profile extends ProfileIdentity>({
+  modelForKind,
+  onOperation,
+  cooldownMs = 1500,
+}: Props<Target, Profile>) {
+  const [tests, setTests] = useState<Record<string, ConnectorTestState>>({});
+  const cooldownTimers = useRef(new Map<string, number>());
 
   useEffect(() => {
     const timers = cooldownTimers.current;
@@ -12,7 +41,7 @@ export function useConnectorConnectionTests({ modelForKind, onOperation, cooldow
     };
   }, []);
 
-  function setResult(testKey, value) {
+  function setResult(testKey: string, value: ConnectorTestState) {
     const completedAt = Date.now();
     setTests((current) => ({ ...current, [testKey]: { ...value, cooldown: true, completedAt } }));
     window.clearTimeout(cooldownTimers.current.get(testKey));
@@ -26,7 +55,7 @@ export function useConnectorConnectionTests({ modelForKind, onOperation, cooldow
     cooldownTimers.current.set(testKey, timer);
   }
 
-  async function run(target, profile) {
+  async function run(target: Target, profile: Profile | null | undefined) {
     const testKey = connectorTestKey(target, profile);
     const model = modelForKind(target.connector_kind);
     if (!model?.test) {
@@ -46,7 +75,7 @@ export function useConnectorConnectionTests({ modelForKind, onOperation, cooldow
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
     try {
       const result = await model.test({ target, profile });
-      setResult(testKey, { state: result.ok ? "ok" : "error", error: result.error, data: result.data });
+      setResult(testKey, { state: result.ok ? "ok" : "error", error: result.error ?? null, data: result.data ?? null });
       return Boolean(result.ok);
     } catch (error) {
       const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
@@ -54,19 +83,19 @@ export function useConnectorConnectionTests({ modelForKind, onOperation, cooldow
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
         return false;
       }
-      setResult(testKey, { state: "error", error: error.message, data: null });
+      setResult(testKey, { state: "error", error: errorMessage(error), data: null });
       return false;
     }
   }
 
-  function applyOperationResult(testKey, test) {
-    setResult(testKey, { state: test.ok ? "ok" : "error", error: test.error, data: test.data });
+  function applyOperationResult(testKey: string, test: ConnectorConnectionResult) {
+    setResult(testKey, { state: test.ok ? "ok" : "error", error: test.error ?? null, data: test.data ?? null });
   }
 
   return { tests, run, applyOperationResult };
 }
 
-export function connectorTestKey(target, profile) {
+export function connectorTestKey(target: TargetIdentity, profile: ProfileIdentity | null | undefined) {
   const profileID = profile?.id || "target";
   return `${target.connector_kind}:${target.id}:${profileID}`;
 }

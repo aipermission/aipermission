@@ -15,6 +15,7 @@ import type { ComponentProps, KeyboardEvent, ReactNode, RefObject } from "react"
 import type { components } from "../../../types/generated-openapi";
 import type { ConsoleNavigationTarget } from "../console/console-target-sidebar";
 import { errorMessage } from "../../lib/errors";
+import { formatDateTime, formatShortTime } from "../../lib/activity-date";
 type Entry = components["schemas"]["HistoryEntry"];
 type HistoryItem = Pick<Entry, "id"> & Partial<Omit<Entry, "labels">> & { labels?: (Pick<Entry["labels"][number], "id" | "name"> & { color?: string })[] };
 type Label = NonNullable<HistoryItem["labels"]>[number];
@@ -507,19 +508,6 @@ function targetOptionLabel(target: ConsoleNavigationTarget | null | undefined) {
   return `${name} / ${profile}`;
 }
 
-function formatShortTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDateTime(value?: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
 export {
   ActionBadge,
   ConnectorBadge,
