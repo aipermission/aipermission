@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicRoot = path.resolve(srcRoot, "../public");
-const allowedInlineStyleFile = "components/history/history-components.jsx";
+const allowedInlineStyleFile = "components/history/history-components.tsx";
 
 test("first-party inline styles stay limited to validated history label colors", () => {
-  const occurrences = [];
+  const occurrences: { relative: string; count: number }[] = [];
   for (const file of sourceFiles(srcRoot)) {
     const relative = path.relative(srcRoot, file);
     const source = fs.readFileSync(file, "utf8");
@@ -28,10 +28,10 @@ test("public initialization scripts do not create inline styles", () => {
   }
 });
 
-function sourceFiles(directory) {
+function sourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(file);
-    return /\.(?:js|jsx)$/.test(entry.name) ? [file] : [];
+    return /\.(?:js|jsx|ts|tsx)$/.test(entry.name) && !/\.test\.[^.]+$/.test(entry.name) ? [file] : [];
   });
 }

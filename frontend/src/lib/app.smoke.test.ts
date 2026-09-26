@@ -9,7 +9,7 @@ import {
   releaseData,
   releaseSource,
   releaseManifest,
-} from "./smoke/app-smoke-fixtures.test.js";
+} from "./smoke/app-smoke-fixtures.test.ts";
 
 test("App keeps the primary route surface available", () => {
   for (const route of [
@@ -52,12 +52,12 @@ test("theme bootstrap tolerates blocked storage and rejects unknown values", () 
     ["light", "light"],
     ["unknown", "dark"],
   ]) {
-    const document = { documentElement: { dataset: {} } };
+    const document: { documentElement: { dataset: { theme?: string } } } = { documentElement: { dataset: {} } };
     runInNewContext(themeInitSource, { document, localStorage: { getItem: () => stored } });
     assert.equal(document.documentElement.dataset.theme, expected);
   }
 
-  const document = { documentElement: { dataset: {} } };
+  const document: { documentElement: { dataset: { theme?: string } } } = { documentElement: { dataset: {} } };
   runInNewContext(themeInitSource, {
     document,
     localStorage: {

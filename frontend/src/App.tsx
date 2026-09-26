@@ -1,9 +1,6 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { apiGet } from "./lib/api";
-import { databaseStatusResponse } from "./lib/gateway-contracts/database-status-contract.ts";
-import type { DatabaseStatus } from "./lib/gateway-contracts/database-status-contract.ts";
-import { errorMessage } from "./lib/errors.ts";
+import { useUnlockStatus } from "./lib/use-unlock-status.ts";
 import { useTheme } from "./lib/theme";
 import { Notice } from "./components/ui/notice";
 import { Shell } from "./components/app-shell";
@@ -24,40 +21,7 @@ const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ def
 
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [unlock, setUnlock] = useState<
-    { state: "loading"; data: null; error: null } |
-    { state: "ready"; data: DatabaseStatus; error: null } |
-    { state: "error"; data: null; error: string }
-  >({ state: "loading", data: null, error: null });
-  const unlockLoadGeneration = useRef(0);
-
-  async function loadUnlockStatus(signal?: AbortSignal) {
-    const generation = ++unlockLoadGeneration.current;
-    try {
-      const response: unknown = await apiGet("/api/unlock/status", { signal });
-      if (signal?.aborted || generation !== unlockLoadGeneration.current) return;
-      const data = databaseStatusResponse(response);
-      if (typeof data.state !== "string" || data.state.length === 0) throw new Error("Invalid unlock status response.");
-      setUnlock({ state: "ready", data, error: null });
-    } catch (error) {
-      if (signal?.aborted || generation !== unlockLoadGeneration.current) return;
-      if (signal) throw error;
-      setUnlock({ state: "error", data: null, error: errorMessage(error, "Could not load database status.") });
-    }
-  }
-
-  useEffect(() => {
-    void loadUnlockStatus();
-  }, []);
-
-  useEffect(() => {
-    function handleSessionRequired() {
-      void loadUnlockStatus();
-    }
-    window.addEventListener("aipermission:ui-session-required", handleSessionRequired);
-    return () => window.removeEventListener("aipermission:ui-session-required", handleSessionRequired);
-  }, []);
-
+  const { unlock, loadUnlockStatus } = useUnlockStatus();
   if (unlock.state === "loading") {
     return <UnlockShell title="Checking encrypted database..." />;
   }

@@ -22,12 +22,15 @@ test("Kafka action helpers surface failed HTTP 200 responses", () => {
 });
 
 test("completed action guard rejects failed results and withholds pending results", () => {
-  assert.equal(requireCompletedConnectorAction({ status: "completed", output: { ok: true } }).output.ok, true);
+  const result = requireCompletedConnectorAction({ status: "completed", output: { ok: true } });
+  assert.ok(result);
+  assert.equal(result.output.ok, true);
   assert.equal(requireCompletedConnectorAction({ status: "approval_pending" }), null);
   assert.throws(() => requireCompletedConnectorAction({ status: "blocked", error: "permission blocked" }), /permission blocked/);
   assert.throws(
     () => requireCompletedConnectorAction({ status: "outcome_unknown", request_id: 42 }),
-    (error) => error.actionItem?.request_id === 42,
+    (error: unknown) => error instanceof Error && "actionItem" in error && typeof error.actionItem === "object" &&
+      error.actionItem !== null && "request_id" in error.actionItem && error.actionItem.request_id === 42,
   );
 });
 

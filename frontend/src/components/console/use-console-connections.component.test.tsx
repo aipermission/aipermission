@@ -1,8 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiPost } from "../../lib/api";
+import { apiPost as realPost } from "../../lib/api";
 import { useConsoleConnections } from "./use-console-connections";
+const apiPost = vi.mocked(realPost);
 
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -15,9 +16,14 @@ class FakeWebSocket {
   static OPEN = 1;
   static CLOSING = 2;
   static CLOSED = 3;
-  static instances = [];
+  static instances: FakeWebSocket[] = [];
+  url: string;
+  readyState: number;
+  onclose = () => {};
+  onopen = () => {};
+  onmessage = (_event: { data: string }) => {};
 
-  constructor(url) {
+  constructor(url: string) {
     this.url = url;
     this.readyState = FakeWebSocket.CONNECTING;
     FakeWebSocket.instances.push(this);
@@ -31,8 +37,9 @@ class FakeWebSocket {
   send = vi.fn();
 }
 
-function useHarness(initialSession = { id: 7, status: "connected", transcript: "ready\r\n", error: null }) {
-  const [sessions, setConsoleSessions] = useState({
+type TestSession = { id: number; status: string; transcript: string; error: string | null };
+function useHarness(initialSession: TestSession = { id: 7, status: "connected", transcript: "ready\r\n", error: null }) {
+  const [sessions, setConsoleSessions] = useState<{ state: string; data: TestSession[]; error: string | null }>({
     state: "ready",
     data: [initialSession],
     error: null,
@@ -201,17 +208,17 @@ describe("useConsoleConnections", () => {
   });
 
   it("reports a failed close when the socket disappears before the API rejects", async () => {
-    let rejectClose;
+    let rejectClose!: (_reason: unknown) => void;
     apiPost.mockImplementation(
       () =>
-        new Promise((_resolve, reject) => {
+        new Promise<unknown>((_resolve, reject) => {
           rejectClose = reject;
         }),
     );
     const { result } = renderHook(() => useHarness());
     act(() => result.current.connections.attachSession(7));
 
-    let closePromise;
+    let closePromise: Promise<void> | undefined;
     act(() => {
       closePromise = result.current.connections.closeSession(7);
     });
@@ -252,17 +259,17 @@ describe("useConsoleConnections", () => {
   });
 
   it("commits a close when the socket disappears before the API succeeds", async () => {
-    let resolveClose;
+    let resolveClose!: (_value: unknown) => void;
     apiPost.mockImplementation(
       () =>
-        new Promise((resolve) => {
+        new Promise<unknown>((resolve) => {
           resolveClose = resolve;
         }),
     );
     const { result } = renderHook(() => useHarness());
     act(() => result.current.connections.attachSession(7));
 
-    let closePromise;
+    let closePromise: Promise<void> | undefined;
     act(() => {
       closePromise = result.current.connections.closeSession(7);
     });
