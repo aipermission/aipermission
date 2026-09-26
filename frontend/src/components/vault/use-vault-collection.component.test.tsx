@@ -1,15 +1,23 @@
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { apiGet as realGet, apiPost as realPost, apiPut as realPut } from "../../lib/api";
 import { emptyVaultEditor, filterVaultItemsByExpiry, useVaultCollection } from "./use-vault-collection";
+import type { VaultManagedItem } from "../../lib/gateway-contracts/vault-management-contract.ts";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
+const apiGet = vi.mocked(realGet);
+const apiPost = vi.mocked(realPost);
+const apiPut = vi.mocked(realPut);
+
+function fixtureItem(id: number, name: string): VaultManagedItem {
+  return { id, name, owner_project_id: 4, source: "imported", secret_type: "generic_secret", value_version: 1, metadata_revision: 1, tags: [], usage_notes: [] };
+}
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((next, failure) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((next, failure) => {
     resolve = next;
     reject = failure;
   });
@@ -33,6 +41,7 @@ function CollectionHarness() {
         type="button"
         onClick={() =>
           vault.openEdit({
+            ...fixtureItem(7, "existing_key"),
             id: 7,
             source: "imported",
             name: "existing_key",
@@ -70,7 +79,7 @@ beforeEach(() => {
   apiPut.mockReset();
   apiGet.mockImplementation((path) => {
     if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
-    if (path.startsWith("/api/vault-items")) return Promise.resolve({ items: [{ id: 1, name: "KEY" }], total: 1 });
+    if (path.startsWith("/api/vault-items")) return Promise.resolve({ items: [fixtureItem(1, "KEY")], total: 1 });
     throw new Error(`Unexpected path ${path}`);
   });
   apiPost.mockResolvedValue({ id: 2 });
@@ -104,12 +113,72 @@ it("filters expiry views at a stable point in time", () => {
   expect(filterVaultItemsByExpiry(items, "expired", now).map((item) => item.id)).toEqual([1]);
   expect(filterVaultItemsByExpiry(items, "warning", now).map((item) => item.id)).toEqual([2]);
   expect(filterVaultItemsByExpiry(items, "none", now).map((item) => item.id)).toEqual([3]);
+  expect(filterVaultItemsByExpiry(items, "all", now).map((item) => item.id)).toEqual([1, 2, 3]);
+  expect(filterVaultItemsByExpiry([{ id: 4, expires_at: undefined }], "expired", now)).toEqual([]);
+  expect(filterVaultItemsByExpiry([{ id: 4, expires_at: undefined }], "warning", now)).toEqual([]);
+  expect(filterVaultItemsByExpiry([{ id: 4, expires_at: "2026-10-07T10:00:00Z" }], "warning", now)).toEqual([]);
+});
+
+it("creates a generated item with metadata and no imported secret value", async () => {
+  const { result } = renderHook(() => useVaultCollection());
+  act(() => result.current.setFilters({ project_id: "4" }));
+  act(() => result.current.openCreate());
+  act(() =>
+    result.current.setEditor((current) => ({
+      ...current,
+      source: "generated",
+      name: " project_token ",
+      value: "not-for-generated-payload",
+      generator_kind: "hex_secret",
+      shared_project_ids: [5, 6],
+      provider: "Example",
+      environment: "test",
+      description: "Fixture credentials",
+      expiry_warning_days: "7",
+      tags: "service, deployment, ,",
+      usage_notes: [
+        { location: "config", notes: "Fixture reference" },
+        { location: " ", notes: "Ignored" },
+      ],
+    })),
+  );
+  await act(async () => result.current.saveItem({ preventDefault() {} }));
+  expect(apiPost).toHaveBeenCalledExactlyOnceWith(
+    "/api/vault-items",
+    {
+      name: "PROJECT_TOKEN",
+      owner_project_id: 4,
+      shared_project_ids: [5, 6],
+      secret_type: "generic_secret",
+      provider: "Example",
+      environment: "test",
+      description: "Fixture credentials",
+      expires_at: "",
+      expiry_warning_days: 7,
+      tags: ["service", "deployment"],
+      usage_notes: [{ location: "config", notes: "Fixture reference" }],
+      source: "generated",
+      value: "",
+      generator_kind: "hex_secret",
+    },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(result.current.editor).toEqual(emptyVaultEditor);
+});
+
+it("does not expose a malformed current Vault revision as an editable item", async () => {
+  apiGet.mockImplementation((path) => Promise.resolve(path === "/api/projects"
+    ? { items: [{ id: 4, name: "My Project", slug: "my-project" }] }
+    : { items: [{ ...fixtureItem(1, "KEY"), metadata_revision: "1" }], total: 1 }));
+  render(<CollectionHarness />);
+  await waitFor(() => expect(screen.getByTestId("items-state")).toHaveTextContent("error:Invalid Vault metadata revision"));
+  expect(screen.getByTestId("items")).toBeEmptyDOMElement();
 });
 
 it("does not let a late create close a newly opened editor", async () => {
   const user = userEvent.setup();
-  let resolveSave;
-  const save = new Promise((resolve) => {
+  let resolveSave!: (_value: unknown) => void;
+  const save = new Promise<unknown>((resolve) => {
     resolveSave = resolve;
   });
   apiPost.mockReturnValue(save);
@@ -119,7 +188,9 @@ it("does not let a late create close a newly opened editor", async () => {
   await user.click(screen.getByRole("button", { name: "Open" }));
   await user.click(screen.getByRole("button", { name: "Fill" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
-  const signal = apiPost.mock.calls[0][2].signal;
+  const options = apiPost.mock.calls[0]?.[2];
+  const signal = options && "signal" in options ? options.signal : undefined;
+  if (!(signal instanceof AbortSignal)) throw new Error("Missing save signal");
   await user.click(screen.getByRole("button", { name: "Close" }));
   await user.click(screen.getByRole("button", { name: "Open" }));
   expect(signal.aborted).toBe(true);
@@ -200,15 +271,15 @@ it("updates Vault metadata without replacing the existing value", async () => {
 });
 
 it.each([
-  ["success", (pending) => pending.resolve({ items: [{ id: 9, name: "STALE" }], total: 1 })],
-  ["error", (pending) => pending.reject(new Error("stale failure"))],
+  ["success", (pending: ReturnType<typeof deferred>) => pending.resolve({ items: [fixtureItem(9, "STALE")], total: 1 })],
+  ["error", (pending: ReturnType<typeof deferred>) => pending.reject(new Error("stale failure"))],
 ])("invalidates a stale Vault list %s as soon as filters change", async (_outcome, settle) => {
   const user = userEvent.setup();
   const pending = deferred();
   apiGet.mockImplementation((path) => {
     if (path === "/api/projects") return Promise.resolve({ items: [{ id: 4, name: "My Project", slug: "my-project" }] });
     if (path === "/api/vault-items") return pending.promise;
-    if (path === "/api/vault-items?q=current") return Promise.resolve({ items: [{ id: 10, name: "CURRENT" }], total: 1 });
+    if (path === "/api/vault-items?q=current") return Promise.resolve({ items: [fixtureItem(10, "CURRENT")], total: 1 });
     throw new Error(`Unexpected path ${path}`);
   });
 
@@ -216,7 +287,9 @@ it.each([
   await waitFor(() =>
     expect(apiGet).toHaveBeenCalledWith("/api/vault-items", expect.objectContaining({ signal: expect.any(AbortSignal) })),
   );
-  const staleSignal = apiGet.mock.calls.find(([path]) => path === "/api/vault-items")[1].signal;
+  const readOptions = apiGet.mock.calls.find(([path]) => path === "/api/vault-items")?.[1];
+  const staleSignal = readOptions && "signal" in readOptions ? readOptions.signal : undefined;
+  if (!(staleSignal instanceof AbortSignal)) throw new Error("Missing list signal");
 
   await user.click(screen.getByRole("button", { name: "Filter" }));
   expect(screen.getByTestId("query")).toHaveTextContent("current");

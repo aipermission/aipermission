@@ -42,6 +42,11 @@ function projectItem(value: RawItem): VaultItemSummary {
   };
 }
 
+export function vaultItemSummary(value: unknown): VaultItemSummary {
+  if (!validItem(value)) throw new Error("Invalid Vault item metadata response.");
+  return projectItem(value);
+}
+
 function positiveID(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
