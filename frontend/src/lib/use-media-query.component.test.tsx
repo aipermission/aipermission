@@ -8,13 +8,15 @@ afterEach(() => {
 
 it("tracks media query changes and removes its listener", () => {
   let matches = false;
-  let listener;
+  let listener: () => void = () => {
+    throw new Error("Media listener not installed");
+  };
   const removeEventListener = vi.fn();
   vi.stubGlobal("matchMedia", () => ({
     get matches() {
       return matches;
     },
-    addEventListener: vi.fn((event, callback) => {
+    addEventListener: vi.fn((event: string, callback: () => void) => {
       expect(event).toBe("change");
       listener = callback;
     }),

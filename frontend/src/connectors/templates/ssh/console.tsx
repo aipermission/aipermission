@@ -4,8 +4,10 @@ import { CountBadge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { BulkCommandDialog } from "./bulk-command-dialog";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
+import type { ReactNode } from "react";
+import type { SSHToolbarProps } from "./console-types";
 
-export function SSHConnectorConsoleTemplate({ children }) {
+export function SSHConnectorConsoleTemplate({ children }: { children?: ReactNode }) {
   return children;
 }
 
@@ -21,7 +23,7 @@ export function SSHConnectorToolbarActionsTemplate({
   onEndSession,
   onInterrupt,
   liveConsoleTargets = [],
-}) {
+}: SSHToolbarProps) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const sshTargets = liveConsoleTargets.filter((target) => target.connector_kind === "ssh");

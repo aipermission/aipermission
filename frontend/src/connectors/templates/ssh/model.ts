@@ -1,18 +1,41 @@
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
 import { defaultTargetProfile } from "../_shared/target-profile-lifecycle";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import {
+  payloadFromForm,
+  targetConfigFromPayload,
+  profilePublicFromPayload,
+  isHostKeyError,
+  keyNameFromFilename,
+  sshCredentialResourcesResponse,
+} from "./model-helpers";
+import type { SSHForm, SSHImportForm, SSHKeyForm, SSHProfile } from "./form-types";
+import type {
+  SSHCredentialResource,
+  SSHCredentialRow,
+  SSHFormContext,
+  SSHStateContext,
+  SSHSaveContext,
+  SSHCredentialPropsContext,
+  SSHCredentialFormProps,
+  SSHModelTarget,
+  SSHHostKeyContext,
+  SSHHostKeyAction,
+  SSHPayload,
+  SSHDockerContainer,
+} from "./model-types";
 
-const emptySSHCredentialForm = { name: "main", key_type: "ed25519" };
-const emptySSHCredentialImportForm = { name: "imported-key", private_key: "", passphrase: "" };
+const emptySSHCredentialForm: SSHKeyForm = { name: "main", key_type: "ed25519" };
+const emptySSHCredentialImportForm: SSHImportForm = { name: "imported-key", private_key: "", passphrase: "" };
 
-export function emptyForm({ firstCredentialID = "" } = {}) {
+export function emptyForm({ firstCredentialID = "" }: { firstCredentialID?: string | number | null } = {}): SSHForm {
   return {
     connector_kind: "ssh",
     name: "",
     host: "",
     port: 22,
     username: "root",
-    ssh_key_id: firstCredentialID,
+    ssh_key_id: firstCredentialID ?? "",
     description: "",
     startup_input_after_connect: "",
     force_shell_command: "",
@@ -20,7 +43,15 @@ export function emptyForm({ firstCredentialID = "" } = {}) {
   };
 }
 
-export function formFromTarget({ target, profile, server }) {
+export function formFromTarget({
+  target,
+  profile,
+  server,
+}: {
+  target?: SSHModelTarget | null;
+  profile?: SSHProfile | null;
+  server?: Partial<SSHForm>;
+}) {
   const selectedProfile = defaultTargetProfile(target, profile);
   const profilePublic = selectedProfile.public || {};
   const config = target?.config || {};
@@ -40,25 +71,25 @@ export function formFromTarget({ target, profile, server }) {
   };
 }
 
-export function activeCredential({ credentials, form }) {
+export function activeCredential({ credentials, form }: SSHFormContext & { credentials: SSHCredentialResource[] }) {
   return credentials.find((key) => Number(key.id) === Number(form.ssh_key_id)) || null;
 }
 
-export function syncForm({ form, firstCredentialID }) {
+export function syncForm({ form, firstCredentialID }: SSHFormContext) {
   if (form.connector_kind !== "ssh" || form.ssh_key_id || !firstCredentialID) return form;
   return { ...form, ssh_key_id: firstCredentialID };
 }
 
-export function submitDisabled({ state, credentials }) {
+export function submitDisabled({ state, credentials }: { state: { state: string }; credentials: SSHCredentialResource[] }) {
   return state.state === "saving" || credentials.length === 0;
 }
 
-export function submitLabel({ state, mode, form }) {
+export function submitLabel({ state, mode, form }: SSHStateContext) {
   if (state.state === "saving") return form.setup_later ? "Saving..." : "Testing...";
   return mode === "edit" ? "Save changes" : "Create connector";
 }
 
-export async function save({ mode, form, target }) {
+export async function save({ mode, form, target }: SSHSaveContext) {
   const payload = payloadFromForm(form);
   const projectID = form.project_id;
   if (mode === "edit") {
@@ -69,7 +100,7 @@ export async function save({ mode, form, target }) {
   await createFromPayload({ projectID, payload, setupLater: Boolean(form.setup_later) });
 }
 
-export async function deleteTarget({ target, removeKey }) {
+export async function deleteTarget({ target, removeKey }: { target?: SSHModelTarget | null; removeKey?: boolean }) {
   if (!target) throw new Error("SSH connector target is not loaded.");
   await apiDelete(`/api/connector-targets/${target.id}${removeKey ? "?remove_key=true" : ""}`);
 }
@@ -82,26 +113,27 @@ export function emptyCredentialState() {
   };
 }
 
-export async function loadCredentialResources(options) {
+export async function loadCredentialResources(options: { signal?: AbortSignal } = {}) {
   const data = await apiGet("/api/connectors/ssh/credentials", options);
-  return (data.items || data || []).map((item) => ({
-    ...item,
-    connector_kind: "ssh",
-    resource_kind: "ssh_key",
-    resource_ref: `ssh:ssh_key:${item.id}`,
-  }));
+  return sshCredentialResourcesResponse(data);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: SSHCredentialRow }) {
   return {
     mode: "generate",
-    form: { name: row.name, key_type: row.kind },
+    form: { name: row.name, key_type: row.kind === "rsa" ? ("rsa" as const) : ("ed25519" as const) },
     importForm: { ...emptySSHCredentialImportForm },
   };
 }
 
-export function credentialFormProps({ formState, setFormState, formMode, state, onSubmit }) {
-  const setMode = (nextMode) => {
+export function credentialFormProps({
+  formState,
+  setFormState,
+  formMode,
+  state,
+  onSubmit,
+}: SSHCredentialPropsContext): SSHCredentialFormProps {
+  const setMode = (nextMode: "generate" | "import") => {
     setFormState((current) => ({
       ...current,
       mode: nextMode,
@@ -126,7 +158,10 @@ export function credentialFormProps({ formState, setFormState, formMode, state, 
         ...current,
         importForm: {
           ...current.importForm,
-          name: current.importForm.name === emptySSHCredentialImportForm.name ? keyNameFromFilename(file.name) : current.importForm.name,
+          name:
+            current.importForm.name === emptySSHCredentialImportForm.name
+              ? keyNameFromFilename(file.name, emptySSHCredentialImportForm.name)
+              : current.importForm.name,
           private_key: text,
         },
       }));
@@ -138,7 +173,15 @@ export function credentialFormProps({ formState, setFormState, formMode, state, 
   };
 }
 
-export async function saveCredential({ operation, row, formState }) {
+export async function saveCredential({
+  operation,
+  row,
+  formState,
+}: {
+  operation: string;
+  row?: SSHCredentialRow | null;
+  formState: ReturnType<typeof emptyCredentialState>;
+}) {
   if (operation === "create") {
     await apiPost("/api/connectors/ssh/credentials", formState.form);
     return { message: "SSH credential created." };
@@ -155,11 +198,11 @@ export async function saveCredential({ operation, row, formState }) {
   throw new Error("Unsupported SSH credential operation.");
 }
 
-export async function deleteCredential({ row }) {
+export async function deleteCredential({ row }: { row: SSHCredentialRow }) {
   await apiDelete(`/api/connectors/ssh/credentials/${row.id}`);
 }
 
-export function credentialRows({ credentials, targets = [] }) {
+export function credentialRows({ credentials, targets = [] }: { credentials: SSHCredentialResource[]; targets?: SSHModelTarget[] }) {
   return credentials.map((key) => {
     const linkedTargets = targets.filter((target) =>
       (target.profiles || []).some((profile) => Number(profile.public?.ssh_key_id) === Number(key.id)),
@@ -181,22 +224,30 @@ export function credentialRows({ credentials, targets = [] }) {
   });
 }
 
-export async function test({ target, profile }) {
+export async function test({ target, profile }: { target?: SSHModelTarget | null; profile?: SSHProfile | null }) {
   const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !selectedProfile) throw new Error("SSH connector profile is not loaded.");
   const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
   return { ok: data.ok, error: data.message || data.stderr || null, data };
 }
 
-export function canEdit({ target }) {
+export function canEdit({ target }: { target?: SSHModelTarget | null }) {
   return Boolean(target);
 }
 
-export function canDelete({ target }) {
+export function canDelete({ target }: { target?: SSHModelTarget | null }) {
   return Boolean(target);
 }
 
-export function credentialHint({ target, profile, credentials }) {
+export function credentialHint({
+  target,
+  profile,
+  credentials,
+}: {
+  target?: SSHModelTarget | null;
+  profile?: SSHProfile | null;
+  credentials: SSHCredentialResource[];
+}) {
   const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   const sshKeyID = selectedProfile?.public?.ssh_key_id;
   if (!sshKeyID) return null;
@@ -204,7 +255,7 @@ export function credentialHint({ target, profile, credentials }) {
   return key ? `Key: ${key.name}` : `Key: #${sshKeyID}`;
 }
 
-export function targetEndpoint({ target, profile }) {
+export function targetEndpoint({ target, profile }: { target: SSHModelTarget; profile?: SSHProfile | null }) {
   const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   const username = selectedProfile?.public?.username || "ssh";
   const host = target.config?.host || "host";
@@ -212,18 +263,18 @@ export function targetEndpoint({ target, profile }) {
   return `${username}@${host}:${port}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: SSHModelTarget | null }) {
   return target?.target_name || target?.name || "SSH target";
 }
 
-export function targetSubtitle({ target, runtimeTarget }) {
+export function targetSubtitle({ target, runtimeTarget }: { target?: SSHModelTarget | null; runtimeTarget?: Partial<SSHForm> | null }) {
   const username = target?.public?.username || runtimeTarget?.username || "ssh";
   const host = target?.config?.host || runtimeTarget?.host || "host";
   const port = target?.config?.port || runtimeTarget?.port || 22;
   return `${username}@${host}:${port}`;
 }
 
-export function targetProfileLabel({ target } = {}) {
+export function targetProfileLabel({ target }: { target?: SSHModelTarget | null } = {}) {
   return target?.profile_label || target?.public?.username || "terminal";
 }
 
@@ -235,7 +286,7 @@ export function recoverableRunningActions() {
   return ["exec"];
 }
 
-export function liveConsoleRuntimeTarget({ target }) {
+export function liveConsoleRuntimeTarget({ target }: { target: SSHModelTarget }) {
   const profile = target.public || {};
   return {
     id: target.runtime_id,
@@ -255,7 +306,7 @@ export function liveConsoleRuntimeTarget({ target }) {
   };
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: SSHModelTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description:
@@ -277,7 +328,10 @@ export function deleteDialog({ target }) {
   };
 }
 
-export function hostKeyActionFromError(error, { mode, form, target, profile, testKey, operation, container }) {
+export function hostKeyActionFromError(
+  error: unknown,
+  { mode, form, target, profile, testKey, operation, container }: SSHHostKeyContext,
+): SSHHostKeyAction | null {
   if (!isHostKeyError(error)) return null;
   if (operation === "test") {
     return { kind: "ssh", type: "test", target, profile, testKey };
@@ -291,6 +345,7 @@ export function hostKeyActionFromError(error, { mode, form, target, profile, tes
   if (operation === "docker-logs") {
     return { kind: "ssh", type: "docker-logs", target, profile, container };
   }
+  if (!form) return null;
   return {
     kind: "ssh",
     type: mode === "edit" ? "save" : "create",
@@ -301,7 +356,8 @@ export function hostKeyActionFromError(error, { mode, form, target, profile, tes
   };
 }
 
-export function operationFromError(error, context) {
+export function operationFromError(error: unknown, context: SSHHostKeyContext) {
+  if (!isHostKeyError(error)) return null;
   const action = hostKeyActionFromError(error, context);
   if (!action) return null;
   return {
@@ -315,12 +371,14 @@ export function operationFromError(error, context) {
   };
 }
 
-export async function resumeHostKeyAction(action) {
+export async function resumeHostKeyAction(action: SSHHostKeyAction) {
   if (action.type === "create") {
+    if (!action.payload) throw new Error("SSH connector form is not loaded.");
     await createFromPayload({ projectID: action.projectID, payload: action.payload, setupLater: Boolean(action.setupLater) });
     return { message: "Connector created." };
   }
   if (action.type === "save") {
+    if (!action.payload) throw new Error("SSH connector form is not loaded.");
     if (!action.target) throw new Error("SSH connector target is not loaded.");
     await saveFromPayload({
       targetID: action.target.id,
@@ -343,7 +401,15 @@ export async function resumeHostKeyAction(action) {
   throw new Error("Unsupported SSH host-key action.");
 }
 
-async function createFromPayload({ projectID, payload, setupLater }) {
+async function createFromPayload({
+  projectID,
+  payload,
+  setupLater,
+}: {
+  projectID?: SSHForm["project_id"];
+  payload: SSHPayload;
+  setupLater: boolean;
+}) {
   if (!setupLater) {
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
@@ -374,7 +440,19 @@ async function createFromPayload({ projectID, payload, setupLater }) {
   });
 }
 
-async function saveFromPayload({ targetID, projectID, payload, setupLater, previousTarget }) {
+async function saveFromPayload({
+  targetID,
+  projectID,
+  payload,
+  setupLater,
+  previousTarget,
+}: {
+  targetID: string | number;
+  projectID?: SSHForm["project_id"];
+  payload: SSHPayload;
+  setupLater: boolean;
+  previousTarget: SSHModelTarget;
+}) {
   if (!setupLater) {
     const testResult = await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
@@ -397,7 +475,6 @@ async function saveFromPayload({ targetID, projectID, payload, setupLater, previ
   await updateTargetWithProfile({
     projectID,
     targetID,
-    previousTarget,
     profileID: profile.id,
     targetPayload: {
       name: payload.name,
@@ -411,12 +488,32 @@ async function saveFromPayload({ targetID, projectID, payload, setupLater, previ
   });
 }
 
-export async function checkDocker({ target, profile, signal }) {
+export async function checkDocker({
+  target,
+  profile,
+  signal,
+}: {
+  target?: Pick<SSHModelTarget, "id"> | null;
+  profile?: SSHProfile | null;
+  signal?: AbortSignal;
+}) {
   if (!target || !profile) throw new Error("SSH connector target profile is not loaded.");
   return apiPost(`/api/connector-targets/${target.id}/operations/docker-check`, { profile_id: Number(profile.id) }, { signal });
 }
 
-export async function readDockerLogs({ target, profile, container, tail = 300, signal }) {
+export async function readDockerLogs({
+  target,
+  profile,
+  container,
+  tail = 300,
+  signal,
+}: {
+  target?: Pick<SSHModelTarget, "id"> | null;
+  profile?: SSHProfile | null;
+  container?: SSHDockerContainer | null;
+  tail?: number;
+  signal?: AbortSignal;
+}) {
   if (!target || !profile || !container) throw new Error("SSH connector target profile is not loaded.");
   return apiPost(
     `/api/connector-targets/${target.id}/operations/docker-logs`,
@@ -426,52 +523,5 @@ export async function readDockerLogs({ target, profile, container, tail = 300, s
       tail: Number(tail) || 300,
     },
     { signal },
-  );
-}
-
-function payloadFromForm(form) {
-  return {
-    name: form.name,
-    host: form.host,
-    port: Number(form.port),
-    username: form.username,
-    ssh_key_id: Number(form.ssh_key_id),
-    profile_id: Number(form.profile_id || 0),
-    description: form.description,
-    startup_input_after_connect: form.startup_input_after_connect,
-    force_shell_command: form.force_shell_command,
-  };
-}
-
-function targetConfigFromPayload(payload) {
-  return {
-    host: payload.host,
-    port: payload.port,
-    description: payload.description,
-    startup_input_after_connect: payload.startup_input_after_connect,
-    force_shell_command: payload.force_shell_command,
-  };
-}
-
-function profilePublicFromPayload(payload) {
-  return {
-    username: payload.username,
-    ssh_key_id: payload.ssh_key_id,
-  };
-}
-
-function isHostKeyError(error) {
-  return (
-    error.status === 409 && ["unknown_ssh_host_key", "changed_ssh_host_key"].includes(error.data?.code) && Boolean(error.data?.host_key)
-  );
-}
-
-function keyNameFromFilename(filename) {
-  return (
-    filename
-      .replace(/\.[^.]+$/, "")
-      .replace(/[^a-zA-Z0-9_. -]+/g, "-")
-      .trim()
-      .slice(0, 80) || emptySSHCredentialImportForm.name
   );
 }

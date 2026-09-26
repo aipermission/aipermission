@@ -3,10 +3,10 @@ import test from "node:test";
 import { syncTerminalTranscript } from "../components/console/terminal-transcript.ts";
 
 function fakeTerminal() {
-  const calls = [];
+  const calls: string[][] = [];
   return {
     calls,
-    write(value) {
+    write(value: string) {
       calls.push(["write", value]);
     },
     clear() {

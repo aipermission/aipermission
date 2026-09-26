@@ -7,18 +7,40 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { errorMessage } from "../../../lib/errors";
+import { bulkCommandResponse, bulkCommandDetailResponse } from "./bulk-command-contracts";
+import type { ComponentProps, FormEvent, RefObject } from "react";
+import type { SSHConsoleRuntime } from "./console-types";
+import type { BulkCommandItem, BulkCommandState } from "./bulk-command-contracts";
+
+type Props = {
+  open: boolean;
+  targets: SSHConsoleRuntime[];
+  selectedTarget: SSHConsoleRuntime | null;
+  onClose: () => void;
+  onRefresh?: () => void | Promise<unknown>;
+};
+type TargetPickerProps = {
+  visibleTargets: SSHConsoleRuntime[];
+  selected: Record<number, boolean>;
+  selectedCount: number;
+  targetQuery: string;
+  setTargetQuery: (_value: string) => void;
+  setAllTargets: (_value: boolean) => void;
+  toggleTarget: (_value: number) => void;
+};
 
 const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "canceled", "outcome_unknown", "untracked"]);
 
-export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRefresh }) {
-  const [selected, setSelected] = useState({});
+export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRefresh }: Props) {
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [command, setCommand] = useState("");
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [targetQuery, setTargetQuery] = useState("");
-  const [runState, setRunState] = useState({ state: "idle", error: null, items: [], parallelism: 3 });
-  const [selectedResultID, setSelectedResultID] = useState(null);
-  const delayedRefreshRef = useRef(null);
+  const [runState, setRunState] = useState<BulkCommandState>({ state: "idle", error: null, items: [], parallelism: 3 });
+  const [selectedResultID, setSelectedResultID] = useState<number | null>(null);
+  const delayedRefreshRef = useRef<number | null>(null);
   const requests = useRequestGuard(`ssh-bulk:${open ? "open" : "closed"}:${selectedTarget?.id || "none"}`);
 
   const visibleTargets = useMemo(() => {
@@ -39,7 +61,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   useEffect(() => {
     invalidateBulkRequests(requests, delayedRefreshRef);
     if (!open) return undefined;
-    const initial = {};
+    const initial: Record<number, boolean> = {};
     if (selectedTarget?.id) {
       initial[selectedTarget.id] = true;
     }
@@ -63,13 +85,13 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     return () => window.clearInterval(timer);
   }, [open, hasActiveItems, requestStatusSignature]);
 
-  function toggleTarget(runtimeID) {
+  function toggleTarget(runtimeID: number) {
     setSelected((current) => ({ ...current, [runtimeID]: !current[runtimeID] }));
     setConfirmation("");
   }
 
-  function setAllTargets(value) {
-    const next = {};
+  function setAllTargets(value: boolean) {
+    const next: Record<number, boolean> = {};
     if (value) {
       targets.forEach((target) => {
         next[target.id] = true;
@@ -79,17 +101,12 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     setConfirmation("");
   }
 
-  function copyConfirmationText() {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(confirmationText);
-  }
-
-  async function startBulkCommand(event) {
+  async function startBulkCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canRun) return;
     const request = requests.begin("run");
     requests.invalidate("refresh");
-    window.clearTimeout(delayedRefreshRef.current);
+    if (delayedRefreshRef.current !== null) window.clearTimeout(delayedRefreshRef.current);
     setRunState((current) => ({ ...current, state: "starting", error: null }));
     setSelectedResultID(null);
     try {
@@ -104,19 +121,20 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
         { signal: request.signal },
       );
       if (!request.isCurrent()) return;
-      const items = (data.items || []).map((item) => ({ ...item, status: item.status || "running" }));
+      const parsed = bulkCommandResponse(data);
+      const items = parsed.items;
       setRunState({
         state: "running",
         error: null,
         items,
-        parallelism: data.parallelism || 3,
+        parallelism: parsed.parallelism,
       });
       await onRefresh?.();
       if (!request.isCurrent()) return;
       delayedRefreshRef.current = window.setTimeout(() => void refreshRequests(items), 1000);
     } catch (error) {
       if (!request.isCurrent()) return;
-      setRunState((current) => ({ ...current, state: "error", error: error.message }));
+      setRunState((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
       request.complete();
     }
@@ -130,9 +148,9 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
         items.map(async (item) => {
           try {
             const detail = await apiGet(`/api/console/command-requests/${item.request_id}`, { signal: request.signal });
-            return { ...item, ...detail, request_id: item.request_id };
+            return bulkCommandDetailResponse(detail, item);
           } catch (error) {
-            return { ...item, status: "error", error: error.message };
+            return { ...item, status: "error", error: errorMessage(error) };
           }
         }),
       );
@@ -146,7 +164,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
       await onRefresh?.();
     } catch (error) {
       if (!request.isCurrent()) return;
-      setRunState((current) => ({ ...current, state: "error", error: error.message }));
+      setRunState((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
       request.complete();
     }
@@ -205,7 +223,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
                   type="button"
                   className="ml-1 inline-grid h-5 w-5 place-items-center align-[-3px] text-amber-900 hover:text-amber-700"
                   title="Copy confirmation phrase"
-                  onClick={copyConfirmationText}
+                  onClick={() => copyConfirmationText(confirmationText)}
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>{" "}
@@ -272,14 +290,27 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   );
 }
 
-function invalidateBulkRequests(requests, delayedRefreshRef) {
+function copyConfirmationText(value: string) {
+  if (typeof navigator === "undefined" || !navigator.clipboard) return;
+  void navigator.clipboard.writeText(value);
+}
+
+function invalidateBulkRequests(requests: ReturnType<typeof useRequestGuard>, delayedRefreshRef: RefObject<number | null>) {
   requests.invalidate("run");
   requests.invalidate("refresh");
-  window.clearTimeout(delayedRefreshRef.current);
+  if (delayedRefreshRef.current !== null) window.clearTimeout(delayedRefreshRef.current);
   delayedRefreshRef.current = null;
 }
 
-function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery, setTargetQuery, setAllTargets, toggleTarget }) {
+function BulkTargetPicker({
+  visibleTargets,
+  selected,
+  selectedCount,
+  targetQuery,
+  setTargetQuery,
+  setAllTargets,
+  toggleTarget,
+}: TargetPickerProps) {
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <div className="grid gap-3">
@@ -314,7 +345,7 @@ function BulkTargetPicker({ visibleTargets, selected, selectedCount, targetQuery
   );
 }
 
-function BulkTargetRow({ target, selected, onToggle }) {
+function BulkTargetRow({ target, selected, onToggle }: { target: SSHConsoleRuntime; selected: boolean; onToggle: (_id: number) => void }) {
   return (
     <label className="flex cursor-pointer items-start gap-3 border-b border-stone-100 px-3 py-2 last:border-b-0 hover:bg-stone-50">
       <input
@@ -334,7 +365,7 @@ function BulkTargetRow({ target, selected, onToggle }) {
   );
 }
 
-function BulkCommandResultRow({ item, selected, onSelect }) {
+function BulkCommandResultRow({ item, selected, onSelect }: { item: BulkCommandItem; selected: boolean; onSelect: () => void }) {
   return (
     <button
       type="button"
@@ -357,7 +388,7 @@ function BulkCommandResultRow({ item, selected, onSelect }) {
   );
 }
 
-function BulkCommandResultDetail({ item }) {
+function BulkCommandResultDetail({ item }: { item?: BulkCommandItem }) {
   if (!item) {
     return (
       <div className="grid min-h-0 place-items-center rounded-md border border-dashed border-stone-300 bg-stone-50 p-5 text-center text-sm text-stone-500">
@@ -385,7 +416,7 @@ function BulkCommandResultDetail({ item }) {
   );
 }
 
-function resultSummary(items) {
+function resultSummary(items: BulkCommandItem[]) {
   const running = items.filter((item) => !terminalStatuses.has(item.status)).length;
   const failed = items.filter((item) => item.status === "failed" || item.status === "error").length;
   const done = items.length - running;
@@ -394,13 +425,13 @@ function resultSummary(items) {
   return `${done}/${items.length} finished`;
 }
 
-function statusLabel(status) {
+function statusLabel(status: string) {
   if (status === "pending_approval") return "pending";
   if (status === "untracked") return "not tracked";
   return status || "running";
 }
 
-function statusTone(status) {
+function statusTone(status: string): ComponentProps<typeof Badge>["tone"] {
   if (status === "completed") return "good";
   if (status === "running" || status === "pending_approval") return "warn";
   if (status === "failed" || status === "error" || status === "declined" || status === "stale") return "bad";

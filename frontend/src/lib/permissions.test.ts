@@ -22,7 +22,7 @@ test("permission helpers fail closed for malformed non-empty expiry values", () 
     "2099-01-01T24:00:00Z",
     "2099-01-01T00:00:00+24:00",
   ]) {
-    const malformed = { execution_rule: "always_run", expires_at };
+    const malformed = { execution_rule: "always_run" as const, expires_at };
     assert.equal(permissionExpired(malformed), true, expires_at);
     assert.equal(effectiveRule(malformed), "", expires_at);
     assert.equal(permissionLifetimeLabel(malformed), "Invalid expiry", expires_at);

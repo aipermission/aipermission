@@ -68,4 +68,47 @@ describe("useConnectorConnectionTests", () => {
     act(() => result.current.applyOperationResult(key, { ok: true, data: { duration_ms: 4 } }));
     expect(result.current.tests[key]).toMatchObject({ state: "ok", error: null, data: { duration_ms: 4 } });
   });
+
+  it("does not issue duplicate connection tests for the same profile", async () => {
+    let resolve!: (_value: { ok: boolean }) => void;
+    const pending = new Promise<{ ok: boolean }>((done) => {
+      resolve = done;
+    });
+    const model = { test: vi.fn(() => pending) };
+    const { result } = renderHook(() => useConnectorConnectionTests({ modelForKind: () => model }));
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    act(() => {
+      first = result.current.run(target, profile);
+      second = result.current.run(target, profile);
+    });
+    const calls = model.test.mock.calls.length;
+    await act(async () => {
+      resolve({ ok: true });
+      await first;
+      await second;
+    });
+    expect(calls).toBe(1);
+    expect(await second).toBe(false);
+  });
+
+  it("does not schedule a cooldown after an unmounted request completes", async () => {
+    vi.useFakeTimers();
+    let resolve!: (_value: { ok: boolean }) => void;
+    const pending = new Promise<{ ok: boolean }>((done) => {
+      resolve = done;
+    });
+    const model = { test: vi.fn(() => pending) };
+    const { result, unmount } = renderHook(() => useConnectorConnectionTests({ modelForKind: () => model }));
+    let first!: Promise<boolean>;
+    act(() => {
+      first = result.current.run(target, profile);
+    });
+    unmount();
+    await act(async () => {
+      resolve({ ok: true });
+      await first;
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

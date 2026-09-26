@@ -1,4 +1,5 @@
 export const asyncStateOwnerTests = {
+  "src/connectors/editor/use-connector-connection-tests.ts": ["src/connectors/editor/use-connector-connection-tests.component.test.tsx"],
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/App.tsx": ["src/App.component.test.tsx"],
   "src/components/app-shell.tsx": ["src/components/app-shell.component.test.tsx"],
@@ -75,10 +76,10 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/s3/presign-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/versions-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/use-s3-upload.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
-  "src/connectors/templates/ssh/bulk-command-dialog.jsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.jsx"],
+  "src/connectors/templates/ssh/bulk-command-dialog.tsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.tsx"],
   "src/connectors/templates/ssh/operations.jsx": ["src/connectors/templates/ssh/console.component.test.jsx"],
   "src/lib/api.js": ["src/lib/gateway-contracts/api-transport.component.test.jsx"],
-  "src/lib/request-guard.ts": ["src/lib/request-guard.test.js"],
+  "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.jsx"],
   "src/lib/load-project-options.ts": ["src/connectors/editor/use-connector-inventory.component.test.tsx"],
   "src/lib/use-connector-permissions.ts": ["src/lib/use-connector-permissions.component.test.jsx"],
