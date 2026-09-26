@@ -1,6 +1,6 @@
 export const asyncStateOwnerTests = {
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
-  "src/App.jsx": ["src/App.component.test.jsx"],
+  "src/App.tsx": ["src/App.component.test.tsx"],
   "src/components/app-shell.jsx": ["src/components/app-shell.component.test.jsx"],
   "src/components/console/use-connector-approval-dialog.ts": ["src/components/console/use-connector-approval-dialog.component.test.tsx"],
   "src/components/console/use-connector-token-permission-state.js": [

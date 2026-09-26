@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import type { DatabaseCatalogItem, DatabaseStatus } from "../lib/gateway-contracts/database-status-contract.ts";
 import { Notice } from "../components/ui/notice";
 import { appVersion } from "../lib/release";
 import { RemoteRestorePanel } from "./remote-restore-panel";
@@ -7,22 +9,34 @@ import { UnlockDatabasePanel } from "./unlock-database-panel";
 import { UnlockImportPanel } from "./unlock-import-panel";
 import { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation";
 
-function unlockTabsGridClass(tabCount) {
+type Database = Pick<DatabaseCatalogItem, "id" | "name" | "state">;
+type Tab = "unlock" | "create" | "import" | "remote";
+type LifecycleMutation = ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
+type Props = {
+  status: (Pick<DatabaseStatus, "state" | "database_id"> & { databases: Database[] }) | null;
+  onUnlocked: (_signal: AbortSignal) => void | Promise<unknown>;
+};
+type ActivePanelProps = {
+  activeTab: Tab; selectedDatabase: Database | null; unsupported: boolean; migrationRequired: boolean; hasDatabase: boolean;
+  onMigrationRequired: (_id: string) => void; onDeleted: (_id: string) => void; runLifecycleMutation: LifecycleMutation;
+};
+
+function unlockTabsGridClass(tabCount: number) {
   return tabCount === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3";
 }
 
-export function UnlockPage({ status, onUnlocked }) {
+export function UnlockPage({ status, onUnlocked }: Props) {
   const databases = useMemo(() => status?.databases || [], [status?.databases]);
   const firstDatabaseID = status?.database_id || databases[0]?.id || "default";
   const [selectedDatabaseID, setSelectedDatabaseID] = useState(firstDatabaseID);
   const selectedDatabase = databases.find((database) => database.id === selectedDatabaseID) || databases[0] || null;
   const hasDatabase = Boolean(selectedDatabase);
   const selectedUnsupported = selectedDatabase?.state === "unsupported_plaintext";
-  const [migrationRequiredIDs, setMigrationRequiredIDs] = useState({});
+  const [migrationRequiredIDs, setMigrationRequiredIDs] = useState<Record<string, boolean>>({});
   const selectedMigrationRequired = Boolean(selectedDatabase && migrationRequiredIDs[selectedDatabase.id]);
-  const [activeTab, setActiveTab] = useState(hasDatabase ? "unlock" : "create");
+  const [activeTab, setActiveTab] = useState<Tab>(hasDatabase ? "unlock" : "create");
   const [toast, setToast] = useState("");
-  const toastTimerRef = useRef(null);
+  const toastTimerRef = useRef<number | null>(null);
   const lifecycleMutation = useUnlockLifecycleMutation(onUnlocked);
   const statusSelectionKey = `${status?.database_id || ""}:${databases.map((database) => `${database.id}:${database.state || ""}`).join("|")}`;
   const appliedStatusSelectionRef = useRef(statusSelectionKey);
@@ -43,13 +57,13 @@ export function UnlockPage({ status, onUnlocked }) {
     [],
   );
 
-  const tabs = [
-    ...(hasDatabase ? [["unlock", "Unlock Database"]] : []),
+  const tabs: [Tab, string][] = [
+    ...(hasDatabase ? [["unlock", "Unlock Database"] satisfies [Tab, string]] : []),
     ["create", hasDatabase ? "New Database" : "Create Database"],
     ["import", "Import Database"],
     ["remote", "Restore Remote"],
   ];
-  function showToast(message) {
+  function showToast(message: string) {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     setToast(message);
     toastTimerRef.current = window.setTimeout(() => {
@@ -58,7 +72,7 @@ export function UnlockPage({ status, onUnlocked }) {
     }, 2400);
   }
 
-  function handleDeleted(databaseID) {
+  function handleDeleted(databaseID: string) {
     setMigrationRequiredIDs((current) => {
       const next = { ...current };
       delete next[databaseID];
@@ -99,8 +113,10 @@ export function UnlockPage({ status, onUnlocked }) {
   );
 }
 
-function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect }) {
-  if (databases.length === 0) return null;
+function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect }: {
+  databases: Database[]; selectedDatabase: Database | null; disabled: boolean; onSelect: (_id: string) => void;
+}) {
+  if (databases.length === 0 || !selectedDatabase) return null;
   return (
     <div className="grid gap-2">
       <label htmlFor="unlock-database" className="text-sm font-semibold text-stone-800">
@@ -123,7 +139,9 @@ function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect 
   );
 }
 
-function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }) {
+function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }: {
+  sessionRequired: boolean; unsupported: boolean; migrationRequired: boolean;
+}) {
   return (
     <>
       {sessionRequired ? (
@@ -144,7 +162,9 @@ function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }
   );
 }
 
-function UnlockTabs({ tabs, activeTab, disabled, onSelect }) {
+function UnlockTabs({ tabs, activeTab, disabled, onSelect }: {
+  tabs: [Tab, string][]; activeTab: Tab; disabled: boolean; onSelect: (_tab: Tab) => void;
+}) {
   return (
     <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>
       {tabs.map(([value, label], index) => (
@@ -173,7 +193,7 @@ function UnlockActivePanel({
   onMigrationRequired,
   onDeleted,
   runLifecycleMutation,
-}) {
+}: ActivePanelProps) {
   if (activeTab === "create") return <UnlockCreatePanel hasDatabase={hasDatabase} runLifecycleMutation={runLifecycleMutation} />;
   if (activeTab === "import") return <UnlockImportPanel runLifecycleMutation={runLifecycleMutation} />;
   if (activeTab === "remote") return <RemoteRestorePanel runLifecycleMutation={runLifecycleMutation} />;
@@ -190,7 +210,7 @@ function UnlockActivePanel({
   );
 }
 
-function Toast({ message }) {
+function Toast({ message }: { message: string }) {
   return (
     <div
       role="status"
@@ -202,7 +222,7 @@ function Toast({ message }) {
   );
 }
 
-export function UnlockShell({ title, children }) {
+export function UnlockShell({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <main className="grid min-h-screen place-items-center bg-stone-100 p-5 text-stone-950">
       <div className="grid w-full max-w-2xl gap-2">
