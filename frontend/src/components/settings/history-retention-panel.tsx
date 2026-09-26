@@ -1,35 +1,49 @@
 import { Clock3, RefreshCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
+import { retentionPurgeResponse, retentionSettingsResponse, type RetentionSettings } from "../../lib/gateway-contracts/retention-settings-contract";
+import { useRequestGuard } from "../../lib/request-guard";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 
-const defaultRetention = { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 };
+const defaultRetention: RetentionSettings = { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 };
+type RetentionResource = { state: "loading" | "ready" | "error"; data: RetentionSettings; error: string | null };
+const purgeOptions = [
+  ["history", 30, "Purge history older than 30 days"],
+  ["audit", 30, "Purge audit older than 30 days"],
+  ["console", 7, "Purge consoles older than 7 days"],
+  ["messages", 7, "Purge messages older than 7 days"],
+] as const;
 
 export function HistoryRetentionPanel() {
-  const [retention, setRetention] = useState({ state: "loading", data: defaultRetention, error: null });
+  const [retention, setRetention] = useState<RetentionResource>({ state: "loading", data: defaultRetention, error: null });
+  const requestGuard = useRequestGuard("retention-settings");
   const { actionState: saveState, runAction: runSave } = useAsyncAction();
   const { actionState: purgeState, runAction: runPurge } = useAsyncAction();
   const busy = saveState.state === "saving" || purgeState.state === "purging";
 
-  useEffect(() => {
-    void loadRetention();
-  }, []);
-
-  async function loadRetention() {
+  const loadRetention = useCallback(async () => {
+    const request = requestGuard.begin("settings");
     setRetention((current) => ({ ...current, state: "loading", error: null }));
     try {
-      const data = await apiGet("/api/settings/retention");
-      setRetention({ state: "ready", data, error: null });
+      const data = retentionSettingsResponse(await apiGet("/api/settings/retention", { signal: request.signal }));
+      if (request.isCurrent()) setRetention({ state: "ready", data, error: null });
     } catch (error) {
-      setRetention((current) => ({ ...current, state: "error", error: error.message }));
+      if (request.isCurrent()) setRetention((current) => ({ ...current, state: "error", error: errorMessage(error, "Unable to load retention settings.") }));
+    } finally {
+      request.complete();
     }
-  }
+  }, [requestGuard]);
 
-  function updateField(field, value) {
+  useEffect(() => {
+    void loadRetention();
+  }, [loadRetention]);
+
+  function updateField(field: keyof RetentionSettings, value: string) {
     if (retention.state !== "ready" || busy) return;
     const numeric = Number.parseInt(value, 10);
     setRetention((current) => ({
@@ -38,26 +52,31 @@ export function HistoryRetentionPanel() {
     }));
   }
 
-  async function saveRetention(event) {
+  async function saveRetention(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (retention.state !== "ready" || busy) return;
     await runSave({
       pending: "saving",
       successMessage: "Retention settings saved and cleanup ran.",
       action: async () => {
-        const data = await apiPut("/api/settings/retention", retention.data);
-        setRetention({ state: "ready", data, error: null });
+        const request = requestGuard.begin("settings");
+        try {
+          const data = retentionSettingsResponse(await apiPut("/api/settings/retention", retention.data));
+          if (request.isCurrent()) setRetention({ state: "ready", data, error: null });
+        } finally {
+          request.complete();
+        }
       },
     });
   }
 
-  async function purgeRetention(target, days) {
+  async function purgeRetention(target: (typeof purgeOptions)[number][0], days: number) {
     if (busy) return;
     if (!window.confirm(`Delete ${target} records older than ${days} days? This cannot be undone.`)) return;
     await runPurge({
       pending: "purging",
       successMessage: (data) => `Deleted ${data.deleted} ${target} records.`,
-      action: () => apiPost("/api/settings/retention/purge", { target, days }),
+      action: async () => retentionPurgeResponse(await apiPost("/api/settings/retention/purge", { target, days })),
     });
   }
 
@@ -120,12 +139,7 @@ export function HistoryRetentionPanel() {
               <p className="text-xs text-stone-500">Run a one-time purge without changing automatic retention settings.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {[
-                ["history", 30, "Purge history older than 30 days"],
-                ["audit", 30, "Purge audit older than 30 days"],
-                ["console", 7, "Purge consoles older than 7 days"],
-                ["messages", 7, "Purge messages older than 7 days"],
-              ].map(([target, days, label]) => (
+              {purgeOptions.map(([target, days, label]) => (
                 <Button type="button" variant="outline" onClick={() => purgeRetention(target, days)} disabled={busy} key={target}>
                   {label}
                 </Button>
@@ -140,7 +154,7 @@ export function HistoryRetentionPanel() {
   );
 }
 
-function RetentionField({ label, value, disabled, onChange }) {
+function RetentionField({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (_value: string) => void }) {
   return (
     <Field>
       {label}
