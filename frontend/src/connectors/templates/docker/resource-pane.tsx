@@ -5,6 +5,37 @@ import { connectorActionBusy } from "../_shared/action-state";
 import { DockerContainerConsolePanel } from "./container-console-panel";
 import { resourcePlaceholder, resourcePrimary, resourceSecondary, resourceSingular } from "./helpers";
 import { DockerResourceDetail, DockerResultView } from "./result-view";
+import type { ComponentProps, ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { DockerResource, DockerResourceKind } from "./resource-types";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
+
+type ConsoleProps = ComponentProps<typeof DockerContainerConsolePanel>;
+type DockerPaneClasses = Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input">;
+type DockerResourcePaneProps = Pick<ConsoleProps, "target" | "selectedRuntimeTarget" | "session" | "sessionLive" | "theme"> & {
+  children?: ReactNode;
+  resourceView: DockerResourceKind;
+  selectedResource: DockerResource | null;
+  selectedContainer: DockerResource | null;
+  containerRef: string;
+  viewMode: string;
+  result: ComponentProps<typeof DockerResultView>["item"] | null;
+  resultSearch: string;
+  tail: string | number;
+  state: { state: string; error?: string };
+  consolePending: boolean;
+  classes: DockerPaneClasses;
+  onTailChange: (_tail: string) => void;
+  onResultSearch: (_search: string) => void;
+  onReadLogs: () => unknown;
+  onInspect: () => unknown;
+  onOpenConsole: () => unknown;
+  onStartConsole: ConsoleProps["onStart"];
+  onEndConsole: ConsoleProps["onEnd"];
+  onLifecycle: (_action: "start_container" | "stop_container" | "restart_container") => unknown;
+};
+type HeaderProps = Pick<DockerResourcePaneProps, "resourceView" | "selectedResource" | "selectedContainer" | "viewMode" | "tail" | "state" | "classes" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { showingInspect: boolean };
+type ContentProps = Omit<DockerResourcePaneProps, "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { showingInspect: boolean };
 
 export function DockerResourcePane({
   children,
@@ -32,7 +63,7 @@ export function DockerResourcePane({
   onStartConsole,
   onEndConsole,
   onLifecycle,
-}) {
+}: DockerResourcePaneProps) {
   const showingInspect = viewMode === "inspect";
   return (
     <section
@@ -94,7 +125,7 @@ function DockerResourcePaneHeader({
   onInspect,
   onOpenConsole,
   onLifecycle,
-}) {
+}: HeaderProps) {
   return (
     <div>
       <div className={`border-b p-3 ${classes.border}`}>
@@ -151,7 +182,7 @@ function DockerContainerToolbar({
   onInspect,
   onOpenConsole,
   onLifecycle,
-}) {
+}: Pick<HeaderProps, "viewMode" | "showingInspect" | "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { disabled: boolean; inputClass: string }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <Button
@@ -189,7 +220,7 @@ function DockerContainerToolbar({
   );
 }
 
-function IconButton({ label, disabled, onClick, icon: Icon }) {
+function IconButton({ label, disabled, onClick, icon: Icon }: { label: string; disabled: boolean; onClick: ComponentProps<typeof Button>["onClick"]; icon: LucideIcon }) {
   return (
     <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={onClick} disabled={disabled} title={label}>
       <Icon className="h-3.5 w-3.5" />
@@ -218,7 +249,7 @@ function DockerResourcePaneContent({
   onResultSearch,
   onStartConsole,
   onEndConsole,
-}) {
+}: ContentProps) {
   let content;
   if (!selectedResource) {
     content = <EmptyPane classes={classes}>{resourcePlaceholder(resourceView)}</EmptyPane>;
@@ -256,7 +287,7 @@ function DockerResourcePaneContent({
       <EmptyPane classes={classes} fill>
         <span className="inline-flex items-center gap-2">
           <LoaderCircle className="h-4 w-4 animate-spin" />
-          Loading {showingInspect ? "inspect metadata" : "logs"} for {selectedContainer.name || selectedContainer.id}...
+          Loading {showingInspect ? "inspect metadata" : "logs"} for {selectedContainer?.name || selectedContainer?.id}...
         </span>
       </EmptyPane>
     );
@@ -269,7 +300,7 @@ function DockerResourcePaneContent({
   return <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">{content}</div>;
 }
 
-function EmptyPane({ children, classes, fill = false }) {
+function EmptyPane({ children, classes, fill = false }: { children: ReactNode; classes: Pick<DockerPaneClasses, "border" | "muted">; fill?: boolean }) {
   return (
     <div
       className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${fill ? "h-full min-h-0" : ""} ${classes.border} ${classes.muted}`}

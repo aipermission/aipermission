@@ -10,17 +10,33 @@ import {
   summarizeNetworks,
   summarizePorts,
 } from "./helpers";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import type { DockerResource, DockerResourceKind } from "./resource-types";
+import { dockerOutputRecord as record } from "./resource-output";
 
-export function DockerResultView({ item, search, onSearch, inputClass }) {
-  const output = item.output || {};
-  const isLogs = item.action_name === "container_logs" && output.logs;
+type DockerViewItem = Pick<ConnectorActionResponse, "action_name"> & Partial<Pick<ConnectorActionResponse, "output" | "display_text">>;
+type SearchProps = { search: string; onSearch: (_search: string) => void; inputClass: string };
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function visibleSummaryRows(rows: [string, unknown][]) {
+  return rows.filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+export function DockerResultView({ item, search, onSearch, inputClass }: SearchProps & { item: DockerViewItem }) {
+  const rawOutput = item.output || {};
+  const output = record(rawOutput);
+  const logs = textValue(output.logs);
+  const isLogs = item.action_name === "container_logs" && Boolean(logs);
   const isInspect = item.action_name === "inspect_container";
-  const text = isLogs ? formatDockerLogs(output.logs) : JSON.stringify(output, null, 2);
-  const copyValue = output.logs ? output.logs : JSON.stringify(output, null, 2);
+  const text = isLogs ? formatDockerLogs(logs) : JSON.stringify(rawOutput, null, 2);
+  const copyValue = logs || JSON.stringify(rawOutput, null, 2);
   const title = dockerResultTitle(item);
   const subtitle = dockerResultSubtitle(item, output);
   if (isInspect) {
-    const rawValue = JSON.stringify(output, null, 2);
+    const rawValue = JSON.stringify(rawOutput, null, 2);
     return (
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,450px)_minmax(0,1fr)] overflow-hidden">
         <ConnectorResultHeader title={title} subtitle={subtitle} />
@@ -61,40 +77,40 @@ export function DockerResultView({ item, search, onSearch, inputClass }) {
   );
 }
 
-function dockerResultTitle(item) {
+function dockerResultTitle(item: DockerViewItem) {
   if (item.action_name === "container_logs") return "Container logs";
   if (item.action_name === "inspect_container") return "Docker inspect metadata";
   return String(item.action_name || "Docker action").replaceAll("_", " ");
 }
 
-function dockerResultSubtitle(item, output) {
+function dockerResultSubtitle(item: DockerViewItem, output: Record<string, unknown>) {
   if (item.action_name === "container_logs") {
-    const container = output.container || {};
-    const name = container.name || container.id || "";
+    const container = record(output.container);
+    const name = textValue(container.name) || textValue(container.id);
     const tail = output.tail ? `tail ${output.tail}` : "";
     return [name, tail].filter(Boolean).join(" · ");
   }
   if (item.action_name === "inspect_container") {
-    const container = output.container || {};
-    return container.name || container.id || "";
+    const container = record(output.container);
+    return textValue(container.name) || textValue(container.id);
   }
   return item.display_text || "";
 }
 
-function DockerInspectSummary({ output }) {
-  const inspect = Array.isArray(output.inspect) ? output.inspect[0] || {} : {};
-  const container = output.container || {};
-  const state = inspect.State || {};
-  const config = inspect.Config || {};
-  const hostConfig = inspect.HostConfig || {};
-  const networkSettings = inspect.NetworkSettings || {};
-  const ports = summarizePorts(networkSettings.Ports);
-  const networks = summarizeNetworks(networkSettings.Networks);
+function DockerInspectSummary({ output }: { output: Record<string, unknown> }) {
+  const inspect = record(Array.isArray(output.inspect) ? output.inspect[0] : null);
+  const container = record(output.container);
+  const state = record(inspect.State);
+  const config = record(inspect.Config);
+  const hostConfig = record(inspect.HostConfig);
+  const networkSettings = record(inspect.NetworkSettings);
+  const ports = summarizePorts(record(networkSettings.Ports));
+  const networks = summarizeNetworks(record(networkSettings.Networks));
   const mounts = Array.isArray(inspect.Mounts) ? inspect.Mounts : [];
   const labels = config.Labels && typeof config.Labels === "object" ? config.Labels : {};
-  const health = state.Health || {};
-  const rows = [
-    ["Name", stripSlash(inspect.Name) || container.name],
+  const health = record(state.Health);
+  const rows: [string, unknown][] = [
+    ["Name", stripSlash(textValue(inspect.Name)) || container.name],
     ["Image", config.Image || container.image || inspect.Image],
     [
       "State",
@@ -119,17 +135,20 @@ function DockerInspectSummary({ output }) {
     [
       "Mounts",
       mounts
-        .map((mount) => `${mount.Type || "mount"} ${mount.Source || ""} -> ${mount.Destination || ""}`)
+        .map((value: unknown) => {
+          const mount = record(value);
+          return `${mount.Type || "mount"} ${mount.Source || ""} -> ${mount.Destination || ""}`;
+        })
         .filter(Boolean)
         .join("\n"),
     ],
     ["Labels", Object.keys(labels).length ? `${Object.keys(labels).length} labels` : ""],
-  ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+  ];
 
-  return <DarkSummaryGrid rows={rows.map(([label, value]) => ({ label, value }))} />;
+  return <DarkSummaryGrid rows={visibleSummaryRows(rows).map(([label, value]) => ({ label, value }))} />;
 }
 
-export function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass }) {
+export function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass }: SearchProps & { resourceView: DockerResourceKind; item: DockerResource }) {
   const rawValue = JSON.stringify(item || {}, null, 2);
   const rows = resourceDetailRows(resourceView, item);
   return (
@@ -149,9 +168,9 @@ export function DockerResourceDetail({ resourceView, item, search, onSearch, inp
   );
 }
 
-function resourceDetailRows(kind, item = {}) {
+function resourceDetailRows(kind: DockerResourceKind, item: DockerResource = {}): [string, unknown][] {
   if (kind === "images") {
-    return [
+    const rows: [string, unknown][] = [
       ["Repository", item.repository],
       ["Tag", item.tag],
       ["Image ID", item.id],
@@ -159,10 +178,11 @@ function resourceDetailRows(kind, item = {}) {
       ["Size", item.size],
       ["Created", item.created_since || item.created_at],
       ["Visible containers", item.containers ?? 0],
-    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+    ];
+    return visibleSummaryRows(rows);
   }
   if (kind === "networks") {
-    return [
+    const rows: [string, unknown][] = [
       ["Name", item.name],
       ["Network ID", item.id],
       ["Driver", item.driver],
@@ -171,17 +191,19 @@ function resourceDetailRows(kind, item = {}) {
       ["Internal", item.internal],
       ["Visible containers", item.containers ?? 0],
       ["Labels", item.labels],
-    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+    ];
+    return visibleSummaryRows(rows);
   }
   if (kind === "volumes") {
-    return [
+    const rows: [string, unknown][] = [
       ["Name", item.name],
       ["Driver", item.driver],
       ["Scope", item.scope],
       ["Mountpoint", item.mountpoint],
       ["Visible containers", item.containers ?? 0],
       ["Labels", item.labels],
-    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "");
+    ];
+    return visibleSummaryRows(rows);
   }
   return Object.entries(item).map(([key, value]) => [key, typeof value === "string" ? value : JSON.stringify(value)]);
 }

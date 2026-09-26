@@ -1,11 +1,30 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { dockerConsoleSessionName } from "./container-console-panel";
 import { resourceKey, resourceSearchValues } from "./helpers";
 import { useDockerLifecycle } from "./use-docker-lifecycle";
+import { dockerOutputResources } from "./resource-output";
+import type { DockerRunActionOptions } from "./action-types";
+import type { ConnectorActionResponse, ConnectorApproval, ConsoleSession } from "../../../lib/gateway-contracts/security-contracts";
+import type { DockerRuntimeTarget } from "./form-types";
+import type { DockerResource, DockerResourceKind } from "./resource-types";
 
-const emptyResources = Object.freeze({ images: [], networks: [], volumes: [] });
+export interface DockerBrowserProps {
+  target: Pick<DockerRuntimeTarget, "ref"> & Partial<DockerRuntimeTarget>;
+  approvals?: { data?: ConnectorApproval[] };
+  session?: Pick<ConsoleSession, "id" | "name"> | null;
+  selectedSessionLive?: boolean;
+  onNewLiveSession?: (_options: { name: string; params: { container: string }; closeExisting: boolean }) => unknown;
+  onSelectLiveSessionName?: (_name: string) => unknown;
+  onRefreshActivity?: () => unknown;
+}
+
+const emptyResources: Record<Exclude<DockerResourceKind, "containers">, DockerResource[]> = Object.freeze({
+  images: [],
+  networks: [],
+  volumes: [],
+});
 const resourceListActions = Object.freeze({ images: "list_images", networks: "list_networks", volumes: "list_volumes" });
 
 export function useDockerBrowser({
@@ -16,18 +35,17 @@ export function useDockerBrowser({
   onNewLiveSession,
   onSelectLiveSessionName,
   onRefreshActivity,
-}) {
-  const [resourceView, setResourceView] = useState("containers");
-  const [containers, setContainers] = useState([]);
+}: DockerBrowserProps) {
+  const [resourceView, setResourceView] = useState<DockerResourceKind>("containers");
+  const [containers, setContainers] = useState<DockerResource[]>([]);
   const [resources, setResources] = useState(emptyResources);
   const [selectedID, setSelectedID] = useState("");
   const [selectedResourceID, setSelectedResourceID] = useState("");
   const [filter, setFilter] = useState("");
-  const [tail, setTail] = useState(200);
+  const [tail, setTail] = useState<number | string>(200);
   const [viewMode, setViewMode] = useState("logs");
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState<ConnectorActionResponse | null>(null);
   const [resultSearch, setResultSearch] = useState("");
-  const [pendingConsoleName, setPendingConsoleName] = useState("");
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const requestGuard = useRequestGuard(target.ref);
 
@@ -36,9 +54,10 @@ export function useDockerBrowser({
     [approvals?.data, target.ref],
   );
   const selectedContainer = containers.find((container) => container.id === selectedID || container.name === selectedID) || null;
-  const selectedContainerRef = selectedContainer ? selectedContainer.name || selectedContainer.id : "";
+  const selectedContainerRef = selectedContainer ? selectedContainer.name || selectedContainer.id || "" : "";
   const expectedConsoleSessionName = selectedContainerRef ? dockerConsoleSessionName(target, selectedContainerRef) : "";
   const selectedContainerConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleSessionName);
+  const [pendingConsoleName, setPendingConsoleName] = usePendingConsoleName(selectedContainerConsoleLive);
   const activeResourceList = useMemo(
     () => (resourceView === "containers" ? containers : resources[resourceView] || []),
     [containers, resourceView, resources],
@@ -51,12 +70,14 @@ export function useDockerBrowser({
     () => filterDockerResources(resourceView, activeResourceList, filter),
     [activeResourceList, filter, resourceView],
   );
-  const lifecycle = useDockerLifecycle({ selectedContainer, runAction: runDockerAction, refreshContainers });
+  const lifecycle = useDockerLifecycle({ targetRef: target.ref, selectedContainer, runAction: runDockerAction, refreshContainers });
+  const activeResourceKind = useRef<DockerResourceKind>("containers");
   const refreshContainersForEffect = useEffectEvent(() => refreshContainers());
-  const refreshResourceForEffect = useEffectEvent((kind) => refreshResource(kind));
+  const refreshResourceForEffect = useEffectEvent((kind: DockerResourceKind) => refreshResource(kind));
   const resetLifecycleForEffect = useEffectEvent(() => lifecycle.resetLifecycle());
 
   useEffect(() => {
+    activeResourceKind.current = "containers";
     setResourceView("containers");
     setContainers([]);
     setResources(emptyResources);
@@ -66,9 +87,10 @@ export function useDockerBrowser({
     setViewMode("logs");
     setResult(null);
     setResultSearch("");
+    setPendingConsoleName("");
     setState({ state: "idle", error: "", message: "" });
     resetLifecycleForEffect();
-  }, [target.ref]);
+  }, [target.ref, setPendingConsoleName]);
 
   useEffect(() => {
     void refreshContainersForEffect();
@@ -79,17 +101,14 @@ export function useDockerBrowser({
     void refreshResourceForEffect(resourceView);
   }, [resourceView, target.ref]);
 
-  useEffect(() => {
-    if (pendingConsoleName && selectedContainerConsoleLive) setPendingConsoleName("");
-  }, [pendingConsoleName, selectedContainerConsoleLive]);
-
-  useEffect(() => {
-    if (!pendingConsoleName) return undefined;
-    const timeout = window.setTimeout(() => setPendingConsoleName(""), 15000);
-    return () => window.clearTimeout(timeout);
-  }, [pendingConsoleName]);
-
-  async function runDockerAction({ actionName, input = {}, reason, busy = "running", showResult = true, channel = actionName }) {
+  async function runDockerAction({
+    actionName,
+    input = {},
+    reason,
+    busy = "running",
+    showResult = true,
+    channel = actionName,
+  }: DockerRunActionOptions) {
     return runGuardedConnectorAction({
       requestGuard,
       channel,
@@ -109,39 +128,31 @@ export function useDockerBrowser({
   }
 
   async function refreshContainers() {
-    const item = await runDockerAction({
-      actionName: "list_containers",
-      input: { all: true },
-      reason: "manual Docker browser container list",
-      busy: "loading",
-      showResult: false,
-      channel: "list:containers",
-    });
-    if (!item) return;
-    const next = item.output?.containers || [];
-    setContainers(next);
-    setSelectedID((current) =>
-      current && next.some((container) => container.id === current || container.name === current) ? current : "",
-    );
+    await refreshResource("containers");
   }
 
   async function refreshResource(kind = resourceView) {
-    if (kind === "containers") {
-      await refreshContainers();
-      return;
-    }
     const item = await runDockerAction({
-      actionName: resourceListActions[kind],
-      input: {},
-      reason: `manual Docker browser ${kind} list`,
+      actionName: kind === "containers" ? "list_containers" : resourceListActions[kind],
+      input: kind === "containers" ? { all: true } : {},
+      reason: `manual Docker browser ${kind === "containers" ? "container" : kind} list`,
       busy: "loading",
       showResult: false,
       channel: `list:${kind}`,
     });
     if (!item) return;
-    const next = item.output?.[kind] || [];
+    const next = dockerOutputResources(item.output, kind);
+    if (kind === "containers") {
+      setContainers(next);
+      setSelectedID((current) =>
+        current && next.some((container) => container.id === current || container.name === current) ? current : "",
+      );
+      return;
+    }
     setResources((current) => ({ ...current, [kind]: next }));
-    setSelectedResourceID((current) => (current && next.some((entry) => resourceKey(kind, entry) === current) ? current : ""));
+    if (activeResourceKind.current === kind) {
+      setSelectedResourceID((current) => (current && next.some((entry) => resourceKey(kind, entry) === current) ? current : ""));
+    }
   }
 
   async function readLogs(container = selectedContainer) {
@@ -166,6 +177,7 @@ export function useDockerBrowser({
 
   async function startContainerConsole() {
     if (!selectedContainerRef) return;
+    const request = requestGuard.begin("console");
     setPendingConsoleName(expectedConsoleSessionName);
     onSelectLiveSessionName?.(expectedConsoleSessionName);
     try {
@@ -175,17 +187,20 @@ export function useDockerBrowser({
         closeExisting: false,
       });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setPendingConsoleName("");
       throw error;
+    } finally {
+      request.complete();
     }
   }
 
-  function selectResource(kind, item) {
+  function selectResource(kind: DockerResourceKind, item: DockerResource) {
     if (kind === "containers") {
       selectContainer(item);
       return;
     }
-    const key = resourceKey(kind, item);
+    const key = resourceKey(kind, item) || "";
     if (selectedResourceID === key) {
       setSelectedResourceID("");
       return;
@@ -194,13 +209,13 @@ export function useDockerBrowser({
     clearResult();
   }
 
-  function selectContainer(container) {
+  function selectContainer(container: DockerResource) {
     if (selectedContainer && (selectedContainer.id === container.id || selectedContainer.name === container.name)) {
       setSelectedID("");
       clearResult();
       return;
     }
-    setSelectedID(container.id || container.name);
+    setSelectedID(container.id || container.name || "");
     clearResult();
     if (viewMode === "inspect") {
       void inspectContainer(container);
@@ -211,8 +226,9 @@ export function useDockerBrowser({
     }
   }
 
-  function switchResourceView(kind) {
+  function switchResourceView(kind: DockerResourceKind) {
     if (resourceView === kind) return;
+    activeResourceKind.current = kind;
     setResourceView(kind);
     setFilter("");
     clearResult();
@@ -258,7 +274,7 @@ export function useDockerBrowser({
     state,
     latestAction: activeItems[0] || null,
     selectedContainerConsoleLive,
-    consolePending: pendingConsoleName === expectedConsoleSessionName,
+    consolePending: Boolean(pendingConsoleName && pendingConsoleName === expectedConsoleSessionName),
     confirmDialog: lifecycle.confirmDialog,
     closeConfirmDialog: lifecycle.closeConfirmDialog,
     refreshResource,
@@ -273,7 +289,20 @@ export function useDockerBrowser({
   };
 }
 
-export function filterDockerResources(resourceView, items, filter) {
+function usePendingConsoleName(live: boolean) {
+  const [name, setName] = useState("");
+  useEffect(() => {
+    if (name && live) setName("");
+  }, [name, live]);
+  useEffect(() => {
+    if (!name) return;
+    const timeout = window.setTimeout(() => setName(""), 15000);
+    return () => window.clearTimeout(timeout);
+  }, [name]);
+  return [name, setName] as const;
+}
+
+export function filterDockerResources(resourceView: DockerResourceKind, items: DockerResource[], filter: string) {
   const query = String(filter || "")
     .trim()
     .toLowerCase();
