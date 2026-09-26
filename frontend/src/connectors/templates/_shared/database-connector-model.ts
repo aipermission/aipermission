@@ -1,7 +1,9 @@
 import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts.ts";
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
+import { connectorCredentialRows } from "./target-profile-lifecycle.ts";
 import type { DatabaseCredentialForm } from "./database-form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 import type {
   CredentialFormArguments,
   DatabaseCredentialRow,
@@ -68,6 +70,11 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     if (next.connection_mode === "direct") next.transport_target_ref = "";
     if (next.connection_mode === "over_ssh" && !next.host) next.host = "127.0.0.1";
     return next;
+  }
+
+  function syncEditorForm({ form }: { form: DatabaseModelForm<Fields> }): DatabaseModelForm<Fields> {
+    const next = syncForm({ form });
+    return { ...form, host: next.host ?? form.host, transport_target_ref: next.transport_target_ref ?? form.transport_target_ref };
   }
 
   function submitDisabled({ state }: { state: { state: string } }): boolean {
@@ -159,26 +166,18 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
   }
 
-  function credentialRows({ targets }: { targets: DatabaseTarget[] }) {
-    return targets.flatMap((target) =>
-      (target.profiles || [])
-        .filter(() => target.connector_kind === kind)
-        .map((profile) => ({
-          row_id: `${target.connector_kind}:${target.id}:${profile.id}`,
-          connector_kind: target.connector_kind,
-          resource_kind: "credential_profile",
-          connector_label: label,
-          id: profile.id,
-          target_id: target.id,
-          name: profile.label,
-          kind: profile.kind,
-          profile,
-          target_label: target.name,
-          target_detail: targetEndpoint({ target }),
-          metadata: credentialMetadata(profile),
-          delete_disabled: "",
-        })),
-    );
+  function credentialRows<Profile extends DatabaseProfile, Target extends DatabaseTarget & { profiles?: Profile[] }>({
+    targets,
+  }: {
+    targets: Target[];
+  }) {
+    return connectorCredentialRows<Profile, Target, string[]>({
+      targets,
+      connectorKind: kind,
+      connectorLabel: label,
+      targetEndpoint,
+      credentialMetadata,
+    });
   }
 
   async function test({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
@@ -260,6 +259,7 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     formFromTarget,
     activeCredential,
     syncForm,
+    syncEditorForm,
     submitDisabled,
     submitLabel,
     save,
@@ -285,7 +285,7 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
   };
 }
 
-function databaseDeleteDialog(label: string, target?: DatabaseTarget | null) {
+function databaseDeleteDialog(label: string, target?: DatabaseTarget | null): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: `Remove this ${label} connector target, credential profiles, and token action permissions from aipermission.`,

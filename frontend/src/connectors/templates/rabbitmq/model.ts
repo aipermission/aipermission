@@ -92,8 +92,12 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; name
   return usernameCredentialStateFromRow(row);
 }
 
-export function credentialRows({ targets }: { targets: RabbitMQTarget[] }) {
-  return connectorCredentialRows({
+export function credentialRows<Profile extends RabbitMQProfile, Target extends RabbitMQTarget & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string[]>({
     targets,
     connectorKind: "rabbitmq",
     connectorLabel: "RabbitMQ",

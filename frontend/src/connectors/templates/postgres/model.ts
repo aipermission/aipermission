@@ -1,5 +1,6 @@
 import { createDatabaseConnectorModel } from "../_shared/database-connector-model";
 import type { DatabaseProfile } from "../_shared/database-model-types";
+import { optionalConsoleText } from "../_shared/console-target-config";
 
 const kind = "postgres";
 const defaultPort = 5432;
@@ -102,7 +103,8 @@ export function credentialDeleteDialog({
   const publicMetadata = row.profile.public || {};
   const target = targets.find((item) => Number(item.id) === Number(row.target_id));
   const adminProfile = target?.profiles?.find((profile) => Number(profile.id) === Number(publicMetadata.managed_admin_profile_id));
-  const roleName = publicMetadata.managed_role_name || publicMetadata.username || row.name;
+  const roleName =
+    optionalConsoleText(publicMetadata.managed_role_name, "Postgres", "managed_role_name") || publicMetadata.username || row.name;
   const adminRole = adminProfile?.public?.username || "the managed credential's admin role";
   return {
     title: `Delete managed role ${roleName}`,

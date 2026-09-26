@@ -106,8 +106,18 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; prof
   return { form: { target_id: String(row.target_id || ""), ...credentialFormFromProfile(row.profile) } };
 }
 
-export function credentialRows({ targets }: { targets: MailTarget[] }) {
-  return connectorCredentialRows({ targets, connectorKind: "mail", connectorLabel: "Mail", targetEndpoint, credentialMetadata });
+export function credentialRows<Profile extends MailProfile, Target extends MailTarget & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string[]>({
+    targets,
+    connectorKind: "mail",
+    connectorLabel: "Mail",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 
 export function canEdit() {

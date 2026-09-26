@@ -127,6 +127,18 @@ it("keeps deletion scoped to the selected target and profile", async () => {
   expect(apiDelete).toHaveBeenLastCalledWith("/api/connector-targets/4");
 });
 
+it("preserves native profile types and independent runtime IDs in display rows", () => {
+  const nativeTarget = {
+    ...target,
+    profiles: [{ id: 77, label: "Selected", kind: "identity", runtime_id: 91, public: { username: "reader", managed: true } }],
+  };
+  const rows = model().credentialRows<(typeof nativeTarget.profiles)[number], typeof nativeTarget>({ targets: [nativeTarget] });
+  expectTypeOf(rows[0].profile.runtime_id).toEqualTypeOf<number>();
+  expectTypeOf(rows[0].profile.public.managed).toEqualTypeOf<boolean>();
+  expect(rows[0]).toMatchObject({ id: 77, target_id: 4, profile: { runtime_id: 91 } });
+  expect(rows[0].profile).toBe(nativeTarget.profiles[0]);
+});
+
 it("widens normalized transport fields without erasing unrelated form types", () => {
   const connector = model();
   const direct = connector.syncForm({
@@ -138,6 +150,14 @@ it("widens normalized transport fields without erasing unrelated form types", ()
   const tunneled = connector.syncForm({ form: { connector_kind: "database", connection_mode: "over_ssh", host: "" as const } });
   expectTypeOf(tunneled.host).toEqualTypeOf<string | undefined>();
   expect(tunneled.host).toBe("127.0.0.1");
+  const complete = connector.syncEditorForm({ form: { ...connector.emptyForm(), connection_mode: "over_ssh", host: "" } });
+  expectTypeOf(complete).toEqualTypeOf<ReturnType<typeof connector.emptyForm>>();
+  expectTypeOf(complete.host).toEqualTypeOf<string>();
+  expectTypeOf(complete.transport_target_ref).toEqualTypeOf<string>();
+  type LiteralDefaults = DatabaseTargetDefaults & { host: ""; transport_target_ref: "" };
+  expectTypeOf<DatabaseModelForm<LiteralDefaults>["host"]>().toEqualTypeOf<string>();
+  expectTypeOf<DatabaseModelForm<LiteralDefaults>["transport_target_ref"]>().toEqualTypeOf<string>();
+  expect(complete.host).toBe("127.0.0.1");
 });
 
 it("types connector-specific credential and target serializers independently", async () => {
