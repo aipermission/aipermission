@@ -9,8 +9,12 @@ import { APIError } from "../../../lib/errors";
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
 
 function deferred<T = void>() {
-  let resolve: (_value: T) => void = () => { throw new Error("Deferred promise was not initialized."); };
-  let reject: (_error: Error) => void = () => { throw new Error("Deferred promise was not initialized."); };
+  let resolve: (_value: T) => void = () => {
+    throw new Error("Deferred promise was not initialized.");
+  };
+  let reject: (_error: Error) => void = () => {
+    throw new Error("Deferred promise was not initialized.");
+  };
   const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
@@ -18,7 +22,9 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-beforeEach(() => { vi.mocked(apiPost).mockReset(); });
+beforeEach(() => {
+  vi.mocked(apiPost).mockReset();
+});
 
 it("does not let an old activity refresh failure replace a newer target result", async () => {
   const oldRefresh = deferred();
@@ -30,7 +36,13 @@ it("does not let an old activity refresh failure replace a newer target result",
     onRefreshActivity: vi.fn(() => refreshes.shift()?.()),
     onResolution: vi.fn(),
   };
-  vi.mocked(apiPost).mockImplementation(async (_path, payload) => connectorActionFixture({ target_ref: connectorActionRequest(payload).target_ref, action_name: connectorActionRequest(payload).action_name, output: {} }));
+  vi.mocked(apiPost).mockImplementation(async (_path, payload) =>
+    connectorActionFixture({
+      target_ref: connectorActionRequest(payload).target_ref,
+      action_name: connectorActionRequest(payload).action_name,
+      output: {},
+    }),
+  );
   const { result, rerender } = renderHook((value) => useMailActionRunner(value), { initialProps: props });
 
   await act(async () => result.current.runMailAction("send_message", {}, "first send"));
@@ -67,7 +79,9 @@ it("discards a delayed response after the same target starts a different session
   const props = { target: { ref: "mail:1:1" }, scopeKey: "session-a", onRefreshActivity: vi.fn(), onResolution: vi.fn() };
   const { result, rerender } = renderHook((value) => useMailActionRunner(value), { initialProps: props });
   let request: ReturnType<typeof result.current.runMailAction> | undefined;
-  act(() => { request = result.current.runMailAction("get_message", {}, "read"); });
+  act(() => {
+    request = result.current.runMailAction("get_message", {}, "read");
+  });
   rerender({ ...props, scopeKey: "session-b" });
   await act(async () => {
     pending.resolve(connectorActionFixture({ target_ref: props.target.ref, action_name: "get_message" }));
@@ -83,26 +97,44 @@ it("ignores a delayed rejection after unmount without refreshing activity", asyn
   const pending = deferred<ReturnType<typeof connectorActionFixture>>();
   vi.mocked(apiPost).mockReturnValue(pending.promise);
   const onRefreshActivity = vi.fn();
-  const { result, unmount } = renderHook(() => useMailActionRunner({ target: { ref: "mail:1:1" }, scopeKey: "session-a", onRefreshActivity }));
+  const { result, unmount } = renderHook(() =>
+    useMailActionRunner({ target: { ref: "mail:1:1" }, scopeKey: "session-a", onRefreshActivity }),
+  );
   let request: ReturnType<typeof result.current.runMailAction> | undefined;
-  act(() => { request = result.current.runMailAction("get_message", {}, "read"); });
+  act(() => {
+    request = result.current.runMailAction("get_message", {}, "read");
+  });
   unmount();
-  await act(async () => { pending.reject(new Error("delayed failure")); expect(await request).toBeNull(); });
+  await act(async () => {
+    pending.reject(new Error("delayed failure"));
+    expect(await request).toBeNull();
+  });
   expect(onRefreshActivity).not.toHaveBeenCalled();
 });
 
 it("preserves unknown SMTP metadata and the original transport error identity", async () => {
-  const response = connectorActionFixture({ target_ref: "mail:1:1", action_name: "send_message", status: "outcome_unknown", error: "SMTP result unknown", output: { submission_status: "submission_unknown", message_id: "test-message" } });
+  const response = connectorActionFixture({
+    target_ref: "mail:1:1",
+    action_name: "send_message",
+    status: "outcome_unknown",
+    error: "SMTP result unknown",
+    output: { submission_status: "submission_unknown", message_id: "test-message" },
+  });
   vi.mocked(apiPost).mockResolvedValue(response);
   const { result } = renderHook(() => useMailActionRunner({ target: { ref: "mail:1:1" }, scopeKey: "session-a" }));
   await act(async () => {
-    await expect(result.current.runMailAction("send_message", {}, "send")).rejects.toMatchObject({ actionItem: response, actionResult: { item: response } });
+    await expect(result.current.runMailAction("send_message", {}, "send")).rejects.toMatchObject({
+      actionItem: response,
+      actionResult: { item: response },
+    });
   });
   expect(result.current.resultDialog).toMatchObject({ open: true, item: response });
   expect(result.current.state).toMatchObject({ state: "error", error: "SMTP result unknown" });
   const failure = new APIError("Transport rejected", { status: 409, code: "test-error", data: { detail: "preserved" } });
   vi.mocked(apiPost).mockRejectedValue(failure);
-  await act(async () => { await expect(result.current.runMailAction("send_message", {}, "send")).rejects.toBe(failure); });
+  await act(async () => {
+    await expect(result.current.runMailAction("send_message", {}, "send")).rejects.toBe(failure);
+  });
   expect(failure).not.toBeInstanceOf(MailActionFailure);
   expect(failure).toMatchObject({ status: 409, code: "test-error", data: { detail: "preserved" } });
 });

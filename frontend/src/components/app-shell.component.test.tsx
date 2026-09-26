@@ -12,7 +12,14 @@ type FixtureState = {
   console: ReturnType<typeof consoleState> | null;
   vault: ReturnType<typeof vaultState> | null;
 };
-const state = vi.hoisted<FixtureState>(() => ({ pathname: "/console", resources: null, database: null, transfers: null, console: null, vault: null }));
+const state = vi.hoisted<FixtureState>(() => ({
+  pathname: "/console",
+  resources: null,
+  database: null,
+  transfers: null,
+  console: null,
+  vault: null,
+}));
 
 vi.mock("react-router", () => ({
   useLocation: () => ({ pathname: state.pathname }),

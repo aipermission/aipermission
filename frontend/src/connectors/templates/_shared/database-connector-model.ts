@@ -2,9 +2,21 @@ import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/
 import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
 import type { DatabaseCredentialForm } from "./database-form-types";
-import type { CredentialFormArguments, DatabaseCredentialRow, DatabaseModelConfig, DatabaseModelForm, DatabaseProfile, DatabaseTarget, DatabaseTargetDefaults, DatabaseTransportForm, SyncedDatabaseForm } from "./database-model-types";
+import type {
+  CredentialFormArguments,
+  DatabaseCredentialRow,
+  DatabaseModelConfig,
+  DatabaseModelForm,
+  DatabaseProfile,
+  DatabaseTarget,
+  DatabaseTargetDefaults,
+  DatabaseTransportForm,
+  SyncedDatabaseForm,
+} from "./database-model-types";
 
-export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaults, Credential extends DatabaseCredentialForm>(config: DatabaseModelConfig<Fields, Credential>) {
+export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaults, Credential extends DatabaseCredentialForm>(
+  config: DatabaseModelConfig<Fields, Credential>,
+) {
   const {
     kind,
     label,
@@ -67,7 +79,15 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     return mode === "edit" ? "Save changes" : "Create connector";
   }
 
-  async function save({ mode, form, target }: { mode: string; form: DatabaseModelForm<Fields>; target?: DatabaseTarget | null }): Promise<void> {
+  async function save({
+    mode,
+    form,
+    target,
+  }: {
+    mode: string;
+    form: DatabaseModelForm<Fields>;
+    target?: DatabaseTarget | null;
+  }): Promise<void> {
     if (mode === "edit") {
       await updateTarget(form, target);
       return;
@@ -105,11 +125,20 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
       targets,
       state,
       onChange: (form: Credential) => setFormState({ form }),
-      onSubmit: (event: Parameters<CredentialFormArguments<Credential>["onSubmit"]>[0]) => onSubmit(event, formMode === "edit" ? "update" : "create"),
+      onSubmit: (event: Parameters<CredentialFormArguments<Credential>["onSubmit"]>[0]) =>
+        onSubmit(event, formMode === "edit" ? "update" : "create"),
     };
   }
 
-  async function saveCredential({ operation, row, formState }: { operation: string; row?: DatabaseCredentialRow | null; formState: { form: Credential } }) {
+  async function saveCredential({
+    operation,
+    row,
+    formState,
+  }: {
+    operation: string;
+    row?: DatabaseCredentialRow | null;
+    formState: { form: Credential };
+  }) {
     const form = formState.form;
     if (operation === "create") {
       await apiPost(`/api/connector-targets/${form.target_id}/profiles`, profilePayload(form, null, true, credentialPublic(form)));
@@ -117,7 +146,10 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     }
     if (operation === "update") {
       if (!row) throw new Error(`${label} credential is not loaded.`);
-      await apiPut(`/api/connector-targets/${form.target_id}/profiles/${row.id}`, profilePayload(form, row.profile ?? null, false, credentialPublic(form)));
+      await apiPut(
+        `/api/connector-targets/${form.target_id}/profiles/${row.id}`,
+        profilePayload(form, row.profile ?? null, false, credentialPublic(form)),
+      );
       return { message: `${label} credential updated.` };
     }
     throw new Error(`Unsupported ${label} credential operation.`);
@@ -152,7 +184,9 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
   async function test({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
     const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
     if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-    const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {}));
+    const data = connectorConnectionTestResponse(
+      await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {}),
+    );
     return { ok: data.ok, error: data.message || null, data };
   }
 
@@ -170,19 +204,7 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
   }
 
   function deleteDialog({ target }: { target?: DatabaseTarget | null }) {
-    return {
-      title: target ? `Delete ${target.name}` : "Delete connector",
-      description: `Remove this ${label} connector target, credential profiles, and token action permissions from aipermission.`,
-      details: [
-        { label: "Connector", value: target?.name },
-        { label: "Reference", value: target ? `${target.connector_kind}:${target.id}` : "" },
-      ],
-      notice: `This removes the connector target and its credential profiles. It does not change the external ${label} service.`,
-      actions: [
-        { label: "Cancel", action: "close", variant: "outline" },
-        { label: "Delete connector", pendingLabel: "Deleting...", removeKey: false },
-      ],
-    };
+    return databaseDeleteDialog(label, target);
   }
 
   async function createTarget(form: DatabaseModelForm<Fields>): Promise<void> {
@@ -207,7 +229,12 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     });
   }
 
-  function profilePayload(form: Pick<DatabaseCredentialForm, "username" | "password" | "profile_label" | "risk_label">, profile: DatabaseProfile | null, creating: boolean, publicMetadata: Record<string, unknown>) {
+  function profilePayload(
+    form: Pick<DatabaseCredentialForm, "username" | "password" | "profile_label" | "risk_label">,
+    profile: DatabaseProfile | null,
+    creating: boolean,
+    publicMetadata: Record<string, unknown>,
+  ) {
     const payload: {
       kind: string;
       label: string;
@@ -255,6 +282,22 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     recoverableRunningActions: () => [],
     deleteDialog,
     operationFromError: () => null,
+  };
+}
+
+function databaseDeleteDialog(label: string, target?: DatabaseTarget | null) {
+  return {
+    title: target ? `Delete ${target.name}` : "Delete connector",
+    description: `Remove this ${label} connector target, credential profiles, and token action permissions from aipermission.`,
+    details: [
+      { label: "Connector", value: target?.name },
+      { label: "Reference", value: target ? `${target.connector_kind}:${target.id}` : "" },
+    ],
+    notice: `This removes the connector target and its credential profiles. It does not change the external ${label} service.`,
+    actions: [
+      { label: "Cancel", action: "close", variant: "outline" },
+      { label: "Delete connector", pendingLabel: "Deleting...", removeKey: false },
+    ],
   };
 }
 

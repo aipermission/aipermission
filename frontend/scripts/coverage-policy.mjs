@@ -43,8 +43,11 @@ export function coveragePolicyWeakening(base, current) {
         value === typedManifestPattern &&
         accepted.has(oldManifestPattern) &&
         !current.excludedPatterns.includes(oldManifestPattern);
-      const migratedCatalog = name === "excludedNames" && value === "mcp-client-catalog.ts" &&
-        accepted.has("mcp-client-catalog.js") && !current.excludedNames.includes("mcp-client-catalog.js");
+      const migratedCatalog =
+        name === "excludedNames" &&
+        value === "mcp-client-catalog.ts" &&
+        accepted.has("mcp-client-catalog.js") &&
+        !current.excludedNames.includes("mcp-client-catalog.js");
       if (!accepted.has(value) && !migratedManifest && !migratedCatalog) failures.push(`${name} added unreviewed exclusion ${value}`);
     }
   }

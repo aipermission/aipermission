@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ConsoleTargetSidebar, ConsoleStatusDot, consoleTargetRows, defaultConsoleTargetRef, groupConsoleTargetsByProject } from "./console-target-sidebar";
+import {
+  ConsoleTargetSidebar,
+  ConsoleStatusDot,
+  consoleTargetRows,
+  defaultConsoleTargetRef,
+  groupConsoleTargetsByProject,
+} from "./console-target-sidebar";
 import type { ComponentProps } from "react";
 import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
 
@@ -41,17 +47,44 @@ describe("console target navigation", () => {
   });
 });
 
-const target: GatewayTarget = { ...admin, target_name: "Database", profile_kind: "fixture", profile_label: "Admin",
-  project_slug: "my-project", status: "active", created_at: "2026-09-26", updated_at: "2026-09-26" };
+const target: GatewayTarget = {
+  ...admin,
+  target_name: "Database",
+  profile_kind: "fixture",
+  profile_label: "Admin",
+  project_slug: "my-project",
+  status: "active",
+  created_at: "2026-09-26",
+  updated_at: "2026-09-26",
+};
 
 function renderSidebar(overrides: Partial<ComponentProps<typeof ConsoleTargetSidebar>> = {}) {
   const onSelect = vi.fn();
   const onCompactChange = vi.fn();
-  render(<ConsoleTargetSidebar compact={false} onCompactChange={onCompactChange} targetRows={[target]} search="" onSearch={vi.fn()}
-    groups={groupConsoleTargetsByProject([target])} collapsedProjects={{}} onToggleProject={vi.fn()} targetItems={[target]}
-    liveConsoleTargets={{ data: [] }} sessions={[]} selectedTarget={target} pendingConnectorApprovals={[]}
-    connectorActionApprovals={{ data: [] }} unreadMessages={[]} onSelect={onSelect} targetsState="ready" targetsError={null}
-    filteredTargetCount={1} {...overrides} />);
+  render(
+    <ConsoleTargetSidebar
+      compact={false}
+      onCompactChange={onCompactChange}
+      targetRows={[target]}
+      search=""
+      onSearch={vi.fn()}
+      groups={groupConsoleTargetsByProject([target])}
+      collapsedProjects={{}}
+      onToggleProject={vi.fn()}
+      targetItems={[target]}
+      liveConsoleTargets={{ data: [] }}
+      sessions={[]}
+      selectedTarget={target}
+      pendingConnectorApprovals={[]}
+      connectorActionApprovals={{ data: [] }}
+      unreadMessages={[]}
+      onSelect={onSelect}
+      targetsState="ready"
+      targetsError={null}
+      filteredTargetCount={1}
+      {...overrides}
+    />,
+  );
   return { onSelect, onCompactChange };
 }
 

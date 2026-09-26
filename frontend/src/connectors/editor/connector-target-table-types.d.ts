@@ -12,7 +12,10 @@ export type TargetRowActionsProps = {
   onUnderConstruction: (_label: string) => void;
 };
 type TargetContext = {
-  target: InventoryTarget; profile: InventoryProfile | null; runtime?: GatewayTarget; credentials?: CredentialResource[];
+  target: InventoryTarget;
+  profile: InventoryProfile | null;
+  runtime?: GatewayTarget;
+  credentials?: CredentialResource[];
 };
 export type TargetTableTemplate = {
   model: {

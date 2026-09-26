@@ -142,7 +142,9 @@ describe("useConnectorApprovalDialog", () => {
 
   it("reloads and disables a decline decision whose context became stale", async () => {
     const declineApproval = vi.fn().mockRejectedValue(new APIError("Approval changed.", { code: "approval_not_pending" }));
-    vi.mocked(apiGet).mockResolvedValueOnce(approval(7)).mockResolvedValueOnce({ ...approval(7), status: "stale", approval_context_hash: undefined });
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce(approval(7))
+      .mockResolvedValueOnce({ ...approval(7), status: "stale", approval_context_hash: undefined });
     const { result } = renderDialog({ approvals: [approval(7)], declineApproval });
     await act(async () => {});
 
@@ -244,25 +246,30 @@ describe("useConnectorApprovalDialog", () => {
     expect(result.current.action).toMatchObject({ state: "failed", error: expect.stringContaining("do not retry") });
   });
 
-  it.each(["approve", "decline"] as const)("does not let an earlier %s completion clear a newer decision on the same target", async (decision) => {
-    const mutation = deferred<ConnectorApproval>();
-    vi.mocked(apiGet).mockResolvedValueOnce(approval(7)).mockResolvedValueOnce(approval(8));
-    const { result } = renderDialog({
-      approvals: [approval(7), approval(8)],
-      runApproval: vi.fn(() => mutation.promise),
-      declineApproval: vi.fn(() => mutation.promise),
-    });
-    await act(async () => {});
-    let pending: Promise<void> | undefined;
-    act(() => { pending = result.current[decision](); });
-    await act(async () => result.current.open(approval(8)));
-    act(() => result.current.setNote("For the newer decision"));
-    await act(async () => mutation.resolve({ ...approval(7), status: "completed" }));
-    await pending;
-    expect(result.current.activeApproval?.id).toBe(8);
-    expect(result.current.note).toBe("For the newer decision");
-    expect(result.current.action.state).toBe("idle");
-  });
+  it.each(["approve", "decline"] as const)(
+    "does not let an earlier %s completion clear a newer decision on the same target",
+    async (decision) => {
+      const mutation = deferred<ConnectorApproval>();
+      vi.mocked(apiGet).mockResolvedValueOnce(approval(7)).mockResolvedValueOnce(approval(8));
+      const { result } = renderDialog({
+        approvals: [approval(7), approval(8)],
+        runApproval: vi.fn(() => mutation.promise),
+        declineApproval: vi.fn(() => mutation.promise),
+      });
+      await act(async () => {});
+      let pending: Promise<void> | undefined;
+      act(() => {
+        pending = result.current[decision]();
+      });
+      await act(async () => result.current.open(approval(8)));
+      act(() => result.current.setNote("For the newer decision"));
+      await act(async () => mutation.resolve({ ...approval(7), status: "completed" }));
+      await pending;
+      expect(result.current.activeApproval?.id).toBe(8);
+      expect(result.current.note).toBe("For the newer decision");
+      expect(result.current.action.state).toBe("idle");
+    },
+  );
 });
 
 it("shows a fetched terminal approval and ignores decisions after the dialog closes", async () => {

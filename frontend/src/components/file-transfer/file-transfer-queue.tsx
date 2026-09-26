@@ -35,7 +35,12 @@ type QueueListProps = {
   onMove: (_id: QueueItem["id"], _direction: number) => void;
 };
 
-export function QueueSummary({ batch, queue, mode, progress }: Pick<QueueListProps, "batch" | "queue" | "mode"> & { progress: { percent: number } }) {
+export function QueueSummary({
+  batch,
+  queue,
+  mode,
+  progress,
+}: Pick<QueueListProps, "batch" | "queue" | "mode"> & { progress: { percent: number } }) {
   const totalSize = batch ? batch.size_bytes : queue.reduce((sum, item) => sum + Number(item.size || 0), 0);
   const totalItems = batch ? batch.total_items : queue.length;
   return (
@@ -111,7 +116,19 @@ export function QueueList({ mode, queue, batch, active, canEditPausedBatch, onRe
   );
 }
 
-function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, canMoveUp, canMoveDown, mode, onRemove, onMove }: Omit<QueueListProps, "batch" | "queue"> & {
+function QueueRow({
+  item,
+  index,
+  total,
+  active,
+  batchMode,
+  canEditPausedBatch,
+  canMoveUp,
+  canMoveDown,
+  mode,
+  onRemove,
+  onMove,
+}: Omit<QueueListProps, "batch" | "queue"> & {
   item: QueueItem;
   index: number;
   total: number;

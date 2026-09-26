@@ -13,16 +13,34 @@ const activeStatuses = new Set(["pending_approval", "pending", "running", "pause
 
 type Control = (_batchID: number) => unknown | Promise<unknown>;
 type Actions = {
-  onPause?: Control; onResume?: Control; onCancel?: Control;
+  onPause?: Control;
+  onResume?: Control;
+  onCancel?: Control;
   onApprove?: (_batchID: number, _itemIDs: number[], _note: string) => unknown | Promise<unknown>;
   onDecline?: (_batchID: number, _note: string) => unknown | Promise<unknown>;
 };
 type Props = Actions & {
-  open: boolean; batches: FileTransferListBatch[]; state: string; error?: string | null;
-  onClose?: () => void; onRefresh?: () => unknown | Promise<unknown>;
+  open: boolean;
+  batches: FileTransferListBatch[];
+  state: string;
+  error?: string | null;
+  onClose?: () => void;
+  onRefresh?: () => unknown | Promise<unknown>;
 };
 
-export function TransferCenter({ open, batches, state, error, onClose, onRefresh, onPause, onResume, onCancel, onApprove, onDecline }: Props) {
+export function TransferCenter({
+  open,
+  batches,
+  state,
+  error,
+  onClose,
+  onRefresh,
+  onPause,
+  onResume,
+  onCancel,
+  onApprove,
+  onDecline,
+}: Props) {
   const active = batches.filter((batch) => activeStatuses.has(batch.status));
   const recent = batches.filter((batch) => !activeStatuses.has(batch.status)).slice(0, 8);
 
@@ -83,8 +101,17 @@ export function TransferCenter({ open, batches, state, error, onClose, onRefresh
   );
 }
 
-function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel, onApprove, onDecline }: Actions & {
-  batch: FileTransferListBatch; compact?: boolean;
+function TransferBatchCard({
+  batch,
+  compact = false,
+  onPause,
+  onResume,
+  onCancel,
+  onApprove,
+  onDecline,
+}: Actions & {
+  batch: FileTransferListBatch;
+  compact?: boolean;
 }) {
   const progress = transferProgress(batch);
   const active = activeStatuses.has(batch.status);

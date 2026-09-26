@@ -5,7 +5,9 @@ import { apiPost } from "../../lib/api";
 import { PasswordSettingsPanel } from "./password-settings-panel";
 
 vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
-beforeEach(() => { vi.mocked(apiPost).mockReset(); });
+beforeEach(() => {
+  vi.mocked(apiPost).mockReset();
+});
 
 function fillForm(password = "NewDatabasePass123") {
   fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "OldDatabasePass123" } });
@@ -32,7 +34,11 @@ it("posts the three fields once and clears them only after success", async () =>
   render(<PasswordSettingsPanel />);
   fillForm();
   await userEvent.click(screen.getByRole("button", { name: "Change password" }));
-  expect(apiPost).toHaveBeenCalledWith("/api/databases/change-password", { current_password: "OldDatabasePass123", new_password: "NewDatabasePass123", confirm_password: "NewDatabasePass123" });
+  expect(apiPost).toHaveBeenCalledWith("/api/databases/change-password", {
+    current_password: "OldDatabasePass123",
+    new_password: "NewDatabasePass123",
+    confirm_password: "NewDatabasePass123",
+  });
   expect(await screen.findByText(/Database password changed/)).toBeInTheDocument();
   expect(screen.getByLabelText("Current password")).toHaveValue("");
   expect(screen.getByLabelText("New password")).toHaveValue("");

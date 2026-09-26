@@ -3,7 +3,13 @@ import { Button } from "../ui/button";
 import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
 
 type Request = Pick<ConnectorApproval, "created_at" | "token_name" | "input"> & { action_name?: string; command?: string; source?: string };
-type Props = { request: Request; now: number; theme: string; action: { state: string; error?: string | null }; onRestart: () => void | Promise<unknown> };
+type Props = {
+  request: Request;
+  now: number;
+  theme: string;
+  action: { state: string; error?: string | null };
+  onRestart: () => void | Promise<unknown>;
+};
 
 export function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }: Props) {
   const ageMs = Math.max(0, now - parseTimestamp(request.created_at));

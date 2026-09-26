@@ -218,7 +218,9 @@ it("reuses the upload idempotency key when a response is lost", async () => {
   expect(await screen.findByTestId("status")).toHaveTextContent("running");
 
   expect(apiPostForm).toHaveBeenCalledTimes(2);
-  expect(vi.mocked(apiPostForm).mock.calls[1][1].get("idempotency_key")).toBe(vi.mocked(apiPostForm).mock.calls[0][1].get("idempotency_key"));
+  expect(vi.mocked(apiPostForm).mock.calls[1][1].get("idempotency_key")).toBe(
+    vi.mocked(apiPostForm).mock.calls[0][1].get("idempotency_key"),
+  );
 });
 
 it("ignores upload completion after the dialog batch is reset", async () => {
@@ -259,7 +261,9 @@ it("keeps the latest transition when an older transition completes last", async 
   const user = userEvent.setup();
   const paused = deferred();
   vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
-  vi.mocked(apiPost).mockReturnValueOnce(paused.promise).mockResolvedValueOnce({ id: 12, status: "canceled", direction: "upload", items: [] });
+  vi.mocked(apiPost)
+    .mockReturnValueOnce(paused.promise)
+    .mockResolvedValueOnce({ id: 12, status: "canceled", direction: "upload", items: [] });
   render(<BatchHarness />);
   await user.click(screen.getByRole("button", { name: "Start" }));
 

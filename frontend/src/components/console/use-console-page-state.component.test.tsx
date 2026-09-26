@@ -56,31 +56,55 @@ describe("useConsolePageState", () => {
   });
 
   it("does not choose any runtime or unread default when no targets are available", () => {
-    const { result } = renderHook(() => useConsolePageState({
-      liveConsoleTargets: { data: [] }, messages: { data: [message(1, 11)] }, sessions: [], selectedRuntimeID: "",
-    }));
+    const { result } = renderHook(() =>
+      useConsolePageState({
+        liveConsoleTargets: { data: [] },
+        messages: { data: [message(1, 11)] },
+        sessions: [],
+        selectedRuntimeID: "",
+      }),
+    );
     expect(result.current.selectedRuntimeTarget).toBeNull();
     expect(result.current.selectedUnreadMessages).toEqual([]);
     expect(result.current.defaultRuntimeID).toBe("");
   });
 
   it("uses the first available target when fallback is allowed and ignores unread notes for missing runtimes", () => {
-    const { result } = renderHook(() => useConsolePageState({
-      liveConsoleTargets: targets, messages: { data: [message(1, 99)] }, sessions: [], selectedRuntimeID: "missing",
-    }));
+    const { result } = renderHook(() =>
+      useConsolePageState({
+        liveConsoleTargets: targets,
+        messages: { data: [message(1, 99)] },
+        sessions: [],
+        selectedRuntimeID: "missing",
+      }),
+    );
     expect(result.current.selectedRuntimeTarget?.id).toBe(11);
     expect(result.current.selectedSession.status).toBe("idle");
     expect(result.current.defaultRuntimeID).toBe("11");
   });
 
   it("respects an empty explicit selection when automatic target fallback is disabled", () => {
-    const { result } = renderHook(() => useConsolePageState({
-      liveConsoleTargets: targets, messages: { data: [] }, sessions: [], selectedRuntimeID: "", allowTargetFallback: false,
-    }));
+    const { result } = renderHook(() =>
+      useConsolePageState({
+        liveConsoleTargets: targets,
+        messages: { data: [] },
+        sessions: [],
+        selectedRuntimeID: "",
+        allowTargetFallback: false,
+      }),
+    );
     expect(result.current.selectedRuntimeTarget).toBeNull();
   });
 });
 
 function message(id: number, runtimeID: number): RuntimeMessage {
-  return { id, runtime_id: runtimeID, token_id: 1, direction: "ai_to_user", consumed_at: null, message: "A note", created_at: "2026-09-26" };
+  return {
+    id,
+    runtime_id: runtimeID,
+    token_id: 1,
+    direction: "ai_to_user",
+    consumed_at: null,
+    message: "A note",
+    created_at: "2026-09-26",
+  };
 }

@@ -8,7 +8,8 @@ import type { ComponentProps } from "react";
 vi.mock("../../lib/api", () => ({ apiDownload: vi.fn() }));
 const apiDownload = vi.mocked(realDownload);
 function downloadSignal(options: unknown): AbortSignal {
-  if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal)) throw new Error("Missing download signal");
+  if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal))
+    throw new Error("Missing download signal");
   return options.signal;
 }
 
@@ -103,7 +104,9 @@ describe("history outcome uncertainty", () => {
   });
 
   it("does not render non-text guidance from decoded JSON", () => {
-    expect(retryPolicyGuidance({ retry_policy_json: JSON.stringify({ guidance: { command: "not-display-text" } }) })).toMatch(/Inspect the target state/);
+    expect(retryPolicyGuidance({ retry_policy_json: JSON.stringify({ guidance: { command: "not-display-text" } }) })).toMatch(
+      /Inspect the target state/,
+    );
   });
 
   it("shows persisted retry guidance after a failed precondition", () => {

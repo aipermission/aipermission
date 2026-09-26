@@ -14,7 +14,13 @@ const connectorIcons: Readonly<Record<string, LucideIcon>> = Object.freeze({
   server: Server,
 });
 
-export function ConnectorKindCell({ target, catalog }: { target: { connector_kind: string; id: string | number }; catalog: { data: readonly { kind: string; label?: string }[] } }) {
+export function ConnectorKindCell({
+  target,
+  catalog,
+}: {
+  target: { connector_kind: string; id: string | number };
+  catalog: { data: readonly { kind: string; label?: string }[] };
+}) {
   return (
     <td className="px-4 py-4">
       <div className="flex min-w-0 items-center gap-2">

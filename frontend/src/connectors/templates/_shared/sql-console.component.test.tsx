@@ -31,7 +31,9 @@ const props: SQLConsoleProps & { theme: "dark" } = {
 };
 
 beforeEach(() => {
-  vi.mocked(apiPost).mockReset().mockResolvedValue({ status: "completed", output: { rows: [] } });
+  vi.mocked(apiPost)
+    .mockReset()
+    .mockResolvedValue({ status: "completed", output: { rows: [] } });
 });
 
 it("keeps inactive sessions behind a start placeholder without fetching metadata", async () => {
@@ -48,12 +50,19 @@ it("keeps inactive sessions behind a start placeholder without fetching metadata
 
 it("filters session requests and switches between raw input/output and full-width rows", async () => {
   const user = userEvent.setup();
-  render(<SQLConnectorConsole {...props} approvals={{ data: [
-    item,
-    { ...item, id: 8, created_at: "2025-12-31T12:00:00Z", reason: "Archived request" },
-    { ...item, id: 9, target_ref: "sql:2:2", reason: "Other target" },
-    { ...item, id: 10, reason: "load SQL console autocomplete" },
-  ] }} />);
+  render(
+    <SQLConnectorConsole
+      {...props}
+      approvals={{
+        data: [
+          item,
+          { ...item, id: 8, created_at: "2025-12-31T12:00:00Z", reason: "Archived request" },
+          { ...item, id: 9, target_ref: "sql:2:2", reason: "Other target" },
+          { ...item, id: 10, reason: "load SQL console autocomplete" },
+        ],
+      }}
+    />,
+  );
 
   await waitFor(() => expect(apiPost).toHaveBeenCalledOnce());
   await user.click(screen.getByRole("tab", { name: "Requests" }));

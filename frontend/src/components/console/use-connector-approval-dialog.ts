@@ -200,7 +200,8 @@ function connectorOutcomeUnknown(error: unknown, approval: ConnectorApproval) {
   if (!("status" in data) || !("request_id" in data) || !("error" in data) || !("assistant_hint" in data)) return null;
   if (
     data?.status !== "outcome_unknown" ||
-    typeof data.request_id !== "number" || !Number.isSafeInteger(data.request_id) ||
+    typeof data.request_id !== "number" ||
+    !Number.isSafeInteger(data.request_id) ||
     Number(data.request_id) !== Number(approval.id) ||
     typeof data.error !== "string" ||
     typeof data.assistant_hint !== "string"

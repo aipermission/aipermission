@@ -10,9 +10,15 @@ describe("Project list contract", () => {
   });
 
   it.each([
-    null, [], {}, { items: {} }, { items: [{ ...project, id: "1" }] },
-    { items: [{ ...project, id: 0 }] }, { items: [{ ...project, name: {} }] },
-    { items: [{ ...project, slug: "" }] }, { items: [{ ...project, target_count: -1 }] },
+    null,
+    [],
+    {},
+    { items: {} },
+    { items: [{ ...project, id: "1" }] },
+    { items: [{ ...project, id: 0 }] },
+    { items: [{ ...project, name: {} }] },
+    { items: [{ ...project, slug: "" }] },
+    { items: [{ ...project, target_count: -1 }] },
     { items: [{ ...project, target_count: 0.5 }] },
   ])("rejects malformed list data (%j)", (value) => {
     expect(() => projectListResponse(value)).toThrow("Invalid project list response.");

@@ -1,7 +1,13 @@
 import { expect, it } from "vitest";
 import { redactionRulesResponse, securitySettingsResponse } from "./security-settings-contract";
 
-const settings = { reusable_tokens: false, expose_mcp_server_metadata: true, mcp_start_enabled: false, redaction_mode: "basic", revision: "settings-1" };
+const settings = {
+  reusable_tokens: false,
+  expose_mcp_server_metadata: true,
+  mcp_start_enabled: false,
+  redaction_mode: "basic",
+  revision: "settings-1",
+};
 
 it("preserves the validated security revision and rejects missing fields", () => {
   expect(securitySettingsResponse(settings)).toBe(settings);
@@ -13,7 +19,14 @@ it("preserves the validated security revision and rejects missing fields", () =>
   }
 });
 
-it.each([null, [], "settings", { ...settings, revision: " " }, { ...settings, redaction_mode: "unknown" }, { ...settings, reusable_tokens: 1 }])("rejects malformed settings without coercing security controls", (value) => {
+it.each([
+  null,
+  [],
+  "settings",
+  { ...settings, revision: " " },
+  { ...settings, redaction_mode: "unknown" },
+  { ...settings, reusable_tokens: 1 },
+])("rejects malformed settings without coercing security controls", (value) => {
   expect(() => securitySettingsResponse(value)).toThrow("Security settings response is invalid.");
 });
 
@@ -29,6 +42,13 @@ it("validates rule identity and every editable field while preserving metadata",
   }
 });
 
-it.each([null, {}, [null], [[]], [{ id: 0, name: "rule", pattern: "test", enabled: true }], [{ id: 1, name: "rule", pattern: "test", enabled: 1 }]])("rejects malformed redaction rules", (value) => {
+it.each([
+  null,
+  {},
+  [null],
+  [[]],
+  [{ id: 0, name: "rule", pattern: "test", enabled: true }],
+  [{ id: 1, name: "rule", pattern: "test", enabled: 1 }],
+])("rejects malformed redaction rules", (value) => {
   expect(() => redactionRulesResponse(value)).toThrow(/Redaction rules? response is invalid/);
 });

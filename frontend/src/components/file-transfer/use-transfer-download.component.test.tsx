@@ -54,7 +54,9 @@ beforeEach(() => {
 it("owns completed download notices and allows retry after picker cancellation", async () => {
   const user = userEvent.setup();
   const onNotice = vi.fn();
-  downloadMock.mockResolvedValueOnce({ saved: false, method: "picker", canceled: true }).mockResolvedValueOnce({ saved: true, method: "picker" });
+  downloadMock
+    .mockResolvedValueOnce({ saved: false, method: "picker", canceled: true })
+    .mockResolvedValueOnce({ saved: true, method: "picker" });
   render(<DownloadHarness onNotice={onNotice} />);
 
   await waitFor(() =>

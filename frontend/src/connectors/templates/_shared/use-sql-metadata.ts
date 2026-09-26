@@ -27,11 +27,22 @@ type MetadataProps = {
 };
 const emptyMetadata: SQLMetadataState = { state: "idle", tables: [], error: "", truncated: false };
 
-export function useSQLMetadata({ activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef }: MetadataProps): SQLMetadataState {
+export function useSQLMetadata({
+  activeSession,
+  connector,
+  onRefreshActivity,
+  requestGuard,
+  sql,
+  targetRef,
+}: MetadataProps): SQLMetadataState {
   const [metadata, setMetadata] = useState(emptyMetadata);
   const metadataRowsRef = useRef<SQLMetadataRow[]>([]);
   const columnRequestsRef = useRef(new Set<string>());
-  const refreshActivity = useEffectEvent(() => Promise.resolve().then(() => onRefreshActivity?.()).catch(() => undefined));
+  const refreshActivity = useEffectEvent(() =>
+    Promise.resolve()
+      .then(() => onRefreshActivity?.())
+      .catch(() => undefined),
+  );
 
   useEffect(() => {
     columnRequestsRef.current = new Set<string>();

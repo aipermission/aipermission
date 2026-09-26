@@ -57,7 +57,11 @@ export function writeStoredConnectorProfileID(target: Target | null, tokenID: To
   writeLocalPreference(connectorProfileStorageKey(target, tokenID), String(profileID));
 }
 
-export function currentConnectorTargetProfilePermissions<Item extends Permission>(permissions: Item[], target: Target | null, profileID: number | string): Item[] {
+export function currentConnectorTargetProfilePermissions<Item extends Permission>(
+  permissions: Item[],
+  target: Target | null,
+  profileID: number | string,
+): Item[] {
   if (!target) return [];
   return permissions.filter((permission) => matchesConnectorTargetProfile(permission, target, profileID));
 }
@@ -84,7 +88,11 @@ export function matchesConnectorTargetProfileAction(
   return matchesConnectorTargetProfile(permission, target, profileID) && permission.action_name === actionName;
 }
 
-export function connectorTargetProfileLifetime(permissions: Permission[], target: Target | null, profileID: number | string): Permission | null {
+export function connectorTargetProfileLifetime(
+  permissions: Permission[],
+  target: Target | null,
+  profileID: number | string,
+): Permission | null {
   const active = currentConnectorTargetProfilePermissions(permissions, target, profileID).filter((permission) => {
     const rule = effectiveRule(permission);
     return rule && rule !== "blocked";

@@ -2,12 +2,8 @@ export type ProvisionForm = { role_name: string; profile_label: string; preset: 
 export type TableSelection = { selected: boolean; all_columns: boolean; columns: Record<string, boolean> };
 export type SchemaSelection = { selected: boolean; all_tables: boolean; tables: Record<string, TableSelection> };
 export type ScopeSelection = { all_schemas: boolean; schemas: Record<string, SchemaSelection> };
-export type ProvisionTable = { table: string } & (
-  { all_columns: true } | { all_columns: false; columns: string[] }
-);
-export type ProvisionSchema = { schema: string } & (
-  { all_tables: true } | { all_tables: false; tables: ProvisionTable[] }
-);
+export type ProvisionTable = { table: string } & ({ all_columns: true } | { all_columns: false; columns: string[] });
+export type ProvisionSchema = { schema: string } & ({ all_tables: true } | { all_tables: false; tables: ProvisionTable[] });
 export type ProvisionScope = { all_schemas: true } | { all_schemas: false; schemas: ProvisionSchema[] };
 export type MetadataTable = { name: string; columns: string[] };
 export type MetadataSchema = { name: string; tables: MetadataTable[] };

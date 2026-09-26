@@ -73,7 +73,8 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       }
       closeAfterSuccess();
     } catch (error) {
-      const submissionUnknown = error instanceof MailActionFailure ? readMailSubmissionUnknown(error.actionItem.output, draftFingerprint) : null;
+      const submissionUnknown =
+        error instanceof MailActionFailure ? readMailSubmissionUnknown(error.actionItem.output, draftFingerprint) : null;
       if (submissionUnknown) {
         setCompose((current) => ({
           ...current,
@@ -91,7 +92,13 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       return;
     }
     const submissionUnknown = readMailSubmissionUnknown(resolution.item.output, context.draftFingerprint || "");
-    setCompose({ open: true, reply: Boolean(context.reply), messageRef: context.messageRef, form: context.fields || {}, submissionUnknown });
+    setCompose({
+      open: true,
+      reply: Boolean(context.reply),
+      messageRef: context.messageRef,
+      form: context.fields || {},
+      submissionUnknown,
+    });
   }
 
   function closeAfterSuccess() {

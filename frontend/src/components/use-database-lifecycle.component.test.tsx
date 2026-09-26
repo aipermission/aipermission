@@ -35,12 +35,17 @@ describe("useDatabaseLifecycle", () => {
   });
 
   it("retains the last verified catalog when a later response is malformed", async () => {
-    vi.mocked(apiGet).mockResolvedValueOnce({ database_id: "one", databases: catalog(true, false) })
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce({ database_id: "one", databases: catalog(true, false) })
       .mockResolvedValueOnce({ database_id: "other", databases: [{ id: "other", unlocked: "yes" }] });
     const { result, disconnectAllConsoleSessions } = renderLifecycle();
     await act(async () => result.current.loadStatus());
     await act(async () => result.current.loadStatus());
-    expect(result.current.status).toMatchObject({ state: "error", data: { database_id: "one", databases: catalog(true, false) }, error: "Invalid database catalog response." });
+    expect(result.current.status).toMatchObject({
+      state: "error",
+      data: { database_id: "one", databases: catalog(true, false) },
+      error: "Invalid database catalog response.",
+    });
     expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
   });
 
@@ -140,5 +145,8 @@ describe("useDatabaseLifecycle", () => {
 });
 
 function catalog(first: boolean, second: boolean) {
-  return [{ id: "one", name: "One", unlocked: first }, { id: "two", name: "Two", unlocked: second }];
+  return [
+    { id: "one", name: "One", unlocked: first },
+    { id: "two", name: "Two", unlocked: second },
+  ];
 }

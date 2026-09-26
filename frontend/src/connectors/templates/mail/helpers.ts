@@ -81,7 +81,10 @@ export function submissionDraftFingerprint(fields?: MailDraftFields | null) {
   return JSON.stringify(normalized);
 }
 
-export function unknownSubmissionRetryDecision(submissionUnknown: { fingerprint: string } | null | undefined, fields?: MailDraftFields | null) {
+export function unknownSubmissionRetryDecision(
+  submissionUnknown: { fingerprint: string } | null | undefined,
+  fields?: MailDraftFields | null,
+) {
   if (!submissionUnknown) return { required: false, changed: false };
   return {
     required: true,
@@ -117,7 +120,10 @@ function validateMessageContent(fields: MailDraftFields | null | undefined, repl
   return "";
 }
 
-export function mailActionResolution<Item extends { id?: number | string; status?: string }>(items: Item[] | null | undefined, requestID?: number | string | null) {
+export function mailActionResolution<Item extends { id?: number | string; status?: string }>(
+  items: Item[] | null | undefined,
+  requestID?: number | string | null,
+) {
   if (!requestID) return null;
   const item = (Array.isArray(items) ? items : []).find((candidate) => Number(candidate?.id) === Number(requestID));
   if (!item) return null;

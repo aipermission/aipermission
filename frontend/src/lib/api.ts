@@ -11,7 +11,15 @@ import { assertConnectorActionResponse } from "./gateway-contracts/connector-act
 import { scopedUICookieName } from "./ui-cookie.ts";
 import { readBufferedDownload } from "./downloads/download-buffer.ts";
 import { nativeSaveFilePicker, objectRecord } from "./api-types.ts";
-import type { APIOptions, DownloadOptions, DownloadResult, NativeFileWriter, NativeSaveHandle, PostPolicy, PreparedPost } from "./api-types";
+import type {
+  APIOptions,
+  DownloadOptions,
+  DownloadResult,
+  NativeFileWriter,
+  NativeSaveHandle,
+  PostPolicy,
+  PreparedPost,
+} from "./api-types";
 import type { PreparedRetry } from "./local-action-retry/records";
 
 const viteEnv = import.meta.env || {};
@@ -146,7 +154,8 @@ function isAcknowledgedBackupUploadResponse(value: unknown) {
   return (
     data !== null &&
     typeof data === "object" &&
-    typeof data.id === "number" && Number.isSafeInteger(data.id) &&
+    typeof data.id === "number" &&
+    Number.isSafeInteger(data.id) &&
     data.id > 0 &&
     typeof data.provider_file_id === "string" &&
     data.provider_file_id.length > 0
@@ -158,7 +167,8 @@ function isAcknowledgedBulkCommandResponse(value: unknown) {
   return (
     data !== null &&
     typeof data === "object" &&
-    typeof data.parallelism === "number" && Number.isSafeInteger(data.parallelism) &&
+    typeof data.parallelism === "number" &&
+    Number.isSafeInteger(data.parallelism) &&
     data.parallelism > 0 &&
     Array.isArray(data.items) &&
     data.items.length > 0 &&
@@ -296,12 +306,19 @@ async function readResponse(response: Response, options: { captureWorkspace?: bo
     if (response.status === 401 && failure?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
     }
-    throw new APIError(typeof failure?.error === "string" && failure.error ? failure.error : parseError instanceof Error ? parseError.message : `Request failed with ${response.status}`, {
-      status: response.status,
-      code: typeof failure?.code === "string" ? failure.code : typeof failure?.status === "string" ? failure.status : "",
-      details: failure?.details || null,
-      data,
-    });
+    throw new APIError(
+      typeof failure?.error === "string" && failure.error
+        ? failure.error
+        : parseError instanceof Error
+          ? parseError.message
+          : `Request failed with ${response.status}`,
+      {
+        status: response.status,
+        code: typeof failure?.code === "string" ? failure.code : typeof failure?.status === "string" ? failure.status : "",
+        details: failure?.details || null,
+        data,
+      },
+    );
   }
   const data = parseResponseBody(text);
   if (options.captureWorkspace !== false) captureWorkspaceBinding(response);
@@ -337,7 +354,8 @@ function browserOrigin() {
 }
 
 function boundedReadSignal(parent: AbortSignal | undefined, timeoutMs: number | undefined) {
-  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return { signal: parent, timedOut: () => false, cleanup: () => {} };
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
+    return { signal: parent, timedOut: () => false, cleanup: () => {} };
   const controller = new AbortController();
   let timeoutReached = false;
   const abortFromParent = () => controller.abort(parent?.reason);

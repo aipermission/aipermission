@@ -381,7 +381,6 @@ function TokenStats({ stats, filter, onFilter }: { stats: TokenStatistics; filte
   );
 }
 
-
 function connectorGrantSummary(permissions: TokenActionPermission[]) {
   const active = permissions.filter((permission) => Boolean(effectiveRule(permission)));
   const kinds = [...new Set(active.map((permission) => permission.connector_kind).filter(Boolean))].sort();
@@ -438,7 +437,6 @@ function TokenStat({
     </button>
   );
 }
-
 
 function formatDate(value?: string) {
   if (!value) return "-";

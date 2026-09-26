@@ -8,12 +8,25 @@ import { Button } from "../ui/button";
 import { Checkbox, Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { parseBackupKeepLatest } from "./backup-state";
-import { backupStorageResponse, backupRetentionPolicyResponse, backupRetentionPreviewResponse, backupRetentionUpdateResponse, type BackupStorage, type BackupRetentionPolicy, type BackupRetentionPreview } from "./backup-retention-contracts";
+import {
+  backupStorageResponse,
+  backupRetentionPolicyResponse,
+  backupRetentionPreviewResponse,
+  backupRetentionUpdateResponse,
+  type BackupStorage,
+  type BackupRetentionPolicy,
+  type BackupRetentionPreview,
+} from "./backup-retention-contracts";
 
 const defaultKeepLatest = 10;
 
 type RetentionForm = { enabled: boolean; keepLatest: string; applyNow: boolean };
-type RetentionState = { status: "loading" | "ready" | "error"; storage: BackupStorage | null; policy: BackupRetentionPolicy | null; error: string };
+type RetentionState = {
+  status: "loading" | "ready" | "error";
+  storage: BackupStorage | null;
+  policy: BackupRetentionPolicy | null;
+  error: string;
+};
 type RetentionProps = { provider: { id: number }; onRecordsChanged?: () => void | Promise<void>; onBusyChange?: (_busy: boolean) => void };
 
 export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange }: RetentionProps) {
@@ -87,7 +100,9 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
     const request = requestGuard.begin("mutation");
     setAction({ status: "previewing", error: "", message: "" });
     try {
-      const result = backupRetentionPreviewResponse(await apiPost(`/api/backup/providers/${provider.id}/retention/preview`, { keep_latest: keepLatest }));
+      const result = backupRetentionPreviewResponse(
+        await apiPost(`/api/backup/providers/${provider.id}/retention/preview`, { keep_latest: keepLatest }),
+      );
       if (!request.isCurrent()) return;
       setPreview(result);
       setAction({ status: "idle", error: "", message: "" });
@@ -105,11 +120,13 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
     const request = requestGuard.begin("mutation");
     setAction({ status: "saving", error: "", message: "" });
     try {
-      const result = backupRetentionUpdateResponse(await apiPut(`/api/backup/providers/${provider.id}/retention`, {
-        enabled: form.enabled,
-        keep_latest: form.enabled ? keepLatest : 0,
-        apply_now: form.enabled && form.applyNow,
-      }));
+      const result = backupRetentionUpdateResponse(
+        await apiPut(`/api/backup/providers/${provider.id}/retention`, {
+          enabled: form.enabled,
+          keep_latest: form.enabled ? keepLatest : 0,
+          apply_now: form.enabled && form.applyNow,
+        }),
+      );
       if (!request.isCurrent()) return;
       const deletedCount = Number(result.deleted_count || 0);
       setState((current) => ({ ...current, policy: result.policy }));

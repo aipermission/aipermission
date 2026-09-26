@@ -82,7 +82,8 @@ export function useConsoleMessages({
     const request = requests.begin("mark-read");
     void markRuntimeMessagesRead(Number(runtimeID))
       .catch((error) => {
-        if (request.isCurrent()) setState((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not mark messages read.") }));
+        if (request.isCurrent())
+          setState((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not mark messages read.") }));
       })
       .finally(request.complete);
   }, [markRuntimeMessagesRead, requests, runtimeID, selectedUnreadMessages.length]);
@@ -105,7 +106,7 @@ export function useConsoleMessages({
           {
             token_id: Number(tokenID),
             runtime_id: Number(runtimeID),
-            session_id: selectedSessionLive ? selectedSession.id ?? null : null,
+            session_id: selectedSessionLive ? (selectedSession.id ?? null) : null,
             direction: "user_to_ai",
             message: text,
           },

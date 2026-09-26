@@ -24,11 +24,18 @@ const browserActions = new Set(["list_folders", "search_messages", "get_message"
 export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution }: MailActionRunnerProps) {
   const [state, setState] = useState<MailRunnerState>({ state: "idle", error: "", message: "" });
   const [pendingActions, setPendingActions] = useState<Record<number, MailPendingAction>>({});
-  const [resultDialog, setResultDialog] = useState<MailActionResult & { open: boolean }>({ open: false, actionName: "", summary: "", item: null });
+  const [resultDialog, setResultDialog] = useState<MailActionResult & { open: boolean }>({
+    open: false,
+    actionName: "",
+    summary: "",
+    item: null,
+  });
   const requestGeneration = useRef(0);
   const currentScope = useRef(scopeKey);
   const requests = useRequestGuard(`mail-actions:${scopeKey}`);
-  const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution) => onResolution?.(pending, resolution));
+  const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution) =>
+    onResolution?.(pending, resolution),
+  );
   const reconcileForEffect = useEffectEvent(async (pending: MailPendingAction, resolution: MailActionResolution) => {
     const { actionName, generation, scope } = pending;
     const { item } = resolution;
@@ -61,7 +68,9 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
   useEffect(() => {
     const resolved = Object.values(pendingActions)
       .map((pending) => ({ pending, resolution: mailActionResolution(activeItems, pending.requestID) }))
-      .filter((value): value is { pending: MailPendingAction; resolution: MailActionResolution } => Boolean(value.resolution && value.resolution.state !== "pending"));
+      .filter((value): value is { pending: MailPendingAction; resolution: MailActionResolution } =>
+        Boolean(value.resolution && value.resolution.state !== "pending"),
+      );
     if (resolved.length === 0) return;
     setPendingActions((current) => {
       const next = { ...current };
@@ -87,7 +96,13 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     }
   }
 
-  async function runMailAction(actionName: string, input: Record<string, unknown>, reason: string, busyState = "running", pendingContext: MailPendingContext = {}) {
+  async function runMailAction(
+    actionName: string,
+    input: Record<string, unknown>,
+    reason: string,
+    busyState = "running",
+    pendingContext: MailPendingContext = {},
+  ) {
     const generation = ++requestGeneration.current;
     const actionScope = scopeKey;
     const request = requests.begin("action");
@@ -160,7 +175,13 @@ export class MailActionFailure extends Error {
   }
 }
 
-function actionFailure(actionName: string, message: string, item: MailActionItem, setState: Dispatch<SetStateAction<MailRunnerState>>, setResultDialog: Dispatch<SetStateAction<MailActionResult & { open: boolean }>>) {
+function actionFailure(
+  actionName: string,
+  message: string,
+  item: MailActionItem,
+  setState: Dispatch<SetStateAction<MailRunnerState>>,
+  setResultDialog: Dispatch<SetStateAction<MailActionResult & { open: boolean }>>,
+) {
   const result = { actionName, summary: message, item };
   setState({ state: "error", error: message, message: "", result });
   if (item?.output) setResultDialog({ open: true, ...result });

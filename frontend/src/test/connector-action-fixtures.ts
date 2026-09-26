@@ -3,8 +3,15 @@ import type { ConnectorApproval } from "../lib/gateway-contracts/security-contra
 
 export function connectorApprovalFixture(overrides: Partial<ConnectorApproval> = {}): ConnectorApproval {
   return {
-    id: 1, target_id: 3, profile_id: 11, target_ref: "example:3:11", target_name: "Test target",
-    profile_label: "Default", connector_kind: "example", action_name: "example_action", status: "approval_pending",
+    id: 1,
+    target_id: 3,
+    profile_id: 11,
+    target_ref: "example:3:11",
+    target_name: "Test target",
+    profile_label: "Default",
+    connector_kind: "example",
+    action_name: "example_action",
+    status: "approval_pending",
     retry_policy: { class: "read_only", guidance: "Review the current result before retrying." },
     created_at: "2026-09-26",
     ...overrides,
@@ -14,8 +21,13 @@ export function connectorApprovalFixture(overrides: Partial<ConnectorApproval> =
 export function connectorActionRequest(value: unknown): { action_name: string; target_ref: string; input: Record<string, unknown> } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid fixture action request.");
   const data = value as Record<string, unknown>;
-  if (typeof data.action_name !== "string" || typeof data.target_ref !== "string" ||
-      !data.input || typeof data.input !== "object" || Array.isArray(data.input))
+  if (
+    typeof data.action_name !== "string" ||
+    typeof data.target_ref !== "string" ||
+    !data.input ||
+    typeof data.input !== "object" ||
+    Array.isArray(data.input)
+  )
     throw new Error("Invalid fixture action request.");
   return { action_name: data.action_name, target_ref: data.target_ref, input: data.input as Record<string, unknown> };
 }

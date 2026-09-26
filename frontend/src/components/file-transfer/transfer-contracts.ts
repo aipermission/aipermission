@@ -20,14 +20,23 @@ export type TransferBatch = TransferFailure & {
 export type TransferBatchState = { state: string; item: TransferBatch | null; error: string | null };
 export type RemoteEntry = { type: "file" | "directory" | "other"; path: string; name: string; size?: number; modified_at?: string };
 export type RemoteBrowserData = { entries: RemoteEntry[]; path?: string; parent?: string; has_more?: boolean; next_cursor?: string };
-export type RemoteBrowserState = { open: boolean; purpose: TransferDirection; path: string; state: string; data: RemoteBrowserData | null; error: string | null };
+export type RemoteBrowserState = {
+  open: boolean;
+  purpose: TransferDirection;
+  path: string;
+  state: string;
+  data: RemoteBrowserData | null;
+  error: string | null;
+};
 export type RemoteBrowserOptions = { append?: boolean; cursor?: string; fallbackToDefault?: boolean };
 
 const statuses: ReadonlySet<string> = new Set(["pending", "pending_approval", "running", "paused", "completed", "failed", "canceled"]);
 
 function validTransferFailure(value: Record<string, unknown>) {
-  return (value.failure_kind === undefined || typeof value.failure_kind === "string") &&
-    (value.error === undefined || value.error === null || typeof value.error === "string");
+  return (
+    (value.failure_kind === undefined || typeof value.failure_kind === "string") &&
+    (value.error === undefined || value.error === null || typeof value.error === "string")
+  );
 }
 
 export function transferBatchResponse(value: unknown): TransferBatch {
@@ -40,7 +49,8 @@ export function transferBatchResponse(value: unknown): TransferBatch {
     !statuses.has(String(batch.status)) ||
     (batch.direction !== "upload" && batch.direction !== "download") ||
     (batch.archive_name !== undefined && typeof batch.archive_name !== "string") ||
-    (batch.items !== undefined && !Array.isArray(batch.items)) || !validTransferFailure(batch)
+    (batch.items !== undefined && !Array.isArray(batch.items)) ||
+    !validTransferFailure(batch)
   )
     throw invalid();
   if (Array.isArray(batch.items)) {

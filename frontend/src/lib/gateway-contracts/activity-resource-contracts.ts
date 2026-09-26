@@ -32,7 +32,13 @@ export function backupFreshnessResponse(value: unknown): { items: BackupFreshnes
   const data = objectRecord(value);
   const items: unknown = data?.items ?? [];
   const checkErrors: unknown = data?.check_errors ?? [];
-  if (!data || !Array.isArray(items) || !items.every(validFreshnessItem) || !Array.isArray(checkErrors) || !checkErrors.every(validCheckError)) {
+  if (
+    !data ||
+    !Array.isArray(items) ||
+    !items.every(validFreshnessItem) ||
+    !Array.isArray(checkErrors) ||
+    !checkErrors.every(validCheckError)
+  ) {
     throw new Error("Invalid backup freshness response.");
   }
   return { items, checkErrors };
@@ -40,16 +46,31 @@ export function backupFreshnessResponse(value: unknown): { items: BackupFreshnes
 
 function validRuntimeMessage(value: unknown): value is RuntimeMessage {
   const row = objectRecord(value);
-  return !!row && positiveID(row.id) && positiveID(row.token_id) && optionalID(row.runtime_id) && optionalID(row.session_id) &&
-    (row.direction === "ai_to_user" || row.direction === "user_to_ai") && typeof row.message === "string" &&
-    typeof row.created_at === "string" && optionalString(row.token_name) && optionalString(row.target_name) &&
-    (row.consumed_at === null || optionalString(row.consumed_at));
+  return (
+    !!row &&
+    positiveID(row.id) &&
+    positiveID(row.token_id) &&
+    optionalID(row.runtime_id) &&
+    optionalID(row.session_id) &&
+    (row.direction === "ai_to_user" || row.direction === "user_to_ai") &&
+    typeof row.message === "string" &&
+    typeof row.created_at === "string" &&
+    optionalString(row.token_name) &&
+    optionalString(row.target_name) &&
+    (row.consumed_at === null || optionalString(row.consumed_at))
+  );
 }
 
 function validFreshnessItem(value: unknown): value is BackupFreshnessItem {
   const row = objectRecord(value);
-  return !!row && positiveID(row.provider_id) && (row.remote_newer === undefined || typeof row.remote_newer === "boolean") &&
-    ["provider_name", "latest_remote_id", "latest_remote_at", "latest_remote_source", "latest_known_id", "latest_known_at"].every((key) => optionalString(row[key]));
+  return (
+    !!row &&
+    positiveID(row.provider_id) &&
+    (row.remote_newer === undefined || typeof row.remote_newer === "boolean") &&
+    ["provider_name", "latest_remote_id", "latest_remote_at", "latest_remote_source", "latest_known_id", "latest_known_at"].every((key) =>
+      optionalString(row[key]),
+    )
+  );
 }
 
 function validCheckError(value: unknown): value is BackupCheckError {
@@ -58,7 +79,7 @@ function validCheckError(value: unknown): value is BackupCheckError {
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function positiveID(value: unknown) {

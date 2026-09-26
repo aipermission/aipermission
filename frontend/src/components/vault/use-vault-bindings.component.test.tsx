@@ -152,9 +152,27 @@ it("removes the selected binding with its revision", async () => {
   const user = userEvent.setup();
   const setAction = vi.fn();
   apiGet.mockImplementation((path) =>
-    Promise.resolve(path === "/api/connector-targets/inventory" ? { items: [] } : { items: [{ id: 12, vault_item_id: 5, binding_revision: 4,
-      source_project_id: 2, target_id: 7, profile_id: 8, replace_existing: false, target_name: "Target", profile_label: "main",
-      source_project_name: "My Project", connector_kind: "fixture" }] }),
+    Promise.resolve(
+      path === "/api/connector-targets/inventory"
+        ? { items: [] }
+        : {
+            items: [
+              {
+                id: 12,
+                vault_item_id: 5,
+                binding_revision: 4,
+                source_project_id: 2,
+                target_id: 7,
+                profile_id: 8,
+                replace_existing: false,
+                target_name: "Target",
+                profile_label: "main",
+                source_project_name: "My Project",
+                connector_kind: "fixture",
+              },
+            ],
+          },
+    ),
   );
   apiPost.mockResolvedValue({});
   render(<BindingsHarness setAction={setAction} />);
@@ -188,9 +206,17 @@ it("keeps the current dialog open when saving fails", async () => {
 
 it("does not make malformed current target capabilities selectable", async () => {
   const user = userEvent.setup();
-  apiGet.mockImplementation((path) => Promise.resolve(path === "/api/connector-targets/inventory"
-    ? { items: [{ id: 7, name: "Target", connector_kind: "fixture", profiles: [{ id: 8, label: "main", vault_session_supported: "true" }] }] }
-    : { items: [] }));
+  apiGet.mockImplementation((path) =>
+    Promise.resolve(
+      path === "/api/connector-targets/inventory"
+        ? {
+            items: [
+              { id: 7, name: "Target", connector_kind: "fixture", profiles: [{ id: 8, label: "main", vault_session_supported: "true" }] },
+            ],
+          }
+        : { items: [] },
+    ),
+  );
   render(<BindingsHarness />);
   await user.click(screen.getByRole("button", { name: "Open A" }));
   await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
@@ -199,8 +225,9 @@ it("does not make malformed current target capabilities selectable", async () =>
 
 it("rejects a binding list for another Vault item instead of applying its revisions", async () => {
   const user = userEvent.setup();
-  apiGet.mockImplementation((path) => Promise.resolve(path === "/api/connector-targets/inventory"
-    ? { items: [] } : { items: [{ id: 1, vault_item_id: 6 }] }));
+  apiGet.mockImplementation((path) =>
+    Promise.resolve(path === "/api/connector-targets/inventory" ? { items: [] } : { items: [{ id: 1, vault_item_id: 6 }] }),
+  );
   render(<BindingsHarness />);
   await user.click(screen.getByRole("button", { name: "Open A" }));
   await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
@@ -210,10 +237,30 @@ it("rejects a binding list for another Vault item instead of applying its revisi
 it("serializes deletions and saves without invalidating the active mutation", async () => {
   const user = userEvent.setup();
   const deletion = deferred();
-  const item = { vault_item_id: 5, binding_revision: 4, source_project_id: 2, target_id: 7, profile_id: 8,
-    replace_existing: false, target_name: "Target", profile_label: "main", source_project_name: "My Project", connector_kind: "fixture" };
-  apiGet.mockImplementation((path) => Promise.resolve(path === "/api/connector-targets/inventory" ? { items: [] }
-    : { items: [{ ...item, id: 12 }, { ...item, id: 13, profile_id: 9 }] }));
+  const item = {
+    vault_item_id: 5,
+    binding_revision: 4,
+    source_project_id: 2,
+    target_id: 7,
+    profile_id: 8,
+    replace_existing: false,
+    target_name: "Target",
+    profile_label: "main",
+    source_project_name: "My Project",
+    connector_kind: "fixture",
+  };
+  apiGet.mockImplementation((path) =>
+    Promise.resolve(
+      path === "/api/connector-targets/inventory"
+        ? { items: [] }
+        : {
+            items: [
+              { ...item, id: 12 },
+              { ...item, id: 13, profile_id: 9 },
+            ],
+          },
+    ),
+  );
   apiPost.mockReturnValue(deletion.promise);
   render(<BindingsHarness />);
   await user.click(screen.getByRole("button", { name: "Open A" }));

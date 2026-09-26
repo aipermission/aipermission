@@ -13,7 +13,15 @@ export type DockerLifecycleDialogState = {
 };
 const emptyDialog: DockerLifecycleDialogState = { open: false, title: "", description: "", details: [], actionName: "", pending: false };
 
-export function DockerLifecycleDialog({ dialog, onClose, onConfirm }: { dialog: DockerLifecycleDialogState; onClose: () => unknown; onConfirm: () => unknown }) {
+export function DockerLifecycleDialog({
+  dialog,
+  onClose,
+  onConfirm,
+}: {
+  dialog: DockerLifecycleDialogState;
+  onClose: () => unknown;
+  onConfirm: () => unknown;
+}) {
   return (
     <Dialog
       open={dialog.open}

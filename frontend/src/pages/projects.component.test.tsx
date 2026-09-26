@@ -7,8 +7,12 @@ import { ProjectsPage } from "./projects";
 vi.mock("../lib/api", () => ({ apiDelete: vi.fn(), apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
 function deferred() {
-  let resolve: (_value: unknown) => void = () => { throw new Error("Deferred request is not initialized"); };
-  let reject: (_reason: unknown) => void = () => { throw new Error("Deferred request is not initialized"); };
+  let resolve: (_value: unknown) => void = () => {
+    throw new Error("Deferred request is not initialized");
+  };
+  let reject: (_reason: unknown) => void = () => {
+    throw new Error("Deferred request is not initialized");
+  };
   const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
@@ -17,12 +21,14 @@ function deferred() {
 }
 
 beforeEach(() => {
-  vi.mocked(apiGet).mockReset().mockResolvedValue({
-    items: [
-      { id: 1, name: "First", slug: "first", target_count: 0 },
-      { id: 2, name: "Second", slug: "second", target_count: 0 },
-    ],
-  });
+  vi.mocked(apiGet)
+    .mockReset()
+    .mockResolvedValue({
+      items: [
+        { id: 1, name: "First", slug: "first", target_count: 0 },
+        { id: 2, name: "Second", slug: "second", target_count: 0 },
+      ],
+    });
   vi.mocked(apiPost).mockReset();
   vi.mocked(apiPut).mockReset();
   vi.mocked(apiDelete).mockReset();
@@ -78,14 +84,22 @@ it("creates and renames a project using the selected identity", async () => {
   await user.click(screen.getByRole("button", { name: "Add project" }));
   await user.type(screen.getByRole("textbox", { name: "Project name" }), "My Project");
   await user.click(screen.getByRole("button", { name: "Save project" }));
-  expect(apiPost).toHaveBeenCalledWith("/api/projects", { name: "My Project" }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(apiPost).toHaveBeenCalledWith(
+    "/api/projects",
+    { name: "My Project" },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
   expect(await screen.findByText("Project created.")).toBeVisible();
   await user.click(screen.getAllByTitle("Rename project")[1]);
   const name = screen.getByRole("textbox", { name: "Project name" });
   await user.clear(name);
   await user.type(name, "Renamed Project");
   await user.click(screen.getByRole("button", { name: "Save project" }));
-  expect(apiPut).toHaveBeenCalledWith("/api/projects/2", { name: "Renamed Project" }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(apiPut).toHaveBeenCalledWith(
+    "/api/projects/2",
+    { name: "Renamed Project" },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
   expect(await screen.findByText("Project renamed.")).toBeVisible();
 });
 

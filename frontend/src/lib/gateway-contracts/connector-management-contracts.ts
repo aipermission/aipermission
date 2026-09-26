@@ -29,4 +29,6 @@ function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalid();
   return value as Record<string, unknown>;
 }
-function invalid() { return new Error("Invalid connector management response from gateway."); }
+function invalid() {
+  return new Error("Invalid connector management response from gateway.");
+}

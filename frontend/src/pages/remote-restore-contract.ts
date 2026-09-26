@@ -2,12 +2,18 @@ import { backupItems } from "../components/settings/backup-contracts.ts";
 
 export type RemoteBackupStream = { id: string; database_name: string };
 export type RemoteBackupVersion = {
-  id: string; filename?: string; created_at?: string; size_bytes?: number; source_installation_id?: string;
+  id: string;
+  filename?: string;
+  created_at?: string;
+  size_bytes?: number;
+  source_installation_id?: string;
 };
 
 export function remoteBackupStreams(value: unknown): RemoteBackupStream[] {
-  return backupItems(value, (item): item is RemoteBackupStream =>
-    objectRecord(item) && nonEmptyString(item.id) && typeof item.database_name === "string");
+  return backupItems(
+    value,
+    (item): item is RemoteBackupStream => objectRecord(item) && nonEmptyString(item.id) && typeof item.database_name === "string",
+  );
 }
 
 export function remoteBackupVersions(value: unknown): RemoteBackupVersion[] {
@@ -21,9 +27,13 @@ export function remoteBackupVersions(value: unknown): RemoteBackupVersion[] {
 }
 
 function validVersion(value: unknown): value is RemoteBackupVersion {
-  return objectRecord(value) && nonEmptyString(value.id) &&
+  return (
+    objectRecord(value) &&
+    nonEmptyString(value.id) &&
     ["filename", "created_at", "source_installation_id"].every((key) => value[key] === undefined || typeof value[key] === "string") &&
-    (value.size_bytes === undefined || (typeof value.size_bytes === "number" && Number.isSafeInteger(value.size_bytes) && value.size_bytes >= 0));
+    (value.size_bytes === undefined ||
+      (typeof value.size_bytes === "number" && Number.isSafeInteger(value.size_bytes) && value.size_bytes >= 0))
+  );
 }
 
 function objectRecord(value: unknown): value is Record<string, unknown> {

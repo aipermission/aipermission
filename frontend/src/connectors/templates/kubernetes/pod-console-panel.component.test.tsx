@@ -8,14 +8,28 @@ it("keeps pod console pending feedback, identity, and start/end callbacks on the
   const onStart = vi.fn();
   const onEnd = vi.fn();
   const pod = { namespace: "apps", name: "api-1" };
-  const props = { pod, selectedRuntimeTarget: { runtime_id: "opaque" }, sessionLive: false, pending: true, theme: "dark" as const, mutedClass: "", borderClass: "", onStart, onEnd };
+  const props = {
+    pod,
+    selectedRuntimeTarget: { runtime_id: "opaque" },
+    sessionLive: false,
+    pending: true,
+    theme: "dark" as const,
+    mutedClass: "",
+    borderClass: "",
+    onStart,
+    onEnd,
+  };
   const view = render(<KubernetesPodConsolePanel {...props}>terminal</KubernetesPodConsolePanel>);
   expect(screen.getByText("Connecting pod console")).toBeVisible();
   expect(screen.queryByText(/No active/)).not.toBeInTheDocument();
   view.rerender(<KubernetesPodConsolePanel {...props} pending={false} />);
   await user.click(screen.getByRole("button", { name: "Start Pod Console" }));
   expect(onStart).toHaveBeenCalledOnce();
-  view.rerender(<KubernetesPodConsolePanel {...props} sessionLive pending={false}>terminal</KubernetesPodConsolePanel>);
+  view.rerender(
+    <KubernetesPodConsolePanel {...props} sessionLive pending={false}>
+      terminal
+    </KubernetesPodConsolePanel>,
+  );
   expect(screen.getByText("terminal")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "End" }));
   expect(onEnd).toHaveBeenCalledOnce();

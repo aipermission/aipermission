@@ -240,7 +240,21 @@ function ProviderEnableDialog({ state }: StateProps) {
   );
 }
 
-function DialogActions({ onCancel, pending, submitDisabled, variant, icon, label }: { onCancel: () => void; pending: boolean; submitDisabled: boolean; variant?: ComponentProps<typeof Button>["variant"]; icon: ReactNode; label: string }) {
+function DialogActions({
+  onCancel,
+  pending,
+  submitDisabled,
+  variant,
+  icon,
+  label,
+}: {
+  onCancel: () => void;
+  pending: boolean;
+  submitDisabled: boolean;
+  variant?: ComponentProps<typeof Button>["variant"];
+  icon: ReactNode;
+  label: string;
+}) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>

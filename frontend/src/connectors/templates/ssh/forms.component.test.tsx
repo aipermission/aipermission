@@ -12,7 +12,11 @@ it("keeps SSH connection fields and appliance startup settings local to its temp
   const form: SSHForm = emptyForm();
   const onChange = vi.fn();
   const key = { id: 7, name: "main", key_type: "ed25519", install_command: "install-key" };
-  render(<MemoryRouter><SSHConnectorFormTemplate form={form} credentials={[key]} activeCredential={key} onChange={onChange} /></MemoryRouter>);
+  render(
+    <MemoryRouter>
+      <SSHConnectorFormTemplate form={form} credentials={[key]} activeCredential={key} onChange={onChange} />
+    </MemoryRouter>,
+  );
   expect(screen.getByText("main · ed25519")).toBeInTheDocument();
   expect(screen.getAllByText("install-key").length).toBeGreaterThan(0);
   fireEvent.change(screen.getByRole("textbox", { name: "Host" }), { target: { value: "203.0.113.10" } });
@@ -24,7 +28,11 @@ it("keeps SSH connection fields and appliance startup settings local to its temp
 });
 
 it("directs users to credentials when no gateway key is available", () => {
-  render(<MemoryRouter><SSHConnectorFormTemplate form={emptyForm()} credentials={[]} activeCredential={null} onChange={vi.fn()} /></MemoryRouter>);
+  render(
+    <MemoryRouter>
+      <SSHConnectorFormTemplate form={emptyForm()} credentials={[]} activeCredential={null} onChange={vi.fn()} />
+    </MemoryRouter>,
+  );
   expect(screen.getByRole("link", { name: "Open Credentials" })).toHaveAttribute("href", "/credentials");
 });
 
@@ -33,8 +41,13 @@ const credentialProps = () => ({
   form: { name: "main", key_type: "ed25519" } satisfies SSHKeyForm,
   importForm: { name: "imported", private_key: "", passphrase: "" },
   state: { state: "idle" },
-  onModeChange: vi.fn(), onFormChange: vi.fn(), onImportFormChange: vi.fn(), onReadImportFile: vi.fn(),
-  onCreate: vi.fn((event) => event.preventDefault()), onImport: vi.fn((event) => event.preventDefault()), onUpdate: vi.fn((event) => event.preventDefault()),
+  onModeChange: vi.fn(),
+  onFormChange: vi.fn(),
+  onImportFormChange: vi.fn(),
+  onReadImportFile: vi.fn(),
+  onCreate: vi.fn((event) => event.preventDefault()),
+  onImport: vi.fn((event) => event.preventDefault()),
+  onUpdate: vi.fn((event) => event.preventDefault()),
 });
 
 it("keeps generation, import, and label-only editing distinct", async () => {
@@ -46,7 +59,9 @@ it("keeps generation, import, and label-only editing distinct", async () => {
   expect(props.onCreate).toHaveBeenCalledOnce();
   await userEvent.click(screen.getByRole("button", { name: "Import" }));
   expect(props.onModeChange).toHaveBeenCalledWith("import");
-  rerender(<SSHCredentialFormTemplate {...props} mode="import" importForm={{ name: "imported", private_key: "test-fixture", passphrase: "" }} />);
+  rerender(
+    <SSHCredentialFormTemplate {...props} mode="import" importForm={{ name: "imported", private_key: "test-fixture", passphrase: "" }} />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Import credential" }));
   expect(props.onImport).toHaveBeenCalledOnce();
   rerender(<SSHCredentialFormTemplate {...props} formMode="edit" />);

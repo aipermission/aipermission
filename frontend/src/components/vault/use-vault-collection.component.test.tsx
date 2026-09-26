@@ -11,7 +11,17 @@ const apiPost = vi.mocked(realPost);
 const apiPut = vi.mocked(realPut);
 
 function fixtureItem(id: number, name: string): VaultManagedItem {
-  return { id, name, owner_project_id: 4, source: "imported", secret_type: "generic_secret", value_version: 1, metadata_revision: 1, tags: [], usage_notes: [] };
+  return {
+    id,
+    name,
+    owner_project_id: 4,
+    source: "imported",
+    secret_type: "generic_secret",
+    value_version: 1,
+    metadata_revision: 1,
+    tags: [],
+    usage_notes: [],
+  };
 }
 
 function deferred() {
@@ -167,9 +177,13 @@ it("creates a generated item with metadata and no imported secret value", async 
 });
 
 it("does not expose a malformed current Vault revision as an editable item", async () => {
-  apiGet.mockImplementation((path) => Promise.resolve(path === "/api/projects"
-    ? { items: [{ id: 4, name: "My Project", slug: "my-project", target_count: 0 }] }
-    : { items: [{ ...fixtureItem(1, "KEY"), metadata_revision: "1" }], total: 1 }));
+  apiGet.mockImplementation((path) =>
+    Promise.resolve(
+      path === "/api/projects"
+        ? { items: [{ id: 4, name: "My Project", slug: "my-project", target_count: 0 }] }
+        : { items: [{ ...fixtureItem(1, "KEY"), metadata_revision: "1" }], total: 1 },
+    ),
+  );
   render(<CollectionHarness />);
   await waitFor(() => expect(screen.getByTestId("items-state")).toHaveTextContent("error:Invalid Vault metadata revision"));
   expect(screen.getByTestId("items")).toBeEmptyDOMElement();

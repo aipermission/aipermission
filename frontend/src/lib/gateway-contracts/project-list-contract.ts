@@ -9,10 +9,21 @@ export function projectListResponse(value: unknown): ProjectSummary[] {
 
 function validProject(value: unknown): value is ProjectSummary {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return "id" in value && typeof value.id === "number" && Number.isSafeInteger(value.id) && value.id > 0 &&
-    "name" in value && typeof value.name === "string" &&
-    "slug" in value && typeof value.slug === "string" && value.slug.length > 0 &&
-    "target_count" in value && typeof value.target_count === "number" && Number.isSafeInteger(value.target_count) && value.target_count >= 0;
+  return (
+    "id" in value &&
+    typeof value.id === "number" &&
+    Number.isSafeInteger(value.id) &&
+    value.id > 0 &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "slug" in value &&
+    typeof value.slug === "string" &&
+    value.slug.length > 0 &&
+    "target_count" in value &&
+    typeof value.target_count === "number" &&
+    Number.isSafeInteger(value.target_count) &&
+    value.target_count >= 0
+  );
 }
 
 function invalidResponse() {

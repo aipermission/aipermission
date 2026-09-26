@@ -49,7 +49,9 @@ export function useKubernetesBrowser(props: KubernetesBrowserProps) {
     [approvals?.data, target.ref],
   );
   const refreshNamespacesForEffect = useEffectEvent(() => refreshNamespaces());
-  const refreshResourceForEffect = useEffectEvent((nextTab: KubernetesResourceKind, nextNamespace: string) => refreshResource(nextTab, nextNamespace));
+  const refreshResourceForEffect = useEffectEvent((nextTab: KubernetesResourceKind, nextNamespace: string) =>
+    refreshResource(nextTab, nextNamespace),
+  );
 
   useEffect(() => {
     setTab("workloads");

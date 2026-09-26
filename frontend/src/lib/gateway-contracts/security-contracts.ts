@@ -400,10 +400,14 @@ export function consoleSessions(value: unknown): ConsoleSession[] {
   return array(value, "console sessions").map((entry) => {
     const item = record(entry, "console session");
     if (
-      !positiveID(item.id) || !optionalPositiveID(item.runtime_id) ||
-      !optionalString(item.status) || !optionalString(item.name) || !optionalString(item.transcript) ||
+      !positiveID(item.id) ||
+      !optionalPositiveID(item.runtime_id) ||
+      !optionalString(item.status) ||
+      !optionalString(item.name) ||
+      !optionalString(item.transcript) ||
       (item.error !== null && !optionalString(item.error))
-    ) throw new Error("Invalid console session response from gateway.");
+    )
+      throw new Error("Invalid console session response from gateway.");
     return item as ConsoleSession;
   });
 }

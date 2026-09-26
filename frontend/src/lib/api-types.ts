@@ -18,7 +18,7 @@ export type PostPolicy = {
 export type PreparedPost = PostPolicy & { body: unknown; retry: PreparedRetry | null };
 
 export function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 export function nativeSaveFilePicker(): SaveFilePicker | null {

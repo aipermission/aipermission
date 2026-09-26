@@ -2,7 +2,11 @@ import { Clock3, RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
-import { retentionPurgeResponse, retentionSettingsResponse, type RetentionSettings } from "../../lib/gateway-contracts/retention-settings-contract";
+import {
+  retentionPurgeResponse,
+  retentionSettingsResponse,
+  type RetentionSettings,
+} from "../../lib/gateway-contracts/retention-settings-contract";
 import { useRequestGuard } from "../../lib/request-guard";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { Button } from "../ui/button";
@@ -33,7 +37,8 @@ export function HistoryRetentionPanel() {
       const data = retentionSettingsResponse(await apiGet("/api/settings/retention", { signal: request.signal }));
       if (request.isCurrent()) setRetention({ state: "ready", data, error: null });
     } catch (error) {
-      if (request.isCurrent()) setRetention((current) => ({ ...current, state: "error", error: errorMessage(error, "Unable to load retention settings.") }));
+      if (request.isCurrent())
+        setRetention((current) => ({ ...current, state: "error", error: errorMessage(error, "Unable to load retention settings.") }));
     } finally {
       request.complete();
     }
@@ -154,7 +159,17 @@ export function HistoryRetentionPanel() {
   );
 }
 
-function RetentionField({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (_value: string) => void }) {
+function RetentionField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (_value: string) => void;
+}) {
   return (
     <Field>
       {label}

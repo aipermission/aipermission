@@ -41,7 +41,14 @@ describe("typed retry entry storage", () => {
 
   it("prevents reconciliation from replacing an identity while an attempt is active", async () => {
     const { entry, attempt } = await reserve();
-    const prepared: PreparedRetry = { scope, signature, idempotencyKey: entry.key, revision: entry.revision, attemptID: attempt.id, reused: false };
+    const prepared: PreparedRetry = {
+      scope,
+      signature,
+      idempotencyKey: entry.key,
+      revision: entry.revision,
+      attemptID: attempt.id,
+      reused: false,
+    };
     await expect(replaceReconciledEntry(scope, entry)).rejects.toThrow("retry identity changed");
     await releaseEntryAttempt(prepared);
     const replacement = await replaceReconciledEntry(scope, entry);

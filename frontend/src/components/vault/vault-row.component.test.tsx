@@ -63,7 +63,10 @@ it.each([
   expect(screen.getByText("Never", { selector: "td" })).toBeInTheDocument();
 });
 
-function renderRow(item: ComponentProps<typeof VaultRow>["item"], actions: Partial<Omit<ComponentProps<typeof VaultRow>, "item" | "projects">> = {}) {
+function renderRow(
+  item: ComponentProps<typeof VaultRow>["item"],
+  actions: Partial<Omit<ComponentProps<typeof VaultRow>, "item" | "projects">> = {},
+) {
   return render(
     <table>
       <tbody>

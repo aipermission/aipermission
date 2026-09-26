@@ -10,19 +10,40 @@ import { isBackupProvider, isBackupRecord } from "./backup-contracts";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiDelete: vi.fn(), apiDownload: vi.fn() }));
 const database = { data: { database_name: "My database", database_size_bytes: 1024 } };
-const provider = { id: 1, name: "My backups", provider_type: "aipermission_backup", status: "active", has_secret: true, public: { base_url: "https://backups.example.com" } };
-const records = [{ id: 2, filename: "new.aipdb", size_bytes: 1024 }, { id: 1, filename: "old.aipdb", size_bytes: 512 }];
+const provider = {
+  id: 1,
+  name: "My backups",
+  provider_type: "aipermission_backup",
+  status: "active",
+  has_secret: true,
+  public: { base_url: "https://backups.example.com" },
+};
+const records = [
+  { id: 2, filename: "new.aipdb", size_bytes: 1024 },
+  { id: 1, filename: "old.aipdb", size_bytes: 512 },
+];
 
 function BackupHarness() {
   const state = useBackupProviderState(database);
-  return <><BackupProviderPanel state={state} /><BackupProviderDialogs state={state} database={database} /><BackupRecordDialogs state={state} /></>;
+  return (
+    <>
+      <BackupProviderPanel state={state} />
+      <BackupProviderDialogs state={state} database={database} />
+      <BackupRecordDialogs state={state} />
+    </>
+  );
 }
 
 describe("typed backup presentation", () => {
   beforeEach(() => {
-    vi.mocked(apiGet).mockReset(); vi.mocked(apiPost).mockReset(); vi.mocked(apiPut).mockReset(); vi.mocked(apiDelete).mockReset(); vi.mocked(apiDownload).mockReset();
+    vi.mocked(apiGet).mockReset();
+    vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPut).mockReset();
+    vi.mocked(apiDelete).mockReset();
+    vi.mocked(apiDownload).mockReset();
     vi.mocked(apiGet).mockImplementation((path) => {
-      if (path === "/api/backup/providers/catalog") return Promise.resolve({ items: [{ provider_type: "aipermission_backup", label: "AIPermission Backup" }] });
+      if (path === "/api/backup/providers/catalog")
+        return Promise.resolve({ items: [{ provider_type: "aipermission_backup", label: "AIPermission Backup" }] });
       if (path === "/api/backup/providers") return Promise.resolve({ items: [provider] });
       if (path.endsWith("/records")) return Promise.resolve({ items: records });
       if (path.endsWith("/storage")) return Promise.resolve({ used_bytes: 1536, pending_deletions: 0, quota_enabled: false });

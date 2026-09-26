@@ -25,7 +25,9 @@ const approval: VaultApproval = {
   approval_context: {},
 };
 
-function renderDialog(overrides: { approval?: Partial<VaultApproval>; action?: ComponentProps<typeof VaultActionApprovalDialog>["action"] } = {}) {
+function renderDialog(
+  overrides: { approval?: Partial<VaultApproval>; action?: ComponentProps<typeof VaultActionApprovalDialog>["action"] } = {},
+) {
   const handlers = { onNoteChange: vi.fn(), onRun: vi.fn(), onDecline: vi.fn(), onClose: vi.fn() };
   render(
     <VaultActionApprovalDialog
@@ -61,7 +63,9 @@ describe("VaultActionApprovalDialog", () => {
           target_id: 4,
           profile_id: 8,
           expected_session_id: 12,
-          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: true, value_version: 1, metadata_revision: 1 }],
+          items: [
+            { item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: true, value_version: 1, metadata_revision: 1 },
+          ],
         },
       },
       action: { state: "stale", error: "Approval context changed." },
@@ -85,7 +89,9 @@ describe("VaultActionApprovalDialog", () => {
           connector_kind: "ssh",
           target_id: 4,
           profile_id: 8,
-          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: false, value_version: 1, metadata_revision: 1 }],
+          items: [
+            { item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: false, value_version: 1, metadata_revision: 1 },
+          ],
         },
       },
       action: { state: "failed", error: "Delivery failed." },

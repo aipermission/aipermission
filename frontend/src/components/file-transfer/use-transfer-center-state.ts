@@ -4,7 +4,13 @@ import { pollReadOptions } from "../../lib/async-resource";
 import { isActiveTransferBatch } from "../app-shell-runtime";
 import { errorMessage } from "../../lib/errors";
 import { createFileTransferBatchActions } from "./file-transfer-actions";
-import { createFileTransferListState, fileTransferListBatchResponse, fileTransferListResponse, loadCurrentFileTransferBatches, type FileTransferListState } from "./file-transfer-list-state";
+import {
+  createFileTransferListState,
+  fileTransferListBatchResponse,
+  fileTransferListResponse,
+  loadCurrentFileTransferBatches,
+  type FileTransferListState,
+} from "./file-transfer-list-state";
 
 export function useTransferCenterState({ pollIsCurrent }: { pollIsCurrent: (_generation: number | undefined) => boolean }) {
   const [open, setOpen] = useState(false);
@@ -30,7 +36,11 @@ export function useTransferCenterState({ pollIsCurrent }: { pollIsCurrent: (_gen
           setBatches({ state: "ready", data: items, error: null });
         },
         onError: (error) => {
-          setBatches((current) => ({ state: "error", data: options.keepData ? current.data : [], error: errorMessage(error, "Could not load file transfers.") }));
+          setBatches((current) => ({
+            state: "error",
+            data: options.keepData ? current.data : [],
+            error: errorMessage(error, "Could not load file transfers."),
+          }));
         },
       }),
     [listState, pollIsCurrent],

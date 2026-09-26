@@ -5,12 +5,16 @@ export function provisionResultResponse(value: unknown): ProvisionResult {
   const data = value as Record<string, unknown>;
   if (data.profile !== undefined) {
     const profile = record(data.profile);
-    if ((profile.id !== undefined && (typeof profile.id !== "number" || !Number.isSafeInteger(profile.id) || profile.id < 1)) ||
-        (profile.label !== undefined && typeof profile.label !== "string")) throw new Error("Invalid Postgres provisioning profile.");
+    if (
+      (profile.id !== undefined && (typeof profile.id !== "number" || !Number.isSafeInteger(profile.id) || profile.id < 1)) ||
+      (profile.label !== undefined && typeof profile.label !== "string")
+    )
+      throw new Error("Invalid Postgres provisioning profile.");
   }
   if (data.result !== undefined) {
     const result = record(data.result);
-    if (result.display_text !== undefined && typeof result.display_text !== "string") throw new Error("Invalid Postgres provisioning result.");
+    if (result.display_text !== undefined && typeof result.display_text !== "string")
+      throw new Error("Invalid Postgres provisioning result.");
   }
   return data as ProvisionResult;
 }

@@ -18,8 +18,14 @@ describe("Vault item list presentation contract", () => {
   });
 
   it.each([
-    null, [], {}, { items: {}, total: 0 }, { items: [], total: "1" }, { items: [], total: -1 },
-    { items: [], total: 0.5 }, { items: [{ ...item, id: 0 }], total: 1 },
+    null,
+    [],
+    {},
+    { items: {}, total: 0 },
+    { items: [], total: "1" },
+    { items: [], total: -1 },
+    { items: [], total: 0.5 },
+    { items: [{ ...item, id: 0 }], total: 1 },
     { items: [{ ...item, owner_project_id: "4" }], total: 1 },
     { items: [{ ...item, name: {} }], total: 1 },
     { items: [{ ...item, description: [] }], total: 1 },

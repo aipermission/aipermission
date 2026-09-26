@@ -2,7 +2,8 @@ import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/sec
 import type { MailActionResult } from "./action-result-dialog";
 import type { MailSubmittedFields, MailMessageRef } from "./message-types";
 
-export type MailActionItem = Pick<ConnectorActionResponse, "status" | "action_name"> & Partial<ConnectorActionResponse> & { id?: number | string };
+export type MailActionItem = Pick<ConnectorActionResponse, "status" | "action_name"> &
+  Partial<ConnectorActionResponse> & { id?: number | string };
 export interface MailPendingContext {
   preferredFolder?: string;
   subject?: string;
@@ -34,4 +35,10 @@ export interface MailRunnerState {
   message: string;
   result?: MailActionResult | null;
 }
-export type RunMailAction = (_action: string, _input: Record<string, unknown>, _reason: string, _busy?: string, _context?: MailPendingContext) => Promise<ConnectorActionResponse | null>;
+export type RunMailAction = (
+  _action: string,
+  _input: Record<string, unknown>,
+  _reason: string,
+  _busy?: string,
+  _context?: MailPendingContext,
+) => Promise<ConnectorActionResponse | null>;

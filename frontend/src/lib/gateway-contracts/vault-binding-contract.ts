@@ -6,9 +6,17 @@ export type VaultBindingTarget = Pick<Target, "id" | "name" | "connector_kind"> 
   profiles: Pick<Profile, "id" | "label" | "vault_session_supported">[];
 };
 export type VaultManagedBinding = {
-  id: number; vault_item_id: number; source_project_id: number; target_id: number; profile_id: number;
-  binding_revision: number; replace_existing: boolean;
-  target_name: string; profile_label: string; source_project_name: string; connector_kind: string;
+  id: number;
+  vault_item_id: number;
+  source_project_id: number;
+  target_id: number;
+  profile_id: number;
+  binding_revision: number;
+  replace_existing: boolean;
+  target_name: string;
+  profile_label: string;
+  source_project_name: string;
+  connector_kind: string;
 };
 
 export function vaultBindingsResponse(value: unknown, itemID: number): VaultManagedBinding[] {
@@ -16,10 +24,17 @@ export function vaultBindingsResponse(value: unknown, itemID: number): VaultMana
     const data = object(entry);
     if (data.vault_item_id !== itemID || typeof data.replace_existing !== "boolean") throw new Error("Invalid Vault binding identity.");
     return {
-      id: id(data.id), vault_item_id: itemID, source_project_id: id(data.source_project_id),
-      target_id: id(data.target_id), profile_id: id(data.profile_id), binding_revision: id(data.binding_revision),
-      replace_existing: data.replace_existing, target_name: text(data.target_name), profile_label: text(data.profile_label),
-      source_project_name: text(data.source_project_name), connector_kind: text(data.connector_kind),
+      id: id(data.id),
+      vault_item_id: itemID,
+      source_project_id: id(data.source_project_id),
+      target_id: id(data.target_id),
+      profile_id: id(data.profile_id),
+      binding_revision: id(data.binding_revision),
+      replace_existing: data.replace_existing,
+      target_name: text(data.target_name),
+      profile_label: text(data.profile_label),
+      source_project_name: text(data.source_project_name),
+      connector_kind: text(data.connector_kind),
     };
   });
 }
@@ -29,7 +44,10 @@ export function vaultBindingTargetsResponse(value: unknown): VaultBindingTarget[
     const target = object(entry);
     const profiles: unknown = target.profiles ?? [];
     if (!Array.isArray(profiles)) throw new Error("Invalid Vault binding target profiles.");
-    return { id: id(target.id), name: text(target.name), connector_kind: text(target.connector_kind),
+    return {
+      id: id(target.id),
+      name: text(target.name),
+      connector_kind: text(target.connector_kind),
       profiles: profiles.map((entry) => {
         const profile = object(entry);
         if (typeof profile.vault_session_supported !== "boolean") throw new Error("Invalid Vault session capability.");

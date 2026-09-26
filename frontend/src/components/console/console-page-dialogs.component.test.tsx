@@ -11,13 +11,19 @@ type Value = { open: boolean };
 type Completion = [{ ok: boolean }];
 
 vi.mock("./connector-action-approval-dialog", () => ({
-  ConnectorActionApprovalDialog: ({ onRun }: Pick<ComponentProps<typeof ConnectorActionApprovalDialog>, "onRun">) => <button onClick={onRun}>Approve test</button>,
+  ConnectorActionApprovalDialog: ({ onRun }: Pick<ComponentProps<typeof ConnectorActionApprovalDialog>, "onRun">) => (
+    <button onClick={onRun}>Approve test</button>
+  ),
 }));
 vi.mock("./connector-activity-dialog", () => ({
-  ConnectorActivityDialog: ({ onClose }: Pick<ComponentProps<typeof ConnectorActivityDialog>, "onClose">) => <button onClick={onClose}>Close activity test</button>,
+  ConnectorActivityDialog: ({ onClose }: Pick<ComponentProps<typeof ConnectorActivityDialog>, "onClose">) => (
+    <button onClick={onClose}>Close activity test</button>
+  ),
 }));
 vi.mock("./messages-dialog", () => ({
-  MessagesDialog: ({ onSubmit }: Pick<ComponentProps<typeof MessagesDialog>, "onSubmit">) => <button onClick={onSubmit}>Send message test</button>,
+  MessagesDialog: ({ onSubmit }: Pick<ComponentProps<typeof MessagesDialog>, "onSubmit">) => (
+    <button onClick={onSubmit}>Send message test</button>
+  ),
 }));
 
 function dialogProps() {
@@ -54,7 +60,9 @@ function dialogProps() {
     operationDialog: {
       onChange: vi.fn(),
       onComplete: vi.fn(),
-      Template: ({ onOperationComplete }: ConsoleOperationSlotProps<Value, Completion>) => <button onClick={() => onOperationComplete({ ok: true })}>Complete operation test</button>,
+      Template: ({ onOperationComplete }: ConsoleOperationSlotProps<Value, Completion>) => (
+        <button onClick={() => onOperationComplete({ ok: true })}>Complete operation test</button>
+      ),
       value,
     },
   } satisfies ConsolePageDialogsProps<Value, Completion>;
@@ -90,10 +98,14 @@ describe("ConsolePageDialogs", () => {
     const onChange = vi.fn<React.Dispatch<React.SetStateAction<typeof value>>>();
     const onComplete = vi.fn<(..._args: NativeCompletion) => void>();
     const Template = ({ onChange, onOperationComplete }: ConsoleOperationSlotProps<typeof value, NativeCompletion>) => (
-      <button onClick={() => {
-        onChange((current) => ({ ...current, open: false }));
-        void onOperationComplete({ message: "Saved" }, value);
-      }}>Complete native operation</button>
+      <button
+        onClick={() => {
+          onChange((current) => ({ ...current, open: false }));
+          void onOperationComplete({ message: "Saved" }, value);
+        }}
+      >
+        Complete native operation
+      </button>
     );
     render(<ConsolePageDialogs {...dialogProps()} operationDialog={{ Template, value, onChange, onComplete }} />);
 

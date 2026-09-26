@@ -17,11 +17,16 @@ import type { ConsoleNavigationTarget } from "../console/console-target-sidebar"
 import { errorMessage } from "../../lib/errors";
 import { formatDateTime, formatShortTime } from "../../lib/activity-date";
 type Entry = components["schemas"]["HistoryEntry"];
-type HistoryItem = Pick<Entry, "id"> & Partial<Omit<Entry, "labels">> & { labels?: (Pick<Entry["labels"][number], "id" | "name"> & { color?: string })[] };
+type HistoryItem = Pick<Entry, "id"> &
+  Partial<Omit<Entry, "labels">> & { labels?: (Pick<Entry["labels"][number], "id" | "name"> & { color?: string })[] };
 type Label = NonNullable<HistoryItem["labels"]>[number];
 type Tone = NonNullable<ComponentProps<typeof Badge>["tone"]>;
 type LabelOwner = { generation: number; itemID: number | null };
-type LabelOperations = { item: HistoryItem | null; onAttachLabel: (_id: number, _payload: { name: string }) => unknown; onDetachLabel: (_id: number, _labelID: number) => unknown };
+type LabelOperations = {
+  item: HistoryItem | null;
+  onAttachLabel: (_id: number, _payload: { name: string }) => unknown;
+  onDetachLabel: (_id: number, _labelID: number) => unknown;
+};
 type HistoryDialogProps = LabelOperations & { labels?: Label[]; onClose: () => void };
 function HistoryStat({ label, value, tone = "neutral" }: { label: string; value: ReactNode; tone?: Tone }) {
   return (
@@ -293,8 +298,8 @@ function useHistoryLabelOperations({ item, onAttachLabel, onDetachLabel }: Label
 
   return {
     labelState,
-    attachLabel: (name: string) => item ? run(() => onAttachLabel(item.id, { name })) : Promise.resolve(undefined),
-    detachLabel: (labelID: number) => item ? run(() => onDetachLabel(item.id, labelID)) : Promise.resolve(undefined),
+    attachLabel: (name: string) => (item ? run(() => onAttachLabel(item.id, { name })) : Promise.resolve(undefined)),
+    detachLabel: (labelID: number) => (item ? run(() => onDetachLabel(item.id, labelID)) : Promise.resolve(undefined)),
   };
 }
 
@@ -305,7 +310,8 @@ function isCurrentLabelOwner(ownerRef: RefObject<LabelOwner>, owner: LabelOwner)
 function HistoryDownloadAction({ item }: { item: HistoryItem }) {
   const downloadItem = item.source_ref_id ? { id: item.id, source_ref_id: item.source_ref_id } : null;
   const { downloadTransfer, downloadState } = useHistoryTransferDownload(downloadItem, transferFileName(item));
-  if (!downloadItem || item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed") return null;
+  if (!downloadItem || item.activity_type !== "file_transfer" || item.action_name !== "download" || item.status !== "completed")
+    return null;
   return (
     <div className="grid gap-2 border-t border-stone-200 px-5 py-3">
       {downloadState.state === "error" ? <Notice tone="bad">{downloadState.error}</Notice> : null}
@@ -375,19 +381,19 @@ function SectionHeader({ label, value }: { label: string; value: string }) {
 
 function StatusBadge({ status }: { status?: string }) {
   const tones: Record<string, Tone> = {
-      completed: "good",
-      canceled: "warn",
-      paused: "warn",
-      pending: "neutral",
-      running: "neutral",
-      pending_approval: "warn",
-      declined: "warn",
-      stale: "warn",
-      outcome_unknown: "warn",
-      untracked: "warn",
-      failed: "bad",
-      error: "bad",
-    };
+    completed: "good",
+    canceled: "warn",
+    paused: "warn",
+    pending: "neutral",
+    running: "neutral",
+    pending_approval: "warn",
+    declined: "warn",
+    stale: "warn",
+    outcome_unknown: "warn",
+    untracked: "warn",
+    failed: "bad",
+    error: "bad",
+  };
   const tone = tones[status || ""] || "neutral";
   return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }
@@ -398,13 +404,11 @@ function ConnectorBadge({ kind }: { kind?: string }) {
 
 function ActionBadge({ item }: { item: HistoryItem }) {
   const labels: Record<string, string> = {
-      command: item.source === "manual" ? "manual" : item.action_name || "exec",
-      action: item.action_name || "action",
-      file_transfer: item.action_name || "transfer",
-    };
-  const label = labels[item.activity_type || ""] ||
-    item.action_name ||
-    "activity";
+    command: item.source === "manual" ? "manual" : item.action_name || "exec",
+    action: item.action_name || "action",
+    file_transfer: item.action_name || "transfer",
+  };
+  const label = labels[item.activity_type || ""] || item.action_name || "activity";
   return <Badge tone={item.activity_type === "file_transfer" ? "warn" : "neutral"}>{label}</Badge>;
 }
 
@@ -469,7 +473,8 @@ function prettyJSON(value: unknown): string {
 function retryPolicyGuidance(item: Pick<HistoryItem, "retry_policy_json">): string {
   try {
     const value: unknown = typeof item.retry_policy_json === "string" ? JSON.parse(item.retry_policy_json) : item.retry_policy_json;
-    if (value && typeof value === "object" && "guidance" in value && typeof value.guidance === "string" && value.guidance) return value.guidance;
+    if (value && typeof value === "object" && "guidance" in value && typeof value.guidance === "string" && value.guidance)
+      return value.guidance;
   } catch {
     // The API normalizes connector retry policies; retain a safe UI fallback.
   }

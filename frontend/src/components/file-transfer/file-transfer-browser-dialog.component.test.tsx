@@ -77,13 +77,30 @@ it("uses only a ready upload directory and reloads paths from keyboard", async (
 });
 
 it("disables pagination while replacing a directory", () => {
-  render(<RemoteBrowserDialog browser={{ ...baseBrowser, path: "/new", state: "loading" }} onClose={vi.fn()} onLoad={vi.fn()} onPathChange={vi.fn()} onUseDirectory={vi.fn()} onAddFiles={vi.fn(async () => true)} recursive={false} />);
+  render(
+    <RemoteBrowserDialog
+      browser={{ ...baseBrowser, path: "/new", state: "loading" }}
+      onClose={vi.fn()}
+      onLoad={vi.fn()}
+      onPathChange={vi.fn()}
+      onUseDirectory={vi.fn()}
+      onAddFiles={vi.fn(async () => true)}
+      recursive={false}
+    />,
+  );
   expect(screen.getByRole("button", { name: "Load more" })).toBeDisabled();
 });
 
 it("prevents repeated submission and discards a late add completion after reopening", async () => {
-  let resolve: (_value: boolean) => void = () => { throw new Error("Uninitialized add request"); };
-  const onAddFiles = vi.fn(() => new Promise<boolean>((finish) => { resolve = finish; }));
+  let resolve: (_value: boolean) => void = () => {
+    throw new Error("Uninitialized add request");
+  };
+  const onAddFiles = vi.fn(
+    () =>
+      new Promise<boolean>((finish) => {
+        resolve = finish;
+      }),
+  );
   const onClose = vi.fn();
   const props = { onClose, onAddFiles, onLoad: vi.fn(), onPathChange: vi.fn(), onUseDirectory: vi.fn(), recursive: false };
   const { rerender } = render(<RemoteBrowserDialog browser={baseBrowser} {...props} />);
@@ -96,7 +113,9 @@ it("prevents repeated submission and discards a late add completion after reopen
   rerender(<RemoteBrowserDialog browser={{ ...baseBrowser, open: false }} {...props} />);
   rerender(<RemoteBrowserDialog browser={baseBrowser} {...props} />);
   await userEvent.click(screen.getByRole("checkbox", { name: "Select app.log" }));
-  await act(async () => { resolve(true); });
+  await act(async () => {
+    resolve(true);
+  });
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.getByRole("checkbox", { name: "Select app.log" })).toBeChecked();
   expect(screen.getByRole("button", { name: "Add Selected Files (1)" })).toBeEnabled();
@@ -105,7 +124,17 @@ it("prevents repeated submission and discards a late add completion after reopen
 it("shows an add failure and permits retry without dropping the selection", async () => {
   const onAddFiles = vi.fn().mockRejectedValueOnce("unavailable").mockResolvedValueOnce(true);
   const onClose = vi.fn();
-  render(<RemoteBrowserDialog browser={baseBrowser} onClose={onClose} onLoad={vi.fn()} onPathChange={vi.fn()} onUseDirectory={vi.fn()} onAddFiles={onAddFiles} recursive={false} />);
+  render(
+    <RemoteBrowserDialog
+      browser={baseBrowser}
+      onClose={onClose}
+      onLoad={vi.fn()}
+      onPathChange={vi.fn()}
+      onUseDirectory={vi.fn()}
+      onAddFiles={onAddFiles}
+      recursive={false}
+    />,
+  );
   await userEvent.click(screen.getByRole("checkbox", { name: "Select app.log" }));
   await userEvent.click(screen.getByRole("button", { name: "Add Selected Files (1)" }));
   expect(screen.getByText("unavailable")).toBeInTheDocument();

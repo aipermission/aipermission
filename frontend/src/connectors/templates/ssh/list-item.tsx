@@ -2,7 +2,22 @@ import { Container, Copy } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import type { SSHTarget, SSHProfile } from "./form-types";
 
-export function SSHConnectorRowActionsTemplate({ target, profile, onOperation }: { target: SSHTarget | null; profile: SSHProfile | null; onOperation: (_operation: { connector_kind: string; type: "install" | "docker-check"; target: SSHTarget; profile: SSHProfile; open: true; state?: "idle" }) => void }) {
+export function SSHConnectorRowActionsTemplate({
+  target,
+  profile,
+  onOperation,
+}: {
+  target: SSHTarget | null;
+  profile: SSHProfile | null;
+  onOperation: (_operation: {
+    connector_kind: string;
+    type: "install" | "docker-check";
+    target: SSHTarget;
+    profile: SSHProfile;
+    open: true;
+    state?: "idle";
+  }) => void;
+}) {
   return (
     <>
       <Button

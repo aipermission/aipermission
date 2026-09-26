@@ -16,7 +16,14 @@ export function retentionSettingsResponse(value: unknown): RetentionSettings {
 }
 
 export function retentionPurgeResponse(value: unknown): { deleted: number } {
-  if (!value || typeof value !== "object" || !("deleted" in value) || typeof value.deleted !== "number" || !Number.isSafeInteger(value.deleted) || value.deleted < 0) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("deleted" in value) ||
+    typeof value.deleted !== "number" ||
+    !Number.isSafeInteger(value.deleted) ||
+    value.deleted < 0
+  ) {
     throw new Error("Retention purge response is invalid.");
   }
   return { deleted: value.deleted };

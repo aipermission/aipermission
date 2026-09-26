@@ -11,7 +11,11 @@ import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation
 type Props = { runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"] };
 
 export function UnlockImportPanel({ runLifecycleMutation }: Props) {
-  const [form, setForm] = useState<{ database_name: string; file: File | null; database_password: string }>({ database_name: "", file: null, database_password: "" });
+  const [form, setForm] = useState<{ database_name: string; file: File | null; database_password: string }>({
+    database_name: "",
+    file: null,
+    database_password: "",
+  });
   const [state, setState] = useState<{ state: "idle" | "importing" | "error"; error: string | null }>({ state: "idle", error: null });
 
   async function importDatabase(event: FormEvent<HTMLFormElement>) {

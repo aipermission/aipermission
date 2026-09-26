@@ -54,7 +54,9 @@ describe("SecurityPage", () => {
 
   it("locks every security setting while a settings update is pending", async () => {
     const user = userEvent.setup();
-    let resolveUpdate: (_value: unknown) => void = () => { throw new Error("Uninitialized update request"); };
+    let resolveUpdate: (_value: unknown) => void = () => {
+      throw new Error("Uninitialized update request");
+    };
     vi.mocked(apiPut).mockImplementation(
       () =>
         new Promise<unknown>((resolve) => {

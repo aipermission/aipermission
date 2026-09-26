@@ -124,7 +124,19 @@ function MessageHeader({
   );
 }
 
-function MessageActions({ message, busy, canReply, canMove, canArchive, canDelete, onToggleRead, onReply, onMove, onArchive, onDelete }: MessageActionProps) {
+function MessageActions({
+  message,
+  busy,
+  canReply,
+  canMove,
+  canArchive,
+  canDelete,
+  onToggleRead,
+  onReply,
+  onMove,
+  onArchive,
+  onDelete,
+}: MessageActionProps) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       <ActionIcon title={message.read ? "Mark unread" : "Mark read"} onClick={onToggleRead} disabled={busy}>
@@ -170,7 +182,15 @@ function MessageBadges({ message }: { message: MailMessage }) {
   );
 }
 
-function AttachmentMetadata({ attachments, mutedClass, borderClass }: { attachments?: MailAttachment[]; mutedClass: string; borderClass: string }) {
+function AttachmentMetadata({
+  attachments,
+  mutedClass,
+  borderClass,
+}: {
+  attachments?: MailAttachment[];
+  mutedClass: string;
+  borderClass: string;
+}) {
   if (!Array.isArray(attachments) || attachments.length === 0) return null;
   return (
     <div className="mt-4 grid gap-2">
@@ -184,7 +204,13 @@ function AttachmentMetadata({ attachments, mutedClass, borderClass }: { attachme
   );
 }
 
-function ActionIcon({ title, onClick, disabled, danger = false, children }: Pick<ComponentProps<typeof Button>, "title" | "onClick" | "disabled" | "children"> & { danger?: boolean }) {
+function ActionIcon({
+  title,
+  onClick,
+  disabled,
+  danger = false,
+  children,
+}: Pick<ComponentProps<typeof Button>, "title" | "onClick" | "disabled" | "children"> & { danger?: boolean }) {
   return (
     <Button
       type="button"

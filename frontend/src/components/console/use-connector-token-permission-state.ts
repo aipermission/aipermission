@@ -31,17 +31,28 @@ type Owner = { targetKey: string };
 type Retry = () => Promise<void>;
 export type PermissionMutationError = { tokenID: number; profileID: number; targetKey: string; message: string; retryable?: boolean };
 type Mutation = {
-  key: string; retry: Retry; failure: (_error: unknown) => PermissionMutationError;
+  key: string;
+  retry: Retry;
+  failure: (_error: unknown) => PermissionMutationError;
   mutate: (_isCurrent: () => boolean) => Promise<unknown>;
 };
 type MutationControls = {
-  permissionMutationActiveRef: RefObject<boolean>; permissionMutationOwnerRef: RefObject<Owner | null>;
-  permissionMutationRetryRef: RefObject<Retry | null>; setPermissionMutationError: Dispatch<SetStateAction<PermissionMutationError | null>>;
+  permissionMutationActiveRef: RefObject<boolean>;
+  permissionMutationOwnerRef: RefObject<Owner | null>;
+  permissionMutationRetryRef: RefObject<Retry | null>;
+  setPermissionMutationError: Dispatch<SetStateAction<PermissionMutationError | null>>;
   setSavingKey: Dispatch<SetStateAction<string>>;
 };
-export type ConnectorTokenPermissionOptions = Partial<Pick<ReturnType<typeof useConnectorPermissions>, "connectorPermissionState" | "loadAllConnectorPermissions" | "loadConnectorActions" | "replaceTokenConnectorPermissions">> & {
-  onRefresh?: () => unknown | Promise<unknown>; selectedTarget: PermissionTarget | null;
-  targets?: { data: PermissionTarget[] }; tokens: { data: GatewayToken[] };
+export type ConnectorTokenPermissionOptions = Partial<
+  Pick<
+    ReturnType<typeof useConnectorPermissions>,
+    "connectorPermissionState" | "loadAllConnectorPermissions" | "loadConnectorActions" | "replaceTokenConnectorPermissions"
+  >
+> & {
+  onRefresh?: () => unknown | Promise<unknown>;
+  selectedTarget: PermissionTarget | null;
+  targets?: { data: PermissionTarget[] };
+  tokens: { data: GatewayToken[] };
 };
 
 export function useConnectorTokenPermissionState({
@@ -69,7 +80,13 @@ export function useConnectorTokenPermissionState({
   const permissionMutationRetryRef = useRef<Retry | null>(null);
   const permissionMutationActiveRef = useRef(false);
   const permissionMutationOwnerRef = useRef<Owner | null>(null);
-  const load: PermissionState = connectorPermissionState || { state: "idle", data: {}, revisionsByToken: {}, actionsByTargetRef: {}, error: null };
+  const load: PermissionState = connectorPermissionState || {
+    state: "idle",
+    data: {},
+    revisionsByToken: {},
+    actionsByTargetRef: {},
+    error: null,
+  };
   const permissionsByToken = useMemo(() => load.data || {}, [load.data]);
   const permissionsByTokenRef = useRef(permissionsByToken);
   const permissionSnapshotSourceRef = useRef(permissionsByToken);
@@ -112,21 +129,7 @@ export function useConnectorTokenPermissionState({
     setProfileByToken((current) => reconcileSelectedProfiles(current, activeTokens, selectedTarget, targetProfiles));
   }, [selectedTarget, targetProfiles, activeTokens]);
 
-  useEffect(() => {
-    if (!openTokenID) return undefined;
-    const closeOnOutsidePointer = (event: PointerEvent) => event.target instanceof Node && !compactPanelRef.current?.contains(event.target) && setOpenTokenID(null);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpenTokenID(null);
-      queueMicrotask(() => tokenTriggerRef.current?.focus());
-    };
-    window.addEventListener("pointerdown", closeOnOutsidePointer);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("pointerdown", closeOnOutsidePointer);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [openTokenID]);
+  useCompactPanelDismissal(openTokenID, compactPanelRef, tokenTriggerRef, setOpenTokenID);
 
   const selectedCountByToken = useMemo(() => {
     const result: Record<number, number> = {};
@@ -213,7 +216,13 @@ export function useConnectorTokenPermissionState({
     void loadConnectorActions?.({ ...selectedTarget, profile_id: nextID });
   }
 
-  async function setConnectorRules(token: GatewayToken, profileID: number, selectedActions: ConnectorPermissionAction[], rule: ExecutionRule | "", keySuffix: string) {
+  async function setConnectorRules(
+    token: GatewayToken,
+    profileID: number,
+    selectedActions: ConnectorPermissionAction[],
+    rule: ExecutionRule | "",
+    keySuffix: string,
+  ) {
     if (!selectedTarget || permissionMutationActiveRef.current) return;
     await runPermissionMutation({
       key: `${token.id}:${profileID}:${keySuffix}`,
@@ -298,7 +307,8 @@ export function useConnectorTokenPermissionState({
     selectProfile,
     selectedCountByToken,
     selectedTargetKey,
-    setConnectorRule: (token: GatewayToken, profileID: number, action: ConnectorPermissionAction, rule: ExecutionRule | "") => setConnectorRules(token, profileID, [action], rule, action.name),
+    setConnectorRule: (token: GatewayToken, profileID: number, action: ConnectorPermissionAction, rule: ExecutionRule | "") =>
+      setConnectorRules(token, profileID, [action], rule, action.name),
     setConnectorRules,
     setOpenTokenID,
     setPermissionModeByKey,
@@ -314,7 +324,36 @@ function useActiveTokens(tokens: GatewayToken[]) {
   return useMemo(() => tokens.filter((token) => isActiveToken(token, now)), [tokens, now]);
 }
 
-async function refreshPermissionSnapshot(error: unknown, loadAllConnectorPermissions: ConnectorTokenPermissionOptions["loadAllConnectorPermissions"], activeTokens: GatewayToken[], permissionsByTokenRef: RefObject<Permissions>) {
+function useCompactPanelDismissal(
+  openTokenID: number | null,
+  panelRef: RefObject<HTMLElement | null>,
+  triggerRef: RefObject<HTMLButtonElement | null>,
+  setOpenTokenID: Dispatch<SetStateAction<number | null>>,
+) {
+  useEffect(() => {
+    if (!openTokenID) return undefined;
+    const closeOnOutsidePointer = (event: PointerEvent) =>
+      event.target instanceof Node && !panelRef.current?.contains(event.target) && setOpenTokenID(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenTokenID(null);
+      queueMicrotask(() => triggerRef.current?.focus());
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openTokenID, panelRef, triggerRef, setOpenTokenID]);
+}
+
+async function refreshPermissionSnapshot(
+  error: unknown,
+  loadAllConnectorPermissions: ConnectorTokenPermissionOptions["loadAllConnectorPermissions"],
+  activeTokens: GatewayToken[],
+  permissionsByTokenRef: RefObject<Permissions>,
+) {
   if (!error || typeof error !== "object" || !("status" in error) || error.status !== 409) return;
   const refreshed = await loadAllConnectorPermissions?.(activeTokens, { requireCurrent: true });
   const completeSnapshot = refreshed && typeof refreshed === "object" && activeTokens.every((token) => Array.isArray(refreshed[token.id]));
@@ -324,7 +363,13 @@ async function refreshPermissionSnapshot(error: unknown, loadAllConnectorPermiss
 
 async function executePermissionMutation(
   { key, retry, failure, mutate, owner }: Mutation & { owner: Owner },
-  { permissionMutationActiveRef, permissionMutationOwnerRef, permissionMutationRetryRef, setPermissionMutationError, setSavingKey }: MutationControls,
+  {
+    permissionMutationActiveRef,
+    permissionMutationOwnerRef,
+    permissionMutationRetryRef,
+    setPermissionMutationError,
+    setSavingKey,
+  }: MutationControls,
   refreshConflict: (_error: unknown) => Promise<void>,
 ) {
   const isCurrent = () => permissionMutationOwnerRef.current === owner;
@@ -358,7 +403,13 @@ async function executePermissionMutation(
   }
 }
 
-function createPermissionMutationFailure(token: GatewayToken, profileID: number, operation: string, error: unknown, { targetProfiles, selectedTargetKey }: { targetProfiles: PermissionTarget[]; selectedTargetKey: string }): PermissionMutationError {
+function createPermissionMutationFailure(
+  token: GatewayToken,
+  profileID: number,
+  operation: string,
+  error: unknown,
+  { targetProfiles, selectedTargetKey }: { targetProfiles: PermissionTarget[]; selectedTargetKey: string },
+): PermissionMutationError {
   const profile = targetProfiles.find((item) => Number(item.profile_id) === Number(profileID));
   return {
     tokenID: Number(token.id),
@@ -368,7 +419,12 @@ function createPermissionMutationFailure(token: GatewayToken, profileID: number,
   };
 }
 
-function reconcileSelectedProfiles(current: Record<number, number | "">, activeTokens: GatewayToken[], target: PermissionTarget, profiles: PermissionTarget[]): Record<number, number | ""> {
+function reconcileSelectedProfiles(
+  current: Record<number, number | "">,
+  activeTokens: GatewayToken[],
+  target: PermissionTarget,
+  profiles: PermissionTarget[],
+): Record<number, number | ""> {
   const next = { ...current };
   let changed = false;
   for (const token of activeTokens) {

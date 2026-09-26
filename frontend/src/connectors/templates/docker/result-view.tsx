@@ -148,7 +148,13 @@ function DockerInspectSummary({ output }: { output: Record<string, unknown> }) {
   return <DarkSummaryGrid rows={visibleSummaryRows(rows).map(([label, value]) => ({ label, value }))} />;
 }
 
-export function DockerResourceDetail({ resourceView, item, search, onSearch, inputClass }: SearchProps & { resourceView: DockerResourceKind; item: DockerResource }) {
+export function DockerResourceDetail({
+  resourceView,
+  item,
+  search,
+  onSearch,
+  inputClass,
+}: SearchProps & { resourceView: DockerResourceKind; item: DockerResource }) {
   const rawValue = JSON.stringify(item || {}, null, 2);
   const rows = resourceDetailRows(resourceView, item);
   return (

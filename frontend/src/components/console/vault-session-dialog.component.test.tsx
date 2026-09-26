@@ -52,21 +52,45 @@ it("preserves reviewed default identity and removes its binding revision after a
   const user = userEvent.setup();
   const onStart = vi.fn();
   vi.mocked(apiGet).mockResolvedValue({ items: [{ id: 7, name: "PROJECT_API_KEY", owner_project_id: 4 }], total: 1 });
-  render(<VaultSessionDialog
-    state={{
-      open: true, status: "idle", runtime: { id: 2, name: "Test runtime" }, sessionOptions: null, error: null,
-      options: { supported: true, target_project_id: 4, items: [], projects: [{ id: 4, name: "My Project" }], defaults: [{
-        id: 3, vault_item_id: 7, vault_item_name: "PROJECT_API_KEY", source_project_id: 4,
-        source_project_name: "My Project", replace_existing: true, binding_revision: 2,
-      }] },
-    }}
-    onClose={vi.fn()} onStart={onStart}
-  />);
+  render(
+    <VaultSessionDialog
+      state={{
+        open: true,
+        status: "idle",
+        runtime: { id: 2, name: "Test runtime" },
+        sessionOptions: null,
+        error: null,
+        options: {
+          supported: true,
+          target_project_id: 4,
+          items: [],
+          projects: [{ id: 4, name: "My Project" }],
+          defaults: [
+            {
+              id: 3,
+              vault_item_id: 7,
+              vault_item_name: "PROJECT_API_KEY",
+              source_project_id: 4,
+              source_project_name: "My Project",
+              replace_existing: true,
+              binding_revision: 2,
+            },
+          ],
+        },
+      }}
+      onClose={vi.fn()}
+      onStart={onStart}
+    />,
+  );
   await user.click(screen.getByRole("button", { name: "Start session" }));
-  expect(onStart).toHaveBeenLastCalledWith([{ item_id: 7, source_project_id: 4, replace_existing: true, binding_id: 3, binding_revision: 2 }]);
+  expect(onStart).toHaveBeenLastCalledWith([
+    { item_id: 7, source_project_id: 4, replace_existing: true, binding_id: 3, binding_revision: 2 },
+  ]);
   await user.click(screen.getByRole("checkbox", { name: "Overwrite existing shell value" }));
   await user.click(screen.getByRole("button", { name: "Start session" }));
-  expect(onStart).toHaveBeenLastCalledWith([{ item_id: 7, source_project_id: 4, replace_existing: false, binding_id: undefined, binding_revision: undefined }]);
+  expect(onStart).toHaveBeenLastCalledWith([
+    { item_id: 7, source_project_id: 4, replace_existing: false, binding_id: undefined, binding_revision: undefined },
+  ]);
   await user.click(screen.getByRole("button", { name: "Remove PROJECT_API_KEY" }));
   await user.click(screen.getByRole("button", { name: "Start session" }));
   expect(onStart).toHaveBeenLastCalledWith([]);
@@ -77,16 +101,39 @@ it("binds an explicitly selected shared item to the selected source project rath
   const onStart = vi.fn();
   const item = { id: 7, name: "PROJECT_API_KEY", owner_project_id: 4, project_ids: [5] };
   vi.mocked(apiGet).mockResolvedValue({ items: [item], total: 1 });
-  render(<VaultSessionDialog
-    state={{
-      open: true, status: "idle", runtime: { id: 2, name: "Test runtime" }, sessionOptions: null, error: null,
-      options: { supported: true, target_project_id: 4, items: [item], projects: [{ id: 4, name: "My Project" }, { id: 5, name: "Shared Project" }], defaults: [{
-        id: 3, vault_item_id: 7, vault_item_name: item.name, source_project_id: 4,
-        source_project_name: "My Project", replace_existing: false, binding_revision: 2,
-      }] },
-    }}
-    onClose={vi.fn()} onStart={onStart}
-  />);
+  render(
+    <VaultSessionDialog
+      state={{
+        open: true,
+        status: "idle",
+        runtime: { id: 2, name: "Test runtime" },
+        sessionOptions: null,
+        error: null,
+        options: {
+          supported: true,
+          target_project_id: 4,
+          items: [item],
+          projects: [
+            { id: 4, name: "My Project" },
+            { id: 5, name: "Shared Project" },
+          ],
+          defaults: [
+            {
+              id: 3,
+              vault_item_id: 7,
+              vault_item_name: item.name,
+              source_project_id: 4,
+              source_project_name: "My Project",
+              replace_existing: false,
+              binding_revision: 2,
+            },
+          ],
+        },
+      }}
+      onClose={vi.fn()}
+      onStart={onStart}
+    />,
+  );
   await user.selectOptions(screen.getByRole("combobox", { name: "Project" }), "5");
   const checkbox = await screen.findByRole("checkbox", { name: "Select PROJECT_API_KEY" });
   await user.click(checkbox);

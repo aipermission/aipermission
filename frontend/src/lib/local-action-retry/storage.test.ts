@@ -5,7 +5,9 @@ import { requestPromise, transactionPromise, withMemoryTransaction } from "./sto
 
 async function testDatabase() {
   const request = new IDBFactory().open("transaction-test", 1);
-  request.onupgradeneeded = () => { request.result.createObjectStore("entries"); };
+  request.onupgradeneeded = () => {
+    request.result.createObjectStore("entries");
+  };
   return requestPromise(request);
 }
 
@@ -16,7 +18,12 @@ test("retry storage commits successful operations and preserves operation errors
     const result: unknown = await transactionPromise(database, "entries", "readonly", (store) => requestPromise(store.get("one")));
     assert.deepEqual(result, { revision: 1 });
     const error = new Error("operation refused");
-    await assert.rejects(transactionPromise(database, "entries", "readwrite", () => { throw error; }), (value) => value === error);
+    await assert.rejects(
+      transactionPromise(database, "entries", "readwrite", () => {
+        throw error;
+      }),
+      (value) => value === error,
+    );
   } finally {
     database.close();
   }
@@ -37,13 +44,22 @@ test("an IndexedDB transaction cannot acknowledge an unfinished async operation"
 test("memory transactions remain serialized and recover after an operation failure", async () => {
   let finish: (() => void) | undefined;
   const order: string[] = [];
-  const first = withMemoryTransaction(() => new Promise<void>((resolve) => {
-    order.push("first");
-    finish = resolve;
-  }));
-  const second = withMemoryTransaction(() => { order.push("second"); throw new Error("refused"); });
+  const first = withMemoryTransaction(
+    () =>
+      new Promise<void>((resolve) => {
+        order.push("first");
+        finish = resolve;
+      }),
+  );
+  const second = withMemoryTransaction(() => {
+    order.push("second");
+    throw new Error("refused");
+  });
   const failed = assert.rejects(second, /refused/);
-  const third = withMemoryTransaction(() => { order.push("third"); return 42; });
+  const third = withMemoryTransaction(() => {
+    order.push("third");
+    return 42;
+  });
   await Promise.resolve();
   assert.deepEqual(order, ["first"]);
   if (!finish) throw new Error("First memory operation did not start");

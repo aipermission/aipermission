@@ -176,7 +176,9 @@ describe("settings async owners", () => {
 
   it("deletes the selected history label and refreshes its collection", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiGet).mockResolvedValueOnce([{ id: 7, name: "incident" }]).mockResolvedValueOnce([]);
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce([{ id: 7, name: "incident" }])
+      .mockResolvedValueOnce([]);
     vi.mocked(apiDelete).mockResolvedValue({});
     render(<HistoryLabelsPanel />);
 

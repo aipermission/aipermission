@@ -11,7 +11,9 @@ vi.mock("./sql-editor", () => ({
 }));
 
 it("passes the connector identifier policy to the editor and submits SQL", () => {
-  const runQuery = vi.fn<SQLQueryFormProps["controller"]["runQuery"]>(async (event) => { event?.preventDefault?.(); });
+  const runQuery = vi.fn<SQLQueryFormProps["controller"]["runQuery"]>(async (event) => {
+    event?.preventDefault?.();
+  });
   const controller: SQLQueryFormProps["controller"] = {
     connector: normalizeSQLConsoleConfig({ label: "ClickHouse", identifierPolicy: "exact" }),
     metadata: { state: "ready", tables: [], error: "", truncated: false },

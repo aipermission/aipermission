@@ -8,10 +8,12 @@ type TargetProfilePayload = {
 };
 
 export async function createTargetWithProfile({ projectID, targetPayload, profilePayload }: TargetProfilePayload) {
-  const target = savedConnectorTargetResponse(await apiPost("/api/connector-targets/with-profile", {
-    target: { ...targetPayload, project_id: Number(projectID) || 0 },
-    profile: profilePayload,
-  }));
+  const target = savedConnectorTargetResponse(
+    await apiPost("/api/connector-targets/with-profile", {
+      target: { ...targetPayload, project_id: Number(projectID) || 0 },
+      profile: profilePayload,
+    }),
+  );
   return { target, profile: target.profiles?.[0] || null };
 }
 
@@ -23,9 +25,11 @@ export async function updateTargetWithProfile({
   profilePayload,
 }: TargetProfilePayload & { targetID: string | number; profileID: string | number }) {
   if (!targetID || !profileID) throw new Error("Connector target profile is not loaded.");
-  const target = savedConnectorTargetResponse(await apiPut(`/api/connector-targets/${targetID}/with-profile/${profileID}`, {
-    target: { ...targetPayload, project_id: Number(projectID) || 0 },
-    profile: profilePayload,
-  }));
+  const target = savedConnectorTargetResponse(
+    await apiPut(`/api/connector-targets/${targetID}/with-profile/${profileID}`, {
+      target: { ...targetPayload, project_id: Number(projectID) || 0 },
+      profile: profilePayload,
+    }),
+  );
   return { target, profile: target.profiles?.[0] || null };
 }

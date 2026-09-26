@@ -85,7 +85,11 @@ export function actionInputSQL(item: { input?: unknown } | null): string {
   return String(input && typeof input === "object" && "sql" in input ? input.sql || "" : "").trim();
 }
 
-export function tableBrowserSummary(metadata: Pick<SQLMetadataState, "state" | "truncated">, rows: readonly unknown[], browserLabel: string): string {
+export function tableBrowserSummary(
+  metadata: Pick<SQLMetadataState, "state" | "truncated">,
+  rows: readonly unknown[],
+  browserLabel: string,
+): string {
   if (metadata.state === "loading") return `Loading visible ${browserLabel.toLowerCase()}s and tables...`;
   if (metadata.state === "error") return `${browserLabel} metadata is unavailable. You can still run read-only SQL.`;
   if (rows.length === 0) return "No visible tables found for this profile.";

@@ -21,7 +21,14 @@ it("locks managed identity and password while allowing public metadata edits", a
   const user = userEvent.setup();
   const { props } = renderForm({
     formMode: "edit",
-    form: { target_id: "1", profile_label: "reader", risk_label: "read-only", username: "reader", password: "", managed_by_aipermission: true },
+    form: {
+      target_id: "1",
+      profile_label: "reader",
+      risk_label: "read-only",
+      username: "reader",
+      password: "",
+      managed_by_aipermission: true,
+    },
   });
   expect(screen.getByLabelText("Username")).toBeDisabled();
   expect(screen.getByLabelText("New password")).toBeDisabled();

@@ -126,7 +126,12 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
   );
 }
 
-function editorOptions(monaco: Monaco, value: string, theme: SQLEditorProps["theme"], disabled: boolean): MonacoEditor.IStandaloneEditorConstructionOptions {
+function editorOptions(
+  monaco: Monaco,
+  value: string,
+  theme: SQLEditorProps["theme"],
+  disabled: boolean,
+): MonacoEditor.IStandaloneEditorConstructionOptions {
   return {
     value: value || "",
     language: "sql",

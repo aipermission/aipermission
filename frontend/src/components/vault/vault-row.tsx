@@ -8,10 +8,27 @@ import type { LucideIcon } from "lucide-react";
 import type { VaultManagedItem } from "../../lib/gateway-contracts/vault-management-contract.ts";
 import type { ProjectOption } from "../../lib/load-project-options.ts";
 
-type RowItem = Pick<VaultManagedItem, "name" | "provider" | "environment" | "secret_type" | "owner_project_name" | "project_ids" | "tags" | "last_used_at" | "expiry_warning_days" | "expires_at">;
+type RowItem = Pick<
+  VaultManagedItem,
+  | "name"
+  | "provider"
+  | "environment"
+  | "secret_type"
+  | "owner_project_name"
+  | "project_ids"
+  | "tags"
+  | "last_used_at"
+  | "expiry_warning_days"
+  | "expires_at"
+>;
 type Props = {
-  item: RowItem; projects: Pick<ProjectOption, "id" | "name">[];
-  onEdit?: () => void; onReveal?: () => void; onReplace?: () => void; onBindings?: () => void; onDelete?: () => void;
+  item: RowItem;
+  projects: Pick<ProjectOption, "id" | "name">[];
+  onEdit?: () => void;
+  onReveal?: () => void;
+  onReplace?: () => void;
+  onBindings?: () => void;
+  onDelete?: () => void;
 };
 
 export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }: Props) {

@@ -207,7 +207,10 @@ it("uses the latest controlled text and disabled state after a deferred editor l
 });
 
 it("updates the loaded editor when controlled SQL and focus change", async () => {
-  const props = { onChange: vi.fn(), onSubmit: vi.fn(), tables: [], keywords: [], theme: "dark", disabled: false } satisfies Omit<SQLEditorProps, "value" | "focusSignal">;
+  const props = { onChange: vi.fn(), onSubmit: vi.fn(), tables: [], keywords: [], theme: "dark", disabled: false } satisfies Omit<
+    SQLEditorProps,
+    "value" | "focusSignal"
+  >;
   const { rerender } = render(<SQLEditor {...props} value="SELECT old" focusSignal={0} />);
   await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
 
@@ -218,7 +221,16 @@ it("updates the loaded editor when controlled SQL and focus change", async () =>
 
 it("disposes its completion provider, change listener, and editor on unmount", async () => {
   const { unmount } = render(
-    <SQLEditor value="SELECT 1" onChange={vi.fn()} onSubmit={vi.fn()} focusSignal={0} theme="dark" tables={[]} keywords={[]} disabled={false} />,
+    <SQLEditor
+      value="SELECT 1"
+      onChange={vi.fn()}
+      onSubmit={vi.fn()}
+      focusSignal={0}
+      theme="dark"
+      tables={[]}
+      keywords={[]}
+      disabled={false}
+    />,
   );
   await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
   const provider = monaco.languages.registerCompletionItemProvider.mock.results[0].value;

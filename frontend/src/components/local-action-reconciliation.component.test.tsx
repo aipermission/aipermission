@@ -31,7 +31,12 @@ describe("local connector action reconciliation", () => {
   it("keeps an unknown outcome protected until the operator explicitly starts a new attempt", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(<LocalActionReconciliationDialog value={{ requestID: 91, assistantHint: "Inspect external state first.", resolve: vi.fn() }} onClose={onClose} />);
+    render(
+      <LocalActionReconciliationDialog
+        value={{ requestID: 91, assistantHint: "Inspect external state first.", resolve: vi.fn() }}
+        onClose={onClose}
+      />,
+    );
 
     expect(screen.getByText(/may repeat an operation that already completed/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Keep protected" }));

@@ -13,7 +13,10 @@ import type { InventoryProfile, InventoryTarget } from "../../lib/gateway-contra
 import type { ConnectorTestState as ConnectionTestState } from "./use-connector-connection-tests";
 import type { ConnectorTargetsTableProps } from "./connector-target-table-types";
 
-type RowContext = Omit<ConnectorTargetsTableProps, "targets" | "projects" | "search" | "collapsedProjects" | "onSearch" | "onToggleProject">;
+type RowContext = Omit<
+  ConnectorTargetsTableProps,
+  "targets" | "projects" | "search" | "collapsedProjects" | "onSearch" | "onToggleProject"
+>;
 type RowProps = Omit<RowContext, "profileSelections"> & { target: InventoryTarget; selectedProfileID: string };
 
 export function ConnectorTargetsTable({
@@ -85,8 +88,17 @@ export function ConnectorTargetsTable({
   );
 }
 
-function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps }: RowContext & {
-  project: ConnectorTargetsTableProps["projects"][number]; targets: InventoryTarget[]; collapsed: boolean; onToggle: () => void;
+function ProjectTargetRows({
+  project,
+  targets,
+  collapsed,
+  onToggle,
+  ...rowProps
+}: RowContext & {
+  project: ConnectorTargetsTableProps["projects"][number];
+  targets: InventoryTarget[];
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   return (
     <>
@@ -189,8 +201,16 @@ function ConnectorTargetRow({
   );
 }
 
-function IconAction({ title, disabled, onClick, children }: {
-  title: string; disabled?: boolean; onClick: () => unknown; children: ReactNode;
+function IconAction({
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  title: string;
+  disabled?: boolean;
+  onClick: () => unknown;
+  children: ReactNode;
 }) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} disabled={disabled} onClick={onClick}>
@@ -205,8 +225,14 @@ function selectedConnectorProfile(target: InventoryTarget, selectedProfileID: st
   return profiles.find((profile) => String(profile.id) === String(selectedProfileID)) || profiles[0];
 }
 
-function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }: {
-  target: InventoryTarget; selectedProfileID: number | string; onSelectProfile: ConnectorTargetsTableProps["onSelectProfile"];
+function ConnectorProfilesCell({
+  target,
+  selectedProfileID,
+  onSelectProfile,
+}: {
+  target: InventoryTarget;
+  selectedProfileID: number | string;
+  onSelectProfile: ConnectorTargetsTableProps["onSelectProfile"];
 }) {
   const profiles = target.profiles || [];
   if (profiles.length === 0) return <span className="text-xs text-stone-500">No profiles</span>;
@@ -237,7 +263,8 @@ function ConnectorTestState({ value }: { value: ConnectionTestState | undefined 
   if (!value || value.state === "idle") return null;
   if (value.state === "testing") return <span className="text-xs text-stone-500">Testing...</span>;
   const data = value.data !== null && typeof value.data === "object" ? value.data : {};
-  const duration = ("duration_ms" in data && typeof data.duration_ms === "number" ? data.duration_ms : 0) ||
+  const duration =
+    ("duration_ms" in data && typeof data.duration_ms === "number" ? data.duration_ms : 0) ||
     ("durationMS" in data && typeof data.durationMS === "number" ? data.durationMS : 0);
   if (value.state === "ok") {
     return (

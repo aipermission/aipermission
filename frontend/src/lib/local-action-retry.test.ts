@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { completeLocalActionRetry, listLocalActionRetryEntries, markLocalActionRetryOutcome, prepareLocalActionRetry, resetLocalActionRetryLedger, resolveLocalActionRetryEntry } from "./local-action-retry.ts";
+import {
+  completeLocalActionRetry,
+  listLocalActionRetryEntries,
+  markLocalActionRetryOutcome,
+  prepareLocalActionRetry,
+  resetLocalActionRetryLedger,
+  resolveLocalActionRetryEntry,
+} from "./local-action-retry.ts";
 
 test("public retry helpers ignore malformed optional prepared identities", async () => {
   for (const value of [null, [], {}, { scope: {} }, { scope: { key: "one" }, signature: "not-a-signature" }]) {

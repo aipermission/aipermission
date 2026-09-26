@@ -7,7 +7,9 @@ import { DatabaseSettingsPanel } from "./database-settings-panel";
 vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
 
 describe("database settings form contracts", () => {
-  beforeEach(() => { vi.mocked(apiPost).mockReset(); });
+  beforeEach(() => {
+    vi.mocked(apiPost).mockReset();
+  });
 
   it("requires the exact database name before opening destructive confirmation", async () => {
     const user = userEvent.setup();

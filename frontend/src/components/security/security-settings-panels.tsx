@@ -54,7 +54,17 @@ const toggleSettings = {
   },
 };
 
-export function SecurityToggleCard({ setting, value, disabled, onUpdate }: { setting: keyof typeof toggleSettings; value: boolean; disabled: boolean; onUpdate: UpdateSecurity }) {
+export function SecurityToggleCard({
+  setting,
+  value,
+  disabled,
+  onUpdate,
+}: {
+  setting: keyof typeof toggleSettings;
+  value: boolean;
+  disabled: boolean;
+  onUpdate: UpdateSecurity;
+}) {
   const copy = toggleSettings[setting];
   return (
     <Card>
@@ -118,7 +128,12 @@ export function RedactionSettingsCard({
             className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-emerald-800"
             value={security.data?.redaction_mode || "basic"}
             disabled={busy}
-            onChange={(event) => onUpdateSecurity({ redaction_mode: event.target.value === "off" ? "off" : "basic" }, `Redaction mode set to ${event.target.value}.`)}
+            onChange={(event) =>
+              onUpdateSecurity(
+                { redaction_mode: event.target.value === "off" ? "off" : "basic" },
+                `Redaction mode set to ${event.target.value}.`,
+              )
+            }
           >
             <option value="basic">Basic</option>
             <option value="off">Off</option>
@@ -195,7 +210,12 @@ function RedactionRuleEditor({ rules, action, form, onUpdate, onCreate, onToggle
   );
 }
 
-function RedactionRuleList({ rules, action, onToggle, onDelete }: Pick<RedactionEditorProps, "rules" | "action" | "onToggle" | "onDelete">) {
+function RedactionRuleList({
+  rules,
+  action,
+  onToggle,
+  onDelete,
+}: Pick<RedactionEditorProps, "rules" | "action" | "onToggle" | "onDelete">) {
   if (rules.state === "ready" && rules.data.length === 0) return <Notice>No custom redaction rules yet.</Notice>;
   return (
     <div className="grid gap-2">

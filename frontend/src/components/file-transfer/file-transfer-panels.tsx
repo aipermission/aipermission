@@ -31,16 +31,17 @@ type SetupProps = UploadProps & {
   transferNotice: string;
   onModeChange: (_mode: TransferDirection) => void;
 };
-type QueueProps = Pick<SetupProps, "mode" | "batch" | "queue" | "activeBatch"> & Pick<ComponentProps<typeof QueueList>, "onRemove" | "onMove"> & {
-  canStart: boolean;
-  onRefresh: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onCancel: () => void;
-  onSaveDownload: () => void;
-  onClear: () => void;
-  onStart: () => void;
-};
+type QueueProps = Pick<SetupProps, "mode" | "batch" | "queue" | "activeBatch"> &
+  Pick<ComponentProps<typeof QueueList>, "onRemove" | "onMove"> & {
+    canStart: boolean;
+    onRefresh: () => void;
+    onPause: () => void;
+    onResume: () => void;
+    onCancel: () => void;
+    onSaveDownload: () => void;
+    onClear: () => void;
+    onStart: () => void;
+  };
 
 export function TransferSetupPanel({
   runtimeTarget,

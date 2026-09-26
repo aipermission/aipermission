@@ -18,7 +18,16 @@ const mockedRunner = vi.mocked(runGuardedConnectorAction);
 type ActionResolver = (_value: ConnectorActionResponse | null) => void;
 
 function actionResponse(output: unknown, extra: Partial<ConnectorActionResponse> = {}): ConnectorActionResponse {
-  return { status: "completed", request_id: 1, target_ref: "rabbitmq:1:1", connector_kind: "rabbitmq", action_name: "fixture", retry_policy: { class: "read_only", guidance: "Read again." }, output, ...extra };
+  return {
+    status: "completed",
+    request_id: 1,
+    target_ref: "rabbitmq:1:1",
+    connector_kind: "rabbitmq",
+    action_name: "fixture",
+    retry_policy: { class: "read_only", guidance: "Read again." },
+    output,
+    ...extra,
+  };
 }
 
 beforeEach(() => {
@@ -29,7 +38,10 @@ beforeEach(() => {
 });
 
 function renderBrowser(approvals: NonNullable<RabbitBrowserProps["approvals"]> = { state: "ready", data: [] }) {
-  const initialProps: { activity: NonNullable<RabbitBrowserProps["approvals"]>; targetRef?: string } = { activity: approvals, targetRef: "rabbitmq:1:1" };
+  const initialProps: { activity: NonNullable<RabbitBrowserProps["approvals"]>; targetRef?: string } = {
+    activity: approvals,
+    targetRef: "rabbitmq:1:1",
+  };
   return renderHook(
     ({ activity, targetRef = "rabbitmq:1:1" }) =>
       useRabbitMQBrowser({
@@ -43,9 +55,9 @@ function renderBrowser(approvals: NonNullable<RabbitBrowserProps["approvals"]> =
 }
 
 it("keeps malformed remote identities out of the queue workspace", async () => {
-  mockedRunner.mockImplementation(async ({ actionName }) => actionResponse(
-    actionName === "list_queues" ? { queues: [null, { name: {} }, { name: "valid", state: [] }] } : { name: {} },
-  ));
+  mockedRunner.mockImplementation(async ({ actionName }) =>
+    actionResponse(actionName === "list_queues" ? { queues: [null, { name: {} }, { name: "valid", state: [] }] } : { name: {} }),
+  );
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.queues).toHaveLength(1));
   expect(result.current.queues[0].name).toBe("valid");
@@ -212,9 +224,7 @@ it("keeps an approval-pending publish locked until activity becomes terminal", a
   expect(result.current.publish.payload).toBe("hello");
   const publishCalls = mockedRunner.mock.calls.filter(([options]) => options.actionName === "publish_message");
   await act(async () => result.current.publishMessage());
-  expect(mockedRunner.mock.calls.filter(([options]) => options.actionName === "publish_message")).toHaveLength(
-    publishCalls.length,
-  );
+  expect(mockedRunner.mock.calls.filter(([options]) => options.actionName === "publish_message")).toHaveLength(publishCalls.length);
   act(() => {
     result.current.setVhostDraft("/other");
     result.current.applyVhost();
@@ -358,6 +368,13 @@ it("keeps pending publish ownership across structured session changes", async ()
 });
 
 function responseFor(actionName: string, input?: Record<string, unknown>) {
-  const output = actionName === "list_queues" ? { queues } : actionName === "get_queue" ? { name: input?.queue } : actionName === "list_bindings" ? { bindings: [] } : {};
+  const output =
+    actionName === "list_queues"
+      ? { queues }
+      : actionName === "get_queue"
+        ? { name: input?.queue }
+        : actionName === "list_bindings"
+          ? { bindings: [] }
+          : {};
   return actionResponse(output, { action_name: actionName });
 }

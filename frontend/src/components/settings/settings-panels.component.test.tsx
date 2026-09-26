@@ -130,7 +130,8 @@ describe("settings panels", () => {
     vi.mocked(apiGet).mockReturnValue(new Promise(() => {}));
     const { unmount } = render(<HistoryRetentionPanel />);
     const options: unknown = vi.mocked(apiGet).mock.calls[0]?.[1];
-    if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal)) throw new Error("Expected an owned retention read.");
+    if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal))
+      throw new Error("Expected an owned retention read.");
     expect(options.signal.aborted).toBe(false);
     unmount();
     expect(options.signal.aborted).toBe(true);

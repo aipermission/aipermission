@@ -38,7 +38,12 @@ export function ClearDownloadDialog({ open, onCancel, onContinue, onSave }: Down
   );
 }
 
-export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSave }: DownloadConfirmationProps & { onCloseAnyway: () => void }) {
+export function UnsavedDownloadCloseDialog({
+  open,
+  onCancel,
+  onCloseAnyway,
+  onSave,
+}: DownloadConfirmationProps & { onCloseAnyway: () => void }) {
   return (
     <Dialog
       open={open}
@@ -69,7 +74,12 @@ export function UnsavedDownloadCloseDialog({ open, onCancel, onCloseAnyway, onSa
   );
 }
 
-export function OverwriteConfirmDialog({ open, conflicts, onCancel, onOverwrite }: {
+export function OverwriteConfirmDialog({
+  open,
+  conflicts,
+  onCancel,
+  onOverwrite,
+}: {
   open: boolean;
   conflicts: { remote_path: string }[];
   onCancel: () => void;

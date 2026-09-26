@@ -3,11 +3,23 @@ import { apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { errorMessage } from "../../lib/errors.ts";
-import { vaultRevealedValueResponse, vaultGeneratedPreviewResponse, type VaultManagedItem, type VaultActionState } from "../../lib/gateway-contracts/vault-management-contract.ts";
+import {
+  vaultRevealedValueResponse,
+  vaultGeneratedPreviewResponse,
+  type VaultManagedItem,
+  type VaultActionState,
+} from "../../lib/gateway-contracts/vault-management-contract.ts";
 
 type Item = Pick<VaultManagedItem, "id" | "name" | "value_version" | "metadata_revision">;
 type ValueState = { open: boolean; item: Item | null; state: string; error: string | null };
-type ReplaceState = ValueState & { source: string; value: string; generator_kind: string; preview_value: string; preview_token: string; preview_state: string };
+type ReplaceState = ValueState & {
+  source: string;
+  value: string;
+  generator_kind: string;
+  preview_value: string;
+  preview_token: string;
+  preview_state: string;
+};
 type RevealState = ValueState & { value: string; copied: boolean };
 type RemoveState = ValueState & { confirm: string };
 type Options = { reloadItems: () => unknown | Promise<unknown>; setAction: Dispatch<SetStateAction<VaultActionState>> };
@@ -61,7 +73,8 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
     setReveal({ open: true, item, state: "loading", value: "", error: null, copied: false });
     try {
       const data = await apiPost(`/api/vault-items/${item.id}/reveal`, {}, { signal: request.signal });
-      if (request.isCurrent()) setReveal({ open: true, item, state: "ready", value: vaultRevealedValueResponse(data), error: null, copied: false });
+      if (request.isCurrent())
+        setReveal({ open: true, item, state: "ready", value: vaultRevealedValueResponse(data), error: null, copied: false });
     } catch (error) {
       if (request.isCurrent()) setReveal({ open: true, item, state: "error", value: "", error: errorMessage(error), copied: false });
     } finally {

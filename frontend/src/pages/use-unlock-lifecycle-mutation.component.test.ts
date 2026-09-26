@@ -3,8 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
 
 function deferred<Result>() {
-  let resolve: (_value: Result) => void = () => { throw new Error("Deferred request is not initialized"); };
-  const promise = new Promise<Result>((done) => { resolve = done; });
+  let resolve: (_value: Result) => void = () => {
+    throw new Error("Deferred request is not initialized");
+  };
+  const promise = new Promise<Result>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -14,7 +18,9 @@ describe("Unlock lifecycle mutation ownership", () => {
     const execute = vi.fn().mockResolvedValue({ database_id: "test" });
     const { result } = renderHook(() => useUnlockLifecycleMutation(onUnlocked));
     let response: { database_id: string } | undefined;
-    await act(async () => { response = await result.current.runMutation("create", execute); });
+    await act(async () => {
+      response = await result.current.runMutation("create", execute);
+    });
     expect(response).toEqual({ database_id: "test" });
     expect(onUnlocked).toHaveBeenCalledWith(execute.mock.calls[0][0]);
     expect(result.current.activeMutation).toBe("");
@@ -24,7 +30,9 @@ describe("Unlock lifecycle mutation ownership", () => {
     const pending = deferred<string>();
     const { result } = renderHook(() => useUnlockLifecycleMutation(vi.fn()));
     let running: Promise<string> | undefined;
-    act(() => { running = result.current.runMutation("import", () => pending.promise); });
+    act(() => {
+      running = result.current.runMutation("import", () => pending.promise);
+    });
     expect(result.current.activeMutation).toBe("import");
     const second = vi.fn().mockResolvedValue("unexpected");
     await expect(result.current.runMutation("delete", second)).rejects.toThrow("Another database operation is already running.");
@@ -38,7 +46,9 @@ describe("Unlock lifecycle mutation ownership", () => {
     const onUnlocked = stage === "reconcile" ? vi.fn().mockRejectedValue(new Error("failed")) : vi.fn();
     const execute = stage === "execute" ? vi.fn().mockRejectedValue(new Error("failed")) : vi.fn().mockResolvedValue("done");
     const { result } = renderHook(() => useUnlockLifecycleMutation(onUnlocked));
-    await act(async () => { await expect(result.current.runMutation("create", execute)).rejects.toThrow("failed"); });
+    await act(async () => {
+      await expect(result.current.runMutation("create", execute)).rejects.toThrow("failed");
+    });
     expect(result.current.activeMutation).toBe("");
     if (stage === "execute") expect(onUnlocked).not.toHaveBeenCalled();
   });
@@ -49,7 +59,9 @@ describe("Unlock lifecycle mutation ownership", () => {
     const execute = vi.fn((_signal: AbortSignal) => pending.promise);
     const { result, unmount } = renderHook(() => useUnlockLifecycleMutation(onUnlocked));
     let running: Promise<string> | undefined;
-    act(() => { running = result.current.runMutation("create", execute); });
+    act(() => {
+      running = result.current.runMutation("create", execute);
+    });
     const signal = execute.mock.calls[0][0];
     unmount();
     expect(signal.aborted).toBe(true);

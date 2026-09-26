@@ -26,7 +26,10 @@ export type DatabaseCredentialRow = {
   name: string;
   profile?: DatabaseProfile;
 };
-export type DatabaseTargetDefaults = Pick<DatabaseConnectionForm, "name" | "host" | "port" | "database" | "connection_mode" | "transport_target_ref">;
+export type DatabaseTargetDefaults = Pick<
+  DatabaseConnectionForm,
+  "name" | "host" | "port" | "database" | "connection_mode" | "transport_target_ref"
+>;
 export type DatabaseTransportForm = { connector_kind: string; connection_mode: string; host?: string; transport_target_ref?: string };
 export type SyncedDatabaseForm<Form extends DatabaseTransportForm> = Omit<Form, "host" | "transport_target_ref"> &
   Pick<DatabaseTransportForm, "host" | "transport_target_ref">;

@@ -19,7 +19,16 @@ interface KubernetesResourceDetailProps {
   mutedClass: string;
 }
 
-export function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearch, inputClass, mutedClass }: KubernetesResourceDetailProps) {
+export function KubernetesResourceDetail({
+  tab,
+  resource,
+  detail,
+  logs,
+  search,
+  onSearch,
+  inputClass,
+  mutedClass,
+}: KubernetesResourceDetailProps) {
   if (!resource) {
     return (
       <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${mutedClass}`}>
@@ -134,7 +143,15 @@ function KubernetesSummaryCards({ tab, resource, mutedClass }: Pick<KubernetesRe
   );
 }
 
-export function KubernetesFooter({ target, borderClass, mutedClass }: { target: Pick<KubernetesTarget, "config">; borderClass: string; mutedClass: string }) {
+export function KubernetesFooter({
+  target,
+  borderClass,
+  mutedClass,
+}: {
+  target: Pick<KubernetesTarget, "config">;
+  borderClass: string;
+  mutedClass: string;
+}) {
   return (
     <div className={`flex min-h-9 items-center justify-between border-t px-4 py-2 text-xs ${borderClass} ${mutedClass}`}>
       <span>Kubernetes transport</span>

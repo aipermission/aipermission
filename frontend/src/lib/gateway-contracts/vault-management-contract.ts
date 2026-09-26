@@ -43,8 +43,10 @@ function managedItem(value: unknown): VaultManagedItem {
   if (!Array.isArray(tags) || !tags.every((tag): tag is string => typeof tag === "string") || !Array.isArray(notes)) {
     throw new Error("Invalid Vault metadata arrays.");
   }
-  if (data.expiry_warning_days !== undefined && (typeof data.expiry_warning_days !== "number" ||
-      !Number.isSafeInteger(data.expiry_warning_days) || data.expiry_warning_days < 0)) {
+  if (
+    data.expiry_warning_days !== undefined &&
+    (typeof data.expiry_warning_days !== "number" || !Number.isSafeInteger(data.expiry_warning_days) || data.expiry_warning_days < 0)
+  ) {
     throw new Error("Invalid Vault expiry warning days.");
   }
   return {

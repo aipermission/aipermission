@@ -15,8 +15,13 @@ const initialApprovals: ApprovalsResource = { state: "loading", data: [], error:
 const initialDialog: VaultApprovalDialogState = { approval: null, note: "", state: "idle", error: null };
 
 function isStaleApprovalError(error: unknown) {
-  return !!error && typeof error === "object" && "code" in error &&
-    typeof error.code === "string" && ["approval_context_changed", "approval_not_pending"].includes(error.code);
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    ["approval_context_changed", "approval_not_pending"].includes(error.code)
+  );
 }
 
 export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions }: Options) {

@@ -6,8 +6,14 @@ import { coveragePolicyWeakening, legacyCoveragePolicy } from "../coverage-polic
 test("only accepts replacing the generated MCP catalog exclusion during its TypeScript migration", () => {
   const renamed = { ...legacyCoveragePolicy, excludedNames: ["mcp-client-catalog.ts", "release.generated.json"] };
   assert.deepEqual(coveragePolicyWeakening(legacyCoveragePolicy, renamed), []);
-  assert.notDeepEqual(coveragePolicyWeakening(legacyCoveragePolicy, { ...renamed, excludedNames: [...renamed.excludedNames, "mcp-client-catalog.js"] }), []);
-  assert.notDeepEqual(coveragePolicyWeakening(legacyCoveragePolicy, { ...renamed, excludedNames: [...renamed.excludedNames, "api.ts"] }), []);
+  assert.notDeepEqual(
+    coveragePolicyWeakening(legacyCoveragePolicy, { ...renamed, excludedNames: [...renamed.excludedNames, "mcp-client-catalog.js"] }),
+    [],
+  );
+  assert.notDeepEqual(
+    coveragePolicyWeakening(legacyCoveragePolicy, { ...renamed, excludedNames: [...renamed.excludedNames, "api.ts"] }),
+    [],
+  );
 });
 import { coverageMetricsForOwner, mergeChangedCoverageBaseline, ratchetedMetrics } from "../coverage-ratchet.mjs";
 

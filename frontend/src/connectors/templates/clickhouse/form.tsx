@@ -3,7 +3,12 @@ import { Notice } from "../../../components/ui/notice";
 import { NetworkTransportFields } from "../_shared/network-transport-fields";
 import type { DatabaseConnectionForm, DatabaseConnectionFormProps } from "../_shared/database-form-types";
 
-export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: DatabaseConnectionFormProps<DatabaseConnectionForm & { tls_mode: string }>) {
+export function ClickHouseConnectorFormTemplate({
+  form,
+  mode = "create",
+  targets = [],
+  onChange,
+}: DatabaseConnectionFormProps<DatabaseConnectionForm & { tls_mode: string }>) {
   const editing = mode === "edit";
   return (
     <>

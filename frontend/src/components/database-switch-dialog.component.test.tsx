@@ -7,12 +7,29 @@ import type { useDatabaseLifecycle } from "./use-database-lifecycle.ts";
 
 const submit = vi.fn();
 function Harness() {
-  const [state, setState] = useState<ReturnType<typeof useDatabaseLifecycle>["switchDialog"]>({ open: true, database_id: "one", password: "", state: "idle", error: null });
-  return <DatabaseSwitchDialog state={state} onChange={setState} onClose={() => {}} onSubmit={submit} databaseStatus={{ database_id: "one", databases: [
-    { id: "one", name: "Current", unlocked: true },
-    { id: "two", name: "Locked", unlocked: false },
-    { id: "three", name: "Ready", unlocked: true },
-  ] }} />;
+  const [state, setState] = useState<ReturnType<typeof useDatabaseLifecycle>["switchDialog"]>({
+    open: true,
+    database_id: "one",
+    password: "",
+    state: "idle",
+    error: null,
+  });
+  return (
+    <DatabaseSwitchDialog
+      state={state}
+      onChange={setState}
+      onClose={() => {}}
+      onSubmit={submit}
+      databaseStatus={{
+        database_id: "one",
+        databases: [
+          { id: "one", name: "Current", unlocked: true },
+          { id: "two", name: "Locked", unlocked: false },
+          { id: "three", name: "Ready", unlocked: true },
+        ],
+      }}
+    />
+  );
 }
 
 it("only asks for a password when the selected database is locked", async () => {

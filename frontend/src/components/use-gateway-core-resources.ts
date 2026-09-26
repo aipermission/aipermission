@@ -3,23 +3,41 @@ import { apiGet, apiPut } from "../lib/api";
 import { failedResource, pollReadOptions } from "../lib/async-resource";
 import { useRequestGuard } from "../lib/request-guard";
 import { normalizeCredentialResources } from "./app-shell-runtime";
-import { credentialResourcesResponse, gatewayStatusResponse, gatewayTargetsResponse, gatewayTokensResponse, mcpRuntimeResponse } from "../lib/gateway-contracts/core-resource-contracts.ts";
-import type { CredentialResource, GatewayStatus, GatewayTarget, GatewayToken, MCPRuntime } from "../lib/gateway-contracts/core-resource-contracts.ts";
+import {
+  credentialResourcesResponse,
+  gatewayStatusResponse,
+  gatewayTargetsResponse,
+  gatewayTokensResponse,
+  mcpRuntimeResponse,
+} from "../lib/gateway-contracts/core-resource-contracts.ts";
+import type {
+  CredentialResource,
+  GatewayStatus,
+  GatewayTarget,
+  GatewayToken,
+  MCPRuntime,
+} from "../lib/gateway-contracts/core-resource-contracts.ts";
 import { errorMessage } from "../lib/errors.ts";
 
 type Resource<Data> = { state: "loading" | "ready" | "error"; data: Data; error: string | null };
 type Credential = ReturnType<typeof normalizeCredentialResources<CredentialResource>>[number];
 export type CoreResourceModel = { loadCredentialResources?: (_options: ReturnType<typeof pollReadOptions>) => unknown | Promise<unknown> };
 export type CoreResourceOptions = {
-  connectorKinds: readonly string[]; pollIsCurrent: (_generation?: number) => boolean;
+  connectorKinds: readonly string[];
+  pollIsCurrent: (_generation?: number) => boolean;
   resolveConnectorModel: (_kind: string) => CoreResourceModel | null | undefined;
 };
-function loadingList<Item>(): Resource<Item[]> { return { state: "loading", data: [], error: null }; }
+function loadingList<Item>(): Resource<Item[]> {
+  return { state: "loading", data: [], error: null };
+}
 
 export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolveConnectorModel }: CoreResourceOptions) {
   const [status, setStatus] = useState<Resource<GatewayStatus | null>>({ state: "loading", data: null, error: null });
   const [targets, setTargets] = useState(loadingList<GatewayTarget>);
-  const [credentials, setCredentials] = useState<Resource<Credential[]> & { errors: string[] }>({ ...loadingList<Credential>(), errors: [] });
+  const [credentials, setCredentials] = useState<Resource<Credential[]> & { errors: string[] }>({
+    ...loadingList<Credential>(),
+    errors: [],
+  });
   const [tokens, setTokens] = useState(loadingList<GatewayToken>);
   const [mcpRuntime, setMCPRuntime] = useState<Resource<MCPRuntime>>({
     state: "loading",
@@ -87,9 +105,7 @@ export function useGatewayCoreResources({ connectorKinds, pollIsCurrent, resolve
         }
         const data = connectorKinds.flatMap((kind) => credentialSlices.current.get(kind) || []);
         const errors = results
-          .map((result, index) =>
-            result.status === "rejected" ? `${connectorKinds[index]}: ${errorMessage(result.reason)}` : "",
-          )
+          .map((result, index) => (result.status === "rejected" ? `${connectorKinds[index]}: ${errorMessage(result.reason)}` : ""))
           .filter(Boolean);
         setCredentials({ state: "ready", data, error: null, errors });
         return data;

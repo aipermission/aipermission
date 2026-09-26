@@ -115,7 +115,19 @@ export function RabbitPublishForm({ browser, styles }: { browser: RabbitBrowser;
   );
 }
 
-function FieldBlock({ label, help, mutedClass, children, grow = false }: { label: string; help?: string; mutedClass: string; children: ReactNode; grow?: boolean }) {
+function FieldBlock({
+  label,
+  help,
+  mutedClass,
+  children,
+  grow = false,
+}: {
+  label: string;
+  help?: string;
+  mutedClass: string;
+  children: ReactNode;
+  grow?: boolean;
+}) {
   return (
     <div className={`grid min-h-0 gap-1 text-sm font-medium ${grow ? "grid-rows-[auto_minmax(0,1fr)_auto]" : ""}`}>
       <span>{label}</span>

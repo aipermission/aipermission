@@ -135,7 +135,19 @@ function Metric({ to, icon: Icon, title, value, detail }: LinkedMetricProps) {
   );
 }
 
-function LifecycleStep({ number, to, icon: Icon, title, text }: { number: string; to: string; icon: LucideIcon; title: string; text: string }) {
+function LifecycleStep({
+  number,
+  to,
+  icon: Icon,
+  title,
+  text,
+}: {
+  number: string;
+  to: string;
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}) {
   return (
     <Link
       to={to}
