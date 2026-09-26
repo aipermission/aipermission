@@ -5,9 +5,26 @@ import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { QueueBrowser } from "./queue-browser";
 import { QueueDetail } from "./queue-detail";
 import { useRabbitMQBrowser } from "./use-rabbitmq-browser";
-import type { RabbitBrowserProps, RabbitTarget } from "./browser-types";
+import { rabbitConsoleTarget } from "./console-target";
+import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
+import type { RabbitTarget } from "./browser-types";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
 
-export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }: RabbitBrowserProps & { theme: "dark" | "light"; onNewStructuredSession: () => void }) {
+type RabbitConsoleProps = Pick<
+  ConsoleWorkspaceSlotProps,
+  "target" | "approvals" | "theme" | "session" | "onNewStructuredSession" | "onRefreshActivity"
+>;
+
+export function RabbitMQConnectorConsoleTemplate({
+  target: gatewayTarget,
+  approvals,
+  theme,
+  session: workspaceSession,
+  onNewStructuredSession,
+  onRefreshActivity,
+}: RabbitConsoleProps) {
+  const target = rabbitConsoleTarget(gatewayTarget);
+  const session = structuredConsoleSlotSession(workspaceSession);
   const browser = useRabbitMQBrowser({ target, approvals, session, onRefreshActivity });
   const styles = connectorConsoleTheme(theme);
 

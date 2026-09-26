@@ -6,19 +6,25 @@ import { RedisEndpointFooter } from "./endpoint-footer";
 import { RedisKeyBrowser } from "./key-browser";
 import { useRedisBrowser } from "./use-redis-browser";
 import { RedisValueWorkspace } from "./value-workspace";
-import type { RedisBrowserProps } from "./browser-types";
+import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
+import { redisConsoleTarget } from "./console-target";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
+
+type RedisConsoleProps = Pick<
+  ConsoleWorkspaceSlotProps,
+  "target" | "approvals" | "theme" | "session" | "onNewStructuredSession" | "onRefreshActivity"
+>;
 
 export function RedisConnectorConsoleTemplate({
-  target,
+  target: gatewayTarget,
   approvals,
   theme,
-  session,
+  session: workspaceSession,
   onNewStructuredSession,
   onRefreshActivity,
-}: RedisBrowserProps & {
-  theme: string;
-  onNewStructuredSession: () => unknown;
-}) {
+}: RedisConsoleProps) {
+  const target = redisConsoleTarget(gatewayTarget);
+  const session = structuredConsoleSlotSession(workspaceSession);
   const browser = useRedisBrowser({ target, approvals, session, onRefreshActivity });
   const styles = connectorConsoleTheme(theme);
   const footer = <RedisEndpointFooter target={target} borderClass={styles.border} mutedClass={styles.muted} />;

@@ -7,9 +7,18 @@ export type SSHConsoleRuntime = {
   port?: string | number;
   target?: { transfer_runtime_id?: number };
 };
+export type SSHConsoleRuntimeInput = {
+  id: number;
+  connector_kind?: string;
+  name?: string;
+  username?: unknown;
+  host?: unknown;
+  port?: unknown;
+  target?: { transfer_runtime_id?: number };
+};
 export type SSHToolbarProps = {
   theme: "light" | "dark";
-  selectedRuntimeTarget: SSHConsoleRuntime | null;
+  selectedRuntimeTarget: SSHConsoleRuntimeInput | null;
   selectedSession: { status?: string } | null;
   selectedSessionLive: boolean;
   selectedUnreadMessages?: readonly unknown[];
@@ -18,5 +27,5 @@ export type SSHToolbarProps = {
   onNewSession?: () => void | Promise<unknown>;
   onEndSession?: () => void | Promise<unknown>;
   onInterrupt?: () => void | Promise<unknown>;
-  liveConsoleTargets?: SSHConsoleRuntime[];
+  liveConsoleTargets?: SSHConsoleRuntimeInput[];
 };

@@ -8,6 +8,9 @@ import * as realModel from "./model";
 import { SSHConnectorOperationsTemplate } from "./operations";
 import type { SSHOperation, SSHDockerResponse } from "./operation-types";
 import type { SSHConsoleRuntime, SSHToolbarProps } from "./console-types";
+import type { ComponentType } from "react";
+import type { ConsoleToolbarSlotProps } from "../../../components/console/console-workspace-types";
+import { gatewayTargetFixture } from "../../../test/connector-inventory-fixtures";
 const apiPost = vi.mocked(realPost);
 const model = vi.mocked(realModel);
 
@@ -122,6 +125,48 @@ it("shows only SSH runtimes in Bulk and requires the file-transfer surface for F
     />,
   );
   expect(screen.getByRole("button", { name: "Files" })).toBeDisabled();
+});
+
+it("accepts the shared toolbar slot and preserves generic session actions", async () => {
+  const Toolbar: ComponentType<ConsoleToolbarSlotProps> = SSHConnectorToolbarActionsTemplate;
+  const selectedTarget = gatewayTargetFixture({ connector_kind: "ssh", transfer_runtime_id: 17 });
+  const props: ConsoleToolbarSlotProps = {
+    theme: "dark",
+    selectedTarget,
+    selectedRuntimeTarget: {
+      id: 7,
+      name: "Example",
+      connector_kind: "ssh",
+      target: selectedTarget,
+      username: "root",
+      host: "host.test",
+      port: 22,
+    },
+    selectedSession: { id: 9, status: "connected" },
+    selectedSessionLive: true,
+    selectedUnreadMessages: [],
+    liveConsoleTargets: [],
+    structuredSession: null,
+    onOpenMessages: vi.fn(),
+    onRefreshSessions: vi.fn(),
+    onNewSession: vi.fn(),
+    onEndSession: vi.fn(),
+    onInterrupt: vi.fn(),
+    onNewStructuredSession: vi.fn(),
+    onEndStructuredSession: vi.fn(),
+  };
+  render(<Toolbar {...props} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Messages" }));
+  await user.click(screen.getByRole("button", { name: "New Session" }));
+  await user.click(screen.getByRole("button", { name: "End Session" }));
+  await user.click(screen.getByRole("button", { name: "Interrupt" }));
+  expect(props.onOpenMessages).toHaveBeenCalledOnce();
+  expect(props.onNewSession).toHaveBeenCalledOnce();
+  expect(props.onEndSession).toHaveBeenCalledOnce();
+  expect(props.onInterrupt).toHaveBeenCalledOnce();
+  await user.click(screen.getByRole("button", { name: "Files" }));
+  expect(screen.getByTestId("transfer-runtime")).toHaveTextContent("17");
 });
 
 it("approves SSH host fingerprints through the connector-owned route", async () => {

@@ -10,12 +10,16 @@ import { S3ObjectBrowser } from "./object-browser";
 import { S3ObjectDetailPane } from "./object-detail-pane";
 import { S3PresignDialog } from "./presign-dialog";
 import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths";
-import { useS3Browser, type S3BrowserOptions } from "./use-s3-browser";
+import { useS3Browser } from "./use-s3-browser";
 import { useS3ObjectDelete } from "./use-s3-object-delete";
 import { useS3Upload } from "./use-s3-upload";
 import { S3VersionsDialog } from "./versions-dialog";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
+import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
+import { optionalConsoleBoolean, optionalConsolePort, optionalConsoleText } from "../_shared/console-target-config";
 
-type S3ConsoleTarget = S3BrowserOptions["target"] & {
+type S3ConsoleTarget = {
+  ref: string;
   name?: string;
   target_name?: string;
   transfer_runtime_id?: number | null;
@@ -30,20 +34,21 @@ type S3ConsoleTarget = S3BrowserOptions["target"] & {
   };
 };
 
-type S3ConsoleProps = Omit<S3BrowserOptions, "target"> & {
-  target: S3ConsoleTarget;
-  theme: string;
-  onNewStructuredSession: () => void;
-};
+type S3ConsoleProps = Pick<
+  ConsoleWorkspaceSlotProps,
+  "target" | "approvals" | "theme" | "session" | "onNewStructuredSession" | "onRefreshActivity"
+>;
 
 export function S3ConnectorConsoleTemplate({
-  target,
+  target: gatewayTarget,
   approvals,
   theme,
-  session,
+  session: workspaceSession,
   onNewStructuredSession,
   onRefreshActivity,
 }: S3ConsoleProps) {
+  const target = s3ConsoleTarget(gatewayTarget);
+  const session = structuredConsoleSlotSession(workspaceSession);
   const classes = connectorConsoleTheme(theme);
   const browser = useS3Browser({ target, approvals, session, onRefreshActivity });
   const scopeKey = JSON.stringify([target.ref, browser.activeSession.active, browser.activeSession.startedAt]);
@@ -161,6 +166,25 @@ export function S3ConnectorConsoleTemplate({
   );
 }
 
+function s3ConsoleTarget(target: ConsoleWorkspaceSlotProps["target"]): S3ConsoleTarget {
+  const config = target.config || {};
+  return {
+    ref: target.ref,
+    name: target.name,
+    target_name: target.target_name,
+    transfer_runtime_id: target.transfer_runtime_id,
+    config: {
+      bucket: optionalConsoleText(config.bucket, "S3", "bucket"),
+      scheme: optionalConsoleText(config.scheme, "S3", "scheme"),
+      host: optionalConsoleText(config.host, "S3", "host"),
+      port: optionalConsolePort(config.port, "S3"),
+      connection_mode: optionalConsoleText(config.connection_mode, "S3", "connection_mode"),
+      transport_target_ref: optionalConsoleText(config.transport_target_ref, "S3", "transport_target_ref"),
+      trust_conditional_requests: optionalConsoleBoolean(config.trust_conditional_requests, "S3", "trust_conditional_requests"),
+    },
+  };
+}
+
 function S3ConsoleDialogs({
   scopeKey,
   target,
@@ -207,7 +231,9 @@ function S3ConsoleDialogs({
           recursive: true,
           notice:
             "S3 transfers use bounded queues with multipart uploads, progress, pause, cancel, and short-lived local staging. A paused transfer resumes only while this gateway process remains running.",
-          onUploadCompleted: async () => { await browser.refreshObjects({ reset: true }); },
+          onUploadCompleted: async () => {
+            await browser.refreshObjects({ reset: true });
+          },
         }}
         onClose={() => setTransferOpen(false)}
       />
