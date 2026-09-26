@@ -3,8 +3,10 @@ import {
   firstTargetCredentialForm,
   standardSubmitLabel,
   createTargetProfileLifecycle,
+  defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 import { mailProtocolsEnabled } from "./helpers";
+import type { MailCredentialForm, MailLoginSecrets, MailModelForm, MailProfile, MailProfileForm, MailTarget } from "./form-types";
 
 const emptyMailCredentialForm = {
   target_id: "",
@@ -26,7 +28,7 @@ const emptyMailCredentialForm = {
   trash_folder: "",
   risk_label: "mailbox access",
 };
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<MailModelForm, MailCredentialForm, MailProfile, MailTarget>({
   connectorKind: "mail",
   connectorLabel: "Mail",
   targetPayload: (form) => ({ name: form.name, config: targetConfig(form) }),
@@ -37,7 +39,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): MailModelForm {
   return {
     connector_kind: "mail",
     name: "mailbox",
@@ -54,8 +56,8 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+export function formFromTarget({ target, profile }: { target: MailTarget; profile?: MailProfile | null }): MailModelForm {
+  const selectedProfile = defaultTargetProfile(target, profile);
   return {
     connector_kind: "mail",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -77,7 +79,7 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: MailModelForm }) {
   if (form.connector_kind !== "mail") return form;
   const next = { ...form };
   if (next.connection_mode === "direct") next.transport_target_ref = "";
@@ -88,23 +90,23 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state, form }) {
+export function submitDisabled({ state, form }: { state: { state: string }; form: MailProfileForm }) {
   return state.state === "saving" || !mailProtocolsEnabled(form);
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: MailTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "mail", emptyMailCredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; profile?: MailProfile } }) {
   return { form: { target_id: String(row.target_id || ""), ...credentialFormFromProfile(row.profile) } };
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: MailTarget[] }) {
   return connectorCredentialRows({ targets, connectorKind: "mail", connectorLabel: "Mail", targetEndpoint, credentialMetadata });
 }
 
@@ -120,20 +122,20 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: MailTarget }) {
   const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
   return `IMAP ${target.config?.imap_host || "host"}:${target.config?.imap_port || 993} · SMTP ${target.config?.smtp_host || "host"}:${target.config?.smtp_port || 465} · ${mode}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: MailTarget | null }) {
   return target?.target_name || target?.name || "Mail target";
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: MailTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: MailTarget | null }) {
   return target?.profile_label || "mailbox";
 }
 
@@ -145,7 +147,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: MailTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Mail connector target, credential profiles, and token action permissions from aipermission.",
@@ -165,7 +167,7 @@ export function operationFromError() {
   return null;
 }
 
-function targetConfig(form) {
+function targetConfig(form: MailModelForm) {
   return {
     connection_mode: form.connection_mode || "direct",
     transport_target_ref: form.connection_mode === "over_ssh" ? form.transport_target_ref || "" : "",
@@ -179,11 +181,11 @@ function targetConfig(form) {
   };
 }
 
-function requireMailProtocol(form, resource) {
+function requireMailProtocol(form: Pick<MailProfileForm, "imap_enabled" | "smtp_auth_mode">, resource: string) {
   if (!mailProtocolsEnabled(form)) throw new Error(`Enable IMAP or SMTP before saving this Mail ${resource}.`);
 }
 
-function credentialPayload(form, creating, existing = null) {
+function credentialPayload(form: MailProfileForm, creating: boolean, existing: MailProfile | null = null) {
   const payload = {
     kind: existing?.kind || "password",
     label: form.profile_label,
@@ -202,16 +204,15 @@ function credentialPayload(form, creating, existing = null) {
     },
     risk_label: form.risk_label || "mailbox access",
   };
-  const secret = {};
+  const secret: MailLoginSecrets = {};
   if (form.imap_username) secret.imap_username = form.imap_username;
   if (form.imap_password) secret.imap_password = form.imap_password;
   if (form.smtp_username) secret.smtp_username = form.smtp_username;
   if (form.smtp_password) secret.smtp_password = form.smtp_password;
-  if (creating || Object.keys(secret).length > 0) payload.secret = secret;
-  return payload;
+  return creating || Object.keys(secret).length > 0 ? { ...payload, secret } : payload;
 }
 
-function credentialFormFromProfile(profile = {}) {
+function credentialFormFromProfile(profile: Partial<MailProfile> = {}): MailProfileForm {
   return {
     profile_label: profile.label || "mailbox",
     mailbox_address: profile.public?.mailbox_address || "",
@@ -233,7 +234,7 @@ function credentialFormFromProfile(profile = {}) {
   };
 }
 
-function lineList(value) {
+function lineList(value: unknown) {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   return String(value || "")
     .split(/[\n,]/)
@@ -241,11 +242,11 @@ function lineList(value) {
     .filter(Boolean);
 }
 
-function listText(value) {
+function listText(value: unknown) {
   return Array.isArray(value) ? value.join("\n") : String(value || "");
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: MailProfile) {
   const items = [];
   if (profile.public?.mailbox_address) items.push(`mailbox: ${profile.public.mailbox_address}`);
   items.push(profile.public?.imap_enabled === false ? "IMAP disabled" : "IMAP enabled");
