@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { vaultItemListResponse } from "../../lib/gateway-contracts/vault-item-list-contract.ts";
+import type { VaultItemSummary } from "../../lib/gateway-contracts/vault-item-list-contract.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 const pageSize = 100;
-const emptyPage = { key: "", items: [], total: 0, nextOffset: 0, hasMore: false, status: "idle", error: null };
+type Page = { key: string; items: VaultItemSummary[]; total: number; nextOffset: number; hasMore: boolean; status: "idle" | "loading" | "ready" | "error"; error: string | null };
+type Props = { open: boolean; runtimeID?: number; projectID: string; query: string };
+const emptyPage: Page = { key: "", items: [], total: 0, nextOffset: 0, hasMore: false, status: "idle", error: null };
 
-export function useVaultSessionItems({ open, runtimeID, projectID, query }) {
+export function useVaultSessionItems({ open, runtimeID, projectID, query }: Props) {
   const guard = useRequestGuard("vault-session-items");
   const key = JSON.stringify([runtimeID, projectID, query.trim()]);
   const [page, setPage] = useState(emptyPage);
-  const currentPage = page.key === key ? page : { ...emptyPage, key, status: open && projectID ? "loading" : "idle" };
+  const currentPage: Page = page.key === key ? page : { ...emptyPage, key, status: open && projectID ? "loading" : "idle" };
 
   const fetchPage = useCallback(
-    async (offset, append) => {
+    async (offset: number, append: boolean) => {
       const request = guard.begin("items");
       setPage((current) =>
         append && current.key === key ? { ...current, status: "loading", error: null } : { ...emptyPage, key, status: "loading" },
@@ -22,7 +27,8 @@ export function useVaultSessionItems({ open, runtimeID, projectID, query }) {
         if (query.trim()) params.set("q", query.trim());
         const data = await apiGet(`/api/vault-items?${params}`, { signal: request.signal });
         if (!request.isCurrent()) return;
-        const incoming = data.items || [];
+        const verified = vaultItemListResponse(data);
+        const incoming = verified.items;
         const nextOffset = offset + incoming.length;
         setPage((current) => {
           const byID = new Map((append && current.key === key ? current.items : []).map((item) => [Number(item.id), item]));
@@ -30,16 +36,16 @@ export function useVaultSessionItems({ open, runtimeID, projectID, query }) {
           return {
             key,
             items: [...byID.values()],
-            total: Number(data.total) || 0,
+            total: verified.total,
             nextOffset,
-            hasMore: incoming.length > 0 && nextOffset < Number(data.total),
+            hasMore: incoming.length > 0 && nextOffset < verified.total,
             status: "ready",
             error: null,
           };
         });
       } catch (error) {
         if (request.isCurrent()) {
-          setPage((current) => ({ ...current, key, status: "error", error: error.message }));
+          setPage((current) => ({ ...current, key, status: "error", error: errorMessage(error, "Could not load Vault items.") }));
         }
       } finally {
         request.complete();

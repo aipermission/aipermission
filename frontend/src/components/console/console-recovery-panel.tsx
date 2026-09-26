@@ -1,7 +1,11 @@
 import { Clock, RefreshCcw } from "lucide-react";
 import { Button } from "../ui/button";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
 
-export function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }) {
+type Request = Pick<ConnectorApproval, "created_at" | "token_name" | "input"> & { action_name?: string; command?: string; source?: string };
+type Props = { request: Request; now: number; theme: string; action: { state: string; error?: string | null }; onRestart: () => void | Promise<unknown> };
+
+export function ConsoleRecoveryPanel({ request, now, theme, action, onRestart }: Props) {
   const ageMs = Math.max(0, now - parseTimestamp(request.created_at));
   const showRecoveryHint = ageMs >= 20000;
   const panelClass =
@@ -49,26 +53,26 @@ export function ConsoleRecoveryPanel({ request, now, theme, action, onRestart })
   );
 }
 
-function runningRequestLabel(request) {
+function runningRequestLabel(request: Request) {
   if (request?.action_name) return "Connector action running";
   if (request?.source === "manual") return "Manual command running";
   if (request?.source === "mcp") return "AI command running";
   return "Command running";
 }
 
-function firstLine(value) {
+function firstLine(value: unknown) {
   const line = String(value || "")
     .split(/\r?\n/, 1)[0]
     .trim();
   return line.length <= 90 ? line : `${line.slice(0, 87)}...`;
 }
 
-function parseTimestamp(value) {
+function parseTimestamp(value: string) {
   const parsed = Date.parse(value || "");
   return Number.isNaN(parsed) ? Date.now() : parsed;
 }
 
-function formatDuration(ms) {
+function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

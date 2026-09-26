@@ -1,4 +1,16 @@
+import type { VaultDefaultSelection, VaultSessionSelection } from "./gateway-contracts/vault-session-options-contract.ts";
+
 type DefaultBinding = { id: number; vault_item_id: number; source_project_id: number };
+
+export function selectionFromDefaultBinding(binding: VaultDefaultSelection): VaultSessionSelection {
+  return {
+    item_id: binding.vault_item_id,
+    source_project_id: binding.source_project_id,
+    replace_existing: binding.replace_existing,
+    binding_id: binding.id,
+    binding_revision: binding.binding_revision,
+  };
+}
 
 export function preferredDefaultBindings<Binding extends DefaultBinding>(
   defaults: Binding[] | null | undefined,

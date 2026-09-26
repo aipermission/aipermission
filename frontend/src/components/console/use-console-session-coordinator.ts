@@ -7,6 +7,8 @@ import { consoleSessions, type ConsoleSession } from "../../lib/gateway-contract
 import { mergeConsoleSessionData } from "../app-shell-runtime";
 import { isLiveConsoleSession, latestSessionForRuntime } from "./helpers";
 import { useConsoleConnections } from "./use-console-connections";
+import { vaultSessionOptionsResponse } from "../../lib/gateway-contracts/vault-session-options-contract.ts";
+import type { VaultSessionOptions } from "../../lib/gateway-contracts/vault-session-options-contract.ts";
 
 type Runtime = { id: number; name: string };
 type Session = ConsoleSession & { runtime_id?: number; status?: string; name?: string };
@@ -17,12 +19,11 @@ type SessionOptions = {
   vaultItems?: readonly Record<string, unknown>[];
   deferActivation?: boolean;
 };
-type VaultOptions = { supported: boolean; items?: unknown[]; defaults?: unknown[]; projects?: unknown[]; target_project_id?: number };
 type VaultDialog = {
   open: boolean;
   status: string;
   runtime: Runtime | null;
-  options: VaultOptions | null;
+  options: VaultSessionOptions | null;
   sessionOptions: SessionOptions | null;
   error: string | null;
 };
@@ -122,11 +123,13 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }: { pollIsCurrent:
       setVaultDialog(initialVaultDialog);
       try {
         if (options.vaultItems !== undefined) return await createSession(runtime, options, request);
-        let vaultOptions: VaultOptions;
+        let vaultOptions: VaultSessionOptions;
         try {
-          vaultOptions = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(runtime.id)}`, {
+          const response = await apiGet(`/api/vault-session-options?runtime_id=${encodeURIComponent(runtime.id)}`, {
             signal: request.signal,
           });
+          if (!request.isCurrent()) return null;
+          vaultOptions = vaultSessionOptionsResponse(response);
         } catch {
           if (!request.isCurrent()) return null;
           // Vault selection is optional; a failed probe must not block a normal local console.
