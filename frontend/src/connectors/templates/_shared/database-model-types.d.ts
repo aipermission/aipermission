@@ -33,8 +33,10 @@ export type DatabaseTargetDefaults = Pick<
 export type DatabaseTransportForm = { connector_kind: string; connection_mode: string; host?: string; transport_target_ref?: string };
 export type SyncedDatabaseForm<Form extends DatabaseTransportForm> = Omit<Form, "host" | "transport_target_ref"> &
   Pick<DatabaseTransportForm, "host" | "transport_target_ref">;
-export type DatabaseModelForm<Fields extends DatabaseTargetDefaults> = Omit<Fields, "port"> &
+export type DatabaseModelForm<Fields extends DatabaseTargetDefaults> = Omit<Fields, "port" | "host" | "transport_target_ref"> &
   Omit<DatabaseCredentialForm, "target_id"> & {
+    host: string;
+    transport_target_ref: string;
     port: string | number;
     connector_kind: string;
     profile_id?: string;
@@ -60,6 +62,6 @@ export type CredentialFormArguments<Credential extends DatabaseCredentialForm> =
   formState: { form: Credential };
   setFormState: (_state: { form: Credential }) => void;
   formMode: "create" | "edit";
-  state: { state: string; error?: string };
+  state: { state: string; error?: string | null };
   onSubmit: (_event: FormEvent<HTMLFormElement>, _operation: "create" | "update") => unknown;
 };

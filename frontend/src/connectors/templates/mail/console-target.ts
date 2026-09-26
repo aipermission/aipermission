@@ -23,26 +23,30 @@ export function mailConsoleTarget(target: GatewayTarget): MailConsoleTarget {
       smtp_port: optionalConsolePort(config.smtp_port, "Mail SMTP"),
       connection_mode: optionalConsoleText(config.connection_mode, "Mail", "connection_mode"),
     },
-    public: {
-      mailbox_address: optionalConsoleText(profile.mailbox_address, "Mail", "mailbox_address"),
-      display_name: optionalConsoleText(profile.display_name, "Mail", "display_name"),
-      reply_to: optionalConsoleText(profile.reply_to, "Mail", "reply_to"),
-      imap_enabled: optionalConsoleBoolean(profile.imap_enabled, "Mail", "imap_enabled"),
-      smtp_auth_mode: optionalConsoleText(profile.smtp_auth_mode, "Mail", "smtp_auth_mode"),
-      allowed_read_folders: optionalConsoleTextList(profile.allowed_read_folders, "Mail", "allowed_read_folders"),
-      allowed_mutation_source_folders: optionalConsoleTextList(
-        profile.allowed_mutation_source_folders,
-        "Mail",
-        "allowed_mutation_source_folders",
-      ),
-      allowed_mutation_destination_folders: optionalConsoleTextList(
-        profile.allowed_mutation_destination_folders,
-        "Mail",
-        "allowed_mutation_destination_folders",
-      ),
-      sent_folder: optionalConsoleText(profile.sent_folder, "Mail", "sent_folder"),
-      archive_folder: optionalConsoleText(profile.archive_folder, "Mail", "archive_folder"),
-      trash_folder: optionalConsoleText(profile.trash_folder, "Mail", "trash_folder"),
-    },
+    public: mailPublicProfile(profile),
+  };
+}
+
+export function mailPublicProfile(profile: Record<string, unknown>) {
+  return {
+    mailbox_address: optionalConsoleText(profile.mailbox_address, "Mail", "mailbox_address"),
+    display_name: optionalConsoleText(profile.display_name, "Mail", "display_name"),
+    reply_to: optionalConsoleText(profile.reply_to, "Mail", "reply_to"),
+    imap_enabled: optionalConsoleBoolean(profile.imap_enabled, "Mail", "imap_enabled"),
+    smtp_auth_mode: optionalConsoleText(profile.smtp_auth_mode, "Mail", "smtp_auth_mode"),
+    allowed_read_folders: optionalConsoleTextList(profile.allowed_read_folders, "Mail", "allowed_read_folders"),
+    allowed_mutation_source_folders: optionalConsoleTextList(
+      profile.allowed_mutation_source_folders,
+      "Mail",
+      "allowed_mutation_source_folders",
+    ),
+    allowed_mutation_destination_folders: optionalConsoleTextList(
+      profile.allowed_mutation_destination_folders,
+      "Mail",
+      "allowed_mutation_destination_folders",
+    ),
+    sent_folder: optionalConsoleText(profile.sent_folder, "Mail", "sent_folder"),
+    archive_folder: optionalConsoleText(profile.archive_folder, "Mail", "archive_folder"),
+    trash_folder: optionalConsoleText(profile.trash_folder, "Mail", "trash_folder"),
   };
 }

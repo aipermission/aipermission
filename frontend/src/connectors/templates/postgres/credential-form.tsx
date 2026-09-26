@@ -7,14 +7,14 @@ import type { DatabaseCredentialForm, DatabaseCredentialFormProps } from "../_sh
 
 type PostgresCredentialForm = DatabaseCredentialForm & { managed_by_aipermission?: boolean };
 
-export function PostgresCredentialFormTemplate({
+export function PostgresCredentialFormTemplate<Form extends PostgresCredentialForm>({
   targets,
   form,
   formMode = "create",
   state,
   onChange,
   onSubmit,
-}: DatabaseCredentialFormProps<PostgresCredentialForm>) {
+}: DatabaseCredentialFormProps<Form>) {
   const postgresTargets = targets.filter((target) => target.connector_kind === "postgres");
   const editing = formMode === "edit";
   const managed = Boolean(form.managed_by_aipermission);
