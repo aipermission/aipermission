@@ -14,7 +14,7 @@ export default defineConfig({
       provider: "v8",
       include: [
         "src/pages/unlock.tsx",
-        "src/components/transfer-center.jsx",
+        "src/components/transfer-center.tsx",
         "src/components/file-transfer/file-transfer-actions.ts",
         "src/components/file-transfer/file-transfer-list-state.ts",
         "src/components/settings/maintenance-console-panel.tsx",

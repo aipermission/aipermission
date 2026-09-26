@@ -11,7 +11,7 @@ for (const width of [320, 360]) {
             ? {
                 state: "session_required",
                 database_id: "default",
-                databases: [{ id: "default", name: "Default", state: "locked" }],
+                databases: [{ id: "default", name: "Default", state: "locked", unlocked: false }],
               }
             : { state: "setup_required", database_id: "default", databases: [] },
         });

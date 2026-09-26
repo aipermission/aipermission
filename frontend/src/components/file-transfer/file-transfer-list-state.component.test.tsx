@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { createFileTransferListState, loadCurrentFileTransferBatches } from "./file-transfer-list-state";
+import { createFileTransferListState, fileTransferListBatchResponse, loadCurrentFileTransferBatches } from "./file-transfer-list-state";
 import type { FileTransferListBatch, FileTransferListState } from "./file-transfer-list-state";
 import { errorMessage } from "../../lib/errors";
 
 describe("file transfer list state", () => {
+  it.each([
+    { direction: {} }, { source: false }, { error: [] }, { transferred_bytes: "10" }, { eta_seconds: Infinity },
+    { runtime_id: {} }, { items: {} }, { items: [{ id: 1, status: "pending", remote_path: false }] },
+    { items: [{ id: 1, status: "pending", size_bytes: "1" }] }, { items: [{ id: 0, status: "pending" }] },
+  ])("rejects malformed transfer presentation data: %j", (fields) => {
+    expect(() => fileTransferListBatchResponse({ id: 7, status: "running", ...fields })).toThrow("Invalid transfer list batch");
+  });
+
+  it("preserves validated presentation fields and opaque extension data", () => {
+    const batch = {
+      id: 7, status: "running", direction: "upload", source: "ui", runtime_id: "runtime:7", transferred_bytes: 10,
+      eta_seconds: -1, items: [{ id: 9, status: "running", file_name: "test.txt", size_bytes: 100 }], extension: { future: true },
+    };
+    expect(fileTransferListBatchResponse(batch)).toEqual(batch);
+  });
+
   it("keeps an authoritative action result when an older list request resolves later", async () => {
     const controller = createFileTransferListState();
     let resolveList: ((_items: FileTransferListBatch[]) => void) | undefined;

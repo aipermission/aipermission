@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { FileTransferListBatch } from "./file-transfer/file-transfer-list-state.ts";
+import { errorMessage } from "../lib/errors.ts";
 import { Download, Pause, Play, RefreshCcw, Upload, XCircle } from "lucide-react";
 import { formatBytes, formatETA, transferProgress } from "../lib/file-transfer-utils";
 import { Badge } from "./ui/badge";
@@ -9,7 +11,18 @@ import { ProgressBar } from "./ui/progress-bar";
 
 const activeStatuses = new Set(["pending_approval", "pending", "running", "paused"]);
 
-export function TransferCenter({ open, batches, state, error, onClose, onRefresh, onPause, onResume, onCancel, onApprove, onDecline }) {
+type Control = (_batchID: number) => unknown | Promise<unknown>;
+type Actions = {
+  onPause?: Control; onResume?: Control; onCancel?: Control;
+  onApprove?: (_batchID: number, _itemIDs: number[], _note: string) => unknown | Promise<unknown>;
+  onDecline?: (_batchID: number, _note: string) => unknown | Promise<unknown>;
+};
+type Props = Actions & {
+  open: boolean; batches: FileTransferListBatch[]; state: string; error?: string | null;
+  onClose?: () => void; onRefresh?: () => unknown | Promise<unknown>;
+};
+
+export function TransferCenter({ open, batches, state, error, onClose, onRefresh, onPause, onResume, onCancel, onApprove, onDecline }: Props) {
   const active = batches.filter((batch) => activeStatuses.has(batch.status));
   const recent = batches.filter((batch) => !activeStatuses.has(batch.status)).slice(0, 8);
 
@@ -70,7 +83,9 @@ export function TransferCenter({ open, batches, state, error, onClose, onRefresh
   );
 }
 
-function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel, onApprove, onDecline }) {
+function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel, onApprove, onDecline }: Actions & {
+  batch: FileTransferListBatch; compact?: boolean;
+}) {
   const progress = transferProgress(batch);
   const active = activeStatuses.has(batch.status);
   const approvalMode = batch.status === "pending_approval";
@@ -81,12 +96,12 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   const [note, setNote] = useState("");
   const [decision, setDecision] = useState({ state: "idle", error: "" });
   const [control, setControl] = useState({ state: "idle", error: "" });
-  const decisionOwner = useRef({ generation: 0, pendingGeneration: null });
+  const decisionOwner = useRef<{ generation: number; pendingGeneration: number | null }>({ generation: 0, pendingGeneration: null });
   const controlGeneration = useRef(0);
   const controlPending = useRef(false);
 
   useEffect(() => {
-    setSelectedItems(new Set(JSON.parse(pendingItemIDsJSON)));
+    setSelectedItems(new Set<number>(JSON.parse(pendingItemIDsJSON)));
     decisionOwner.current.generation += 1;
     if (decisionOwner.current.pendingGeneration === null) {
       setNote("");
@@ -112,7 +127,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     };
   }, [batch.id, batch.status]);
 
-  function toggleItem(itemID) {
+  function toggleItem(itemID: number) {
     setSelectedItems((current) => {
       const next = new Set(current);
       if (next.has(itemID)) {
@@ -124,7 +139,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     });
   }
 
-  async function runDecision(callback, fallback) {
+  async function runDecision(callback: (() => unknown | Promise<unknown>) | undefined, fallback: string) {
     if (decisionOwner.current.pendingGeneration !== null) return;
     const generation = decisionOwner.current.generation + 1;
     decisionOwner.current = { generation, pendingGeneration: generation };
@@ -133,11 +148,11 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
       await callback?.();
       settleDecision(generation, null);
     } catch (error) {
-      settleDecision(generation, error?.message || fallback);
+      settleDecision(generation, errorMessage(error, fallback));
     }
   }
 
-  function settleDecision(generation, error) {
+  function settleDecision(generation: number, error: string | null) {
     if (decisionOwner.current.pendingGeneration !== generation) return;
     const contextIsCurrent = decisionOwner.current.generation === generation;
     decisionOwner.current.pendingGeneration = null;
@@ -152,7 +167,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     return runDecision(() => onDecline?.(batch.id, note), "Could not decline this transfer.");
   }
 
-  async function runControl(callback, fallback) {
+  async function runControl(callback: Control | undefined, fallback: string) {
     if (controlPending.current) return;
     const generation = controlGeneration.current + 1;
     controlGeneration.current = generation;
@@ -167,7 +182,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
     } catch (error) {
       if (controlGeneration.current === generation) {
         controlPending.current = false;
-        setControl({ state: "error", error: error?.message || fallback });
+        setControl({ state: "error", error: errorMessage(error, fallback) });
       }
     }
   }
@@ -299,7 +314,7 @@ function TransferBatchCard({ batch, compact = false, onPause, onResume, onCancel
   );
 }
 
-function batchProgressSummary(batch) {
+function batchProgressSummary(batch: FileTransferListBatch) {
   const completed = Number(batch.completed_items || 0);
   const canceled = Number(batch.canceled_items || 0);
   const failed = Number(batch.failed_items || 0);
@@ -311,7 +326,7 @@ function batchProgressSummary(batch) {
   return parts.join(", ");
 }
 
-function statusTone(status) {
+function statusTone(status: string) {
   if (status === "completed") return "good";
   if (status === "failed") return "bad";
   if (status === "canceled" || status === "paused") return "warn";

@@ -13,12 +13,12 @@
     ],
     "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
     "src/components/tokens/created-token-notice.tsx": ["src/components/tokens/created-token-notice.component.test.tsx"],
-    "src/components/transfer-center.jsx": ["src/components/transfer-center.component.test.jsx"],
+    "src/components/transfer-center.tsx": ["src/components/transfer-center.component.test.tsx"],
     "src/components/vault/vault-action-approval-dialog.jsx": ["src/components/vault/vault-action-approval-dialog.component.test.jsx"],
     "src/connectors/templates/_shared/network-transport-fields.tsx": [
       "src/connectors/templates/_shared/network-transport-fields.component.test.tsx"
     ],
-    "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
+    "src/pages/remote-restore-panel.tsx": ["src/pages/remote-restore-panel.component.test.tsx"],
     "src/pages/unlock.tsx": ["src/pages/unlock.component.test.jsx"]
   }
 }
