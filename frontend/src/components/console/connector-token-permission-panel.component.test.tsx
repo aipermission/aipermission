@@ -3,6 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
 import { ConnectorTokenPermissionPanel } from "./connector-token-permission-panel";
+import type { ConnectorTokenPermissionPanelProps } from "./connector-token-permission-panel";
+import type { PermissionTarget } from "./use-connector-token-permission-state";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
+import type { GatewayToken } from "../../lib/gateway-contracts/core-resource-contracts";
+
+type PermissionInput = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "expires_at"> & { execution_rule: string };
+const fetchMock = vi.fn<typeof fetch>();
+function permissionRow(input: PermissionInput): TokenActionPermission {
+  const rule = input.execution_rule;
+  if (rule !== "approval_required" && rule !== "always_run" && rule !== "blocked") throw new Error("Invalid test permission rule");
+  return { project_id: 3, project_name: "My Project", project_slug: "my-project", project_enabled: true,
+    target_name: "Target", profile_label: "default", target_ref: `fixture:${input.target_id}:${input.profile_id}`, connector_kind: "fixture", profile_kind: "fixture",
+    created_at: "2026-09-26", updated_at: "2026-09-26", ...input, execution_rule: rule };
+}
 
 const selectedTarget = {
   connector_kind: "postgres",
@@ -20,7 +34,7 @@ const actions = [
   { name: "create_user", description: "Create a user", risk: "write", category: "users" },
 ];
 
-function projectScopeResponse(items, revision) {
+function projectScopeResponse(items: { project_id: number; enabled: boolean }[], revision: string) {
   return {
     items: items.map((item) => ({
       project_name: `Project ${item.project_id}`,
@@ -43,19 +57,30 @@ function renderPanel({
   onOpenMessages = vi.fn(),
   omitOptionalProps = false,
   tokens = [{ id: 5, name: "codex", token: "aip_example" }],
+}: {
+  compact?: boolean; onToggleCompact?: () => void; permissions?: PermissionInput[];
+  loadPermissions?: (_tokens: { id: number }[], _options?: { requireCurrent?: boolean }) => Promise<Record<number, PermissionInput[]>>;
+  replacePermissions?: NonNullable<ConnectorTokenPermissionPanelProps["replaceTokenConnectorPermissions"]>;
+  target?: PermissionTarget | null; targetProfiles?: PermissionTarget[];
+  unreadMessages?: ConnectorTokenPermissionPanelProps["unreadMessages"]; onOpenMessages?: (_id: number) => void;
+  omitOptionalProps?: boolean; tokens?: GatewayToken[];
 } = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
-  const loadAllConnectorPermissions = vi.fn(loadPermissions || (async () => ({})));
-  const renderWithPermissions = (nextPermissions, currentTarget = target, currentProfiles = targetProfiles, currentTokens = tokens) => (
+  const loadAllConnectorPermissions = vi.fn(async (currentTokens: { id: number }[] = [], options?: { requireCurrent?: boolean }) => {
+    const snapshot = loadPermissions ? await loadPermissions(currentTokens, options) : {};
+    return Object.fromEntries(Object.entries(snapshot).map(([id, items]) => [id, items.map(permissionRow)]));
+  });
+  const renderWithPermissions = (nextPermissions: PermissionInput[], currentTarget = target, currentProfiles = targetProfiles, currentTokens = tokens) => (
     <ConnectorTokenPermissionPanel
       tokens={{ state: "ready", data: currentTokens }}
       selectedTarget={currentTarget}
-      targets={{ state: "ready", data: currentProfiles }}
+      targets={{ data: currentProfiles }}
       {...(omitOptionalProps ? {} : { compact, onToggleCompact, unreadMessages })}
       connectorPermissionState={{
         state: "ready",
-        data: { 5: nextPermissions },
+        data: { 5: nextPermissions.map(permissionRow) },
+        revisionsByToken: { 5: "r1" },
         actionsByTargetRef: {
           [connectorActionCacheKey(selectedTarget, 11)]: actions,
           [connectorActionCacheKey(selectedTarget, 12)]: actions,
@@ -76,19 +101,20 @@ function renderPanel({
   return {
     replaceTokenConnectorPermissions,
     loadConnectorActions,
-    rerenderPermissions: (nextPermissions) => view.rerender(renderWithPermissions(nextPermissions)),
-    rerenderTarget: (nextTarget, nextProfiles = [nextTarget]) =>
+    rerenderPermissions: (nextPermissions: PermissionInput[]) => view.rerender(renderWithPermissions(nextPermissions)),
+    rerenderTarget: (nextTarget: PermissionTarget, nextProfiles = [nextTarget]) =>
       view.rerender(renderWithPermissions(permissions, nextTarget, nextProfiles)),
-    rerenderTokens: (nextTokens) => view.rerender(renderWithPermissions(permissions, target, targetProfiles, nextTokens)),
+    rerenderTokens: (nextTokens: GatewayToken[]) => view.rerender(renderWithPermissions(permissions, target, targetProfiles, nextTokens)),
     loadAllConnectorPermissions,
   };
 }
 
 beforeEach(() => {
   window.localStorage.clear();
+  fetchMock.mockReset();
   vi.stubGlobal(
     "fetch",
-    vi.fn(
+    fetchMock.mockImplementation(
       async (_url, options = {}) =>
         new Response(
           JSON.stringify(
@@ -106,6 +132,38 @@ afterEach(() => {
 });
 
 describe("ConnectorTokenPermissionPanel modes", () => {
+  it("shows the creation prompt when there are no tokens", () => {
+    renderPanel({ tokens: [] });
+    expect(screen.getByText("Create a token first.")).toBeVisible();
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  });
+
+  it("shows compact grant counts without losing the selected credential profile", async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      compact: true,
+      permissions: actions.map((action) => ({ target_id: 7, profile_id: 11, action_name: action.name, execution_rule: "always_run" })),
+    });
+    const trigger = await screen.findByTitle("codex: 3 connector grants");
+    expect(within(trigger).getByText("3")).toBeVisible();
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Profile")).toHaveValue("11");
+    expect(screen.getByRole("button", { name: "Basic" })).toHaveClass("permission-button-active");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  });
+
+  it("uses the selected target profile in compact mode when the inventory snapshot is empty", async () => {
+    const user = userEvent.setup();
+    const { loadConnectorActions } = renderPanel({ compact: true, targetProfiles: [] });
+    await user.click(await screen.findByTitle("codex: 0 connector grants"));
+    expect(screen.getByLabelText("Profile")).toHaveValue("11");
+    expect(screen.getByRole("button", { name: "Always" })).toBeEnabled();
+    expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ target_id: 7, profile_id: 11 }));
+  });
+
   it("uses the expanded defaults when optional panel props are omitted", async () => {
     renderPanel({ omitOptionalProps: true });
 
@@ -323,8 +381,8 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
 
   it("does not replace project scopes before the initial snapshot is loaded", async () => {
     const user = userEvent.setup();
-    const projectScopes = deferred();
-    fetch.mockImplementation(async (_url, options = {}) => {
+    const projectScopes = deferred<Response>();
+    fetchMock.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") throw new Error("project scope mutation must remain disabled while loading");
       return projectScopes.promise;
     });
@@ -333,7 +391,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     const loading = await screen.findByRole("button", { name: "Loading..." });
     expect(loading).toBeDisabled();
     await user.click(loading);
-    expect(fetch.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
 
     projectScopes.resolve(
       new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 }),
@@ -342,7 +400,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
   });
 
   it("reports a project-scope load failure without enabling mutations", async () => {
-    fetch.mockRejectedValue(new Error("scope service unavailable"));
+    fetchMock.mockRejectedValue(new Error("scope service unavailable"));
     renderPanel();
 
     expect(await screen.findByText("scope service unavailable")).toBeVisible();
@@ -350,7 +408,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
   });
 
   it("rejects malformed project scopes before enabling visibility changes", async () => {
-    fetch.mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 }),
     );
     renderPanel();
@@ -361,9 +419,9 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
 
   it("uses a complete refreshed project snapshot for visibility replacement", async () => {
     const user = userEvent.setup();
-    const refreshedScopes = deferred();
+    const refreshedScopes = deferred<Response>();
     let getCalls = 0;
-    fetch.mockImplementation(async (_url, options = {}) => {
+    fetchMock.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") {
         return new Response(
           JSON.stringify(
@@ -428,7 +486,7 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
 
   it("restores project controls and reports a failed visibility update", async () => {
     const user = userEvent.setup();
-    fetch.mockImplementation(async (_url, options = {}) => {
+    fetchMock.mockImplementation(async (_url, options = {}) => {
       if (options.method === "PUT") throw new Error("scope update unavailable");
       return new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 });
     });
@@ -453,12 +511,12 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     }));
     const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
 
-    await user.click(await screen.findByRole("button", { name: "1h", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "1h" }));
 
     await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
     expect(replaceTokenConnectorPermissions).toHaveBeenCalledWith(
       5,
-      permissions.map((permission) => ({ ...permission, expires_at: "2026-08-11T11:00:00.000Z" })),
+      permissions.map((permission) => ({ ...permissionRow(permission), expires_at: "2026-08-11T11:00:00.000Z" })),
     );
   });
 
@@ -475,13 +533,13 @@ describe("ConnectorTokenPermissionPanel mutations", () => {
     }));
     const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
 
-    await user.click(await screen.findByRole("button", { name: "1h", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "1h" }));
 
     await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
     expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
-      { ...permissions[0], expires_at: "" },
-      { ...permissions[1], expires_at: "2026-08-11T11:00:00.000Z" },
-      { ...permissions[2], expires_at: "2026-08-11T11:00:00.000Z" },
+      { ...permissionRow(permissions[0]), expires_at: "" },
+      { ...permissionRow(permissions[1]), expires_at: "2026-08-11T11:00:00.000Z" },
+      { ...permissionRow(permissions[2]), expires_at: "2026-08-11T11:00:00.000Z" },
     ]);
   });
 
@@ -571,7 +629,7 @@ describe("ConnectorTokenPermissionPanel mutation ownership", () => {
       },
     });
 
-    await user.click(await screen.findByRole("button", { name: "1h", exact: true }));
+    await user.click(await screen.findByRole("button", { name: "1h" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("permission revision conflict");
     expect(loadAllConnectorPermissions).toHaveBeenCalledWith(expect.any(Array), { requireCurrent: true });
 
@@ -618,7 +676,7 @@ describe("ConnectorTokenPermissionPanel mutation ownership", () => {
 
     await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
     expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
-      currentPermission,
+      permissionRow(currentPermission),
       ...actions.map((action) => ({
         target_id: 7,
         profile_id: 11,
@@ -675,7 +733,7 @@ describe("ConnectorTokenPermissionPanel mutation ownership", () => {
 
   it("retires conflict recovery when the selected target changes", async () => {
     const user = userEvent.setup();
-    const refresh = deferred();
+    const refresh = deferred<Record<number, PermissionInput[]>>();
     let loads = 0;
     const conflict = Object.assign(new Error("permission revision conflict"), { status: 409 });
     const { loadAllConnectorPermissions, rerenderTarget } = renderPanel({
@@ -702,10 +760,10 @@ describe("ConnectorTokenPermissionPanel mutation ownership", () => {
   });
 });
 
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+function deferred<T = TokenActionPermission[]>() {
+  let resolve!: (_value: T) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });

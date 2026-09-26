@@ -9,13 +9,37 @@ import {
   resolvedHistoryTotal,
 } from "../lib/history-pagination";
 import { useRequestGuard } from "../lib/request-guard";
+import type { Dispatch, SetStateAction } from "react";
+import { errorMessage } from "../lib/errors";
+import type { HistoryPageState } from "../lib/history-pagination";
+import {
+  historyEntryResponse,
+  historyLabelsResponse,
+  historyPageResponse,
+  historyTargetsResponse,
+  type HistoryEntry,
+  type HistoryLabel,
+  type HistoryTarget,
+} from "../lib/gateway-contracts/history-resource-contract";
+import { projectListResponse, type ProjectSummary } from "../lib/gateway-contracts/project-list-contract";
+type Filters = typeof initialFilters;
+type LoadOptions = { poll?: boolean; silent?: boolean; includeTotal?: boolean };
+type Resource<T> = { state: string; data: T[]; error: string | null };
+export type HistoryResource = Resource<HistoryEntry> & HistoryPageState & { total: number; nextCursor: string | null };
 
 const initialFilters = { query: "", projectID: "", connectorKind: "", status: "", source: "", targetRef: "", labelID: "" };
 
 export function useHistoryPageState() {
   const [filters, setFilters] = useState(initialFilters);
-  const [state, setState] = useState({ state: "idle", data: [], total: 0, ...firstHistoryPage(50), nextCursor: null, error: null });
-  const [selected, setSelected] = useState(null);
+  const [state, setState] = useState<HistoryResource>({
+    state: "idle",
+    data: [],
+    total: 0,
+    ...firstHistoryPage(50),
+    nextCursor: null,
+    error: null,
+  });
+  const [selected, setSelected] = useState<HistoryEntry | null>(null);
   const references = useHistoryReferences();
   const targetItems = useMemo(() => references.targets.data || [], [references.targets.data]);
   const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
@@ -34,7 +58,7 @@ export function useHistoryPageState() {
   const filterGenerationRef = useRef(0);
   const filterTransitionPendingRef = useRef(true);
   const interactiveRequestPendingRef = useRef(false);
-  const loadHistoryForEffect = useEffectEvent((page, options) => loadHistory(page, options));
+  const loadHistoryForEffect = useEffectEvent((page: HistoryPageState, options: LoadOptions) => loadHistory(page, options));
 
   const connectorKindOptions = useMemo(() => {
     const kinds = Array.from(new Set(targetItems.map((target) => target.connector_kind).filter(Boolean))).sort();
@@ -70,7 +94,7 @@ export function useHistoryPageState() {
   useEffect(() => {
     if (!hasActiveHistory) return undefined;
     let canceled = false;
-    let timer = null;
+    let timer: number | null = null;
     const poll = async () => {
       if (!filterTransitionPendingRef.current && !interactiveRequestPendingRef.current) {
         await loadHistoryForEffect(
@@ -97,7 +121,7 @@ export function useHistoryPageState() {
     [state.data, state.total],
   );
 
-  async function loadHistory(page = currentHistoryPage(state), options = {}) {
+  async function loadHistory(page = currentHistoryPage(state), options: LoadOptions = {}) {
     const channel = options.poll ? "poll" : "list";
     if (!options.poll) {
       interactiveRequestPendingRef.current = true;
@@ -109,20 +133,21 @@ export function useHistoryPageState() {
     try {
       const data = await apiGet(`/api/history?${params}`, { signal: request.signal });
       if (!request.isCurrent()) return;
+      const verified = historyPageResponse(data);
       setState((current) => ({
         state: "ready",
-        data: data.items || [],
-        total: resolvedHistoryTotal(current.total, data, page),
-        limit: data.limit || page.limit,
+        data: verified.items,
+        total: resolvedHistoryTotal(current.total, verified, page),
+        limit: verified.limit,
         cursor: page.cursor,
         pageIndex: page.pageIndex,
         cursorStack: page.cursorStack,
-        nextCursor: data.next_cursor || null,
+        nextCursor: verified.next_cursor || null,
         error: null,
       }));
     } catch (error) {
       if (request.isCurrent()) {
-        setState((current) => ({ ...current, state: "error", data: [], total: 0, nextCursor: null, error: error.message }));
+        setState((current) => ({ ...current, state: "error", data: [], total: 0, nextCursor: null, error: errorMessage(error) }));
       }
     } finally {
       if (!options.poll && request.isCurrent()) interactiveRequestPendingRef.current = false;
@@ -130,7 +155,7 @@ export function useHistoryPageState() {
     }
   }
 
-  function updateFilters(updater) {
+  function updateFilters(updater: SetStateAction<Filters>) {
     filterGenerationRef.current += 1;
     filterTransitionPendingRef.current = true;
     requestGuard.invalidate("list");
@@ -139,12 +164,12 @@ export function useHistoryPageState() {
     setFilters(updater);
   }
 
-  async function openHistoryItem(item) {
+  async function openHistoryItem(item: HistoryEntry) {
     const request = requestGuard.begin("detail");
     setSelected(item);
     try {
       const detail = await apiGet(`/api/history/${item.id}`, { signal: request.signal });
-      if (request.isCurrent()) setSelected(detail);
+      if (request.isCurrent()) setSelected(historyEntryResponse(detail, item.id));
     } catch {
       if (request.isCurrent()) setSelected(item);
     } finally {
@@ -157,18 +182,18 @@ export function useHistoryPageState() {
     setSelected(null);
   }
 
-  function updateItemLabels(id, nextLabels) {
+  function updateItemLabels(id: number, nextLabels: HistoryLabel[]) {
     setSelected((current) => (current?.id === id ? { ...current, labels: nextLabels } : current));
     setState((current) => ({ ...current, data: current.data.map((item) => (item.id === id ? { ...item, labels: nextLabels } : item)) }));
   }
 
-  async function attachLabel(id, payload) {
-    updateItemLabels(id, (await apiPost(`/api/history/${id}/labels`, payload)) || []);
+  async function attachLabel(id: number, payload: { name: string }) {
+    updateItemLabels(id, historyLabelsResponse(await apiPost(`/api/history/${id}/labels`, payload)));
     await references.loadLabels();
   }
 
-  async function detachLabel(id, labelID) {
-    updateItemLabels(id, (await apiDelete(`/api/history/${id}/labels/${labelID}`)) || []);
+  async function detachLabel(id: number, labelID: number) {
+    updateItemLabels(id, historyLabelsResponse(await apiDelete(`/api/history/${id}/labels/${labelID}`)));
     if (!filters.labelID || String(labelID) !== String(filters.labelID)) return;
     setState((current) => ({ ...current, data: current.data.filter((item) => item.id !== id), total: Math.max(0, current.total - 1) }));
   }
@@ -201,7 +226,17 @@ export function useHistoryPageState() {
   };
 }
 
-function buildHistoryParams({ page, options, filters, targetItems }) {
+function buildHistoryParams({
+  page,
+  options,
+  filters,
+  targetItems,
+}: {
+  page: HistoryPageState;
+  options: LoadOptions;
+  filters: Filters;
+  targetItems: HistoryTarget[];
+}) {
   const params = new URLSearchParams({ limit: String(page.limit) });
   setParam(params, "cursor", page.cursor);
   if (options.includeTotal !== undefined) params.set("include_total", String(options.includeTotal));
@@ -218,36 +253,50 @@ function buildHistoryParams({ page, options, filters, targetItems }) {
   return params.toString();
 }
 
-function setParam(params, name, value) {
+function setParam(params: URLSearchParams, name: string, value: string | number | null | undefined) {
   if (value) params.set(name, String(value));
 }
 
 function useHistoryReferences() {
-  const [labels, setLabels] = useState({ state: "idle", data: [], error: null });
-  const [targets, setTargets] = useState({ state: "idle", data: [], error: null });
-  const [projects, setProjects] = useState({ state: "idle", data: [], error: null });
+  const [labels, setLabels] = useState<Resource<HistoryLabel>>({ state: "idle", data: [], error: null });
+  const [targets, setTargets] = useState<Resource<HistoryTarget>>({ state: "idle", data: [], error: null });
+  const [projects, setProjects] = useState<Resource<ProjectSummary>>({ state: "idle", data: [], error: null });
+  const requests = useRequestGuard("history-references");
   async function loadLabels() {
-    await loadReference("/api/history-labels", setLabels, (data) => data || []);
+    await loadReference("/api/history-labels", setLabels, historyLabelsResponse, requests);
   }
   async function loadTargets() {
-    await loadReference("/api/history/targets", setTargets, (data) => data.items || []);
+    await loadReference("/api/history/targets", setTargets, historyTargetsResponse, requests);
   }
   async function loadProjects() {
-    await loadReference("/api/projects", setProjects, (data) => data.items || []);
+    await loadReference("/api/projects", setProjects, projectListResponse, requests);
   }
-  useEffect(() => {
+  const loadForEffect = useEffectEvent(() => {
     void loadLabels();
     void loadTargets();
     void loadProjects();
+  });
+  useEffect(() => {
+    loadForEffect();
   }, []);
   return { labels, targets, projects, loadLabels, loadTargets };
 }
 
-async function loadReference(path, setState, selectData) {
+async function loadReference<T>(
+  path: string,
+  setState: Dispatch<SetStateAction<Resource<T>>>,
+  selectData: (_value: unknown) => T[],
+  requests: ReturnType<typeof useRequestGuard>,
+) {
+  const request = requests.begin(path);
   setState((current) => ({ ...current, state: "loading", error: null }));
   try {
-    setState({ state: "ready", data: selectData(await apiGet(path)), error: null });
+    const data = await apiGet(path, { signal: request.signal });
+    if (!request.isCurrent()) return;
+    setState({ state: "ready", data: selectData(data), error: null });
   } catch (error) {
-    setState({ state: "error", data: [], error: error.message });
+    if (request.isCurrent()) setState({ state: "error", data: [], error: errorMessage(error) });
+  } finally {
+    request.complete();
   }
 }

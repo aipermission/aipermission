@@ -3,8 +3,8 @@ export const asyncStateOwnerTests = {
   "src/App.tsx": ["src/App.component.test.tsx"],
   "src/components/app-shell.tsx": ["src/components/app-shell.component.test.tsx"],
   "src/components/console/use-connector-approval-dialog.ts": ["src/components/console/use-connector-approval-dialog.component.test.tsx"],
-  "src/components/console/use-connector-token-permission-state.js": [
-    "src/components/console/connector-token-permission-panel.component.test.jsx",
+  "src/components/console/use-connector-token-permission-state.ts": [
+    "src/components/console/connector-token-permission-panel.component.test.tsx",
   ],
   "src/components/console/use-console-connections.ts": ["src/components/console/use-console-connections.component.test.jsx"],
   "src/components/console/use-console-messages.ts": ["src/components/console/use-console-messages.component.test.tsx"],
@@ -19,7 +19,7 @@ export const asyncStateOwnerTests = {
   "src/components/file-transfer/use-transfer-batch.ts": ["src/components/file-transfer/use-transfer-batch.component.test.jsx"],
   "src/components/file-transfer/use-transfer-download.ts": ["src/components/file-transfer/use-transfer-download.component.test.jsx"],
   "src/components/file-transfer/use-transfer-queues.ts": ["src/components/file-transfer/use-transfer-queues.component.test.jsx"],
-  "src/components/history/use-history-transfer-download.ts": ["src/components/history/history-components.component.test.jsx", "src/components/history/use-history-transfer-download.component.test.tsx"],
+  "src/components/history/use-history-transfer-download.ts": ["src/components/history/history-components.component.test.tsx", "src/components/history/use-history-transfer-download.component.test.tsx"],
   "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
   "src/components/settings/backup-retention-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx"],
   "src/components/settings/database-settings-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx", "src/components/settings/database-settings-panel.component.test.tsx"],
@@ -88,7 +88,7 @@ export const asyncStateOwnerTests = {
   "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
   "src/pages/audit-logs.jsx": ["src/pages/audit-logs.component.test.jsx"],
   "src/pages/use-unlock-lifecycle-mutation.ts": ["src/pages/unlock.component.test.jsx", "src/pages/use-unlock-lifecycle-mutation.component.test.ts"],
-  "src/pages/use-history-page-state.js": ["src/pages/history.component.test.jsx"],
+  "src/pages/use-history-page-state.ts": ["src/pages/history.component.test.tsx"],
 };
 
 export const asyncStateTestIncludes = [...new Set(Object.values(asyncStateOwnerTests).flat())]

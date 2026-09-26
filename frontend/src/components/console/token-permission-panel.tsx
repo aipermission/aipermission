@@ -1,4 +1,5 @@
 import { ConnectorTokenPermissionPanel } from "./connector-token-permission-panel";
+import type { ConnectorTokenPermissionPanelProps } from "./connector-token-permission-panel";
 
 export function TokenPermissionPanel({
   tokens,
@@ -13,7 +14,7 @@ export function TokenPermissionPanel({
   onToggleCompact,
   onRefresh,
   onOpenMessages,
-}) {
+}: ConnectorTokenPermissionPanelProps) {
   return (
     <ConnectorTokenPermissionPanel
       tokens={tokens}

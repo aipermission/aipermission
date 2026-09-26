@@ -1,20 +1,74 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { apiDownload } from "../../lib/api";
-import { HistoryDialog, StatusBadge, retryPolicyGuidance } from "./history-components";
+import { apiDownload as realDownload } from "../../lib/api";
+import { HistoryDialog, LabelPreview, StatusBadge, retryPolicyGuidance, targetOptionLabel } from "./history-components";
+import type { ComponentProps } from "react";
 
 vi.mock("../../lib/api", () => ({ apiDownload: vi.fn() }));
+const apiDownload = vi.mocked(realDownload);
+function downloadSignal(options: unknown): AbortSignal {
+  if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal)) throw new Error("Missing download signal");
+  return options.signal;
+}
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: (_value?: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
 }
+
+describe("native connector history labels", () => {
+  it("shows two styled labels and an overflow count without hiding missing-color labels", () => {
+    const { rerender } = render(<LabelPreview labels={[]} />);
+    expect(screen.getByText("-")).toBeVisible();
+    rerender(
+      <LabelPreview
+        labels={[
+          { id: 1, name: "Investigate", color: "#123456" },
+          { id: 2, name: "Followup" },
+          { id: 3, name: "Archived" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Investigate")).toHaveStyle({ color: "#123456", borderColor: "#123456" });
+    expect(screen.getByText("Followup")).toHaveStyle({ color: "#0f766e", borderColor: "#0f766e" });
+    expect(screen.getByText("+1")).toBeVisible();
+    expect(screen.queryByText("Archived")).not.toBeInTheDocument();
+    rerender(<LabelPreview labels={[{ id: 1, name: "Investigate" }]} />);
+    expect(screen.queryByText("+1")).not.toBeInTheDocument();
+    expect(screen.getByText("Investigate")).toBeVisible();
+  });
+
+  it("uses the native credential username when a profile label is absent", () => {
+    const target = { connector_kind: "ssh", ref: "ssh:3:7", target_name: "My server", public: { username: "operator" } };
+    expect(targetOptionLabel(target)).toBe("My server / operator");
+    expect(targetOptionLabel({ ...target, profile_label: "Deployment" })).toBe("My server / Deployment");
+  });
+
+  it.each([
+    ["postgres", "default"],
+    ["rabbitmq", "monitor"],
+  ])("keeps native %s default profile labels", (connector_kind, profile) => {
+    expect(targetOptionLabel({ connector_kind, ref: `${connector_kind}:3:7`, name: "My connector" })).toBe(`My connector / ${profile}`);
+  });
+
+  it.each(["unknown", "constructor", "toString", "__proto__"])("keeps unknown %s labels usable", (connector_kind) => {
+    expect(targetOptionLabel({ connector_kind, ref: `${connector_kind}:3:7`, name: "Future", profile_label: "Reader" })).toBe(
+      "Future / Reader",
+    );
+    expect(targetOptionLabel({ connector_kind, ref: `${connector_kind}:3:7` })).toBe(`${connector_kind}:3:7 / default`);
+  });
+
+  it("labels absent targets without reading a connector model", () => {
+    expect(targetOptionLabel(null)).toBe("Unknown connector");
+    expect(targetOptionLabel(undefined)).toBe("Unknown connector");
+  });
+});
 
 describe("history outcome uncertainty", () => {
   it("uses a visible warning status and persisted retry guidance", () => {
@@ -46,6 +100,10 @@ describe("history outcome uncertainty", () => {
 
   it("fails closed when persisted guidance cannot be decoded", () => {
     expect(retryPolicyGuidance({ retry_policy_json: "not-json" })).toMatch(/Inspect the target state/);
+  });
+
+  it("does not render non-text guidance from decoded JSON", () => {
+    expect(retryPolicyGuidance({ retry_policy_json: JSON.stringify({ guidance: { command: "not-display-text" } }) })).toMatch(/Inspect the target state/);
   });
 
   it("shows persisted retry guidance after a failed precondition", () => {
@@ -94,6 +152,33 @@ it("allows history label suggestions to be selected with the keyboard", async ()
   await user.keyboard("{Enter}");
 
   await waitFor(() => expect(onAttachLabel).toHaveBeenCalledWith(42, { name: "Investigate" }));
+});
+
+it("moves through history label suggestions with arrow keys and adds the selected label", async () => {
+  const user = userEvent.setup();
+  const onAttachLabel = vi.fn().mockResolvedValue(undefined);
+  render(
+    <HistoryDialog
+      item={{ id: 52, status: "completed", labels: [], target_name: "Test target", created_at: "2026-09-01T00:00:00Z" }}
+      labels={[
+        { id: 1, name: "Investigate" },
+        { id: 2, name: "Follow up" },
+      ]}
+      onClose={vi.fn()}
+      onAttachLabel={onAttachLabel}
+      onDetachLabel={vi.fn()}
+    />,
+  );
+  const input = screen.getByRole("textbox", { name: "Add history label" });
+  await user.click(input);
+  await user.keyboard("{ArrowDown}{ArrowUp}{ArrowUp}{ArrowDown}{ArrowDown}{Enter}");
+  await waitFor(() => expect(onAttachLabel).toHaveBeenCalledExactlyOnceWith(52, { name: "Follow up" }));
+  expect(input).toHaveValue("");
+  await user.tab();
+  await user.tab({ shift: true });
+  expect(screen.getByText("Investigate")).toBeVisible();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByText("Investigate")).not.toBeInTheDocument();
 });
 
 it("cancels pending history label timers when the dialog unmounts", () => {
@@ -152,12 +237,12 @@ it("streams completed transfer downloads from History", async () => {
 });
 
 it("aborts and ignores a stale History download when the selected item changes", async () => {
-  let rejectFirst;
+  let rejectFirst: (() => void) | undefined;
   apiDownload.mockImplementationOnce(
     (_path, _name, options) =>
       new Promise((_resolve, reject) => {
         rejectFirst = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-        options.signal.addEventListener("abort", rejectFirst, { once: true });
+        downloadSignal(options).addEventListener("abort", rejectFirst, { once: true });
       }),
   );
   const first = {
@@ -169,10 +254,10 @@ it("aborts and ignores a stale History download when the selected item changes",
     summary: "/var/log/first.log",
     target_name: "Test target",
     created_at: "2026-09-01T00:00:00Z",
-  };
+  } satisfies NonNullable<ComponentProps<typeof HistoryDialog>["item"]>;
   const { rerender } = render(<HistoryDialog item={first} onClose={vi.fn()} onAttachLabel={vi.fn()} onDetachLabel={vi.fn()} />);
   await userEvent.click(screen.getByRole("button", { name: "Save download" }));
-  const signal = apiDownload.mock.calls.at(-1)[2].signal;
+  const signal = downloadSignal(apiDownload.mock.calls.at(-1)?.[2]);
 
   rerender(
     <HistoryDialog
@@ -261,7 +346,7 @@ it("does not let a retired label completion change the replacement item", async 
     labels: [],
     target_name: "Test target",
     created_at: "2026-09-01T00:00:00Z",
-  };
+  } satisfies Omit<NonNullable<ComponentProps<typeof HistoryDialog>["item"]>, "id">;
   const view = render(<HistoryDialog item={{ ...base, id: 49 }} onClose={vi.fn()} onAttachLabel={onAttachLabel} onDetachLabel={vi.fn()} />);
 
   let input = screen.getByRole("textbox", { name: "Add history label" });

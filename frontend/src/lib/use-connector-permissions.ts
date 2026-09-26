@@ -13,10 +13,11 @@ type Target = {
   profile_id?: number;
   profiles?: { id: number }[];
 };
-type Action = { name: string; [field: string]: unknown };
+export type ConnectorPermissionAction = { name: string; category?: string; risk?: string; description?: string; [field: string]: unknown };
+type Action = ConnectorPermissionAction;
 type PermissionInput = components["schemas"]["ConnectorPermissionInput"];
 
-type PermissionState = {
+export type PermissionState = {
   state: "idle" | "loading" | "ready" | "error";
   data: Record<number, TokenActionPermission[]>;
   revisionsByToken: Record<number, string>;
@@ -215,6 +216,10 @@ function connectorActions(value: unknown): Action[] {
     const name = (entry as { name?: unknown }).name;
     if (typeof name !== "string" || name.length === 0) {
       throw new Error("Invalid connector action catalog from gateway.");
+    }
+    for (const field of ["category", "risk", "description"]) {
+      const value = (entry as Record<string, unknown>)[field];
+      if (value !== undefined && typeof value !== "string") throw new Error("Invalid connector action catalog from gateway.");
     }
     return entry as Action;
   });
