@@ -6,6 +6,7 @@ import {
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
+import { createStructuredConsoleModel } from "../_shared/structured-console-model";
 import type { KafkaCredentialForm, KafkaModelForm, KafkaProfile, KafkaTarget } from "./form-types";
 
 export { credentialPayload } from "./model-helpers";
@@ -146,15 +147,7 @@ export function targetDisplayName({ target }: { target?: KafkaTarget | null }) {
 export function targetSubtitle({ target }: { target: KafkaTarget }) {
   return targetEndpoint({ target });
 }
-export function targetProfileLabel({ target }: { target?: KafkaTarget | null }) {
-  return target?.profile_label || "monitor";
-}
-export function usesLiveConsole() {
-  return false;
-}
-export function recoverableRunningActions() {
-  return [];
-}
+export const { targetProfileLabel, usesLiveConsole, recoverableRunningActions } = createStructuredConsoleModel("monitor");
 export function deleteDialog({ target }: { target?: KafkaTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",

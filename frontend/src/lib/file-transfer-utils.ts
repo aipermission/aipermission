@@ -1,4 +1,8 @@
-export function transferProgress(item) {
+type RuntimeIdentity = { id: number | string } | null | undefined;
+type PathJoin = (_directory: string, _name: string) => string;
+type PathNormalize = (_value: string) => string;
+
+export function transferProgress(item: { status?: string; size_bytes?: number; transferred_bytes?: number } | null | undefined) {
   if (!item) return { percent: 0, label: "" };
   const total = Number(item.size_bytes || 0);
   const transferred = Number(item.transferred_bytes || 0);
@@ -10,7 +14,7 @@ export function transferProgress(item) {
   };
 }
 
-export function fileTransferFailureText(item, fallback = "") {
+export function fileTransferFailureText(item: { failure_kind?: string; error?: string | null } | null | undefined, fallback = "") {
   if (!item) return fallback;
   if (item.failure_kind === "outcome_unknown") {
     return "The remote operation may have completed. Inspect the destination before retrying to avoid a duplicate transfer.";
@@ -25,15 +29,18 @@ export function defaultRemoteDirectory() {
 export function fileTransferPathPolicy({
   joinRemotePath: join = joinRemotePath,
   normalizeRemoteDirectoryInput: normalize = normalizeRemoteDirectoryInput,
+}: {
+  joinRemotePath?: PathJoin;
+  normalizeRemoteDirectoryInput?: PathNormalize;
 }) {
   return { joinRemotePath: join, normalizeRemoteDirectoryInput: normalize };
 }
 
-export function pendingBatchItemIDs(batch) {
+export function pendingBatchItemIDs(batch: { items?: { id: string | number; status: string }[] } | null | undefined) {
   return (batch?.items || []).filter((item) => item.status === "pending").map((item) => Number(item.id));
 }
 
-export function rememberedDownloadPath(server, fallback, normalize = normalizeRemoteDirectoryInput) {
+export function rememberedDownloadPath(server: RuntimeIdentity, fallback: string, normalize = normalizeRemoteDirectoryInput) {
   const defaultPath = normalize(fallback || "/home");
   if (typeof window === "undefined" || !server?.id) return defaultPath;
   const value = readLocalPreference(downloadPathStorageKey(server.id));
@@ -41,17 +48,17 @@ export function rememberedDownloadPath(server, fallback, normalize = normalizeRe
   return normalize(value);
 }
 
-export function rememberDownloadPath(server, path, normalize = normalizeRemoteDirectoryInput) {
+export function rememberDownloadPath(server: RuntimeIdentity, path: string, normalize = normalizeRemoteDirectoryInput) {
   if (typeof window === "undefined" || !server?.id) return;
   writeLocalPreference(downloadPathStorageKey(server.id), normalize(path || "/home"));
 }
 
-export function forgetDownloadPath(server) {
+export function forgetDownloadPath(server: RuntimeIdentity) {
   if (typeof window === "undefined" || !server?.id) return;
   removeLocalPreference(downloadPathStorageKey(server.id));
 }
 
-export function joinRemotePath(remoteDir, remoteName) {
+export function joinRemotePath(remoteDir: string, remoteName: string) {
   const dir = normalizeRemoteDirectoryInput(remoteDir);
   const name = String(remoteName || "")
     .trim()
@@ -60,21 +67,28 @@ export function joinRemotePath(remoteDir, remoteName) {
   return `${dir.replace(/\/+$/, "")}/${name}`;
 }
 
-export function relocateUploadQueue(queue, directory, join = joinRemotePath) {
+export function relocateUploadQueue<T extends { name: string; relative_path?: string }>(
+  queue: T[],
+  directory: string,
+  join = joinRemotePath,
+) {
   return queue.map((item) => ({ ...item, remote_path: join(directory, item.relative_path || item.name) }));
 }
 
-export function normalizeRemoteDirectoryInput(value) {
+export function normalizeRemoteDirectoryInput(value: string) {
   const text = String(value || "").trim() || "/";
   const rooted = text.startsWith("/") ? text : `/${text}`;
   return rooted.replace(/\/+$/, "") || "/";
 }
 
-export function localFileID(file) {
+export function localFileID(file: Pick<File, "name" | "size" | "lastModified">) {
   return `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function mergeUploadQueue(current, additions) {
+export function mergeUploadQueue<T extends { remote_path: string }>(
+  current: T[] | null | undefined,
+  additions: T[] | null | undefined,
+): T[] {
   const next = [...(current || [])];
   const byDestination = new Map(next.map((item, index) => [item.remote_path, index]));
   for (const item of additions || []) {
@@ -94,7 +108,7 @@ export function suggestedArchiveName() {
   return `aipermission-download-${stamp}.zip`;
 }
 
-export function formatBytes(value) {
+export function formatBytes(value: unknown) {
   const bytes = Number(value || 0);
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KiB", "MiB", "GiB", "TiB"];
@@ -107,7 +121,7 @@ export function formatBytes(value) {
   return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
 }
 
-export function formatETA(value) {
+export function formatETA(value: unknown) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds < 0) return "-";
   if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
@@ -116,14 +130,14 @@ export function formatETA(value) {
   return `${minutes}m ${rest}s`;
 }
 
-export function formatShortDate(value) {
+export function formatShortDate(value: string | number | null | undefined) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function downloadPathStorageKey(runtimeID) {
+function downloadPathStorageKey(runtimeID: string | number) {
   return `aipermission-file-transfer-download-path:${runtimeID}`;
 }
 import { readLocalPreference, removeLocalPreference, writeLocalPreference } from "./browser-storage.ts";

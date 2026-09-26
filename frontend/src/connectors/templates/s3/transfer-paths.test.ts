@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { joinTransferPath, normalizeTransferDirectory } from "./transfer-paths.ts";
-import { rememberDownloadPath, rememberedDownloadPath } from "../../../lib/file-transfer-utils.js";
+import { rememberDownloadPath, rememberedDownloadPath } from "../../../lib/file-transfer-utils.ts";
 
 test("transfer path callbacks preserve opaque prefix and filename components", () => {
   for (const value of ["/a//", "//a/", "/a/../", "/ space "]) {

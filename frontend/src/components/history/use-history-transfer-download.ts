@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { apiDownload } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
+import type { components } from "../../../types/generated-openapi";
 
-export function useHistoryTransferDownload(item, fileName) {
-  const [downloadState, setDownloadState] = useState({ state: "idle", error: null });
-  const downloadRef = useRef({ generation: 0, controller: null });
+export function useHistoryTransferDownload(item: Pick<components["schemas"]["HistoryEntry"], "id" | "source_ref_id"> | null, fileName: string) {
+  const [downloadState, setDownloadState] = useState<{ state: string; error: string | null }>({ state: "idle", error: null });
+  const downloadRef = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null });
 
   useEffect(() => {
     downloadRef.current.generation += 1;
@@ -18,6 +20,7 @@ export function useHistoryTransferDownload(item, fileName) {
   }, [item?.id]);
 
   async function downloadTransfer() {
+    if (!item) return;
     downloadRef.current.controller?.abort();
     const controller = new AbortController();
     const generation = downloadRef.current.generation + 1;
@@ -31,8 +34,9 @@ export function useHistoryTransferDownload(item, fileName) {
       });
       if (downloadRef.current.generation === generation) setDownloadState({ state: "idle", error: null });
     } catch (error) {
-      if (downloadRef.current.generation === generation && error?.name !== "AbortError") {
-        setDownloadState({ state: "error", error: error.message });
+      const aborted = error !== null && typeof error === "object" && "name" in error && error.name === "AbortError";
+      if (downloadRef.current.generation === generation) {
+        setDownloadState(aborted ? { state: "idle", error: null } : { state: "error", error: errorMessage(error, "Download failed.") });
       }
     } finally {
       if (downloadRef.current.generation === generation) downloadRef.current.controller = null;

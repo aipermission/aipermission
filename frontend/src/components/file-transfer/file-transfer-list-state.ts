@@ -1,4 +1,6 @@
 const terminalBatchStatuses = new Set(["completed", "failed", "canceled", "declined", "stale", "error"]);
+export type FileTransferListBatch = { id: number; status: string; [field: string]: unknown };
+export type FileTransferListState = { state: string; data: FileTransferListBatch[]; error: string | null };
 
 export function createFileTransferListState() {
   let generation = 0;
@@ -7,10 +9,10 @@ export function createFileTransferListState() {
       generation += 1;
       return generation;
     },
-    isCurrent(requestGeneration) {
+    isCurrent(requestGeneration: number) {
       return requestGeneration === generation;
     },
-    applyBatch(current, batch) {
+    applyBatch(current: FileTransferListState, batch: FileTransferListBatch): FileTransferListState {
       generation += 1;
       const data = [...current.data];
       const index = data.findIndex((item) => Number(item.id) === Number(batch.id));
@@ -23,7 +25,21 @@ export function createFileTransferListState() {
   };
 }
 
-export async function loadCurrentFileTransferBatches({ request, pollGeneration, pollIsCurrent, listState, onItems, onError }) {
+export async function loadCurrentFileTransferBatches({
+  request,
+  pollGeneration,
+  pollIsCurrent,
+  listState,
+  onItems,
+  onError,
+}: {
+  request: () => Promise<{ items?: FileTransferListBatch[] } | null | undefined>;
+  pollGeneration: number;
+  pollIsCurrent: (_generation: number) => boolean;
+  listState: ReturnType<typeof createFileTransferListState>;
+  onItems: (_items: FileTransferListBatch[]) => unknown;
+  onError: (_error: unknown) => unknown;
+}) {
   const listGeneration = listState.beginRequest();
   try {
     const data = await request();

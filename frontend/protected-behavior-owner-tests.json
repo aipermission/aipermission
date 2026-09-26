@@ -5,8 +5,8 @@
     "src/components/file-transfer/file-transfer-confirm-dialogs.jsx": [
       "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.jsx"
     ],
-    "src/components/file-transfer/file-transfer-list-state.js": [
-      "src/components/file-transfer/file-transfer-list-state.component.test.jsx"
+    "src/components/file-transfer/file-transfer-list-state.ts": [
+      "src/components/file-transfer/file-transfer-list-state.component.test.tsx"
     ],
     "src/components/file-transfer/use-transfer-center-state.js": [
       "src/components/file-transfer/use-transfer-center-state.component.test.jsx"
