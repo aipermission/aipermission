@@ -1,9 +1,10 @@
 import type { MailProfileForm } from "./form-types";
 import type { MailAddress, MailDraftFields, MailMessage } from "./message-types";
+import { readMailRecord } from "./message-output";
 
 export function messageRefKey(messageOrRef: unknown) {
-  const source = record(messageOrRef);
-  const ref = record(source.message_ref || messageOrRef);
+  const source = readMailRecord(messageOrRef);
+  const ref = readMailRecord(source.message_ref || messageOrRef);
   return `${ref.folder || ""}:${ref.uidvalidity || 0}:${ref.uid || 0}`;
 }
 
@@ -173,7 +174,7 @@ function boundedUTF8(value: string, maxBytes: number, suffix: string) {
 }
 
 export function mailActionSummary(actionName: string, item?: { output?: unknown } | null) {
-  const output = record(item?.output);
+  const output = readMailRecord(item?.output);
   switch (actionName) {
     case "list_folders":
       return `Folders refreshed (${Number(output.count || 0)}).`;
@@ -215,8 +216,4 @@ export function mailProtocolCapabilities(publicProfile?: Partial<Pick<MailProfil
     imapEnabled: publicProfile?.imap_enabled !== false,
     smtpEnabled: publicProfile?.smtp_auth_mode !== "disabled",
   };
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

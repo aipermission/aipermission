@@ -4,16 +4,29 @@ import { mailFolderAllowed, mailProtocolCapabilities } from "./helpers";
 import { useMailActionRunner } from "./use-mail-action-runner";
 import { useMailCompose } from "./use-mail-compose";
 import { useMailMailbox } from "./use-mailbox";
+import type { MailProfile } from "./form-types";
+import type { MailActionItem, MailActionResolution, MailPendingAction } from "./action-types";
+
+export interface MailWorkspaceTarget {
+  ref: string;
+  public?: MailProfile["public"];
+}
+export interface MailWorkspaceProps {
+  target: MailWorkspaceTarget;
+  approvals?: { data: MailActionItem[] } | null;
+  session?: { active: boolean; startedAt?: string } | null;
+  onRefreshActivity?: () => unknown;
+}
 
 const outboundActions = new Set(["send_message", "reply_message"]);
 
-export function useMailWorkspace({ target, approvals, session, onRefreshActivity }) {
+export function useMailWorkspace({ target, approvals, session, onRefreshActivity }: MailWorkspaceProps) {
   const activeSession = session || { active: false, startedAt: "" };
   const scopeKey = `${target.ref}:${activeSession.active ? activeSession.startedAt || "active" : "inactive"}`;
-  let mailbox;
-  let compose;
+  let mailbox: ReturnType<typeof useMailMailbox>;
+  let compose: ReturnType<typeof useMailCompose>;
 
-  async function resolvePending(pending, resolution) {
+  async function resolvePending(pending: MailPendingAction, resolution: MailActionResolution) {
     if (outboundActions.has(pending.actionName)) compose.resolvePending(pending, resolution);
     else await mailbox.resolvePending(pending, resolution);
   }
@@ -67,7 +80,7 @@ export function useMailWorkspace({ target, approvals, session, onRefreshActivity
   };
 }
 
-function allowedDestinationFolders(target) {
+function allowedDestinationFolders(target: MailWorkspaceTarget) {
   const allowed = Array.isArray(target.public?.allowed_mutation_destination_folders)
     ? target.public.allowed_mutation_destination_folders
     : [];

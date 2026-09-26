@@ -1,24 +1,38 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { connectorActionCode, connectorActionPending } from "../_shared/action-result";
 import { messageRefKey } from "./helpers";
-import { isStaleMessageFailure } from "./use-mail-action-runner";
+import { isStaleMessageFailure, MailActionFailure } from "./use-mail-action-runner";
+import { readMailFolders, readMailMessage, readMailRecord, readMailSearch } from "./message-output";
+import type { MailActionItem, MailActionResolution, MailPendingAction, MailPendingContext, RunMailAction } from "./action-types";
+import type { MailFolder, MailFolderStats, MailMessage } from "./message-types";
+
+interface MailMailboxProps {
+  scopeKey: string;
+  activeSession: { active: boolean; startedAt?: string };
+  imapEnabled: boolean;
+  busy: boolean;
+  folderSelectionLocked: boolean;
+  runMailAction: RunMailAction;
+}
+type SearchOptions = { reset?: boolean; cursor?: string; unread?: boolean; subject?: string };
+type RefreshOptions = { preferredFolder?: string; subject?: string };
 
 export const defaultMailFolder = "INBOX";
 const defaultMessageLimit = 50;
 
-export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, folderSelectionLocked, runMailAction }) {
-  const [folders, setFolders] = useState([]);
-  const [folderStats, setFolderStats] = useState({});
+export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, folderSelectionLocked, runMailAction }: MailMailboxProps) {
+  const [folders, setFolders] = useState<MailFolder[]>([]);
+  const [folderStats, setFolderStats] = useState<Record<string, MailFolderStats>>({});
   const [selectedFolder, setSelectedFolder] = useState(defaultMailFolder);
-  const [messages, setMessages] = useState([]);
-  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [messages, setMessages] = useState<MailMessage[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<MailMessage | null>(null);
   const [query, setQuery] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(true);
   const [nextCursor, setNextCursor] = useState("");
   const [moveDialog, setMoveDialog] = useState({ open: false, destination: "", sourceFolder: "" });
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const refreshForEffect = useEffectEvent((options) => refreshMailbox(options));
+  const refreshForEffect = useEffectEvent((options: RefreshOptions) => refreshMailbox(options));
 
   useEffect(() => {
     setFolders([]);
@@ -39,7 +53,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     void refreshForEffect({ preferredFolder: defaultMailFolder, subject: "" });
   }, [activeSession.active, activeSession.startedAt, scopeKey, imapEnabled]);
 
-  async function refreshMailbox({ preferredFolder = selectedFolder, subject = appliedQuery } = {}) {
+  async function refreshMailbox({ preferredFolder = selectedFolder, subject = appliedQuery }: RefreshOptions = {}) {
     if (!activeSession.active || !imapEnabled) return;
     try {
       const item = await runMailAction("list_folders", {}, "manual Mail workspace folder list", "loading", { preferredFolder, subject });
@@ -51,7 +65,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     }
   }
 
-  async function loadMessages(folder, { reset = true, cursor = "", unread = unreadOnly, subject = appliedQuery } = {}) {
+  async function loadMessages(folder: string, { reset = true, cursor = "", unread = unreadOnly, subject = appliedQuery }: SearchOptions = {}) {
     if (!activeSession.active || !folder) return;
     try {
       const item = await runMailAction(
@@ -68,7 +82,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     }
   }
 
-  async function selectFolder(folder) {
+  async function selectFolder(folder: string) {
     if (folder === selectedFolder || folderSelectionLocked) return;
     setSelectedFolder(folder);
     setMessages([]);
@@ -77,7 +91,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     await loadMessages(folder, { reset: true });
   }
 
-  async function selectMessage(message) {
+  async function selectMessage(message: MailMessage) {
     if (busy) return;
     try {
       const item = await runMailAction(
@@ -87,9 +101,9 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
         "reading",
         { messageKey: messageRefKey(message) },
       );
-      if (item && !connectorActionPending(item)) setSelectedMessage(item.output || null);
+      if (item && !connectorActionPending(item)) setSelectedMessage(readMailMessage(item.output));
     } catch (error) {
-      if (connectorActionCode(error.actionItem) === "stale_message_reference") setSelectedMessage(null);
+      if (error instanceof MailActionFailure && connectorActionCode(error.actionItem) === "stale_message_reference") setSelectedMessage(null);
     }
   }
 
@@ -111,9 +125,9 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     }
   }
 
-  async function moveSelected(actionName, destination = "") {
+  async function moveSelected(actionName: string, destination = "") {
     if (!selectedMessage) return;
-    const input = { message_ref: selectedMessage.message_ref };
+    const input: Record<string, unknown> = { message_ref: selectedMessage.message_ref };
     if (destination) input.destination_folder = destination;
     const context = { messageKey: messageRefKey(selectedMessage), folder: selectedFolder };
     try {
@@ -126,28 +140,28 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     }
   }
 
-  async function resolvePending(pending, resolution) {
+  async function resolvePending(pending: MailPendingAction, resolution: MailActionResolution) {
     const { actionName, context } = pending;
     if (isStaleMessageFailure(resolution)) setSelectedMessage(null);
     if (resolution.state !== "completed") return;
     const { item } = resolution;
     if (actionName === "list_folders") {
-      const preferred = applyFolderResult(item, context.preferredFolder);
+      const preferred = applyFolderResult(item, context.preferredFolder || selectedFolder);
       await loadMessages(preferred, { reset: true, subject: context.subject });
     } else if (actionName === "search_messages") {
       applyMessageSearchResult(item, context);
     } else if (actionName === "get_message") {
-      setSelectedMessage(item.output || null);
+      setSelectedMessage(readMailMessage(item.output));
     } else if (actionName === "mark_read" || actionName === "mark_unread") {
       applyReadStateResult(item, context);
     } else if (["move_message", "archive_message", "delete_message"].includes(actionName)) {
       applyMoveResult(context);
-      await loadMessages(context.folder, { reset: true });
+      await loadMessages(context.folder || selectedFolder, { reset: true });
     }
   }
 
-  function applyFolderResult(item, preferredFolder) {
-    const nextFolders = Array.isArray(item.output?.folders) ? item.output.folders.filter((folder) => folder.selectable !== false) : [];
+  function applyFolderResult(item: MailActionItem, preferredFolder: string) {
+    const nextFolders = readMailFolders(item.output);
     setFolders(nextFolders);
     const preferred = nextFolders.some((folder) => folder.name === preferredFolder)
       ? preferredFolder
@@ -156,25 +170,26 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     return preferred;
   }
 
-  function applyMessageSearchResult(item, context) {
-    const nextMessages = Array.isArray(item.output?.messages) ? item.output.messages : [];
+  function applyMessageSearchResult(item: MailActionItem, context: MailPendingContext) {
+    const output = readMailSearch(item.output);
+    const nextMessages = output.messages;
     setMessages((current) => (context.reset ? nextMessages : mergeMessages(current, nextMessages)));
     setFolderStats((current) => ({
       ...current,
-      [context.folder]: { total: Number(item.output?.total || 0), unread: Number(item.output?.unread || 0) },
+      [context.folder || selectedFolder]: { total: output.total, unread: output.unread },
     }));
-    setNextCursor(item.output?.next_cursor || "");
+    setNextCursor(output.nextCursor);
     if (context.reset) setSelectedMessage(null);
   }
 
-  function applyReadStateResult(item, context) {
-    const read = Boolean(item.output?.read);
+  function applyReadStateResult(item: MailActionItem, context: MailPendingContext) {
+    const read = Boolean(readMailRecord(item.output).read);
     setSelectedMessage((current) => (messageRefKey(current) === context.messageKey ? { ...current, read } : current));
     setMessages((current) => current.map((message) => (messageRefKey(message) === context.messageKey ? { ...message, read } : message)));
-    setFolderStats((current) => updateUnreadCount(current, context.folder, context.wasRead, read));
+    setFolderStats((current) => updateUnreadCount(current, context.folder || selectedFolder, context.wasRead, read));
   }
 
-  function applyMoveResult(context) {
+  function applyMoveResult(context: MailPendingContext) {
     setMessages((current) => current.filter((message) => messageRefKey(message) !== context.messageKey));
     setSelectedMessage((current) => (messageRefKey(current) === context.messageKey ? null : current));
     setMoveDialog({ open: false, destination: "", sourceFolder: "" });
@@ -204,7 +219,7 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
       setMoveDialog({ open: true, destination: "", sourceFolder: selectedMessage?.message_ref?.folder || "" });
     },
     closeMove: () => setMoveDialog({ open: false, destination: "", sourceFolder: "" }),
-    setMoveDestination: (destination) => setMoveDialog((current) => ({ ...current, destination })),
+    setMoveDestination: (destination: string) => setMoveDialog((current) => ({ ...current, destination })),
     openDelete: () => setDeleteOpen(true),
     closeDelete: () => setDeleteOpen(false),
     search() {
@@ -212,20 +227,20 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
       setAppliedQuery(subject);
       return loadMessages(selectedFolder, { reset: true, subject });
     },
-    setUnreadFilter(value) {
+    setUnreadFilter(value: boolean) {
       setUnreadOnly(value);
       if (!busy) void loadMessages(selectedFolder, { reset: true, unread: value });
     },
   };
 }
 
-export function mergeMessages(current, next) {
+export function mergeMessages(current: MailMessage[], next: MailMessage[]) {
   const merged = new Map(current.map((message) => [messageRefKey(message), message]));
   for (const message of next) merged.set(messageRefKey(message), message);
   return [...merged.values()];
 }
 
-export function updateUnreadCount(stats, folder, wasRead, isRead) {
+export function updateUnreadCount(stats: Record<string, MailFolderStats>, folder: string, wasRead: boolean | undefined, isRead: boolean) {
   if (wasRead === isRead) return stats;
   const current = stats[folder] || { total: 0, unread: 0 };
   return { ...stats, [folder]: { ...current, unread: Math.max(0, current.unread + (isRead ? -1 : 1)) } };
