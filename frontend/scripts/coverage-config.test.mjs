@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import config, { LexicalSequencer } from "../vitest.changed.config.js";
+import riskConfig from "../vitest.risk.config.js";
+import { riskCoverageTestIncludes } from "../test-suite-manifests.mjs";
 
 test("runs changed coverage in a deterministic worker order", () => {
   assert.equal(config.test.fileParallelism, false);
@@ -15,4 +17,12 @@ test("runs changed coverage in a deterministic worker order", () => {
 test("sorts changed coverage files lexically instead of using mutable duration cache", async () => {
   const files = [{ moduleId: "/z.test.jsx" }, { moduleId: "/a.test.jsx" }];
   assert.deepEqual(await LexicalSequencer.prototype.sort.call({}, files), [files[1], files[0]]);
+});
+
+test("keeps migrated connector forms in the risk coverage gate", () => {
+  assert.ok(riskConfig.test.coverage.include.includes("src/connectors/templates/_shared/network-transport-fields.{jsx,tsx}"));
+  assert.ok(
+    riskConfig.test.coverage.include.includes("src/connectors/templates/{docker,kafka,kubernetes,mail,rabbitmq,redis,s3}/form.{jsx,tsx}"),
+  );
+  assert.ok(riskCoverageTestIncludes.includes("src/connectors/templates/_shared/runtime-scope-forms.component.test.tsx"));
 });
