@@ -1,4 +1,5 @@
 import { Activity, Cable, History, KeyRound, PlugZap, TerminalSquare, TicketCheck } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Link } from "react-router";
 import { apiUrl, mcpApiUrl } from "../lib/api";
 import { Badge } from "../components/ui/badge";
@@ -114,7 +115,8 @@ export function DashboardPage() {
   );
 }
 
-function Metric({ to, icon: Icon, title, value, detail }) {
+type LinkedMetricProps = { to: string; icon: LucideIcon; title: string; value: number; detail: string };
+function Metric({ to, icon: Icon, title, value, detail }: LinkedMetricProps) {
   return (
     <Link to={to} className="block rounded-lg outline-none transition hover:-translate-y-0.5 focus:ring-2 focus:ring-emerald-900/20">
       <Card className="h-full">
@@ -133,7 +135,7 @@ function Metric({ to, icon: Icon, title, value, detail }) {
   );
 }
 
-function LifecycleStep({ number, to, icon: Icon, title, text }) {
+function LifecycleStep({ number, to, icon: Icon, title, text }: { number: string; to: string; icon: LucideIcon; title: string; text: string }) {
   return (
     <Link
       to={to}

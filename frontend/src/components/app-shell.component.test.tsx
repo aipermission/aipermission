@@ -1,10 +1,29 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Shell } from "./app-shell";
+import type { VaultApproval } from "../lib/gateway-contracts/security-contracts.ts";
+import type { GatewayContext } from "../lib/gateway-context";
 
-const state = vi.hoisted(() => ({ pathname: "/console", resources: null, database: null, transfers: null, console: null, vault: null }));
+type FixtureState = {
+  pathname: string;
+  resources: ReturnType<typeof gatewayResources> | null;
+  database: ReturnType<typeof databaseState> | null;
+  transfers: ReturnType<typeof transferState> | null;
+  console: ReturnType<typeof consoleState> | null;
+  vault: ReturnType<typeof vaultState> | null;
+};
+const state = vi.hoisted<FixtureState>(() => ({ pathname: "/console", resources: null, database: null, transfers: null, console: null, vault: null }));
 
-vi.mock("react-router", () => ({ useLocation: () => ({ pathname: state.pathname }), Outlet: () => <div data-testid="outlet" /> }));
+vi.mock("react-router", () => ({
+  useLocation: () => ({ pathname: state.pathname }),
+  Outlet: ({ context }: { context: GatewayContext }) => (
+    <div data-testid="outlet">
+      <button type="button" onClick={context.toggleTheme}>
+        Toggle test route theme
+      </button>
+    </div>
+  ),
+}));
 vi.mock("./app-sidebar", () => ({ AppSidebar: () => null }));
 vi.mock("./backup-freshness-notices", () => ({ BackupFreshnessNotices: () => null }));
 vi.mock("./database-switch-dialog", () => ({ DatabaseSwitchDialog: () => null }));
@@ -22,11 +41,23 @@ vi.mock("./vault/use-vault-action-approvals", () => ({ useVaultActionApprovals: 
 
 beforeEach(() => {
   vi.useFakeTimers();
+  state.pathname = "/console";
   state.resources = gatewayResources();
   state.database = databaseState();
   state.transfers = transferState();
   state.console = consoleState();
   state.vault = vaultState();
+});
+
+it("passes a reversible theme toggle through the native route context", () => {
+  const setTheme = vi.fn();
+  render(<Shell theme="dark" setTheme={setTheme} />);
+  fireEvent.click(screen.getByRole("button", { name: "Toggle test route theme" }));
+  expect(setTheme).toHaveBeenCalledOnce();
+  const toggle = setTheme.mock.calls[0][0];
+  expect(typeof toggle).toBe("function");
+  expect(toggle("dark")).toBe("light");
+  expect(toggle("light")).toBe("dark");
 });
 
 afterEach(() => {
@@ -39,17 +70,18 @@ it("serializes route polling and stops scheduling after unmount", async () => {
     await Promise.resolve();
     await Promise.resolve();
   });
-  expect(state.resources.loadStatus).toHaveBeenCalledOnce();
+  expect(state.resources?.loadStatus).toHaveBeenCalledOnce();
 
   await act(async () => vi.advanceTimersByTimeAsync(5000));
-  expect(state.resources.loadStatus).toHaveBeenCalledTimes(2);
+  expect(state.resources?.loadStatus).toHaveBeenCalledTimes(2);
 
   view.unmount();
   await act(async () => vi.advanceTimersByTimeAsync(10000));
-  expect(state.resources.loadStatus).toHaveBeenCalledTimes(2);
+  expect(state.resources?.loadStatus).toHaveBeenCalledTimes(2);
 });
 
 it("offers a way back to a dismissed pending Vault approval", () => {
+  if (!state.vault) throw new Error("Vault fixture not initialized");
   state.vault.approvals = { state: "ready", data: [{ id: 42, status: "approval_pending" }] };
   state.vault.openPending = vi.fn();
   render(<Shell theme="dark" setTheme={vi.fn()} />);
@@ -129,13 +161,15 @@ function consoleState() {
 }
 
 function vaultState() {
+  const data: Pick<VaultApproval, "id" | "status">[] = [];
   return {
-    approvals: { data: [] },
+    approvals: { state: "ready", data },
     dialog: {},
     load: asyncMock(),
     setNote: vi.fn(),
     run: vi.fn(),
     decline: vi.fn(),
     close: vi.fn(),
+    openPending: vi.fn(),
   };
 }

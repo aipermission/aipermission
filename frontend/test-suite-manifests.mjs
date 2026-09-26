@@ -1,7 +1,7 @@
 export const asyncStateOwnerTests = {
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/App.tsx": ["src/App.component.test.tsx"],
-  "src/components/app-shell.jsx": ["src/components/app-shell.component.test.jsx"],
+  "src/components/app-shell.tsx": ["src/components/app-shell.component.test.tsx"],
   "src/components/console/use-connector-approval-dialog.ts": ["src/components/console/use-connector-approval-dialog.component.test.tsx"],
   "src/components/console/use-connector-token-permission-state.js": [
     "src/components/console/connector-token-permission-panel.component.test.jsx",
@@ -34,7 +34,7 @@ export const asyncStateOwnerTests = {
   "src/components/transfer-center.tsx": ["src/components/transfer-center.component.test.tsx"],
   "src/components/use-gateway-activity-resources.ts": ["src/components/use-gateway-resources.component.test.tsx", "src/components/use-gateway-activity-resources.component.test.tsx"],
   "src/components/use-gateway-core-resources.ts": ["src/components/use-gateway-resources.component.test.tsx"],
-  "src/components/vault/use-vault-action-approvals.js": ["src/components/vault/use-vault-action-approvals.component.test.jsx"],
+  "src/components/vault/use-vault-action-approvals.ts": ["src/components/vault/use-vault-action-approvals.component.test.tsx"],
   "src/components/vault/use-vault-bindings.js": ["src/components/vault/use-vault-bindings.component.test.jsx"],
   "src/components/vault/use-vault-collection.js": ["src/components/vault/use-vault-collection.component.test.jsx"],
   "src/components/vault/use-vault-value-actions.js": ["src/components/vault/use-vault-value-actions.component.test.jsx"],
@@ -106,7 +106,7 @@ export const riskCoverageTestIncludes = [
   "src/components/use-local-action-reconciliation.component.test.ts",
   "src/components/file-transfer/file-transfer-list-state.component.test.tsx",
   "src/components/settings/maintenance-console-panel.component.test.tsx",
-  "src/components/vault/vault-action-approval-dialog.component.test.jsx",
+  "src/components/vault/vault-action-approval-dialog.component.test.tsx",
   "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.tsx",
   "src/connectors/templates/_shared/network-transport-fields.component.test.tsx",
   "src/connectors/templates/_shared/runtime-scope-forms.component.test.tsx",

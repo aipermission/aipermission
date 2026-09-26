@@ -2,9 +2,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { VaultActionApprovalDialog } from "./vault-action-approval-dialog";
+import type { ComponentProps } from "react";
+import type { VaultApproval } from "../../lib/gateway-contracts/security-contracts.ts";
 
-const approval = {
+const approval: VaultApproval = {
   id: 91,
+  token_id: 7,
+  project_id: 3,
+  project_slug: "my-project",
+  source: "mcp",
+  status: "approval_pending",
+  approval_context_hash: "fixture-context-hash",
+  idempotency_key: "fixture-key",
+  updated_at: "2026-08-11T00:00:00Z",
   token_name: "codex",
   project_name: "My Project",
   action_name: "generate_item",
@@ -15,7 +25,7 @@ const approval = {
   approval_context: {},
 };
 
-function renderDialog(overrides = {}) {
+function renderDialog(overrides: { approval?: Partial<VaultApproval>; action?: ComponentProps<typeof VaultActionApprovalDialog>["action"] } = {}) {
   const handlers = { onNoteChange: vi.fn(), onRun: vi.fn(), onDecline: vi.fn(), onClose: vi.fn() };
   render(
     <VaultActionApprovalDialog
@@ -51,7 +61,7 @@ describe("VaultActionApprovalDialog", () => {
           target_id: 4,
           profile_id: 8,
           expected_session_id: 12,
-          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: true }],
+          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: true, value_version: 1, metadata_revision: 1 }],
         },
       },
       action: { state: "stale", error: "Approval context changed." },
@@ -75,7 +85,7 @@ describe("VaultActionApprovalDialog", () => {
           connector_kind: "ssh",
           target_id: 4,
           profile_id: 8,
-          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: false }],
+          items: [{ item_id: 7, source_project_id: 2, name: "DEPLOY_TOKEN", replace_existing: false, value_version: 1, metadata_revision: 1 }],
         },
       },
       action: { state: "failed", error: "Delivery failed." },

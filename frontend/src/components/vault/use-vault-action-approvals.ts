@@ -4,22 +4,29 @@ import { failedResource, pollReadOptions } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
 import { vaultApproval, vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
+import type { ApprovalDialog } from "../../lib/vault-approval-poll.ts";
+import type { VaultApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
-const initialApprovals = { state: "loading", data: [], error: null };
-const initialDialog = { approval: null, note: "", state: "idle", error: null };
+type ApprovalsResource = { state: "loading" | "ready" | "error"; data: VaultApproval[]; error: string | null };
+export type VaultApprovalDialogState = ApprovalDialog<VaultApproval>;
+type Options = { pollIsCurrent: (_generation?: number) => boolean; refreshConsoleSessions: () => unknown | Promise<unknown> };
+const initialApprovals: ApprovalsResource = { state: "loading", data: [], error: null };
+const initialDialog: VaultApprovalDialogState = { approval: null, note: "", state: "idle", error: null };
 
-function isStaleApprovalError(error) {
-  return ["approval_context_changed", "approval_not_pending"].includes(error?.code);
+function isStaleApprovalError(error: unknown) {
+  return !!error && typeof error === "object" && "code" in error &&
+    typeof error.code === "string" && ["approval_context_changed", "approval_not_pending"].includes(error.code);
 }
 
-export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions }) {
+export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions }: Options) {
   const [approvals, setApprovals] = useState(initialApprovals);
   const [dialog, setDialog] = useState(initialDialog);
-  const seenPendingRef = useRef(new Set());
+  const seenPendingRef = useRef(new Set<number>());
   const requests = useRequestGuard("vault-action-approvals");
 
   const load = useCallback(
-    async (generation) => {
+    async (generation?: number) => {
       const request = requests.begin("load");
       try {
         const data = await apiGet("/api/vault-action-approvals?status=approval_pending", pollReadOptions(request.signal, generation));
@@ -88,8 +95,8 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         state: exact && exact.status !== "approval_pending" ? "stale" : isStaleApprovalError(error) ? "stale" : "failed",
         error:
           exact && exact.status !== "approval_pending"
-            ? `${error.message} This Vault approval is ${exact.status}; the run response may have been lost.`
-            : error.message,
+            ? `${errorMessage(error)} This Vault approval is ${exact.status}; the run response may have been lost.`
+            : errorMessage(error),
       }));
     } finally {
       request.complete();
@@ -131,8 +138,8 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         approval: exact || current.approval || approval,
         state: terminalAfterRefresh || (!exact && isStaleApprovalError(error)) ? "stale" : "error",
         error: terminalAfterRefresh
-          ? `${error.message} This Vault approval is no longer pending; the decline may already have been recorded.`
-          : error.message,
+          ? `${errorMessage(error)} This Vault approval is no longer pending; the decline may already have been recorded.`
+          : errorMessage(error),
       }));
     } finally {
       request.complete();
@@ -152,12 +159,12 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     setDialog({ ...initialDialog, approval });
   }, [approvals, dialog.approval]);
 
-  const setNote = useCallback((note) => setDialog((current) => ({ ...current, note })), []);
+  const setNote = useCallback((note: string) => setDialog((current) => ({ ...current, note })), []);
 
   return { approvals, close, decline, dialog, load, openPending, run, setNote };
 }
 
-async function readExactVaultApproval(approval, signal) {
+async function readExactVaultApproval(approval: VaultApproval, signal: AbortSignal) {
   try {
     return vaultApproval(
       await apiGet(`/api/vault-action-approvals/${approval.id}`, { signal }),

@@ -180,7 +180,7 @@ export function MCPSetupPage() {
   );
 }
 
-function CodeBlock({ value }) {
+function CodeBlock({ value }: { value: string }) {
   return (
     <div className="grid gap-2">
       <div className="flex justify-end">
@@ -191,7 +191,7 @@ function CodeBlock({ value }) {
   );
 }
 
-function Step({ number, title, text, compact = false }) {
+function Step({ number, title, text, compact = false }: { number: string; title: string; text: string; compact?: boolean }) {
   return (
     <div className={`flex gap-3 rounded-md ${compact ? "" : "border border-stone-200 p-3"}`}>
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-xs font-bold text-white">
