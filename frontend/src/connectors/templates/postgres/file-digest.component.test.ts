@@ -54,3 +54,40 @@ it("stops after hashing when cancellation arrives during the digest", async () =
   });
   expect(digest).toHaveBeenCalledOnce();
 });
+
+it.each([true, false])("rejects failed legacy file reads before hashing (reader error: %s)", async (hasError) => {
+  const digest = vi.fn();
+  vi.stubGlobal("crypto", { subtle: { digest } });
+  const failure = new DOMException("File is no longer readable", "NotReadableError");
+  vi.stubGlobal(
+    "FileReader",
+    class {
+      error = hasError ? failure : null;
+      onerror: (() => void) | null = null;
+      readAsArrayBuffer() {
+        this.onerror?.();
+      }
+    },
+  );
+  await expect(fileSHA256(new Blob(["SELECT 1;"]))).rejects.toThrow(
+    hasError ? "File is no longer readable" : "Could not read the selected file.",
+  );
+  expect(digest).not.toHaveBeenCalled();
+});
+
+it("rejects a non-buffer reader result instead of hashing unexpected content", async () => {
+  const digest = vi.fn();
+  vi.stubGlobal("crypto", { subtle: { digest } });
+  vi.stubGlobal(
+    "FileReader",
+    class {
+      result = "unexpected result";
+      onload: (() => void) | null = null;
+      readAsArrayBuffer() {
+        this.onload?.();
+      }
+    },
+  );
+  await expect(fileSHA256(new Blob(["SELECT 1;"]))).rejects.toThrow("Could not read the selected file.");
+  expect(digest).not.toHaveBeenCalled();
+});

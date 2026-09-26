@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { AddCredentialMenu } from "./credentials";
+import { AddCredentialMenu } from "../connectors/editor/credential-menu";
 
 it("supports keyboard navigation and focus return for credential types", async () => {
   const user = userEvent.setup();
