@@ -15,6 +15,7 @@ import { useConsoleRecoveryState } from "../components/console/use-console-recov
 import { useConsoleTargetSelection } from "../components/console/use-console-target-selection";
 import { useConsoleWorkspaceSession } from "../components/console/use-console-workspace-session";
 import { useConnectorApprovalDialog } from "../components/console/use-connector-approval-dialog";
+import type { CompletedConsoleOperation, ConsoleOperationResult } from "../components/console/console-connector-view-types";
 
 export function ConsolePage() {
   const {
@@ -48,7 +49,7 @@ export function ConsolePage() {
   const [targetsCompact, setTargetsCompact] = useState(false);
   const [tokensCompact, setTokensCompact] = useState(false);
 
-  const selectedTargetRef = searchParams.get("target");
+  const selectedTargetRef = searchParams.get("target") || "";
   const sessions = consoleSessions.data || [];
   const approvalDialog = useConnectorApprovalDialog({
     approvals: connectorActionApprovals?.data,
@@ -126,7 +127,7 @@ export function ConsolePage() {
     loadConnectorActions(selectedTarget);
   }, [selectedTarget, loadConnectorActions]);
 
-  async function completeConnectorOperation(result, operation) {
+  async function completeConnectorOperation(result: ConsoleOperationResult, operation: CompletedConsoleOperation) {
     if (result?.startConsoleSession && operation?.runtimeTarget) {
       await workspaceSession.startNew(operation.runtimeTarget);
     }
@@ -219,22 +220,33 @@ export function ConsolePage() {
             temporaryAlwaysRunLabels,
           }}
           actions={{
-            endLiveSession: () => selectedSession.id && void closeConsoleSession(selectedSession.id).catch(() => {}),
+            endLiveSession: () => {
+              if (selectedSession.id) void closeConsoleSession(selectedSession.id).catch(() => {});
+            },
             endStructuredSession: workspaceSession.endStructured,
-            interruptSession: () => selectedSession.id && cancelConsoleCommand(selectedSession.id),
+            interruptSession: () => {
+              if (selectedSession.id) return cancelConsoleCommand(selectedSession.id);
+            },
             openActivity: connectorView.openActivity,
             openApproval: approvalDialog.open,
             openMessages: () => messageDialog.open(),
             refreshActivity: loadConnectorActionApprovals,
             refreshSessions: loadConsoleSessions,
-            resizeSession: (cols, rows) => selectedSession.id && resizeConsoleSession(selectedSession.id, cols, rows),
+            resizeSession: (cols, rows) => {
+              if (selectedSession.id) return resizeConsoleSession(selectedSession.id, cols, rows);
+            },
             restartSession: workspaceSession.restart,
             selectLiveSessionName: workspaceSession.selectLiveSessionName,
             selectProfile: targetSelection.selectProfile,
-            sendInput: (data) => selectedSession.id && sendConsoleInput(selectedSession.id, data),
-            startLiveSession: () => selectedRuntimeTarget && void workspaceSession.startNew(selectedRuntimeTarget),
-            startLiveSessionWithOptions: (options = {}) =>
-              selectedRuntimeTarget && workspaceSession.startNew(selectedRuntimeTarget, options),
+            sendInput: (data) => {
+              if (selectedSession.id) return sendConsoleInput(selectedSession.id, data);
+            },
+            startLiveSession: () => {
+              if (selectedRuntimeTarget) void workspaceSession.startNew(selectedRuntimeTarget);
+            },
+            startLiveSessionWithOptions: (options = {}) => {
+              if (selectedRuntimeTarget) return workspaceSession.startNew(selectedRuntimeTarget, options);
+            },
             startStructuredSession: workspaceSession.startStructured,
           }}
         />

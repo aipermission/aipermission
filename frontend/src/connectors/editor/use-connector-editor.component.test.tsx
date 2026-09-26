@@ -1,8 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useConnectorEditor } from "./use-connector-editor";
+import type { ConnectorEditorProps } from "./connector-editor-controller-types";
 
-type EditorProps = Parameters<typeof useConnectorEditor>[0];
+type EditorProps = ConnectorEditorProps;
 type Model = NonNullable<ReturnType<EditorProps["modelForKind"]>>;
 type SyncContext = Parameters<NonNullable<Model["syncForm"]>>[0];
 

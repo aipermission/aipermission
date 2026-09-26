@@ -4,12 +4,12 @@ import { recoverableRunningActions } from "./console-target-sidebar";
 type Target = { connector_kind: string; ref: string };
 type Approval = { id?: number; status: string; target_ref: string; action_name: string };
 
-export function useConsoleRecoveryState({
+export function useConsoleRecoveryState<ApprovalItem extends Approval>({
   approvals,
   selectedTarget,
   tickInterval = 5000,
 }: {
-  approvals: Approval[];
+  approvals: ApprovalItem[];
   selectedTarget: Target | null;
   tickInterval?: number;
 }) {
@@ -24,7 +24,10 @@ export function useConsoleRecoveryState({
   return { now, runningRequest };
 }
 
-export function selectedRecoverableRequest(approvals: Approval[], selectedTarget: Target | null): Approval | null {
+export function selectedRecoverableRequest<ApprovalItem extends Approval>(
+  approvals: ApprovalItem[],
+  selectedTarget: Target | null,
+): ApprovalItem | null {
   if (!selectedTarget) return null;
   const actionNames = recoverableRunningActions(selectedTarget);
   if (actionNames.length === 0) return null;

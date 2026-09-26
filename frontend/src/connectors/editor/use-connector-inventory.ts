@@ -5,6 +5,7 @@ import { useRequestGuard } from "../../lib/request-guard";
 import { supportedConnectorKinds } from "../templates/catalog";
 
 import { errorMessage } from "../../lib/errors";
+import { loadGatewayCollection } from "../../lib/load-gateway-collection";
 import type { ProjectOptionsState } from "../../lib/load-project-options";
 import { connectorInventoryResponse, type InventoryTarget } from "../../lib/gateway-contracts/connector-inventory-contract";
 import {
@@ -110,16 +111,13 @@ export function useConnectorInventory({ loadUnifiedTargets }: { loadUnifiedTarge
   }
 
   async function loadTargets() {
-    const request = guard.begin("targets");
-    setTargets((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/connector-targets/inventory", { signal: request.signal });
-      if (request.isCurrent()) setTargets({ state: "ready", data: connectorInventoryResponse(data), error: null });
-    } catch (error) {
-      if (request.isCurrent()) setTargets({ state: "error", data: [], error: errorMessage(error) });
-    } finally {
-      request.complete();
-    }
+    await loadGatewayCollection({
+      path: "/api/connector-targets/inventory",
+      channel: "targets",
+      guard,
+      decode: connectorInventoryResponse,
+      setState: setTargets,
+    });
   }
 
   function selectProfile(target: InventoryTarget, profileID: number | string) {

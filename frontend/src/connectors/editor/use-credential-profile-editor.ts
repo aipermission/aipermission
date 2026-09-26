@@ -3,44 +3,43 @@ import type { SetStateAction } from "react";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./editor-support";
 
-type CredentialRow = { connector_kind: string; [field: string]: unknown };
-type Target = { [field: string]: unknown };
+type CredentialRow = { connector_kind: string };
+type CredentialTarget = { [field: string]: unknown };
 type SaveResult = { message?: string } | undefined;
-type CredentialModel<FormState, Row> = {
-  credentialStateFromRow?: (_context: { row: Row; targets: readonly Target[] }) => FormState;
+type CredentialModel<FormState, Row, Target, Operation> = {
+  credentialStateFromRow?: (_context: { row: Row; targets: Target[] }) => FormState;
   saveCredential?: (_context: {
-    operation: string;
+    operation: Operation;
     row: Row | null;
     formState: FormState;
-    targets: readonly Target[];
+    targets: Target[];
   }) => SaveResult | Promise<SaveResult>;
   deleteCredential?: (_context: { row: Row }) => unknown | Promise<unknown>;
 };
-type Props<FormState, Row> = {
+type Props<FormState, Row, Target, Operation> = {
   defaultKind: string;
   targets: readonly Target[];
-  emptyStateForKind: (_kind: string, _context: { targets: readonly Target[] }) => FormState;
-  modelForKind: (_kind: string) => CredentialModel<FormState, Row> | null;
+  emptyStateForKind: (_kind: string, _context: { targets: Target[] }) => FormState;
+  modelForKind: (_kind: string) => CredentialModel<FormState, Row, Target, Operation> | null;
   onRefresh?: () => void | Promise<void>;
 };
 type Drawer<Row> = { open: boolean; kind: string; mode: "create" | "edit"; row: Row | null };
 
-export function useCredentialProfileEditor<FormState extends object, Row extends CredentialRow>({
-  defaultKind,
-  targets,
-  emptyStateForKind,
-  modelForKind,
-  onRefresh,
-}: Props<FormState, Row>) {
+export function useCredentialProfileEditor<
+  FormState extends object,
+  Row extends CredentialRow,
+  Target extends object = CredentialTarget,
+  Operation extends string = string,
+>({ defaultKind, targets, emptyStateForKind, modelForKind, onRefresh }: Props<FormState, Row, Target, Operation>) {
   const [drawer, setDrawer] = useState<Drawer<Row>>({ open: false, kind: defaultKind, mode: "create", row: null });
-  const [formState, setFormState] = useState<FormState>(() => emptyStateForKind(defaultKind, { targets }));
+  const [formState, setFormState] = useState<FormState>(() => emptyStateForKind(defaultKind, { targets: [...targets] }));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
   const pendingSaveRef = useRef<symbol | null>(null);
   const editorEpochRef = useRef(0);
   const editorEpoch = editorEpochRef.current;
 
   function resetForm(kind: string = defaultKind) {
-    setFormState(emptyStateForKind(kind, { targets }));
+    setFormState(emptyStateForKind(kind, { targets: [...targets] }));
   }
 
   function updateFormState(nextState: SetStateAction<FormState>) {
@@ -65,7 +64,7 @@ export function useCredentialProfileEditor<FormState extends object, Row extends
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
-    setFormState(model.credentialStateFromRow({ row, targets }));
+    setFormState(model.credentialStateFromRow({ row, targets: [...targets] }));
     setDrawer({ open: true, kind: row.connector_kind, mode: "edit", row });
     return true;
   }
@@ -78,9 +77,9 @@ export function useCredentialProfileEditor<FormState extends object, Row extends
     resetAction();
   }
 
-  async function save(event: { preventDefault?: () => void } | null, operation: string) {
+  async function save(event: { preventDefault?: () => void } | null, operation: Operation) {
     event?.preventDefault?.();
-    if (pendingSaveRef.current !== null) return false;
+    if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return false;
     const model = modelForKind(drawer.kind);
     const saveCredential = model?.saveCredential;
     if (!saveCredential) {
@@ -94,7 +93,7 @@ export function useCredentialProfileEditor<FormState extends object, Row extends
         pending: operation === "import" ? "importing" : "saving",
         successMessage: (result) => result.value?.message || "Credential saved.",
         action: async () => {
-          const value = await saveCredential.call(model, { operation, row: drawer.row, formState, targets });
+          const value = await saveCredential.call(model, { operation, row: drawer.row, formState, targets: [...targets] });
           return { value };
         },
       });
@@ -111,6 +110,7 @@ export function useCredentialProfileEditor<FormState extends object, Row extends
   }
 
   async function remove(row: Row) {
+    if (editorEpoch !== editorEpochRef.current) return false;
     const model = modelForKind(row.connector_kind);
     const deleteCredential = model?.deleteCredential;
     if (!deleteCredential) {

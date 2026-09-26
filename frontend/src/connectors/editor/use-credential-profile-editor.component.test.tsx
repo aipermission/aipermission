@@ -171,6 +171,43 @@ describe("useCredentialProfileEditor", () => {
     expect(result.current.formState.form.label).toBe("new");
   });
 
+  it("does not submit a retired draft after a replacement editor opens", async () => {
+    const model = { saveCredential: vi.fn(async () => ({ message: "Saved." })) };
+    const { result, onRefresh } = renderEditor(model);
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "retired", password: "retired-secret" } }));
+    const staleSave = result.current.save;
+    act(() => result.current.closeEditor());
+    act(() => result.current.openCreate("example"));
+    act(() => result.current.setFormState({ form: { connector_kind: "example", label: "replacement", password: "replacement-secret" } }));
+
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await staleSave({ preventDefault() {} }, "create");
+    });
+
+    expect(saved).toBe(false);
+    expect(model.saveCredential).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(result.current.drawer.open).toBe(true);
+    expect(result.current.formState.form.label).toBe("replacement");
+  });
+
+  it("does not delete through a callback retired by a replacement editor", async () => {
+    const model = { deleteCredential: vi.fn(async () => undefined) };
+    const { result, onRefresh } = renderEditor(model);
+    const staleRemove = result.current.remove;
+    act(() => result.current.openCreate("example"));
+    let removed: boolean | undefined;
+    await act(async () => {
+      removed = await staleRemove({ id: 3, connector_kind: "example" });
+    });
+    expect(removed).toBe(false);
+    expect(model.deleteCredential).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(result.current.drawer.open).toBe(true);
+  });
+
   it("keeps a cleared secret empty after a successful save", async () => {
     const model = { saveCredential: vi.fn(async () => ({ message: "Saved." })) };
     const { result } = renderEditor(model);

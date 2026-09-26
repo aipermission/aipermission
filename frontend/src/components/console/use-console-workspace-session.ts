@@ -6,27 +6,27 @@ import { isLiveConsoleSession } from "./helpers";
 
 type Target = { ref: string; connector_kind?: string };
 type RuntimeTarget = { id: number; connector_kind?: string };
-type Session = { id: number; runtime_id?: number; name?: string; status?: string; error?: string | null };
+type Session = { id?: number; runtime_id?: number; name?: string; status?: string; error?: string | null; transcript?: string };
 type StructuredSession = { active: boolean; startedAt: string };
 type StartOptions = Record<string, unknown> & { name?: string };
 type ConnectorModel = {
   operationFromError?: (_error: unknown, _context: { operation: string; target: RuntimeTarget }) => unknown;
 };
-type Props = {
+type Props<Runtime extends RuntimeTarget> = {
   attachConsoleSession: (_sessionID: number) => void | Promise<unknown>;
-  newConsoleSession: (_runtimeTarget: RuntimeTarget, _options: StartOptions) => Promise<unknown>;
+  newConsoleSession: (_runtimeTarget: Runtime, _options: StartOptions) => Promise<unknown>;
   onOpenConnectorOperation: (_operation: unknown) => boolean;
   restartConsoleRuntime: (_runtimeID: number) => Promise<unknown>;
   runtimeSelectedSession: Session;
   selectedRunningRequestID?: number | string | null;
-  selectedRuntimeTarget: RuntimeTarget | null;
+  selectedRuntimeTarget: Runtime | null;
   selectedTarget: Target | null;
   selectedTargetUsesLiveConsole: boolean;
   sessions: readonly Session[];
   resolveConnectorModel?: (_kind: string | undefined) => ConnectorModel | null;
 };
 
-export function useConsoleWorkspaceSession({
+export function useConsoleWorkspaceSession<Runtime extends RuntimeTarget>({
   attachConsoleSession,
   newConsoleSession,
   onOpenConnectorOperation,
@@ -38,7 +38,7 @@ export function useConsoleWorkspaceSession({
   selectedTargetUsesLiveConsole,
   sessions,
   resolveConnectorModel = getConnectorModel,
-}: Props) {
+}: Props<Runtime>) {
   const [structuredByTarget, setStructuredByTarget] = useState<Record<string, StructuredSession>>({});
   const [liveSessionNameByTarget, setLiveSessionNameByTarget] = useState<Record<string, string>>({});
   const [restartAction, setRestartAction] = useState<{ state: "idle" | "running" | "error"; error: string | null }>({
@@ -72,7 +72,7 @@ export function useConsoleWorkspaceSession({
   }, [selectedTarget, selectedTargetUsesLiveConsole]);
 
   useEffect(() => {
-    if (selectedRuntimeTarget && selectedSessionLive) attachSelectedSession(selectedSession.id);
+    if (selectedRuntimeTarget && selectedSessionLive && selectedSession.id) attachSelectedSession(selectedSession.id);
   }, [selectedRuntimeTarget, selectedSession.id, selectedSessionLive]);
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export function useConsoleWorkspaceSession({
   }, [selectedRunningRequestID, selectedRuntimeTarget?.id]);
 
   const startNew = useCallback(
-    async (runtimeTarget: RuntimeTarget | null, options: StartOptions = {}) => {
+    async (runtimeTarget: Runtime | null, options: StartOptions = {}) => {
       if (!runtimeTarget) return;
       const request = requests.begin("new-session");
       setNewSessionError("");
