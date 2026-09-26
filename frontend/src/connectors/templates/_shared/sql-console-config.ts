@@ -1,8 +1,9 @@
 import { normalizeSQLName, sqlMetadataIdentity } from "./sql-console-data.ts";
+import type { SQLIdentifierPolicy } from "./sql-console-data.ts";
 
 type SQLTableReference = { schema: string; table: string };
 type SQLTarget = { config?: { host?: string; port?: number; database?: string } };
-type SQLConsoleConfigInput = {
+export type SQLConsoleConfigInput = {
   label?: string;
   defaultPort?: number;
   defaultDatabase?: string;
@@ -22,8 +23,8 @@ type SQLConsoleConfigInput = {
 };
 type SQLMetadataRow = SQLTableReference & { column?: string; dataType?: string; type?: string; position?: number };
 type SQLMetadataState = { state: string; error?: string; tables: readonly unknown[]; truncated?: boolean };
-type SQLHistoryItem = { id: number | string; action_name: string; input?: unknown; created_at?: string; reason?: string };
-type BrowserTable = SQLTableReference & {
+export type SQLHistoryItem = { id: number | string; action_name: string; input?: unknown; created_at?: string; reason?: string };
+export type BrowserTable = SQLTableReference & {
   type: string;
   columnCount: number;
   columns: { name: string; dataType: string; position: number }[];
@@ -33,6 +34,7 @@ export function normalizeSQLConsoleConfig(config: SQLConsoleConfigInput = {}) {
   const label = String(config.label || "SQL").trim() || "SQL";
   const defaultPort = Number(config.defaultPort) || 0;
   const defaultDatabase = String(config.defaultDatabase || "database");
+  const identifierPolicy: SQLIdentifierPolicy = config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted";
   return {
     label,
     queryAction: String(config.queryAction || "query_readonly"),
@@ -43,7 +45,7 @@ export function normalizeSQLConsoleConfig(config: SQLConsoleConfigInput = {}) {
     manualReason: String(config.manualReason || `manual ${label} console query`),
     browserLabel: String(config.browserLabel || "Schema"),
     filenamePrefix: String(config.filenamePrefix || `${label.toLowerCase()}-result`),
-    identifierPolicy: config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted",
+    identifierPolicy,
     keywords: [...new Set([...DEFAULT_SQL_KEYWORDS, ...(config.keywords || [])].map((item) => String(item).toLowerCase()))],
     targetEndpoint: config.targetEndpoint || ((target) => defaultTargetEndpoint(target, defaultPort, defaultDatabase)),
     tableQuery:

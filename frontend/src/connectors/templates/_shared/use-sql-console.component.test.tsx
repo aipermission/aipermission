@@ -1,12 +1,15 @@
 import { StrictMode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api";
 import { useSQLConsole } from "./use-sql-console";
+import type { SQLConsoleProps } from "./use-sql-console";
 
-// async-owner: src/connectors/templates/_shared/use-sql-metadata.js
+// async-owner: src/connectors/templates/_shared/use-sql-metadata.ts
 
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+const post = vi.mocked(apiPost);
 
 const config = {
   label: "Test SQL",
@@ -19,22 +22,22 @@ const config = {
 };
 
 beforeEach(() => {
-  apiPost.mockReset();
-  apiPost.mockImplementation(async (_path, payload) =>
+  post.mockReset();
+  post.mockImplementation(async (_path, payload) =>
     completed(payload.input.sql === config.metadataSQL ? metadataOutput("public", "users") : { columns: ["id"], rows: [{ id: 1 }] }),
   );
 });
 
-function renderConsole(overrides = {}, options = {}) {
-  const props = {
+function renderConsole(overrides: Partial<SQLConsoleProps> = {}, options: { wrapper?: ComponentType<{ children: ReactNode }> } = {}) {
+  const props: SQLConsoleProps = {
     config,
-    target: { ref: "test-sql:1:1", config: { host: "db", port: 1234, database: "app" } },
+    target: { ref: "test-sql:1:1", name: "Test database", config: { host: "db", port: 1234, database: "app" } },
     approvals: { data: [] },
     session: { active: true, startedAt: "2026-09-07T12:00:00Z" },
     onRefreshActivity: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
-  return { ...renderHook((next) => useSQLConsole(next), { initialProps: props, ...options }), props };
+  return { ...renderHook((next: SQLConsoleProps) => useSQLConsole(next), { initialProps: props, ...options }), props };
 }
 
 describe("useSQLConsole", () => {
@@ -56,8 +59,20 @@ describe("useSQLConsole", () => {
     );
   });
 
+  it("keeps loaded metadata authoritative when activity refresh throws synchronously", async () => {
+    const { result } = renderConsole({
+      onRefreshActivity: () => {
+        throw new Error("activity refresh unavailable");
+      },
+    });
+
+    await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
+    expect(result.current.metadata.error).toBe("");
+    expect(result.current.metadata.tables).toHaveLength(1);
+  });
+
   it("uses exact identifier policy before requesting lazy ClickHouse metadata", async () => {
-    apiPost.mockImplementation(async (_path, payload) => {
+    post.mockImplementation(async (_path, payload) => {
       if (payload.input.sql === config.metadataSQL) return completed(metadataOutput("Analytics", "Users"));
       return completed(metadataOutput("unexpected", "describe"));
     });
@@ -65,14 +80,14 @@ describe("useSQLConsole", () => {
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
 
     act(() => result.current.setSQL("SELECT * FROM Analytics.Users"));
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 300)));
+    await act(async () => new Promise<void>((resolve) => window.setTimeout(resolve, 300)));
 
     expect(apiPost).toHaveBeenCalledOnce();
     expect(result.current.metadata.tables[0]).toMatchObject({ schema: "Analytics", table: "Users", column: "id" });
   });
 
   it("loads missing ClickHouse columns with the exact metadata identity", async () => {
-    apiPost.mockImplementation(async (_path, payload) => {
+    post.mockImplementation(async (_path, payload) => {
       if (payload.input.sql === config.metadataSQL) {
         return completed({ rows: [{ table_schema: "Analytics", table_name: "Users" }] });
       }
@@ -100,7 +115,7 @@ describe("useSQLConsole", () => {
   });
 
   it("survives StrictMode effect replay without leaving metadata stuck loading", async () => {
-    const wrapper = ({ children }) => <StrictMode>{children}</StrictMode>;
+    const wrapper = ({ children }: { children: ReactNode }) => <StrictMode>{children}</StrictMode>;
     const { result } = renderConsole({}, { wrapper });
 
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
@@ -108,24 +123,28 @@ describe("useSQLConsole", () => {
   });
 
   it("discards metadata returned after the connector target changes", async () => {
-    const pending = new Map();
-    apiPost.mockImplementation((_path, payload) => new Promise((resolve) => pending.set(payload.target_ref, resolve)));
+    const pending = new Map<string, (_response: ReturnType<typeof completed>) => void>();
+    post.mockImplementation((_path, payload) => new Promise<ReturnType<typeof completed>>((resolve) => pending.set(payload.target_ref, resolve)));
     const { result, rerender, props } = renderConsole();
     await waitFor(() => expect(pending.has("test-sql:1:1")).toBe(true));
 
     rerender({ ...props, target: { ...props.target, ref: "test-sql:2:2" } });
     await waitFor(() => expect(pending.has("test-sql:2:2")).toBe(true));
-    await act(async () => pending.get("test-sql:1:1")(completed(metadataOutput("stale", "ignored"))));
+    const resolveFirst = pending.get("test-sql:1:1");
+    if (!resolveFirst) throw new Error("First metadata request was not dispatched");
+    await act(async () => resolveFirst(completed(metadataOutput("stale", "ignored"))));
     expect(result.current.metadata.tables).toEqual([]);
 
-    await act(async () => pending.get("test-sql:2:2")(completed(metadataOutput("current", "events"))));
+    const resolveSecond = pending.get("test-sql:2:2");
+    if (!resolveSecond) throw new Error("Second metadata request was not dispatched");
+    await act(async () => resolveSecond(completed(metadataOutput("current", "events"))));
     await waitFor(() => expect(result.current.metadata.tables[0]).toMatchObject({ schema: "current", table: "events" }));
   });
 
   it("runs the current SQL against the captured target and keeps the editor text", async () => {
     const { result } = renderConsole();
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
-    apiPost.mockClear();
+    post.mockClear();
     act(() => {
       result.current.setSQL("SELECT id FROM users");
       result.current.setMaxRows("25");
@@ -149,23 +168,25 @@ describe("useSQLConsole", () => {
   });
 
   it("ignores a query result returned after the connector target changes", async () => {
-    let resolveQuery;
-    apiPost.mockImplementation((_path, payload) => {
+    let resolveQuery: ((_response: ReturnType<typeof completed>) => void) | undefined;
+    post.mockImplementation((_path, payload) => {
       if (payload.input.sql === config.metadataSQL) return Promise.resolve(completed(metadataOutput("public", "users")));
-      return new Promise((resolve) => (resolveQuery = resolve));
+      return new Promise<ReturnType<typeof completed>>((resolve) => (resolveQuery = resolve));
     });
     const { result, rerender, props } = renderConsole();
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
     act(() => result.current.setSQL("SELECT 1"));
-    let queryPromise;
+    let queryPromise: Promise<void> | undefined;
     act(() => {
       queryPromise = result.current.runQuery();
     });
     await waitFor(() => expect(resolveQuery).toBeTypeOf("function"));
+    if (!resolveQuery) throw new Error("Query request was not dispatched");
+    const resolve = resolveQuery;
 
     rerender({ ...props, target: { ...props.target, ref: "test-sql:2:2" } });
     await act(async () => {
-      resolveQuery(completed({ columns: ["value"], rows: [{ value: 1 }] }));
+      resolve(completed({ columns: ["value"], rows: [{ value: 1 }] }));
       await queryPromise;
     });
 
@@ -192,7 +213,7 @@ describe("useSQLConsole", () => {
   it("handles non-Error query failures without rejecting the UI event", async () => {
     const { result } = renderConsole();
     await waitFor(() => expect(result.current.metadata.state).toBe("ready"));
-    apiPost.mockRejectedValueOnce(null);
+    post.mockRejectedValueOnce(null);
     act(() => result.current.setSQL("SELECT 1"));
 
     await act(async () => {
@@ -202,11 +223,11 @@ describe("useSQLConsole", () => {
   });
 });
 
-function completed(output) {
+function completed(output: Record<string, unknown>) {
   return { id: 41, request_id: 41, status: "completed", action_name: "query_readonly", output };
 }
 
-function metadataOutput(schema, table) {
+function metadataOutput(schema: string, table: string) {
   return {
     columns: ["table_schema", "table_name", "column_name", "data_type", "ordinal_position"],
     rows: [{ table_schema: schema, table_name: table, column_name: "id", data_type: "integer", ordinal_position: 1 }],
