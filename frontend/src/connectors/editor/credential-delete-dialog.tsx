@@ -33,11 +33,13 @@ export function DeleteCredentialDialog({
   state,
   onClose,
   onDelete,
+  disabled = false,
 }: {
   value: { open: boolean; row: object | null; dialog: CredentialDeleteDialogMetadata | null; attempted: boolean };
   state: AsyncActionState;
   onClose: () => void;
   onDelete: () => unknown;
+  disabled?: boolean;
 }) {
   const dialog = value.dialog;
   const deleting = state.state === "deleting";
@@ -68,7 +70,7 @@ export function DeleteCredentialDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={deleting}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={onDelete} disabled={deleting}>
+            <Button type="button" variant="danger" onClick={onDelete} disabled={deleting || disabled}>
               {deleting ? "Deleting..." : dialog?.confirmLabel || "Delete credential"}
             </Button>
           </div>

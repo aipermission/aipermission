@@ -91,7 +91,7 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; name
   return usernameCredentialStateFromRow(row);
 }
 
-export function credentialRows({ targets }: { targets: RedisTarget[] }) {
+export function credentialRows<Target extends RedisTarget>({ targets }: { targets: Target[] }) {
   return connectorCredentialRows({
     targets,
     connectorKind: "redis",

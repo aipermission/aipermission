@@ -392,6 +392,45 @@ slot boundaries. A failed slot does not replace surrounding navigation or the
 other slot. The boundary resets for a new target/profile or updated saved target,
 and permits an explicit retry without displaying arbitrary exception payloads.
 
+Credential pages use shared presentation components under
+`frontend/src/connectors/editor/`: `credential-menu.tsx`, `credential-row.tsx`,
+and `credential-delete-dialog.tsx`. The generic row only consumes display
+fields. A captured credential family retains the original native row for
+Edit/Delete callbacks instead of exposing its payload in presentation props.
+Keep credential-specific fields, secret handling, and extra operations in the
+connector; render its optional `CredentialRowActions` slot into the generic
+row's `operations` prop. Do not make the shared row resolve or inspect native
+credential fields. The shared delete dialog presents connector-provided
+metadata and delegates confirmation; any connector-provisioned external
+cleanup remains in the connector model.
+
+Define native credential workspaces with `defineCredentialFamily` from
+`templates/_shared/credential-family-registration.ts`. Keep the definition in
+the connector directory and export its registration as `credentialFamily`
+from `index.ts`. The definition captures the native state, full row, target,
+and operation types before the registry sees the common UI interface. The
+factory returns a frozen registration; dynamic module consumers must check
+`isCredentialFamilyRegistration`, not assert an unknown glob result has model
+or component call signatures.
+
+Supply `decodeTargets`, `emptyState`, `model`, `rows`, `displayRow`, and
+`renderForm`. Optional `renderOperations` and `deleteDialog` callbacks receive
+the original native row. Decode consumed connector-owned `config` and profile
+`public` fields from validated inventory envelopes; preserve target, project,
+profile, and runtime identifiers independently. `credentialDisplayRow` projects
+only presentation fields and does not copy native payloads. Construct form
+props directly from the native model and typed editor, so incompatible state,
+callbacks, or form components fail compilation.
+
+The registry binds the definition to `captureCredentialFamily`; connector
+templates do not import editor orchestration at runtime. The common host gets
+only rendered rows, lifecycle status, and stable `openCreate`/`close` commands.
+The captured component owns its editor and delete dialogs, whose DOM is
+portaled outside the table. Commands, native form writes, and confirmations
+must respect cross-family busy state, unmount, and retired draft guards. See
+the native `ssh/credential-family.tsx` and `redis/credential-family.tsx`
+implementations and their real-controller component tests.
+
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.
 
@@ -794,7 +833,7 @@ Exact checklist for built-in connector registration:
 - frontend templates under `frontend/src/connectors/templates/<kind>/`
 - frontend `metadata.json` and `index.ts` auto-discovery through the template
   registry and catalog loaders
-- frontend smoke coverage in `frontend/src/lib/app.smoke.test.js`
+- frontend smoke coverage in `frontend/src/lib/app.smoke.test.ts`
 - frontend runtime registry coverage that imports/evaluates the template
   registry module
 - public docs updates for user-visible setup, REST, MCP, or security behavior

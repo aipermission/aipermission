@@ -6,10 +6,13 @@ import { SSHConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";
 import { SSHConnectorOperationsTemplate } from "./operations";
 import type { ConsoleTemplateContract } from "../console-template-contract";
+import { sshCredentialFamily } from "./credential-family";
+export { sshCredentialFamily as credentialFamily } from "./credential-family";
 
 export default Object.freeze({
   Console: SSHConnectorConsoleTemplate,
   CredentialForm: SSHCredentialFormTemplate,
+  credentialFamily: sshCredentialFamily,
   CredentialRowActions: SSHCredentialRowActionsTemplate,
   Form: SSHConnectorFormTemplate,
   model,
