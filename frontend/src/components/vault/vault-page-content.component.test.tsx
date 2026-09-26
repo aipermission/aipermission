@@ -2,9 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { VaultFilters, VaultItemsTable, VaultPageHeader } from "./vault-page-content";
+import type { ComponentProps } from "react";
+import type { VaultRow } from "./vault-row.tsx";
 
 vi.mock("./vault-row", () => ({
-  VaultRow: ({ item, onEdit, onReveal, onReplace, onBindings, onDelete }) => (
+  VaultRow: ({ item, onEdit, onReveal, onReplace, onBindings, onDelete }: ComponentProps<typeof VaultRow>) => (
     <tr>
       <td>{item.name}</td>
       <td>
@@ -46,7 +48,7 @@ it("wires Vault header and filter controls", async () => {
 it("renders Vault rows and forwards every row action", async () => {
   const user = userEvent.setup();
   const actions = Array.from({ length: 5 }, () => vi.fn());
-  const item = { id: 7, name: "DEPLOY_TOKEN" };
+  const item = { id: 7, name: "DEPLOY_TOKEN", owner_project_id: 3, source: "imported", secret_type: "api_key", value_version: 1, metadata_revision: 1, tags: [], usage_notes: [] };
   const { rerender } = render(
     <VaultItemsTable
       items={{ state: "ready" }}

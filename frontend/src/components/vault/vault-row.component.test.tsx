@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { VaultRow } from "./vault-row";
+import type { ComponentProps } from "react";
 
 const projects = [{ id: 2, name: "Shared project" }];
 const baseItem = {
@@ -46,7 +47,7 @@ it("renders Vault metadata and dispatches every row action", () => {
     ["Replace local value", actions.onReplace],
     ["Edit metadata", actions.onEdit],
     ["Delete", actions.onDelete],
-  ]) {
+  ] as const) {
     fireEvent.click(screen.getByTitle(title));
     expect(callback).toHaveBeenCalledOnce();
   }
@@ -62,7 +63,7 @@ it.each([
   expect(screen.getByText("Never", { selector: "td" })).toBeInTheDocument();
 });
 
-function renderRow(item, actions = {}) {
+function renderRow(item: ComponentProps<typeof VaultRow>["item"], actions: Partial<Omit<ComponentProps<typeof VaultRow>, "item" | "projects">> = {}) {
   return render(
     <table>
       <tbody>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
@@ -33,6 +33,7 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
   const [replace, setReplace] = useState(emptyVaultReplace);
   const [remove, setRemove] = useState(emptyRemove);
   const guard = useRequestGuard("vault-values");
+  const replacementPending = useRef(false);
   const closeReveal = useCallback(() => {
     guard.invalidate("reveal");
     guard.invalidate("clipboard");
@@ -84,16 +85,19 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
   function openReplace(item: Item) {
     guard.invalidate("replace-preview");
     guard.invalidate("replace-value");
+    replacementPending.current = false;
     setReplace({ ...emptyVaultReplace, open: true, item });
   }
 
   function closeReplace() {
     guard.invalidate("replace-preview");
     guard.invalidate("replace-value");
+    replacementPending.current = false;
     setReplace(emptyVaultReplace);
   }
 
   function selectImportedReplacement() {
+    if (replacementPending.current) return;
     guard.invalidate("replace-preview");
     setReplace((current) => ({
       ...current,
@@ -106,7 +110,7 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
   }
 
   async function generateReplacementPreview(item: Item | null, generatorKind: string) {
-    if (!item || !generatorKind) return;
+    if (!item || !generatorKind || replacementPending.current) return;
     const request = guard.begin("replace-preview");
     setReplace((current) => ({
       ...current,
@@ -146,7 +150,9 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
   async function replaceValue(event: Pick<FormEvent, "preventDefault">) {
     event.preventDefault();
     const snapshot = replace;
-    if (!snapshot.item) return;
+    if (!snapshot.item || replacementPending.current) return;
+    replacementPending.current = true;
+    guard.invalidate("replace-preview");
     const request = guard.begin("replace-value");
     setReplace((current) => ({ ...current, state: "saving", error: null }));
     try {
@@ -162,6 +168,7 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
         { signal: request.signal },
       );
       if (!request.isCurrent()) return;
+      guard.invalidate("replace-preview");
       setReplace(emptyVaultReplace);
       setAction({
         state: "ready",
@@ -175,6 +182,7 @@ export function useVaultValueActions({ reloadItems, setAction }: Options) {
     } catch (error) {
       if (request.isCurrent()) setReplace((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
+      if (request.isCurrent()) replacementPending.current = false;
       request.complete();
     }
   }

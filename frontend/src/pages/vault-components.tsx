@@ -8,8 +8,24 @@ import { Checkbox, Field, Input, Select, Textarea } from "../components/ui/form"
 import { Notice } from "../components/ui/notice";
 import { selectedBinding } from "../components/vault/vault-binding-utils";
 import { vaultGeneratorKinds, vaultSecretTypes } from "../components/vault/vault-options";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { VaultBindingsState } from "../components/vault/use-vault-bindings.ts";
+import type { useVaultCollection, VaultEditorState } from "../components/vault/use-vault-collection.ts";
+import type { ProjectOption } from "../lib/load-project-options.ts";
+type Projects = Pick<ProjectOption, "id" | "name">[];
+type Collection = ReturnType<typeof useVaultCollection>;
+type BindingProps = {
+  state: VaultBindingsState; projects: Projects; onChange: Dispatch<SetStateAction<VaultBindingsState>>;
+  onClose: () => void; onSave: (_event: FormEvent<HTMLFormElement>) => unknown;
+  onDelete: (_item: VaultBindingsState["data"][number]) => unknown;
+};
+type EditorProps = {
+  editor: VaultEditorState; projects: Projects; action: Pick<Collection["action"], "state" | "error">;
+  onChange: Collection["setEditor"]; onClose: () => void; onSubmit: Collection["saveItem"];
+};
 
-export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDelete }) {
+export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDelete }: BindingProps) {
   const allowedProjects = useMemo(() => {
     if (!state.item) return [];
     const ids = new Set([Number(state.item.owner_project_id), ...(state.item.project_ids || []).map(Number)]);
@@ -29,7 +45,7 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
     );
   }, [selectionIdentity, selectedReplaceExisting, onChange]);
 
-  function update(key, value) {
+  function update<Key extends keyof VaultBindingsState>(key: Key, value: VaultBindingsState[Key]) {
     onChange((currentState) => ({ ...currentState, [key]: value, error: null }));
   }
 
@@ -113,7 +129,7 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
                   {item.replace_existing ? "overwrite shell value" : "keep shell value"}
                 </p>
               </div>
-              <IconButton title="Remove binding" icon={Trash2} onClick={() => onDelete(item)} />
+              <IconButton title="Remove binding" icon={Trash2} disabled={state.state === "saving"} onClick={() => onDelete(item)} />
             </div>
           ))}
           {state.state === "loading" ? (
@@ -130,26 +146,26 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   );
 }
 
-function IconButton({ title, icon: Icon, onClick }) {
+function IconButton({ title, icon: Icon, onClick, disabled = false }: { title: string; icon: LucideIcon; onClick: () => void; disabled?: boolean }) {
   return (
-    <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} onClick={onClick}>
+    <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} disabled={disabled} onClick={onClick}>
       <Icon className="h-4 w-4" />
     </Button>
   );
 }
 
-export function VaultEditor({ editor, projects, action, onChange, onClose, onSubmit }) {
-  function update(key, value) {
+export function VaultEditor({ editor, projects, action, onChange, onClose, onSubmit }: EditorProps) {
+  function update<Key extends keyof VaultEditorState>(key: Key, value: VaultEditorState[Key]) {
     onChange((current) => ({ ...current, [key]: value }));
   }
-  function toggleSharedProject(projectID) {
+  function toggleSharedProject(projectID: number) {
     const selected = editor.shared_project_ids.map(Number);
     update(
       "shared_project_ids",
       selected.includes(Number(projectID)) ? selected.filter((id) => id !== Number(projectID)) : [...selected, Number(projectID)],
     );
   }
-  function updateUsageNote(index, key, value) {
+  function updateUsageNote(index: number, key: keyof VaultEditorState["usage_notes"][number], value: string) {
     update(
       "usage_notes",
       editor.usage_notes.map((note, noteIndex) => (noteIndex === index ? { ...note, [key]: value } : note)),

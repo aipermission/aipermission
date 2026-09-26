@@ -217,3 +217,31 @@ it("does not restore a generated secret preview after opening a new replacement 
   expect(screen.getByTestId("replace")).toHaveTextContent("idle:");
   expect(screen.getByTestId("replace")).not.toHaveTextContent("stale-preview");
 });
+
+it("does not start a preview while a replacement is saving", async () => {
+  const user = userEvent.setup();
+  const save = deferred();
+  apiPost.mockReturnValue(save.promise);
+  render(<ValueHarness />);
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  await user.click(screen.getByRole("button", { name: "Save replacement" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  expect(apiPost).toHaveBeenCalledOnce();
+  await act(async () => save.resolve({}));
+  expect(screen.getByTestId("replace")).toHaveTextContent("idle:");
+});
+
+it("discards an in-flight preview when replacement begins", async () => {
+  const user = userEvent.setup();
+  const preview = deferred();
+  apiPost.mockImplementation((path) => path.endsWith("/generate-preview") ? preview.promise : Promise.resolve({}));
+  render(<ValueHarness />);
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  const signal = requestSignal();
+  await user.click(screen.getByRole("button", { name: "Save replacement" }));
+  expect(signal.aborted).toBe(true);
+  await act(async () => preview.resolve({ value: "late-secret", preview_token: "late-token" }));
+  expect(screen.getByTestId("replace")).toHaveTextContent("idle:");
+  expect(screen.getByTestId("replace")).not.toHaveTextContent("late-secret");
+});

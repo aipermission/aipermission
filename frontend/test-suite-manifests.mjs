@@ -35,7 +35,7 @@ export const asyncStateOwnerTests = {
   "src/components/use-gateway-activity-resources.ts": ["src/components/use-gateway-resources.component.test.tsx", "src/components/use-gateway-activity-resources.component.test.tsx"],
   "src/components/use-gateway-core-resources.ts": ["src/components/use-gateway-resources.component.test.tsx"],
   "src/components/vault/use-vault-action-approvals.ts": ["src/components/vault/use-vault-action-approvals.component.test.tsx"],
-  "src/components/vault/use-vault-bindings.js": ["src/components/vault/use-vault-bindings.component.test.jsx"],
+  "src/components/vault/use-vault-bindings.ts": ["src/components/vault/use-vault-bindings.component.test.tsx"],
   "src/components/vault/use-vault-collection.ts": ["src/components/vault/use-vault-collection.component.test.tsx"],
   "src/components/vault/use-vault-value-actions.ts": ["src/components/vault/use-vault-value-actions.component.test.tsx"],
   "src/connectors/editor/use-connector-inventory.js": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],

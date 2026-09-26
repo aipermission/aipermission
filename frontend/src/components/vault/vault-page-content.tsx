@@ -3,8 +3,20 @@ import { Button } from "../ui/button";
 import { Input, Select } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { VaultRow } from "./vault-row";
+import type { ReactNode } from "react";
+import type { useVaultCollection } from "./use-vault-collection.ts";
+type Collection = ReturnType<typeof useVaultCollection>;
+type TableProps = Pick<Collection, "visibleItems"> & {
+  items: Pick<Collection["items"], "state">;
+  projects: Pick<Collection["projects"]["data"][number], "id" | "name">[];
+  onEdit: (_item: Collection["visibleItems"][number]) => void;
+  onReveal: (_item: Collection["visibleItems"][number]) => void;
+  onReplace: (_item: Collection["visibleItems"][number]) => void;
+  onBindings: (_item: Collection["visibleItems"][number]) => void;
+  onDelete: (_item: Collection["visibleItems"][number]) => void;
+};
 
-export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }) {
+export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }: { loading: boolean; canCreate: boolean; onRefresh: () => void; onCreate: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -25,7 +37,7 @@ export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }) {
   );
 }
 
-export function VaultFilters({ filters, projects, onChange }) {
+export function VaultFilters({ filters, projects, onChange }: { filters: Collection["filters"]; projects: TableProps["projects"]; onChange: Collection["setFilters"] }) {
   return (
     <div className="grid gap-3 border-y border-stone-200 py-4 md:grid-cols-[220px_minmax(0,1fr)_180px]">
       <Select value={filters.project_id} onChange={(event) => onChange({ project_id: event.target.value })}>
@@ -55,7 +67,7 @@ export function VaultFilters({ filters, projects, onChange }) {
   );
 }
 
-export function VaultItemsTable({ items, visibleItems, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
+export function VaultItemsTable({ items, visibleItems, projects, onEdit, onReveal, onReplace, onBindings, onDelete }: TableProps) {
   return (
     <div className="min-w-0 overflow-x-auto rounded-lg border border-stone-200 bg-white">
       <table className="w-full min-w-[1100px] table-fixed border-collapse text-left text-sm">
@@ -90,7 +102,7 @@ export function VaultItemsTable({ items, visibleItems, projects, onEdit, onRevea
   );
 }
 
-function TableNotice({ children }) {
+function TableNotice({ children }: { children: ReactNode }) {
   return (
     <div className="p-4">
       <Notice>{children}</Notice>
