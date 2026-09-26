@@ -3,9 +3,9 @@ import { formatRelativeAge } from "../../lib/date-time";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Notice } from "../ui/notice";
-import { backupProviderLabel } from "./use-backup-provider-state";
+import { backupProviderLabel, type useBackupProviderState } from "./use-backup-provider-state";
 
-export function BackupProviderPanel({ state }) {
+export function BackupProviderPanel({ state }: { state: ReturnType<typeof useBackupProviderState> }) {
   const {
     backupState,
     backupProviderState,
@@ -66,7 +66,7 @@ export function BackupProviderPanel({ state }) {
                       <Cloud className="h-4 w-4 text-emerald-600" />
                       <p className="truncate text-sm font-semibold text-stone-950">{provider.name}</p>
                       <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-stone-600">
-                        {backupProviderLabel(provider.provider_type, backupProviderCatalog.data)}
+                        {backupProviderLabel(provider.provider_type || "", backupProviderCatalog.data)}
                       </span>
                       <span
                         className={

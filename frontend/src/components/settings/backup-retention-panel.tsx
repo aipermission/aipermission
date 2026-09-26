@@ -1,27 +1,33 @@
 import { ArchiveRestore, RotateCcw, Save, ShieldCheck } from "lucide-react";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { errorMessage } from "../../lib/errors";
+import { useRequestGuard } from "../../lib/request-guard";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Button } from "../ui/button";
 import { Checkbox, Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { parseBackupKeepLatest } from "./backup-state";
+import { backupStorageResponse, backupRetentionPolicyResponse, backupRetentionPreviewResponse, backupRetentionUpdateResponse, type BackupStorage, type BackupRetentionPolicy, type BackupRetentionPreview } from "./backup-retention-contracts";
 
 const defaultKeepLatest = 10;
 
-export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange }) {
-  const [state, setState] = useState({ status: "loading", storage: null, policy: null, error: "" });
+type RetentionForm = { enabled: boolean; keepLatest: string; applyNow: boolean };
+type RetentionState = { status: "loading" | "ready" | "error"; storage: BackupStorage | null; policy: BackupRetentionPolicy | null; error: string };
+type RetentionProps = { provider: { id: number }; onRecordsChanged?: () => void | Promise<void>; onBusyChange?: (_busy: boolean) => void };
+
+export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange }: RetentionProps) {
+  const [state, setState] = useState<RetentionState>({ status: "loading", storage: null, policy: null, error: "" });
   const [form, setForm] = useState({ enabled: false, keepLatest: String(defaultKeepLatest), applyNow: true });
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState<BackupRetentionPreview | null>(null);
   const [action, setAction] = useState({ status: "idle", error: "", message: "" });
   const [formDirty, setFormDirty] = useState(false);
-  const loadRequestRef = useRef(0);
-  const providerIDRef = useRef(provider.id);
+  const requestGuard = useRequestGuard(`backup-retention:${provider.id}`);
   const loadForEffect = useEffectEvent(() => loadRemoteState({ syncForm: true }));
 
   useLayoutEffect(() => {
-    providerIDRef.current = provider.id;
-  }, [provider.id]);
+    requestGuard.setScope(`backup-retention:${provider.id}`);
+  }, [provider.id, requestGuard]);
 
   useEffect(() => {
     setPreview(null);
@@ -39,7 +45,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
 
-  function updateForm(patch) {
+  function updateForm(patch: Partial<RetentionForm>) {
     if (busy) return;
     setForm((current) => ({ ...current, ...patch }));
     setPreview(null);
@@ -47,23 +53,27 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
     setFormDirty(true);
   }
 
-  async function loadRemoteState({ syncForm }) {
-    const requestID = ++loadRequestRef.current;
+  async function loadRemoteState({ syncForm }: { syncForm: boolean }) {
+    const request = requestGuard.begin("load");
     setState((current) => ({ ...current, status: "loading", error: "" }));
     try {
-      const [storage, policy] = await Promise.all([
-        apiGet(`/api/backup/providers/${provider.id}/storage`),
-        apiGet(`/api/backup/providers/${provider.id}/retention`),
+      const [storageValue, policyValue] = await Promise.all([
+        apiGet(`/api/backup/providers/${provider.id}/storage`, { signal: request.signal }),
+        apiGet(`/api/backup/providers/${provider.id}/retention`, { signal: request.signal }),
       ]);
-      if (requestID !== loadRequestRef.current) return;
+      if (!request.isCurrent()) return;
+      const storage = backupStorageResponse(storageValue);
+      const policy = backupRetentionPolicyResponse(policyValue);
       setState({ status: "ready", storage, policy, error: "" });
       if (syncForm) {
         setForm({ enabled: Boolean(policy.enabled), keepLatest: String(policy.keep_latest || defaultKeepLatest), applyNow: true });
         setFormDirty(false);
       }
     } catch (error) {
-      if (requestID !== loadRequestRef.current) return;
-      setState({ status: "error", storage: null, policy: null, error: error.message });
+      if (!request.isCurrent()) return;
+      setState({ status: "error", storage: null, policy: null, error: errorMessage(error, "Unable to read backup retention status.") });
+    } finally {
+      request.complete();
     }
   }
 
@@ -74,37 +84,40 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
 
   async function requestPreview() {
     if (keepLatest === null || busy) return;
-    const requestedProviderID = provider.id;
+    const request = requestGuard.begin("mutation");
     setAction({ status: "previewing", error: "", message: "" });
     try {
-      const result = await apiPost(`/api/backup/providers/${provider.id}/retention/preview`, { keep_latest: keepLatest });
-      if (providerIDRef.current !== requestedProviderID) return;
+      const result = backupRetentionPreviewResponse(await apiPost(`/api/backup/providers/${provider.id}/retention/preview`, { keep_latest: keepLatest }));
+      if (!request.isCurrent()) return;
       setPreview(result);
       setAction({ status: "idle", error: "", message: "" });
     } catch (error) {
-      if (providerIDRef.current !== requestedProviderID) return;
+      if (!request.isCurrent()) return;
       setPreview(null);
-      setAction({ status: "error", error: error.message, message: "" });
+      setAction({ status: "error", error: errorMessage(error, "Unable to preview backup retention."), message: "" });
+    } finally {
+      request.complete();
     }
   }
 
   async function savePolicy() {
     if (busy || (form.enabled && (keepLatest === null || !previewMatches))) return;
-    const requestedProviderID = provider.id;
+    const request = requestGuard.begin("mutation");
     setAction({ status: "saving", error: "", message: "" });
     try {
-      const result = await apiPut(`/api/backup/providers/${provider.id}/retention`, {
+      const result = backupRetentionUpdateResponse(await apiPut(`/api/backup/providers/${provider.id}/retention`, {
         enabled: form.enabled,
         keep_latest: form.enabled ? keepLatest : 0,
         apply_now: form.enabled && form.applyNow,
-      });
-      if (providerIDRef.current !== requestedProviderID) return;
+      }));
+      if (!request.isCurrent()) return;
       const deletedCount = Number(result.deleted_count || 0);
       setState((current) => ({ ...current, policy: result.policy }));
       setPreview(result.preview || null);
       await loadRemoteState({ syncForm: true });
+      if (!request.isCurrent()) return;
       if (deletedCount > 0) await onRecordsChanged?.();
-      if (providerIDRef.current !== requestedProviderID) return;
+      if (!request.isCurrent()) return;
       setAction({
         status: "idle",
         error: "",
@@ -113,8 +126,10 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
           : "Automatic retention disabled.",
       });
     } catch (error) {
-      if (providerIDRef.current !== requestedProviderID) return;
-      setAction({ status: "error", error: error.message, message: "" });
+      if (!request.isCurrent()) return;
+      setAction({ status: "error", error: errorMessage(error, "Unable to save backup retention."), message: "" });
+    } finally {
+      request.complete();
     }
   }
 
@@ -143,7 +158,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
         <p className="text-sm text-stone-500">Loading remote storage and retention status...</p>
       ) : (
         <>
-          <StorageSummary storage={state.storage} />
+          {state.storage ? <StorageSummary storage={state.storage} /> : null}
           <div className="grid gap-3 border-t border-stone-200 pt-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="grid gap-3 sm:grid-cols-[auto_minmax(120px,180px)_auto] sm:items-end">
               <label className="flex h-10 items-center gap-2 text-sm font-medium text-stone-800">
@@ -191,7 +206,7 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
           {form.enabled && !previewMatches ? (
             <p className="text-xs text-amber-700">Preview the current retention count before saving.</p>
           ) : null}
-          {previewMatches ? <RetentionPreview preview={preview} applyNow={form.applyNow} /> : null}
+          {previewMatches && preview ? <RetentionPreview preview={preview} applyNow={form.applyNow} /> : null}
         </>
       )}
       {action.message ? <Notice tone="good">{action.message}</Notice> : null}
@@ -200,12 +215,12 @@ export function BackupRetentionPanel({ provider, onRecordsChanged, onBusyChange 
   );
 }
 
-function StorageSummary({ storage }) {
+function StorageSummary({ storage }: { storage: BackupStorage }) {
   return (
     <div className="grid gap-2 sm:grid-cols-3">
       <Metric label="Used" value={formatBytes(storage.used_bytes)} />
-      <Metric label="Quota" value={storage.quota_enabled ? formatBytes(storage.quota_bytes) : "Not configured"} />
-      <Metric label="Remaining" value={storage.quota_enabled ? formatBytes(storage.remaining_bytes) : "Unlimited by service"} />
+      <Metric label="Quota" value={storage.quota_enabled ? formatBytes(storage.quota_bytes ?? 0) : "Not configured"} />
+      <Metric label="Remaining" value={storage.quota_enabled ? formatBytes(storage.remaining_bytes ?? 0) : "Unlimited by service"} />
       {storage.pending_deletions > 0 ? (
         <p className="sm:col-span-3 text-xs text-amber-700">
           {storage.pending_deletions} remote file deletion{storage.pending_deletions === 1 ? " is" : "s are"} pending retry.
@@ -215,7 +230,7 @@ function StorageSummary({ storage }) {
   );
 }
 
-function RetentionPreview({ preview, applyNow }) {
+function RetentionPreview({ preview, applyNow }: { preview: BackupRetentionPreview; applyNow: boolean }) {
   return (
     <Notice tone={preview.delete_count > 0 && applyNow ? "warn" : "good"}>
       <span className="inline-flex items-center gap-2 font-medium">
@@ -228,7 +243,7 @@ function RetentionPreview({ preview, applyNow }) {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-stone-200 px-3 py-2">
       <p className="text-[11px] font-semibold uppercase text-stone-500">{label}</p>
