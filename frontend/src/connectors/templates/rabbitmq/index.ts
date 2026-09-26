@@ -3,6 +3,7 @@ import { RabbitMQCredentialFormTemplate } from "./credential-form";
 import { rabbitCredentialFamily } from "./credential-family";
 
 export { rabbitCredentialFamily as credentialFamily } from "./credential-family";
+export { rabbitConnectorFamily as connectorFamily } from "./connector-family";
 import { RabbitMQConnectorFormTemplate } from "./form";
 import { RabbitMQConnectorRowActionsTemplate } from "./list-item";
 import { RabbitMQConnectorOperationsTemplate } from "./operations";

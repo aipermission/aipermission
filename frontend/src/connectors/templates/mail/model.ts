@@ -7,6 +7,7 @@ import {
 } from "../_shared/target-profile-lifecycle";
 import { mailProtocolsEnabled } from "./helpers";
 import type { MailCredentialForm, MailLoginSecrets, MailModelForm, MailProfile, MailProfileForm, MailTarget } from "./form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyMailCredentialForm = {
   target_id: "",
@@ -157,7 +158,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }: { target?: MailTarget | null }) {
+export function deleteDialog({ target }: { target?: MailTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Mail connector target, credential profiles, and token action permissions from aipermission.",

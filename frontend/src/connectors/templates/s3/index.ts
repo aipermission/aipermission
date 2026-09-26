@@ -3,6 +3,7 @@ import { S3CredentialFormTemplate } from "./credential-form";
 import { s3CredentialFamily } from "./credential-family";
 
 export { s3CredentialFamily as credentialFamily } from "./credential-family";
+export { s3ConnectorFamily as connectorFamily } from "./connector-family";
 import { S3ConnectorFormTemplate } from "./form";
 import { S3ConnectorRowActionsTemplate } from "./list-item";
 import { S3ConnectorOperationsTemplate } from "./operations";

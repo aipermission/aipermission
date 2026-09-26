@@ -10,6 +10,7 @@ import type { RabbitMQModelForm, RabbitMQProfile, RabbitMQTarget } from "./form-
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
 import { createStructuredConsoleModel } from "../_shared/structured-console-model";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyRabbitCredentialForm = { target_id: "", profile_label: "monitor", username: "", password: "", risk_label: "queue access" };
 const lifecycle = createTargetProfileLifecycle<RabbitMQModelForm, UsernameCredentialForm, RabbitMQProfile, RabbitMQTarget>({
@@ -138,7 +139,7 @@ export function targetSubtitle({ target }: { target: RabbitMQTarget }) {
 
 export const { targetProfileLabel, usesLiveConsole, recoverableRunningActions } = createStructuredConsoleModel("monitor");
 
-export function deleteDialog({ target }: { target?: RabbitMQTarget | null }) {
+export function deleteDialog({ target }: { target?: RabbitMQTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this RabbitMQ connector target, credential profiles, and token action permissions from aipermission.",

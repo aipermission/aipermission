@@ -8,6 +8,7 @@ import {
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
 import { createStructuredConsoleModel } from "../_shared/structured-console-model";
 import type { KafkaCredentialForm, KafkaModelForm, KafkaProfile, KafkaTarget } from "./form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 export { credentialPayload } from "./model-helpers";
 
@@ -152,7 +153,7 @@ export function targetSubtitle({ target }: { target: KafkaTarget }) {
   return targetEndpoint({ target });
 }
 export const { targetProfileLabel, usesLiveConsole, recoverableRunningActions } = createStructuredConsoleModel("monitor");
-export function deleteDialog({ target }: { target?: KafkaTarget | null }) {
+export function deleteDialog({ target }: { target?: KafkaTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Kafka / Redpanda target, credential profiles, and token action permissions from aipermission.",
