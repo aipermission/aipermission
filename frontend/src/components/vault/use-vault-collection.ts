@@ -3,8 +3,21 @@ import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { toLocalDateTime, toRFC3339 } from "../../lib/date-time";
 import { loadProjectOptions } from "../../lib/load-project-options";
 import { useRequestGuard } from "../../lib/request-guard";
+import type { FormEvent, SetStateAction } from "react";
+import type { ProjectOptionsState } from "../../lib/load-project-options.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import { vaultManagedItemsResponse, type VaultManagedItem, type VaultUsageNote, type VaultActionState } from "../../lib/gateway-contracts/vault-management-contract.ts";
 
-export const emptyVaultEditor = {
+export type VaultEditorState = {
+  open: boolean; mode: "create" | "edit"; item: VaultManagedItem | null; source: string;
+  name: string; value: string; owner_project_id: string | number; shared_project_ids: number[];
+  secret_type: string; generator_kind: string; provider: string; environment: string; description: string;
+  expires_at: string; expiry_warning_days: string | number; tags: string; usage_notes: VaultUsageNote[];
+};
+export type VaultFiltersState = { project_id: string; query: string; expiry: string };
+type ItemsResource = { state: string; data: VaultManagedItem[]; total: number; error: string | null };
+
+export const emptyVaultEditor: VaultEditorState = {
   open: false,
   mode: "create",
   item: null,
@@ -25,14 +38,14 @@ export const emptyVaultEditor = {
 };
 
 export function useVaultCollection() {
-  const [items, setItems] = useState({ state: "loading", data: [], total: 0, error: null });
-  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
-  const [filters, setFilters] = useState({ project_id: "", query: "", expiry: "all" });
+  const [items, setItems] = useState<ItemsResource>({ state: "loading", data: [], total: 0, error: null });
+  const [projects, setProjects] = useState<ProjectOptionsState>({ state: "loading", data: [], error: null });
+  const [filters, setFilters] = useState<VaultFiltersState>({ project_id: "", query: "", expiry: "all" });
   const [editor, setEditor] = useState(emptyVaultEditor);
-  const [action, setAction] = useState({ state: "idle", message: "", error: null });
+  const [action, setAction] = useState<VaultActionState>({ state: "idle", message: "", error: null });
   const filtersRef = useRef(filters);
-  const searchTimer = useRef(null);
-  const pendingSaveRef = useRef(null);
+  const searchTimer = useRef<number | undefined>(undefined);
+  const pendingSaveRef = useRef<symbol | null>(null);
   const editorEpochRef = useRef(0);
   const editorEpoch = editorEpochRef.current;
   const guard = useRequestGuard("vault-collection");
@@ -44,9 +57,12 @@ export function useVaultCollection() {
       if (filters.project_id) params.set("project_id", filters.project_id);
       if (filters.query.trim()) params.set("q", filters.query.trim());
       const data = await apiGet(`/api/vault-items${params.size ? `?${params}` : ""}`, { signal: request.signal });
-      if (request.isCurrent()) setItems({ state: "ready", data: data.items || [], total: data.total || 0, error: null });
+      if (request.isCurrent()) {
+        const verified = vaultManagedItemsResponse(data);
+        setItems({ state: "ready", data: verified.items, total: verified.total, error: null });
+      }
     } catch (error) {
-      if (request.isCurrent()) setItems({ state: "error", data: [], total: 0, error: error.message });
+      if (request.isCurrent()) setItems({ state: "error", data: [], total: 0, error: errorMessage(error) });
     } finally {
       request.complete();
     }
@@ -55,7 +71,7 @@ export function useVaultCollection() {
     await loadProjectOptions(guard, setProjects);
   }, [guard]);
   const updateFilters = useCallback(
-    (patch) => {
+    (patch: Partial<VaultFiltersState>) => {
       const current = filtersRef.current;
       const next = { ...current, ...patch };
       if (next.project_id !== current.project_id || next.query !== current.query) guard.invalidate("items");
@@ -66,7 +82,7 @@ export function useVaultCollection() {
   );
   const visibleItems = useMemo(() => filterVaultItemsByExpiry(items.data, filters.expiry), [items.data, filters.expiry]);
 
-  function updateEditor(nextEditor) {
+  function updateEditor(nextEditor: SetStateAction<VaultEditorState>) {
     if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     setEditor(nextEditor);
   }
@@ -94,7 +110,7 @@ export function useVaultCollection() {
     setEditor({ ...emptyVaultEditor, open: true, owner_project_id: owner });
   }
 
-  function openEdit(item) {
+  function openEdit(item: VaultManagedItem) {
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     guard.invalidate("editor-mutation");
@@ -127,7 +143,7 @@ export function useVaultCollection() {
     setEditor(emptyVaultEditor);
   }
 
-  async function saveItem(event) {
+  async function saveItem(event: Pick<FormEvent, "preventDefault">) {
     event.preventDefault();
     if (pendingSaveRef.current !== null) return;
     const snapshot = editor;
@@ -138,6 +154,7 @@ export function useVaultCollection() {
     try {
       const common = vaultMetadataPayload(snapshot);
       if (snapshot.mode === "edit") {
+        if (!snapshot.item) throw new Error("Select a Vault item before editing.");
         await apiPut(
           `/api/vault-items/${snapshot.item.id}`,
           { ...common, expected_metadata_revision: snapshot.item.metadata_revision },
@@ -161,7 +178,7 @@ export function useVaultCollection() {
       setAction({ state: "ready", message: snapshot.mode === "edit" ? "Vault item updated." : "Vault item created.", error: null });
       await loadItems();
     } catch (error) {
-      if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
+      if (request.isCurrent()) setAction({ state: "error", message: "", error: errorMessage(error) });
     } finally {
       request.complete();
       if (pendingSaveRef.current === saveToken) pendingSaveRef.current = null;
@@ -186,7 +203,7 @@ export function useVaultCollection() {
   };
 }
 
-export function filterVaultItemsByExpiry(items, expiry, now = Date.now()) {
+export function filterVaultItemsByExpiry<Item extends { expires_at?: string | null; expiry_warning_days?: number }>(items: Item[], expiry: string, now = Date.now()): Item[] {
   return items.filter((item) => {
     if (expiry === "expired") return item.expires_at && Date.parse(item.expires_at) <= now;
     if (expiry === "warning") {
@@ -199,7 +216,7 @@ export function filterVaultItemsByExpiry(items, expiry, now = Date.now()) {
   });
 }
 
-function vaultMetadataPayload(editor) {
+function vaultMetadataPayload(editor: VaultEditorState) {
   return {
     name: editor.name.trim().toUpperCase(),
     owner_project_id: Number(editor.owner_project_id),
@@ -215,7 +232,7 @@ function vaultMetadataPayload(editor) {
   };
 }
 
-function splitTags(value) {
+function splitTags(value: string) {
   return String(value || "")
     .split(",")
     .map((tag) => tag.trim())

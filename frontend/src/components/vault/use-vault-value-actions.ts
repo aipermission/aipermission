@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { errorMessage } from "../../lib/errors.ts";
+import { vaultRevealedValueResponse, vaultGeneratedPreviewResponse, type VaultManagedItem, type VaultActionState } from "../../lib/gateway-contracts/vault-management-contract.ts";
 
-export const emptyVaultReplace = {
+type Item = Pick<VaultManagedItem, "id" | "name" | "value_version" | "metadata_revision">;
+type ValueState = { open: boolean; item: Item | null; state: string; error: string | null };
+type ReplaceState = ValueState & { source: string; value: string; generator_kind: string; preview_value: string; preview_token: string; preview_state: string };
+type RevealState = ValueState & { value: string; copied: boolean };
+type RemoveState = ValueState & { confirm: string };
+type Options = { reloadItems: () => unknown | Promise<unknown>; setAction: Dispatch<SetStateAction<VaultActionState>> };
+
+export const emptyVaultReplace: ReplaceState = {
   open: false,
   item: null,
   source: "imported",
@@ -15,10 +25,10 @@ export const emptyVaultReplace = {
   error: null,
 };
 
-const emptyReveal = { open: false, item: null, state: "idle", value: "", error: null, copied: false };
-const emptyRemove = { open: false, item: null, confirm: "", state: "idle", error: null };
+const emptyReveal: RevealState = { open: false, item: null, state: "idle", value: "", error: null, copied: false };
+const emptyRemove: RemoveState = { open: false, item: null, confirm: "", state: "idle", error: null };
 
-export function useVaultValueActions({ reloadItems, setAction }) {
+export function useVaultValueActions({ reloadItems, setAction }: Options) {
   const [reveal, setReveal] = useState(emptyReveal);
   const [replace, setReplace] = useState(emptyVaultReplace);
   const [remove, setRemove] = useState(emptyRemove);
@@ -44,15 +54,15 @@ export function useVaultValueActions({ reloadItems, setAction }) {
     return () => window.clearTimeout(timer);
   }, [replace.open, replace.preview_value, guard]);
 
-  async function openReveal(item) {
+  async function openReveal(item: Item) {
     guard.invalidate("clipboard");
     const request = guard.begin("reveal");
     setReveal({ open: true, item, state: "loading", value: "", error: null, copied: false });
     try {
       const data = await apiPost(`/api/vault-items/${item.id}/reveal`, {}, { signal: request.signal });
-      if (request.isCurrent()) setReveal({ open: true, item, state: "ready", value: data.value || "", error: null, copied: false });
+      if (request.isCurrent()) setReveal({ open: true, item, state: "ready", value: vaultRevealedValueResponse(data), error: null, copied: false });
     } catch (error) {
-      if (request.isCurrent()) setReveal({ open: true, item, state: "error", value: "", error: error.message, copied: false });
+      if (request.isCurrent()) setReveal({ open: true, item, state: "error", value: "", error: errorMessage(error), copied: false });
     } finally {
       request.complete();
     }
@@ -71,7 +81,8 @@ export function useVaultValueActions({ reloadItems, setAction }) {
     }
   }
 
-  function openReplace(item) {
+  function openReplace(item: Item) {
+    guard.invalidate("replace-preview");
     guard.invalidate("replace-value");
     setReplace({ ...emptyVaultReplace, open: true, item });
   }
@@ -94,7 +105,7 @@ export function useVaultValueActions({ reloadItems, setAction }) {
     }));
   }
 
-  async function generateReplacementPreview(item, generatorKind) {
+  async function generateReplacementPreview(item: Item | null, generatorKind: string) {
     if (!item || !generatorKind) return;
     const request = guard.begin("replace-preview");
     setReplace((current) => ({
@@ -114,27 +125,28 @@ export function useVaultValueActions({ reloadItems, setAction }) {
         { signal: request.signal },
       );
       if (request.isCurrent()) {
+        const verified = vaultGeneratedPreviewResponse(data);
         setReplace((current) => ({
           ...current,
-          preview_value: data.value || "",
-          preview_token: data.preview_token || "",
+          preview_value: verified.value,
+          preview_token: verified.preview_token,
           preview_state: "ready",
           error: null,
         }));
       }
     } catch (error) {
       if (request.isCurrent()) {
-        setReplace((current) => ({ ...current, preview_value: "", preview_token: "", preview_state: "error", error: error.message }));
+        setReplace((current) => ({ ...current, preview_value: "", preview_token: "", preview_state: "error", error: errorMessage(error) }));
       }
     } finally {
       request.complete();
     }
   }
 
-  async function replaceValue(event) {
+  async function replaceValue(event: Pick<FormEvent, "preventDefault">) {
     event.preventDefault();
-    if (!replace.item) return;
     const snapshot = replace;
+    if (!snapshot.item) return;
     const request = guard.begin("replace-value");
     setReplace((current) => ({ ...current, state: "saving", error: null }));
     try {
@@ -161,13 +173,13 @@ export function useVaultValueActions({ reloadItems, setAction }) {
       });
       await reloadItems();
     } catch (error) {
-      if (request.isCurrent()) setReplace((current) => ({ ...current, state: "error", error: error.message }));
+      if (request.isCurrent()) setReplace((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
       request.complete();
     }
   }
 
-  function openRemove(item) {
+  function openRemove(item: Item) {
     guard.invalidate("remove");
     setRemove({ ...emptyRemove, open: true, item });
   }
@@ -196,7 +208,7 @@ export function useVaultValueActions({ reloadItems, setAction }) {
       setAction({ state: "ready", message: "Vault item deleted from the active database.", error: null });
       await reloadItems();
     } catch (error) {
-      if (request.isCurrent()) setRemove((current) => ({ ...current, state: "error", error: error.message }));
+      if (request.isCurrent()) setRemove((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
       request.complete();
     }

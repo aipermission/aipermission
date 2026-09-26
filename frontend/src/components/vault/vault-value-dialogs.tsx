@@ -4,8 +4,10 @@ import { Dialog } from "../ui/dialog";
 import { Field, Input, Select, Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { vaultGeneratorKinds } from "./vault-options";
+import type { useVaultValueActions } from "./use-vault-value-actions.ts";
+type Props = { owner: ReturnType<typeof useVaultValueActions> };
 
-export function VaultValueDialogs({ owner }) {
+export function VaultValueDialogs({ owner }: Props) {
   return (
     <>
       <VaultRevealDialog owner={owner} />
@@ -15,7 +17,7 @@ export function VaultValueDialogs({ owner }) {
   );
 }
 
-function VaultRevealDialog({ owner }) {
+function VaultRevealDialog({ owner }: Props) {
   const { reveal } = owner;
   return (
     <Dialog
@@ -45,7 +47,7 @@ function VaultRevealDialog({ owner }) {
   );
 }
 
-function VaultReplaceDialog({ owner }) {
+function VaultReplaceDialog({ owner }: Props) {
   const { replace, setReplace } = owner;
   return (
     <Dialog
@@ -109,7 +111,7 @@ function VaultReplaceDialog({ owner }) {
   );
 }
 
-function GeneratedReplacement({ owner }) {
+function GeneratedReplacement({ owner }: Props) {
   const { replace } = owner;
   return (
     <div className="grid gap-3">
@@ -152,7 +154,7 @@ function GeneratedReplacement({ owner }) {
   );
 }
 
-function VaultDeleteDialog({ owner }) {
+function VaultDeleteDialog({ owner }: Props) {
   const { remove, setRemove } = owner;
   return (
     <Dialog

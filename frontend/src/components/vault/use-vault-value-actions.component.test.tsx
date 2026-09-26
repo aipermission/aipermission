@@ -1,22 +1,30 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../lib/api";
+import { apiPost as realPost } from "../../lib/api";
 import { useVaultValueActions } from "./use-vault-value-actions";
 
 vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
+const apiPost = vi.mocked(realPost);
+
+function requestSignal() {
+  const options = apiPost.mock.calls[0]?.[2];
+  const signal = options && "signal" in options ? options.signal : undefined;
+  if (!(signal instanceof AbortSignal)) throw new Error("Missing mutation signal");
+  return signal;
+}
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((next, failure) => {
+  let resolve!: (_value?: unknown) => void;
+  let reject!: (_reason?: unknown) => void;
+  const promise = new Promise<unknown>((next, failure) => {
     resolve = next;
     reject = failure;
   });
   return { promise, resolve, reject };
 }
 
-function ValueHarness({ reloadItems = vi.fn(), setAction = vi.fn() }) {
+function ValueHarness({ reloadItems = vi.fn(), setAction = vi.fn() }: Partial<Parameters<typeof useVaultValueActions>[0]>) {
   const values = useVaultValueActions({ reloadItems, setAction });
   const item = { id: 3, name: "API_KEY", value_version: 2, metadata_revision: 4 };
   return (
@@ -78,6 +86,25 @@ it("owns reveal and generated preview reads", async () => {
   );
 });
 
+it("rejects a malformed reveal value without leaving a secret in dialog state", async () => {
+  const user = userEvent.setup();
+  apiPost.mockResolvedValue({ value: { hidden: "not-a-string" } });
+  render(<ValueHarness />);
+  await user.click(screen.getByRole("button", { name: "Reveal" }));
+  await waitFor(() => expect(screen.getByTestId("reveal")).toHaveTextContent("error:"));
+  expect(screen.getByTestId("reveal-feedback")).toHaveTextContent("Invalid Vault value response");
+});
+
+it("does not enable saving a generated preview with a malformed approval token", async () => {
+  const user = userEvent.setup();
+  apiPost.mockResolvedValue({ value: "candidate", preview_token: 4 });
+  render(<ValueHarness />);
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  await waitFor(() => expect(screen.getByTestId("replace")).toHaveTextContent("error:"));
+  expect(screen.getByTestId("replace")).not.toHaveTextContent("candidate");
+});
+
 it("deletes with optimistic revisions and refreshes metadata", async () => {
   const user = userEvent.setup();
   const reloadItems = vi.fn().mockResolvedValue(undefined);
@@ -105,9 +132,9 @@ it("does not let a closed deletion mutate a newly opened dialog", async () => {
 
   await user.click(screen.getByRole("button", { name: "Remove" }));
   await user.click(screen.getByRole("button", { name: "Delete" }));
-  const requestOptions = apiPost.mock.calls[0][2];
+  const signal = requestSignal();
   await user.click(screen.getByRole("button", { name: "Remove" }));
-  expect(requestOptions.signal.aborted).toBe(true);
+  expect(signal.aborted).toBe(true);
   pending.resolve({});
 
   await waitFor(() => expect(screen.getByTestId("remove")).toHaveTextContent("idle"));
@@ -121,9 +148,9 @@ it("cancels a pending reveal when its dialog closes", async () => {
   apiPost.mockReturnValue(pending.promise);
   render(<ValueHarness />);
   await user.click(screen.getByRole("button", { name: "Reveal" }));
-  const requestOptions = apiPost.mock.calls[0][2];
+  const signal = requestSignal();
   await user.click(screen.getByRole("button", { name: "Close reveal" }));
-  expect(requestOptions.signal.aborted).toBe(true);
+  expect(signal.aborted).toBe(true);
   pending.resolve({ value: "stale-secret" });
   await waitFor(() => expect(screen.getByTestId("reveal")).toHaveTextContent("idle:"));
 });
@@ -165,13 +192,28 @@ it("does not let a closed replacement save mutate a reopened dialog", async () =
 
   await user.click(screen.getByRole("button", { name: "Replace" }));
   await user.click(screen.getByRole("button", { name: "Save replacement" }));
-  const requestOptions = apiPost.mock.calls[0][2];
+  const signal = requestSignal();
   await user.click(screen.getByRole("button", { name: "Close replace" }));
   await user.click(screen.getByRole("button", { name: "Replace" }));
-  expect(requestOptions.signal.aborted).toBe(true);
+  expect(signal.aborted).toBe(true);
   pending.resolve({});
 
   await waitFor(() => expect(screen.getByTestId("replace")).toHaveTextContent("idle:"));
   expect(reloadItems).not.toHaveBeenCalled();
   expect(setAction).not.toHaveBeenCalled();
+});
+
+it("does not restore a generated secret preview after opening a new replacement dialog", async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  apiPost.mockReturnValue(pending.promise);
+  render(<ValueHarness />);
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  const signal = requestSignal();
+  await user.click(screen.getByRole("button", { name: "Replace" }));
+  expect(signal.aborted).toBe(true);
+  await act(async () => pending.resolve({ value: "stale-preview", preview_token: "stale-token" }));
+  expect(screen.getByTestId("replace")).toHaveTextContent("idle:");
+  expect(screen.getByTestId("replace")).not.toHaveTextContent("stale-preview");
 });
