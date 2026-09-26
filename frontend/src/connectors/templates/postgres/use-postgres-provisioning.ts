@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
@@ -12,13 +13,20 @@ import {
   provisionScopeSupportsPreset,
   readableScopeSummary,
 } from "./provisioning";
+import type { MetadataSchema, ProvisionForm, ProvisionScope, ScopeSelection } from "./provisioning-types";
+import type { ProvisionOperationProps, ProvisionResult } from "./operation-types";
 
-const emptyMetadata = { state: "idle", error: "", schemas: [] };
-const emptyScope = { all_schemas: true, schemas: {} };
-const emptyState = { state: "idle", error: "", result: null };
+type MetadataState = { state: "idle" | "loading" | "pending" | "ready" | "error"; error: string; schemas: MetadataSchema[] };
+type ProvisionState = { state: "idle" | "running" | "ready" | "error"; error: string; result: ProvisionResult | null };
+type ActionResponse = Parameters<typeof requireCompletedConnectorAction>[0];
+export type ProvisionController = ReturnType<typeof usePostgresProvisioning>;
+
+const emptyMetadata: MetadataState = { state: "idle", error: "", schemas: [] };
+const emptyScope: ScopeSelection = { all_schemas: true, schemas: {} };
+const emptyState: ProvisionState = { state: "idle", error: "", result: null };
 const readWriteScopeError = "Read and change requires all columns on every selected table. Select All columns before changing the preset.";
 
-export function usePostgresProvisioning({ value, onOperationComplete }) {
+export function usePostgresProvisioning({ value, onOperationComplete }: ProvisionOperationProps) {
   const [form, setForm] = useState(defaultProvisionForm);
   const [metadata, setMetadata] = useState(emptyMetadata);
   const [scope, setScope] = useState(emptyScope);
@@ -49,12 +57,12 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
     if (targetRef) void loadMetadataForEffect();
   }, [value.open, targetRef, targetID, profileID]);
 
-  async function loadMetadata() {
+  async function loadMetadata(): Promise<void> {
     if (!targetRef) return;
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", error: "", schemas: [] });
     try {
-      const response = await apiPost(
+      const response: ActionResponse = await apiPost(
         "/api/connector-actions/local-run",
         {
           target_ref: targetRef,
@@ -78,13 +86,13 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
     }
   }
 
-  async function provisionUser(event) {
+  async function provisionUser(event: Pick<FormEvent<HTMLFormElement>, "preventDefault">): Promise<void> {
     event.preventDefault();
     if (!canSubmit(targetID, profileID, form, selectedScope)) return;
     const request = requestGuard.begin("provision");
     setState({ state: "running", error: "", result: null });
     try {
-      const result = await apiPost(
+      const result: ProvisionResult = await apiPost(
         `/api/connector-targets/${targetID}/profiles/${profileID}/provision`,
         {
           input: {
@@ -114,7 +122,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
     }
   }
 
-  function updateForm(field, nextValue) {
+  function updateForm<Field extends keyof ProvisionForm>(field: Field, nextValue: ProvisionForm[Field]): boolean {
     if (field === "preset" && !provisionScopeSupportsPreset(selectedScope, nextValue)) {
       setState({ state: "error", error: readWriteScopeError, result: null });
       return false;
@@ -145,7 +153,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }) {
   };
 }
 
-function canSubmit(targetID, profileID, form, selectedScope) {
+function canSubmit(targetID: number | undefined, profileID: number | undefined, form: ProvisionForm, selectedScope: ProvisionScope | null): boolean {
   return Boolean(
     targetID && profileID && form.role_name.trim() && selectedScope && provisionScopeSupportsPreset(selectedScope, form.preset),
   );

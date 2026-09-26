@@ -1,5 +1,5 @@
 import { cn } from "../../lib/utils";
-import type { InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ComponentPropsWithRef, InputHTMLAttributes, LabelHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 export function Field({ className, children, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
@@ -9,7 +9,7 @@ export function Field({ className, children, ...props }: LabelHTMLAttributes<HTM
   );
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentPropsWithRef<"input">) {
   return (
     <input
       className={cn(

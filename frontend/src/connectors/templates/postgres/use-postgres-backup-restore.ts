@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { apiDownload, apiPostForm, currentWorkspaceBinding } from "../../../lib/api";
 import { APIError, errorMessage } from "../../../lib/errors";
 import {
@@ -6,19 +7,24 @@ import {
   markLocalActionRetryOutcome,
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
+  releaseLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
 import { safeBackupFilename } from "./provisioning";
+import type { PostgresOperation } from "./operation-types";
 
-const emptyActionState = { state: "idle", error: "", message: "" };
+type ActionState = { state: "idle" | "running" | "ready" | "error"; error: string; message: string };
+type RestoreRetry = Awaited<ReturnType<typeof prepareLocalActionRetry>>;
+export type BackupRestoreController = ReturnType<typeof usePostgresBackupRestore>;
+const emptyActionState: ActionState = { state: "idle", error: "", message: "" };
 
-export function usePostgresBackupRestore(value) {
+export function usePostgresBackupRestore(value: PostgresOperation) {
   const [backupState, setBackupState] = useState(emptyActionState);
   const [restoreState, setRestoreState] = useState(emptyActionState);
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState<File | null>(null);
   const [confirmTarget, setConfirmTarget] = useState("");
-  const [activeTab, setActiveTab] = useState("backup");
+  const [activeTab, setActiveTab] = useState<"backup" | "restore">("backup");
   const targetID = value.target?.id;
   const profileID = value.profile?.id;
   const targetName = value.target?.name || "";
@@ -57,13 +63,13 @@ export function usePostgresBackupRestore(value) {
     }
   }
 
-  async function restoreBackup(event) {
+  async function restoreBackup(event: Pick<FormEvent<HTMLFormElement>, "preventDefault">): Promise<void> {
     event.preventDefault();
-    if (!restoreReady) return;
+    if (!restoreReady || !file) return;
     const request = requestGuard.begin("restore");
     const capturedFile = file;
     const capturedConfirmation = confirmTarget;
-    let retry = null;
+    let retry: RestoreRetry | null = null;
     setRestoreState({ state: "running", error: "", message: "" });
     try {
       const formData = new FormData();
@@ -71,6 +77,11 @@ export function usePostgresBackupRestore(value) {
       const retryIdentity = await postgresRestoreRetryIdentity(`${endpoint}/restore`, capturedConfirmation, capturedFile, request.signal);
       if (!request.isCurrent()) return;
       retry = await prepareLocalActionRetry(retryIdentity, { workspaceID });
+      if (!request.isCurrent()) {
+        if (retry.reused) await releaseLocalActionRetryAttempt(retry);
+        else await completeLocalActionRetry(retry);
+        return;
+      }
       formData.append("dump", capturedFile);
       formData.append("confirm_target", capturedConfirmation);
       formData.append("idempotency_key", retry.idempotencyKey);
@@ -123,14 +134,17 @@ export function usePostgresBackupRestore(value) {
 
 const uncertainRestoreCodes = new Set(["audit_persistence_failed", "result_projection_failed"]);
 
-export function requireCompletedRestoreResponse(response) {
+export function requireCompletedRestoreResponse(response: unknown) {
   const acknowledged =
     response !== null &&
     typeof response === "object" &&
+    "operation_id" in response &&
+    typeof response.operation_id === "number" &&
     Number.isSafeInteger(response.operation_id) &&
     response.operation_id > 0 &&
+    "status" in response &&
     response.status === "completed" &&
-    (response.replayed === true || Object.hasOwn(response, "result"));
+    (("replayed" in response && response.replayed === true) || Object.hasOwn(response, "result"));
   if (acknowledged) return response;
   throw new APIError("Invalid restore completion response from gateway.", {
     code: "invalid_restore_response",
@@ -138,12 +152,16 @@ export function requireCompletedRestoreResponse(response) {
   });
 }
 
-export async function settleRestoreRetryFailure(retry, error) {
-  if (error instanceof APIError && (error.data?.status === "outcome_unknown" || uncertainRestoreCodes.has(error.code))) {
+export async function settleRestoreRetryFailure(retry: RestoreRetry, error: unknown): Promise<void> {
+  const status =
+    error instanceof APIError && error.data !== null && typeof error.data === "object" && "status" in error.data
+      ? error.data.status
+      : undefined;
+  if (error instanceof APIError && (status === "outcome_unknown" || uncertainRestoreCodes.has(error.code))) {
     await markLocalActionRetryOutcome(retry, error.data || { status: "outcome_unknown", code: error.code });
     return;
   }
-  if (error instanceof APIError && ["failed", "canceled"].includes(error.data?.status)) {
+  if (error instanceof APIError && (status === "failed" || status === "canceled")) {
     await completeLocalActionRetry(retry);
     return;
   }

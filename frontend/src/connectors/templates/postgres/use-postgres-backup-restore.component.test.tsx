@@ -7,9 +7,19 @@ import {
   markLocalActionRetryOutcome,
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
+  releaseLocalActionRetryAttempt,
 } from "../../../lib/local-action-retry";
 import { postgresRestoreRetryIdentity } from "./postgres-restore-identity";
-import { usePostgresBackupRestore } from "./use-postgres-backup-restore";
+import { requireCompletedRestoreResponse, settleRestoreRetryFailure, usePostgresBackupRestore } from "./use-postgres-backup-restore";
+import type { PostgresOperation } from "./operation-types";
+
+const download = vi.mocked(apiDownload);
+const postForm = vi.mocked(apiPostForm);
+const workspaceBinding = vi.mocked(currentWorkspaceBinding);
+const prepareRetry = vi.mocked(prepareLocalActionRetry);
+const completeRetry = vi.mocked(completeLocalActionRetry);
+const markOutcome = vi.mocked(markLocalActionRetryOutcome);
+const preserveAttempt = vi.mocked(preserveLocalActionRetryAttempt);
 
 vi.mock("../../../lib/api", () => ({ apiDownload: vi.fn(), apiPostForm: vi.fn(), currentWorkspaceBinding: vi.fn() }));
 vi.mock("../../../lib/local-action-retry", () => ({
@@ -17,19 +27,28 @@ vi.mock("../../../lib/local-action-retry", () => ({
   completeLocalActionRetry: vi.fn(),
   markLocalActionRetryOutcome: vi.fn(),
   preserveLocalActionRetryAttempt: vi.fn(),
+  releaseLocalActionRetryAttempt: vi.fn(),
 }));
 
 beforeEach(() => {
-  apiDownload.mockReset().mockResolvedValue({ saved: true });
-  apiPostForm.mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
-  currentWorkspaceBinding.mockReset().mockReturnValue("workspace-a");
-  prepareLocalActionRetry.mockReset().mockResolvedValue({ idempotencyKey: "restore-attempt-key" });
-  completeLocalActionRetry.mockReset().mockResolvedValue(undefined);
-  markLocalActionRetryOutcome.mockReset().mockResolvedValue(undefined);
-  preserveLocalActionRetryAttempt.mockReset().mockResolvedValue(undefined);
+  download.mockReset().mockResolvedValue({ saved: true });
+  postForm.mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
+  workspaceBinding.mockReset().mockReturnValue("workspace-a");
+  prepareRetry.mockReset().mockResolvedValue({
+    scope: { key: "workspace-a", legacyKey: "legacy-workspace-a" },
+    signature: "test-signature",
+    idempotencyKey: "restore-attempt-key",
+    revision: 1,
+    attemptID: "test-attempt",
+    reused: false,
+  });
+  completeRetry.mockReset().mockResolvedValue(undefined);
+  markOutcome.mockReset().mockResolvedValue(undefined);
+  preserveAttempt.mockReset().mockResolvedValue(undefined);
+  vi.mocked(releaseLocalActionRetryAttempt).mockReset().mockResolvedValue(undefined);
 });
 
-function operation(id = 1) {
+function operation(id = 1): PostgresOperation {
   return {
     open: true,
     target: { id, name: `Main DB ${id}` },
@@ -37,8 +56,70 @@ function operation(id = 1) {
   };
 }
 
+it.each([false, true])("releases an undispatched restore after preparation is canceled (reused: %s)", async (reused) => {
+  const retry = {
+    scope: { key: "workspace-a", legacyKey: "legacy" },
+    signature: "test",
+    idempotencyKey: "test-key",
+    revision: 1,
+    attemptID: "test",
+    reused,
+  };
+  let resolvePreparation: ((_value: typeof retry) => void) | undefined;
+  prepareRetry.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolvePreparation = resolve;
+      }),
+  );
+  const { result, rerender } = renderHook((value) => usePostgresBackupRestore(value), { initialProps: operation() });
+  act(() => {
+    result.current.setFile(new File(["SELECT 1;"], "backup.sql"));
+    result.current.setConfirmTarget("Main DB 1");
+  });
+  let pending: Promise<void> | undefined;
+  act(() => {
+    pending = result.current.restoreBackup({ preventDefault: vi.fn() });
+  });
+  await waitFor(() => expect(resolvePreparation).toBeTypeOf("function"));
+  rerender(operation(2));
+  await act(async () => {
+    if (!resolvePreparation) throw new Error("Preparation did not start");
+    resolvePreparation(retry);
+    await pending;
+  });
+  expect(apiPostForm).not.toHaveBeenCalled();
+  expect(reused ? releaseLocalActionRetryAttempt : completeLocalActionRetry).toHaveBeenCalledWith(retry);
+  expect(reused ? completeLocalActionRetry : releaseLocalActionRetryAttempt).not.toHaveBeenCalled();
+  expect(preserveLocalActionRetryAttempt).not.toHaveBeenCalled();
+});
+
+it.each([
+  null,
+  [],
+  {},
+  { operation_id: "1", status: "completed", result: {} },
+  { operation_id: 0, status: "completed", result: {} },
+  { operation_id: 1, status: "running", result: {} },
+  { operation_id: 1, status: "completed" },
+])("rejects unacknowledged restore envelopes: %j", (response) => {
+  expect(() => requireCompletedRestoreResponse(response)).toThrow("Invalid restore completion response");
+});
+
+it("accepts a replay acknowledgment without requiring the original result", () => {
+  const response = { operation_id: 7, status: "completed", replayed: true };
+  expect(requireCompletedRestoreResponse(response)).toBe(response);
+});
+
+it.each(["failed", "canceled"])("releases a definitive %s restore attempt", async (status) => {
+  const retry = await prepareLocalActionRetry({}, { workspaceID: "workspace-a" });
+  await settleRestoreRetryFailure(retry, new APIError("Definitive outcome", { data: { status } }));
+  expect(completeLocalActionRetry).toHaveBeenCalledWith(retry);
+  expect(preserveLocalActionRetryAttempt).not.toHaveBeenCalled();
+});
+
 it("downloads a safe filename and keeps canceled pickers idle", async () => {
-  apiDownload.mockResolvedValueOnce({ canceled: true });
+  download.mockResolvedValueOnce({ canceled: true });
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
 
   await act(async () => result.current.downloadBackup());
@@ -52,7 +133,7 @@ it("downloads a safe filename and keeps canceled pickers idle", async () => {
 });
 
 it("surfaces backup download failures and leaves the working state", async () => {
-  apiDownload.mockRejectedValueOnce(new Error("download transport failed"));
+  download.mockRejectedValueOnce(new Error("download transport failed"));
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
 
   await act(async () => result.current.downloadBackup());
@@ -62,16 +143,17 @@ it("surfaces backup download failures and leaves the working state", async () =>
 });
 
 it("discards a backup completion after the selected profile changes", async () => {
-  let resolveDownload;
-  apiDownload.mockImplementationOnce(() => new Promise((resolve) => (resolveDownload = resolve)));
+  let resolveDownload: ((_result: Awaited<ReturnType<typeof apiDownload>>) => void) | undefined;
+  download.mockImplementationOnce(() => new Promise((resolve) => (resolveDownload = resolve)));
   const { result, rerender } = renderHook((value) => usePostgresBackupRestore(value), { initialProps: operation() });
-  let downloadPromise;
+  let downloadPromise: Promise<void> | undefined;
   act(() => {
     downloadPromise = result.current.downloadBackup();
   });
   rerender(operation(2));
 
   await act(async () => {
+    if (!resolveDownload) throw new Error("Download did not start");
     resolveDownload({ saved: true });
     await downloadPromise;
   });
@@ -97,7 +179,8 @@ it("restores only after exact target confirmation and captures the selected dump
     expect.objectContaining({ signal: expect.any(AbortSignal), workspaceBinding: "workspace-a" }),
   );
   expect(prepareLocalActionRetry).toHaveBeenCalledWith(expect.any(Object), { workspaceID: "workspace-a" });
-  const submitted = apiPostForm.mock.calls[0][1];
+  const submitted = postForm.mock.calls[0]?.[1];
+  if (!(submitted instanceof FormData)) throw new Error("Restore was not submitted");
   expect(submitted.get("dump")).toBe(dump);
   expect(submitted.get("confirm_target")).toBe("Main DB 1");
   expect(submitted.get("idempotency_key")).toBe("restore-attempt-key");
@@ -120,14 +203,14 @@ it("does not submit a restore with an inexact target confirmation", async () => 
 });
 
 it("does not apply a restore completion after the target profile changes", async () => {
-  let resolveRestore;
-  apiPostForm.mockImplementationOnce(() => new Promise((resolve) => (resolveRestore = resolve)));
+  let resolveRestore: ((_result: unknown) => void) | undefined;
+  postForm.mockImplementationOnce(() => new Promise((resolve) => (resolveRestore = resolve)));
   const { result, rerender } = renderHook((value) => usePostgresBackupRestore(value), { initialProps: operation() });
   act(() => {
     result.current.setFile(new File(["SELECT 1;"], "backup.sql", { type: "text/plain" }));
     result.current.setConfirmTarget("Main DB 1");
   });
-  let restorePromise;
+  let restorePromise: Promise<void> | undefined;
   act(() => {
     restorePromise = result.current.restoreBackup({ preventDefault: vi.fn() });
   });
@@ -135,6 +218,7 @@ it("does not apply a restore completion after the target profile changes", async
 
   rerender(operation(2));
   await act(async () => {
+    if (!resolveRestore) throw new Error("Restore did not start");
     resolveRestore({ operation_id: 1, status: "completed", result: {} });
     await restorePromise;
   });
@@ -145,7 +229,7 @@ it("does not apply a restore completion after the target profile changes", async
 });
 
 it("reuses one restore identity after an uncertain client failure", async () => {
-  apiPostForm.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({
+  postForm.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({
     operation_id: 1,
     status: "completed",
     replayed: true,
@@ -162,7 +246,10 @@ it("reuses one restore identity after an uncertain client failure", async () => 
   await act(async () => result.current.restoreBackup({ preventDefault: vi.fn() }));
 
   expect(apiPostForm).toHaveBeenCalledTimes(2);
-  expect(apiPostForm.mock.calls[1][1].get("idempotency_key")).toBe(apiPostForm.mock.calls[0][1].get("idempotency_key"));
+  const first = postForm.mock.calls[0]?.[1];
+  const second = postForm.mock.calls[1]?.[1];
+  if (!(first instanceof FormData) || !(second instanceof FormData)) throw new Error("Restore attempts were not submitted");
+  expect(second.get("idempotency_key")).toBe(first.get("idempotency_key"));
   expect(preserveLocalActionRetryAttempt).toHaveBeenCalledTimes(1);
   expect(completeLocalActionRetry).toHaveBeenCalledTimes(1);
   expect(result.current.restoreState).toEqual({ state: "ready", error: "", message: "Restore completed." });
@@ -187,7 +274,7 @@ it("derives restore retry identity from content instead of mutable file metadata
 
 it("records an explicitly uncertain restore without preserving it as a normal retry", async () => {
   const response = { status: "outcome_unknown", operation_id: 7, code: "transport_lost" };
-  apiPostForm.mockRejectedValueOnce(new APIError("outcome unknown", { status: 409, code: "transport_lost", data: response }));
+  postForm.mockRejectedValueOnce(new APIError("outcome unknown", { status: 409, code: "transport_lost", data: response }));
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
   act(() => {
     result.current.setFile(new File(["SELECT 1;"], "backup.sql", { type: "text/plain" }));
@@ -201,8 +288,8 @@ it("records an explicitly uncertain restore without preserving it as a normal re
 });
 
 it("leaves the running state when retry-ledger settlement fails", async () => {
-  apiPostForm.mockRejectedValueOnce(new Error("response lost"));
-  preserveLocalActionRetryAttempt.mockRejectedValueOnce(new Error("ledger unavailable"));
+  postForm.mockRejectedValueOnce(new Error("response lost"));
+  preserveAttempt.mockRejectedValueOnce(new Error("ledger unavailable"));
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
   act(() => {
     result.current.setFile(new File(["SELECT 1;"], "backup.sql", { type: "text/plain" }));
@@ -219,7 +306,7 @@ it("leaves the running state when retry-ledger settlement fails", async () => {
 });
 
 it("preserves the retry identity when a successful response lacks the restore completion envelope", async () => {
-  apiPostForm.mockResolvedValueOnce({ ok: true });
+  postForm.mockResolvedValueOnce({ ok: true });
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
   act(() => {
     result.current.setFile(new File(["SELECT 1;"], "backup.sql", { type: "text/plain" }));
@@ -234,7 +321,7 @@ it("preserves the retry identity when a successful response lacks the restore co
 });
 
 it("releases a definitive artifact conflict so the corrected file can use a new identity", async () => {
-  apiPostForm.mockRejectedValueOnce(new APIError("different artifact", { status: 409, code: "idempotency_conflict" }));
+  postForm.mockRejectedValueOnce(new APIError("different artifact", { status: 409, code: "idempotency_conflict" }));
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
   act(() => {
     result.current.setFile(new File(["SELECT 2;"], "backup.sql", { type: "text/plain" }));

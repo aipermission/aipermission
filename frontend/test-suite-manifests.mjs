@@ -48,11 +48,11 @@ export const asyncStateOwnerTests = {
     "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.jsx",
   ],
   "src/connectors/templates/mail/use-mail-action-runner.js": ["src/connectors/templates/mail/use-mail-action-runner.component.test.jsx"],
-  "src/connectors/templates/postgres/use-postgres-backup-restore.js": [
-    "src/connectors/templates/postgres/use-postgres-backup-restore.component.test.jsx",
+  "src/connectors/templates/postgres/use-postgres-backup-restore.ts": [
+    "src/connectors/templates/postgres/use-postgres-backup-restore.component.test.tsx",
   ],
-  "src/connectors/templates/postgres/use-postgres-provisioning.js": [
-    "src/connectors/templates/postgres/use-postgres-provisioning.component.test.jsx",
+  "src/connectors/templates/postgres/use-postgres-provisioning.ts": [
+    "src/connectors/templates/postgres/use-postgres-provisioning.component.test.tsx",
   ],
   "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.jsx",

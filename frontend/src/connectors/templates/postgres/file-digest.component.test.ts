@@ -7,14 +7,17 @@ afterEach(() => vi.unstubAllGlobals());
 it("hashes file content with SHA-256", async () => {
   vi.stubGlobal("crypto", webcrypto);
   const content = new TextEncoder().encode("SELECT 1;");
-  const file = { arrayBuffer: async () => content.buffer };
+  const file = new Blob([content]);
+  Object.defineProperty(file, "arrayBuffer", { value: async () => content.buffer });
 
   await expect(fileSHA256(file)).resolves.toBe(createHash("sha256").update(content).digest("hex"));
 });
 
 it("does not read a file after cancellation", async () => {
   const arrayBuffer = vi.fn();
-  await expect(fileSHA256({ arrayBuffer }, AbortSignal.abort())).rejects.toMatchObject({ name: "AbortError" });
+  const file = new Blob([]);
+  Object.defineProperty(file, "arrayBuffer", { value: arrayBuffer });
+  await expect(fileSHA256(file, AbortSignal.abort())).rejects.toMatchObject({ name: "AbortError" });
   expect(arrayBuffer).not.toHaveBeenCalled();
 });
 
@@ -27,12 +30,13 @@ it("fails closed when secure hashing is unavailable", async () => {
 it("stops after file reading when cancellation arrives during the read", async () => {
   vi.stubGlobal("crypto", webcrypto);
   const controller = new AbortController();
-  const file = {
-    arrayBuffer: async () => {
+  const file = new Blob([]);
+  Object.defineProperty(file, "arrayBuffer", {
+    value: async () => {
       controller.abort();
       return new ArrayBuffer(0);
     },
-  };
+  });
 
   await expect(fileSHA256(file, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
 });

@@ -1,11 +1,14 @@
 import { Download, Upload } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { usePostgresBackupRestore } from "./use-postgres-backup-restore";
+import type { BackupRestoreController } from "./use-postgres-backup-restore";
+import type { PostgresOperation } from "./operation-types";
 
-export function BackupRestoreDialog({ value, onClose }) {
+export function BackupRestoreDialog({ value, onClose }: { value: PostgresOperation; onClose: () => void }) {
   const controller = usePostgresBackupRestore(value);
   return (
     <Dialog
@@ -19,14 +22,25 @@ export function BackupRestoreDialog({ value, onClose }) {
     >
       <div className="grid gap-5">
         <BackupRestoreTabs active={controller.activeTab} onChange={controller.setActiveTab} />
-        {controller.activeTab === "backup" ? <BackupPanel controller={controller} /> : <RestorePanel controller={controller} />}
+        <div hidden={controller.activeTab !== "backup"}>
+          <BackupPanel controller={controller} />
+        </div>
+        <div hidden={controller.activeTab !== "restore"}>
+          <RestorePanel controller={controller} />
+        </div>
         <ActionFeedback controller={controller} />
       </div>
     </Dialog>
   );
 }
 
-function BackupRestoreTabs({ active, onChange }) {
+function BackupRestoreTabs({
+  active,
+  onChange,
+}: {
+  active: BackupRestoreController["activeTab"];
+  onChange: BackupRestoreController["setActiveTab"];
+}) {
   return (
     <div
       className="inline-flex w-fit rounded-md border border-stone-200 bg-stone-50 p-1"
@@ -55,7 +69,7 @@ function BackupRestoreTabs({ active, onChange }) {
   );
 }
 
-function BackupPanel({ controller }) {
+function BackupPanel({ controller }: { controller: BackupRestoreController }) {
   return (
     <section className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3">
       <div>
@@ -72,7 +86,11 @@ function BackupPanel({ controller }) {
   );
 }
 
-function RestorePanel({ controller }) {
+function RestorePanel({ controller }: { controller: BackupRestoreController }) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!controller.file && fileInput.current) fileInput.current.value = "";
+  }, [controller.file]);
   return (
     <form className="grid gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark-notice-bad" onSubmit={controller.restoreBackup}>
       <Notice tone="bad">
@@ -87,6 +105,7 @@ function RestorePanel({ controller }) {
       <Field>
         SQL dump file
         <Input
+          ref={fileInput}
           type="file"
           accept=".sql,text/plain,application/sql"
           onChange={(event) => controller.setFile(event.target.files?.[0] || null)}
@@ -111,7 +130,7 @@ function RestorePanel({ controller }) {
   );
 }
 
-function ActionFeedback({ controller }) {
+function ActionFeedback({ controller }: { controller: BackupRestoreController }) {
   const state = controller.activeTab === "backup" ? controller.backupState : controller.restoreState;
   return (
     <>
