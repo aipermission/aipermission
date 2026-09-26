@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, vi } from "vitest";
+import type { ComponentType } from "react";
+import type { ConnectorFormProps } from "./connector-form-types";
 
 const targets = [
   {
@@ -27,7 +29,11 @@ const baseForm = {
   risk_label: "",
 };
 
-export async function verifyConnectionModeForm(Component, form, directNotice) {
+export async function verifyConnectionModeForm<Form, Value = string>(
+  Component: ComponentType<ConnectorFormProps<typeof baseForm & Form, Value>>,
+  form: Form,
+  directNotice: string,
+) {
   const user = userEvent.setup();
   const onChange = vi.fn();
   const { container, rerender } = render(<Component form={{ ...baseForm, ...form }} targets={targets} onChange={onChange} />);
@@ -48,7 +54,10 @@ export async function verifyConnectionModeForm(Component, form, directNotice) {
   await verifyTransportProfileSelection(user, onChange, "SSH connector profile");
 }
 
-export async function verifyTransportProfileForm(Component, form) {
+export async function verifyTransportProfileForm<Form, Value = string>(
+  Component: ComponentType<ConnectorFormProps<typeof baseForm & Form, Value>>,
+  form: Form,
+) {
   const user = userEvent.setup();
   const onChange = vi.fn();
   const { container } = render(
@@ -64,7 +73,11 @@ export async function verifyTransportProfileForm(Component, form) {
   await verifyTransportProfileSelection(user, onChange, "Transport profile");
 }
 
-async function verifyTransportProfileSelection(user, onChange, label) {
+async function verifyTransportProfileSelection(
+  user: ReturnType<typeof userEvent.setup>,
+  onChange: ReturnType<typeof vi.fn>,
+  label: string,
+) {
   const profile = screen.getByLabelText(label);
   expect(profile).toHaveValue("ssh:4:8");
   expect(screen.queryByRole("option", { name: /Other connector/ })).not.toBeInTheDocument();
@@ -72,16 +85,18 @@ async function verifyTransportProfileSelection(user, onChange, label) {
   expect(onChange).toHaveBeenCalledWith("transport_target_ref", "ssh:4:8");
 }
 
-function exerciseEditableFields(container) {
-  for (const input of container.querySelectorAll("input:not(:disabled), textarea:not(:disabled)")) {
+function exerciseEditableFields(container: HTMLElement) {
+  for (const input of Array.from(
+    container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input:not(:disabled), textarea:not(:disabled)"),
+  )) {
     if (input.type === "checkbox") {
       fireEvent.click(input);
     } else {
       fireEvent.change(input, { target: { value: input.type === "number" ? "42" : "changed" } });
     }
   }
-  for (const select of container.querySelectorAll("select:not(:disabled)")) {
-    const option = [...select.options].find((candidate) => !candidate.disabled && candidate.value !== select.value);
+  for (const select of Array.from(container.querySelectorAll<HTMLSelectElement>("select:not(:disabled)"))) {
+    const option = Array.from(select.options).find((candidate) => !candidate.disabled && candidate.value !== select.value);
     if (option) fireEvent.change(select, { target: { value: option.value } });
   }
 }

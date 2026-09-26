@@ -3,8 +3,17 @@ import { Button } from "../../../components/ui/button";
 import { Field, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
+import type { CredentialFormProps } from "../_shared/connector-form-types";
+import type { KubernetesCredentialForm } from "./form-types";
 
-export function KubernetesCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function KubernetesCredentialFormTemplate({
+  targets,
+  form,
+  formMode = "create",
+  state,
+  onChange,
+  onSubmit,
+}: CredentialFormProps<KubernetesCredentialForm>) {
   const kubernetesTargets = targets.filter((target) => target.connector_kind === "kubernetes");
   const editing = formMode === "edit";
   return (

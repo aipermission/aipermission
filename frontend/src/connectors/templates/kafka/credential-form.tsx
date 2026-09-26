@@ -4,8 +4,17 @@ import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 import { targetEndpoint } from "./model-helpers";
 import { KafkaSASLFields } from "./sasl-fields";
+import type { CredentialFormProps } from "../_shared/connector-form-types";
+import type { KafkaCredentialForm } from "./form-types";
 
-export function KafkaCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function KafkaCredentialFormTemplate({
+  targets,
+  form,
+  formMode = "create",
+  state,
+  onChange,
+  onSubmit,
+}: CredentialFormProps<KafkaCredentialForm>) {
   const kafkaTargets = targets.filter((target) => target.connector_kind === "kafka");
   const editing = formMode === "edit";
   return (

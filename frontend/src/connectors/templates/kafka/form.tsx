@@ -3,8 +3,15 @@ import { Notice } from "../../../components/ui/notice";
 import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { HostPingButton } from "../host-ping-button";
 import { KafkaSASLFields } from "./sasl-fields";
+import type { ConnectorFormProps } from "../_shared/connector-form-types";
+import type { KafkaConnectionForm } from "./form-types";
 
-export function KafkaConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
+export function KafkaConnectorFormTemplate({
+  form,
+  mode = "create",
+  targets = [],
+  onChange,
+}: ConnectorFormProps<KafkaConnectionForm, string | boolean>) {
   const editing = mode === "edit";
   return (
     <>
@@ -38,7 +45,7 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
             port={firstBrokerPort(form.bootstrap_brokers)}
             mode={form.connection_mode}
             transportTargetRef={form.transport_target_ref}
-            projectID={form.project_id}
+            projectID={Number(form.project_id) || 0}
           />
         </span>
         <Textarea
@@ -110,19 +117,19 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
   );
 }
 
-function firstBrokerHost(value) {
+function firstBrokerHost(value: string): string {
   const broker = firstBroker(value);
   const separator = broker.lastIndexOf(":");
   return separator > 0 ? broker.slice(0, separator).replace(/^\[|\]$/g, "") : broker;
 }
 
-function firstBrokerPort(value) {
+function firstBrokerPort(value: string): number {
   const broker = firstBroker(value);
   const separator = broker.lastIndexOf(":");
   return separator > 0 ? Number(broker.slice(separator + 1)) || 9092 : 9092;
 }
 
-function firstBroker(value) {
+function firstBroker(value: string): string {
   return (
     String(value || "")
       .split(/[\s,]+/)

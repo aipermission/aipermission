@@ -7,7 +7,17 @@ import { KafkaConnectorFormTemplate } from "./form";
 it("keeps Kafka wired to the shared connection mode contract", async () => {
   await verifyConnectionModeForm(
     KafkaConnectorFormTemplate,
-    { bootstrap_brokers: "broker:9092", server_family: "kafka", sasl_mechanism: "none", tls_enabled: false },
+    {
+      bootstrap_brokers: "broker:9092",
+      server_family: "kafka",
+      sasl_mechanism: "none",
+      tls_enabled: false,
+      tls_server_name: "",
+      tls_ca_pem: "",
+      allow_insecure_plain_sasl: false,
+      username: "",
+      password: "",
+    },
     "The gateway must reach bootstrap and advertised broker addresses.",
   );
 });
@@ -26,6 +36,7 @@ it("renders TLS and edit-mode SASL credential branches", async () => {
         project_id: 1,
         bootstrap_brokers: "[2001:db8::1]:9093",
         tls_enabled: true,
+        allow_insecure_plain_sasl: false,
         tls_server_name: "broker.example.test",
         tls_ca_pem: "CA",
         profile_label: "writer",
@@ -71,7 +82,7 @@ it("requires an explicit exception for PLAIN SASL without TLS", async () => {
     />,
   );
 
-  const insecurePlain = screen.getByText("PLAIN without TLS").closest("label").querySelector("select");
+  const insecurePlain = screen.getByLabelText(/PLAIN without TLS/);
   await user.selectOptions(insecurePlain, "allowed");
   expect(onChange).toHaveBeenCalledWith("allow_insecure_plain_sasl", true);
 });

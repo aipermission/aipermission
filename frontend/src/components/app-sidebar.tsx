@@ -29,6 +29,27 @@ import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { checkForUpdates } from "../lib/update-check";
+import { errorMessage } from "../lib/errors";
+import type { LucideIcon } from "lucide-react";
+
+export type AppSidebarProps = {
+  pathname: string;
+  consoleAttentionCount: number;
+  activeTransferCount: number;
+  gatewayState: string;
+  mcpRuntime?: { state: string; data?: { enabled: boolean } | null } | null;
+  theme: "dark" | "light";
+  onSetTheme: (_theme: "dark" | "light") => void;
+  onSetMCPRuntimeEnabled: (_enabled: boolean) => unknown;
+  onOpenTransferCenter: () => void;
+  onSwitchDatabase: () => void;
+  onLockDatabase: () => void;
+  embedded?: boolean;
+  onNavigate?: () => void;
+};
+type UpdateState =
+  | { state: "ready"; data: Awaited<ReturnType<typeof checkForUpdates>>; error: null }
+  | { state: "idle" | "checking" | "error"; data: null; error: string | null };
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -62,10 +83,10 @@ export function AppSidebar({
   onLockDatabase,
   embedded = false,
   onNavigate,
-}) {
+}: AppSidebarProps) {
   const [changelogOpen, setChangelogOpen] = useState(false);
-  const [mcpAction, setMCPAction] = useState({ state: "idle", error: null });
-  const [updateState, setUpdateState] = useState({ state: "idle", data: null, error: null });
+  const [mcpAction, setMCPAction] = useState<{ state: "idle" | "saving" | "error"; error: string | null }>({ state: "idle", error: null });
+  const [updateState, setUpdateState] = useState<UpdateState>({ state: "idle", data: null, error: null });
   const mcpStarted = Boolean(mcpRuntime?.data?.enabled);
 
   async function toggleMCPRuntime() {
@@ -74,7 +95,7 @@ export function AppSidebar({
       await onSetMCPRuntimeEnabled(!mcpStarted);
       setMCPAction({ state: "idle", error: null });
     } catch (error) {
-      setMCPAction({ state: "error", error: error.message });
+      setMCPAction({ state: "error", error: errorMessage(error, "MCP runtime update failed.") });
     }
   }
 
@@ -84,7 +105,7 @@ export function AppSidebar({
       const data = await checkForUpdates(appVersion);
       setUpdateState({ state: "ready", data, error: null });
     } catch (error) {
-      setUpdateState({ state: "error", data: null, error: error.message || "Update check failed." });
+      setUpdateState({ state: "error", data: null, error: errorMessage(error, "Update check failed.") });
     }
   }
 
@@ -247,7 +268,7 @@ export function AppSidebar({
   );
 }
 
-function ThemeButton({ active, icon: Icon, label, onClick }) {
+function ThemeButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -265,7 +286,7 @@ function ThemeButton({ active, icon: Icon, label, onClick }) {
   );
 }
 
-function SidebarResourceLink({ href, icon: Icon, label }) {
+function SidebarResourceLink({ href, icon: Icon, label }: { href: string; icon: LucideIcon; label: string }) {
   return (
     <a
       href={href}

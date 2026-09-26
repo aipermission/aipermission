@@ -1,7 +1,13 @@
 import { Checkbox, Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
+import type { MailProfileForm } from "./form-types";
+type ProfileFieldsProps = {
+  form: MailProfileForm;
+  editing: boolean;
+  onChange: (_field: keyof MailProfileForm, _value: string | boolean) => void;
+};
 
-export function MailCredentialFields({ form, editing, onChange }) {
+export function MailCredentialFields({ form, editing, onChange }: ProfileFieldsProps) {
   const imapEnabled = form.imap_enabled !== false;
   const smtpMode = form.smtp_auth_mode || "disabled";
   return (
@@ -118,7 +124,7 @@ export function MailCredentialFields({ form, editing, onChange }) {
   );
 }
 
-function FolderPolicyFields({ form, onChange }) {
+function FolderPolicyFields({ form, onChange }: Pick<ProfileFieldsProps, "form" | "onChange">) {
   return (
     <>
       <div className="grid gap-3 lg:grid-cols-3">
@@ -156,7 +162,7 @@ function FolderPolicyFields({ form, onChange }) {
   );
 }
 
-function FolderListField({ label, value, onChange }) {
+function FolderListField({ label, value, onChange }: { label: string; value: string; onChange: (_value: string) => void }) {
   return (
     <Field>
       {label}

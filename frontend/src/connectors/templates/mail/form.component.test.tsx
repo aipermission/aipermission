@@ -1,11 +1,13 @@
 import { it } from "vitest";
 import { verifyConnectionModeForm } from "../_shared/network-transport-form.test";
 import { MailConnectorFormTemplate } from "./form";
+import { emptyForm } from "./model";
 
 it("keeps Mail wired to the shared connection mode contract", async () => {
   await verifyConnectionModeForm(
     MailConnectorFormTemplate,
     {
+      ...emptyForm(),
       imap_host: "imap.example.test",
       imap_port: "993",
       imap_tls_mode: "implicit_tls",

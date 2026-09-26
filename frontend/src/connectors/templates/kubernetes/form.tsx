@@ -1,8 +1,10 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TransportConnectorIdentityFields } from "../_shared/network-transport-fields";
+import type { ConnectorFormProps } from "../_shared/connector-form-types";
+import type { KubernetesConnectionForm } from "./form-types";
 
-export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }) {
+export function KubernetesConnectorFormTemplate({ form, targets = [], onChange }: ConnectorFormProps<KubernetesConnectionForm>) {
   return (
     <>
       <Notice tone="good">

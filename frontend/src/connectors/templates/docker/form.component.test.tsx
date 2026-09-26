@@ -5,7 +5,12 @@ import { verifyTransportProfileForm } from "../_shared/network-transport-form.te
 import { DockerConnectorFormTemplate } from "./form";
 
 it("keeps Docker wired to the shared transport profile contract", async () => {
-  await verifyTransportProfileForm(DockerConnectorFormTemplate, { docker_command: "docker" });
+  await verifyTransportProfileForm(DockerConnectorFormTemplate, {
+    docker_command: "docker",
+    scope_mode: "all",
+    allowed_containers: "",
+    allowed_patterns: "",
+  });
 });
 
 it("edits explicit container and pattern scopes", async () => {

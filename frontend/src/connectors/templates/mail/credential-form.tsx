@@ -4,8 +4,18 @@ import { Field, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { mailProtocolsEnabled } from "./helpers";
 import { MailCredentialFields } from "./profile-fields";
+import type { Dispatch, SetStateAction } from "react";
+import type { CredentialFormProps } from "../_shared/connector-form-types";
+import type { MailCredentialForm } from "./form-types";
 
-export function MailCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function MailCredentialFormTemplate({
+  targets,
+  form,
+  formMode = "create",
+  state,
+  onChange,
+  onSubmit,
+}: Omit<CredentialFormProps<MailCredentialForm>, "onChange"> & { onChange: Dispatch<SetStateAction<MailCredentialForm>> }) {
   const mailTargets = targets.filter((target) => target.connector_kind === "mail");
   const editing = formMode === "edit";
   return (
@@ -26,7 +36,7 @@ export function MailCredentialFormTemplate({ targets, form, formMode = "create",
           </option>
           {mailTargets.map((target) => (
             <option value={target.id} key={target.id}>
-              {target.name} · {target.config?.imap_host}:{target.config?.imap_port || 993}
+              {target.name} · {String(target.config?.imap_host || "")}:{String(target.config?.imap_port || 993)}
             </option>
           ))}
         </Select>

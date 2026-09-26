@@ -2,8 +2,10 @@ import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
 import { serverProductLabel } from "./model";
+import type { ConnectorFormProps } from "../_shared/connector-form-types";
+import type { RedisConnectionForm } from "./form-types";
 
-export function RedisConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
+export function RedisConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: ConnectorFormProps<RedisConnectionForm>) {
   const editing = mode === "edit";
   const product = serverProductLabel(form);
   return (

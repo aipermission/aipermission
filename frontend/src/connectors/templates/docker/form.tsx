@@ -1,8 +1,10 @@
 import { Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { TransportConnectorIdentityFields } from "../_shared/network-transport-fields";
+import type { ConnectorFormProps } from "../_shared/connector-form-types";
+import type { DockerConnectionForm } from "./form-types";
 
-export function DockerConnectorFormTemplate({ form, targets = [], onChange }) {
+export function DockerConnectorFormTemplate({ form, targets = [], onChange }: ConnectorFormProps<DockerConnectionForm>) {
   return (
     <>
       <Notice tone="good">

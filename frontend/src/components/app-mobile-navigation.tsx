@@ -3,8 +3,9 @@ import { useState } from "react";
 import { AppSidebar } from "./app-sidebar";
 import { Button } from "./ui/button";
 import { Drawer } from "./ui/drawer";
+import type { AppSidebarProps } from "./app-sidebar";
 
-export function AppMobileNavigation({ sidebarProps }) {
+export function AppMobileNavigation({ sidebarProps }: { sidebarProps: Omit<AppSidebarProps, "embedded" | "onNavigate"> }) {
   const [open, setOpen] = useState(false);
   return (
     <>

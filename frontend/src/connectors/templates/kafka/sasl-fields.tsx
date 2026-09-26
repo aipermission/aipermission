@@ -1,6 +1,15 @@
 import { Field, Input, Select } from "../../../components/ui/form";
+import type { KafkaSASLForm } from "./form-types";
 
-export function KafkaSASLFields({ form, editing = false, onChange }) {
+export function KafkaSASLFields({
+  form,
+  editing = false,
+  onChange,
+}: {
+  form: KafkaSASLForm;
+  editing?: boolean;
+  onChange: (_field: keyof KafkaSASLForm, _value: string) => void;
+}) {
   const secured = form.sasl_mechanism !== "none";
   const passwordRequired = secured && (!editing || (form.existing_sasl_mechanism || "none") === "none");
   return (

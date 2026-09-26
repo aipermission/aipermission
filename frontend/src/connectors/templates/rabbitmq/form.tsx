@@ -1,8 +1,15 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
+import type { ConnectorFormProps } from "../_shared/connector-form-types";
+import type { RabbitMQConnectionForm } from "./form-types";
 
-export function RabbitMQConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
+export function RabbitMQConnectorFormTemplate({
+  form,
+  mode = "create",
+  targets = [],
+  onChange,
+}: ConnectorFormProps<RabbitMQConnectionForm>) {
   const editing = mode === "edit";
   return (
     <>

@@ -9,9 +9,10 @@ it("keeps S3 wired to the shared connection mode contract", async () => {
   await verifyConnectionModeForm(
     S3ConnectorFormTemplate,
     {
+      ...emptyForm(),
       scheme: "https",
       host: "s3.example.test",
-      port: "443",
+      port: 443,
       region: "us-east-1",
       bucket: "artifacts",
       path_style: true,
