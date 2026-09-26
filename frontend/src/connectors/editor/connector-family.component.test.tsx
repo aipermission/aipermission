@@ -87,7 +87,7 @@ function Host({ busy = false }: { busy?: boolean }) {
   const RowActions = family.tableTemplate.RowActions;
   return (
     <Provider {...props} busy={busy}>
-      {RowActions ? <RowActions target={target} profile={profile} onOperation={vi.fn()} onUnderConstruction={vi.fn()} /> : null}
+      {RowActions ? <RowActions target={target} profile={profile} onUnderConstruction={vi.fn()} /> : null}
     </Provider>
   );
 }
@@ -95,9 +95,7 @@ function renderNativeFamily(value: RegisteredConnectorFamily) {
   const Provider = value.Provider;
   const RowActions = value.tableTemplate.RowActions;
   return render(
-    <Provider {...props}>
-      {RowActions ? <RowActions target={target} profile={profile} onOperation={vi.fn()} onUnderConstruction={vi.fn()} /> : null}
-    </Provider>,
+    <Provider {...props}>{RowActions ? <RowActions target={target} profile={profile} onUnderConstruction={vi.fn()} /> : null}</Provider>,
   );
 }
 beforeEach(() => {

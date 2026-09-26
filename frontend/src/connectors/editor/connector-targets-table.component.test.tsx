@@ -28,7 +28,6 @@ function tableProps(): ConnectorTargetsTableProps {
     tests: {},
     onSelectProfile: vi.fn(),
     onTestConnector: vi.fn(),
-    onOperation: vi.fn(),
     onUnderConstruction: vi.fn(),
     onEdit: vi.fn(),
     onDelete: vi.fn(),
@@ -57,14 +56,15 @@ describe("ConnectorTargetsTable", () => {
 
   it("passes connector-owned operation slots their bound target and profile", () => {
     const props = tableProps();
+    const nativeOperation = vi.fn();
     props.resolveTemplate = () => ({
       model: {},
-      RowActions: ({ target, profile, onOperation, onUnderConstruction }: TargetRowActionsProps) => (
+      RowActions: ({ target, profile, onUnderConstruction }: TargetRowActionsProps) => (
         <div>
           <span>
             {target.name} / {profile?.label}
           </span>
-          <button onClick={() => onOperation({ open: true, connector_kind: target.connector_kind })}>Fixture operation</button>
+          <button onClick={() => nativeOperation(target, profile)}>Fixture operation</button>
           <button onClick={() => onUnderConstruction("Fixture future action")}>Fixture future</button>
         </div>
       ),
@@ -73,7 +73,7 @@ describe("ConnectorTargetsTable", () => {
 
     fireEvent.click(screen.getByText("Fixture operation"));
     fireEvent.click(screen.getByText("Fixture future"));
-    expect(props.onOperation).toHaveBeenCalledWith({ open: true, connector_kind: "example" });
+    expect(nativeOperation).toHaveBeenCalledWith(props.targets.data[0], props.targets.data[0].profiles?.[0]);
     expect(props.onUnderConstruction).toHaveBeenCalledWith("Fixture future action");
     expect(screen.getByText("Fixture target / Default")).toBeVisible();
   });

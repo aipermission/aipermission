@@ -6,6 +6,7 @@ import {
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 import type { DockerCredentialForm, DockerModelForm, DockerProfile, DockerRuntimeTarget, DockerTarget } from "./form-types";
+import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyDockerCredentialForm = {
   target_id: "",
@@ -166,7 +167,7 @@ export function liveConsoleRuntimeTarget({ target }: { target: DockerRuntimeTarg
   };
 }
 
-export function deleteDialog({ target }: { target?: DockerTarget | null }) {
+export function deleteDialog({ target }: { target?: DockerTarget | null }): ConnectorDeleteDialog {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Docker connector target, credential scopes, and token action permissions from aipermission.",

@@ -252,11 +252,16 @@ test("expands glob edges and rejects template imports into registry and page lay
   });
 });
 
-test("native credential registrations may not import their captured registry", () => {
-  withSourceTree("credential-registry", ["connectors/templates/fixture"], (root) => {
-    writeFileSync(join(root, "connectors/templates/credential-registry.ts"), 'const modules = import.meta.glob("./*/index.ts");\n');
-    writeFileSync(join(root, "connectors/templates/fixture/index.ts"), 'import "../credential-registry.ts";\n');
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports connectors/templates/credential-registry.ts")));
-  });
+test("native family registrations may not import their captured registry", () => {
+  for (const registry of ["credential-registry", "connector-family-registry"]) {
+    withSourceTree(registry, ["connectors/templates/fixture"], (root) => {
+      writeFileSync(join(root, `connectors/templates/${registry}.ts`), 'const modules = import.meta.glob("./*/index.ts");\n');
+      writeFileSync(join(root, "connectors/templates/fixture/index.ts"), `import "../${registry}.ts";\n`);
+      const result = analyzeSourceTree(root);
+      assert.ok(result.failures.some((failure) => failure.includes(`fixture/index.ts imports connectors/templates/${registry}.ts`)));
+      assert.ok(
+        !result.failures.some((failure) => failure.includes(`${registry}.ts imports connectors/templates/fixture/index.ts across`)),
+      );
+    });
+  }
 });
