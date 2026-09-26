@@ -4,12 +4,16 @@ import {
   usernameCredentialStateFromRow,
   standardSubmitLabel,
   createTargetProfileLifecycle,
+  defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
+import type { RedisConfig, RedisModelForm, RedisProfile, RedisTarget } from "./form-types";
+import type { UsernameCredentialForm } from "../_shared/connector-form-types";
+import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };
 const defaultServerFamily = "redis";
 export const connectorProductLabel = "Redis / Valkey";
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<RedisModelForm, UsernameCredentialForm, RedisProfile, RedisTarget>({
   connectorKind: "redis",
   connectorLabel: connectorProductLabel,
   targetPayload: (form) => ({ name: form.name, config: redisTargetConfigFromForm(form) }),
@@ -20,7 +24,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): RedisModelForm {
   return {
     connector_kind: "redis",
     name: "redis-cache",
@@ -38,8 +42,8 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+export function formFromTarget({ target, profile }: { target: RedisTarget; profile?: RedisProfile | null }): RedisModelForm {
+  const selectedProfile = defaultTargetProfile(target, profile);
   return {
     connector_kind: "redis",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -62,7 +66,7 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: RedisModelForm }) {
   if (form.connector_kind !== "redis") return form;
   const next = { ...form };
   if (next.connection_mode === "direct") {
@@ -71,23 +75,23 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state }) {
+export function submitDisabled({ state }: { state: { state: string } }) {
   return state.state === "saving";
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: RedisTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "redis", emptyRedisCredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; name: string; profile?: RedisProfile } }) {
   return usernameCredentialStateFromRow(row);
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: RedisTarget[] }) {
   return connectorCredentialRows({
     targets,
     connectorKind: "redis",
@@ -110,7 +114,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: RedisTarget }) {
   const host = target.config?.host || "127.0.0.1";
   const port = target.config?.port || 6379;
   const database = target.config?.database || 0;
@@ -118,16 +122,16 @@ export function targetEndpoint({ target }) {
   return `${host}:${port}/${database} · ${mode}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: RedisTarget | null }) {
   if (!target) return `${connectorProductLabel} target`;
   return target.target_name || target.name || `${serverProductLabel(target)} target`;
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: RedisTarget }) {
   return `${serverProductLabel(target)} · ${targetEndpoint({ target })}`;
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: RedisTarget | null }) {
   return target?.profile_label || "default";
 }
 
@@ -139,7 +143,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: RedisTarget | null }) {
   const product = serverProductLabel(target);
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
@@ -160,8 +164,8 @@ export function operationFromError() {
   return null;
 }
 
-function redisTargetConfigFromForm(form) {
-  const tlsMode = ["auto", "verify_full"].includes(form.tls_mode) ? form.tls_mode : "disable";
+function redisTargetConfigFromForm(form: RedisModelForm) {
+  const tlsMode = ["auto", "verify_full"].includes(form.tls_mode || "") ? form.tls_mode : "disable";
   return {
     server_family: form.server_family === "valkey" ? "valkey" : defaultServerFamily,
     connection_mode: form.connection_mode || "direct",
@@ -173,7 +177,10 @@ function redisTargetConfigFromForm(form) {
   };
 }
 
-function redisProfilePayloadFromForm(form, { profile, operation }) {
+function redisProfilePayloadFromForm(
+  form: RedisModelForm | UsernameCredentialForm,
+  { profile, operation }: { profile: RedisProfile | null; operation: LifecycleProfileOperation },
+) {
   return {
     kind: profile?.kind || "username_password",
     label: form.profile_label,
@@ -183,18 +190,20 @@ function redisProfilePayloadFromForm(form, { profile, operation }) {
   };
 }
 
-export function serverProductLabel(targetOrConfig) {
+export function serverProductLabel(
+  targetOrConfig?: (Pick<RedisConfig, "server_family"> & { config?: Pick<RedisConfig, "server_family"> }) | null,
+) {
   const config = targetOrConfig?.config || targetOrConfig || {};
   return config.server_family === "valkey" ? "Valkey" : "Redis";
 }
 
-export function validateStringWrite({ key, value }) {
+export function validateStringWrite({ key, value }: { key: unknown; value: unknown }) {
   if (String(key ?? "") === "") return "Key is required.";
   if (String(value ?? "") === "") return "Value is required.";
   return "";
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: RedisProfile) {
   const items = [];
   if (profile.public?.username) items.push(`username: ${profile.public.username}`);
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
