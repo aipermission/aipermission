@@ -422,13 +422,21 @@ only presentation fields and does not copy native payloads. Construct form
 props directly from the native model and typed editor, so incompatible state,
 callbacks, or form components fail compilation.
 
-The registry binds the definition to `captureCredentialFamily`; connector
+`templates/credential-registry.ts` discovers the named `credentialFamily`
+exports, verifies their factory registrations and catalog/path identity, and
+binds the definitions to `captureCredentialFamily`; connector
 templates do not import editor orchestration at runtime. The common host gets
 only rendered rows, lifecycle status, and stable `openCreate`/`close` commands.
+The typed Credentials page uses this registry rather than calling heterogeneous
+native model functions. The host coordinates active-family status, row counts,
+and exclusive draft selection. Native-family render failures are contained in
+table-compatible boundaries, reset by refreshed inventory/resource inputs,
+without displaying arbitrary exception details or breaking other families.
 The captured component owns its editor and delete dialogs, whose DOM is
 portaled outside the table. Commands, native form writes, and confirmations
 must respect cross-family busy state, unmount, and retired draft guards. See
-the native `ssh/credential-family.tsx` and `redis/credential-family.tsx`
+the native `ssh/credential-family.tsx`, `redis/credential-family.tsx`, and
+`postgres/credential-family.tsx`
 implementations and their real-controller component tests.
 
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon

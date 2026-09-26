@@ -34,7 +34,7 @@ export type S3Target = {
   };
 };
 
-type S3Form = {
+export type S3Form = {
   connector_kind: string;
   name: string;
   connection_mode: string;
@@ -82,7 +82,7 @@ const lifecycle = createTargetProfileLifecycle<S3Form, S3CredentialForm, S3Profi
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): S3Form {
   return {
     connector_kind: "s3",
     name: "object-store",

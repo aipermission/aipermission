@@ -20,23 +20,16 @@ const targets = [
   },
 ];
 
-const baseForm = {
-  name: "My Connector",
-  project_id: 1,
-  connection_mode: "direct",
-  transport_target_ref: "",
-  profile_label: "default",
-  risk_label: "",
-};
+type TransportForm = { name: string; connection_mode: string; transport_target_ref: string };
 
-export async function verifyConnectionModeForm<Form, Value = string>(
-  Component: ComponentType<ConnectorFormProps<typeof baseForm & Form, Value>>,
-  form: Form,
+export async function verifyConnectionModeForm<Form extends TransportForm>(
+  Component: ComponentType<ConnectorFormProps<Form>>,
+  form: NoInfer<Form>,
   directNotice: string,
 ) {
   const user = userEvent.setup();
   const onChange = vi.fn();
-  const { container, rerender } = render(<Component form={{ ...baseForm, ...form }} targets={targets} onChange={onChange} />);
+  const { container, rerender } = render(<Component form={form} targets={targets} onChange={onChange} />);
 
   expect(screen.getByText(new RegExp(directNotice))).toBeVisible();
   exerciseEditableFields(container);
@@ -45,27 +38,19 @@ export async function verifyConnectionModeForm<Form, Value = string>(
   expect(onChange).toHaveBeenCalledWith("connection_mode", "over_ssh");
 
   rerender(
-    <Component
-      form={{ ...baseForm, ...form, connection_mode: "over_ssh", transport_target_ref: "ssh:4:8" }}
-      targets={targets}
-      onChange={onChange}
-    />,
+    <Component form={{ ...form, connection_mode: "over_ssh", transport_target_ref: "ssh:4:8" }} targets={targets} onChange={onChange} />,
   );
   await verifyTransportProfileSelection(user, onChange, "SSH connector profile");
 }
 
-export async function verifyTransportProfileForm<Form, Value = string>(
-  Component: ComponentType<ConnectorFormProps<typeof baseForm & Form, Value>>,
-  form: Form,
+export async function verifyTransportProfileForm<Form extends TransportForm>(
+  Component: ComponentType<ConnectorFormProps<Form>>,
+  form: NoInfer<Form>,
 ) {
   const user = userEvent.setup();
   const onChange = vi.fn();
   const { container } = render(
-    <Component
-      form={{ ...baseForm, ...form, connection_mode: "over_ssh", transport_target_ref: "ssh:4:8" }}
-      targets={targets}
-      onChange={onChange}
-    />,
+    <Component form={{ ...form, connection_mode: "over_ssh", transport_target_ref: "ssh:4:8" }} targets={targets} onChange={onChange} />,
   );
 
   exerciseEditableFields(container);

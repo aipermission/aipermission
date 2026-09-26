@@ -1,17 +1,13 @@
-import { Field, Input, Select, Textarea } from "../../../components/ui/form";
+import { Field, FieldWithAction, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
 import { ConnectionModeFields } from "../_shared/network-transport-fields";
 import { MailCredentialFields } from "./profile-fields";
 import type { ConnectorFormProps } from "../_shared/connector-form-types";
 import type { MailConnectionForm } from "./form-types";
+import { useId } from "react";
 
-export function MailConnectorFormTemplate({
-  form,
-  mode = "create",
-  targets = [],
-  onChange,
-}: ConnectorFormProps<MailConnectionForm, string | boolean>) {
+export function MailConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: ConnectorFormProps<MailConnectionForm>) {
   return (
     <>
       <Notice tone="good">Mail reads use IMAP without changing read state. Sending uses SMTP and remains a separate write action.</Notice>
@@ -40,7 +36,7 @@ export function MailConnectorFormTemplate({
           Optional exact domains, one per line. Their subdomains are also accepted.
         </span>
       </Field>
-      <MailCredentialFields form={form} editing={mode === "edit"} onChange={(field, value) => onChange(field, value)} />
+      <MailCredentialFields form={form} editing={mode === "edit"} onChange={onChange} />
     </>
   );
 }
@@ -50,17 +46,19 @@ function MailEndpointFields({
   label,
   form,
   onChange,
-}: Pick<ConnectorFormProps<MailConnectionForm, string | boolean>, "form" | "onChange"> & { prefix: "imap" | "smtp"; label: string }) {
+}: Pick<ConnectorFormProps<MailConnectionForm>, "form" | "onChange"> & { prefix: "imap" | "smtp"; label: string }) {
   const hostField = `${prefix}_host` as const;
+  const hostID = useId();
   const portField = `${prefix}_port` as const;
   const tlsField = `${prefix}_tls_mode` as const;
   return (
     <fieldset className="grid gap-3 rounded-lg border border-stone-200 p-3">
       <legend className="px-1 text-sm font-semibold text-stone-700">{label} endpoint</legend>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
-        <Field>
-          <span className="flex items-center justify-between gap-2">
-            <span>{label} host</span>
+        <FieldWithAction
+          htmlFor={hostID}
+          label={`${label} host`}
+          action={
             <HostPingButton
               host={form[hostField]}
               port={form[portField]}
@@ -68,9 +66,10 @@ function MailEndpointFields({
               transportTargetRef={form.transport_target_ref}
               projectID={Number(form.project_id) || 0}
             />
-          </span>
-          <Input value={form[hostField]} onChange={(event) => onChange(hostField, event.target.value)} required />
-        </Field>
+          }
+        >
+          <Input id={hostID} value={form[hostField]} onChange={(event) => onChange(hostField, event.target.value)} required />
+        </FieldWithAction>
         <Field>
           Port
           <Input

@@ -6,15 +6,18 @@ import type { FormEvent } from "react";
 import { SSHConnectorFormTemplate } from "../templates/ssh/form";
 import { emptyForm as emptySSHForm } from "../templates/ssh/model";
 import { MemoryRouter } from "react-router";
+import type { SSHForm } from "../templates/ssh/form-types";
+import type { ConnectorFieldChange } from "../templates/_shared/connector-form-types";
 
 it("preserves the native form's string and boolean change contract with a nullable project", async () => {
   const user = userEvent.setup();
-  const updateField = vi.fn<(_field: string, _value: string | boolean) => void>();
+  const updateField = vi.fn<ConnectorFieldChange<SSHForm>>();
   const onProjectChange = vi.fn();
+  const form: SSHForm = { ...emptySSHForm(), project_id: null };
   render(
     <ConnectorEditorDrawer
       drawer={{ open: true, mode: "create", target: null }}
-      form={{ ...emptySSHForm(), project_id: null }}
+      form={form}
       state={{ state: "idle" }}
       connectorOptions={[{ kind: "ssh", label: "SSH" }]}
       projects={[{ id: 1, name: "My Project" }]}

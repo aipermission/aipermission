@@ -6,11 +6,14 @@ import { KubernetesCredentialFormTemplate } from "../kubernetes/credential-form"
 import { DockerConnectorFormTemplate } from "../docker/form";
 import { KubernetesConnectorFormTemplate } from "../kubernetes/form";
 import { verifyTransportProfileForm } from "./network-transport-form.test";
+import { emptyForm as emptyDockerForm } from "../docker/model";
+import { emptyForm as emptyKubernetesForm } from "../kubernetes/model";
 
 const profile = { target_id: "1", profile_label: "selected", risk_label: "local" };
 
 it("edits Docker connection fields and selected container scope", async () => {
   await verifyTransportProfileForm(DockerConnectorFormTemplate, {
+    ...emptyDockerForm(),
     docker_command: "docker",
     scope_mode: "selected",
     allowed_containers: "api",
@@ -20,6 +23,7 @@ it("edits Docker connection fields and selected container scope", async () => {
 
 it("edits Kubernetes connection fields and selected namespace scope", async () => {
   await verifyTransportProfileForm(KubernetesConnectorFormTemplate, {
+    ...emptyKubernetesForm(),
     kubectl_command: "kubectl",
     context: "local",
     default_namespace: "default",

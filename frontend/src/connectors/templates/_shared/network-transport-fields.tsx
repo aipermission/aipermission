@@ -1,10 +1,12 @@
-import { Field, Input, Select } from "../../../components/ui/form";
+import { Field, FieldWithAction, Input, Select } from "../../../components/ui/form";
 import type { ReactNode } from "react";
+import { useId } from "react";
 import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
 import { connectorTemplateMetadata, getConnectorMetadata } from "../catalog";
 import { publicEndpointValue, uniqueNetworkTransportDescriptors } from "./network-transport-contract";
 import type { NetworkTransportDescriptor } from "./network-transport-contract";
+import type { ConnectorFieldChange } from "./connector-form-types";
 
 type TransportSelectionForm = {
   connection_mode: string;
@@ -32,15 +34,16 @@ export type NetworkTarget = {
 type NetworkFieldsProps = {
   form: NetworkForm;
   targets?: readonly NetworkTarget[];
-  onChange: (_field: string, _value: string) => void;
+  onChange: ConnectorFieldChange<Pick<NetworkForm, "connection_mode" | "transport_target_ref" | "host" | "port">>;
   hostLabel?: string;
   portLabel?: string;
   transportNotice?: string;
   directNotice?: string;
 };
 
-type EndpointFieldsProps = Pick<NetworkFieldsProps, "onChange" | "hostLabel" | "portLabel"> & {
+type EndpointFieldsProps = Pick<NetworkFieldsProps, "hostLabel" | "portLabel"> & {
   form: NetworkEndpointForm;
+  onChange: ConnectorFieldChange<Pick<NetworkEndpointForm, "host" | "port">>;
   portPlaceholder?: string;
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -76,7 +79,10 @@ export function ConnectionModeFields({
   onChange,
   transportNotice,
   directNotice,
-}: Pick<NetworkFieldsProps, "targets" | "onChange" | "transportNotice" | "directNotice"> & { form: TransportSelectionForm }) {
+}: Pick<NetworkFieldsProps, "targets" | "transportNotice" | "directNotice"> & {
+  form: TransportSelectionForm;
+  onChange: ConnectorFieldChange<TransportSelectionForm>;
+}) {
   const usesTransport = form.connection_mode !== "direct";
   const transport = networkTransportDescriptors().find((item) => item.mode === form.connection_mode);
   return (
@@ -141,7 +147,10 @@ export function TransportConnectorIdentityFields({
   form,
   targets = [],
   onChange,
-}: Pick<NetworkFieldsProps, "targets" | "onChange"> & { form: TransportSelectionForm & { name: string } }) {
+}: Pick<NetworkFieldsProps, "targets"> & {
+  form: TransportSelectionForm & { name: string };
+  onChange: ConnectorFieldChange<Pick<TransportSelectionForm, "transport_target_ref"> & { name: string }>;
+}) {
   return (
     <>
       <Field>
@@ -180,12 +189,14 @@ export function NetworkEndpointFields({
   trailing = null,
   className = "sm:grid-cols-[minmax(0,1fr)_120px]",
 }: EndpointFieldsProps) {
+  const hostID = useId();
   return (
     <div className={`grid gap-3 ${className}`}>
       {leading}
-      <Field>
-        <span className="flex items-center justify-between gap-2">
-          <span>{hostLabel}</span>
+      <FieldWithAction
+        htmlFor={hostID}
+        label={hostLabel}
+        action={
           <HostPingButton
             host={form.host}
             port={form.port}
@@ -193,9 +204,10 @@ export function NetworkEndpointFields({
             transportTargetRef={form.transport_target_ref}
             projectID={Number(form.project_id) || 0}
           />
-        </span>
-        <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
-      </Field>
+        }
+      >
+        <Input id={hostID} value={form.host} onChange={(event) => onChange("host", event.target.value)} required />
+      </FieldWithAction>
       <Field>
         {portLabel}
         <Input
