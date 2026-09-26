@@ -8,9 +8,16 @@ import { Field, Select } from "../../components/ui/form";
 import { Notice } from "../../components/ui/notice";
 import { supportedConnectorKinds } from "../templates/catalog";
 import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../templates/common";
-import { ConnectorTemplateNotFound, getConnectorModel } from "../templates/registry";
+import { ConnectorTemplateNotFound } from "../templates/registry";
+import type {
+  ConnectorEditorDrawerProps,
+  ConnectorMenuCatalog,
+  DeleteConnectorDialogProps,
+  EditorForm,
+  EditorTarget,
+} from "./connector-editor-dialog-types";
 
-export function AddConnectorMenu({ catalog, onAdd }) {
+export function AddConnectorMenu({ catalog, onAdd }: { catalog: ConnectorMenuCatalog; onAdd: (_kind: string) => void }) {
   const backendKinds = new Set(catalog.data.map((item) => item.kind));
   const availableKinds = supportedConnectorKinds.filter((kind) => backendKinds.has(kind) && catalog.details[kind]);
 
@@ -53,7 +60,7 @@ export function AddConnectorMenu({ catalog, onAdd }) {
   );
 }
 
-export function ConnectorEditorDrawer({
+export function ConnectorEditorDrawer<Form extends EditorForm, Credential, Target extends EditorTarget, Active, Value>({
   drawer,
   form,
   state,
@@ -64,8 +71,9 @@ export function ConnectorEditorDrawer({
   activeConnectorModel,
   activeCredential,
   FormTemplate,
+  onProjectChange,
   editor,
-}) {
+}: ConnectorEditorDrawerProps<Form, Credential, Target, Active, Value>) {
   return (
     <Drawer
       open={drawer.open}
@@ -93,7 +101,7 @@ export function ConnectorEditorDrawer({
           ) : null}
           <Field>
             Project
-            <Select value={form.project_id || ""} onChange={(event) => editor.updateField("project_id", event.target.value)} required>
+            <Select value={form.project_id || ""} onChange={(event) => onProjectChange(event.target.value)} required>
               <option value="" disabled>
                 Select project
               </option>
@@ -137,10 +145,9 @@ export function ConnectorEditorDrawer({
   );
 }
 
-export function DeleteConnectorDialog({ value, state, onDelete, onClose }) {
+export function DeleteConnectorDialog({ value, dialog, state, onDelete, onClose }: DeleteConnectorDialogProps) {
   const target = value.target;
-  const dialog = target ? getConnectorModel(target.connector_kind)?.deleteDialog?.({ target }) : null;
-  const actions = dialog?.actions || [
+  const actions: NonNullable<NonNullable<DeleteConnectorDialogProps["dialog"]>["actions"]> = dialog?.actions || [
     { label: "Cancel", action: "close", variant: "outline" },
     { label: "Delete connector", removeKey: false },
   ];

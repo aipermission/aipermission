@@ -4,10 +4,17 @@ import { Button } from "../../components/ui/button";
 import { Input, Select } from "../../components/ui/form";
 import { Notice } from "../../components/ui/notice";
 import { ConnectorKindCell, StatusCell, TargetCell } from "../templates/common";
-import { ConnectorTemplateNotFound, getConnectorTemplate } from "../templates/registry";
+import { ConnectorTemplateNotFound } from "../templates/registry";
 import { connectorTargetGroups } from "./connector-target-groups";
 import { connectorTestKey } from "./use-connector-connection-tests";
 import { targetProfileSelectionKey } from "./use-connector-inventory";
+import type { ReactNode } from "react";
+import type { InventoryProfile, InventoryTarget } from "../../lib/gateway-contracts/connector-inventory-contract";
+import type { ConnectorTestState as ConnectionTestState } from "./use-connector-connection-tests";
+import type { ConnectorTargetsTableProps } from "./connector-target-table-types";
+
+type RowContext = Omit<ConnectorTargetsTableProps, "targets" | "projects" | "search" | "collapsedProjects" | "onSearch" | "onToggleProject">;
+type RowProps = Omit<RowContext, "profileSelections"> & { target: InventoryTarget; selectedProfileID: string };
 
 export function ConnectorTargetsTable({
   targets,
@@ -27,7 +34,8 @@ export function ConnectorTargetsTable({
   onUnderConstruction,
   onEdit,
   onDelete,
-}) {
+  resolveTemplate,
+}: ConnectorTargetsTableProps) {
   const groups = connectorTargetGroups(projects, targets.data, search);
   return (
     <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -67,6 +75,7 @@ export function ConnectorTargetsTable({
               onUnderConstruction={onUnderConstruction}
               onEdit={onEdit}
               onDelete={onDelete}
+              resolveTemplate={resolveTemplate}
             />
           ))}
         </tbody>
@@ -76,7 +85,9 @@ export function ConnectorTargetsTable({
   );
 }
 
-function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps }) {
+function ProjectTargetRows({ project, targets, collapsed, onToggle, ...rowProps }: RowContext & {
+  project: ConnectorTargetsTableProps["projects"][number]; targets: InventoryTarget[]; collapsed: boolean; onToggle: () => void;
+}) {
   return (
     <>
       <tr className="bg-stone-50">
@@ -120,8 +131,9 @@ function ConnectorTargetRow({
   onUnderConstruction,
   onEdit,
   onDelete,
-}) {
-  const template = getConnectorTemplate(target.connector_kind);
+  resolveTemplate,
+}: RowProps) {
+  const template = resolveTemplate(target.connector_kind);
   const model = template?.model;
   const RowActionsTemplate = template?.RowActions;
   const profile = selectedConnectorProfile(target, selectedProfileID);
@@ -177,7 +189,9 @@ function ConnectorTargetRow({
   );
 }
 
-function IconAction({ title, disabled, onClick, children }) {
+function IconAction({ title, disabled, onClick, children }: {
+  title: string; disabled?: boolean; onClick: () => unknown; children: ReactNode;
+}) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} disabled={disabled} onClick={onClick}>
       {children}
@@ -185,13 +199,15 @@ function IconAction({ title, disabled, onClick, children }) {
   );
 }
 
-function selectedConnectorProfile(target, selectedProfileID) {
+function selectedConnectorProfile(target: InventoryTarget, selectedProfileID: string): InventoryProfile | null {
   const profiles = target?.profiles || [];
   if (profiles.length === 0) return null;
   return profiles.find((profile) => String(profile.id) === String(selectedProfileID)) || profiles[0];
 }
 
-function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }) {
+function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }: {
+  target: InventoryTarget; selectedProfileID: number | string; onSelectProfile: ConnectorTargetsTableProps["onSelectProfile"];
+}) {
   const profiles = target.profiles || [];
   if (profiles.length === 0) return <span className="text-xs text-stone-500">No profiles</span>;
   if (profiles.length === 1) {
@@ -217,18 +233,21 @@ function ConnectorProfilesCell({ target, selectedProfileID, onSelectProfile }) {
   );
 }
 
-function ConnectorTestState({ value }) {
+function ConnectorTestState({ value }: { value: ConnectionTestState | undefined }) {
   if (!value || value.state === "idle") return null;
   if (value.state === "testing") return <span className="text-xs text-stone-500">Testing...</span>;
+  const data = value.data !== null && typeof value.data === "object" ? value.data : {};
+  const duration = ("duration_ms" in data && typeof data.duration_ms === "number" ? data.duration_ms : 0) ||
+    ("durationMS" in data && typeof data.durationMS === "number" ? data.durationMS : 0);
   if (value.state === "ok") {
     return (
       <span className="flex items-center gap-1 text-xs text-emerald-800 dark-status-good">
         <CircleCheck className="h-3.5 w-3.5" />
-        {value.data?.duration_ms || value.data?.durationMS || 0}ms
+        {duration}ms
       </span>
     );
   }
-  const error = value.error || value.data?.message || "Connection test failed";
+  const error = value.error || ("message" in data && typeof data.message === "string" ? data.message : "") || "Connection test failed";
   return (
     <span className="grid max-w-56 gap-0.5 text-xs text-red-800 dark-status-bad" title={error}>
       <span className="flex items-center gap-1 font-medium">
@@ -240,7 +259,7 @@ function ConnectorTestState({ value }) {
   );
 }
 
-function ConnectorTableState({ targets, groupCount }) {
+function ConnectorTableState({ targets, groupCount }: { targets: ConnectorTargetsTableProps["targets"]; groupCount: number }) {
   if (targets.state === "loading") return <TableNotice>Loading connectors...</TableNotice>;
   if (targets.state === "ready" && targets.data.length === 0) {
     return (
@@ -255,7 +274,7 @@ function ConnectorTableState({ targets, groupCount }) {
   return null;
 }
 
-function TableNotice({ children }) {
+function TableNotice({ children }: { children: ReactNode }) {
   return (
     <div className="p-4">
       <Notice>{children}</Notice>

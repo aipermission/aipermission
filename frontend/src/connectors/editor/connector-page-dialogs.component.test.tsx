@@ -2,6 +2,37 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { AddConnectorMenu, ConnectorEditorDrawer, DeleteConnectorDialog } from "./connector-page-dialogs";
+import type { FormEvent } from "react";
+import { SSHConnectorFormTemplate } from "../templates/ssh/form";
+import { emptyForm as emptySSHForm } from "../templates/ssh/model";
+import { MemoryRouter } from "react-router";
+
+it("preserves the native form's string and boolean change contract with a nullable project", async () => {
+  const user = userEvent.setup();
+  const updateField = vi.fn<(_field: string, _value: string | boolean) => void>();
+  const onProjectChange = vi.fn();
+  render(
+    <ConnectorEditorDrawer
+      drawer={{ open: true, mode: "create", target: null }}
+      form={{ ...emptySSHForm(), project_id: null }}
+      state={{ state: "idle" }}
+      connectorOptions={[{ kind: "ssh", label: "SSH" }]}
+      projects={[{ id: 1, name: "My Project" }]}
+      credentials={[]}
+      targets={[]}
+      activeConnectorModel={null}
+      activeCredential={null}
+      FormTemplate={SSHConnectorFormTemplate}
+      onProjectChange={onProjectChange}
+      editor={{ closeEditor: vi.fn(), save: vi.fn(), selectKind: vi.fn(), updateField }}
+    />,
+    { wrapper: MemoryRouter },
+  );
+  await user.click(screen.getByRole("checkbox", { name: "I will install the key later" }));
+  await user.selectOptions(screen.getByLabelText("Project"), "1");
+  expect(updateField).toHaveBeenCalledWith("setup_later", true);
+  expect(onProjectChange).toHaveBeenCalledWith("1");
+});
 
 it("lists only connector kinds shared by the backend catalog and frontend templates", async () => {
   const user = userEvent.setup();
@@ -47,8 +78,13 @@ it("owns keyboard navigation, Escape dismissal, and focus return", async () => {
 
 it("keeps connector forms scoped to the selected project", async () => {
   const user = userEvent.setup();
-  const editor = { closeEditor: vi.fn(), save: vi.fn((event) => event.preventDefault()), selectKind: vi.fn(), updateField: vi.fn() };
-  function FormTemplate({ targets }) {
+  const editor = {
+    closeEditor: vi.fn(),
+    save: vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault()),
+    selectKind: vi.fn(),
+    updateField: vi.fn(),
+  };
+  function FormTemplate({ targets }: { targets: { id: number; project_id: number; name: string }[] }) {
     return <p>{`Visible targets: ${targets.map((target) => target.name).join(",")}`}</p>;
   }
   render(
@@ -69,6 +105,7 @@ it("keeps connector forms scoped to the selected project", async () => {
       activeConnectorModel={{ submitLabel: () => "Create connector" }}
       activeCredential={null}
       FormTemplate={FormTemplate}
+      onProjectChange={(projectID) => editor.updateField("project_id", projectID)}
       editor={editor}
     />,
   );
@@ -103,6 +140,7 @@ it("renders edit errors and the missing-template fallback", async () => {
       activeConnectorModel={{ submitDisabled: () => true }}
       activeCredential={null}
       FormTemplate={null}
+      onProjectChange={(projectID) => editor.updateField("project_id", projectID)}
       editor={editor}
     />,
   );
@@ -126,6 +164,7 @@ it("locks connector fields even when the template does not disable its submit bu
       activeConnectorModel={{ submitDisabled: () => false }}
       activeCredential={null}
       FormTemplate={() => <input aria-label="Connector setting" />}
+      onProjectChange={(projectID) => editor.updateField("project_id", projectID)}
       editor={editor}
     />,
   );
@@ -142,7 +181,7 @@ it("runs generic connector delete actions and exposes pending state", async () =
   const onClose = vi.fn();
   const { rerender } = render(
     <DeleteConnectorDialog
-      value={{ open: true, target: { id: 7, name: "Example", connector_kind: "missing" } }}
+      value={{ open: true, target: { name: "Example" } }}
       state={{ state: "idle" }}
       onDelete={onDelete}
       onClose={onClose}
@@ -155,11 +194,49 @@ it("runs generic connector delete actions and exposes pending state", async () =
 
   rerender(
     <DeleteConnectorDialog
-      value={{ open: true, target: { id: 7, name: "Example", connector_kind: "missing" } }}
+      value={{ open: true, target: { name: "Example" } }}
       state={{ state: "deleting" }}
       onDelete={onDelete}
       onClose={onClose}
     />,
   );
   expect(screen.getByRole("button", { name: "Delete connector" })).toBeDisabled();
+});
+
+it("renders connector-owned deletion details and cleanup choices without a registry lookup", async () => {
+  const user = userEvent.setup();
+  const onDelete = vi.fn();
+  const value = { open: true, target: { name: "Fixture target" } };
+  const dialog = {
+    title: "Remove fixture target",
+    description: "Connector-owned deletion",
+    details: [
+      { label: "Reference", value: "example:7" },
+      { label: "Absent", value: "" },
+    ],
+    notice: "Cleanup belongs to this connector.",
+    actions: [{ label: "Delete with cleanup", pendingLabel: "Cleaning...", removeKey: true }],
+  };
+  const view = render(
+    <DeleteConnectorDialog
+      value={value}
+      dialog={dialog}
+      state={{ state: "error", error: "Retry fixture" }}
+      onDelete={onDelete}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("heading", { name: "Remove fixture target" })).toBeVisible();
+  expect(screen.getByText("example:7")).toBeVisible();
+  expect(screen.queryByText("Absent:")).not.toBeInTheDocument();
+  expect(screen.getByText("Cleanup belongs to this connector.")).toBeVisible();
+  expect(screen.getByText("Retry fixture")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Delete with cleanup" }));
+  expect(onDelete).toHaveBeenCalledWith(true);
+
+  view.rerender(
+    <DeleteConnectorDialog value={value} dialog={dialog} state={{ state: "deleting" }} onDelete={onDelete} onClose={vi.fn()} />,
+  );
+  expect(screen.getByRole("button", { name: "Cleaning..." })).toBeDisabled();
 });

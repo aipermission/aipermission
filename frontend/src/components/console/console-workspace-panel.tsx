@@ -7,8 +7,12 @@ import { ConsoleRecoveryPanel } from "./console-recovery-panel";
 import { ConsoleStatusDot, selectedTargetStatus, targetDisplayName, targetProfileLabel, targetSubtitle } from "./console-target-sidebar";
 import { NoLiveSession } from "./no-live-session";
 import { PtyConsole } from "./pty-console";
+import type { ReactNode } from "react";
+import type { ConsoleRuntimeTarget } from "../use-gateway-resources";
+import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
+import type { ConsoleWorkspacePanelProps } from "./console-workspace-types";
 
-export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveConsoleTargets, sessionView, targetView, theme, warnings }) {
+export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveConsoleTargets, sessionView, targetView, theme, warnings }: ConsoleWorkspacePanelProps) {
   const ConsoleTemplate = connectorView.Console;
   const ToolbarActions = connectorView.ToolbarActions;
 
@@ -39,7 +43,10 @@ export function ConsoleWorkspacePanel({ actions, approvals, connectorView, liveC
   );
 }
 
-function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView, theme, ToolbarActions }) {
+type HeaderProps = Pick<ConsoleWorkspacePanelProps, "actions" | "liveConsoleTargets" | "sessionView" | "targetView" | "theme"> &
+  { ToolbarActions: ConsoleWorkspacePanelProps["connectorView"]["ToolbarActions"] };
+
+function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView, theme, ToolbarActions }: HeaderProps) {
   const { selectedRuntimeTarget, selectedTarget, selectedTargetProfiles, selectedPendingApprovals } = targetView;
   const { selectedSession, selectedSessionLive, selectedStructuredSession } = sessionView;
   return (
@@ -107,7 +114,10 @@ function WorkspaceHeader({ actions, liveConsoleTargets, sessionView, targetView,
   );
 }
 
-function WorkspaceProfileSelect({ profiles, target, theme, onChange }) {
+function WorkspaceProfileSelect({ profiles, target, theme, onChange }: {
+  profiles: GatewayTarget[]; target: GatewayTarget | null; theme: ConsoleWorkspacePanelProps["theme"];
+  onChange: ConsoleWorkspacePanelProps["actions"]["selectProfile"];
+}) {
   if (profiles.length <= 1) return null;
   return (
     <label
@@ -129,7 +139,10 @@ function WorkspaceProfileSelect({ profiles, target, theme, onChange }) {
   );
 }
 
-function WorkspaceContent({ actions, approvals, ConsoleTemplate, sessionView, targetView, theme, warnings }) {
+type ContentProps = Pick<ConsoleWorkspacePanelProps, "actions" | "approvals" | "sessionView" | "targetView" | "theme" | "warnings"> &
+  { ConsoleTemplate: ConsoleWorkspacePanelProps["connectorView"]["Console"] };
+
+function WorkspaceContent({ actions, approvals, ConsoleTemplate, sessionView, targetView, theme, warnings }: ContentProps) {
   const { selectedRuntimeTarget, selectedTarget } = targetView;
   return (
     <div className={`grid h-full min-h-0 overflow-hidden ${consoleContentGridClass(warnings.bannerCount)}`}>
@@ -147,7 +160,7 @@ function WorkspaceContent({ actions, approvals, ConsoleTemplate, sessionView, ta
   );
 }
 
-function WorkspaceWarnings({ actions, theme, warnings }) {
+function WorkspaceWarnings({ actions, theme, warnings }: Pick<ConsoleWorkspacePanelProps, "actions" | "theme" | "warnings">) {
   return (
     <>
       {warnings.showAlwaysRun ? (
@@ -175,7 +188,10 @@ function WorkspaceWarnings({ actions, theme, warnings }) {
   );
 }
 
-function ConnectorConsole({ actions, approvals, ConsoleTemplate, sessionView, selectedRuntimeTarget, selectedTarget, theme }) {
+function ConnectorConsole({ actions, approvals, ConsoleTemplate, sessionView, selectedRuntimeTarget, selectedTarget, theme }:
+  Pick<ContentProps, "actions" | "approvals" | "ConsoleTemplate" | "sessionView" | "theme"> & {
+    selectedRuntimeTarget: ConsoleRuntimeTarget | null; selectedTarget: GatewayTarget | null;
+  }) {
   const { selectedSession, selectedSessionLive, selectedStructuredSession, targetUsesLiveConsole } = sessionView;
   if (!selectedTarget)
     return (
@@ -210,7 +226,8 @@ function ConnectorConsole({ actions, approvals, ConsoleTemplate, sessionView, se
   );
 }
 
-function LiveConsoleContent({ actions, sessionView, target, theme }) {
+function LiveConsoleContent({ actions, sessionView, target, theme }:
+  Pick<ConsoleWorkspacePanelProps, "actions" | "sessionView" | "theme"> & { target: ConsoleRuntimeTarget | null }) {
   const { selectedSession, selectedSessionLive, sessionsState, targetUsesLiveConsole } = sessionView;
   if (!targetUsesLiveConsole) return null;
   if (!target) return <PanelMessage theme={theme}>Select a live-console connector.</PanelMessage>;
@@ -218,7 +235,6 @@ function LiveConsoleContent({ actions, sessionView, target, theme }) {
     return (
       <PtyConsole
         key={selectedSession.id || target.id}
-        target={target}
         session={selectedSession}
         onInput={actions.sendInput}
         onResize={actions.resizeSession}
@@ -237,7 +253,9 @@ function LiveConsoleContent({ actions, sessionView, target, theme }) {
   );
 }
 
-function PanelMessage({ children, centered = true, theme }) {
+function PanelMessage({ children, centered = true, theme }: {
+  children: ReactNode; centered?: boolean; theme: ConsoleWorkspacePanelProps["theme"];
+}) {
   return (
     <div
       className={`${centered ? "grid h-full place-items-center " : ""}p-4 text-sm ${theme === "light" ? "text-stone-500" : "text-stone-300"}`}
@@ -247,7 +265,7 @@ function PanelMessage({ children, centered = true, theme }) {
   );
 }
 
-function consoleContentGridClass(bannerCount) {
+function consoleContentGridClass(bannerCount: number) {
   if (bannerCount >= 3) return "grid-rows-[auto_auto_auto_minmax(0,1fr)]";
   if (bannerCount === 2) return "grid-rows-[auto_auto_minmax(0,1fr)]";
   if (bannerCount === 1) return "grid-rows-[auto_minmax(0,1fr)]";

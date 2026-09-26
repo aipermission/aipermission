@@ -1,4 +1,15 @@
 import type { ConnectorActionResponse } from "../lib/gateway-contracts/security-contracts";
+import type { ConnectorApproval } from "../lib/gateway-contracts/security-contracts";
+
+export function connectorApprovalFixture(overrides: Partial<ConnectorApproval> = {}): ConnectorApproval {
+  return {
+    id: 1, target_id: 3, profile_id: 11, target_ref: "example:3:11", target_name: "Test target",
+    profile_label: "Default", connector_kind: "example", action_name: "example_action", status: "approval_pending",
+    retry_policy: { class: "read_only", guidance: "Review the current result before retrying." },
+    created_at: "2026-09-26",
+    ...overrides,
+  };
+}
 
 export function connectorActionRequest(value: unknown): { action_name: string; target_ref: string; input: Record<string, unknown> } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid fixture action request.");
