@@ -3,7 +3,9 @@ import {
   firstTargetCredentialForm,
   standardSubmitLabel,
   createTargetProfileLifecycle,
+  defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
+import type { DockerCredentialForm, DockerModelForm, DockerProfile, DockerRuntimeTarget, DockerTarget } from "./form-types";
 
 const emptyDockerCredentialForm = {
   target_id: "",
@@ -13,7 +15,7 @@ const emptyDockerCredentialForm = {
   allowed_patterns: "",
   risk_label: "container access",
 };
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<DockerModelForm, DockerCredentialForm, DockerProfile, DockerTarget>({
   connectorKind: "docker",
   connectorLabel: "Docker",
   targetPayload: (form) => ({ name: form.name, config: dockerTargetConfigFromForm(form) }),
@@ -30,7 +32,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): DockerModelForm {
   return {
     connector_kind: "docker",
     name: "docker-host",
@@ -45,8 +47,8 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+export function formFromTarget({ target, profile }: { target: DockerTarget; profile?: DockerProfile | null }): DockerModelForm {
+  const selectedProfile = defaultTargetProfile(target, profile);
   return {
     connector_kind: "docker",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -66,24 +68,24 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: DockerModelForm }) {
   if (form.connector_kind !== "docker") return form;
   return { ...form, connection_mode: "over_ssh", docker_command: form.docker_command || "docker" };
 }
 
-export function submitDisabled({ state, form }) {
+export function submitDisabled({ state, form }: { state: { state: string }; form: DockerModelForm }) {
   return state.state === "saving" || !form.transport_target_ref;
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: DockerTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "docker", emptyDockerCredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; name: string; profile?: DockerProfile } }) {
   return {
     form: {
       target_id: String(row.target_id || ""),
@@ -96,7 +98,7 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: DockerTarget[] }) {
   return connectorCredentialRows({ targets, connectorKind: "docker", connectorLabel: "Docker", targetEndpoint, credentialMetadata });
 }
 
@@ -112,21 +114,21 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: DockerTarget }) {
   const profile = target.config?.transport_target_ref || "no transport";
   return `${target.config?.docker_command || "docker"} · ${profile}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: DockerTarget | null }) {
   if (!target) return "Docker target";
   return target.target_name || target.name || "Docker target";
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: DockerTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: DockerTarget | null }) {
   return target?.profile_label || "container scope";
 }
 
@@ -138,7 +140,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function liveConsoleRuntimeTarget({ target }) {
+export function liveConsoleRuntimeTarget({ target }: { target: DockerRuntimeTarget }) {
   return {
     id: target.runtime_id,
     name: targetDisplayName({ target }),
@@ -154,7 +156,7 @@ export function liveConsoleRuntimeTarget({ target }) {
   };
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: DockerTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Docker connector target, credential scopes, and token action permissions from aipermission.",
@@ -170,7 +172,7 @@ export function deleteDialog({ target }) {
   };
 }
 
-function dockerTargetConfigFromForm(form) {
+function dockerTargetConfigFromForm(form: DockerModelForm) {
   return {
     connection_mode: "over_ssh",
     transport_target_ref: form.transport_target_ref || "",
@@ -178,7 +180,7 @@ function dockerTargetConfigFromForm(form) {
   };
 }
 
-function dockerProfilePayloadFromForm(form, kind = "container_scope", useDefaultRisk = true) {
+function dockerProfilePayloadFromForm(form: DockerModelForm | DockerCredentialForm, kind = "container_scope", useDefaultRisk = true) {
   return {
     kind,
     label: form.profile_label,
@@ -192,7 +194,7 @@ function dockerProfilePayloadFromForm(form, kind = "container_scope", useDefault
   };
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: DockerProfile) {
   const scope = profile.public?.scope_mode === "selected" ? "selected containers" : "all containers";
   const names = splitLines(profile.public?.allowed_containers || "");
   const patterns = splitLines(profile.public?.allowed_patterns || "");
@@ -204,7 +206,7 @@ function credentialMetadata(profile) {
   return items;
 }
 
-function splitLines(value) {
+function splitLines(value: string) {
   return String(value || "")
     .split("\n")
     .map((line) => line.trim())

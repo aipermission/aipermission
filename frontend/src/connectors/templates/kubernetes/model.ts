@@ -3,7 +3,15 @@ import {
   firstTargetCredentialForm,
   standardSubmitLabel,
   createTargetProfileLifecycle,
+  defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
+import type {
+  KubernetesCredentialForm,
+  KubernetesModelForm,
+  KubernetesProfile,
+  KubernetesRuntimeTarget,
+  KubernetesTarget,
+} from "./form-types";
 
 const emptyKubernetesCredentialForm = {
   target_id: "",
@@ -12,7 +20,7 @@ const emptyKubernetesCredentialForm = {
   namespaces: "",
   risk_label: "cluster visibility",
 };
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<KubernetesModelForm, KubernetesCredentialForm, KubernetesProfile, KubernetesTarget>({
   connectorKind: "kubernetes",
   connectorLabel: "Kubernetes",
   targetPayload: (form) => ({ name: form.name, config: kubernetesTargetConfigFromForm(form) }),
@@ -29,7 +37,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): KubernetesModelForm {
   return {
     connector_kind: "kubernetes",
     name: "kubernetes",
@@ -45,8 +53,8 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+export function formFromTarget({ target, profile }: { target: KubernetesTarget; profile?: KubernetesProfile | null }): KubernetesModelForm {
+  const selectedProfile = defaultTargetProfile(target, profile);
   return {
     connector_kind: "kubernetes",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -67,24 +75,24 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: KubernetesModelForm }) {
   if (form.connector_kind !== "kubernetes") return form;
   return { ...form, connection_mode: "over_ssh", kubectl_command: form.kubectl_command || "kubectl" };
 }
 
-export function submitDisabled({ state, form }) {
+export function submitDisabled({ state, form }: { state: { state: string }; form: KubernetesModelForm }) {
   return state.state === "saving" || !form.transport_target_ref;
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: KubernetesTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "kubernetes", emptyKubernetesCredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; name: string; profile?: KubernetesProfile } }) {
   return {
     form: {
       target_id: String(row.target_id || ""),
@@ -96,7 +104,7 @@ export function credentialStateFromRow({ row }) {
   };
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: KubernetesTarget[] }) {
   return connectorCredentialRows({
     targets,
     connectorKind: "kubernetes",
@@ -118,23 +126,23 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: KubernetesTarget }) {
   const profile = target.config?.transport_target_ref || "no transport";
   const context = target.config?.context ? ` · context ${target.config.context}` : "";
   const namespace = target.config?.default_namespace ? ` · ns ${target.config.default_namespace}` : "";
   return `${target.config?.kubectl_command || "kubectl"} · ${profile}${context}${namespace}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: KubernetesTarget | null }) {
   if (!target) return "Kubernetes target";
   return target.target_name || target.name || "Kubernetes target";
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: KubernetesTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: KubernetesTarget | null }) {
   return target?.profile_label || "namespace scope";
 }
 
@@ -146,7 +154,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function liveConsoleRuntimeTarget({ target }) {
+export function liveConsoleRuntimeTarget({ target }: { target: KubernetesRuntimeTarget }) {
   return {
     id: target.runtime_id,
     name: targetDisplayName({ target }),
@@ -162,7 +170,7 @@ export function liveConsoleRuntimeTarget({ target }) {
   };
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: KubernetesTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this Kubernetes connector target, namespace scopes, and token action permissions from aipermission.",
@@ -178,7 +186,7 @@ export function deleteDialog({ target }) {
   };
 }
 
-function kubernetesTargetConfigFromForm(form) {
+function kubernetesTargetConfigFromForm(form: KubernetesModelForm) {
   return {
     connection_mode: "over_ssh",
     transport_target_ref: form.transport_target_ref || "",
@@ -188,7 +196,11 @@ function kubernetesTargetConfigFromForm(form) {
   };
 }
 
-function kubernetesProfilePayloadFromForm(form, kind = "namespace_scope", useDefaultRisk = true) {
+function kubernetesProfilePayloadFromForm(
+  form: KubernetesModelForm | KubernetesCredentialForm,
+  kind = "namespace_scope",
+  useDefaultRisk = true,
+) {
   return {
     kind,
     label: form.profile_label,
@@ -201,7 +213,7 @@ function kubernetesProfilePayloadFromForm(form, kind = "namespace_scope", useDef
   };
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: KubernetesProfile) {
   const scope = profile.public?.scope_mode === "selected" ? "selected namespaces" : "all namespaces";
   const namespaces = splitLines(profile.public?.namespaces || "");
   const items = [`scope: ${scope}`];
@@ -211,7 +223,7 @@ function credentialMetadata(profile) {
   return items;
 }
 
-function splitLines(value) {
+function splitLines(value: string) {
   return String(value || "")
     .split("\n")
     .map((line) => line.trim())

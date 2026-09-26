@@ -4,10 +4,14 @@ import {
   usernameCredentialStateFromRow,
   standardSubmitLabel,
   createTargetProfileLifecycle,
+  defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
+import type { RabbitMQModelForm, RabbitMQProfile, RabbitMQTarget } from "./form-types";
+import type { UsernameCredentialForm } from "../_shared/connector-form-types";
+import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
 
 const emptyRabbitCredentialForm = { target_id: "", profile_label: "monitor", username: "", password: "", risk_label: "queue access" };
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<RabbitMQModelForm, UsernameCredentialForm, RabbitMQProfile, RabbitMQTarget>({
   connectorKind: "rabbitmq",
   connectorLabel: "RabbitMQ",
   targetPayload: (form) => ({ name: form.name, config: rabbitTargetConfigFromForm(form) }),
@@ -16,7 +20,7 @@ const lifecycle = createTargetProfileLifecycle({
 
 export const { credentialFormProps, deleteCredential, deleteTarget, save, saveCredential, test } = lifecycle;
 
-export function emptyForm() {
+export function emptyForm(): RabbitMQModelForm {
   return {
     connector_kind: "rabbitmq",
     name: "rabbitmq",
@@ -33,8 +37,8 @@ export function emptyForm() {
   };
 }
 
-export function formFromTarget({ target, profile }) {
-  const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : {});
+export function formFromTarget({ target, profile }: { target: RabbitMQTarget; profile?: RabbitMQProfile | null }): RabbitMQModelForm {
+  const selectedProfile = defaultTargetProfile(target, profile);
   return {
     connector_kind: "rabbitmq",
     profile_id: selectedProfile.id ? String(selectedProfile.id) : "",
@@ -56,7 +60,7 @@ export function activeCredential() {
   return null;
 }
 
-export function syncForm({ form }) {
+export function syncForm({ form }: { form: RabbitMQModelForm }) {
   if (form.connector_kind !== "rabbitmq") return form;
   const next = { ...form };
   if (next.connection_mode === "direct") {
@@ -71,23 +75,23 @@ export function syncForm({ form }) {
   return next;
 }
 
-export function submitDisabled({ state }) {
+export function submitDisabled({ state }: { state: { state: string } }) {
   return state.state === "saving";
 }
 
-export function submitLabel({ state, mode }) {
+export function submitLabel({ state, mode }: { state: { state: string }; mode: string }) {
   return standardSubmitLabel({ state, mode });
 }
 
-export function emptyCredentialState({ targets = [] } = {}) {
+export function emptyCredentialState({ targets = [] }: { targets?: RabbitMQTarget[] } = {}) {
   return firstTargetCredentialForm(targets, "rabbitmq", emptyRabbitCredentialForm);
 }
 
-export function credentialStateFromRow({ row }) {
+export function credentialStateFromRow({ row }: { row: { target_id: number; name: string; profile?: RabbitMQProfile } }) {
   return usernameCredentialStateFromRow(row);
 }
 
-export function credentialRows({ targets }) {
+export function credentialRows({ targets }: { targets: RabbitMQTarget[] }) {
   return connectorCredentialRows({
     targets,
     connectorKind: "rabbitmq",
@@ -109,7 +113,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }) {
+export function targetEndpoint({ target }: { target: RabbitMQTarget }) {
   const scheme = target.config?.scheme || "http";
   const host = target.config?.host || "127.0.0.1";
   const port = target.config?.port || 15672;
@@ -118,16 +122,16 @@ export function targetEndpoint({ target }) {
   return `${scheme}://${host}:${port} · vhost ${vhost} · ${mode}`;
 }
 
-export function targetDisplayName({ target }) {
+export function targetDisplayName({ target }: { target?: RabbitMQTarget | null }) {
   if (!target) return "RabbitMQ target";
   return target.target_name || target.name || "RabbitMQ target";
 }
 
-export function targetSubtitle({ target }) {
+export function targetSubtitle({ target }: { target: RabbitMQTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }) {
+export function targetProfileLabel({ target }: { target?: RabbitMQTarget | null }) {
   return target?.profile_label || "monitor";
 }
 
@@ -139,7 +143,7 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function deleteDialog({ target }) {
+export function deleteDialog({ target }: { target?: RabbitMQTarget | null }) {
   return {
     title: target ? `Delete ${target.name}` : "Delete connector",
     description: "Remove this RabbitMQ connector target, credential profiles, and token action permissions from aipermission.",
@@ -159,8 +163,8 @@ export function operationFromError() {
   return null;
 }
 
-function rabbitTargetConfigFromForm(form) {
-  const scheme = ["auto", "https"].includes(form.scheme) ? form.scheme : "http";
+function rabbitTargetConfigFromForm(form: RabbitMQModelForm) {
+  const scheme = ["auto", "https"].includes(form.scheme || "") ? form.scheme : "http";
   return {
     connection_mode: form.connection_mode || "direct",
     scheme,
@@ -171,7 +175,10 @@ function rabbitTargetConfigFromForm(form) {
   };
 }
 
-function rabbitProfilePayloadFromForm(form, { profile, operation }) {
+function rabbitProfilePayloadFromForm(
+  form: RabbitMQModelForm | UsernameCredentialForm,
+  { profile, operation }: { profile: RabbitMQProfile | null; operation: LifecycleProfileOperation },
+) {
   return {
     kind: profile?.kind || "username_password",
     label: form.profile_label,
@@ -181,7 +188,7 @@ function rabbitProfilePayloadFromForm(form, { profile, operation }) {
   };
 }
 
-function credentialMetadata(profile) {
+function credentialMetadata(profile: RabbitMQProfile) {
   const items = [];
   if (profile.public?.username) items.push(`username: ${profile.public.username}`);
   if (profile.risk_label) items.push(`risk: ${profile.risk_label}`);
