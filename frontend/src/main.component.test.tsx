@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const root = vi.hoisted(() => ({ create: vi.fn(), render: vi.fn() }));
 vi.mock("react-dom/client", () => ({ createRoot: root.create }));
-vi.mock("./App.jsx", () => ({ default: () => null }));
+vi.mock("./App.tsx", () => ({ default: () => null }));
 
 describe("frontend entrypoint", () => {
   beforeEach(() => {

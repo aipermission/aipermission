@@ -1,24 +1,40 @@
 import { useEffect, useState } from "react";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { ChevronDown, ExternalLink, LockKeyhole, Trash2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPost } from "../lib/api";
+import { errorMessage } from "../lib/errors.ts";
+import type { DatabaseCatalogItem } from "../lib/gateway-contracts/database-status-contract.ts";
+import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
 
-export function UnlockDatabasePanel({ database, unsupported, migrationRequired, onMigrationRequired, onDeleted, runLifecycleMutation }) {
+type Database = Pick<DatabaseCatalogItem, "id" | "name" | "state">;
+type DatabaseAction = "unlock" | "delete";
+type DeleteDialog = { open: boolean; confirmName: string; state: "idle" | "deleting" | "error"; error: string | null };
+type Props = {
+  database: Database | null;
+  unsupported: boolean;
+  migrationRequired: boolean;
+  onMigrationRequired: (_databaseID: string) => void;
+  onDeleted: (_databaseID: string) => void;
+  runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
+};
+
+export function UnlockDatabasePanel({ database, unsupported, migrationRequired, onMigrationRequired, onDeleted, runLifecycleMutation }: Props) {
   const [password, setPassword] = useState("");
-  const [action, setAction] = useState("unlock");
+  const [action, setAction] = useState<DatabaseAction>("unlock");
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, confirmName: "", state: "idle", error: null });
-  const [state, setState] = useState({ state: "idle", error: null });
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({ open: false, confirmName: "", state: "idle", error: null });
+  const [state, setState] = useState<{ state: "idle" | "unlocking" | "error"; error: string | null }>({ state: "idle", error: null });
 
   useEffect(() => {
     setAction("unlock");
     setActionMenuOpen(false);
   }, [database?.id]);
 
-  async function unlockDatabase(event) {
+  async function unlockDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setState({ state: "unlocking", error: null });
     try {
@@ -27,7 +43,7 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
       );
     } catch (error) {
       if (isMigrationRequiredError(error) && database?.id) onMigrationRequired(database.id);
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not unlock the database.") });
     }
   }
 
@@ -46,7 +62,7 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
     setActionMenuOpen(false);
   }
 
-  async function deleteLockedDatabase(event) {
+  async function deleteLockedDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!database) return;
     setDeleteDialog((current) => ({ ...current, state: "deleting", error: null }));
@@ -58,7 +74,7 @@ export function UnlockDatabasePanel({ database, unsupported, migrationRequired, 
       setPassword("");
       onDeleted(database.id);
     } catch (error) {
-      setDeleteDialog((current) => ({ ...current, state: "error", error: error.message }));
+      setDeleteDialog((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not delete the database.") }));
     }
   }
 
@@ -125,6 +141,9 @@ function UnlockActionControl({
   onActionChange,
   onDelete,
   onMenuOpenChange,
+}: {
+  action: DatabaseAction; menuOpen: boolean; databaseAvailable: boolean; deleting: boolean; unlocking: boolean; unlockDisabled: boolean;
+  onActionChange: Dispatch<SetStateAction<DatabaseAction>>; onDelete: () => void; onMenuOpenChange: Dispatch<SetStateAction<boolean>>;
 }) {
   const deletingAction = action === "delete";
   return (
@@ -174,7 +193,10 @@ function UnlockActionControl({
   );
 }
 
-function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit }) {
+function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit }: {
+  database: Database | null; dialog: DeleteDialog; onChange: Dispatch<SetStateAction<DeleteDialog>>;
+  onClose: () => void; onSubmit: (_event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
   return (
     <Dialog
       open={dialog.open}
@@ -221,6 +243,7 @@ function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit })
   );
 }
 
-function isMigrationRequiredError(error) {
-  return error?.status === 409 && /pre-0\.2|non-baseline schema|migration helper/i.test(error?.message || "");
+function isMigrationRequiredError(error: unknown) {
+  return error !== null && typeof error === "object" && "status" in error && error.status === 409 &&
+    "message" in error && typeof error.message === "string" && /pre-0\.2|non-baseline schema|migration helper/i.test(error.message);
 }

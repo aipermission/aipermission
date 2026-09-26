@@ -1,26 +1,29 @@
 import { useState } from "react";
+import type { ComponentProps } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 import { apiGet } from "./lib/api";
+import { errorMessage } from "./lib/errors.ts";
+import type { UnlockPage, UnlockShell } from "./pages/unlock.tsx";
 
-vi.mock("./lib/api", async (importOriginal) => ({ ...(await importOriginal()), apiGet: vi.fn() }));
+vi.mock("./lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./lib/api")>()), apiGet: vi.fn() }));
 vi.mock("./lib/theme", () => ({ useTheme: () => ({ theme: "dark", setTheme: vi.fn() }) }));
 vi.mock("./pages/settings", () => ({ SettingsPage: () => null }));
 vi.mock("./components/app-shell", () => ({ Shell: () => <span>Unlocked workspace</span> }));
 vi.mock("./pages/unlock", () => ({
-  UnlockShell: ({ title, children }) => (
+  UnlockShell: ({ title, children }: ComponentProps<typeof UnlockShell>) => (
     <div>
       <span>{title}</span>
       {children}
     </div>
   ),
-  UnlockPage: ({ onUnlocked }) => {
+  UnlockPage: ({ onUnlocked }: ComponentProps<typeof UnlockPage>) => {
     const [error, setError] = useState("");
     return (
       <div>
-        <button type="button" onClick={() => onUnlocked(new AbortController().signal).catch((failure) => setError(failure.message))}>
+        <button type="button" onClick={() => Promise.resolve(onUnlocked(new AbortController().signal)).catch((failure: unknown) => setError(errorMessage(failure)))}>
           Refresh unlock status
         </button>
         {error ? <span>{error}</span> : null}
@@ -29,11 +32,12 @@ vi.mock("./pages/unlock", () => ({
   },
 }));
 
-beforeEach(() => apiGet.mockReset());
+const get = vi.mocked(apiGet);
+beforeEach(() => get.mockReset());
 
 it("loads unlock status and forwards lifecycle cancellation to reconciliation", async () => {
   const user = userEvent.setup();
-  apiGet.mockResolvedValue({ state: "session_required", databases: [] });
+  get.mockResolvedValue({ state: "session_required", databases: [] });
 
   render(<App />);
 
@@ -41,12 +45,12 @@ it("loads unlock status and forwards lifecycle cancellation to reconciliation", 
   await user.click(await screen.findByRole("button", { name: "Refresh unlock status" }));
 
   await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
-  expect(apiGet.mock.calls[1]).toEqual(["/api/unlock/status", { signal: expect.any(AbortSignal) }]);
+  expect(get.mock.calls[1]).toEqual(["/api/unlock/status", { signal: expect.any(AbortSignal) }]);
 });
 
 it("keeps the unlock workflow mounted when lifecycle status reconciliation fails", async () => {
   const user = userEvent.setup();
-  apiGet.mockResolvedValueOnce({ state: "session_required", databases: [] }).mockRejectedValueOnce(new Error("Status unavailable"));
+  get.mockResolvedValueOnce({ state: "session_required", databases: [] }).mockRejectedValueOnce(new Error("Status unavailable"));
 
   render(<App />);
   await user.click(await screen.findByRole("button", { name: "Refresh unlock status" }));
@@ -60,7 +64,7 @@ it("ignores an older background status response after lifecycle reconciliation",
   const user = userEvent.setup();
   const background = deferred();
   const lifecycle = deferred();
-  apiGet
+  get
     .mockResolvedValueOnce({ state: "session_required", databases: [] })
     .mockReturnValueOnce(background.promise)
     .mockReturnValueOnce(lifecycle.promise);
@@ -80,11 +84,31 @@ it("ignores an older background status response after lifecycle reconciliation",
 });
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_error: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
 }
+
+it.each([
+  { databases: [] },
+  { state: "", databases: [] },
+  { state: "unlocked", databases: [{ id: "db", name: "Default", unlocked: "yes" }] },
+])("rejects malformed unlock status without exposing the workspace: %j", async (response) => {
+  get.mockResolvedValueOnce(response);
+  render(<App />);
+  expect(await screen.findByText("Gateway unavailable")).toBeVisible();
+  expect(screen.queryByText("Unlocked workspace")).not.toBeInTheDocument();
+});
+
+it("keeps the unlock form available after malformed lifecycle reconciliation", async () => {
+  const user = userEvent.setup();
+  get.mockResolvedValueOnce({ state: "session_required", databases: [] }).mockResolvedValueOnce({ state: true });
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "Refresh unlock status" }));
+  expect(await screen.findByText("Invalid database status response.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Refresh unlock status" })).toBeVisible();
+});

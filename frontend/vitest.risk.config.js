@@ -13,7 +13,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: [
-        "src/pages/unlock.jsx",
+        "src/pages/unlock.tsx",
         "src/components/transfer-center.jsx",
         "src/components/file-transfer/file-transfer-actions.ts",
         "src/components/file-transfer/file-transfer-list-state.ts",
