@@ -10,11 +10,23 @@ const inventory = {
   items: [
     {
       id: 3,
+      project_id: 1,
+      project_name: "My Project",
+      project_slug: "my-project",
+      status: "ready",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
       name: "My Server",
       connector_kind: "ssh",
       profiles: [
         {
           id: 5,
+          target_id: 3,
+          connector_kind: "ssh",
+          vault_session_supported: true,
+          kind: "private_key",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
           label: "root",
           actions: [{ name: "exec", description: "Run a command.", risk: "write" }],
         },
@@ -35,7 +47,7 @@ describe("ConnectorPermissionDialog", () => {
     const firstPermissions = deferred();
     let firstSignal;
     apiGet.mockImplementation(async (path, options = {}) => {
-      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH", version: "0.2" }] };
       if (path === "/api/connector-targets/inventory") return inventory;
       if (path === "/api/tokens/1/connector-permissions") {
         firstSignal = options.signal;
@@ -69,7 +81,7 @@ describe("ConnectorPermissionDialog", () => {
   it("shows a stale revision conflict without reporting a successful save", async () => {
     const user = userEvent.setup();
     apiGet.mockImplementation(async (path) => {
-      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH", version: "0.2" }] };
       if (path === "/api/connector-targets/inventory") return inventory;
       if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
       throw new Error(`Unexpected GET ${path}`);
@@ -87,7 +99,7 @@ describe("ConnectorPermissionDialog", () => {
   it("does not report success for a malformed permission save response", async () => {
     const user = userEvent.setup();
     apiGet.mockImplementation(async (path) => {
-      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH", version: "0.2" }] };
       if (path === "/api/connector-targets/inventory") return inventory;
       if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
       throw new Error(`Unexpected GET ${path}`);
@@ -104,7 +116,7 @@ describe("ConnectorPermissionDialog", () => {
 
   it("rejects malformed permission data and keeps saving disabled", async () => {
     apiGet.mockImplementation(async (path) => {
-      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH", version: "0.2" }] };
       if (path === "/api/connector-targets/inventory") return inventory;
       if (path === "/api/tokens/2/connector-permissions") return { items: "invalid", revision: "permissions-r2" };
       throw new Error(`Unexpected GET ${path}`);
@@ -120,7 +132,7 @@ describe("ConnectorPermissionDialog", () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
     apiGet.mockImplementation(async (path) => {
-      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH" }] };
+      if (path === "/api/connectors") return { items: [{ kind: "ssh", label: "SSH", version: "0.2" }] };
       if (path === "/api/connector-targets/inventory") return inventory;
       if (path === "/api/tokens/2/connector-permissions") return { items: [], revision: "permissions-r2" };
       throw new Error(`Unexpected GET ${path}`);

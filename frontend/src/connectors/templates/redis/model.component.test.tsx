@@ -15,13 +15,13 @@ import {
 import type { RedisTarget } from "./form-types";
 
 const api = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
-vi.mock("../../../lib/api.js", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
+vi.mock("../../../lib/api.ts", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
 
 describe("Redis connector model", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.post.mockResolvedValue({ profiles: [] });
-    api.put.mockResolvedValue({ profiles: [] });
+    api.post.mockResolvedValue({ id: 3, profiles: [] });
+    api.put.mockResolvedValue({ id: 3, profiles: [] });
   });
 
   it("normalizes target payloads while preserving the encrypted password on edit", async () => {

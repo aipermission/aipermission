@@ -1,3 +1,4 @@
+import { connectorActionRequest } from "../../../test/connector-action-fixtures";
 import { StrictMode } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -24,7 +25,7 @@ const config = {
 beforeEach(() => {
   post.mockReset();
   post.mockImplementation(async (_path, payload) =>
-    completed(payload.input.sql === config.metadataSQL ? metadataOutput("public", "users") : { columns: ["id"], rows: [{ id: 1 }] }),
+    completed(connectorActionRequest(payload).input.sql === config.metadataSQL ? metadataOutput("public", "users") : { columns: ["id"], rows: [{ id: 1 }] }),
   );
 });
 
@@ -73,7 +74,7 @@ describe("useSQLConsole", () => {
 
   it("uses exact identifier policy before requesting lazy ClickHouse metadata", async () => {
     post.mockImplementation(async (_path, payload) => {
-      if (payload.input.sql === config.metadataSQL) return completed(metadataOutput("Analytics", "Users"));
+      if (connectorActionRequest(payload).input.sql === config.metadataSQL) return completed(metadataOutput("Analytics", "Users"));
       return completed(metadataOutput("unexpected", "describe"));
     });
     const { result } = renderConsole({ config: { ...config, identifierPolicy: "exact" } });
@@ -88,7 +89,7 @@ describe("useSQLConsole", () => {
 
   it("loads missing ClickHouse columns with the exact metadata identity", async () => {
     post.mockImplementation(async (_path, payload) => {
-      if (payload.input.sql === config.metadataSQL) {
+      if (connectorActionRequest(payload).input.sql === config.metadataSQL) {
         return completed({ rows: [{ table_schema: "Analytics", table_name: "Users" }] });
       }
       return completed(metadataOutput("Analytics", "Users"));
@@ -124,7 +125,7 @@ describe("useSQLConsole", () => {
 
   it("discards metadata returned after the connector target changes", async () => {
     const pending = new Map<string, (_response: ReturnType<typeof completed>) => void>();
-    post.mockImplementation((_path, payload) => new Promise<ReturnType<typeof completed>>((resolve) => pending.set(payload.target_ref, resolve)));
+    post.mockImplementation((_path, payload) => new Promise<ReturnType<typeof completed>>((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve)));
     const { result, rerender, props } = renderConsole();
     await waitFor(() => expect(pending.has("test-sql:1:1")).toBe(true));
 
@@ -170,7 +171,7 @@ describe("useSQLConsole", () => {
   it("ignores a query result returned after the connector target changes", async () => {
     let resolveQuery: ((_response: ReturnType<typeof completed>) => void) | undefined;
     post.mockImplementation((_path, payload) => {
-      if (payload.input.sql === config.metadataSQL) return Promise.resolve(completed(metadataOutput("public", "users")));
+      if (connectorActionRequest(payload).input.sql === config.metadataSQL) return Promise.resolve(completed(metadataOutput("public", "users")));
       return new Promise<ReturnType<typeof completed>>((resolve) => (resolveQuery = resolve));
     });
     const { result, rerender, props } = renderConsole();

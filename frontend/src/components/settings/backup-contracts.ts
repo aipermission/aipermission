@@ -24,6 +24,20 @@ export type BackupRecord = {
 
 export type LoadState<T> = { state: string; data: T[]; error: string | null };
 
+export function uploadedBackupRecordResponse(value: unknown): BackupRecord & { filename: string } {
+  if (!isBackupRecord(value) || typeof value.filename !== "string" || !value.filename) throw new Error("Invalid uploaded backup record.");
+  return { ...value, filename: value.filename };
+}
+
+export function backupCountResponse(value: unknown): { deleted_count: number; keep_latest: number } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid backup deletion response.");
+  const data = value as Record<string, unknown>;
+  if (typeof data.deleted_count !== "number" || !Number.isSafeInteger(data.deleted_count) || data.deleted_count < 0 ||
+      (data.keep_latest !== undefined && (typeof data.keep_latest !== "number" || !Number.isSafeInteger(data.keep_latest) || data.keep_latest < 1)))
+    throw new Error("Invalid backup deletion response.");
+  return { deleted_count: data.deleted_count, keep_latest: typeof data.keep_latest === "number" ? data.keep_latest : 0 };
+}
+
 export function backupItems<T>(response: unknown, isItem: (item: unknown) => item is T): T[] {
   if (!response || typeof response !== "object" || !("items" in response)) throw new Error("Invalid backup response.");
   const items = response.items;

@@ -14,7 +14,7 @@ it("does not dispatch a history download without a selected item", async () => {
 });
 
 it("releases the download state when the current file picker is canceled", async () => {
-  vi.mocked(apiDownload).mockRejectedValueOnce(new DOMException("Canceled", "AbortError")).mockResolvedValueOnce({ saved: true });
+  vi.mocked(apiDownload).mockRejectedValueOnce(new DOMException("Canceled", "AbortError")).mockResolvedValueOnce({ saved: true, method: "picker" });
   const { result } = renderHook(() => useHistoryTransferDownload({ id: 1, source_ref_id: 7 }, "file.txt"));
   await act(async () => result.current.downloadTransfer());
   expect(result.current.downloadState).toEqual({ state: "idle", error: null });
@@ -24,7 +24,7 @@ it("releases the download state when the current file picker is canceled", async
 });
 
 it("reports arbitrary current download failures and allows a successful retry", async () => {
-  vi.mocked(apiDownload).mockRejectedValueOnce("stream unavailable").mockResolvedValueOnce({ saved: true });
+  vi.mocked(apiDownload).mockRejectedValueOnce("stream unavailable").mockResolvedValueOnce({ saved: true, method: "picker" });
   const { result } = renderHook(() => useHistoryTransferDownload({ id: 1, source_ref_id: 7 }, "file.txt"));
   await act(async () => result.current.downloadTransfer());
   expect(result.current.downloadState).toEqual({ state: "error", error: "stream unavailable" });
@@ -37,7 +37,7 @@ it.each(["selection", "unmount", "replacement"])("aborts a history download afte
   let reject: ((_error: Error) => void) | undefined;
   let finish: (() => void) | undefined;
   vi.mocked(apiDownload).mockImplementationOnce(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }))
-    .mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    .mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ saved: true, method: "picker" }); }));
   const { result, rerender, unmount } = renderHook((item) => useHistoryTransferDownload(item, "file.txt"), { initialProps: { id: 1, source_ref_id: 7 } });
   let old: Promise<void> | undefined;
   act(() => { old = result.current.downloadTransfer(); });

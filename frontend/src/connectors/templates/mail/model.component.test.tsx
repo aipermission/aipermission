@@ -3,13 +3,13 @@ import { credentialRows, credentialStateFromRow, emptyForm, formFromTarget, save
 import type { MailTarget } from "./form-types";
 
 const api = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
-vi.mock("../../../lib/api.js", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
+vi.mock("../../../lib/api.ts", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
 
 describe("Mail credential lifecycle model", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.post.mockResolvedValue({ profiles: [] });
-    api.put.mockResolvedValue({ profiles: [] });
+    api.post.mockResolvedValue({ id: 3, profiles: [] });
+    api.put.mockResolvedValue({ id: 3, profiles: [] });
   });
 
   it("keeps login secrets separate from public folder policies in atomic creation", async () => {

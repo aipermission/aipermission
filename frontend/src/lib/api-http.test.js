@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { apiDelete, apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./api.js";
+import { apiDelete, apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "./api.ts";
 import { APIError } from "./errors.ts";
 
 test("all API helpers forward the caller AbortSignal", async () => {

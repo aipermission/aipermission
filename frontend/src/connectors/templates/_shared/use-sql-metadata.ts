@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
-import { requireCompletedConnectorAction } from "./action-result";
+import { connectorActionResultResponse, requireCompletedConnectorAction } from "./action-result";
 import { extractTableSuggestions, normalizeConnectorOutput, pendingMetadataReferences, tableReferenceKey } from "./sql-console-data";
 import { mergeMetadataRows } from "./sql-console-config";
 import type { normalizeSQLConsoleConfig } from "./sql-console-config";
@@ -17,7 +17,6 @@ export type SQLMetadataState = {
 };
 type MetadataConnector = ReturnType<typeof normalizeSQLConsoleConfig>;
 type RequestGuard = ReturnType<typeof createRequestGuard>;
-type ActionResponse = Parameters<typeof requireCompletedConnectorAction>[0];
 type MetadataProps = {
   activeSession: { active: boolean; startedAt: string };
   connector: MetadataConnector;
@@ -48,9 +47,9 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", tables: [], error: "", truncated: false });
     apiPost("/api/connector-actions/local-run", metadataPayload(targetRef, connector), { signal: request.signal })
-      .then((response: ActionResponse) => {
+      .then((response) => {
         if (!request.isCurrent()) return;
-        const item = requireCompletedConnectorAction(response, "Could not load metadata suggestions.");
+        const item = requireCompletedConnectorAction(connectorActionResultResponse(response), "Could not load metadata suggestions.");
         if (!item) {
           setMetadata({ state: "pending", tables: [], error: "Metadata request is awaiting approval.", truncated: false });
           void refreshActivity();
@@ -132,9 +131,9 @@ function requestColumnMetadata({
     },
     { signal: request.signal },
   )
-    .then((response: ActionResponse) => {
+    .then((response) => {
       if (requestSetRef.current !== requests || !request.isCurrent()) return;
-      const item = requireCompletedConnectorAction(response, "Could not load column metadata.");
+      const item = requireCompletedConnectorAction(connectorActionResultResponse(response), "Could not load column metadata.");
       if (!item) {
         requests.delete(requestKey);
         void refreshActivity();

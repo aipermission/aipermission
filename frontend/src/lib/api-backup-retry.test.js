@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
-import { apiPost } from "./api.js";
+import { apiPost } from "./api.ts";
 import {
   completeLocalActionRetry,
   prepareLocalActionRetry,

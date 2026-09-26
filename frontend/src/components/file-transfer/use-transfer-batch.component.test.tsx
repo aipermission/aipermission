@@ -7,23 +7,25 @@ import { useTransferBatch } from "./use-transfer-batch";
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPostForm: vi.fn() }));
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((done, fail) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((done, fail) => {
     resolve = done;
     reject = fail;
   });
   return { promise, resolve, reject };
 }
 
-function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
+type HarnessProps = Partial<Pick<Parameters<typeof useTransferBatch>[0], "onNotice" | "onUploadCompleted">>;
+
+function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }: HarnessProps) {
   const file = new File(["payload"], "a.txt", { type: "text/plain" });
   const transfer = useTransferBatch({
     open: true,
     runtimeTarget: { id: 7 },
     mode: "upload",
     remoteDir: "/tmp",
-    uploadQueue: [{ id: "a", name: "a.txt", relative_path: "a.txt", file, size: file.size }],
+    uploadQueue: [{ id: "a", name: "a.txt", relative_path: "a.txt", file }],
     downloadQueue: [],
     queue: [{ id: "a" }],
     onNotice,
@@ -58,14 +60,14 @@ function BatchHarness({ onNotice = vi.fn(), onUploadCompleted = vi.fn() }) {
   );
 }
 
-function DownloadBatchHarness({ onNotice = vi.fn() }) {
+function DownloadBatchHarness({ onNotice = vi.fn() }: Pick<HarnessProps, "onNotice">) {
   const transfer = useTransferBatch({
     open: true,
     runtimeTarget: { id: 9 },
     mode: "download",
     remoteDir: "/tmp",
     uploadQueue: [],
-    downloadQueue: [{ id: "remote", path: "/var/log/app.log", relative_path: "app.log" }],
+    downloadQueue: [{ path: "/var/log/app.log" }],
     queue: [{ id: "remote" }],
     onNotice,
     onUploadCompleted: vi.fn(),
@@ -84,9 +86,9 @@ function DownloadBatchHarness({ onNotice = vi.fn() }) {
 }
 
 beforeEach(() => {
-  apiGet.mockReset();
-  apiPost.mockReset();
-  apiPostForm.mockReset();
+  vi.mocked(apiGet).mockReset();
+  vi.mocked(apiPost).mockReset();
+  vi.mocked(apiPostForm).mockReset();
 });
 
 it("owns paused queue edits and preserves batch identity on failure", async () => {
@@ -137,8 +139,8 @@ it("owns paused queue edits and preserves batch identity on failure", async () =
 it("owns upload creation and ordered pause, resume, and cancel transitions", async () => {
   const user = userEvent.setup();
   const onNotice = vi.fn();
-  apiPostForm.mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
-  apiPost.mockImplementation((path) => {
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
+  vi.mocked(apiPost).mockImplementation((path) => {
     const action = path.split("/").at(-1);
     return Promise.resolve({
       id: 12,
@@ -150,10 +152,10 @@ it("owns upload creation and ordered pause, resume, and cancel transitions", asy
 
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(await screen.findByTestId("status")).toHaveTextContent("running");
-  const form = apiPostForm.mock.calls[0][1];
+  const form = vi.mocked(apiPostForm).mock.calls[0][1];
   expect(form.get("runtime_id")).toBe("7");
   expect(form.get("remote_dir")).toBe("/tmp");
-  expect(JSON.parse(form.get("relative_paths"))).toEqual(["a.txt"]);
+  expect(JSON.parse(String(form.get("relative_paths")))).toEqual(["a.txt"]);
   expect(form.get("idempotency_key")).toMatch(/^[0-9a-f-]{36}$/);
 
   await user.click(screen.getByRole("button", { name: "Pause" }));
@@ -171,7 +173,7 @@ it("owns upload creation and ordered pause, resume, and cancel transitions", asy
 it("publishes an upload completion once", async () => {
   const user = userEvent.setup();
   const onUploadCompleted = vi.fn();
-  apiPostForm.mockResolvedValue({ id: 12, status: "completed", direction: "upload", items: [] });
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "completed", direction: "upload", items: [] });
   render(<BatchHarness onUploadCompleted={onUploadCompleted} />);
 
   await user.click(screen.getByRole("button", { name: "Start" }));
@@ -180,7 +182,7 @@ it("publishes an upload completion once", async () => {
 
 it("owns upload overwrite conflicts without creating a batch", async () => {
   const user = userEvent.setup();
-  apiPostForm.mockRejectedValue(
+  vi.mocked(apiPostForm).mockRejectedValue(
     Object.assign(new Error("conflict"), { status: 409, data: { code: "remote_files_exist", conflicts: [{ remote_path: "/tmp/a.txt" }] } }),
   );
   render(<BatchHarness />);
@@ -192,7 +194,7 @@ it("owns upload overwrite conflicts without creating a batch", async () => {
 
 it("does not accept a malformed batch creation response as a started transfer", async () => {
   const user = userEvent.setup();
-  apiPostForm.mockResolvedValue({ id: 12, status: "running", items: [] });
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "running", items: [] });
   render(<BatchHarness />);
 
   await user.click(screen.getByRole("button", { name: "Start" }));
@@ -202,7 +204,7 @@ it("does not accept a malformed batch creation response as a started transfer", 
 
 it("reuses the upload idempotency key when a response is lost", async () => {
   const user = userEvent.setup();
-  apiPostForm.mockRejectedValueOnce(new Error("network response lost")).mockResolvedValueOnce({
+  vi.mocked(apiPostForm).mockRejectedValueOnce(new Error("network response lost")).mockResolvedValueOnce({
     id: 12,
     status: "running",
     direction: "upload",
@@ -216,13 +218,13 @@ it("reuses the upload idempotency key when a response is lost", async () => {
   expect(await screen.findByTestId("status")).toHaveTextContent("running");
 
   expect(apiPostForm).toHaveBeenCalledTimes(2);
-  expect(apiPostForm.mock.calls[1][1].get("idempotency_key")).toBe(apiPostForm.mock.calls[0][1].get("idempotency_key"));
+  expect(vi.mocked(apiPostForm).mock.calls[1][1].get("idempotency_key")).toBe(vi.mocked(apiPostForm).mock.calls[0][1].get("idempotency_key"));
 });
 
 it("ignores upload completion after the dialog batch is reset", async () => {
   const user = userEvent.setup();
   const pending = deferred();
-  apiPostForm.mockReturnValue(pending.promise);
+  vi.mocked(apiPostForm).mockReturnValue(pending.promise);
   render(<BatchHarness />);
 
   await user.click(screen.getByRole("button", { name: "Start" }));
@@ -234,13 +236,13 @@ it("ignores upload completion after the dialog batch is reset", async () => {
 });
 
 it.each([
-  ["success", (pending) => pending.resolve({ id: 12, status: "completed", direction: "upload", items: [] })],
-  ["failure", (pending) => pending.reject(new Error("refresh failed"))],
+  ["success", (pending: ReturnType<typeof deferred>) => pending.resolve({ id: 12, status: "completed", direction: "upload", items: [] })],
+  ["failure", (pending: ReturnType<typeof deferred>) => pending.reject(new Error("refresh failed"))],
 ])("does not resurrect a cleared batch after late refresh %s", async (_outcome, settle) => {
   const user = userEvent.setup();
   const pending = deferred();
-  apiPostForm.mockResolvedValue({ id: 12, status: "completed", direction: "upload", items: [] });
-  apiGet.mockReturnValue(pending.promise);
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "completed", direction: "upload", items: [] });
+  vi.mocked(apiGet).mockReturnValue(pending.promise);
   render(<BatchHarness />);
 
   await user.click(screen.getByRole("button", { name: "Start" }));
@@ -256,8 +258,8 @@ it.each([
 it("keeps the latest transition when an older transition completes last", async () => {
   const user = userEvent.setup();
   const paused = deferred();
-  apiPostForm.mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
-  apiPost.mockReturnValueOnce(paused.promise).mockResolvedValueOnce({ id: 12, status: "canceled", direction: "upload", items: [] });
+  vi.mocked(apiPostForm).mockResolvedValue({ id: 12, status: "running", direction: "upload", items: [] });
+  vi.mocked(apiPost).mockReturnValueOnce(paused.promise).mockResolvedValueOnce({ id: 12, status: "canceled", direction: "upload", items: [] });
   render(<BatchHarness />);
   await user.click(screen.getByRole("button", { name: "Start" }));
 
@@ -271,8 +273,8 @@ it("keeps the latest transition when an older transition completes last", async 
 
 it("creates and refreshes an owned download batch", async () => {
   const user = userEvent.setup();
-  apiPost.mockResolvedValue({ id: 22, status: "running", direction: "download", items: [] });
-  apiGet.mockResolvedValue({ id: 22, status: "completed", direction: "download", items: [] });
+  vi.mocked(apiPost).mockResolvedValue({ id: 22, status: "running", direction: "download", items: [] });
+  vi.mocked(apiGet).mockResolvedValue({ id: 22, status: "completed", direction: "download", items: [] });
   render(<DownloadBatchHarness />);
 
   await user.click(screen.getByRole("button", { name: "Start download" }));

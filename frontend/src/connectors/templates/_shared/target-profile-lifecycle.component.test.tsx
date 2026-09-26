@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({
   put: vi.fn(),
 }));
 
-vi.mock("../../../lib/api.js", () => ({
+vi.mock("../../../lib/api.ts", () => ({
   apiDelete: api.delete,
   apiPost: api.post,
   apiPut: api.put,
@@ -52,7 +52,7 @@ describe("createTargetProfileLifecycle", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("creates and updates targets through the atomic target/profile routes", async () => {
-    api.post.mockResolvedValueOnce({ profiles: [{ id: 8 }] });
+    api.post.mockResolvedValueOnce({ id: 3, profiles: [{ id: 8 }] });
     await lifecycle().save({
       mode: "create",
       form: { name: "example", host: "127.0.0.1", project_id: 2, profile_label: "main", username: "user", password: "secret" },
@@ -62,7 +62,7 @@ describe("createTargetProfileLifecycle", () => {
       expect.objectContaining({ target: expect.objectContaining({ connector_kind: "example", project_id: 2 }) }),
     );
 
-    api.put.mockResolvedValueOnce({ profiles: [{ id: 8 }] });
+    api.put.mockResolvedValueOnce({ id: 3, profiles: [{ id: 8 }] });
     await lifecycle().save({
       mode: "edit",
       target: { id: 3, profiles: [{ id: 8, kind: "secret" }] },
@@ -161,7 +161,7 @@ describe("createTargetProfileLifecycle", () => {
       throw new Error("validation was not started");
     };
     const beforeSave = vi.fn(() => new Promise<void>((resolve) => (releaseValidation = resolve)));
-    api.post.mockResolvedValueOnce({ profiles: [{ id: 8 }] });
+    api.post.mockResolvedValueOnce({ id: 3, profiles: [{ id: 8 }] });
     const result = lifecycle({ beforeSave }).save({
       mode: "create",
       form: { name: "example", host: "127.0.0.1", profile_label: "main" },

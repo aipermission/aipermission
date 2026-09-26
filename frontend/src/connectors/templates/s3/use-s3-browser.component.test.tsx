@@ -25,7 +25,7 @@ const mockedSaveBlob = vi.mocked(saveBlob);
 const mockedRunAction = vi.mocked(runGuardedConnectorAction);
 
 beforeEach(() => {
-  mockedSaveBlob.mockReset().mockResolvedValue({ saved: true, method: "download" });
+  mockedSaveBlob.mockReset().mockResolvedValue({ saved: true, method: "anchor" });
   mockedRunAction.mockReset();
   mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
     if (actionName === "list_objects") {

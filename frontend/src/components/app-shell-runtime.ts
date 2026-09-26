@@ -1,4 +1,4 @@
-import { apiUrl, currentWorkspaceBinding } from "../lib/api.js";
+import { apiUrl, currentWorkspaceBinding } from "../lib/api.ts";
 import { isLiveConsoleSession } from "./console/helpers.ts";
 
 type CredentialResource = {

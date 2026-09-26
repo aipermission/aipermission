@@ -1,4 +1,5 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
+import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts.ts";
+import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
 import type { FormEvent, SetStateAction } from "react";
 import type {
@@ -166,7 +167,7 @@ export function createTargetProfileLifecycle<
   async function test({ target, profile }: { target: Target; profile?: Profile | null }) {
     const selected = profile || selectedProfile(target, "");
     if (!selected) throw new Error(`${connectorLabel} connector profile is not loaded.`);
-    const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selected.id}/test`, {});
+    const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${target.id}/profiles/${selected.id}/test`, {}));
     return { ok: data.ok, error: data.message || null, data };
   }
 

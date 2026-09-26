@@ -1,4 +1,4 @@
-import { apiPut } from "./api.js";
+import { apiPut } from "./api.ts";
 import { tokenProjectScopeSnapshot } from "./gateway-contracts/security-contracts.js";
 
 type ProjectVisibility = { project_id: number; enabled: boolean };

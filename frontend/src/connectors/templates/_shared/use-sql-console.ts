@@ -3,7 +3,7 @@ import type { components } from "../../../../types/generated-openapi";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
-import { requireCompletedConnectorAction } from "./action-result";
+import { connectorActionResultResponse, requireCompletedConnectorAction } from "./action-result";
 import {
   actionInputSQL,
   filteredTableBrowserRows,
@@ -63,7 +63,7 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
-      const response: ActionResponse = await apiPost(
+      const response: ActionResponse = connectorActionResultResponse(await apiPost(
         "/api/connector-actions/local-run",
         {
           target_ref: target.ref,
@@ -72,7 +72,7 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
           reason: connector.manualReason,
         },
         { signal: request.signal },
-      );
+      ));
       if (!request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Query failed.");
       if (!item) {

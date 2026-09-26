@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vitest";
-import { apiPost, apiPut } from "../../lib/api.js";
+import { apiPost, apiPut } from "../../lib/api.ts";
 import { createTargetWithProfile, updateTargetWithProfile } from "./target-profile-save";
 
-vi.mock("../../lib/api.js", () => ({ apiPost: vi.fn(), apiPut: vi.fn() }));
+vi.mock("../../lib/api.ts", () => ({ apiPost: vi.fn(), apiPut: vi.fn() }));
 
 it("creates a target and first profile with a numeric project scope", async () => {
   vi.mocked(apiPost).mockResolvedValueOnce({ id: 7, profiles: [{ id: 8 }] });

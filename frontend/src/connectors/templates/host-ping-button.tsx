@@ -1,3 +1,4 @@
+import { pingResultResponse, type PingResult } from "./ping-result-contract";
 import { Activity, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 import { Badge } from "../../components/ui/badge";
@@ -16,15 +17,6 @@ type HostPingProps = {
   transportTargetRef?: string;
   projectID?: string | number;
   label?: string;
-};
-type PingResult = {
-  ok: boolean;
-  received: number;
-  sent: number;
-  duration_ms: number;
-  mode: string;
-  message?: string;
-  attempts?: { attempt: number; ok: boolean; duration_ms: number; error?: string }[];
 };
 type PingDialog = { open: boolean; state: string; result: PingResult | null; error: string };
 
@@ -49,7 +41,7 @@ export function HostPingButton({
     const request = requests.begin("ping");
     setDialog({ open: true, state: "running", result: null, error: "" });
     try {
-      const result: PingResult = await apiPost(
+      const response = await apiPost(
         "/api/connector-targets/ping",
         {
           project_id: Number(projectID) || 0,
@@ -61,6 +53,8 @@ export function HostPingButton({
         },
         { signal: request.signal },
       );
+      if (!request.isCurrent()) return;
+      const result = pingResultResponse(response);
       if (request.isCurrent()) setDialog({ open: true, state: "done", result, error: "" });
     } catch (error) {
       if (request.isCurrent()) setDialog({ open: true, state: "error", result: null, error: errorMessage(error, "Ping failed.") });

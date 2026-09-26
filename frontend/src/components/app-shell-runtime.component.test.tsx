@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/api.js", () => ({
+vi.mock("../lib/api.ts", () => ({
   apiUrl: "https://localhost:3210",
   currentWorkspaceBinding: vi.fn(() => "workspace/a"),
 }));

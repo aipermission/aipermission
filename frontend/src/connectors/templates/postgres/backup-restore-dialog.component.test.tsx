@@ -16,7 +16,7 @@ vi.mock("../../../lib/local-action-retry", () => ({
 const value = { open: true, target: { id: 1, name: "Test database" }, profile: { id: 2 } };
 
 beforeEach(() => {
-  vi.mocked(apiDownload).mockReset().mockResolvedValue({ saved: true });
+  vi.mocked(apiDownload).mockReset().mockResolvedValue({ saved: true, method: "picker" });
   vi.mocked(apiPostForm).mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
 });
 

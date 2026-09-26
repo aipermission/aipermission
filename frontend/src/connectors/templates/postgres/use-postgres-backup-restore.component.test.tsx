@@ -31,7 +31,7 @@ vi.mock("../../../lib/local-action-retry", () => ({
 }));
 
 beforeEach(() => {
-  download.mockReset().mockResolvedValue({ saved: true });
+  download.mockReset().mockResolvedValue({ saved: true, method: "picker" });
   postForm.mockReset().mockResolvedValue({ operation_id: 1, status: "completed", result: {} });
   workspaceBinding.mockReset().mockReturnValue("workspace-a");
   prepareRetry.mockReset().mockResolvedValue({
@@ -119,7 +119,7 @@ it.each(["failed", "canceled"])("releases a definitive %s restore attempt", asyn
 });
 
 it("downloads a safe filename and keeps canceled pickers idle", async () => {
-  download.mockResolvedValueOnce({ canceled: true });
+  download.mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" });
   const { result } = renderHook(() => usePostgresBackupRestore(operation()));
 
   await act(async () => result.current.downloadBackup());
@@ -154,7 +154,7 @@ it("discards a backup completion after the selected profile changes", async () =
 
   await act(async () => {
     if (!resolveDownload) throw new Error("Download did not start");
-    resolveDownload({ saved: true });
+    resolveDownload({ saved: true, method: "picker" });
     await downloadPromise;
   });
 

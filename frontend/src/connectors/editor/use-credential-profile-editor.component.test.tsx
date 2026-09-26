@@ -2,12 +2,15 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useCredentialProfileEditor } from "./use-credential-profile-editor";
 
-const emptyState = (kind) => ({ form: { connector_kind: kind, label: "", password: "" } });
+type FormState = { form: { connector_kind?: string; label: string; password: string } };
+type Row = { id: number; connector_kind: string };
+type Model = NonNullable<ReturnType<Parameters<typeof useCredentialProfileEditor<FormState, Row>>[0]["modelForKind"]>>;
+const emptyState = (kind: string) => ({ form: { connector_kind: kind, label: "", password: "" } });
 
-function renderEditor(model) {
+function renderEditor(model: Model | null) {
   const onRefresh = vi.fn(async () => {});
   const hook = renderHook(() =>
-    useCredentialProfileEditor({
+    useCredentialProfileEditor<FormState, Row>({
       defaultKind: "example",
       targets: [{ id: 4, connector_kind: "example" }],
       emptyStateForKind: emptyState,
@@ -84,8 +87,8 @@ describe("useCredentialProfileEditor", () => {
   });
 
   it("does not let a retired save close or reset a replacement draft", async () => {
-    let resolveSave;
-    const pendingSave = new Promise((resolve) => {
+    let resolveSave!: (_value: { message: string }) => void;
+    const pendingSave = new Promise<{ message: string }>((resolve) => {
       resolveSave = resolve;
     });
     const model = { saveCredential: vi.fn(() => pendingSave) };
@@ -93,7 +96,7 @@ describe("useCredentialProfileEditor", () => {
 
     act(() => result.current.openCreate("example"));
     act(() => result.current.setFormState({ form: { connector_kind: "example", label: "old", password: "old-secret" } }));
-    let save;
+    let save: Promise<boolean> | undefined;
     act(() => {
       save = result.current.save({ preventDefault() {} }, "create");
     });
@@ -111,8 +114,8 @@ describe("useCredentialProfileEditor", () => {
   });
 
   it("locks an in-flight draft and submits its snapshot only once", async () => {
-    let resolveSave;
-    const pendingSave = new Promise((resolve) => {
+    let resolveSave!: (_value: { message: string }) => void;
+    const pendingSave = new Promise<{ message: string }>((resolve) => {
       resolveSave = resolve;
     });
     const model = { saveCredential: vi.fn(() => pendingSave) };
@@ -120,8 +123,8 @@ describe("useCredentialProfileEditor", () => {
     act(() => result.current.openCreate("example"));
     act(() => result.current.setFormState({ form: { connector_kind: "example", label: "original", password: "secret" } }));
 
-    let firstSave;
-    let secondSave;
+    let firstSave: Promise<boolean> | undefined;
+    let secondSave: Promise<boolean> | undefined;
     act(() => {
       firstSave = result.current.save({ preventDefault() {} }, "create");
       result.current.setFormState((current) => ({ ...current, form: { ...current.form, label: "broader scope" } }));
@@ -137,14 +140,14 @@ describe("useCredentialProfileEditor", () => {
   });
 
   it("unlocks the same draft for correction after a failed save", async () => {
-    let rejectSave;
-    const pendingSave = new Promise((_, reject) => {
+    let rejectSave!: (_error: unknown) => void;
+    const pendingSave = new Promise<{ message: string }>((_, reject) => {
       rejectSave = reject;
     });
     const model = { saveCredential: vi.fn(() => pendingSave) };
     const { result } = renderEditor(model);
     act(() => result.current.openCreate("example"));
-    let save;
+    let save: Promise<boolean> | undefined;
     act(() => {
       save = result.current.save({ preventDefault() {} }, "create");
     });
@@ -182,20 +185,20 @@ describe("useCredentialProfileEditor", () => {
   });
 
   it("keeps a replacement save locked when the retired request settles", async () => {
-    const resolvers = [];
+    const resolvers: ((_value: { message: string }) => void)[] = [];
     const model = {
-      saveCredential: vi.fn(() => new Promise((resolve) => resolvers.push(resolve))),
+      saveCredential: vi.fn(() => new Promise<{ message: string }>((resolve) => resolvers.push(resolve))),
     };
     const { result } = renderEditor(model);
     act(() => result.current.openCreate("example"));
-    let oldSave;
+    let oldSave: Promise<boolean> | undefined;
     act(() => {
       oldSave = result.current.save({ preventDefault() {} }, "create");
     });
 
     act(() => result.current.closeEditor());
     act(() => result.current.openCreate("example"));
-    let newSave;
+    let newSave: Promise<boolean> | undefined;
     act(() => {
       newSave = result.current.save({ preventDefault() {} }, "create");
     });

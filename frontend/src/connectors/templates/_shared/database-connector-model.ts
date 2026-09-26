@@ -1,4 +1,5 @@
-import { apiDelete, apiPost, apiPut } from "../../../lib/api.js";
+import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts.ts";
+import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
 import type { DatabaseCredentialForm } from "./database-form-types";
 import type { CredentialFormArguments, DatabaseCredentialRow, DatabaseModelConfig, DatabaseModelForm, DatabaseProfile, DatabaseTarget, DatabaseTargetDefaults, DatabaseTransportForm, SyncedDatabaseForm } from "./database-model-types";
@@ -151,7 +152,7 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
   async function test({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
     const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
     if (!selectedProfile) throw new Error("Connector profile is not loaded.");
-    const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
+    const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {}));
     return { ok: data.ok, error: data.message || null, data };
   }
 

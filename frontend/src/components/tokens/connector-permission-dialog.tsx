@@ -9,6 +9,8 @@ import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { connectorActionRiskLabel, connectorActionRiskTone } from "../../lib/connector-action-risks";
 import { useRequestGuard } from "../../lib/request-guard";
 import { tokenActionPermissionSnapshot } from "../../lib/gateway-contracts/security-contracts";
+import { connectorCatalogResponse } from "../../lib/gateway-contracts/connector-catalog-contract";
+import { permissionInventoryResponse } from "../../lib/gateway-contracts/connector-inventory-contract";
 import type { ExecutionRule, TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
 
 type Action = { name: string; description: string; risk: string };
@@ -301,7 +303,7 @@ async function loadConnectorPermissionData({
       apiGet(`/api/tokens/${tokenID}/connector-permissions`, { signal: request.signal }),
     ]);
     if (!request.isCurrent()) return;
-    const targets: Target[] = targetList.items || [];
+    const targets: Target[] = permissionInventoryResponse(targetList);
     const actionEntries = targets.flatMap((target) =>
       (target.profiles || []).map((profile) => [profileActionKey(target.id, profile.id), profile.actions || []]),
     );
@@ -310,7 +312,7 @@ async function loadConnectorPermissionData({
     const permissionItems = permissionSnapshot.items;
     setLoad({
       state: "ready",
-      catalog: catalog.items || [],
+      catalog: connectorCatalogResponse(catalog),
       targets,
       actionsByProfile,
       permissions: permissionItems,
