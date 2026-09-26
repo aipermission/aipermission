@@ -2,12 +2,17 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { ConnectorActivityDialog } from "./connector-activity-dialog";
+import type { ComponentProps } from "react";
 
-const approvals = {
+const approvals: ComponentProps<typeof ConnectorActivityDialog>["approvals"] = {
   state: "ready",
+  error: null,
   data: [
     {
       id: 1,
+      target_id: 1,
+      profile_id: 1,
+      retry_policy: { class: "read_only", guidance: "Read only query" },
       target_name: "Primary database",
       target_ref: "postgres:1:1",
       connector_kind: "postgres",
@@ -21,12 +26,18 @@ const approvals = {
     },
     {
       id: 2,
+      target_id: 2,
+      profile_id: 2,
+      target_name: "",
+      profile_label: "",
+      created_at: "",
+      retry_policy: { class: "read_only", guidance: "Read only key" },
       target_ref: "redis:2:2",
       connector_kind: "redis",
       action_name: "get_key",
       status: "failed",
       error: "Read failed",
-      input: "key",
+      input: { key: "key" },
       display_text: "No value",
     },
   ],
@@ -46,7 +57,7 @@ it("selects structured activity and refreshes the stream", async () => {
 });
 
 it("renders a stable empty activity state while loading", () => {
-  render(<ConnectorActivityDialog open approvals={{ state: "loading", data: [] }} onRefresh={vi.fn()} onClose={vi.fn()} />);
+  render(<ConnectorActivityDialog open approvals={{ state: "loading", data: [], error: null }} onRefresh={vi.fn()} onClose={vi.fn()} />);
   expect(screen.getByText("No connector activity yet.")).toBeVisible();
   expect(screen.getByText("Select a connector request to inspect input and output.")).toBeVisible();
 });

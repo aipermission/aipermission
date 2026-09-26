@@ -57,17 +57,17 @@ export function writeStoredConnectorProfileID(target: Target | null, tokenID: To
   writeLocalPreference(connectorProfileStorageKey(target, tokenID), String(profileID));
 }
 
-export function currentConnectorTargetProfilePermissions(permissions: Permission[], target: Target | null, profileID: number | string): Permission[] {
+export function currentConnectorTargetProfilePermissions<Item extends Permission>(permissions: Item[], target: Target | null, profileID: number | string): Item[] {
   if (!target) return [];
   return permissions.filter((permission) => matchesConnectorTargetProfile(permission, target, profileID));
 }
 
-export function effectiveConnectorTargetProfilePermissions(
-  permissions: Permission[],
+export function effectiveConnectorTargetProfilePermissions<Item extends Permission>(
+  permissions: Item[],
   target: Target | null,
   profileID: number | string,
   now = Date.now(),
-): Permission[] {
+): Item[] {
   return currentConnectorTargetProfilePermissions(permissions, target, profileID).filter((permission) => effectiveRule(permission, now));
 }
 

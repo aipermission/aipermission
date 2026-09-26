@@ -5,15 +5,27 @@ import {
   selectedConnectorProfileID,
 } from "../../lib/connector-permissions";
 import { effectiveRule, permissionLifetimeLabel } from "../../lib/permissions";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts.ts";
 
-export function useConsolePermissionView({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }) {
+type Token = { id: number; name: string; revoked_at?: string };
+type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled">;
+type Props<Item extends Token> = {
+  connectorPermissions: Record<string, Permission[]>;
+  mcpEnabled: boolean;
+  now: number;
+  profiles: Parameters<typeof selectedConnectorProfileID>[2];
+  target: Parameters<typeof selectedConnectorProfileID>[1];
+  tokens: Item[];
+};
+
+export function useConsolePermissionView<Item extends Token>({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }: Props<Item>) {
   return useMemo(
     () => deriveConsolePermissionView({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }),
     [connectorPermissions, mcpEnabled, now, profiles, target, tokens],
   );
 }
 
-export function deriveConsolePermissionView({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }) {
+export function deriveConsolePermissionView<Item extends Token>({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }: Props<Item>) {
   if (!target) return emptyPermissionView;
 
   const selectedTokenOptions = tokens.filter((token) => {
@@ -31,7 +43,7 @@ export function deriveConsolePermissionView({ connectorPermissions, mcpEnabled, 
       );
       return permission ? { token, permission } : null;
     })
-    .filter(Boolean);
+    .filter((entry) => entry !== null);
   const temporaryAlwaysRunLabels = alwaysRunTokenPermissions
     .map(({ permission }) => permission)
     .filter((permission) => permission.expires_at)

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ConsoleResponsiveShell } from "./console-responsive-shell";
+import type { ComponentProps } from "react";
 
 const media = vi.hoisted(() => ({ wide: false }));
 vi.mock("../../lib/use-media-query", () => ({ useMediaQuery: () => media.wide }));
@@ -10,10 +11,11 @@ beforeEach(() => {
   media.wide = false;
 });
 
-function TargetPanel({ onSelect, onCompactChange }) {
+type ShellProps = ComponentProps<typeof ConsoleResponsiveShell>;
+function TargetPanel({ onSelect, onCompactChange }: ShellProps["targetSidebar"]["props"]) {
   return (
     <div>
-      <button type="button" onClick={() => onSelect("target:1")}>
+      <button type="button" onClick={() => onSelect?.("target:1")}>
         Select target
       </button>
       {onCompactChange ? <button type="button">Collapse connectors</button> : null}
@@ -21,7 +23,7 @@ function TargetPanel({ onSelect, onCompactChange }) {
   );
 }
 
-function TokenPanel({ onToggleCompact }) {
+function TokenPanel({ onToggleCompact }: ShellProps["tokenPanel"]["props"]) {
   return (
     <div>
       Token rules
