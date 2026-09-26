@@ -115,6 +115,7 @@ export function ConnectorsPage() {
       ) : null}
 
       <ConnectorTargetsTable
+        resolveTemplate={getConnectorTemplate}
         targets={targets}
         projects={projects.data}
         search={connectorSearch}
@@ -145,6 +146,7 @@ export function ConnectorsPage() {
         activeConnectorModel={activeConnectorModel}
         activeCredential={activeCredential}
         FormTemplate={ActiveConnectorFormTemplate}
+        onProjectChange={(projectID) => editor.updateField("project_id", projectID)}
         editor={editor}
       />
 
@@ -160,7 +162,17 @@ export function ConnectorsPage() {
           />
         ) : null;
       })}
-      <DeleteConnectorDialog value={deleteDialog} state={actionState} onDelete={editor.remove} onClose={editor.closeDelete} />
+      <DeleteConnectorDialog
+        value={deleteDialog}
+        dialog={
+          deleteDialog.target
+            ? getConnectorModel(deleteDialog.target.connector_kind)?.deleteDialog?.({ target: deleteDialog.target })
+            : null
+        }
+        state={actionState}
+        onDelete={editor.remove}
+        onClose={editor.closeDelete}
+      />
     </section>
   );
 }
