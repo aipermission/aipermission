@@ -1,6 +1,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { isNodeUnitTest } from "./test-discovery.mjs";
 
 const files = testFiles(join(process.cwd(), "src"));
 // Keep the real browser/Vite registry check out of the parallel Node worker pool.
@@ -19,8 +20,7 @@ function testFiles(root) {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) files.push(...testFiles(path));
-    else if (entry.name.endsWith(".test.js") || (entry.name.endsWith(".test.ts") && !entry.name.endsWith(".type.test.ts")))
-      files.push(path);
+    else if (isNodeUnitTest(entry.name)) files.push(path);
   }
   return files.sort();
 }

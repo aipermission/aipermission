@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDatabaseConnectorModel } from "../connectors/templates/_shared/database-connector-model.js";
+import { createDatabaseConnectorModel } from "../connectors/templates/_shared/database-connector-model.ts";
 
 function testModel() {
   return createDatabaseConnectorModel({
@@ -18,13 +18,14 @@ function testModel() {
     },
     credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" },
     targetForm: (target) => ({
-      connection_mode: target.config.connection_mode,
-      host: target.config.host,
-      port: target.config.port,
-      database: target.config.database,
+      connection_mode: target.config?.connection_mode || "direct",
+      host: target.config?.host || "127.0.0.1",
+      port: target.config?.port || 9000,
+      database: target.config?.database || "default",
+      transport_target_ref: target.config?.transport_target_ref || "",
     }),
     targetConfig: (form) => ({ connection_mode: form.connection_mode, host: form.host, port: Number(form.port), database: form.database }),
-    targetEndpoint: ({ target }) => `${target.config.host}:${target.config.port}/${target.config.database}`,
+    targetEndpoint: ({ target }) => `${target.config?.host}:${target.config?.port}/${target.config?.database}`,
   });
 }
 

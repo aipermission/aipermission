@@ -23,7 +23,7 @@ const model = createDatabaseConnectorModel({
     host: target.config?.host || "127.0.0.1",
     port: target.config?.port || defaultPort,
     database: target.config?.database || defaultDatabase,
-    tls_mode: target.config?.tls_mode || "disable",
+    tls_mode: String(target.config?.tls_mode || "disable"),
     transport_target_ref: target.config?.transport_target_ref || "",
   }),
   targetConfig: (form) => ({
