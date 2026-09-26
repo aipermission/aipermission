@@ -1,14 +1,15 @@
 import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
-import { entryID, newActionAttempt, newRetryEntry, sameRetryEntry, validActionAttempt, validRetryEntry } from "./records.js";
-import { notifyChanged, usesIndexedDB } from "./runtime.js";
+import { entryID, newActionAttempt, newRetryEntry, sameRetryEntry, validActionAttempt, validRetryEntry } from "./records.ts";
+import type { ActionAttempt, AttemptExpectation, PreparedRetry, RetryEntry, RetryScope } from "./records.ts";
+import { notifyChanged, usesIndexedDB } from "./runtime.ts";
 import {
   requireMemorySigningReservation,
   requireSigningReservation,
   removeMemorySigningReservation,
   removeUnusedMemorySigningKey,
   removeUnusedSigningKey,
-} from "./signing.js";
+} from "./signing.ts";
 import {
   memoryEntries,
   memoryAttempts,
@@ -16,21 +17,24 @@ import {
   requestPromise,
   storesTransactionPromise,
   withMemoryTransaction,
-} from "./storage.js";
+} from "./storage.ts";
 
-export async function reserveEntry(scope, signature, reservationID) {
+type RetryStores = Record<string, IDBObjectStore>;
+type RetryEntries = Map<string, RetryEntry>;
+
+export async function reserveEntry(scope: RetryScope, signature: string, reservationID: string) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       requireMemorySigningReservation(scope, reservationID);
       removeExpiredMemoryAttempts();
-      const entries = memoryEntries.get(scope.key) || new Map();
+      const entries = memoryEntries.get(scope.key) || new Map<string, RetryEntry>();
       let entry = entries.get(signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
         if (entry.state === "retired") {
           if (hasMemoryAttempts(entry.id)) throw retryIdentityChangedError();
           entries.delete(signature);
-          entry = null;
+          entry = undefined;
         }
       }
       if (entry) {
@@ -60,13 +64,13 @@ export async function reserveEntry(scope, signature, reservationID) {
       await removeExpiredAttempts(stores.attempts, Date.now());
       if ((await requestPromise(stores.attempts.count())) >= maxActionAttempts) throw ledgerFullError();
       const id = entryID(scope.key, signature);
-      let entry = await requestPromise(stores.entries.get(id));
+      let entry = await readStoredEntry(stores.entries, scope, signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
         if (entry.state === "retired") {
           if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) throw retryIdentityChangedError();
           await requestPromise(stores.entries.delete(id));
-          entry = null;
+          entry = undefined;
         }
       }
       if (entry) {
@@ -91,19 +95,17 @@ export async function reserveEntry(scope, signature, reservationID) {
   return { entry: reservation.entry, attempt: reservation.attempt, created: reservation.changed };
 }
 
-export async function getEntry(scope, signature) {
+export async function getEntry(scope: RetryScope, signature: string) {
   if (!usesIndexedDB()) {
     const entry = memoryEntries.get(scope.key)?.get(signature);
     if (entry && !validRetryEntry(entry, scope.key, signature)) throw storageError();
     return entry;
   }
   const database = await openRetryDatabase();
-  const entry = await requestPromise(database.transaction(entriesStore).objectStore(entriesStore).get(entryID(scope.key, signature)));
-  if (entry && !validRetryEntry(entry, scope.key, signature)) throw storageError();
-  return entry;
+  return readStoredEntry(database.transaction(entriesStore).objectStore(entriesStore), scope, signature);
 }
 
-export async function updateEntryIfMatching(prepared, update) {
+export async function updateEntryIfMatching(prepared: PreparedRetry, update: (_entry: RetryEntry) => RetryEntry) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(prepared.scope.key);
@@ -114,7 +116,7 @@ export async function updateEntryIfMatching(prepared, update) {
         cleanupRetiredMemoryEntry(prepared.scope, entries, entry);
         return true;
       }
-      if (!entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
+      if (!entries || !entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
       if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
       entries.set(prepared.signature, update(entry));
       notifyChanged();
@@ -129,7 +131,7 @@ export async function updateEntryIfMatching(prepared, update) {
     async (stores) => {
       const id = entryID(prepared.scope.key, prepared.signature);
       await releaseStoredAttempt(stores.attempts, prepared);
-      const entry = await requestPromise(stores.entries.get(id));
+      const entry = await readStoredEntry(stores.entries, prepared.scope, prepared.signature);
       if (retiredIdentity(entry, prepared)) {
         await cleanupRetiredStoredEntry(stores, prepared.scope, id, entry);
         return true;
@@ -144,7 +146,7 @@ export async function updateEntryIfMatching(prepared, update) {
   return changed;
 }
 
-export async function releaseEntryAttempt(prepared) {
+export async function releaseEntryAttempt(prepared: PreparedRetry) {
   if (!prepared?.attemptID) return;
   return mutateAfterReleasingAttempt(
     prepared,
@@ -153,12 +155,12 @@ export async function releaseEntryAttempt(prepared) {
   );
 }
 
-export async function retireEntryAttempt(prepared) {
+export async function retireEntryAttempt(prepared: PreparedRetry) {
   if (!prepared?.attemptID) return false;
   return mutateAfterReleasingAttempt(
     prepared,
     (entries, entry) => {
-      if (!entry || entry.key !== prepared.idempotencyKey) return false;
+      if (!entries || !entry || entry.key !== prepared.idempotencyKey) return false;
       if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
       deleteMemoryAttemptsForEntry(entry);
       entries.delete(prepared.signature);
@@ -177,7 +179,7 @@ export async function retireEntryAttempt(prepared) {
   );
 }
 
-export async function completeEntryAttempt(prepared) {
+export async function completeEntryAttempt(prepared: PreparedRetry) {
   if (!prepared?.attemptID) return false;
   return mutateAfterReleasingAttempt(
     prepared,
@@ -186,7 +188,7 @@ export async function completeEntryAttempt(prepared) {
         cleanupRetiredMemoryEntry(prepared.scope, entries, entry);
         return true;
       }
-      if (!matchingEntry(entry, prepared)) return false;
+      if (!entries || !matchingEntry(entry, prepared)) return false;
       if (hasMemoryAttempts(entry.id)) return false;
       entries.delete(prepared.signature);
       if (entries.size === 0) memoryEntries.delete(prepared.scope.key);
@@ -207,12 +209,12 @@ export async function completeEntryAttempt(prepared) {
   );
 }
 
-export async function deleteEntryIfMatching(scope, signature, expectedKey, expectedRevision) {
+export async function deleteEntryIfMatching(scope: RetryScope, signature: string, expectedKey: string, expectedRevision: number) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(scope.key);
       const entry = entries?.get(signature);
-      if (!entry || entry.key !== expectedKey || entry.revision !== expectedRevision) return false;
+      if (!entries || !entry || entry.key !== expectedKey || entry.revision !== expectedRevision) return false;
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
       removeExpiredMemoryAttempts();
       if (hasMemoryAttempts(entry.id)) return false;
@@ -231,7 +233,7 @@ export async function deleteEntryIfMatching(scope, signature, expectedKey, expec
     async (stores) => {
       const id = entryID(scope.key, signature);
       await removeExpiredAttempts(stores.attempts, Date.now());
-      const entry = await requestPromise(stores.entries.get(id));
+      const entry = await readStoredEntry(stores.entries, scope, signature);
       if (!entry || entry.key !== expectedKey || entry.revision !== expectedRevision) return false;
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
       if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) return false;
@@ -244,7 +246,7 @@ export async function deleteEntryIfMatching(scope, signature, expectedKey, expec
   return changed;
 }
 
-function reserveMemoryAttempt(scope, entry, attemptID) {
+function reserveMemoryAttempt(scope: RetryScope, entry: RetryEntry, attemptID: string) {
   removeExpiredMemoryAttempts();
   if (memoryAttempts.size >= maxActionAttempts) throw ledgerFullError();
   const attempt = newActionAttempt(scope, entry, attemptID);
@@ -252,7 +254,7 @@ function reserveMemoryAttempt(scope, entry, attemptID) {
   return { ...attempt };
 }
 
-function releaseMemoryAttempt(prepared) {
+function releaseMemoryAttempt(prepared: PreparedRetry) {
   const attempt = memoryAttempts.get(prepared.attemptID);
   if (attempt === undefined) return false;
   if (!validActionAttempt(attempt, attemptExpectation(prepared))) throw storageError();
@@ -260,15 +262,15 @@ function releaseMemoryAttempt(prepared) {
   return true;
 }
 
-async function releaseStoredAttempt(store, prepared) {
-  const attempt = await requestPromise(store.get(prepared.attemptID));
+async function releaseStoredAttempt(store: IDBObjectStore, prepared: PreparedRetry) {
+  const attempt = await requestPromise<unknown>(store.get(prepared.attemptID));
   if (attempt === undefined) return false;
   if (!validActionAttempt(attempt, attemptExpectation(prepared))) throw storageError();
   await requestPromise(store.delete(prepared.attemptID));
   return true;
 }
 
-function attemptExpectation(prepared) {
+function attemptExpectation(prepared: PreparedRetry): AttemptExpectation {
   return {
     id: prepared.attemptID,
     scope: prepared.scope.key,
@@ -279,19 +281,23 @@ function attemptExpectation(prepared) {
   };
 }
 
-function matchingEntry(entry, prepared) {
+function matchingEntry(entry: RetryEntry | undefined, prepared: PreparedRetry): entry is RetryEntry {
   if (!entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
   if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
   return true;
 }
 
-function retiredIdentity(entry, prepared) {
+function retiredIdentity(entry: RetryEntry | undefined, prepared: PreparedRetry) {
   return (
     entry?.state === "retired" && entry.key === prepared.idempotencyKey && validRetryEntry(entry, prepared.scope.key, prepared.signature)
   );
 }
 
-async function mutateAfterReleasingAttempt(prepared, mutateMemory, mutateStored) {
+async function mutateAfterReleasingAttempt(
+  prepared: PreparedRetry,
+  mutateMemory: (_entries: RetryEntries | undefined, _entry: RetryEntry | undefined) => boolean,
+  mutateStored: (_stores: RetryStores, _id: string, _entry: RetryEntry | undefined) => Promise<boolean>,
+) {
   let changed;
   if (!usesIndexedDB()) {
     changed = await withMemoryTransaction(() => {
@@ -310,7 +316,7 @@ async function mutateAfterReleasingAttempt(prepared, mutateMemory, mutateStored)
         await releaseStoredAttempt(stores.attempts, prepared);
         await removeExpiredAttempts(stores.attempts, Date.now());
         const id = entryID(prepared.scope.key, prepared.signature);
-        const entry = await requestPromise(stores.entries.get(id));
+        const entry = await readStoredEntry(stores.entries, prepared.scope, prepared.signature);
         return mutateStored(stores, id, entry);
       },
     );
@@ -319,15 +325,15 @@ async function mutateAfterReleasingAttempt(prepared, mutateMemory, mutateStored)
   return changed;
 }
 
-function cleanupRetiredMemoryEntry(scope, entries, entry) {
-  if (!entry || entry.state !== "retired" || hasMemoryAttempts(entry.id)) return false;
+function cleanupRetiredMemoryEntry(scope: RetryScope, entries: RetryEntries | undefined, entry: RetryEntry | undefined) {
+  if (!entries || !entry || entry.state !== "retired" || hasMemoryAttempts(entry.id)) return false;
   entries.delete(entry.signature);
   if (entries.size === 0) memoryEntries.delete(scope.key);
   removeUnusedMemorySigningKey(scope);
   return true;
 }
 
-async function cleanupRetiredStoredEntry(stores, scope, id, entry) {
+async function cleanupRetiredStoredEntry(stores: RetryStores, scope: RetryScope, id: string, entry: RetryEntry | undefined) {
   if (!entry || entry.state !== "retired") return false;
   if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) return false;
   await requestPromise(stores.entries.delete(id));
@@ -342,11 +348,11 @@ function removeExpiredMemoryAttempts(now = Date.now()) {
   }
 }
 
-function hasMemoryAttempts(entryIDValue) {
+function hasMemoryAttempts(entryIDValue: string) {
   return Array.from(memoryAttempts.values()).some((attempt) => attempt.entry_id === entryIDValue);
 }
 
-function deleteMemoryAttemptsForEntry(entry) {
+function deleteMemoryAttemptsForEntry(entry: RetryEntry) {
   for (const [id, attempt] of memoryAttempts) {
     if (attempt.entry_id !== entry.id) continue;
     if (!validEntryAttempt(attempt, entry)) throw storageError();
@@ -354,15 +360,15 @@ function deleteMemoryAttemptsForEntry(entry) {
   }
 }
 
-async function deleteStoredAttemptsForEntry(store, entry) {
-  const attempts = await requestPromise(store.index("entry_id").getAll(entry.id));
+async function deleteStoredAttemptsForEntry(store: IDBObjectStore, entry: RetryEntry) {
+  const attempts = await requestPromise<unknown[]>(store.index("entry_id").getAll(entry.id));
   for (const attempt of attempts) {
     if (!validEntryAttempt(attempt, entry)) throw storageError();
     await requestPromise(store.delete(attempt.id));
   }
 }
 
-function validEntryAttempt(attempt, entry) {
+function validEntryAttempt(attempt: unknown, entry: RetryEntry): attempt is ActionAttempt {
   return (
     validActionAttempt(attempt, {
       scope: entry.scope,
@@ -373,33 +379,33 @@ function validEntryAttempt(attempt, entry) {
   );
 }
 
-async function removeExpiredAttempts(store, now) {
-  const attempts = await requestPromise(store.getAll());
+async function removeExpiredAttempts(store: IDBObjectStore, now: number) {
+  const attempts = await requestPromise<unknown[]>(store.getAll());
   for (const attempt of attempts) {
     if (!validActionAttempt(attempt)) throw storageError();
     if (Date.parse(attempt.expires_at) <= now) await requestPromise(store.delete(attempt.id));
   }
 }
 
-export async function allEntries(scope) {
+export async function allEntries(scope: RetryScope) {
   if (!usesIndexedDB()) {
     const entries = Array.from(memoryEntries.get(scope.key)?.values() || [], (entry) => ({ ...entry }));
     if (entries.some((entry) => !validRetryEntry(entry, scope.key))) throw storageError();
     return entries.filter((entry) => entry.state !== "retired");
   }
   const database = await openRetryDatabase();
-  const entries = await requestPromise(database.transaction(entriesStore).objectStore(entriesStore).index("scope").getAll(scope.key));
-  if (entries.some((entry) => !validRetryEntry(entry, scope.key))) throw storageError();
+  const entries = await requestPromise<unknown[]>(database.transaction(entriesStore).objectStore(entriesStore).index("scope").getAll(scope.key));
+  if (!entries.every((entry): entry is RetryEntry => validRetryEntry(entry, scope.key))) throw storageError();
   return entries.filter((entry) => entry.state !== "retired");
 }
 
-export async function replaceReconciledEntry(scope, expected) {
+export async function replaceReconciledEntry(scope: RetryScope, expected: RetryEntry) {
   if (!validRetryEntry(expected, scope.key)) throw retryIdentityChangedError();
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(scope.key);
       const current = entries?.get(expected.signature);
-      if (!sameRetryEntry(current, expected)) throw retryIdentityChangedError();
+      if (!entries || !sameRetryEntry(current, expected)) throw retryIdentityChangedError();
       removeExpiredMemoryAttempts();
       if (hasMemoryAttempts(expected.id)) throw retryIdentityChangedError();
       const replacement = newRetryEntry(scope, expected.signature);
@@ -411,7 +417,7 @@ export async function replaceReconciledEntry(scope, expected) {
   const database = await openRetryDatabase();
   const replacement = await storesTransactionPromise(database, [entriesStore, attemptsStore], "readwrite", async (stores) => {
     await removeExpiredAttempts(stores.attempts, Date.now());
-    const current = await requestPromise(stores.entries.get(expected.id));
+    const current = await readStoredEntry(stores.entries, scope, expected.signature);
     if (!sameRetryEntry(current, expected)) throw retryIdentityChangedError();
     if ((await requestPromise(stores.attempts.index("entry_id").count(expected.id))) > 0) throw retryIdentityChangedError();
     const next = newRetryEntry(scope, expected.signature);
@@ -420,4 +426,11 @@ export async function replaceReconciledEntry(scope, expected) {
   });
   notifyChanged();
   return replacement;
+}
+
+async function readStoredEntry(store: IDBObjectStore, scope: RetryScope, signature: string): Promise<RetryEntry | undefined> {
+  const entry = await requestPromise<unknown>(store.get(entryID(scope.key, signature)));
+  if (entry === undefined) return undefined;
+  if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
+  return entry;
 }

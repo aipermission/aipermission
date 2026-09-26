@@ -7,7 +7,30 @@ import {
   signingReservationLifetimeMs,
 } from "./constants.ts";
 
-export function newRetryEntry(scope, signature) {
+export type RetryScope = { key: string; legacyKey?: string };
+export type PreparedRetry = {
+  scope: RetryScope;
+  signature: string;
+  idempotencyKey: string;
+  revision: number;
+  attemptID: string;
+  reused: boolean;
+};
+export type RetryEntry = {
+  id: string; scope: string; signature: string; key: string; state: "pending" | "outcome_unknown" | "retired";
+  revision: number; created_at: string; updated_at: string; operation_ref?: string;
+  [field: string]: unknown;
+};
+export type SigningReservation = { id: string; scope: string; created_at: string; expires_at: string };
+export type ActionAttempt = SigningReservation & { entry_id: string; signature: string; key: string; revision: number };
+export type AttemptExpectation = { id?: string; scope?: string; entryID?: string; signature?: string; key?: string; revision?: number };
+export type SigningKeyRecord = { scope: string; key: CryptoKey; [field: string]: unknown };
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function newRetryEntry(scope: RetryScope, signature: string): RetryEntry {
   const now = new Date().toISOString();
   return {
     id: entryID(scope.key, signature),
@@ -21,7 +44,7 @@ export function newRetryEntry(scope, signature) {
   };
 }
 
-export function newSigningReservation(scope) {
+export function newSigningReservation(scope: RetryScope): SigningReservation {
   const now = Date.now();
   return {
     id: newIdempotencyKey(),
@@ -31,7 +54,7 @@ export function newSigningReservation(scope) {
   };
 }
 
-export function newActionAttempt(scope, entry, attemptID) {
+export function newActionAttempt(scope: RetryScope, entry: RetryEntry, attemptID: string): ActionAttempt {
   const now = Date.now();
   return {
     id: attemptID,
@@ -45,10 +68,11 @@ export function newActionAttempt(scope, entry, attemptID) {
   };
 }
 
-export function validRetryEntry(entry, scope, signature = "") {
+export function validRetryEntry(value: unknown, scope: string, signature = ""): value is RetryEntry {
+  const entry = objectRecord(value);
   return (
     entry !== null &&
-    typeof entry === "object" &&
+    typeof entry.signature === "string" &&
     entry.id === entryID(scope, entry.signature) &&
     entry.scope === scope &&
     /^[a-f0-9]{64}$/.test(entry.signature) &&
@@ -57,7 +81,7 @@ export function validRetryEntry(entry, scope, signature = "") {
     entry.key.length > 0 &&
     entry.key.length <= 128 &&
     (entry.state === "pending" || entry.state === "outcome_unknown" || entry.state === "retired") &&
-    Number.isSafeInteger(entry.revision) &&
+    typeof entry.revision === "number" && Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
@@ -65,7 +89,7 @@ export function validRetryEntry(entry, scope, signature = "") {
   );
 }
 
-export function sameRetryEntry(current, expected) {
+export function sameRetryEntry(current: unknown, expected: RetryEntry) {
   return (
     validRetryEntry(current, expected.scope, expected.signature) &&
     current.key === expected.key &&
@@ -74,26 +98,28 @@ export function sameRetryEntry(current, expected) {
   );
 }
 
-export function validSigningKeyRecord(record, scope) {
-  const key = record?.key;
+export function validSigningKeyRecord(value: unknown, scope: string): value is SigningKeyRecord {
+  const record = objectRecord(value);
+  const key = objectRecord(record?.key);
+  const algorithm = objectRecord(key?.algorithm);
   return (
     typeof scope === "string" &&
     scope.length > 0 &&
     record?.scope === scope &&
     key !== null &&
-    typeof key === "object" &&
     key.type === "secret" &&
     key.extractable === false &&
-    key.algorithm?.name === "HMAC" &&
+    algorithm?.name === "HMAC" &&
     Array.isArray(key.usages) &&
+    key.usages.every((usage: unknown) => typeof usage === "string" && ["encrypt", "decrypt", "sign", "verify", "deriveKey", "deriveBits", "wrapKey", "unwrapKey"].includes(usage)) &&
     key.usages.includes("sign")
   );
 }
 
-export function validSigningReservation(record, scope = "", reservationID = "") {
+export function validSigningReservation(value: unknown, scope = "", reservationID = ""): value is SigningReservation {
+  const record = objectRecord(value);
   return (
     record !== null &&
-    typeof record === "object" &&
     typeof record.id === "string" &&
     record.id.length > 0 &&
     (!reservationID || record.id === reservationID) &&
@@ -107,8 +133,10 @@ export function validSigningReservation(record, scope = "", reservationID = "") 
   );
 }
 
-export function validActionAttempt(record, expected = {}) {
+export function validActionAttempt(value: unknown, expected: AttemptExpectation = {}): value is ActionAttempt {
+  const record = objectRecord(value);
   return (
+    record !== null &&
     validAttemptIdentity(record, expected) &&
     validAttemptRetryIdentity(record, expected) &&
     validTimestamp(record.created_at) &&
@@ -116,7 +144,7 @@ export function validActionAttempt(record, expected = {}) {
   );
 }
 
-function validAttemptIdentity(record, expected) {
+function validAttemptIdentity(record: Record<string, unknown>, expected: AttemptExpectation) {
   return (
     record !== null &&
     typeof record === "object" &&
@@ -126,30 +154,30 @@ function validAttemptIdentity(record, expected) {
     typeof record.scope === "string" &&
     record.scope.length > 0 &&
     (!expected.scope || record.scope === expected.scope) &&
-    record.entry_id === entryID(record.scope, record.signature) &&
+    typeof record.signature === "string" && record.entry_id === entryID(record.scope, record.signature) &&
     (!expected.entryID || record.entry_id === expected.entryID)
   );
 }
 
-function validAttemptRetryIdentity(record, expected) {
+function validAttemptRetryIdentity(record: Record<string, unknown>, expected: AttemptExpectation) {
   return (
-    /^[a-f0-9]{64}$/.test(record.signature) &&
+    typeof record.signature === "string" && /^[a-f0-9]{64}$/.test(record.signature) &&
     (!expected.signature || record.signature === expected.signature) &&
     typeof record.key === "string" &&
     record.key.length > 0 &&
     record.key.length <= 128 &&
     (!expected.key || record.key === expected.key) &&
-    Number.isSafeInteger(record.revision) &&
+    typeof record.revision === "number" && Number.isSafeInteger(record.revision) &&
     record.revision > 0 &&
     (!expected.revision || record.revision === expected.revision)
   );
 }
 
-function validTimestamp(value) {
+function validTimestamp(value: unknown) {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
-export function validRetryDatabaseSchema(database) {
+export function validRetryDatabaseSchema(database: IDBDatabase) {
   if (
     !database.objectStoreNames.contains(entriesStore) ||
     !database.objectStoreNames.contains(keysStore) ||
@@ -169,16 +197,17 @@ export function validRetryDatabaseSchema(database) {
   );
 }
 
-export function entryID(scope, signature) {
+export function entryID(scope: string, signature: string) {
   return `${scope}:${signature}`;
 }
 
-export function stableRequestSignature(value) {
+export function stableRequestSignature(value: unknown): string | undefined {
   if (Array.isArray(value)) return `[${value.map(stableRequestSignature).join(",")}]`;
   if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
     return `{${Object.keys(value)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableRequestSignature(value[key])}`)
+      .map((key) => `${JSON.stringify(key)}:${stableRequestSignature(record[key])}`)
       .join(",")}}`;
   }
   return JSON.stringify(value);

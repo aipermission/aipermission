@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { localActionReconciliationEvent } from "../lib/local-action-retry";
-
-export type ReconciliationDetail = {
-  requestID?: number | null;
-  operationRef?: string;
-  assistantHint?: string;
-  createdAt?: string;
-  resolve: (_confirmed: boolean) => void;
-};
+import type { ReconciliationDetail } from "../lib/local-action-retry/runtime.ts";
+export type { ReconciliationDetail } from "../lib/local-action-retry/runtime.ts";
 
 export function useLocalActionReconciliation() {
   const [value, setValue] = useState<ReconciliationDetail | null>(null);
