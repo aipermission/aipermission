@@ -8,7 +8,9 @@ const targets = [
   { ref: "ssh:2:20", connector_kind: "ssh", target_id: 2, profile_id: 20, profile_label: "root", name: "ops" },
 ];
 
-function props(overrides = {}) {
+type SelectionProps = Parameters<typeof useConsoleTargetSelection<(typeof targets)[number]>>[0];
+
+function props(overrides: Partial<Omit<SelectionProps, "setSearchParams">> = {}) {
   return {
     messages: { data: [] },
     pendingApprovals: [],
@@ -45,6 +47,6 @@ describe("useConsoleTargetSelection", () => {
     act(() => result.current.setSearch("readonly"));
 
     expect(result.current.filteredTargets.map((target) => target.target_id)).toEqual([1]);
-    expect(result.current.selectedTarget.ref).toBe("postgres:1:10");
+    expect(result.current.selectedTarget?.ref).toBe("postgres:1:10");
   });
 });

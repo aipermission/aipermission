@@ -8,7 +8,7 @@ vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPut: vi.fn() }));
 
 describe("VaultPermissionDialog", () => {
   beforeEach(() => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
         return { items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }], revision: "scope-1" };
       }
@@ -28,7 +28,7 @@ describe("VaultPermissionDialog", () => {
       }
       throw new Error(`Unexpected GET ${path}`);
     });
-    apiPut.mockResolvedValue({
+    vi.mocked(apiPut).mockResolvedValue({
       definitions: [
         {
           name: "vault.inject",
@@ -74,7 +74,7 @@ describe("VaultPermissionDialog", () => {
   it("persists project visibility and a temporary capability lifetime", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
-    apiPut.mockImplementation(async (path) => {
+    vi.mocked(apiPut).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") {
         return { items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: false }], revision: "scope-2" };
       }
@@ -114,8 +114,8 @@ describe("VaultPermissionDialog", () => {
     const user = userEvent.setup();
     const firstScopes = deferred();
     const firstCapabilities = deferred();
-    let firstSignal;
-    apiGet.mockImplementation(async (path, options = {}) => {
+    let firstSignal: AbortSignal | undefined;
+    vi.mocked(apiGet).mockImplementation(async (path, options = {}) => {
       if (path === "/api/tokens/1/project-scopes") {
         firstSignal = options.signal;
         return firstScopes.promise;
@@ -133,14 +133,14 @@ describe("VaultPermissionDialog", () => {
       }
       throw new Error(`Unexpected GET ${path}`);
     });
-    apiPut.mockResolvedValue({ definitions: [], items: [] });
+    vi.mocked(apiPut).mockResolvedValue({ definitions: [], items: [] });
 
     const view = render(<VaultPermissionDialog token={{ id: 1, name: "first" }} onClose={vi.fn()} onSaved={vi.fn()} />);
     await waitFor(() => expect(firstSignal).toBeDefined());
     view.rerender(<VaultPermissionDialog token={{ id: 2, name: "second" }} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     await screen.findByText("Second");
-    expect(firstSignal.aborted).toBe(true);
+    expect(firstSignal?.aborted).toBe(true);
     firstScopes.resolve({ items: [{ project_id: 3, project_name: "First", enabled: true }] });
     firstCapabilities.resolve({
       definitions: [{ name: "vault.inject", label: "Inject secrets", description: "Inject values.", allowed_rules: ["always_run"] }],
@@ -164,7 +164,7 @@ describe("VaultPermissionDialog", () => {
   });
 
   it("explains when no projects are available for Vault permissions", async () => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") return { items: [], revision: "scope-empty" };
       if (path === "/api/tokens/7/project-capabilities") {
         return { definitions: [], items: [], revision: "capability-empty" };
@@ -179,7 +179,7 @@ describe("VaultPermissionDialog", () => {
   });
 
   it("shows a load failure without enabling capability saves", async () => {
-    apiGet.mockRejectedValue(new Error("Vault permissions unavailable"));
+    vi.mocked(apiGet).mockRejectedValue(new Error("Vault permissions unavailable"));
 
     render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={vi.fn()} />);
 
@@ -188,7 +188,7 @@ describe("VaultPermissionDialog", () => {
   });
 
   it("does not enable saves for a malformed project scope response", async () => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") return { items: [{ project_id: 3, enabled: true }], revision: "scope-1" };
       if (path === "/api/tokens/7/project-capabilities") return { definitions: [], items: [], revision: "capability-1" };
       throw new Error(`Unexpected GET ${path}`);
@@ -201,7 +201,7 @@ describe("VaultPermissionDialog", () => {
   });
 
   it("does not enable saves for a malformed Vault capability response", async () => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") return { items: [], revision: "scope-1" };
       return { definitions: [{ name: "vault.inject", allowed_rules: ["always_run"] }], items: [], revision: "capability-1" };
     });
@@ -215,7 +215,7 @@ describe("VaultPermissionDialog", () => {
   it("does not report a malformed save response as a successful grant", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
-    apiPut.mockResolvedValue({ definitions: [], items: [], revision: "" });
+    vi.mocked(apiPut).mockResolvedValue({ definitions: [], items: [], revision: "" });
     render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} onSaved={onSaved} />);
 
     await screen.findByText("Inject secrets");
@@ -228,8 +228,8 @@ describe("VaultPermissionDialog", () => {
 });
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((resolvePromise) => {
+  let resolve!: (_value: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
