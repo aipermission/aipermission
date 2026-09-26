@@ -6,16 +6,18 @@ import {
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
 } from "../../lib/local-action-retry";
+import type { RetryListEntry } from "../../lib/local-action-retry.ts";
+import { errorMessage } from "../../lib/errors.ts";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 
 export function LocalActionRetryPanel() {
-  const [entries, setEntries] = useState([]);
+  const [entries, setEntries] = useState<RetryListEntry[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<RetryListEntry | { invalid: true } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -30,7 +32,7 @@ export function LocalActionRetryPanel() {
       } catch (loadError) {
         if (!active || currentGeneration !== generation) return;
         setEntries([]);
-        setError(loadError.message);
+        setError(errorMessage(loadError, "Could not load unresolved local actions."));
       } finally {
         if (active && currentGeneration === generation) setLoading(false);
       }
@@ -52,7 +54,7 @@ export function LocalActionRetryPanel() {
       }
       setSelected(null);
     } catch (resolveError) {
-      setError(resolveError.message);
+      setError(errorMessage(resolveError, "Could not reconcile the local retry identity."));
     }
   }
 
@@ -68,7 +70,7 @@ export function LocalActionRetryPanel() {
             <Notice>Loading unresolved local actions...</Notice>
           ) : error ? (
             <div className="flex items-center justify-between gap-3">
-              <Notice tone="danger">{error}</Notice>
+              <Notice tone="bad">{error}</Notice>
               <Button type="button" variant="danger" onClick={() => setSelected({ invalid: true })}>
                 Reset ledger
               </Button>
@@ -135,14 +137,15 @@ export function LocalActionRetryPanel() {
   );
 }
 
-function retryReference(entry) {
-  if (entry.request_id) return `Request ${entry.request_id} · `;
-  if (entry.operation_ref?.startsWith("operation:")) return `Operation ${entry.operation_ref.slice("operation:".length)} · `;
-  if (entry.operation_ref) return `${entry.operation_ref} · `;
+function retryReference(entry: RetryListEntry) {
+  if ("request_id" in entry && typeof entry.request_id === "number" && entry.request_id > 0) return `Request ${entry.request_id} · `;
+  const operationRef = "operation_ref" in entry && typeof entry.operation_ref === "string" ? entry.operation_ref : "";
+  if (operationRef.startsWith("operation:")) return `Operation ${operationRef.slice("operation:".length)} · `;
+  if (operationRef) return `${operationRef} · `;
   return "";
 }
 
-function formatRetryTime(value) {
+function formatRetryTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Time unavailable" : date.toLocaleString();
 }

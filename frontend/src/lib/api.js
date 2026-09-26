@@ -5,7 +5,7 @@ import {
   preserveLocalActionRetryAttempt,
   releaseLocalActionRetryAttempt,
   retireLocalActionRetryAttempt,
-} from "./local-action-retry.js";
+} from "./local-action-retry.ts";
 import { APIError } from "./errors.ts";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.ts";
 import { scopedUICookieName } from "./ui-cookie.ts";

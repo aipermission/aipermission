@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IDBFactory } from "fake-indexeddb";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scopedUICookieName } from "../lib/ui-cookie";
 import {
   completeLocalActionRetry,
@@ -14,11 +14,24 @@ import {
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
 import { LocalActionRetryPanel } from "./settings/local-action-retry-panel";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("local connector action reconciliation", () => {
+  it("does not invent missing request details and treats dialog dismissal as keeping protection", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const view = render(<LocalActionReconciliationDialog value={{ resolve: vi.fn() }} onClose={onClose} />);
+    expect(screen.queryByText(/^Request /)).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledWith(false);
+    view.rerender(<LocalActionReconciliationDialog value={null} onClose={onClose} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("keeps an unknown outcome protected until the operator explicitly starts a new attempt", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(<LocalActionReconciliationDialog value={{ requestID: 91, assistantHint: "Inspect external state first." }} onClose={onClose} />);
+    render(<LocalActionReconciliationDialog value={{ requestID: 91, assistantHint: "Inspect external state first.", resolve: vi.fn() }} onClose={onClose} />);
 
     expect(screen.getByText(/may repeat an operation that already completed/i)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Keep protected" }));
@@ -29,8 +42,7 @@ describe("local connector action reconciliation", () => {
   });
 
   it("requires explicit reset confirmation before removing a legacy retry ledger", async () => {
-    const originalIndexedDB = globalThis.indexedDB;
-    globalThis.indexedDB = new IDBFactory();
+    vi.stubGlobal("indexedDB", new IDBFactory());
     const user = userEvent.setup();
     document.cookie = `${scopedUICookieName("aipermission_workspace")}=test-workspace; Path=/`;
     window.localStorage.setItem(
@@ -58,13 +70,10 @@ describe("local connector action reconciliation", () => {
     await user.click(screen.getByRole("button", { name: "Reset ledger" }));
     expect(await screen.findByText("No unresolved local connector attempts.")).toBeVisible();
     expect(window.localStorage.getItem("aipermission.local-action-retry.v2.test-workspace")).toBeNull();
-    if (originalIndexedDB === undefined) delete globalThis.indexedDB;
-    else globalThis.indexedDB = originalIndexedDB;
   });
 
   it("preserves retry identity until completion or explicit outcome reconciliation", async () => {
-    const originalIndexedDB = globalThis.indexedDB;
-    globalThis.indexedDB = new IDBFactory();
+    vi.stubGlobal("indexedDB", new IDBFactory());
     document.cookie = `${scopedUICookieName("aipermission_workspace")}=retry-lifecycle; Path=/`;
     try {
       await resetLocalActionRetryLedger();
@@ -91,14 +100,11 @@ describe("local connector action reconciliation", () => {
       expect(await listLocalActionRetryEntries()).toEqual([]);
     } finally {
       await resetLocalActionRetryLedger();
-      if (originalIndexedDB === undefined) delete globalThis.indexedDB;
-      else globalThis.indexedDB = originalIndexedDB;
     }
   });
 
   it("renders durable operation references without requiring request ids", async () => {
-    const originalIndexedDB = globalThis.indexedDB;
-    globalThis.indexedDB = new IDBFactory();
+    vi.stubGlobal("indexedDB", new IDBFactory());
     document.cookie = `${scopedUICookieName("aipermission_workspace")}=retry-operation-refs; Path=/`;
     try {
       await resetLocalActionRetryLedger();
@@ -116,8 +122,6 @@ describe("local connector action reconciliation", () => {
       expect(screen.getAllByText("Outcome unknown")).toHaveLength(3);
     } finally {
       await resetLocalActionRetryLedger();
-      if (originalIndexedDB === undefined) delete globalThis.indexedDB;
-      else globalThis.indexedDB = originalIndexedDB;
     }
   });
 });

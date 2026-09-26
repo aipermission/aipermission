@@ -3,8 +3,19 @@ import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Input } from "./ui/form";
 import { Notice } from "./ui/notice";
+import type { DatabaseStatus } from "../lib/gateway-contracts/database-status-contract.ts";
+import type { useDatabaseLifecycle } from "./use-database-lifecycle.ts";
 
-export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose, onSubmit }) {
+type Lifecycle = ReturnType<typeof useDatabaseLifecycle>;
+type Props = {
+  state: Lifecycle["switchDialog"];
+  databaseStatus: DatabaseStatus | null;
+  onChange: Lifecycle["setSwitchDialog"];
+  onClose: Lifecycle["closeSwitch"];
+  onSubmit: Lifecycle["switchDatabase"];
+};
+
+export function DatabaseSwitchDialog({ state, databaseStatus, onChange, onClose, onSubmit }: Props) {
   const databases = databaseStatus?.databases || [];
   const currentID = databaseStatus?.database_id || "";
   const selected = databases.find((database) => database.id === state.database_id) || null;

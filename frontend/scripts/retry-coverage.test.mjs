@@ -6,7 +6,7 @@ import { retryCoverageFiles, runRetryCoverage } from "./retry-coverage.mjs";
 test("discovers every retry production module", () => {
   assert.deepEqual(
     retryCoverageFiles().map((file) => file.split("/").at(-1)),
-    ["local-action-retry.js", "constants.ts", "entries.ts", "errors.ts", "records.ts", "runtime.ts", "signing.ts", "storage.ts"],
+    ["local-action-retry.ts", "constants.ts", "entries.ts", "errors.ts", "records.ts", "runtime.ts", "signing.ts", "storage.ts"],
   );
 });
 

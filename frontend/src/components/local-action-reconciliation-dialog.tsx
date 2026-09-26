@@ -1,8 +1,11 @@
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Notice } from "./ui/notice";
+import type { ReconciliationDetail } from "../lib/local-action-retry/runtime.ts";
 
-export function LocalActionReconciliationDialog({ value, onClose }) {
+type Props = { value: ReconciliationDetail | null; onClose: (_confirmed: boolean) => void };
+
+export function LocalActionReconciliationDialog({ value, onClose }: Props) {
   return (
     <Dialog
       open={Boolean(value)}
