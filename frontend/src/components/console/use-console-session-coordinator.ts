@@ -11,7 +11,7 @@ import { vaultSessionOptionsResponse } from "../../lib/gateway-contracts/vault-s
 import type { VaultSessionOptions } from "../../lib/gateway-contracts/vault-session-options-contract.ts";
 
 type Runtime = { id: number; name: string };
-type Session = ConsoleSession & { runtime_id?: number; status?: string; name?: string };
+type Session = ConsoleSession;
 type SessionOptions = {
   name?: string;
   closeExisting?: boolean;
@@ -55,7 +55,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }: { pollIsCurrent:
       try {
         const data = await apiGet("/api/console/sessions", pollReadOptions(request.signal, generation));
         if (!request.isCurrent() || !pollIsCurrent(generation)) return;
-        const verified = consoleSessions(data) as Session[];
+        const verified = consoleSessions(data);
         setSessions((current) => ({ state: "ready", data: mergeConsoleSessionData(verified, current.data), error: null }));
         verified.filter((session) => isLiveConsoleSession(session)).forEach((session) => attachSession(session.id));
       } catch (error) {
@@ -103,7 +103,7 @@ export function useConsoleSessionCoordinator({ pollIsCurrent }: { pollIsCurrent:
         request ? { signal: request.signal } : undefined,
       );
       if (request && !request.isCurrent()) return null;
-      const session = consoleSessions([response])[0] as Session;
+      const session = consoleSessions([response])[0];
       if (!Number.isSafeInteger(session.runtime_id) || session.runtime_id !== runtime.id) {
         throw new Error("Console session runtime does not match the requested runtime.");
       }

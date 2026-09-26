@@ -5,15 +5,15 @@ import { useConsoleConnections } from "./use-console-connections";
 import { useConsoleSessionCoordinator } from "./use-console-session-coordinator";
 
 vi.mock("../../lib/api", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../lib/api")>()),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
 }));
 vi.mock("./use-console-connections", () => ({ useConsoleConnections: vi.fn() }));
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((resolvePromise) => {
+  let resolve!: (_value: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
@@ -28,7 +28,7 @@ function renderCoordinator() {
     resizeSession: vi.fn(),
     sendInput: vi.fn(),
   };
-  useConsoleConnections.mockReturnValue(connections);
+  vi.mocked(useConsoleConnections).mockReturnValue(connections);
   const hook = renderHook(() => useConsoleSessionCoordinator({ pollIsCurrent: () => true }));
   return { ...hook, connections };
 }
@@ -39,9 +39,9 @@ const vaultOptions = { supported: true, target_project_id: 4, items: [{ id: 1, n
 describe("useConsoleSessionCoordinator", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    apiGet.mockReset();
-    apiPost.mockReset();
-    useConsoleConnections.mockReset();
+    vi.mocked(apiGet).mockReset();
+    vi.mocked(apiPost).mockReset();
+    vi.mocked(useConsoleConnections).mockReset();
   });
 
   afterEach(() => {
@@ -49,8 +49,8 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("creates and activates a plain console with the stable request contract", async () => {
-    apiGet.mockResolvedValue({ supported: false });
-    apiPost.mockResolvedValue({ id: 10, runtime_id: 7, status: "connecting" });
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockResolvedValue({ id: 10, runtime_id: 7, status: "connecting" });
     const { result, connections } = renderCoordinator();
 
     await act(async () => result.current.newSession(runtime, { params: { container: "api" } }));
@@ -71,8 +71,8 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("does not retry a failed session creation as though the Vault probe failed", async () => {
-    apiGet.mockResolvedValue({ supported: false });
-    apiPost.mockRejectedValue(new Error("session creation failed"));
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockRejectedValue(new Error("session creation failed"));
     const { result } = renderCoordinator();
 
     await act(async () => {
@@ -83,8 +83,8 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("does not attach a malformed session response", async () => {
-    apiGet.mockResolvedValue({ supported: false });
-    apiPost.mockResolvedValue({ status: "connecting" });
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockResolvedValue({ status: "connecting" });
     const { result, connections } = renderCoordinator();
 
     await act(async () => {
@@ -97,8 +97,8 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("does not attach a session created for another runtime", async () => {
-    apiGet.mockResolvedValue({ supported: false });
-    apiPost.mockResolvedValue({ id: 14, runtime_id: 8, status: "connecting" });
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockResolvedValue({ id: 14, runtime_id: 8, status: "connecting" });
     const { result, connections } = renderCoordinator();
 
     await act(async () => {
@@ -112,11 +112,11 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("does not open Vault selection from a superseded probe for the same runtime", async () => {
     const older = deferred();
-    apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ supported: false });
-    apiPost.mockResolvedValue({ id: 11, runtime_id: 7, status: "connecting" });
+    vi.mocked(apiGet).mockReturnValueOnce(older.promise).mockResolvedValueOnce({ supported: false });
+    vi.mocked(apiPost).mockResolvedValue({ id: 11, runtime_id: 7, status: "connecting" });
     const { result } = renderCoordinator();
 
-    let oldStart;
+    let oldStart: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     await act(async () => {
       oldStart = result.current.newSession(runtime);
       await result.current.newSession(runtime);
@@ -130,12 +130,12 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("does not let an older runtime probe replace the current Vault selection", async () => {
     const older = deferred();
-    apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce(vaultOptions);
+    vi.mocked(apiGet).mockReturnValueOnce(older.promise).mockResolvedValueOnce(vaultOptions);
     const { result } = renderCoordinator();
     const secondRuntime = { id: 8, name: "Second Server" };
 
-    let firstSelection;
-    let secondSelection;
+    let firstSelection: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
+    let secondSelection: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       firstSelection = result.current.newSession(runtime);
       secondSelection = result.current.newSession(secondRuntime);
@@ -152,10 +152,10 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("resolves a pending Vault selection when the dialog is dismissed", async () => {
-    apiGet.mockResolvedValue(vaultOptions);
+    vi.mocked(apiGet).mockResolvedValue(vaultOptions);
     const { result } = renderCoordinator();
 
-    let pending;
+    let pending: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       pending = result.current.newSession(runtime);
     });
@@ -170,8 +170,8 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("does not activate a Vault session that completes after the dialog closes", async () => {
     const created = deferred();
-    apiGet.mockResolvedValue(vaultOptions);
-    apiPost.mockReturnValue(created.promise);
+    vi.mocked(apiGet).mockResolvedValue(vaultOptions);
+    vi.mocked(apiPost).mockReturnValue(created.promise);
     const { result, connections } = renderCoordinator();
 
     act(() => {
@@ -191,11 +191,11 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("keeps a newer runtime dialog when an older Vault session completes", async () => {
     const created = deferred();
-    apiGet.mockResolvedValue(vaultOptions);
-    apiPost.mockReturnValue(created.promise);
+    vi.mocked(apiGet).mockResolvedValue(vaultOptions);
+    vi.mocked(apiPost).mockReturnValue(created.promise);
     const { result, connections } = renderCoordinator();
 
-    let firstSelection;
+    let firstSelection: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       firstSelection = result.current.newSession(runtime);
     });
@@ -205,7 +205,7 @@ describe("useConsoleSessionCoordinator", () => {
     });
 
     const secondRuntime = { id: 8, name: "Second Server" };
-    let secondSelection;
+    let secondSelection: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       secondSelection = result.current.newSession(secondRuntime);
     });
@@ -223,9 +223,9 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("resolves pending Vault selection on unmount", async () => {
-    apiGet.mockResolvedValue(vaultOptions);
+    vi.mocked(apiGet).mockResolvedValue(vaultOptions);
     const { result, unmount } = renderCoordinator();
-    let pending;
+    let pending: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       pending = result.current.newSession(runtime);
     });
@@ -238,11 +238,11 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("does not activate a plain session that completes after unmount", async () => {
     const created = deferred();
-    apiGet.mockResolvedValue({ supported: false });
-    apiPost.mockReturnValue(created.promise);
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockReturnValue(created.promise);
     const { result, unmount, connections } = renderCoordinator();
 
-    let pending;
+    let pending: ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["newSession"]> | undefined;
     act(() => {
       pending = result.current.newSession(runtime);
     });
@@ -256,13 +256,13 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("disconnects only affected sessions before restarting a runtime", async () => {
-    apiGet
+    vi.mocked(apiGet)
       .mockResolvedValueOnce([
         { id: 10, runtime_id: 7, status: "connected" },
         { id: 20, runtime_id: 8, status: "connected" },
       ])
       .mockResolvedValueOnce([]);
-    apiPost.mockResolvedValue({ status: "completed" });
+    vi.mocked(apiPost).mockResolvedValue({ status: "completed" });
     const { result, connections } = renderCoordinator();
     await act(async () => result.current.loadSessions());
 
@@ -275,7 +275,7 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("keeps the last session snapshot through a transient failure and recovers", async () => {
     const session = { id: 10, runtime_id: 7, status: "connected" };
-    apiGet.mockResolvedValueOnce([session]).mockRejectedValueOnce(new Error("session service unavailable")).mockResolvedValueOnce([]);
+    vi.mocked(apiGet).mockResolvedValueOnce([session]).mockRejectedValueOnce(new Error("session service unavailable")).mockResolvedValueOnce([]);
     const { result } = renderCoordinator();
 
     await act(async () => result.current.loadSessions());
@@ -287,12 +287,12 @@ describe("useConsoleSessionCoordinator", () => {
   });
 
   it("reattaches an existing live runtime session without creating another", async () => {
-    apiGet.mockResolvedValue([{ id: 10, runtime_id: 7, status: "connected" }]);
+    vi.mocked(apiGet).mockResolvedValue([{ id: 10, runtime_id: 7, status: "connected" }]);
     const { result, connections } = renderCoordinator();
     await act(async () => result.current.loadSessions());
     connections.attachSession.mockClear();
 
-    let session;
+    let session: Awaited<ReturnType<ReturnType<typeof useConsoleSessionCoordinator>["ensureSession"]>> | undefined;
     await act(async () => {
       session = await result.current.ensureSession(runtime);
     });

@@ -2,9 +2,13 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useConnectorEditor } from "./use-connector-editor";
 
-const baseForm = (kind) => ({ connector_kind: kind, name: "", project_id: "" });
+type EditorProps = Parameters<typeof useConnectorEditor>[0];
+type Model = NonNullable<ReturnType<EditorProps["modelForKind"]>>;
+type SyncContext = Parameters<NonNullable<Model["syncForm"]>>[0];
 
-function renderEditor(model) {
+const baseForm = (kind: string) => ({ connector_kind: kind, name: "", project_id: "" });
+
+function renderEditor(model: Model | null) {
   const onRefresh = vi.fn(async () => {});
   const onOperation = vi.fn(() => true);
   const modelForKind = vi.fn(() => model);
@@ -25,9 +29,9 @@ function renderEditor(model) {
 }
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((resolvePromise, rejectPromise) => {
+  let resolve!: () => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
@@ -36,7 +40,7 @@ function deferred() {
 
 describe("useConnectorEditor", () => {
   it("saves through the connector model and clears sensitive form state", async () => {
-    const model = { save: vi.fn(async () => {}), syncForm: ({ form }) => form };
+    const model = { save: vi.fn(async () => {}), syncForm: ({ form }: SyncContext) => form };
     const { result, onRefresh } = renderEditor(model);
 
     act(() => result.current.openCreate("example"));
@@ -58,7 +62,7 @@ describe("useConnectorEditor", () => {
   it("keeps the editor open after an API failure and supports retry", async () => {
     const model = {
       save: vi.fn().mockRejectedValueOnce(new Error("API unavailable")).mockResolvedValueOnce(undefined),
-      syncForm: ({ form }) => form,
+      syncForm: ({ form }: SyncContext) => form,
     };
     const { result } = renderEditor(model);
     act(() => result.current.openCreate("example"));
@@ -92,7 +96,7 @@ describe("useConnectorEditor", () => {
     const profile = { id: 7 };
     const model = {
       formFromTarget: vi.fn(() => ({ connector_kind: "example", name: "Existing" })),
-      syncForm: ({ form }) => form,
+      syncForm: ({ form }: SyncContext) => form,
     };
     const { result } = renderEditor(model);
 
@@ -108,7 +112,7 @@ describe("useConnectorEditor", () => {
   });
 
   it("does not report a persisted connector as a save failure when refresh fails", async () => {
-    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }) => form };
+    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }: SyncContext) => form };
     const { result, onRefresh } = renderEditor(model);
     onRefresh.mockRejectedValueOnce(new Error("refresh unavailable"));
     act(() => result.current.openCreate("example"));
@@ -122,16 +126,16 @@ describe("useConnectorEditor", () => {
   });
 
   it("does not let a retired save close or reset a replacement draft", async () => {
-    let resolveSave;
-    const pendingSave = new Promise((resolve) => {
+    let resolveSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
       resolveSave = resolve;
     });
-    const model = { save: vi.fn(() => pendingSave), syncForm: ({ form }) => form };
+    const model = { save: vi.fn(() => pendingSave), syncForm: ({ form }: SyncContext) => form };
     const { result, onRefresh } = renderEditor(model);
 
     act(() => result.current.openCreate("example"));
     act(() => result.current.updateField("name", "Old draft"));
-    let save;
+    let save: Promise<boolean> | undefined;
     act(() => {
       save = result.current.save({ preventDefault() {} });
     });
@@ -152,14 +156,14 @@ describe("useConnectorEditor", () => {
     const pending = deferred();
     const model = {
       save: vi.fn(() => pending.promise),
-      syncForm: ({ form, firstCredentialID }) => ({ ...form, credential_id: firstCredentialID }),
+      syncForm: ({ form, firstCredentialID }: SyncContext) => ({ ...form, credential_id: firstCredentialID }),
     };
     const { result, rerender } = renderEditor(model);
     act(() => result.current.openCreate("example"));
     act(() => result.current.updateField("name", "original"));
     act(() => result.current.updateField("credential_id", "4"));
-    let firstSave;
-    let secondSave;
+    let firstSave: Promise<boolean> | undefined;
+    let secondSave: Promise<boolean> | undefined;
     act(() => {
       firstSave = result.current.save({ preventDefault() {} });
       result.current.updateField("name", "broader scope");
@@ -178,7 +182,7 @@ describe("useConnectorEditor", () => {
   });
 
   it("ignores delayed field changes from a retired connector editor", () => {
-    const model = { syncForm: ({ form }) => form };
+    const model = { syncForm: ({ form }: SyncContext) => form };
     const { result } = renderEditor(model);
     act(() => result.current.openCreate("example"));
     const staleUpdateField = result.current.updateField;
@@ -190,7 +194,7 @@ describe("useConnectorEditor", () => {
   });
 
   it("keeps cleared connector fields empty after a successful save", async () => {
-    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }) => form };
+    const model = { save: vi.fn(async () => undefined), syncForm: ({ form }: SyncContext) => form };
     const { result } = renderEditor(model);
     act(() => result.current.openCreate("example"));
     act(() => result.current.updateField("name", "secret-target"));
@@ -206,7 +210,7 @@ describe("useConnectorEditor", () => {
     const recovery = { open: true, connector_kind: "example", type: "trust" };
     const model = {
       save: vi.fn(async () => Promise.reject(new Error("Trust required"))),
-      syncForm: ({ form }) => form,
+      syncForm: ({ form }: SyncContext) => form,
       operationFromError: vi.fn(() => recovery),
     };
     const { result, onOperation } = renderEditor(model);
@@ -221,7 +225,7 @@ describe("useConnectorEditor", () => {
 
   it("keeps destructive dialog state explicit and clears it after deletion", async () => {
     const target = { id: 8, connector_kind: "example", name: "Old target" };
-    const model = { deleteTarget: vi.fn(async () => {}), syncForm: ({ form }) => form };
+    const model = { deleteTarget: vi.fn(async () => {}), syncForm: ({ form }: SyncContext) => form };
     const { result, onRefresh } = renderEditor(model);
 
     act(() => result.current.requestDelete(target));
@@ -239,11 +243,11 @@ describe("useConnectorEditor", () => {
     const pendingDelete = deferred();
     const first = { id: 8, connector_kind: "example", name: "First target" };
     const replacement = { id: 9, connector_kind: "example", name: "Replacement target" };
-    const model = { deleteTarget: vi.fn(() => pendingDelete.promise), syncForm: ({ form }) => form };
+    const model = { deleteTarget: vi.fn(() => pendingDelete.promise), syncForm: ({ form }: SyncContext) => form };
     const { result, onRefresh } = renderEditor(model);
 
     act(() => result.current.requestDelete(first));
-    let removal;
+    let removal: Promise<boolean> | undefined;
     act(() => {
       removal = result.current.remove(false);
     });

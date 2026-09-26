@@ -261,6 +261,14 @@ describe("typed untrusted gateway contracts", () => {
   it("rejects malformed console sessions without activating a socket", () => {
     expect(() => consoleSessions([{ id: 0 }])).toThrow(/Invalid console session/);
     expect(consoleSessions([{ id: 1, status: "active" }])).toHaveLength(1);
+    for (const fields of [
+      { runtime_id: "7" }, { runtime_id: 0 }, { runtime_id: 1.5 },
+      { status: {} }, { name: [] }, { transcript: 8 }, { error: false },
+    ]) {
+      expect(() => consoleSessions([{ id: 1, ...fields }])).toThrow(/Invalid console session/);
+    }
+    expect(consoleSessions([{ id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null }]))
+      .toEqual([{ id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null }]);
   });
 });
 
