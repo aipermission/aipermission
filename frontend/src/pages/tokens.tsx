@@ -10,8 +10,7 @@ import { useTokenExpiryClock } from "../lib/use-token-expiry-clock";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CopyButton } from "../components/ui/copy-button";
-import { Drawer } from "../components/ui/drawer";
-import { Field, Input, Select } from "../components/ui/form";
+import { TokenCreateDrawer, emptyForm, tokenCreatePayload } from "../components/tokens/token-create-drawer";
 import { Notice } from "../components/ui/notice";
 import { ConnectorPermissionDialog } from "../components/tokens/connector-permission-dialog";
 import { CreatedTokenNotice } from "../components/tokens/created-token-notice";
@@ -19,25 +18,14 @@ import { TokenInstallDialog } from "../components/tokens/token-install-dialog";
 import { TokenRevokeDialog } from "../components/tokens/token-revoke-dialog";
 import { VaultPermissionDialog } from "../components/tokens/vault-permission-dialog";
 
-import type { ComponentProps, Dispatch, FormEvent, SetStateAction } from "react";
+import type { ComponentProps, FormEvent } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { TokenInstallState } from "../components/tokens/token-install-dialog";
-import type { AsyncActionState } from "../lib/use-async-action";
 import type { TokenActionPermission } from "../lib/gateway-contracts/security-contracts";
 import { gatewayCreatedTokenResponse, type CreatedGatewayToken, type GatewayToken } from "../lib/gateway-contracts/core-resource-contracts";
-type TokenForm = typeof emptyForm;
 type TokenStatistics = { total: number; active: number; expired: number; revoked: number };
 type Tone = NonNullable<ComponentProps<typeof Badge>["tone"]>;
 
-const tokenExpiryOptions = [
-  { value: "never", label: "Never expires", ms: 0 },
-  { value: "1h", label: "1 hour", ms: 60 * 60 * 1000 },
-  { value: "4h", label: "4 hours", ms: 4 * 60 * 60 * 1000 },
-  { value: "1d", label: "1 day", ms: 24 * 60 * 60 * 1000 },
-  { value: "7d", label: "7 days", ms: 7 * 24 * 60 * 60 * 1000 },
-];
-
-const emptyForm = { name: "cursor-maintenance", expires_in: "never" };
 export function TokensPage() {
   const { tokens, loadTokens, loadTargets } = useGateway();
   const issuance = useTokenIssuance(loadTokens);
@@ -393,63 +381,6 @@ function TokenStats({ stats, filter, onFilter }: { stats: TokenStatistics; filte
   );
 }
 
-function TokenCreateDrawer({
-  open,
-  form,
-  setForm,
-  state,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean;
-  form: TokenForm;
-  setForm: Dispatch<SetStateAction<TokenForm>>;
-  state: AsyncActionState;
-  onClose: () => void;
-  onSubmit: (_event: FormEvent<HTMLFormElement>) => Promise<void>;
-}) {
-  return (
-    <Drawer
-      open={open}
-      title="Add API token"
-      description="Use one token per AI client, laptop, or temporary maintenance session."
-      onClose={onClose}
-      closeDisabled={state.state === "saving"}
-    >
-      <form className="grid gap-4" onSubmit={onSubmit}>
-        <Field>
-          Name
-          <Input
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            required
-            disabled={state.state === "saving"}
-          />
-        </Field>
-        <Field>
-          Expiration
-          <Select
-            value={form.expires_in}
-            onChange={(event) => setForm({ ...form, expires_in: event.target.value })}
-            disabled={state.state === "saving"}
-          >
-            {tokenExpiryOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-        <Button type="submit" disabled={state.state === "saving"}>
-          <Plus className="h-4 w-4" />
-          {state.state === "saving" ? "Creating..." : "Create token"}
-        </Button>
-        <Notice>Use short-lived tokens for temporary maintenance. By default the token is shown once after creation.</Notice>
-      </form>
-    </Drawer>
-  );
-}
 
 function connectorGrantSummary(permissions: TokenActionPermission[]) {
   const active = permissions.filter((permission) => Boolean(effectiveRule(permission)));
@@ -508,14 +439,6 @@ function TokenStat({
   );
 }
 
-function tokenCreatePayload(form: TokenForm) {
-  const payload: { name: string; expires_at?: string } = { name: form.name };
-  const option = tokenExpiryOptions.find((item) => item.value === form.expires_in);
-  if (option?.ms) {
-    payload.expires_at = new Date(Date.now() + option.ms).toISOString();
-  }
-  return payload;
-}
 
 function formatDate(value?: string) {
   if (!value) return "-";

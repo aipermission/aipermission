@@ -10,9 +10,15 @@ import { apiPost } from "../../../lib/api";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { InstallCommandPanel } from "../common";
 import * as model from "./model";
+import { errorMessage } from "../../../lib/errors";
+import { isHostKeyError } from "./model-helpers";
+import { sshDockerResponse } from "./operation-contracts";
+import type { FormEvent } from "react";
+import type { SSHDockerContainer } from "./model-types";
+import type { OperationDialogProps, ReadDockerLogs, SSHOperation, SSHOperationProps } from "./operation-types";
 
-export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onOperationComplete }) {
-  const operation = value?.connector_kind === "ssh" ? value : { open: false };
+export function SSHConnectorOperationsTemplate({ value, credentials, onChange, onOperationComplete }: SSHOperationProps) {
+  const operation: SSHOperation = value?.connector_kind === "ssh" ? value : { open: false };
   const requests = useRequestGuard("ssh-operations");
   const checkDockerForEffect = useEffectEvent(() => checkDocker(operation.target, operation.profile));
 
@@ -32,13 +38,14 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
     const request = requests.begin("operation");
     onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "loading", data: null, error: null });
     try {
-      const data = await model.checkDocker({ target, profile, signal: request.signal });
+      const raw = await model.checkDocker({ target, profile, signal: request.signal });
       if (!request.isCurrent()) return;
+      const data = sshDockerResponse(raw);
       onChange({ open: true, connector_kind: "ssh", type: "docker-check", target, profile, state: "ready", data, error: null });
     } catch (error) {
       if (!request.isCurrent()) return;
       const action = model.hostKeyActionFromError(error, { operation: "docker-check", target, profile });
-      if (action) {
+      if (action && isHostKeyError(error)) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
@@ -50,14 +57,14 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         profile,
         state: "error",
         data: null,
-        error: error.message,
+        error: errorMessage(error),
       });
     } finally {
       request.complete();
     }
   }
 
-  async function readDockerLogs(target, container, tail = 300, profile = operation.profile) {
+  const readDockerLogs: ReadDockerLogs = async (target, container, tail = 300, profile = operation.profile) => {
     if (!target || !profile || !container) return;
     const request = requests.begin("operation");
     onChange((current) => ({
@@ -72,13 +79,14 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
       error: null,
     }));
     try {
-      const data = await model.readDockerLogs({ target, profile, container, tail, signal: request.signal });
+      const raw = await model.readDockerLogs({ target, profile, container, tail, signal: request.signal });
       if (!request.isCurrent()) return;
+      const data = sshDockerResponse(raw);
       onChange({ open: true, connector_kind: "ssh", type: "docker-logs", target, profile, container, state: "ready", data, error: null });
     } catch (error) {
       if (!request.isCurrent()) return;
       const action = model.hostKeyActionFromError(error, { operation: "docker-logs", target, profile, container });
-      if (action) {
+      if (action && isHostKeyError(error)) {
         onChange({ open: true, connector_kind: "ssh", type: "host-key", hostKey: error.data.host_key, action, state: "idle", error: null });
         return;
       }
@@ -91,12 +99,12 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
         container,
         state: "error",
         data: current?.data,
-        error: error.message,
+        error: errorMessage(error),
       }));
     } finally {
       request.complete();
     }
-  }
+  };
 
   async function approveHostKey() {
     const { hostKey, action } = operation;
@@ -128,7 +136,7 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
       }
     } catch (error) {
       if (!request.isCurrent()) return;
-      onChange((current) => ({ ...current, state: "error", error: error.message }));
+      onChange((current) => ({ ...current, state: "error", error: errorMessage(error) }));
     } finally {
       request.complete();
     }
@@ -152,7 +160,7 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
   );
 }
 
-function HostKeyApprovalDialog({ value, onApprove, onClose }) {
+function HostKeyApprovalDialog({ value, onApprove, onClose }: OperationDialogProps & { onApprove: () => Promise<void> }) {
   const hostKey = value.hostKey;
   const changed = Boolean(hostKey?.changed);
   return (
@@ -214,12 +222,12 @@ function HostKeyApprovalDialog({ value, onApprove, onClose }) {
   );
 }
 
-function ServerInstallDialog({ value, credentials, onClose }) {
+function ServerInstallDialog({ value, credentials, onClose }: OperationDialogProps & Pick<SSHOperationProps, "credentials">) {
   const target = value.target;
   const profile = value.profile;
   const keyID = profile?.public?.ssh_key_id;
   const key = credentials.find((item) => Number(item.id) === Number(keyID)) || null;
-  const username = profile?.public?.username || target?.config?.username || "ssh";
+  const username = profile?.public?.username || "ssh";
   const host = target?.config?.host || "host";
   const port = target?.config?.port || 22;
 
@@ -231,7 +239,7 @@ function ServerInstallDialog({ value, credentials, onClose }) {
       onClose={onClose}
       size="md"
     >
-      {target && key ? (
+      {target && key?.install_command ? (
         <InstallCommandPanel
           command={key.install_command}
           title={`${username}@${host}:${port}`}
@@ -244,9 +252,9 @@ function ServerInstallDialog({ value, credentials, onClose }) {
   );
 }
 
-function DockerCheckDialog({ value, onReadLogs, onClose }) {
+function DockerCheckDialog({ value, onReadLogs, onClose }: OperationDialogProps & { onReadLogs: ReadDockerLogs }) {
   const data = value.data;
-  const [detailContainer, setDetailContainer] = useState(null);
+  const [detailContainer, setDetailContainer] = useState<SSHDockerContainer | null>(null);
   return (
     <>
       <Dialog
@@ -334,7 +342,7 @@ function DockerCheckDialog({ value, onReadLogs, onClose }) {
   );
 }
 
-function DockerContainerDetailDialog({ container, onClose }) {
+function DockerContainerDetailDialog({ container, onClose }: { container: SSHDockerContainer | null; onClose: () => void }) {
   return (
     <Dialog
       open={Boolean(container)}
@@ -364,9 +372,9 @@ function DockerContainerDetailDialog({ container, onClose }) {
   );
 }
 
-function DockerLogsDialog({ value, onRefresh, onClose }) {
-  const [tail, setTail] = useState(300);
-  const outputRef = useRef(null);
+function DockerLogsDialog({ value, onRefresh, onClose }: OperationDialogProps & { onRefresh: ReadDockerLogs }) {
+  const [tail, setTail] = useState<string | number>(300);
+  const outputRef = useRef<HTMLPreElement | null>(null);
   const output = [value.data?.stdout, value.data?.stderr].filter(Boolean).join("\n\n");
   const canRefresh = Boolean(value.target && value.container) && value.state !== "loading";
 
@@ -378,14 +386,15 @@ function DockerLogsDialog({ value, onRefresh, onClose }) {
 
   useEffect(() => {
     if (value.state === "ready" || value.state === "loading") {
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
         const node = outputRef.current;
         if (node) node.scrollTop = node.scrollHeight;
       }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [value.state, output]);
 
-  function refreshLogs(event) {
+  function refreshLogs(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!canRefresh) return;
     const boundedTail = Math.max(1, Math.min(5000, Number(tail) || 300));
@@ -444,7 +453,17 @@ function DockerLogsDialog({ value, onRefresh, onClose }) {
   );
 }
 
-function DockerDetailField({ label, value, mono = false, wide = false }) {
+function DockerDetailField({
+  label,
+  value,
+  mono = false,
+  wide = false,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+  wide?: boolean;
+}) {
   return (
     <div className={`min-w-0 rounded-md border border-stone-200 bg-stone-50 p-3 ${wide ? "sm:col-span-2 xl:col-span-3" : ""}`}>
       <p className="text-xs font-semibold uppercase text-stone-500">{label}</p>

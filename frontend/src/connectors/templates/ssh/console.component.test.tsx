@@ -2,28 +2,36 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api";
+import { apiPost as realPost } from "../../../lib/api";
 import { SSHConnectorToolbarActionsTemplate } from "./console";
-import * as model from "./model";
+import * as realModel from "./model";
 import { SSHConnectorOperationsTemplate } from "./operations";
+import type { SSHOperation, SSHDockerResponse } from "./operation-types";
+import type { SSHConsoleRuntime, SSHToolbarProps } from "./console-types";
+const apiPost = vi.mocked(realPost);
+const model = vi.mocked(realModel);
 
-vi.mock("../../../lib/api", async (importOriginal) => ({ ...(await importOriginal()), apiPost: vi.fn() }));
-vi.mock("./model", async (importOriginal) => ({
-  ...(await importOriginal()),
+vi.mock("../../../lib/api", async () => ({
+  ...(await vi.importActual<typeof import("../../../lib/api")>("../../../lib/api")),
+  apiPost: vi.fn(),
+}));
+vi.mock("./model", async () => ({
+  ...(await vi.importActual<typeof import("./model")>("./model")),
   checkDocker: vi.fn(),
   readDockerLogs: vi.fn(),
   resumeHostKeyAction: vi.fn(),
 }));
 
 vi.mock("../../../components/file-transfer/file-transfer-dialog", () => ({
-  FileTransferDialog: ({ open, runtimeTarget }) => (open ? <p data-testid="transfer-runtime">{runtimeTarget?.id || "none"}</p> : null),
+  FileTransferDialog: ({ open, runtimeTarget }: { open: boolean; runtimeTarget?: { id: number } | null }) =>
+    open ? <p data-testid="transfer-runtime">{runtimeTarget?.id || "none"}</p> : null,
 }));
 vi.mock("./bulk-command-dialog", () => ({
-  BulkCommandDialog: ({ open, targets }) =>
+  BulkCommandDialog: ({ open, targets }: { open: boolean; targets: SSHConsoleRuntime[] }) =>
     open ? <p data-testid="bulk-targets">{targets.map((target) => target.connector_kind).join(",")}</p> : null,
 }));
 
-function toolbarProps(overrides = {}) {
+function toolbarProps(overrides: Partial<SSHToolbarProps> = {}): SSHToolbarProps {
   return {
     theme: "dark",
     selectedRuntimeTarget: null,
@@ -35,16 +43,16 @@ function toolbarProps(overrides = {}) {
 }
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((done, fail) => {
+  let resolve!: (_value: SSHDockerResponse) => void;
+  let reject!: (_error: unknown) => void;
+  const promise = new Promise<SSHDockerResponse>((done, fail) => {
     resolve = done;
     reject = fail;
   });
   return { promise, resolve, reject };
 }
 
-function OperationsHarness({ initialValue }) {
+function OperationsHarness({ initialValue }: { initialValue: SSHOperation }) {
   const [value, setValue] = useState(initialValue);
   return <SSHConnectorOperationsTemplate value={value} credentials={[]} onChange={setValue} />;
 }
@@ -57,7 +65,7 @@ beforeEach(() => {
 });
 
 it("forwards cancellation ownership to SSH Docker operation requests", async () => {
-  const actualModel = await vi.importActual("./model");
+  const actualModel = await vi.importActual<typeof import("./model")>("./model");
   const controller = new AbortController();
   const target = { id: 7 };
   const profile = { id: 11 };
@@ -120,9 +128,14 @@ it("approves SSH host fingerprints through the connector-owned route", async () 
   const user = userEvent.setup();
   const onChange = vi.fn();
   const onOperationComplete = vi.fn();
-  const action = { type: "resume", kind: "ssh", target: { id: 7 }, profile: { id: 11 } };
+  const action = {
+    type: "test" as const,
+    kind: "ssh" as const,
+    target: { id: 7, name: "Example", connector_kind: "ssh" },
+    profile: { id: 11 },
+  };
   apiPost.mockResolvedValue({});
-  model.resumeHostKeyAction.mockResolvedValue({ status: "completed" });
+  model.resumeHostKeyAction.mockResolvedValue({ message: "Connector updated." });
 
   render(
     <SSHConnectorOperationsTemplate
@@ -163,12 +176,12 @@ it("approves SSH host fingerprints through the connector-owned route", async () 
     ),
   );
   expect(model.resumeHostKeyAction).toHaveBeenCalledWith(action);
-  expect(onOperationComplete).toHaveBeenCalledWith({ status: "completed" }, { connector_kind: "ssh", ...action });
+  expect(onOperationComplete).toHaveBeenCalledWith({ message: "Connector updated." }, { connector_kind: "ssh", ...action });
 });
 
 it.each([
-  ["success", (pending) => pending.resolve({ available: true, ok: true, containers: [] })],
-  ["failure", (pending) => pending.reject(new Error("status unavailable"))],
+  ["success", (pending: ReturnType<typeof deferred>) => pending.resolve({ available: true, ok: true, containers: [] })],
+  ["failure", (pending: ReturnType<typeof deferred>) => pending.reject(new Error("status unavailable"))],
 ])("keeps a dismissed Docker status dialog closed after late %s", async (_outcome, settle) => {
   const user = userEvent.setup();
   const pending = deferred();
@@ -180,7 +193,7 @@ it.each([
         connector_kind: "ssh",
         type: "docker-check",
         state: "idle",
-        target: { id: 7, name: "Example host" },
+        target: { id: 7, name: "Example host", connector_kind: "ssh" },
         profile: { id: 11 },
       }}
     />,
@@ -203,7 +216,7 @@ it("keeps dismissed Docker logs closed after a late refresh", async () => {
         connector_kind: "ssh",
         type: "docker-logs",
         state: "ready",
-        target: { id: 7, name: "Example host" },
+        target: { id: 7, name: "Example host", connector_kind: "ssh" },
         profile: { id: 11 },
         container: { id: "container-1", name: "api" },
         data: { ok: true, stdout: "old", stderr: "", exit_code: 0, duration_ms: 1 },
@@ -216,4 +229,21 @@ it("keeps dismissed Docker logs closed after a late refresh", async () => {
   await act(async () => pending.resolve({ ok: true, stdout: "late", stderr: "", exit_code: 0, duration_ms: 2 }));
 
   expect(screen.queryByRole("dialog", { name: "api logs" })).not.toBeInTheDocument();
+});
+
+it("surfaces malformed Docker metadata as a safe operation error", async () => {
+  model.checkDocker.mockResolvedValue({ ok: true, available: true, containers: [{ ports: {} }] });
+  render(
+    <OperationsHarness
+      initialValue={{
+        open: true,
+        connector_kind: "ssh",
+        type: "docker-check",
+        state: "idle",
+        target: { id: 7, name: "Example", connector_kind: "ssh" },
+        profile: { id: 11 },
+      }}
+    />,
+  );
+  expect(await screen.findByText("Invalid SSH Docker operation response.")).toBeVisible();
 });

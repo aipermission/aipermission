@@ -10,7 +10,7 @@ import {
   connectorTemplateRegistrySource,
   connectorTemplatesDir,
   sourceDir,
-} from "./app-smoke-fixtures.test.js";
+} from "./app-smoke-fixtures.test.ts";
 
 test("frontend templates exactly match the built-in backend connector catalog", () => {
   assert.deepEqual(connectorTemplateKinds, backendConnectorKinds);
@@ -67,7 +67,7 @@ test("shared frontend code does not import connector implementations", () => {
   }
 });
 
-function sourceFiles(root) {
+function sourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const path = join(root, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);

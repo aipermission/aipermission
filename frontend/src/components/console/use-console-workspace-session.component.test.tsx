@@ -3,19 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 import { useConsoleWorkspaceSession } from "./use-console-workspace-session";
 
 function deferred() {
-  let reject;
-  const promise = new Promise((_, fail) => {
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((_, fail) => {
     reject = fail;
   });
   return { promise, reject };
 }
 
-function props(overrides = {}) {
+type Props = Parameters<typeof useConsoleWorkspaceSession>[0];
+function props(overrides: Partial<Props> = {}): Props {
   return {
     attachConsoleSession: vi.fn(),
-    newConsoleSession: vi.fn(),
+    newConsoleSession: vi.fn(async () => undefined),
     onOpenConnectorOperation: vi.fn(() => false),
-    restartConsoleRuntime: vi.fn(),
+    restartConsoleRuntime: vi.fn(async () => undefined),
     runtimeSelectedSession: { id: 0, status: "idle", error: null },
     selectedRunningRequestID: null,
     selectedRuntimeTarget: null,
@@ -31,15 +32,15 @@ describe("useConsoleWorkspaceSession", () => {
   it("keeps structured session state isolated by target", () => {
     const initial = props();
     const { result, rerender } = renderHook((value) => useConsoleWorkspaceSession(value), { initialProps: initial });
-    expect(result.current.selectedStructuredSession.active).toBe(true);
+    expect(result.current.selectedStructuredSession?.active).toBe(true);
 
     act(() => result.current.endStructured());
-    expect(result.current.selectedStructuredSession.active).toBe(false);
+    expect(result.current.selectedStructuredSession?.active).toBe(false);
 
     rerender({ ...initial, selectedTarget: { ref: "postgres:2:2", connector_kind: "postgres" } });
-    expect(result.current.selectedStructuredSession.active).toBe(true);
+    expect(result.current.selectedStructuredSession?.active).toBe(true);
     rerender(initial);
-    expect(result.current.selectedStructuredSession.active).toBe(false);
+    expect(result.current.selectedStructuredSession?.active).toBe(false);
   });
 
   it("selects named live sessions per target and attaches the selected session", () => {
