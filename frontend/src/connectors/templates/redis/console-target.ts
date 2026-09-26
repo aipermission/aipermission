@@ -1,8 +1,8 @@
 import { optionalConsolePort, optionalConsoleText, optionalConsoleTextOrNumber } from "../_shared/console-target-config";
-import type { GatewayTarget } from "../../../lib/gateway-contracts/core-resource-contracts";
+import type { ConsolePresentationTarget } from "../_shared/console-presentation-types";
 import type { RedisBrowserProps } from "./browser-types";
 
-export function redisConsoleTarget(target: GatewayTarget): RedisBrowserProps["target"] {
+export function redisConsoleTarget(target: ConsolePresentationTarget): RedisBrowserProps["target"] {
   const config = target.config || {};
   return {
     ref: target.ref,

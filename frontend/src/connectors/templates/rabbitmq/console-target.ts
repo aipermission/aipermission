@@ -1,8 +1,8 @@
 import { optionalConsolePort, optionalConsoleText } from "../_shared/console-target-config";
-import type { GatewayTarget } from "../../../lib/gateway-contracts/core-resource-contracts";
+import type { ConsolePresentationTarget } from "../_shared/console-presentation-types";
 import type { RabbitTarget } from "./browser-types";
 
-export function rabbitConsoleTarget(target: GatewayTarget): RabbitTarget {
+export function rabbitConsoleTarget(target: ConsolePresentationTarget): RabbitTarget {
   const config = target.config || {};
   return {
     ref: target.ref,
@@ -11,6 +11,7 @@ export function rabbitConsoleTarget(target: GatewayTarget): RabbitTarget {
       scheme: optionalConsoleText(config.scheme, "RabbitMQ", "scheme"),
       host: optionalConsoleText(config.host, "RabbitMQ", "host"),
       port: optionalConsolePort(config.port, "RabbitMQ"),
+      connection_mode: optionalConsoleText(config.connection_mode, "RabbitMQ", "connection_mode"),
     },
   };
 }

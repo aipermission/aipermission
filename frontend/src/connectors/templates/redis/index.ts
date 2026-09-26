@@ -8,6 +8,7 @@ import type { ConsoleTemplateContract } from "../console-template-contract";
 import { redisCredentialFamily } from "./credential-family";
 export { redisCredentialFamily as credentialFamily } from "./credential-family";
 export { redisConnectorFamily as connectorFamily } from "./connector-family";
+export { redisConsoleModel as consoleModel } from "./console-model";
 
 export default Object.freeze({
   Console: RedisConnectorConsoleTemplate,

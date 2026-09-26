@@ -7,7 +7,7 @@ import {
 } from "../_shared/target-profile-lifecycle";
 import { credentialPayload, targetEndpoint as brokerEndpoint } from "./model-helpers";
 import { createStructuredConsoleModel } from "../_shared/structured-console-model";
-import type { KafkaCredentialForm, KafkaModelForm, KafkaProfile, KafkaTarget } from "./form-types";
+import type { KafkaCredentialForm, KafkaModelForm, KafkaPresentationTarget, KafkaProfile, KafkaTarget } from "./form-types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 export { credentialPayload } from "./model-helpers";
@@ -138,18 +138,18 @@ export function canDelete() {
 export function credentialHint() {
   return null;
 }
-export function targetEndpoint({ target }: { target: KafkaTarget }) {
+export function targetEndpoint({ target }: { target: KafkaPresentationTarget }) {
   return targetEndpointValue(target);
 }
-function targetEndpointValue(target: KafkaTarget) {
+function targetEndpointValue(target: KafkaPresentationTarget) {
   const brokers = brokerEndpoint(target);
   const mode = target.config?.connection_mode === "over_ssh" ? "over ssh" : "direct";
   return `${brokers} · ${mode}`;
 }
-export function targetDisplayName({ target }: { target?: KafkaTarget | null }) {
+export function targetDisplayName({ target }: { target?: KafkaPresentationTarget | null }) {
   return target?.target_name || target?.name || "Kafka target";
 }
-export function targetSubtitle({ target }: { target: KafkaTarget }) {
+export function targetSubtitle({ target }: { target: KafkaPresentationTarget }) {
   return targetEndpoint({ target });
 }
 export const { targetProfileLabel, usesLiveConsole, recoverableRunningActions } = createStructuredConsoleModel("monitor");

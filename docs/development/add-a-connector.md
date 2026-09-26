@@ -359,6 +359,8 @@ Expected files:
   whether the target uses a live terminal
 - `form.tsx`: add/edit connector target form
 - `credential-form.tsx`: credential profile form
+- `connector-family.tsx`: native target editor and operation registration
+- `credential-family.tsx`: native credential editor and row registration
 - `list-item.tsx`: connector-specific row operations
 - `console.tsx`: connector console/activity surface and toolbar actions
 
@@ -438,6 +440,40 @@ must respect cross-family busy state, unmount, and retired draft guards. See
 the native `ssh/credential-family.tsx`, `redis/credential-family.tsx`, and
 `postgres/credential-family.tsx`
 implementations and their real-controller component tests.
+
+Define target editors with `defineConnectorFamily` from
+`templates/_shared/connector-family-registration.ts`, and export the frozen
+registration as `connectorFamily` from the connector's `index.ts`. Supply the
+native form, profile, target, credential resource, active credential, and
+operation types. These types remain correlated inside the connector-owned
+definition; a shared host must not replace them with a broad model interface
+or cast an unknown glob result to a native model.
+
+The definition provides inventory/credential decoding, `emptyForm`,
+`emptyOperation`, the native editor and table models, delete-dialog metadata,
+and `renderForm`, `renderRowActions`, and `renderOperations`. Reuse the same
+owned inventory decoder as the credential family where their target schemas
+match. Render the form with the supplied typed `onChange` callback. Row and
+operation render callbacks receive the matching native target/profile and
+operation setters, never another connector's payload.
+
+`templates/connector-family-registry.ts` validates the named registration and
+its catalog/path identity before applying `captureConnectorFamily`. The
+generic Connectors page composes these providers and dispatches only
+`openCreate`, `openEdit`, `test`, `requestDelete`, and `close`. The table sees
+display/model projections and a captured row-actions slot; it does not receive
+or dispatch native operation payloads. Existing-target commands remain
+registered during backend catalog/detail failures, while creation choices are
+limited to available catalog entries.
+
+The capture owns native editor state, selected-profile resolution, recovery,
+dialogs, and operation generations. Confirmations and delayed completions must
+not mutate a closed, replaced, or unmounted operation. Keep these guards when
+adding a new operation, and cover create, second-profile edit/test, local
+deletion, project preservation, and any connector-specific cancellation or
+recovery with real-controller tests. The connector-owned registration must not
+import its captured registry, the page, or editor orchestration at runtime;
+type-only imports of editor contracts are allowed.
 
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.

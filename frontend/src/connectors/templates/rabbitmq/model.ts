@@ -6,7 +6,7 @@ import {
   createTargetProfileLifecycle,
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
-import type { RabbitMQModelForm, RabbitMQProfile, RabbitMQTarget } from "./form-types";
+import type { RabbitMQModelForm, RabbitMQPresentationTarget, RabbitMQProfile, RabbitMQTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
 import { createStructuredConsoleModel } from "../_shared/structured-console-model";
@@ -119,7 +119,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }: { target: RabbitMQTarget }) {
+export function targetEndpoint({ target }: { target: RabbitMQPresentationTarget }) {
   const scheme = target.config?.scheme || "http";
   const host = target.config?.host || "127.0.0.1";
   const port = target.config?.port || 15672;
@@ -128,12 +128,12 @@ export function targetEndpoint({ target }: { target: RabbitMQTarget }) {
   return `${scheme}://${host}:${port} · vhost ${vhost} · ${mode}`;
 }
 
-export function targetDisplayName({ target }: { target?: RabbitMQTarget | null }) {
+export function targetDisplayName({ target }: { target?: RabbitMQPresentationTarget | null }) {
   if (!target) return "RabbitMQ target";
   return target.target_name || target.name || "RabbitMQ target";
 }
 
-export function targetSubtitle({ target }: { target: RabbitMQTarget }) {
+export function targetSubtitle({ target }: { target: RabbitMQPresentationTarget }) {
   return targetEndpoint({ target });
 }
 

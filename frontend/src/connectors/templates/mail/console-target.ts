@@ -4,13 +4,13 @@ import {
   optionalConsoleText,
   optionalConsoleTextList,
 } from "../_shared/console-target-config";
-import type { GatewayTarget } from "../../../lib/gateway-contracts/core-resource-contracts";
+import type { ConsolePresentationTarget } from "../_shared/console-presentation-types";
 import type { MailTarget } from "./form-types";
 import type { MailWorkspaceTarget } from "./use-mail-workspace";
 
 export type MailConsoleTarget = MailTarget & MailWorkspaceTarget;
 
-export function mailConsoleTarget(target: GatewayTarget): MailConsoleTarget {
+export function mailConsoleTarget(target: ConsolePresentationTarget): MailConsoleTarget {
   const config = target.config || {};
   const profile = target.public || {};
   return {

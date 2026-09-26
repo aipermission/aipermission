@@ -32,3 +32,7 @@ export interface RedisTarget {
   profiles?: RedisProfile[];
   config?: RedisConfig;
 }
+
+export type RedisPresentationTarget = Pick<RedisTarget, "name" | "target_name" | "profile_label"> & {
+  config?: Omit<RedisConfig, "port" | "database"> & { port?: string | number; database?: string | number };
+};
