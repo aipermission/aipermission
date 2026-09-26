@@ -1,12 +1,19 @@
 import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { syncTerminalTranscript } from "./terminal-transcript";
 
-export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
-  const containerRef = useRef(null);
-  const terminalRef = useRef(null);
+export type PtyConsoleProps = {
+  session: { transcript?: string | null };
+  onInput: (_data: string) => void;
+  onResize: (_cols: number, _rows: number) => void;
+  theme?: "dark" | "light";
+};
+
+export function PtyConsole({ session, onInput, onResize, theme = "dark" }: PtyConsoleProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<Terminal | null>(null);
   const lastTranscriptRef = useRef("");
   const latestTranscriptRef = useRef(session.transcript || "");
   const onInputRef = useRef(onInput);
@@ -15,6 +22,8 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
   onResizeRef.current = onResize;
 
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: true,
@@ -24,7 +33,6 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
       lineHeight: 1.65,
       theme: terminalTheme(theme),
     });
-    const container = containerRef.current;
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(container);
@@ -80,7 +88,7 @@ export function PtyConsole({ session, onInput, onResize, theme = "dark" }) {
   );
 }
 
-function terminalTheme(theme) {
+function terminalTheme(theme: "dark" | "light"): ITheme {
   if (theme === "light") {
     return {
       background: "#ffffff",
