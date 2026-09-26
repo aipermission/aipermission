@@ -74,11 +74,21 @@ export function openRetryDatabase() {
   return retryDatabasePromise;
 }
 
-export function transactionPromise<Result>(database: IDBDatabase, storeName: string, mode: IDBTransactionMode, operation: (_store: IDBObjectStore) => Result | PromiseLike<Result>) {
+export function transactionPromise<Result>(
+  database: IDBDatabase,
+  storeName: string,
+  mode: IDBTransactionMode,
+  operation: (_store: IDBObjectStore) => Result | PromiseLike<Result>,
+) {
   return storesTransactionPromise(database, [storeName], mode, (stores) => operation(stores[storeName]));
 }
 
-export function storesTransactionPromise<Result>(database: IDBDatabase, storeNames: string[], mode: IDBTransactionMode, operation: (_stores: Record<string, IDBObjectStore>) => Result | PromiseLike<Result>): Promise<Result> {
+export function storesTransactionPromise<Result>(
+  database: IDBDatabase,
+  storeNames: string[],
+  mode: IDBTransactionMode,
+  operation: (_stores: Record<string, IDBObjectStore>) => Result | PromiseLike<Result>,
+): Promise<Result> {
   return new Promise<Result>((resolve, reject) => {
     const transaction = database.transaction(storeNames, mode);
     const stores = Object.fromEntries(storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]));

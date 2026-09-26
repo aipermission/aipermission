@@ -71,7 +71,10 @@ describe("usePostgresProvisioning", () => {
 
   it("discards metadata returned after the target profile changes", async () => {
     const pending = new Map<string, (_response: ReturnType<typeof completed>) => void>();
-    vi.mocked(apiPost).mockImplementation((_path, payload) => new Promise<ReturnType<typeof completed>>((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve)));
+    vi.mocked(apiPost).mockImplementation(
+      (_path, payload) =>
+        new Promise<ReturnType<typeof completed>>((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve)),
+    );
     const { result, rerender, props } = renderProvisioning();
     await waitFor(() => expect(pending.has("postgres:1:10")).toBe(true));
 

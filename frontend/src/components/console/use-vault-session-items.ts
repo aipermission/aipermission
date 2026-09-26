@@ -6,7 +6,15 @@ import type { VaultItemSummary } from "../../lib/gateway-contracts/vault-item-li
 import { errorMessage } from "../../lib/errors.ts";
 
 const pageSize = 100;
-type Page = { key: string; items: VaultItemSummary[]; total: number; nextOffset: number; hasMore: boolean; status: "idle" | "loading" | "ready" | "error"; error: string | null };
+type Page = {
+  key: string;
+  items: VaultItemSummary[];
+  total: number;
+  nextOffset: number;
+  hasMore: boolean;
+  status: "idle" | "loading" | "ready" | "error";
+  error: string | null;
+};
 type Props = { open: boolean; runtimeID?: number; projectID: string; query: string };
 const emptyPage: Page = { key: "", items: [], total: 0, nextOffset: 0, hasMore: false, status: "idle", error: null };
 

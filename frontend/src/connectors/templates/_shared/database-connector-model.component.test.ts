@@ -6,16 +6,28 @@ import type { DatabaseModelForm, DatabaseTarget, DatabaseTargetDefaults } from "
 vi.mock("../../../lib/api", () => ({ apiDelete: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
 const targetDefaults: DatabaseTargetDefaults = {
-  name: "Database", connection_mode: "direct", host: "127.0.0.1", port: 5432, database: "app", transport_target_ref: "",
+  name: "Database",
+  connection_mode: "direct",
+  host: "127.0.0.1",
+  port: 5432,
+  database: "app",
+  transport_target_ref: "",
 };
 const credentialDefaults = { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" };
 const target: DatabaseTarget = {
-  id: 4, name: "Database", connector_kind: "database",
+  id: 4,
+  name: "Database",
+  connector_kind: "database",
   profiles: [{ id: 8, label: "reader", kind: "username_password", public: { username: "reader" } }],
 };
 function model(includeEmptyPassword = false) {
   return createDatabaseConnectorModel({
-    kind: "database", label: "Database", defaultRiskLabel: "read-only", targetDefaults, credentialDefaults, includeEmptyPassword,
+    kind: "database",
+    label: "Database",
+    defaultRiskLabel: "read-only",
+    targetDefaults,
+    credentialDefaults,
+    includeEmptyPassword,
     targetForm: () => targetDefaults,
     targetConfig: (form) => ({ host: form.host, port: Number(form.port) }),
     targetEndpoint: ({ target }) => target.name,
@@ -23,9 +35,35 @@ function model(includeEmptyPassword = false) {
 }
 
 beforeEach(() => {
-  vi.mocked(apiPost).mockReset().mockResolvedValue({ ...target, ok: true, message: "Connected" });
+  vi.mocked(apiPost)
+    .mockReset()
+    .mockResolvedValue({ ...target, ok: true, message: "Connected" });
   vi.mocked(apiPut).mockReset().mockResolvedValue(target);
   vi.mocked(apiDelete).mockReset().mockResolvedValue(undefined);
+});
+
+it("describes local connector deletion without implying external database deletion", () => {
+  const connector = model();
+  expect(connector.deleteDialog({ target })).toEqual({
+    title: "Delete Database",
+    description: "Remove this Database connector target, credential profiles, and token action permissions from aipermission.",
+    details: [
+      { label: "Connector", value: "Database" },
+      { label: "Reference", value: "database:4" },
+    ],
+    notice: "This removes the connector target and its credential profiles. It does not change the external Database service.",
+    actions: [
+      { label: "Cancel", action: "close", variant: "outline" },
+      { label: "Delete connector", pendingLabel: "Deleting...", removeKey: false },
+    ],
+  });
+  expect(connector.deleteDialog({})).toMatchObject({
+    title: "Delete connector",
+    details: [
+      { label: "Connector", value: undefined },
+      { label: "Reference", value: "" },
+    ],
+  });
 });
 
 it("preserves encrypted credentials on metadata-only edits and sends secrets only for rotation", async () => {
@@ -35,10 +73,16 @@ it("preserves encrypted credentials on metadata-only edits and sends secrets onl
 
   await connector.saveCredential({ operation: "update", row, formState: { form } });
   expect(apiPut).toHaveBeenLastCalledWith("/api/connector-targets/4/profiles/8", {
-    kind: "username_password", label: "reader", public: { username: "reader" }, risk_label: "read-only",
+    kind: "username_password",
+    label: "reader",
+    public: { username: "reader" },
+    risk_label: "read-only",
   });
   await connector.saveCredential({ operation: "update", row, formState: { form: { ...form, password: "test-only-password" } } });
-  expect(apiPut).toHaveBeenLastCalledWith("/api/connector-targets/4/profiles/8", expect.objectContaining({ secret: { password: "test-only-password" } }));
+  expect(apiPut).toHaveBeenLastCalledWith(
+    "/api/connector-targets/4/profiles/8",
+    expect.objectContaining({ secret: { password: "test-only-password" } }),
+  );
   expect(connector.credentialRows({ targets: [target] })[0]).not.toHaveProperty("password");
 });
 
@@ -66,10 +110,13 @@ it("uses the selected profile for tests and atomically saves a target with its i
   expect(response).toMatchObject({ ok: true, data: { message: "Connected" } });
   expect(apiPost).toHaveBeenCalledWith("/api/connector-targets/4/profiles/8/test", {});
   await connector.save({ mode: "create", form: { ...connector.emptyForm(), project_id: "3" } });
-  expect(apiPost).toHaveBeenLastCalledWith("/api/connector-targets/with-profile", expect.objectContaining({
-    target: { connector_kind: "database", name: "Database", config: { host: "127.0.0.1", port: 5432 }, project_id: 3 },
-    profile: expect.objectContaining({ secret: {}, label: "readonly" }),
-  }));
+  expect(apiPost).toHaveBeenLastCalledWith(
+    "/api/connector-targets/with-profile",
+    expect.objectContaining({
+      target: { connector_kind: "database", name: "Database", config: { host: "127.0.0.1", port: 5432 }, project_id: 3 },
+      profile: expect.objectContaining({ secret: {}, label: "readonly" }),
+    }),
+  );
 });
 
 it("keeps deletion scoped to the selected target and profile", async () => {
@@ -82,7 +129,9 @@ it("keeps deletion scoped to the selected target and profile", async () => {
 
 it("widens normalized transport fields without erasing unrelated form types", () => {
   const connector = model();
-  const direct = connector.syncForm({ form: { connector_kind: "database", connection_mode: "direct", transport_target_ref: "ssh:1:1" as const, port: 5432 as const } });
+  const direct = connector.syncForm({
+    form: { connector_kind: "database", connection_mode: "direct", transport_target_ref: "ssh:1:1" as const, port: 5432 as const },
+  });
   expectTypeOf(direct.transport_target_ref).toEqualTypeOf<string | undefined>();
   expectTypeOf(direct.port).toEqualTypeOf<5432>();
   expect(direct.transport_target_ref).toBe("");
@@ -93,7 +142,9 @@ it("widens normalized transport fields without erasing unrelated form types", ()
 
 it("types connector-specific credential and target serializers independently", async () => {
   const connector = createDatabaseConnectorModel({
-    kind: "database", label: "Database", defaultRiskLabel: "read-only",
+    kind: "database",
+    label: "Database",
+    defaultRiskLabel: "read-only",
     targetDefaults: { ...targetDefaults, organization: "target-organization" },
     credentialDefaults: { ...credentialDefaults, tenant_id: "default-tenant" },
     targetForm: () => ({ ...targetDefaults, organization: "target-organization" }),
@@ -103,8 +154,17 @@ it("types connector-specific credential and target serializers independently", a
     targetCredentialPublic: (form) => ({ username: form.username, organization: form.organization }),
   });
 
-  await connector.saveCredential({ operation: "create", formState: { form: { ...credentialDefaults, target_id: "4", tenant_id: "chosen-tenant" } } });
-  expect(apiPost).toHaveBeenLastCalledWith("/api/connector-targets/4/profiles", expect.objectContaining({ public: { username: "", tenant_id: "chosen-tenant" } }));
+  await connector.saveCredential({
+    operation: "create",
+    formState: { form: { ...credentialDefaults, target_id: "4", tenant_id: "chosen-tenant" } },
+  });
+  expect(apiPost).toHaveBeenLastCalledWith(
+    "/api/connector-targets/4/profiles",
+    expect.objectContaining({ public: { username: "", tenant_id: "chosen-tenant" } }),
+  );
   await connector.save({ mode: "create", form: connector.emptyForm() });
-  expect(apiPost).toHaveBeenLastCalledWith("/api/connector-targets/with-profile", expect.objectContaining({ profile: expect.objectContaining({ public: { username: "", organization: "target-organization" } }) }));
+  expect(apiPost).toHaveBeenLastCalledWith(
+    "/api/connector-targets/with-profile",
+    expect.objectContaining({ profile: expect.objectContaining({ public: { username: "", organization: "target-organization" } }) }),
+  );
 });

@@ -8,10 +8,12 @@ import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
 export { SQLConnectorToolbarActions } from "./sql-console-chrome";
 
-export function SQLConnectorConsole(props: SQLConsoleProps & {
-  theme: SQLConsoleViewProps["theme"];
-  onNewStructuredSession?: () => void;
-}) {
+export function SQLConnectorConsole(
+  props: SQLConsoleProps & {
+    theme: SQLConsoleViewProps["theme"];
+    onNewStructuredSession?: () => void;
+  },
+) {
   const { target, theme, onNewStructuredSession } = props;
   const controller = useSQLConsole(props);
   const styles = connectorConsoleTheme(theme);

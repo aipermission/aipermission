@@ -22,7 +22,14 @@ type Props = {
   runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
 };
 
-export function UnlockDatabasePanel({ database, unsupported, migrationRequired, onMigrationRequired, onDeleted, runLifecycleMutation }: Props) {
+export function UnlockDatabasePanel({
+  database,
+  unsupported,
+  migrationRequired,
+  onMigrationRequired,
+  onDeleted,
+  runLifecycleMutation,
+}: Props) {
   const [password, setPassword] = useState("");
   const [action, setAction] = useState<DatabaseAction>("unlock");
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -142,8 +149,15 @@ function UnlockActionControl({
   onDelete,
   onMenuOpenChange,
 }: {
-  action: DatabaseAction; menuOpen: boolean; databaseAvailable: boolean; deleting: boolean; unlocking: boolean; unlockDisabled: boolean;
-  onActionChange: Dispatch<SetStateAction<DatabaseAction>>; onDelete: () => void; onMenuOpenChange: Dispatch<SetStateAction<boolean>>;
+  action: DatabaseAction;
+  menuOpen: boolean;
+  databaseAvailable: boolean;
+  deleting: boolean;
+  unlocking: boolean;
+  unlockDisabled: boolean;
+  onActionChange: Dispatch<SetStateAction<DatabaseAction>>;
+  onDelete: () => void;
+  onMenuOpenChange: Dispatch<SetStateAction<boolean>>;
 }) {
   const deletingAction = action === "delete";
   return (
@@ -193,9 +207,18 @@ function UnlockActionControl({
   );
 }
 
-function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit }: {
-  database: Database | null; dialog: DeleteDialog; onChange: Dispatch<SetStateAction<DeleteDialog>>;
-  onClose: () => void; onSubmit: (_event: FormEvent<HTMLFormElement>) => Promise<void>;
+function DeleteDatabaseDialog({
+  database,
+  dialog,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  database: Database | null;
+  dialog: DeleteDialog;
+  onChange: Dispatch<SetStateAction<DeleteDialog>>;
+  onClose: () => void;
+  onSubmit: (_event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
   return (
     <Dialog
@@ -244,6 +267,13 @@ function DeleteDatabaseDialog({ database, dialog, onChange, onClose, onSubmit }:
 }
 
 function isMigrationRequiredError(error: unknown) {
-  return error !== null && typeof error === "object" && "status" in error && error.status === 409 &&
-    "message" in error && typeof error.message === "string" && /pre-0\.2|non-baseline schema|migration helper/i.test(error.message);
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "status" in error &&
+    error.status === 409 &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    /pre-0\.2|non-baseline schema|migration helper/i.test(error.message)
+  );
 }

@@ -9,24 +9,48 @@ const { terminals, fits, FakeTerminal } = vi.hoisted(() => {
   class FakeTerminal {
     cols = 80;
     rows = 24;
-    write = vi.fn(); clear = vi.fn(); reset = vi.fn(); scrollToBottom = vi.fn(); focus = vi.fn(); dispose = vi.fn(); loadAddon = vi.fn(); open = vi.fn();
+    write = vi.fn();
+    clear = vi.fn();
+    reset = vi.fn();
+    scrollToBottom = vi.fn();
+    focus = vi.fn();
+    dispose = vi.fn();
+    loadAddon = vi.fn();
+    open = vi.fn();
     dataListener: ((_data: string) => void) | null = null;
     dataDisposable = { dispose: vi.fn() };
     options: ITerminalOptions;
-    constructor(options: ITerminalOptions) { this.options = options; terminals.push(this); }
-    onData(listener: (_data: string) => void) { this.dataListener = listener; return this.dataDisposable; }
+    constructor(options: ITerminalOptions) {
+      this.options = options;
+      terminals.push(this);
+    }
+    onData(listener: (_data: string) => void) {
+      this.dataListener = listener;
+      return this.dataDisposable;
+    }
   }
   return { terminals, fits, FakeTerminal };
 });
 
 vi.mock("@xterm/xterm", () => ({ Terminal: FakeTerminal }));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit = vi.fn(); constructor() { fits.push(this); } } }));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit = vi.fn();
+    constructor() {
+      fits.push(this);
+    }
+  },
+}));
 
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
-  observe = vi.fn(); disconnect = vi.fn();
+  observe = vi.fn();
+  disconnect = vi.fn();
   callback: () => void;
-  constructor(callback: () => void) { this.callback = callback; FakeResizeObserver.instances.push(this); }
+  constructor(callback: () => void) {
+    this.callback = callback;
+    FakeResizeObserver.instances.push(this);
+  }
 }
 
 function activeTerminal() {
@@ -37,10 +61,14 @@ function activeTerminal() {
 
 describe("shared PTY console", () => {
   beforeEach(() => {
-    terminals.length = 0; fits.length = 0; FakeResizeObserver.instances.length = 0;
+    terminals.length = 0;
+    fits.length = 0;
+    FakeResizeObserver.instances.length = 0;
     vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it("writes only appended transcript data and resets when the snapshot changes", () => {
     const props = { onInput: vi.fn(), onResize: vi.fn() };
@@ -57,7 +85,9 @@ describe("shared PTY console", () => {
   });
 
   it("uses the current input and resize callbacks without recreating the terminal", () => {
-    const firstInput = vi.fn(); const secondInput = vi.fn(); const resize = vi.fn();
+    const firstInput = vi.fn();
+    const secondInput = vi.fn();
+    const resize = vi.fn();
     const { rerender } = render(<PtyConsole onInput={firstInput} onResize={vi.fn()} session={{}} />);
     const terminal = activeTerminal();
     rerender(<PtyConsole onInput={secondInput} onResize={resize} session={{}} />);

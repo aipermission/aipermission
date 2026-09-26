@@ -7,7 +7,8 @@ import { inventoryProfileFixture, inventoryTargetFixture, gatewayTargetFixture }
 
 function tableProps(): ConnectorTargetsTableProps {
   const target = inventoryTargetFixture({
-    connector_kind: "example", name: "Fixture target",
+    connector_kind: "example",
+    name: "Fixture target",
     profiles: [
       inventoryProfileFixture({ connector_kind: "example", ref: "example:3:11" }),
       inventoryProfileFixture({ id: 22, connector_kind: "example", ref: "example:3:22", label: "Other" }),
@@ -16,12 +17,25 @@ function tableProps(): ConnectorTargetsTableProps {
   return {
     targets: { state: "ready", data: [target], error: null },
     projects: [{ id: 7, name: "My Project", slug: "my-project", target_count: 1 }],
-    search: "", collapsedProjects: {}, onSearch: vi.fn(), onToggleProject: vi.fn(),
+    search: "",
+    collapsedProjects: {},
+    onSearch: vi.fn(),
+    onToggleProject: vi.fn(),
     catalog: { state: "ready", data: [{ kind: "example", label: "Example", version: "1" }], details: {}, detailFailures: [], error: null },
-    unifiedTargets: [], credentials: [], profileSelections: {}, tests: {},
-    onSelectProfile: vi.fn(), onTestConnector: vi.fn(), onOperation: vi.fn(),
-    onUnderConstruction: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(),
-    resolveTemplate: vi.fn(() => ({ model: { targetEndpoint: () => "fixture-endpoint", credentialHint: () => "Fixture credential" }, RowActions: null })),
+    unifiedTargets: [],
+    credentials: [],
+    profileSelections: {},
+    tests: {},
+    onSelectProfile: vi.fn(),
+    onTestConnector: vi.fn(),
+    onOperation: vi.fn(),
+    onUnderConstruction: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    resolveTemplate: vi.fn(() => ({
+      model: { targetEndpoint: () => "fixture-endpoint", credentialHint: () => "Fixture credential" },
+      RowActions: null,
+    })),
   };
 }
 
@@ -47,7 +61,9 @@ describe("ConnectorTargetsTable", () => {
       model: {},
       RowActions: ({ target, profile, onOperation, onUnderConstruction }: TargetRowActionsProps) => (
         <div>
-          <span>{target.name} / {profile?.label}</span>
+          <span>
+            {target.name} / {profile?.label}
+          </span>
           <button onClick={() => onOperation({ open: true, connector_kind: target.connector_kind })}>Fixture operation</button>
           <button onClick={() => onUnderConstruction("Fixture future action")}>Fixture future</button>
         </div>

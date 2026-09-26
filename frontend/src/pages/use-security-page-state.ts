@@ -3,7 +3,13 @@ import type { FormEvent } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
 import { useAsyncAction } from "../lib/use-async-action";
 import { errorMessage } from "../lib/errors";
-import { securitySettingsResponse, redactionRulesResponse, type RedactionForm, type RedactionRule, type SecuritySettings } from "../lib/gateway-contracts/security-settings-contract";
+import {
+  securitySettingsResponse,
+  redactionRulesResponse,
+  type RedactionForm,
+  type RedactionRule,
+  type SecuritySettings,
+} from "../lib/gateway-contracts/security-settings-contract";
 
 const emptyActionState = { state: "idle", error: null, message: null };
 const defaultSecurity: SecuritySettings = {
@@ -15,10 +21,18 @@ const defaultSecurity: SecuritySettings = {
 };
 
 export function useSecurityPageState() {
-  const [security, setSecurity] = useState<{ state: string; data: SecuritySettings; error: string | null }>({ state: "loading", data: defaultSecurity, error: null });
+  const [security, setSecurity] = useState<{ state: string; data: SecuritySettings; error: string | null }>({
+    state: "loading",
+    data: defaultSecurity,
+    error: null,
+  });
   const securitySavingRef = useRef(false);
   const { actionState: securityAction, runAction: runSecurityAction } = useAsyncAction(emptyActionState);
-  const [redactionRules, setRedactionRules] = useState<{ state: string; data: RedactionRule[]; error: string | null }>({ state: "loading", data: [], error: null });
+  const [redactionRules, setRedactionRules] = useState<{ state: string; data: RedactionRule[]; error: string | null }>({
+    state: "loading",
+    data: [],
+    error: null,
+  });
   const { actionState: redactionAction, runAction: runRedactionAction } = useAsyncAction(emptyActionState);
   const [redactionForm, setRedactionForm] = useState({ name: "", pattern: "", enabled: true });
 

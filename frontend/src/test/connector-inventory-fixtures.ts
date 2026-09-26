@@ -3,10 +3,19 @@ import type { GatewayTarget } from "../lib/gateway-contracts/core-resource-contr
 
 export function gatewayTargetFixture(overrides: Partial<GatewayTarget> = {}): GatewayTarget {
   return {
-    target_id: 3, profile_id: 11, project_id: 7,
-    connector_kind: "example", ref: "example:3:11", target_name: "Test target",
-    profile_kind: "identity", profile_label: "Default", project_name: "My Project", project_slug: "my-project",
-    status: "idle", created_at: "2026-09-26", updated_at: "2026-09-26",
+    target_id: 3,
+    profile_id: 11,
+    project_id: 7,
+    connector_kind: "example",
+    ref: "example:3:11",
+    target_name: "Test target",
+    profile_kind: "identity",
+    profile_label: "Default",
+    project_name: "My Project",
+    project_slug: "my-project",
+    status: "idle",
+    created_at: "2026-09-26",
+    updated_at: "2026-09-26",
     ...overrides,
   };
 }

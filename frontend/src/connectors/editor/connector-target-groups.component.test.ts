@@ -15,15 +15,17 @@ describe("connector target groups", () => {
   ];
 
   it("keeps only populated projects and their own targets without a search", () => {
-    expect(connectorTargetGroups(projects, targets, " ").map(({ project, targets: groupTargets }) => [project.id, groupTargets.length])).toEqual([
+    expect(
+      connectorTargetGroups(projects, targets, " ").map(({ project, targets: groupTargets }) => [project.id, groupTargets.length]),
+    ).toEqual([
       [1, 2],
       [2, 1],
     ]);
   });
 
   it("matches connector kind without returning another project's target", () => {
-    expect(connectorTargetGroups(projects, targets, "POSTGRES").map(({ project, targets: groupTargets }) => [project.id, groupTargets[0].name])).toEqual([
-      [1, "Data"],
-    ]);
+    expect(
+      connectorTargetGroups(projects, targets, "POSTGRES").map(({ project, targets: groupTargets }) => [project.id, groupTargets[0].name]),
+    ).toEqual([[1, "Data"]]);
   });
 });

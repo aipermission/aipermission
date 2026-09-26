@@ -16,7 +16,10 @@ const tokens = [
   { id: 4, name: "project-disabled" },
 ];
 
-type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled"> & { token_id: number };
+type Permission = Pick<
+  TokenActionPermission,
+  "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled"
+> & { token_id: number };
 function permission(tokenID: number, overrides: Partial<Permission> = {}): Permission {
   return {
     token_id: tokenID,

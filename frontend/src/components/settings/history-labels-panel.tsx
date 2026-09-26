@@ -17,7 +17,16 @@ function historyLabelsResponse(value: unknown): HistoryLabel[] {
   if (value === null) return [];
   if (!Array.isArray(value)) throw new Error("History label response is invalid.");
   return value.map((entry: unknown) => {
-    if (!entry || typeof entry !== "object" || !("id" in entry) || typeof entry.id !== "number" || !Number.isSafeInteger(entry.id) || entry.id <= 0 || !("name" in entry) || typeof entry.name !== "string") {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      !("id" in entry) ||
+      typeof entry.id !== "number" ||
+      !Number.isSafeInteger(entry.id) ||
+      entry.id <= 0 ||
+      !("name" in entry) ||
+      typeof entry.name !== "string"
+    ) {
       throw new Error("History label response is invalid.");
     }
     return { id: entry.id, name: entry.name };

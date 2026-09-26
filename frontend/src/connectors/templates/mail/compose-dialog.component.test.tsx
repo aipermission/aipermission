@@ -36,10 +36,29 @@ it("gives the formatted message editor explicit textbox and toolbar semantics", 
 
 it("normalizes stored recipient arrays and submits only a validated complete draft", () => {
   const onSubmit = vi.fn();
-  render(<ComposeDialog draft={{ open: true, reply: false, form: { to: ["one@example.test", "two@example.test"], cc: [], bcc: [], subject: "Status", text_body: "Ready" } }} busy={false} error="" onClose={vi.fn()} onSubmit={onSubmit} />);
+  render(
+    <ComposeDialog
+      draft={{
+        open: true,
+        reply: false,
+        form: { to: ["one@example.test", "two@example.test"], cc: [], bcc: [], subject: "Status", text_body: "Ready" },
+      }}
+      busy={false}
+      error=""
+      onClose={vi.fn()}
+      onSubmit={onSubmit}
+    />,
+  );
   expect(screen.getByRole("textbox", { name: "To" })).toHaveValue("one@example.test, two@example.test");
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-  expect(onSubmit).toHaveBeenCalledWith({ to: ["one@example.test", "two@example.test"], cc: [], bcc: [], subject: "Status", text_body: "Ready", html_body: "" });
+  expect(onSubmit).toHaveBeenCalledWith({
+    to: ["one@example.test", "two@example.test"],
+    cc: [],
+    bcc: [],
+    subject: "Status",
+    text_body: "Ready",
+    html_body: "",
+  });
   fireEvent.change(screen.getByRole("textbox", { name: "Subject" }), { target: { value: "x".repeat(513) } });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   expect(screen.getByText(/512 bytes/)).toBeInTheDocument();
@@ -48,7 +67,15 @@ it("normalizes stored recipient arrays and submits only a validated complete dra
 
 it("keeps formatted content and its plain fallback consistent across mode changes", async () => {
   const onSubmit = vi.fn();
-  render(<ComposeDialog draft={{ open: true, reply: true, form: { to: "one@example.test", subject: "Status", text_body: "Ready\nNow" } }} busy={false} error="" onClose={vi.fn()} onSubmit={onSubmit} />);
+  render(
+    <ComposeDialog
+      draft={{ open: true, reply: true, form: { to: "one@example.test", subject: "Status", text_body: "Ready\nNow" } }}
+      busy={false}
+      error=""
+      onClose={vi.fn()}
+      onSubmit={onSubmit}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Formatted" }));
   const editor = screen.getByRole("textbox", { name: "Message" });
   expect(editor.innerHTML).toBe("Ready<br>Now");
@@ -64,7 +91,15 @@ it("keeps formatted content and its plain fallback consistent across mode change
 });
 
 it("pastes only plain text and prevents dropped external markup", async () => {
-  render(<ComposeDialog draft={{ open: true, reply: false, form: { to: "one@example.test", subject: "Status", text_body: "Ready" } }} busy={false} error="" onClose={vi.fn()} onSubmit={vi.fn()} />);
+  render(
+    <ComposeDialog
+      draft={{ open: true, reply: false, form: { to: "one@example.test", subject: "Status", text_body: "Ready" } }}
+      busy={false}
+      error=""
+      onClose={vi.fn()}
+      onSubmit={vi.fn()}
+    />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Formatted" }));
   const editor = screen.getByRole("textbox", { name: "Message" });
   const selection = window.getSelection();
@@ -73,7 +108,7 @@ it("pastes only plain text and prevents dropped external markup", async () => {
   range.selectNodeContents(editor);
   selection.removeAllRanges();
   selection.addRange(range);
-  const getData = vi.fn(() => '<script>alert(1)</script>\nPlain text');
+  const getData = vi.fn(() => "<script>alert(1)</script>\nPlain text");
   fireEvent.paste(editor, { clipboardData: { getData } });
   expect(getData).toHaveBeenCalledWith("text/plain");
   expect(editor.querySelector("script")).toBeNull();
@@ -88,7 +123,15 @@ it("restores the saved link selection and handles Enter without submitting the d
   const command = vi.fn();
   Object.defineProperty(document, "execCommand", { configurable: true, value: command });
   try {
-    render(<ComposeDialog draft={{ open: true, reply: false, form: { to: "one@example.test", subject: "Status", text_body: "Ready" } }} busy={false} error="" onClose={vi.fn()} onSubmit={onSubmit} />);
+    render(
+      <ComposeDialog
+        draft={{ open: true, reply: false, form: { to: "one@example.test", subject: "Status", text_body: "Ready" } }}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: "Formatted" }));
     const editor = screen.getByRole("textbox", { name: "Message" });
     editor.focus();

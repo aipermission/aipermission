@@ -33,7 +33,16 @@ interface MessagePaneProps extends PaneStyles {
   inputClass: string;
 }
 
-export function FolderPane({ folders, selectedFolder, folderStats, onSelect, borderClass, mutedClass, rowHoverClass, activeRowClass }: FolderPaneProps) {
+export function FolderPane({
+  folders,
+  selectedFolder,
+  folderStats,
+  onSelect,
+  borderClass,
+  mutedClass,
+  rowHoverClass,
+  activeRowClass,
+}: FolderPaneProps) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r ${borderClass}`}>
       <div className={`border-b p-3 ${borderClass}`}>

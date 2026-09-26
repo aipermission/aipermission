@@ -65,7 +65,10 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
     }
   }
 
-  async function loadMessages(folder: string, { reset = true, cursor = "", unread = unreadOnly, subject = appliedQuery }: SearchOptions = {}) {
+  async function loadMessages(
+    folder: string,
+    { reset = true, cursor = "", unread = unreadOnly, subject = appliedQuery }: SearchOptions = {},
+  ) {
     if (!activeSession.active || !folder) return;
     try {
       const item = await runMailAction(
@@ -103,7 +106,8 @@ export function useMailMailbox({ scopeKey, activeSession, imapEnabled, busy, fol
       );
       if (item && !connectorActionPending(item)) setSelectedMessage(readMailMessage(item.output));
     } catch (error) {
-      if (error instanceof MailActionFailure && connectorActionCode(error.actionItem) === "stale_message_reference") setSelectedMessage(null);
+      if (error instanceof MailActionFailure && connectorActionCode(error.actionItem) === "stale_message_reference")
+        setSelectedMessage(null);
     }
   }
 

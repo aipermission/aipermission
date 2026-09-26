@@ -111,8 +111,18 @@ function ApprovalPayloads({ approval, loading }: { approval: ConnectorApproval; 
   );
 }
 
-function ApprovalPayload({ title, value, loading, loadingText = `Loading ${title.toLowerCase()}...`, empty = false }: {
-  title: string; value: string; loading: boolean; loadingText?: string; empty?: boolean;
+function ApprovalPayload({
+  title,
+  value,
+  loading,
+  loadingText = `Loading ${title.toLowerCase()}...`,
+  empty = false,
+}: {
+  title: string;
+  value: string;
+  loading: boolean;
+  loadingText?: string;
+  empty?: boolean;
 }) {
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">

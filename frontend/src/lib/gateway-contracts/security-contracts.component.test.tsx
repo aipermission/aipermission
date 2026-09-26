@@ -91,7 +91,9 @@ describe("typed untrusted gateway contracts", () => {
       }),
     ).toHaveLength(1);
   });
+});
 
+describe("connector approval contracts", () => {
   it("binds connector decision envelopes to the displayed approval", () => {
     const expected = { id: 1, targetRef: "fixture:2:3", actionName: "read", statuses: ["completed", "running"] as const };
     expect(parseConnectorApproval(connectorApproval({ status: "completed", approval_context_hash: "" }), expected)).toMatchObject({
@@ -150,7 +152,9 @@ describe("typed untrusted gateway contracts", () => {
       ),
     ).toMatchObject({ token_id: 7, preview: { command: "uptime" } });
   });
+});
 
+describe("Vault approval contracts", () => {
   it("validates every typed Vault approval context field", () => {
     const item = {
       item_id: 11,
@@ -257,18 +261,26 @@ describe("typed untrusted gateway contracts", () => {
       }),
     ).toMatchObject({ status: "completed" });
   });
+});
 
+describe("console session contracts", () => {
   it("rejects malformed console sessions without activating a socket", () => {
     expect(() => consoleSessions([{ id: 0 }])).toThrow(/Invalid console session/);
     expect(consoleSessions([{ id: 1, status: "active" }])).toHaveLength(1);
     for (const fields of [
-      { runtime_id: "7" }, { runtime_id: 0 }, { runtime_id: 1.5 },
-      { status: {} }, { name: [] }, { transcript: 8 }, { error: false },
+      { runtime_id: "7" },
+      { runtime_id: 0 },
+      { runtime_id: 1.5 },
+      { status: {} },
+      { name: [] },
+      { transcript: 8 },
+      { error: false },
     ]) {
       expect(() => consoleSessions([{ id: 1, ...fields }])).toThrow(/Invalid console session/);
     }
-    expect(consoleSessions([{ id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null }]))
-      .toEqual([{ id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null }]);
+    expect(consoleSessions([{ id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null }])).toEqual([
+      { id: 1, runtime_id: 7, status: "connected", name: "shell", transcript: "ready", error: null },
+    ]);
   });
 });
 

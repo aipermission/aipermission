@@ -13,7 +13,22 @@ it.each<[DockerResourceKind, DockerResource, string]>([
 ])("selects %s resources by their own identity and preserves payloads", async (resourceView, resource, identity) => {
   const user = userEvent.setup();
   const onSelect = vi.fn();
-  const props = { resourceView, items: [resource], visibleCount: 1, selectedContainer: null, selectedResourceID: identity, filter: "", state: { state: "loading" }, latestAction: null, theme: "dark", classes, onRefresh: vi.fn(), onSwitchView: vi.fn(), onFilter: vi.fn(), onSelect };
+  const props = {
+    resourceView,
+    items: [resource],
+    visibleCount: 1,
+    selectedContainer: null,
+    selectedResourceID: identity,
+    filter: "",
+    state: { state: "loading" },
+    latestAction: null,
+    theme: "dark",
+    classes,
+    onRefresh: vi.fn(),
+    onSwitchView: vi.fn(),
+    onFilter: vi.fn(),
+    onSelect,
+  };
   const view = render(<DockerResourceBrowser {...props} />);
   const selected = screen.getByRole("button", { name: new RegExp(resource.repository || resource.name || identity), pressed: true });
   expect(selected).toHaveTextContent(resource.repository || resource.name || "");
@@ -28,8 +43,28 @@ it.each<[DockerResourceKind, DockerResource, string]>([
   expect(refresh).toBeEnabled();
 });
 
-it.each([{ id: "same-id", name: "different" }, { id: "different", name: "api" }])("matches selected containers independently by ID or name", (selectedContainer) => {
-  render(<DockerResourceBrowser resourceView="containers" items={[{ id: "same-id", name: "api" }]} visibleCount={1} selectedContainer={selectedContainer} selectedResourceID="" filter="" state={{ state: "idle" }} latestAction={null} theme="light" classes={classes} onRefresh={vi.fn()} onSwitchView={vi.fn()} onFilter={vi.fn()} onSelect={vi.fn()} />);
+it.each([
+  { id: "same-id", name: "different" },
+  { id: "different", name: "api" },
+])("matches selected containers independently by ID or name", (selectedContainer) => {
+  render(
+    <DockerResourceBrowser
+      resourceView="containers"
+      items={[{ id: "same-id", name: "api" }]}
+      visibleCount={1}
+      selectedContainer={selectedContainer}
+      selectedResourceID=""
+      filter=""
+      state={{ state: "idle" }}
+      latestAction={null}
+      theme="light"
+      classes={classes}
+      onRefresh={vi.fn()}
+      onSwitchView={vi.fn()}
+      onFilter={vi.fn()}
+      onSelect={vi.fn()}
+    />,
+  );
   expect(screen.getByRole("button", { name: /api/i })).toHaveAttribute("aria-pressed", "true");
 });
 

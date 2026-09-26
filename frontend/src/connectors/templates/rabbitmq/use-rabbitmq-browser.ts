@@ -289,7 +289,8 @@ export type RabbitBrowser = ReturnType<typeof useRabbitMQBrowser>;
 
 function unknownPublishOutcome(error: unknown): { requestID: number | null } | null {
   const actionItem: unknown = isRabbitRecord(error) ? error.actionItem : null;
-  const uncertain: unknown = isRabbitRecord(actionItem) && actionItem.status === "outcome_unknown" ? actionItem : isRabbitRecord(error) ? error.data : null;
+  const uncertain: unknown =
+    isRabbitRecord(actionItem) && actionItem.status === "outcome_unknown" ? actionItem : isRabbitRecord(error) ? error.data : null;
   if (!isRabbitRecord(uncertain) || uncertain.status !== "outcome_unknown") return null;
   const requestID = Number(uncertain.request_id);
   return { requestID: Number.isInteger(requestID) && requestID > 0 ? requestID : null };

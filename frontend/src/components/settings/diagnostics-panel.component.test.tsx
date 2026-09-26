@@ -45,7 +45,11 @@ describe("DiagnosticsPanel", () => {
   it("disables repeated downloads while pending and ignores completion after unmount", async () => {
     const user = userEvent.setup();
     let resolve!: (_value: Awaited<ReturnType<typeof apiDownload>>) => void;
-    vi.mocked(apiDownload).mockReturnValue(new Promise((done) => { resolve = done; }));
+    vi.mocked(apiDownload).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
     const { unmount } = render(<DiagnosticsPanel />);
     await user.click(screen.getByRole("button", { name: "Download diagnostics" }));
     expect(screen.getByRole("button", { name: "Preparing diagnostics..." })).toBeDisabled();

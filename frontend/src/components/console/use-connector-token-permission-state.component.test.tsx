@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, fireEvent, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet as realGet } from "../../lib/api";
 import { useConnectorTokenPermissionState } from "./use-connector-token-permission-state";
@@ -11,9 +11,13 @@ const token = { id: 5, name: "Agent" };
 
 function renderPermissions(overrides: Partial<ConnectorTokenPermissionOptions> = {}) {
   const options: ConnectorTokenPermissionOptions = {
-    selectedTarget: target, targets: { data: [target] }, tokens: { data: [token] },
-    loadAllConnectorPermissions: vi.fn().mockResolvedValue({}), loadConnectorActions: vi.fn().mockResolvedValue([]),
-    replaceTokenConnectorPermissions: vi.fn().mockResolvedValue([]), ...overrides,
+    selectedTarget: target,
+    targets: { data: [target] },
+    tokens: { data: [token] },
+    loadAllConnectorPermissions: vi.fn().mockResolvedValue({}),
+    loadConnectorActions: vi.fn().mockResolvedValue([]),
+    replaceTokenConnectorPermissions: vi.fn().mockResolvedValue([]),
+    ...overrides,
   };
   return { options, ...renderHook(() => useConnectorTokenPermissionState(options)) };
 }
@@ -21,7 +25,10 @@ function renderPermissions(overrides: Partial<ConnectorTokenPermissionOptions> =
 beforeEach(() => {
   window.localStorage.clear();
   get.mockReset();
-  get.mockResolvedValue({ items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }], revision: "r1" });
+  get.mockResolvedValue({
+    items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }],
+    revision: "r1",
+  });
 });
 
 it("uses only a validated project scope snapshot for token visibility", async () => {
@@ -39,7 +46,11 @@ it("keeps project visibility unavailable when its revision is malformed", async 
 
 it("serializes permission mutations while the current write is pending", async () => {
   let finish!: (_value: []) => void;
-  const write = vi.fn().mockReturnValue(new Promise<[]>((resolve) => { finish = resolve; }));
+  const write = vi.fn().mockReturnValue(
+    new Promise<[]>((resolve) => {
+      finish = resolve;
+    }),
+  );
   const { result } = renderPermissions({ replaceTokenConnectorPermissions: write });
   await waitFor(() => expect(result.current.projectScopeReadyForToken(5)).toBe(true));
   let pending!: Promise<void>;
@@ -48,6 +59,41 @@ it("serializes permission mutations while the current write is pending", async (
     void result.current.setConnectorRule(token, 11, { name: "write" }, "approval_required");
   });
   expect(write).toHaveBeenCalledOnce();
-  await act(async () => { finish([]); await pending; });
+  await act(async () => {
+    finish([]);
+    await pending;
+  });
   expect(result.current.savingKey).toBe("");
+});
+
+it("dismisses the compact panel outside or on Escape and restores trigger focus", async () => {
+  const { result, unmount } = renderPermissions();
+  const panel = document.createElement("section");
+  const trigger = document.createElement("button");
+  document.body.append(panel, trigger);
+  try {
+    result.current.compactPanelRef.current = panel;
+    result.current.tokenTriggerRef.current = trigger;
+    act(() => result.current.setOpenTokenID(5));
+    fireEvent.pointerDown(panel);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(result.current.openTokenID).toBe(5);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(result.current.openTokenID).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    act(() => result.current.setOpenTokenID(5));
+    fireEvent.pointerDown(document.body);
+    expect(result.current.openTokenID).toBeNull();
+    act(() => result.current.setOpenTokenID(5));
+    unmount();
+    trigger.blur();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(document.activeElement).not.toBe(trigger);
+  } finally {
+    panel.remove();
+    trigger.remove();
+  }
 });

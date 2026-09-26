@@ -17,8 +17,14 @@ type Props = {
   onUnlocked: (_signal: AbortSignal) => void | Promise<unknown>;
 };
 type ActivePanelProps = {
-  activeTab: Tab; selectedDatabase: Database | null; unsupported: boolean; migrationRequired: boolean; hasDatabase: boolean;
-  onMigrationRequired: (_id: string) => void; onDeleted: (_id: string) => void; runLifecycleMutation: LifecycleMutation;
+  activeTab: Tab;
+  selectedDatabase: Database | null;
+  unsupported: boolean;
+  migrationRequired: boolean;
+  hasDatabase: boolean;
+  onMigrationRequired: (_id: string) => void;
+  onDeleted: (_id: string) => void;
+  runLifecycleMutation: LifecycleMutation;
 };
 
 function unlockTabsGridClass(tabCount: number) {
@@ -113,8 +119,16 @@ export function UnlockPage({ status, onUnlocked }: Props) {
   );
 }
 
-function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect }: {
-  databases: Database[]; selectedDatabase: Database | null; disabled: boolean; onSelect: (_id: string) => void;
+function UnlockDatabasePicker({
+  databases,
+  selectedDatabase,
+  disabled,
+  onSelect,
+}: {
+  databases: Database[];
+  selectedDatabase: Database | null;
+  disabled: boolean;
+  onSelect: (_id: string) => void;
 }) {
   if (databases.length === 0 || !selectedDatabase) return null;
   return (
@@ -139,8 +153,14 @@ function UnlockDatabasePicker({ databases, selectedDatabase, disabled, onSelect 
   );
 }
 
-function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }: {
-  sessionRequired: boolean; unsupported: boolean; migrationRequired: boolean;
+function UnlockStatusNotices({
+  sessionRequired,
+  unsupported,
+  migrationRequired,
+}: {
+  sessionRequired: boolean;
+  unsupported: boolean;
+  migrationRequired: boolean;
 }) {
   return (
     <>
@@ -162,8 +182,16 @@ function UnlockStatusNotices({ sessionRequired, unsupported, migrationRequired }
   );
 }
 
-function UnlockTabs({ tabs, activeTab, disabled, onSelect }: {
-  tabs: [Tab, string][]; activeTab: Tab; disabled: boolean; onSelect: (_tab: Tab) => void;
+function UnlockTabs({
+  tabs,
+  activeTab,
+  disabled,
+  onSelect,
+}: {
+  tabs: [Tab, string][];
+  activeTab: Tab;
+  disabled: boolean;
+  onSelect: (_tab: Tab) => void;
 }) {
   return (
     <div className={`grid rounded-md border border-stone-200 bg-stone-100 p-1 ${unlockTabsGridClass(tabs.length)}`}>

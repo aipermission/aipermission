@@ -40,7 +40,9 @@ describe("useConsoleMessages", () => {
 
   it("ignores a message response from the previously selected runtime", async () => {
     const oldLoad = deferred();
-    vi.mocked(apiGet).mockReturnValueOnce(oldLoad.promise).mockResolvedValueOnce([message(2, "current")]);
+    vi.mocked(apiGet)
+      .mockReturnValueOnce(oldLoad.promise)
+      .mockResolvedValueOnce([message(2, "current")]);
     const props = baseProps();
     const { result, rerender } = renderHook((value) => useConsoleMessages(value), { initialProps: props });
 

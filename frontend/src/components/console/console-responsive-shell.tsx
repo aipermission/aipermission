@@ -21,7 +21,14 @@ type Props<Target> = {
   dialogs?: ReactNode;
 };
 
-export function ConsoleResponsiveShell<Target>({ targetsCompact, tokensCompact, targetSidebar, workspace, tokenPanel, dialogs }: Props<Target>) {
+export function ConsoleResponsiveShell<Target>({
+  targetsCompact,
+  tokensCompact,
+  targetSidebar,
+  workspace,
+  tokenPanel,
+  dialogs,
+}: Props<Target>) {
   const [targetsDrawerOpen, setTargetsDrawerOpen] = useState(false);
   const [tokensDrawerOpen, setTokensDrawerOpen] = useState(false);
   const wide = useMediaQuery("(min-width: 1536px)");

@@ -94,7 +94,15 @@ export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styl
   );
 }
 
-function QueueTotalsStrip({ queues, mutedClass, borderClass }: { queues: readonly RabbitQueue[]; mutedClass: string; borderClass: string }) {
+function QueueTotalsStrip({
+  queues,
+  mutedClass,
+  borderClass,
+}: {
+  queues: readonly RabbitQueue[];
+  mutedClass: string;
+  borderClass: string;
+}) {
   const totals = queueTotals(queues);
   return (
     <div className={`grid gap-1 border-t p-3 text-xs ${borderClass}`}>

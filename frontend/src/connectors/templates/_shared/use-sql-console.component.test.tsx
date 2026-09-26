@@ -25,7 +25,11 @@ const config = {
 beforeEach(() => {
   post.mockReset();
   post.mockImplementation(async (_path, payload) =>
-    completed(connectorActionRequest(payload).input.sql === config.metadataSQL ? metadataOutput("public", "users") : { columns: ["id"], rows: [{ id: 1 }] }),
+    completed(
+      connectorActionRequest(payload).input.sql === config.metadataSQL
+        ? metadataOutput("public", "users")
+        : { columns: ["id"], rows: [{ id: 1 }] },
+    ),
   );
 });
 
@@ -125,7 +129,10 @@ describe("useSQLConsole", () => {
 
   it("discards metadata returned after the connector target changes", async () => {
     const pending = new Map<string, (_response: ReturnType<typeof completed>) => void>();
-    post.mockImplementation((_path, payload) => new Promise<ReturnType<typeof completed>>((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve)));
+    post.mockImplementation(
+      (_path, payload) =>
+        new Promise<ReturnType<typeof completed>>((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve)),
+    );
     const { result, rerender, props } = renderConsole();
     await waitFor(() => expect(pending.has("test-sql:1:1")).toBe(true));
 
@@ -171,7 +178,8 @@ describe("useSQLConsole", () => {
   it("ignores a query result returned after the connector target changes", async () => {
     let resolveQuery: ((_response: ReturnType<typeof completed>) => void) | undefined;
     post.mockImplementation((_path, payload) => {
-      if (connectorActionRequest(payload).input.sql === config.metadataSQL) return Promise.resolve(completed(metadataOutput("public", "users")));
+      if (connectorActionRequest(payload).input.sql === config.metadataSQL)
+        return Promise.resolve(completed(metadataOutput("public", "users")));
       return new Promise<ReturnType<typeof completed>>((resolve) => (resolveQuery = resolve));
     });
     const { result, rerender, props } = renderConsole();

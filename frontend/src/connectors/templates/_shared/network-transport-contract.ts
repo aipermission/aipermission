@@ -9,7 +9,10 @@ export type NetworkTransportDescriptor = {
   profile_endpoint: { fields: { path: string; fallback: string | number }[]; separator: string };
 };
 
-export function assertNetworkTransportMetadata(kind: string, transport: unknown): asserts transport is NetworkTransportDescriptor | undefined {
+export function assertNetworkTransportMetadata(
+  kind: string,
+  transport: unknown,
+): asserts transport is NetworkTransportDescriptor | undefined {
   if (transport === undefined) return;
   if (!isPlainObject(transport)) {
     throw new Error(`Connector template ${kind} metadata network_transport must be an object`);

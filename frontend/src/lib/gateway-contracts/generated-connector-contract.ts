@@ -13,12 +13,7 @@ export const connectorActionStatuses = Object.freeze([
   "outcome_unknown",
 ] as const);
 
-export const connectorRetryClasses = Object.freeze([
-  "read_only",
-  "idempotent",
-  "conditional",
-  "non_idempotent",
-] as const);
+export const connectorRetryClasses = Object.freeze(["read_only", "idempotent", "conditional", "non_idempotent"] as const);
 
 export const executionRules = Object.freeze(["always_run", "approval_required", "blocked"] as const);
 

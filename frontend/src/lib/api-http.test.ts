@@ -58,20 +58,20 @@ test("a rejected stale download cannot adopt another workspace for retry", async
 });
 
 test("bounded GET requests abort delayed reads without changing mutation behavior", async (t) => {
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async (_url: RequestInfo | URL, { signal }: RequestInit) => {
-      assert.ok(signal);
-      return new Promise<Response>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }));
-    },
-  );
+  t.mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, { signal }: RequestInit) => {
+    assert.ok(signal);
+    return new Promise<Response>((_, reject) =>
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }),
+    );
+  });
   await assert.rejects(() => apiGet("/api/slow", { timeoutMs: 5 }), /Gateway read timed out after 5ms/);
 });
 
 test("API failures retain structured status and classification", async () => {
   const originalFetch = globalThis.fetch;
-  Reflect.set(globalThis, "fetch", async () => response({ error: "invalid input", code: "invalid_scope", details: { field: "scope" } }, 422));
+  Reflect.set(globalThis, "fetch", async () =>
+    response({ error: "invalid input", code: "invalid_scope", details: { field: "scope" } }, 422),
+  );
   try {
     await assert.rejects(
       () => apiGet("/api/test"),
@@ -138,7 +138,11 @@ test("JSON API helpers reject malformed successful responses by default", async 
 test("JSON parsing precedes HTML detection and DELETE explicitly accepts 204", async () => {
   const originalFetch = globalThis.fetch;
   try {
-    Reflect.set(globalThis, "fetch", async () => new Response(JSON.stringify({ value: "remote output contains <body text" }), { status: 200 }));
+    Reflect.set(
+      globalThis,
+      "fetch",
+      async () => new Response(JSON.stringify({ value: "remote output contains <body text" }), { status: 200 }),
+    );
     assert.deepEqual(await apiGet("/api/test"), { value: "remote output contains <body text" });
     Reflect.set(globalThis, "fetch", async () => new Response(null, { status: 204 }));
     assert.equal(await apiDelete("/api/test"), null);

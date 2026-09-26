@@ -5,14 +5,16 @@ import type { ScopeSelection } from "./provisioning-types";
 it("rejects malformed metadata rows without losing ordered valid columns", () => {
   expect(groupMetadataRows(null)).toEqual([]);
   expect(groupMetadataRows({ rows: [] })).toEqual([]);
-  expect(groupMetadataRows([
-    null,
-    7,
-    { table_schema: "public", table_name: "users", columns: "id,email" },
-    { table_schema: "public", table_name: "users", column_name: "name" },
-    { table_schema: "public", table_name: "users", columns: '["email","created_at"]' },
-    { table_schema: "", table_name: "ignored", columns: ["id"] },
-  ])).toEqual([{ name: "public", tables: [{ name: "users", columns: ["id", "email", "name", "created_at"] }] }]);
+  expect(
+    groupMetadataRows([
+      null,
+      7,
+      { table_schema: "public", table_name: "users", columns: "id,email" },
+      { table_schema: "public", table_name: "users", column_name: "name" },
+      { table_schema: "public", table_name: "users", columns: '["email","created_at"]' },
+      { table_schema: "", table_name: "ignored", columns: ["id"] },
+    ]),
+  ).toEqual([{ name: "public", tables: [{ name: "users", columns: ["id", "email", "name", "created_at"] }] }]);
 });
 
 it("updates nested scope immutably and projects only explicitly selected columns", () => {

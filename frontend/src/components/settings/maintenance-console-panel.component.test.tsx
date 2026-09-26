@@ -200,12 +200,15 @@ describe("MaintenanceConsolePanel", () => {
     await waitFor(() => expect(vi.mocked(apiPost).mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(2));
   });
 
-  it.each([null, [], { type: "snapshot", data: {} }, { type: "ready", shell: 3 }, { type: "output", status: [] }])("rejects malformed websocket structures %j", async (message) => {
-    const user = userEvent.setup();
-    render(<MaintenanceConsolePanel />);
-    await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
-    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify(message) });
-    expect(await screen.findByText("Maintenance console returned an invalid message.")).toBeVisible();
-  });
+  it.each([null, [], { type: "snapshot", data: {} }, { type: "ready", shell: 3 }, { type: "output", status: [] }])(
+    "rejects malformed websocket structures %j",
+    async (message) => {
+      const user = userEvent.setup();
+      render(<MaintenanceConsolePanel />);
+      await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify(message) });
+      expect(await screen.findByText("Maintenance console returned an invalid message.")).toBeVisible();
+    },
+  );
 });

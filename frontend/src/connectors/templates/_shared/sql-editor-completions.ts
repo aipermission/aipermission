@@ -71,7 +71,13 @@ export function sqlCompletionItems(
   return suggestions;
 }
 
-function addSchemaSuggestion(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
+function addSchemaSuggestion(
+  suggestions: CompletionItem[],
+  seen: Set<string>,
+  item: CompletionRow,
+  monaco: CompletionMonaco,
+  range: CompletionRange,
+): void {
   if (!item.schema || seen.has(item.schema)) return;
   seen.add(item.schema);
   suggestions.push({
@@ -84,7 +90,13 @@ function addSchemaSuggestion(suggestions: CompletionItem[], seen: Set<string>, i
   });
 }
 
-function addTableSuggestions(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
+function addTableSuggestions(
+  suggestions: CompletionItem[],
+  seen: Set<string>,
+  item: CompletionRow,
+  monaco: CompletionMonaco,
+  range: CompletionRange,
+): void {
   const tableKey = `${item.schema}.${item.table}`;
   const identity = JSON.stringify([item.schema, item.table]);
   if (seen.has(identity)) return;
@@ -110,7 +122,13 @@ function addTableSuggestions(suggestions: CompletionItem[], seen: Set<string>, i
   );
 }
 
-function addColumnSuggestion(suggestions: CompletionItem[], seen: Set<string>, item: CompletionRow, monaco: CompletionMonaco, range: CompletionRange): void {
+function addColumnSuggestion(
+  suggestions: CompletionItem[],
+  seen: Set<string>,
+  item: CompletionRow,
+  monaco: CompletionMonaco,
+  range: CompletionRange,
+): void {
   const column = item.column;
   if (!column) return;
   const tableKey = `${item.schema}.${item.table}`;

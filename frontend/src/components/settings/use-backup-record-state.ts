@@ -94,9 +94,11 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
       pending: "deleting-records",
       successMessage: (response) => `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
       action: async () =>
-        backupCountResponse(await apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
-          record_ids: backupDeleteRecords.map((record) => record.id),
-        })),
+        backupCountResponse(
+          await apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
+            record_ids: backupDeleteRecords.map((record) => record.id),
+          }),
+        ),
     });
     if (result === undefined) return;
     setBackupDeleteRecords([]);

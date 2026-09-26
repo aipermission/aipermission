@@ -54,7 +54,11 @@ describe("MessagesDialog", () => {
   });
 
   it("shows the empty-token notice and preserves an invalid timestamp as display data", () => {
-    render(<MessagesDialog {...props({ tokens: [], tokenID: "", state: { state: "ready", data: [message(1, 5, "unknown time")], error: null } })} />);
+    render(
+      <MessagesDialog
+        {...props({ tokens: [], tokenID: "", state: { state: "ready", data: [message(1, 5, "unknown time")], error: null } })}
+      />,
+    );
     expect(screen.getByText("No token has access to this target.")).toBeInTheDocument();
     expect(screen.getByText(/unknown time/)).toBeInTheDocument();
   });

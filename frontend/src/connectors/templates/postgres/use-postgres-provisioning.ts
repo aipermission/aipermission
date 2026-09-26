@@ -64,16 +64,18 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", error: "", schemas: [] });
     try {
-      const response: ActionResponse = connectorActionResultResponse(await apiPost(
-        "/api/connector-actions/local-run",
-        {
-          target_ref: targetRef,
-          action_name: "query_readonly",
-          input: { sql: metadataSQL, max_rows: 1000 },
-          reason: "load Postgres schema metadata for managed credential provisioning",
-        },
-        { signal: request.signal },
-      ));
+      const response: ActionResponse = connectorActionResultResponse(
+        await apiPost(
+          "/api/connector-actions/local-run",
+          {
+            target_ref: targetRef,
+            action_name: "query_readonly",
+            input: { sql: metadataSQL, max_rows: 1000 },
+            reason: "load Postgres schema metadata for managed credential provisioning",
+          },
+          { signal: request.signal },
+        ),
+      );
       if (!request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Could not load schema metadata.");
       if (!item) {
@@ -94,18 +96,20 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
     const request = requestGuard.begin("provision");
     setState({ state: "running", error: "", result: null });
     try {
-      const result: ProvisionResult = provisionResultResponse(await apiPost(
-        `/api/connector-targets/${targetID}/profiles/${profileID}/provision`,
-        {
-          input: {
-            role_name: form.role_name,
-            profile_label: form.profile_label || form.role_name,
-            preset: form.preset,
-            scope: selectedScope,
+      const result: ProvisionResult = provisionResultResponse(
+        await apiPost(
+          `/api/connector-targets/${targetID}/profiles/${profileID}/provision`,
+          {
+            input: {
+              role_name: form.role_name,
+              profile_label: form.profile_label || form.role_name,
+              preset: form.preset,
+              scope: selectedScope,
+            },
           },
-        },
-        { signal: request.signal },
-      ));
+          { signal: request.signal },
+        ),
+      );
       if (!request.isCurrent()) return;
       setState({ state: "ready", error: "", result });
       try {
@@ -155,7 +159,12 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
   };
 }
 
-function canSubmit(targetID: number | undefined, profileID: number | undefined, form: ProvisionForm, selectedScope: ProvisionScope | null): boolean {
+function canSubmit(
+  targetID: number | undefined,
+  profileID: number | undefined,
+  form: ProvisionForm,
+  selectedScope: ProvisionScope | null,
+): boolean {
   return Boolean(
     targetID && profileID && form.role_name.trim() && selectedScope && provisionScopeSupportsPreset(selectedScope, form.preset),
   );

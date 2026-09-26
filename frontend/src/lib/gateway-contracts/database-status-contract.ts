@@ -16,8 +16,14 @@ export type DatabaseStatus = {
 
 export function databaseStatusResponse(value: unknown): DatabaseStatus {
   const record = objectRecord(value);
-  if (!record || !optionalString(record.state) || !optionalString(record.database_id) || !optionalString(record.database_name) ||
-      (record.unlocked !== undefined && typeof record.unlocked !== "boolean")) throw new Error("Invalid database status response.");
+  if (
+    !record ||
+    !optionalString(record.state) ||
+    !optionalString(record.database_id) ||
+    !optionalString(record.database_name) ||
+    (record.unlocked !== undefined && typeof record.unlocked !== "boolean")
+  )
+    throw new Error("Invalid database status response.");
   const databases: unknown = record.databases ?? [];
   if (!Array.isArray(databases) || !databases.every(validDatabaseCatalogItem)) throw new Error("Invalid database catalog response.");
   return {
@@ -31,12 +37,19 @@ export function databaseStatusResponse(value: unknown): DatabaseStatus {
 
 function validDatabaseCatalogItem(value: unknown): value is DatabaseCatalogItem {
   const row = objectRecord(value);
-  return !!row && typeof row.id === "string" && row.id.length > 0 && typeof row.name === "string" &&
-    typeof row.unlocked === "boolean" && (row.current === undefined || typeof row.current === "boolean") && optionalString(row.state);
+  return (
+    !!row &&
+    typeof row.id === "string" &&
+    row.id.length > 0 &&
+    typeof row.name === "string" &&
+    typeof row.unlocked === "boolean" &&
+    (row.current === undefined || typeof row.current === "boolean") &&
+    optionalString(row.state)
+  );
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function optionalString(value: unknown) {

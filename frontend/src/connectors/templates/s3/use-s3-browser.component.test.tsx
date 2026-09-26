@@ -19,7 +19,15 @@ const objects = [
 
 type MockAction = GuardedConnectorActionOptions;
 function actionResult(actionName: string, output: unknown): ConnectorActionResponse {
-  return { status: "completed", request_id: 1, target_ref: "s3:1:1", connector_kind: "s3", action_name: actionName, retry_policy: { class: "read_only", guidance: "Read again." }, output };
+  return {
+    status: "completed",
+    request_id: 1,
+    target_ref: "s3:1:1",
+    connector_kind: "s3",
+    action_name: actionName,
+    retry_policy: { class: "read_only", guidance: "Read again." },
+    output,
+  };
 }
 const mockedSaveBlob = vi.mocked(saveBlob);
 const mockedRunAction = vi.mocked(runGuardedConnectorAction);

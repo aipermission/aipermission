@@ -19,13 +19,33 @@ describe("ConsoleRecoveryPanel", () => {
   });
 
   it("disables duplicate restarts and displays the owned failure", () => {
-    render(<ConsoleRecoveryPanel request={request} now={now} theme="light" action={{ state: "running", error: "Unavailable" }} onRestart={vi.fn()} />);
+    render(
+      <ConsoleRecoveryPanel
+        request={request}
+        now={now}
+        theme="light"
+        action={{ state: "running", error: "Unavailable" }}
+        onRestart={vi.fn()}
+      />,
+    );
     expect(screen.getByRole("button", { name: "Restarting..." })).toBeDisabled();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
   });
 
-  it.each([["manual", "Manual command running"], ["mcp", "AI command running"], ["other", "Command running"]])("labels %s requests without inventing a connector action", (source, label) => {
-    render(<ConsoleRecoveryPanel request={{ created_at: "2026-09-26T12:00:00Z", source, command: "x".repeat(120) }} now={now} theme="light" action={{ state: "idle" }} onRestart={vi.fn()} />);
+  it.each([
+    ["manual", "Manual command running"],
+    ["mcp", "AI command running"],
+    ["other", "Command running"],
+  ])("labels %s requests without inventing a connector action", (source, label) => {
+    render(
+      <ConsoleRecoveryPanel
+        request={{ created_at: "2026-09-26T12:00:00Z", source, command: "x".repeat(120) }}
+        now={now}
+        theme="light"
+        action={{ state: "idle" }}
+        onRestart={vi.fn()}
+      />,
+    );
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(screen.getByText(`${"x".repeat(87)}...`)).toBeInTheDocument();
     expect(screen.queryByText(/Looks stuck/)).not.toBeInTheDocument();

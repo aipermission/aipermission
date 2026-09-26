@@ -91,7 +91,10 @@ export const {
   operationFromError,
 } = model;
 
-export function credentialDeleteDialog({ row, targets = [] }: {
+export function credentialDeleteDialog({
+  row,
+  targets = [],
+}: {
   row: { name?: string; target_id?: number; target_label?: string; profile?: Pick<DatabaseProfile, "public"> };
   targets?: { id: number; profiles?: Pick<DatabaseProfile, "id" | "public">[] }[];
 }) {

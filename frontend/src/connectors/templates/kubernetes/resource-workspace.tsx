@@ -10,7 +10,23 @@ import type { useRolloutRestart } from "./use-rollout-restart";
 import type { connectorConsoleTheme } from "../_shared/console-theme";
 
 type KubernetesResourceWorkspaceProps = {
-  browser: Pick<ReturnType<typeof useKubernetesBrowser>, "selectedResource" | "tab" | "activeTab" | "state" | "viewMode" | "selectedPodConsoleLive" | "consolePending" | "startPodConsole" | "detail" | "logs" | "resultSearch" | "setResultSearch" | "readLogs" | "openPodConsole">;
+  browser: Pick<
+    ReturnType<typeof useKubernetesBrowser>,
+    | "selectedResource"
+    | "tab"
+    | "activeTab"
+    | "state"
+    | "viewMode"
+    | "selectedPodConsoleLive"
+    | "consolePending"
+    | "startPodConsole"
+    | "detail"
+    | "logs"
+    | "resultSearch"
+    | "setResultSearch"
+    | "readLogs"
+    | "openPodConsole"
+  >;
   restart: Pick<ReturnType<typeof useRolloutRestart>, "open">;
   theme: ComponentProps<typeof KubernetesPodConsolePanel>["theme"];
   selectedRuntimeTarget?: ComponentProps<typeof KubernetesPodConsolePanel>["selectedRuntimeTarget"];

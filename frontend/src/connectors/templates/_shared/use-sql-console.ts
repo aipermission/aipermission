@@ -63,16 +63,18 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
-      const response: ActionResponse = connectorActionResultResponse(await apiPost(
-        "/api/connector-actions/local-run",
-        {
-          target_ref: target.ref,
-          action_name: connector.queryAction,
-          input: { sql, max_rows: Number(maxRows) || 100 },
-          reason: connector.manualReason,
-        },
-        { signal: request.signal },
-      ));
+      const response: ActionResponse = connectorActionResultResponse(
+        await apiPost(
+          "/api/connector-actions/local-run",
+          {
+            target_ref: target.ref,
+            action_name: connector.queryAction,
+            input: { sql, max_rows: Number(maxRows) || 100 },
+            reason: connector.manualReason,
+          },
+          { signal: request.signal },
+        ),
+      );
       if (!request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Query failed.");
       if (!item) {
@@ -127,7 +129,8 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     recentQueries,
     runQuery,
     loadSQL,
-    prepareTableQuery: (table: SQLTableReference | null) => loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : ""),
+    prepareTableQuery: (table: SQLTableReference | null) =>
+      loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : ""),
   };
 }
 

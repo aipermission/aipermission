@@ -126,7 +126,14 @@ export function RemoteBrowserDialog({
             Refresh
           </Button>
           {canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={() => { if (browser.data?.path) onUseDirectory(browser.data.path); }} disabled={!currentDirectoryReady}>
+            <Button
+              type="button"
+              className="h-10"
+              onClick={() => {
+                if (browser.data?.path) onUseDirectory(browser.data.path);
+              }}
+              disabled={!currentDirectoryReady}
+            >
               Use this folder
             </Button>
           ) : null}
@@ -199,7 +206,9 @@ export function RemoteBrowserDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => onLoad(browser.data?.path || browser.path, browser.purpose, { append: true, cursor: browser.data?.next_cursor })}
+                  onClick={() =>
+                    onLoad(browser.data?.path || browser.path, browser.purpose, { append: true, cursor: browser.data?.next_cursor })
+                  }
                   disabled={browser.state !== "ready"}
                 >
                   {browser.state === "loading-more" ? "Loading more..." : "Load more"}

@@ -23,9 +23,23 @@ function deferred() {
 }
 
 function target(id: number, extra: Partial<GatewayTarget> = {}): GatewayTarget {
-  return { id, target_id: id, profile_id: id, project_id: 1, connector_kind: "fixture", ref: `fixture:${id}:${id}`,
-    target_name: `Target ${id}`, profile_kind: "default", profile_label: "main", project_name: "My Project", project_slug: "my-project",
-    status: "active", created_at: "2026-09-01T00:00:00Z", updated_at: "2026-09-01T00:00:00Z", ...extra };
+  return {
+    id,
+    target_id: id,
+    profile_id: id,
+    project_id: 1,
+    connector_kind: "fixture",
+    ref: `fixture:${id}:${id}`,
+    target_name: `Target ${id}`,
+    profile_kind: "default",
+    profile_label: "main",
+    project_name: "My Project",
+    project_slug: "my-project",
+    status: "active",
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-01T00:00:00Z",
+    ...extra,
+  };
 }
 
 function renderResources(options: Partial<GatewayResourceOptions> = {}) {
@@ -184,7 +198,12 @@ describe("useGatewayResources", () => {
   it("derives live console targets from the latest target snapshot", async () => {
     const resolveConnectorModel = vi.fn(() => ({
       usesLiveConsole: () => true,
-      liveConsoleRuntimeTarget: ({ target }: { target: GatewayTarget }) => ({ ...target, id: target.runtime_id || 0, name: target.target_name, runtime: true }),
+      liveConsoleRuntimeTarget: ({ target }: { target: GatewayTarget }) => ({
+        ...target,
+        id: target.runtime_id || 0,
+        name: target.target_name,
+        runtime: true,
+      }),
     }));
     apiGet.mockResolvedValue({ items: [target(8, { runtime_id: 9 })] });
     const { result } = renderResources({ resolveConnectorModel });
@@ -208,7 +227,9 @@ describe("useGatewayResources", () => {
     apiPut.mockResolvedValueOnce({ enabled: "true", start_enabled: false });
     const { result } = renderResources();
     await act(async () => result.current.loadMCPRuntime());
-    await act(async () => { await expect(result.current.setMCPRuntimeEnabled(true)).rejects.toThrow("Invalid MCP runtime"); });
+    await act(async () => {
+      await expect(result.current.setMCPRuntimeEnabled(true)).rejects.toThrow("Invalid MCP runtime");
+    });
     expect(result.current.mcpRuntime.data).toEqual({ enabled: false, start_enabled: false });
   });
 });

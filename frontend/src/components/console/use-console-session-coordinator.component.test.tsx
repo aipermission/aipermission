@@ -34,7 +34,14 @@ function renderCoordinator() {
 }
 
 const runtime = { id: 7, name: "My Server" };
-const vaultOptions = { supported: true, target_project_id: 4, items: [{ id: 1, name: "PROJECT_API_KEY", owner_project_id: 4 }], total: 1, defaults: [], projects: [{ id: 4, name: "My Project" }] };
+const vaultOptions = {
+  supported: true,
+  target_project_id: 4,
+  items: [{ id: 1, name: "PROJECT_API_KEY", owner_project_id: 4 }],
+  total: 1,
+  defaults: [],
+  projects: [{ id: 4, name: "My Project" }],
+};
 
 describe("useConsoleSessionCoordinator", () => {
   beforeEach(() => {
@@ -275,7 +282,10 @@ describe("useConsoleSessionCoordinator", () => {
 
   it("keeps the last session snapshot through a transient failure and recovers", async () => {
     const session = { id: 10, runtime_id: 7, status: "connected" };
-    vi.mocked(apiGet).mockResolvedValueOnce([session]).mockRejectedValueOnce(new Error("session service unavailable")).mockResolvedValueOnce([]);
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce([session])
+      .mockRejectedValueOnce(new Error("session service unavailable"))
+      .mockResolvedValueOnce([]);
     const { result } = renderCoordinator();
 
     await act(async () => result.current.loadSessions());

@@ -48,7 +48,17 @@ it("wires Vault header and filter controls", async () => {
 it("renders Vault rows and forwards every row action", async () => {
   const user = userEvent.setup();
   const actions = Array.from({ length: 5 }, () => vi.fn());
-  const item = { id: 7, name: "DEPLOY_TOKEN", owner_project_id: 3, source: "imported", secret_type: "api_key", value_version: 1, metadata_revision: 1, tags: [], usage_notes: [] };
+  const item = {
+    id: 7,
+    name: "DEPLOY_TOKEN",
+    owner_project_id: 3,
+    source: "imported",
+    secret_type: "api_key",
+    value_version: 1,
+    metadata_revision: 1,
+    tags: [],
+    usage_notes: [],
+  };
   const { rerender } = render(
     <VaultItemsTable
       items={{ state: "ready" }}

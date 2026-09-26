@@ -4,7 +4,9 @@ import { TokenPermissionPanel } from "./token-permission-panel";
 import type { ComponentProps } from "react";
 
 vi.mock("./connector-token-permission-panel", () => ({
-  ConnectorTokenPermissionPanel: (props: ComponentProps<typeof TokenPermissionPanel>) => <div data-testid="permission-panel">{JSON.stringify(props)}</div>,
+  ConnectorTokenPermissionPanel: (props: ComponentProps<typeof TokenPermissionPanel>) => (
+    <div data-testid="permission-panel">{JSON.stringify(props)}</div>
+  ),
 }));
 
 it("forwards the generic connector permission contract", () => {

@@ -323,7 +323,17 @@ function FormatButton({ title, onClick, children }: Pick<ComponentProps<typeof B
   );
 }
 
-function AddressField({ label, value, onChange, required = false }: { label: string; value: string; onChange: (_value: string) => void; required?: boolean }) {
+function AddressField({
+  label,
+  value,
+  onChange,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (_value: string) => void;
+  required?: boolean;
+}) {
   return (
     <Field>
       {label}
@@ -338,6 +348,6 @@ function emptyComposeForm() {
 
 function composeFormValue(value: MailDraftFields = {}): ComposeForm {
   const form = { ...emptyComposeForm(), ...value };
-  const recipients = (input: string | string[]) => Array.isArray(input) ? input.join(", ") : input;
+  const recipients = (input: string | string[]) => (Array.isArray(input) ? input.join(", ") : input);
   return { ...form, to: recipients(form.to), cc: recipients(form.cc), bcc: recipients(form.bcc) };
 }

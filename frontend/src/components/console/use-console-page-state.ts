@@ -14,7 +14,11 @@ type Props<Target extends RuntimeTarget, SessionItem extends Session, MessageIte
 };
 
 export function useConsolePageState<Target extends RuntimeTarget, SessionItem extends Session, MessageItem extends Message>({
-  liveConsoleTargets, messages, sessions, selectedRuntimeID, allowTargetFallback = true,
+  liveConsoleTargets,
+  messages,
+  sessions,
+  selectedRuntimeID,
+  allowTargetFallback = true,
 }: Props<Target, SessionItem, MessageItem>) {
   const selectedRuntimeTarget = useMemo(() => {
     if (!liveConsoleTargets.data.length) return null;

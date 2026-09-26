@@ -20,9 +20,7 @@ function deferred() {
 }
 
 function renderBackupState() {
-  return renderHook(() =>
-    useBackupProviderState({ data: { database_name: "Default" } }),
-  );
+  return renderHook(() => useBackupProviderState({ data: { database_name: "Default" } }));
 }
 
 describe("useBackupProviderState", () => {

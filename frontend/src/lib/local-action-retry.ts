@@ -97,7 +97,8 @@ export async function markLocalActionRetryOutcome(prepared: unknown, value: unkn
 
 function localActionOperationRef(data: Record<string, unknown> | null) {
   if (typeof data?.operation_ref === "string") return data.operation_ref.trim().slice(0, 128);
-  if (typeof data?.operation_id === "number" && Number.isSafeInteger(data.operation_id) && data.operation_id > 0) return `operation:${data.operation_id}`;
+  if (typeof data?.operation_id === "number" && Number.isSafeInteger(data.operation_id) && data.operation_id > 0)
+    return `operation:${data.operation_id}`;
   return "";
 }
 
@@ -191,16 +192,27 @@ async function requestSignature(scope: RetryScope, body: unknown) {
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function validPreparedRetry(value: unknown): value is PreparedRetry {
   const prepared = objectRecord(value);
   const scope = objectRecord(prepared?.scope);
-  return !!prepared && !!scope && typeof scope.key === "string" && scope.key.length > 0 &&
+  return (
+    !!prepared &&
+    !!scope &&
+    typeof scope.key === "string" &&
+    scope.key.length > 0 &&
     (scope.legacyKey === undefined || typeof scope.legacyKey === "string") &&
-    typeof prepared.signature === "string" && /^[a-f0-9]{64}$/.test(prepared.signature) &&
-    typeof prepared.idempotencyKey === "string" && prepared.idempotencyKey.length > 0 &&
-    typeof prepared.revision === "number" && Number.isSafeInteger(prepared.revision) && prepared.revision > 0 &&
-    typeof prepared.attemptID === "string" && prepared.attemptID.length > 0 && typeof prepared.reused === "boolean";
+    typeof prepared.signature === "string" &&
+    /^[a-f0-9]{64}$/.test(prepared.signature) &&
+    typeof prepared.idempotencyKey === "string" &&
+    prepared.idempotencyKey.length > 0 &&
+    typeof prepared.revision === "number" &&
+    Number.isSafeInteger(prepared.revision) &&
+    prepared.revision > 0 &&
+    typeof prepared.attemptID === "string" &&
+    prepared.attemptID.length > 0 &&
+    typeof prepared.reused === "boolean"
+  );
 }

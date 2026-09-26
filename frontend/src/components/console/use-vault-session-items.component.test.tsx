@@ -28,7 +28,9 @@ it("pages past the first 100 Vault items within the selected project", async () 
 });
 
 it("ignores a stale server search after the search term changes", async () => {
-  let resolveOld: (_value: unknown) => void = () => { throw new Error("Deferred request is not initialized"); };
+  let resolveOld: (_value: unknown) => void = () => {
+    throw new Error("Deferred request is not initialized");
+  };
   const oldResult = new Promise<unknown>((resolve) => {
     resolveOld = resolve;
   });
@@ -52,7 +54,9 @@ it("ignores a stale server search after the search term changes", async () => {
 });
 
 it("keeps a failed search retryable without changing the project scope", async () => {
-  vi.mocked(apiGet).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ items: [{ id: 7, name: "KEY_7", owner_project_id: 4 }], total: 1 });
+  vi.mocked(apiGet)
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce({ items: [{ id: 7, name: "KEY_7", owner_project_id: 4 }], total: 1 });
   const { result } = renderHook(() => useVaultSessionItems({ open: true, runtimeID: 2, projectID: "4", query: "KEY_7" }));
   await waitFor(() => expect(result.current.error).toBe("offline"));
   act(() => result.current.retry());
@@ -74,10 +78,18 @@ it("keeps a validated first page when the appended page is malformed", async () 
 });
 
 it("discards an older project page after the selected project changes", async () => {
-  let resolveOld: (_value: unknown) => void = () => { throw new Error("Deferred request is not initialized"); };
-  const oldResult = new Promise<unknown>((resolve) => { resolveOld = resolve; });
-  vi.mocked(apiGet).mockReturnValueOnce(oldResult).mockResolvedValueOnce({ items: [{ id: 2, name: "NEW_PROJECT_KEY", owner_project_id: 5 }], total: 1 });
-  const { result, rerender } = renderHook(({ projectID }) => useVaultSessionItems({ open: true, runtimeID: 2, projectID, query: "" }), { initialProps: { projectID: "4" } });
+  let resolveOld: (_value: unknown) => void = () => {
+    throw new Error("Deferred request is not initialized");
+  };
+  const oldResult = new Promise<unknown>((resolve) => {
+    resolveOld = resolve;
+  });
+  vi.mocked(apiGet)
+    .mockReturnValueOnce(oldResult)
+    .mockResolvedValueOnce({ items: [{ id: 2, name: "NEW_PROJECT_KEY", owner_project_id: 5 }], total: 1 });
+  const { result, rerender } = renderHook(({ projectID }) => useVaultSessionItems({ open: true, runtimeID: 2, projectID, query: "" }), {
+    initialProps: { projectID: "4" },
+  });
   await waitFor(() => expect(apiGet).toHaveBeenCalledOnce());
   rerender({ projectID: "5" });
   expect(result.current.items).toEqual([]);

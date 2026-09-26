@@ -29,8 +29,13 @@ test("completed action guard rejects failed results and withholds pending result
   assert.throws(() => requireCompletedConnectorAction({ status: "blocked", error: "permission blocked" }), /permission blocked/);
   assert.throws(
     () => requireCompletedConnectorAction({ status: "outcome_unknown", request_id: 42 }),
-    (error: unknown) => error instanceof Error && "actionItem" in error && typeof error.actionItem === "object" &&
-      error.actionItem !== null && "request_id" in error.actionItem && error.actionItem.request_id === 42,
+    (error: unknown) =>
+      error instanceof Error &&
+      "actionItem" in error &&
+      typeof error.actionItem === "object" &&
+      error.actionItem !== null &&
+      "request_id" in error.actionItem &&
+      error.actionItem.request_id === 42,
   );
 });
 
@@ -46,7 +51,7 @@ test("Kafka offset controls preserve exact topic and partition selections", () =
   assert.deepEqual(parseOffsetSelection(value), { topic: "orders/priority", partition: 12 });
   assert.equal(parseOffsetSelection('["",1]'), null);
   assert.equal(parseOffsetSelection('["orders",-1]'), null);
-  assert.equal(parseOffsetSelection('[42,1]'), null);
+  assert.equal(parseOffsetSelection("[42,1]"), null);
   assert.equal(parseOffsetSelection('["orders",1,"extra"]'), null);
   assert.equal(parseOffsetSelection("not-json"), null);
 });

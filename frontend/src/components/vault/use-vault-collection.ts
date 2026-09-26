@@ -6,13 +6,31 @@ import { useRequestGuard } from "../../lib/request-guard";
 import type { FormEvent, SetStateAction } from "react";
 import type { ProjectOptionsState } from "../../lib/load-project-options.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { vaultManagedItemsResponse, type VaultManagedItem, type VaultUsageNote, type VaultActionState } from "../../lib/gateway-contracts/vault-management-contract.ts";
+import {
+  vaultManagedItemsResponse,
+  type VaultManagedItem,
+  type VaultUsageNote,
+  type VaultActionState,
+} from "../../lib/gateway-contracts/vault-management-contract.ts";
 
 export type VaultEditorState = {
-  open: boolean; mode: "create" | "edit"; item: VaultManagedItem | null; source: string;
-  name: string; value: string; owner_project_id: string | number; shared_project_ids: number[];
-  secret_type: string; generator_kind: string; provider: string; environment: string; description: string;
-  expires_at: string; expiry_warning_days: string | number; tags: string; usage_notes: VaultUsageNote[];
+  open: boolean;
+  mode: "create" | "edit";
+  item: VaultManagedItem | null;
+  source: string;
+  name: string;
+  value: string;
+  owner_project_id: string | number;
+  shared_project_ids: number[];
+  secret_type: string;
+  generator_kind: string;
+  provider: string;
+  environment: string;
+  description: string;
+  expires_at: string;
+  expiry_warning_days: string | number;
+  tags: string;
+  usage_notes: VaultUsageNote[];
 };
 export type VaultFiltersState = { project_id: string; query: string; expiry: string };
 type ItemsResource = { state: string; data: VaultManagedItem[]; total: number; error: string | null };
@@ -203,7 +221,11 @@ export function useVaultCollection() {
   };
 }
 
-export function filterVaultItemsByExpiry<Item extends { expires_at?: string | null; expiry_warning_days?: number }>(items: Item[], expiry: string, now = Date.now()): Item[] {
+export function filterVaultItemsByExpiry<Item extends { expires_at?: string | null; expiry_warning_days?: number }>(
+  items: Item[],
+  expiry: string,
+  now = Date.now(),
+): Item[] {
   return items.filter((item) => {
     if (expiry === "expired") return item.expires_at && Date.parse(item.expires_at) <= now;
     if (expiry === "warning") {

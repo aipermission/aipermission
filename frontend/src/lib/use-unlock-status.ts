@@ -5,9 +5,9 @@ import { errorMessage } from "./errors.ts";
 
 export function useUnlockStatus() {
   const [unlock, setUnlock] = useState<
-    { state: "loading"; data: null; error: null } |
-    { state: "ready"; data: DatabaseStatus; error: null } |
-    { state: "error"; data: null; error: string }
+    | { state: "loading"; data: null; error: null }
+    | { state: "ready"; data: DatabaseStatus; error: null }
+    | { state: "error"; data: null; error: string }
   >({ state: "loading", data: null, error: null });
   const unlockLoadGeneration = useRef(0);
 

@@ -16,7 +16,11 @@ import { useBackupProviderState } from "../components/settings/use-backup-provid
 import { Notice } from "../components/ui/notice";
 
 export function SettingsPage() {
-  const [database, setDatabase] = useState<{ state: "loading" | "ready" | "error"; data: SettingsDatabase | null; error: string | null }>({ state: "loading", data: null, error: null });
+  const [database, setDatabase] = useState<{ state: "loading" | "ready" | "error"; data: SettingsDatabase | null; error: string | null }>({
+    state: "loading",
+    data: null,
+    error: null,
+  });
   const requestGuard = useRequestGuard("settings-database-status");
   const backupProvider = useBackupProviderState(database);
 

@@ -124,15 +124,27 @@ export function tableMatchesReference(
   if (!item || !reference) return false;
   const tableMatches = sqlIdentifierMatches(item.table, reference.table, Boolean(reference.tableQuoted), identifierPolicy);
   if (!tableMatches) return false;
-  if (reference.schema && !sqlIdentifierMatches(item.schema, reference.schema, Boolean(reference.schemaQuoted), identifierPolicy)) return false;
+  if (reference.schema && !sqlIdentifierMatches(item.schema, reference.schema, Boolean(reference.schemaQuoted), identifierPolicy))
+    return false;
   return true;
 }
 
-export function sqlIdentifierMatches(candidate: string, reference: string, quoted = false, identifierPolicy: SQLIdentifierPolicy = "lowercase-unquoted"): boolean {
+export function sqlIdentifierMatches(
+  candidate: string,
+  reference: string,
+  quoted = false,
+  identifierPolicy: SQLIdentifierPolicy = "lowercase-unquoted",
+): boolean {
   return canonicalSQLIdentifier(candidate, true, identifierPolicy) === canonicalSQLIdentifier(reference, quoted, identifierPolicy);
 }
 
-export function sqlReferenceIdentifiersMatch(left: string, leftQuoted: boolean, right: string, rightQuoted: boolean, identifierPolicy: SQLIdentifierPolicy = "lowercase-unquoted"): boolean {
+export function sqlReferenceIdentifiersMatch(
+  left: string,
+  leftQuoted: boolean,
+  right: string,
+  rightQuoted: boolean,
+  identifierPolicy: SQLIdentifierPolicy = "lowercase-unquoted",
+): boolean {
   return canonicalSQLIdentifier(left, leftQuoted, identifierPolicy) === canonicalSQLIdentifier(right, rightQuoted, identifierPolicy);
 }
 

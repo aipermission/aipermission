@@ -6,14 +6,24 @@ import { databaseStatusResponse } from "../lib/gateway-contracts/database-status
 import type { DatabaseStatus } from "../lib/gateway-contracts/database-status-contract.ts";
 import { errorMessage } from "../lib/errors.ts";
 
-type SwitchDialogState = { open: boolean; database_id: string; password: string; state: "idle" | "switching" | "error"; error: string | null };
+type SwitchDialogState = {
+  open: boolean;
+  database_id: string;
+  password: string;
+  state: "idle" | "switching" | "error";
+  error: string | null;
+};
 type LockDialogState = { open: boolean; state: "idle" | "locking" | "error"; error: string | null };
 type Props = { disconnectAllConsoleSessions: () => void; pollIsCurrent: (_generation?: number) => boolean };
 const initialSwitchDialog: SwitchDialogState = { open: false, database_id: "", password: "", state: "idle", error: null };
 const initialLockDialog: LockDialogState = { open: false, state: "idle", error: null };
 
 export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurrent }: Props) {
-  const [status, setStatus] = useState<{ state: "loading" | "ready" | "error"; data: DatabaseStatus | null; error: string | null }>({ state: "loading", data: null, error: null });
+  const [status, setStatus] = useState<{ state: "loading" | "ready" | "error"; data: DatabaseStatus | null; error: string | null }>({
+    state: "loading",
+    data: null,
+    error: null,
+  });
   const [switchDialog, setSwitchDialog] = useState(initialSwitchDialog);
   const [lockDialog, setLockDialog] = useState(initialLockDialog);
 
@@ -40,7 +50,12 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
         disconnectAllConsoleSessions();
         window.location.reload();
       } catch (error) {
-        setLockDialog((current) => ({ ...current, open: true, state: "error", error: errorMessage(error, "Could not lock the database.") }));
+        setLockDialog((current) => ({
+          ...current,
+          open: true,
+          state: "error",
+          error: errorMessage(error, "Could not lock the database."),
+        }));
       }
     },
     [disconnectAllConsoleSessions],

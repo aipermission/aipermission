@@ -9,7 +9,21 @@ it("preserves Kubernetes selection, filter, namespace and refresh contracts", as
   const user = userEvent.setup();
   const pod = { namespace: "apps", name: "api-1", phase: "Running", ready: "1/1" };
   const browser: ComponentProps<typeof KubernetesResourceBrowser>["browser"] = {
-    tab: "pods", filteredResources: [pod], activeResources: [pod], selectedKey: resourceKey("pods", pod), latestAction: { status: "completed", action_name: "list_pods" }, state: { state: "idle" }, namespace: "", namespaces: [{ name: "apps" }], filter: "", activeTab: { label: "Pods" }, refreshResource: vi.fn(), switchTab: vi.fn(), changeNamespace: vi.fn(), setFilter: vi.fn(), selectResource: vi.fn(),
+    tab: "pods",
+    filteredResources: [pod],
+    activeResources: [pod],
+    selectedKey: resourceKey("pods", pod),
+    latestAction: { status: "completed", action_name: "list_pods" },
+    state: { state: "idle" },
+    namespace: "",
+    namespaces: [{ name: "apps" }],
+    filter: "",
+    activeTab: { label: "Pods" },
+    refreshResource: vi.fn(),
+    switchTab: vi.fn(),
+    changeNamespace: vi.fn(),
+    setFilter: vi.fn(),
+    selectResource: vi.fn(),
   };
   const props = { browser, styles: { border: "", subtlePanel: "", muted: "", rowHover: "", activeRow: "", input: "" }, theme: "light" };
   const view = render(<KubernetesResourceBrowser {...props} />);
@@ -30,7 +44,17 @@ it("preserves Kubernetes selection, filter, namespace and refresh contracts", as
   expect(screen.getByRole("button", { name: "Refresh resources" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "Refresh resources" }));
   expect(browser.refreshResource).toHaveBeenCalledOnce();
-  view.rerender(<KubernetesResourceBrowser {...props} browser={{ ...browser, filteredResources: [], state: { state: "error" }, latestAction: { status: "failed", action_name: "list_pods" } }} />);
+  view.rerender(
+    <KubernetesResourceBrowser
+      {...props}
+      browser={{
+        ...browser,
+        filteredResources: [],
+        state: { state: "error" },
+        latestAction: { status: "failed", action_name: "list_pods" },
+      }}
+    />,
+  );
   expect(screen.getByText("No resources found for this filter.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Refresh resources" })).toBeEnabled();
 });

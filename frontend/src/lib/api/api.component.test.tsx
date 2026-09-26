@@ -142,10 +142,14 @@ it("binds retry storage and mutation headers to the same tab workspace", async (
 
 it("binds a picker download to the workspace selected before the dialog opens", async () => {
   const writable = {};
-  Reflect.set(window, "showSaveFilePicker", vi.fn(async () => {
-    document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
-    return { createWritable: async () => writable };
-  }));
+  Reflect.set(
+    window,
+    "showSaveFilePicker",
+    vi.fn(async () => {
+      document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
+      return { createWritable: async () => writable };
+    }),
+  );
   const fetch = vi
     .fn()
     .mockResolvedValueOnce(
@@ -418,7 +422,14 @@ it("retires a reconciled fresh identity after a definitive client rejection", as
   const keys: unknown[] = [];
   let calls = 0;
   const body = { target_ref: "fixture:4:1", action_name: "mutate", input: {}, reason: "coverage" };
-  window.addEventListener(localActionReconciliationEvent, (event) => { if (!(event instanceof CustomEvent)) throw new Error("Missing reconciliation details"); event.detail.resolve(true); }, { once: true });
+  window.addEventListener(
+    localActionReconciliationEvent,
+    (event) => {
+      if (!(event instanceof CustomEvent)) throw new Error("Missing reconciliation details");
+      event.detail.resolve(true);
+    },
+    { once: true },
+  );
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: unknown, options: RequestInit) => {
@@ -488,9 +499,13 @@ it("does not start a download when the native picker is canceled", async () => {
   const abort = new DOMException("Canceled", "AbortError");
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
-  Reflect.set(window, "showSaveFilePicker", vi.fn(async () => {
-    throw abort;
-  }));
+  Reflect.set(
+    window,
+    "showSaveFilePicker",
+    vi.fn(async () => {
+      throw abort;
+    }),
+  );
 
   await expect(apiDownload("/api/download", "backup:latest.aipdb", { picker: true })).resolves.toEqual({
     saved: false,
@@ -552,7 +567,14 @@ it("keeps an unresolved retry entry visible until explicit reconciliation", asyn
   const [entry] = await listLocalActionRetryEntries();
   expect(entry).toMatchObject({ request_id: 73, assistant_hint: "Inspect state.", state: "outcome_unknown" });
 
-  window.addEventListener(localActionReconciliationEvent, (event) => { if (!(event instanceof CustomEvent)) throw new Error("Missing reconciliation details"); event.detail.resolve(true); }, { once: true });
+  window.addEventListener(
+    localActionReconciliationEvent,
+    (event) => {
+      if (!(event instanceof CustomEvent)) throw new Error("Missing reconciliation details");
+      event.detail.resolve(true);
+    },
+    { once: true },
+  );
   const replacement = await prepareLocalActionRetry(body);
   expect(replacement.reused).toBe(false);
 });
@@ -610,7 +632,9 @@ it("releases a signing reservation when request hashing fails", async () => {
   vi.stubGlobal("crypto", {
     randomUUID: () => originalCrypto.randomUUID(),
     subtle: {
-      generateKey: vi.fn((algorithm: AlgorithmIdentifier, extractable: boolean, usages: KeyUsage[]) => originalCrypto.subtle.generateKey(algorithm, extractable, usages)),
+      generateKey: vi.fn((algorithm: AlgorithmIdentifier, extractable: boolean, usages: KeyUsage[]) =>
+        originalCrypto.subtle.generateKey(algorithm, extractable, usages),
+      ),
       sign: vi.fn(async () => {
         throw new Error("hashing failed");
       }),

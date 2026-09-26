@@ -23,7 +23,12 @@ vi.mock("./pages/unlock", () => ({
     const [error, setError] = useState("");
     return (
       <div>
-        <button type="button" onClick={() => Promise.resolve(onUnlocked(new AbortController().signal)).catch((failure: unknown) => setError(errorMessage(failure)))}>
+        <button
+          type="button"
+          onClick={() =>
+            Promise.resolve(onUnlocked(new AbortController().signal)).catch((failure: unknown) => setError(errorMessage(failure)))
+          }
+        >
           Refresh unlock status
         </button>
         {error ? <span>{error}</span> : null}

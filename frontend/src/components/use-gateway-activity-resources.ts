@@ -14,9 +14,18 @@ type ListResource<Item> = { state: "loading" | "ready" | "error"; data: Item[]; 
 type Props = { pollIsCurrent: (_generation?: number) => boolean };
 
 export function useGatewayActivityResources({ pollIsCurrent }: Props) {
-  const [connectorActionApprovals, setConnectorActionApprovals] = useState<ListResource<ConnectorApproval>>({ state: "loading", data: [], error: null });
+  const [connectorActionApprovals, setConnectorActionApprovals] = useState<ListResource<ConnectorApproval>>({
+    state: "loading",
+    data: [],
+    error: null,
+  });
   const [messages, setMessages] = useState<ListResource<RuntimeMessage>>({ state: "loading", data: [], error: null });
-  const [backupFreshness, setBackupFreshness] = useState<ListResource<BackupFreshnessItem> & { checkErrors: BackupCheckError[] }>({ state: "loading", data: [], checkErrors: [], error: null });
+  const [backupFreshness, setBackupFreshness] = useState<ListResource<BackupFreshnessItem> & { checkErrors: BackupCheckError[] }>({
+    state: "loading",
+    data: [],
+    checkErrors: [],
+    error: null,
+  });
   const requests = useRequestGuard("gateway-activity-resources");
 
   const loadConnectorActionApprovals = useCallback(

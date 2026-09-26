@@ -16,13 +16,20 @@ import type { ProjectOption } from "../lib/load-project-options.ts";
 type Projects = Pick<ProjectOption, "id" | "name">[];
 type Collection = ReturnType<typeof useVaultCollection>;
 type BindingProps = {
-  state: VaultBindingsState; projects: Projects; onChange: Dispatch<SetStateAction<VaultBindingsState>>;
-  onClose: () => void; onSave: (_event: FormEvent<HTMLFormElement>) => unknown;
+  state: VaultBindingsState;
+  projects: Projects;
+  onChange: Dispatch<SetStateAction<VaultBindingsState>>;
+  onClose: () => void;
+  onSave: (_event: FormEvent<HTMLFormElement>) => unknown;
   onDelete: (_item: VaultBindingsState["data"][number]) => unknown;
 };
 type EditorProps = {
-  editor: VaultEditorState; projects: Projects; action: Pick<Collection["action"], "state" | "error">;
-  onChange: Collection["setEditor"]; onClose: () => void; onSubmit: Collection["saveItem"];
+  editor: VaultEditorState;
+  projects: Projects;
+  action: Pick<Collection["action"], "state" | "error">;
+  onChange: Collection["setEditor"];
+  onClose: () => void;
+  onSubmit: Collection["saveItem"];
 };
 
 export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave, onDelete }: BindingProps) {
@@ -146,7 +153,17 @@ export function VaultBindingsDialog({ state, projects, onChange, onClose, onSave
   );
 }
 
-function IconButton({ title, icon: Icon, onClick, disabled = false }: { title: string; icon: LucideIcon; onClick: () => void; disabled?: boolean }) {
+function IconButton({
+  title,
+  icon: Icon,
+  onClick,
+  disabled = false,
+}: {
+  title: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} disabled={disabled} onClick={onClick}>
       <Icon className="h-4 w-4" />

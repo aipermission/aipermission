@@ -6,7 +6,9 @@ import { useTransferCenterState } from "./use-transfer-center-state";
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
 
 function deferred() {
-  let resolve: (_value: unknown) => void = () => { throw new Error("Uninitialized request"); };
+  let resolve: (_value: unknown) => void = () => {
+    throw new Error("Uninitialized request");
+  };
   const promise = new Promise<unknown>((next) => {
     resolve = next;
   });
@@ -63,7 +65,9 @@ describe("useTransferCenterState", () => {
   });
 
   it("retains the loaded list on transient manual-refresh failures", async () => {
-    vi.mocked(apiGet).mockResolvedValueOnce({ items: [{ id: 7, status: "running" }] }).mockRejectedValueOnce("unavailable");
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce({ items: [{ id: 7, status: "running" }] })
+      .mockRejectedValueOnce("unavailable");
     const { result } = renderHook(() => useTransferCenterState({ pollIsCurrent: () => true }));
     await act(async () => result.current.loadBatches());
     await act(async () => result.current.loadBatches({ keepData: true }));
@@ -80,19 +84,24 @@ describe("useTransferCenterState", () => {
     expect(isCurrent).toHaveBeenCalledWith(3);
   });
 
-  it.each([null, {}, { items: null }, { items: [{}] }, { items: [{ id: 0, status: "running" }] }, { items: [{ id: 7, status: false }] }])("reports a malformed list without accepting unvalidated items", async (response) => {
-    vi.mocked(apiGet).mockResolvedValueOnce(response);
-    const { result } = renderHook(() => useTransferCenterState({ pollIsCurrent: () => true }));
-    await act(async () => result.current.loadBatches());
-    expect(result.current.batches.state).toBe("error");
-    expect(result.current.batches.error).toMatch(/Invalid transfer list/);
-    expect(result.current.batches.data).toEqual([]);
-  });
+  it.each([null, {}, { items: null }, { items: [{}] }, { items: [{ id: 0, status: "running" }] }, { items: [{ id: 7, status: false }] }])(
+    "reports a malformed list without accepting unvalidated items",
+    async (response) => {
+      vi.mocked(apiGet).mockResolvedValueOnce(response);
+      const { result } = renderHook(() => useTransferCenterState({ pollIsCurrent: () => true }));
+      await act(async () => result.current.loadBatches());
+      expect(result.current.batches.state).toBe("error");
+      expect(result.current.batches.error).toMatch(/Invalid transfer list/);
+      expect(result.current.batches.data).toEqual([]);
+    },
+  );
 
   it("rejects an invalid action response before applying or refreshing", async () => {
     vi.mocked(apiPost).mockResolvedValueOnce({ id: "7", status: "paused" });
     const { result } = renderHook(() => useTransferCenterState({ pollIsCurrent: () => true }));
-    await act(async () => { await expect(result.current.actions.pause(7)).rejects.toThrow("Invalid transfer list batch"); });
+    await act(async () => {
+      await expect(result.current.actions.pause(7)).rejects.toThrow("Invalid transfer list batch");
+    });
     expect(apiGet).not.toHaveBeenCalled();
     expect(result.current.batches.data).toEqual([]);
   });

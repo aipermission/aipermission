@@ -4,7 +4,10 @@ import { useRequestGuard } from "./request-guard";
 import { tokenActionPermissionSnapshot } from "./gateway-contracts/security-contracts";
 import type { TokenActionPermission } from "./gateway-contracts/security-contracts";
 import type { components } from "../../types/generated-openapi";
-import { connectorActionsResponse as connectorActions, type ConnectorPermissionAction } from "./gateway-contracts/connector-catalog-contract";
+import {
+  connectorActionsResponse as connectorActions,
+  type ConnectorPermissionAction,
+} from "./gateway-contracts/connector-catalog-contract";
 export type { ConnectorPermissionAction } from "./gateway-contracts/connector-catalog-contract";
 
 type Token = { id: number };

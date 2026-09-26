@@ -9,7 +9,9 @@ vi.mock("../components/settings/use-backup-provider-state", () => ({ useBackupPr
 vi.mock("../components/settings/backup-provider-dialogs", () => ({ BackupProviderDialogs: () => null }));
 vi.mock("../components/settings/backup-provider-panel", () => ({ BackupProviderPanel: () => null }));
 vi.mock("../components/settings/backup-record-dialogs", () => ({ BackupRecordDialogs: () => null }));
-vi.mock("../components/settings/database-settings-panel", () => ({ DatabaseSettingsPanel: ({ databaseName }: { databaseName: string }) => <span>{databaseName}</span> }));
+vi.mock("../components/settings/database-settings-panel", () => ({
+  DatabaseSettingsPanel: ({ databaseName }: { databaseName: string }) => <span>{databaseName}</span>,
+}));
 vi.mock("../components/settings/diagnostics-panel", () => ({ DiagnosticsPanel: () => null }));
 vi.mock("../components/settings/history-labels-panel", () => ({ HistoryLabelsPanel: () => null }));
 vi.mock("../components/settings/history-retention-panel", () => ({ HistoryRetentionPanel: () => null }));
@@ -17,7 +19,9 @@ vi.mock("../components/settings/maintenance-console-panel", () => ({ Maintenance
 vi.mock("../components/settings/local-action-retry-panel", () => ({ LocalActionRetryPanel: () => null }));
 
 describe("settings database status ownership", () => {
-  beforeEach(() => { vi.mocked(apiGet).mockReset(); });
+  beforeEach(() => {
+    vi.mocked(apiGet).mockReset();
+  });
 
   it("uses the current database name after a valid status read", async () => {
     vi.mocked(apiGet).mockResolvedValue({ database_name: "My database", database_size_bytes: 1024 });
@@ -37,14 +41,18 @@ describe("settings database status ownership", () => {
     const { unmount } = render(<SettingsPage />);
     await waitFor(() => expect(apiGet).toHaveBeenCalledOnce());
     const options: unknown = vi.mocked(apiGet).mock.calls[0][1];
-    if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal)) throw new Error("Expected an owned database status read.");
+    if (!options || typeof options !== "object" || !("signal" in options) || !(options.signal instanceof AbortSignal))
+      throw new Error("Expected an owned database status read.");
     unmount();
     expect(options.signal.aborted).toBe(true);
   });
 
-  it.each([null, [], { database_size_bytes: -1 }, { database_size_bytes: "1024" }, { database_size_bytes: Infinity }])("rejects invalid database presentation data %j", (value) => {
-    expect(() => settingsDatabaseResponse(value)).toThrow();
-  });
+  it.each([null, [], { database_size_bytes: -1 }, { database_size_bytes: "1024" }, { database_size_bytes: Infinity }])(
+    "rejects invalid database presentation data %j",
+    (value) => {
+      expect(() => settingsDatabaseResponse(value)).toThrow();
+    },
+  );
 
   it("accepts omitted locked database metadata and large backend byte totals", () => {
     expect(settingsDatabaseResponse({ state: "locked" })).toEqual({ state: "locked" });

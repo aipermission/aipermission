@@ -7,7 +7,12 @@ type Theme = "dark" | "light";
 type SQLTarget = { name: string; config?: { host?: string; port?: number; database?: string } };
 type SQLChromeConfig = { label: string; targetEndpoint: (_target: SQLTarget) => string };
 
-export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }: {
+export function SQLNoSessionPlaceholder({
+  config,
+  target,
+  theme,
+  onNewSession,
+}: {
   config: Pick<SQLChromeConfig, "label">;
   target: SQLTarget;
   theme: Theme;
@@ -23,7 +28,12 @@ export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }:
   );
 }
 
-export function SQLEndpointFooter({ config, target, borderClass, mutedClass }: {
+export function SQLEndpointFooter({
+  config,
+  target,
+  borderClass,
+  mutedClass,
+}: {
   config: SQLChromeConfig;
   target: SQLTarget;
   borderClass: string;
@@ -39,7 +49,13 @@ export function SQLEndpointFooter({ config, target, borderClass, mutedClass }: {
   );
 }
 
-export function SQLConnectorToolbarActions({ label, theme, structuredSession, onNewStructuredSession, onEndStructuredSession }: {
+export function SQLConnectorToolbarActions({
+  label,
+  theme,
+  structuredSession,
+  onNewStructuredSession,
+  onEndStructuredSession,
+}: {
   label: string;
   theme: Theme;
   structuredSession?: { active: boolean } | null;

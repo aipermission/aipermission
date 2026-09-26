@@ -234,7 +234,7 @@ it("does not start a preview while a replacement is saving", async () => {
 it("discards an in-flight preview when replacement begins", async () => {
   const user = userEvent.setup();
   const preview = deferred();
-  apiPost.mockImplementation((path) => path.endsWith("/generate-preview") ? preview.promise : Promise.resolve({}));
+  apiPost.mockImplementation((path) => (path.endsWith("/generate-preview") ? preview.promise : Promise.resolve({})));
   render(<ValueHarness />);
   await user.click(screen.getByRole("button", { name: "Replace" }));
   await user.click(screen.getByRole("button", { name: "Preview" }));

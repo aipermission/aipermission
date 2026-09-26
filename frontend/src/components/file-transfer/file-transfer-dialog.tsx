@@ -17,7 +17,12 @@ type TransferOptions = Parameters<typeof fileTransferPathPolicy>[0] & {
   onUploadCompleted?: () => void | Promise<void>;
 };
 
-export function FileTransferDialog({ open, runtimeTarget, options = {}, onClose }: {
+export function FileTransferDialog({
+  open,
+  runtimeTarget,
+  options = {},
+  onClose,
+}: {
   open: boolean;
   runtimeTarget: { id: number; name?: string; subtitle?: string } | null;
   options?: TransferOptions;

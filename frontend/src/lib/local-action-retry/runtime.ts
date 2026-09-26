@@ -84,7 +84,8 @@ export function requestReconciliation(entry: ReconciliationEntry): Promise<boole
     const event = new CustomEvent<ReconciliationDetail>(localActionReconciliationEvent, {
       cancelable: true,
       detail: {
-        requestID: typeof entry.request_id === "number" && Number.isSafeInteger(entry.request_id) && entry.request_id > 0 ? entry.request_id : null,
+        requestID:
+          typeof entry.request_id === "number" && Number.isSafeInteger(entry.request_id) && entry.request_id > 0 ? entry.request_id : null,
         operationRef: typeof entry.operation_ref === "string" ? entry.operation_ref : "",
         assistantHint: typeof entry.assistant_hint === "string" ? entry.assistant_hint : "",
         createdAt: entry.created_at,

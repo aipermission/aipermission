@@ -16,7 +16,17 @@ type TableProps = Pick<Collection, "visibleItems"> & {
   onDelete: (_item: Collection["visibleItems"][number]) => void;
 };
 
-export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }: { loading: boolean; canCreate: boolean; onRefresh: () => void; onCreate: () => void }) {
+export function VaultPageHeader({
+  loading,
+  canCreate,
+  onRefresh,
+  onCreate,
+}: {
+  loading: boolean;
+  canCreate: boolean;
+  onRefresh: () => void;
+  onCreate: () => void;
+}) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -37,7 +47,15 @@ export function VaultPageHeader({ loading, canCreate, onRefresh, onCreate }: { l
   );
 }
 
-export function VaultFilters({ filters, projects, onChange }: { filters: Collection["filters"]; projects: TableProps["projects"]; onChange: Collection["setFilters"] }) {
+export function VaultFilters({
+  filters,
+  projects,
+  onChange,
+}: {
+  filters: Collection["filters"];
+  projects: TableProps["projects"];
+  onChange: Collection["setFilters"];
+}) {
   return (
     <div className="grid gap-3 border-y border-stone-200 py-4 md:grid-cols-[220px_minmax(0,1fr)_180px]">
       <Select value={filters.project_id} onChange={(event) => onChange({ project_id: event.target.value })}>

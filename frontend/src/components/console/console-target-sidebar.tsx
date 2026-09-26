@@ -13,21 +13,44 @@ import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resour
 import type { ConsoleRuntimeTarget } from "../use-gateway-resources.ts";
 
 export type ConsoleNavigationTarget = {
-  connector_kind: string; ref: string; target_id?: number; id?: number; profile_id?: number; profile_label?: string;
-  runtime_id?: number | string; project_id?: number | null; project_name?: string; target_name?: string; name?: string;
+  connector_kind: string;
+  ref: string;
+  target_id?: number;
+  id?: number;
+  profile_id?: number;
+  profile_label?: string;
+  runtime_id?: number | string;
+  project_id?: number | null;
+  project_name?: string;
+  target_name?: string;
+  name?: string;
 };
 type Group<Target> = { id: string; name: string; targets: Target[] };
 type Session = { runtime_id?: number | string; status?: string };
 type TargetProps = {
-  target: GatewayTarget; profileTargets: GatewayTarget[]; liveConsoleTargets: { data: ConsoleRuntimeTarget[] }; sessions: Session[];
-  selectedTarget: GatewayTarget | null; compact: boolean; pendingConnectorApprovals: Pick<ConnectorApproval, "target_ref">[];
-  connectorActionApprovals: { data: Pick<ConnectorApproval, "status" | "target_ref">[] }; unreadMessages: Pick<RuntimeMessage, "runtime_id">[];
+  target: GatewayTarget;
+  profileTargets: GatewayTarget[];
+  liveConsoleTargets: { data: ConsoleRuntimeTarget[] };
+  sessions: Session[];
+  selectedTarget: GatewayTarget | null;
+  compact: boolean;
+  pendingConnectorApprovals: Pick<ConnectorApproval, "target_ref">[];
+  connectorActionApprovals: { data: Pick<ConnectorApproval, "status" | "target_ref">[] };
+  unreadMessages: Pick<RuntimeMessage, "runtime_id">[];
   onSelect: (_target: GatewayTarget) => void;
 };
 type SidebarProps = Omit<TargetProps, "target" | "profileTargets"> & {
-  onCompactChange: (_compact: boolean) => void; targetRows: GatewayTarget[]; search: string; onSearch: (_search: string) => void;
-  groups: Group<GatewayTarget>[]; collapsedProjects: Record<string, boolean>; onToggleProject: (_id: string) => void;
-  targetItems: GatewayTarget[]; targetsState: string; targetsError: string | null; filteredTargetCount: number;
+  onCompactChange: (_compact: boolean) => void;
+  targetRows: GatewayTarget[];
+  search: string;
+  onSearch: (_search: string) => void;
+  groups: Group<GatewayTarget>[];
+  collapsedProjects: Record<string, boolean>;
+  onToggleProject: (_id: string) => void;
+  targetItems: GatewayTarget[];
+  targetsState: string;
+  targetsError: string | null;
+  filteredTargetCount: number;
 };
 
 export function ConsoleTargetSidebar({
@@ -123,8 +146,18 @@ export function ConsoleTargetSidebar({
   );
 }
 
-function ConsoleProjectGroup({ group, collapsed, compact, onToggle, children }: {
-  group: Group<GatewayTarget>; collapsed: boolean; compact: boolean; onToggle: () => void; children: ReactNode;
+function ConsoleProjectGroup({
+  group,
+  collapsed,
+  compact,
+  onToggle,
+  children,
+}: {
+  group: Group<GatewayTarget>;
+  collapsed: boolean;
+  compact: boolean;
+  onToggle: () => void;
+  children: ReactNode;
 }) {
   return (
     <div className="grid gap-1">
@@ -234,7 +267,11 @@ function TargetListItem({
   );
 }
 
-export function consoleTargetRows<Target extends ConsoleNavigationTarget>(targets: Target[], selectedTarget: Target | null, selectedProfileByTarget: Record<string, number> = {}): Target[] {
+export function consoleTargetRows<Target extends ConsoleNavigationTarget>(
+  targets: Target[],
+  selectedTarget: Target | null,
+  selectedProfileByTarget: Record<string, number> = {},
+): Target[] {
   const rows: { key: string; first: Target }[] = [];
   const byKey = new Map<string, Target[]>();
   for (const target of targets) {
@@ -263,7 +300,11 @@ export function groupConsoleTargetsByProject<Target extends ConsoleNavigationTar
   return [...groups.values()];
 }
 
-export function defaultConsoleTargetRef(targets: ConsoleNavigationTarget[], unreadMessages: Pick<RuntimeMessage, "runtime_id">[], pendingConnectorApprovals: readonly Pick<ConnectorApproval, "target_ref">[]): string {
+export function defaultConsoleTargetRef(
+  targets: ConsoleNavigationTarget[],
+  unreadMessages: Pick<RuntimeMessage, "runtime_id">[],
+  pendingConnectorApprovals: readonly Pick<ConnectorApproval, "target_ref">[],
+): string {
   if (!targets.length) return "";
   const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
   if (pendingConnector) return pendingConnector.target_ref;
@@ -308,8 +349,16 @@ export function recoverableRunningActions(target: ConsoleNavigationTarget | null
   return Array.isArray(actions) ? actions.filter(Boolean).map(String) : [];
 }
 
-export function selectedTargetStatus({ target, session, pendingCount = 0, runningCount = 0 }: {
-  target: ConsoleNavigationTarget | null; session?: { status?: string } | null; pendingCount?: number; runningCount?: number;
+export function selectedTargetStatus({
+  target,
+  session,
+  pendingCount = 0,
+  runningCount = 0,
+}: {
+  target: ConsoleNavigationTarget | null;
+  session?: { status?: string } | null;
+  pendingCount?: number;
+  runningCount?: number;
 }): ConsoleTargetStatus {
   if (pendingCount > 0 || runningCount > 0) return "busy";
   if (target?.connector_kind && !targetUsesLiveConsole(target)) return "idle";
@@ -330,5 +379,9 @@ export function ConsoleStatusDot({ status, className = "" }: { status: ConsoleTa
     busy: "Pending or running work",
   };
   const title = labels[status] || labels.offline;
-  return <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title}><title>{title}</title></Circle>;
+  return (
+    <Circle className={`h-3 w-3 shrink-0 ${colors[status] || colors.offline} ${className}`} aria-label={title}>
+      <title>{title}</title>
+    </Circle>
+  );
 }

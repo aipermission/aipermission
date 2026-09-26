@@ -15,7 +15,13 @@ export function vaultItemListResponse(value: unknown): { items: VaultItemSummary
     throw new Error("Invalid Vault item list response.");
   }
   const items: unknown = value.items ?? [];
-  if (!Array.isArray(items) || !items.every(validItem) || typeof value.total !== "number" || !Number.isSafeInteger(value.total) || value.total < 0) {
+  if (
+    !Array.isArray(items) ||
+    !items.every(validItem) ||
+    typeof value.total !== "number" ||
+    !Number.isSafeInteger(value.total) ||
+    value.total < 0
+  ) {
     throw new Error("Invalid Vault item list response.");
   }
   return { items: items.map(projectItem), total: value.total };
@@ -24,9 +30,16 @@ export function vaultItemListResponse(value: unknown): { items: VaultItemSummary
 function validItem(value: unknown): value is RawItem {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   if (!("id" in value) || !("name" in value) || !("owner_project_id" in value)) return false;
-  return positiveID(value.id) && typeof value.name === "string" && value.name.length > 0 && positiveID(value.owner_project_id) &&
-    ["owner_project_name", "provider", "environment", "description"].every((key) => !(key in value) || typeof Reflect.get(value, key) === "string") &&
-    (!("project_ids" in value) || value.project_ids === null || (Array.isArray(value.project_ids) && value.project_ids.every(positiveID)));
+  return (
+    positiveID(value.id) &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    positiveID(value.owner_project_id) &&
+    ["owner_project_name", "provider", "environment", "description"].every(
+      (key) => !(key in value) || typeof Reflect.get(value, key) === "string",
+    ) &&
+    (!("project_ids" in value) || value.project_ids === null || (Array.isArray(value.project_ids) && value.project_ids.every(positiveID)))
+  );
 }
 
 function projectItem(value: RawItem): VaultItemSummary {

@@ -1,7 +1,12 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { listLocalActionRetryEntries, localActionRetryLedgerChangedEvent, resetLocalActionRetryLedger, resolveLocalActionRetryEntry } from "../../lib/local-action-retry";
+import {
+  listLocalActionRetryEntries,
+  localActionRetryLedgerChangedEvent,
+  resetLocalActionRetryLedger,
+  resolveLocalActionRetryEntry,
+} from "../../lib/local-action-retry";
 import type { RetryListEntry } from "../../lib/local-action-retry.ts";
 import { LocalActionRetryPanel } from "./local-action-retry-panel";
 import type { RetryEntry } from "../../lib/local-action-retry/records.ts";
@@ -21,7 +26,16 @@ beforeEach(() => {
 });
 
 it("renders a request reference without trusting arbitrary persisted metadata", async () => {
-  const base: RetryEntry = { id: "one", scope: "one", signature: "a".repeat(64), key: "one", revision: 1, created_at: "invalid", state: "outcome_unknown", updated_at: "invalid" };
+  const base: RetryEntry = {
+    id: "one",
+    scope: "one",
+    signature: "a".repeat(64),
+    key: "one",
+    revision: 1,
+    created_at: "invalid",
+    state: "outcome_unknown",
+    updated_at: "invalid",
+  };
   vi.mocked(listLocalActionRetryEntries).mockResolvedValue([
     { ...base, request_id: 42 },
     { ...base, signature: "b".repeat(64), request_id: {} },
@@ -35,14 +49,32 @@ it("renders a request reference without trusting arbitrary persisted metadata", 
 it("ignores an older ledger response after a refresh has completed", async () => {
   let finish: ((_entries: RetryListEntry[]) => void) | undefined;
   vi.mocked(listLocalActionRetryEntries)
-    .mockReturnValueOnce(new Promise<RetryListEntry[]>((resolve) => { finish = resolve; }))
+    .mockReturnValueOnce(
+      new Promise<RetryListEntry[]>((resolve) => {
+        finish = resolve;
+      }),
+    )
     .mockResolvedValueOnce([]);
   render(<LocalActionRetryPanel />);
-  await act(async () => { window.dispatchEvent(new Event(localActionRetryLedgerChangedEvent)); });
+  await act(async () => {
+    window.dispatchEvent(new Event(localActionRetryLedgerChangedEvent));
+  });
   expect(await screen.findByText("No unresolved local connector attempts.")).toBeVisible();
   if (!finish) throw new Error("Initial retry ledger load did not start");
   const complete = finish;
-  await act(async () => complete([{ signature: "legacy-v2-ledger", key: "", state: "outcome_unknown", created_at: "", updated_at: "", assistant_hint: "", invalid: true }]));
+  await act(async () =>
+    complete([
+      {
+        signature: "legacy-v2-ledger",
+        key: "",
+        state: "outcome_unknown",
+        created_at: "",
+        updated_at: "",
+        assistant_hint: "",
+        invalid: true,
+      },
+    ]),
+  );
   expect(screen.queryByText("Outcome unknown")).not.toBeInTheDocument();
 });
 
@@ -59,7 +91,17 @@ it("requires confirmation before resetting a ledger that cannot be loaded", asyn
 
 it("fails closed when the selected retry identity changed in another tab", async () => {
   const user = userEvent.setup();
-  const entry: RetryEntry = { id: "one", scope: "one", signature: "a".repeat(64), key: "one", revision: 1, created_at: "invalid", state: "pending", operation_ref: "restore:manual", updated_at: "invalid" };
+  const entry: RetryEntry = {
+    id: "one",
+    scope: "one",
+    signature: "a".repeat(64),
+    key: "one",
+    revision: 1,
+    created_at: "invalid",
+    state: "pending",
+    operation_ref: "restore:manual",
+    updated_at: "invalid",
+  };
   vi.mocked(listLocalActionRetryEntries).mockResolvedValue([entry]);
   vi.mocked(resolveLocalActionRetryEntry).mockResolvedValue(false);
   render(<LocalActionRetryPanel />);

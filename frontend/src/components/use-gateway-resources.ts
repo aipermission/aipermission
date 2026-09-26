@@ -8,15 +8,22 @@ import type { CoreResourceModel, CoreResourceOptions } from "./use-gateway-core-
 import type { GatewayTarget } from "../lib/gateway-contracts/core-resource-contracts.ts";
 
 export type ConsoleRuntimeTarget = {
-  id: number; name: string; connector_kind?: string; connector_ref?: string; target_id?: number; profile_id?: number;
-  target?: GatewayTarget; [field: string]: unknown;
+  id: number;
+  name: string;
+  connector_kind?: string;
+  connector_ref?: string;
+  target_id?: number;
+  profile_id?: number;
+  target?: GatewayTarget;
+  [field: string]: unknown;
 };
 type ResourceModel = CoreResourceModel & {
   usesLiveConsole?: (_options: { target: GatewayTarget }) => boolean;
   liveConsoleRuntimeTarget?: (_options: { target: GatewayTarget }) => ConsoleRuntimeTarget;
 };
 export type GatewayResourceOptions = Pick<CoreResourceOptions, "pollIsCurrent"> & {
-  connectorKinds?: readonly string[]; resolveConnectorModel?: (_kind: string) => ResourceModel | null | undefined;
+  connectorKinds?: readonly string[];
+  resolveConnectorModel?: (_kind: string) => ResourceModel | null | undefined;
 };
 
 export function useGatewayResources({

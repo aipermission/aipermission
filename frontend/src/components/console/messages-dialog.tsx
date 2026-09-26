@@ -21,7 +21,19 @@ type Props = {
   onClose: Messages["close"];
 };
 
-export function MessagesDialog({ open, target, tokens, tokenID, state, text, onTokenChange, onTextChange, onSubmit, onRefresh, onClose }: Props) {
+export function MessagesDialog({
+  open,
+  target,
+  tokens,
+  tokenID,
+  state,
+  text,
+  onTokenChange,
+  onTextChange,
+  onSubmit,
+  onRefresh,
+  onClose,
+}: Props) {
   const messageListRef = useRef<HTMLDivElement>(null);
   const filteredMessages = (tokenID ? state.data.filter((message) => Number(message.token_id) === Number(tokenID)) : state.data)
     .slice()

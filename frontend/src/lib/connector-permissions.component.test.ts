@@ -26,7 +26,13 @@ describe("connector profile permissions", () => {
     const now = Date.parse("2026-09-26T12:00:00Z");
     const permissions = [
       { target_id: 7, profile_id: 1, action_name: "read", execution_rule: "always_run" as const },
-      { target_id: 7, profile_id: 1, action_name: "write", execution_rule: "approval_required" as const, expires_at: "2026-09-26T11:00:00Z" },
+      {
+        target_id: 7,
+        profile_id: 1,
+        action_name: "write",
+        execution_rule: "approval_required" as const,
+        expires_at: "2026-09-26T11:00:00Z",
+      },
       { target_id: 7, profile_id: 2, action_name: "write", execution_rule: "always_run" as const },
     ];
     expect(currentConnectorTargetProfilePermissions(permissions, profiles[0], 1)).toHaveLength(2);

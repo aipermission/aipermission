@@ -22,9 +22,17 @@ it("preserves Docker session identity and the pending/live terminal surfaces", a
   const view = render(<DockerContainerConsolePanel {...props}>live terminal</DockerContainerConsolePanel>);
   expect(screen.getByText("Connecting container console")).toBeVisible();
   expect(screen.queryByText(/No active/)).not.toBeInTheDocument();
-  view.rerender(<DockerContainerConsolePanel {...props} pending={false}>live terminal</DockerContainerConsolePanel>);
+  view.rerender(
+    <DockerContainerConsolePanel {...props} pending={false}>
+      live terminal
+    </DockerContainerConsolePanel>,
+  );
   expect(screen.getByText(/Starting this console will close/)).toBeVisible();
-  view.rerender(<DockerContainerConsolePanel {...props} sessionLive pending={false}>live terminal</DockerContainerConsolePanel>);
+  view.rerender(
+    <DockerContainerConsolePanel {...props} sessionLive pending={false}>
+      live terminal
+    </DockerContainerConsolePanel>,
+  );
   expect(screen.getByText("live terminal")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "End" }));
   expect(onEnd).toHaveBeenCalledOnce();

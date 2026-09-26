@@ -78,7 +78,10 @@ test("SQL metadata preserves whitespace-bearing database identities end to end",
     getWordUntilPosition: () => ({ startColumn: 15, endColumn: 15 }),
     getLineContent: () => "SELECT * FROM ",
   };
-  const suggestions: Array<{ label: string; insertText: string }> = sqlCompletionItems(monaco, rows, [], model, { lineNumber: 1, column: 15 });
+  const suggestions: Array<{ label: string; insertText: string }> = sqlCompletionItems(monaco, rows, [], model, {
+    lineNumber: 1,
+    column: 15,
+  });
   assert.equal(suggestions.find((item) => item.label === " order lines ")?.insertText, '" order lines "');
   assert.equal(suggestions.find((item) => item.label === " tenant . order lines ")?.insertText, '" tenant "." order lines "');
 });

@@ -13,9 +13,21 @@ const fetchMock = vi.fn<typeof fetch>();
 function permissionRow(input: PermissionInput): TokenActionPermission {
   const rule = input.execution_rule;
   if (rule !== "approval_required" && rule !== "always_run" && rule !== "blocked") throw new Error("Invalid test permission rule");
-  return { project_id: 3, project_name: "My Project", project_slug: "my-project", project_enabled: true,
-    target_name: "Target", profile_label: "default", target_ref: `fixture:${input.target_id}:${input.profile_id}`, connector_kind: "fixture", profile_kind: "fixture",
-    created_at: "2026-09-26", updated_at: "2026-09-26", ...input, execution_rule: rule };
+  return {
+    project_id: 3,
+    project_name: "My Project",
+    project_slug: "my-project",
+    project_enabled: true,
+    target_name: "Target",
+    profile_label: "default",
+    target_ref: `fixture:${input.target_id}:${input.profile_id}`,
+    connector_kind: "fixture",
+    profile_kind: "fixture",
+    created_at: "2026-09-26",
+    updated_at: "2026-09-26",
+    ...input,
+    execution_rule: rule,
+  };
 }
 
 const selectedTarget = {
@@ -58,12 +70,17 @@ function renderPanel({
   omitOptionalProps = false,
   tokens = [{ id: 5, name: "codex", token: "aip_example" }],
 }: {
-  compact?: boolean; onToggleCompact?: () => void; permissions?: PermissionInput[];
+  compact?: boolean;
+  onToggleCompact?: () => void;
+  permissions?: PermissionInput[];
   loadPermissions?: (_tokens: { id: number }[], _options?: { requireCurrent?: boolean }) => Promise<Record<number, PermissionInput[]>>;
   replacePermissions?: NonNullable<ConnectorTokenPermissionPanelProps["replaceTokenConnectorPermissions"]>;
-  target?: PermissionTarget | null; targetProfiles?: PermissionTarget[];
-  unreadMessages?: ConnectorTokenPermissionPanelProps["unreadMessages"]; onOpenMessages?: (_id: number) => void;
-  omitOptionalProps?: boolean; tokens?: GatewayToken[];
+  target?: PermissionTarget | null;
+  targetProfiles?: PermissionTarget[];
+  unreadMessages?: ConnectorTokenPermissionPanelProps["unreadMessages"];
+  onOpenMessages?: (_id: number) => void;
+  omitOptionalProps?: boolean;
+  tokens?: GatewayToken[];
 } = {}) {
   const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
   const loadConnectorActions = vi.fn(async () => actions);
@@ -71,7 +88,12 @@ function renderPanel({
     const snapshot = loadPermissions ? await loadPermissions(currentTokens, options) : {};
     return Object.fromEntries(Object.entries(snapshot).map(([id, items]) => [id, items.map(permissionRow)]));
   });
-  const renderWithPermissions = (nextPermissions: PermissionInput[], currentTarget = target, currentProfiles = targetProfiles, currentTokens = tokens) => (
+  const renderWithPermissions = (
+    nextPermissions: PermissionInput[],
+    currentTarget = target,
+    currentProfiles = targetProfiles,
+    currentTokens = tokens,
+  ) => (
     <ConnectorTokenPermissionPanel
       tokens={{ state: "ready", data: currentTokens }}
       selectedTarget={currentTarget}

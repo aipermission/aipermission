@@ -17,8 +17,15 @@ export type PreparedRetry = {
   reused: boolean;
 };
 export type RetryEntry = {
-  id: string; scope: string; signature: string; key: string; state: "pending" | "outcome_unknown" | "retired";
-  revision: number; created_at: string; updated_at: string; operation_ref?: string;
+  id: string;
+  scope: string;
+  signature: string;
+  key: string;
+  state: "pending" | "outcome_unknown" | "retired";
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  operation_ref?: string;
   [field: string]: unknown;
 };
 export type SigningReservation = { id: string; scope: string; created_at: string; expires_at: string };
@@ -27,7 +34,7 @@ export type AttemptExpectation = { id?: string; scope?: string; entryID?: string
 export type SigningKeyRecord = { scope: string; key: CryptoKey; [field: string]: unknown };
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 export function newRetryEntry(scope: RetryScope, signature: string): RetryEntry {
@@ -81,7 +88,8 @@ export function validRetryEntry(value: unknown, scope: string, signature = ""): 
     entry.key.length > 0 &&
     entry.key.length <= 128 &&
     (entry.state === "pending" || entry.state === "outcome_unknown" || entry.state === "retired") &&
-    typeof entry.revision === "number" && Number.isSafeInteger(entry.revision) &&
+    typeof entry.revision === "number" &&
+    Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
@@ -111,7 +119,11 @@ export function validSigningKeyRecord(value: unknown, scope: string): value is S
     key.extractable === false &&
     algorithm?.name === "HMAC" &&
     Array.isArray(key.usages) &&
-    key.usages.every((usage: unknown) => typeof usage === "string" && ["encrypt", "decrypt", "sign", "verify", "deriveKey", "deriveBits", "wrapKey", "unwrapKey"].includes(usage)) &&
+    key.usages.every(
+      (usage: unknown) =>
+        typeof usage === "string" &&
+        ["encrypt", "decrypt", "sign", "verify", "deriveKey", "deriveBits", "wrapKey", "unwrapKey"].includes(usage),
+    ) &&
     key.usages.includes("sign")
   );
 }
@@ -154,20 +166,23 @@ function validAttemptIdentity(record: Record<string, unknown>, expected: Attempt
     typeof record.scope === "string" &&
     record.scope.length > 0 &&
     (!expected.scope || record.scope === expected.scope) &&
-    typeof record.signature === "string" && record.entry_id === entryID(record.scope, record.signature) &&
+    typeof record.signature === "string" &&
+    record.entry_id === entryID(record.scope, record.signature) &&
     (!expected.entryID || record.entry_id === expected.entryID)
   );
 }
 
 function validAttemptRetryIdentity(record: Record<string, unknown>, expected: AttemptExpectation) {
   return (
-    typeof record.signature === "string" && /^[a-f0-9]{64}$/.test(record.signature) &&
+    typeof record.signature === "string" &&
+    /^[a-f0-9]{64}$/.test(record.signature) &&
     (!expected.signature || record.signature === expected.signature) &&
     typeof record.key === "string" &&
     record.key.length > 0 &&
     record.key.length <= 128 &&
     (!expected.key || record.key === expected.key) &&
-    typeof record.revision === "number" && Number.isSafeInteger(record.revision) &&
+    typeof record.revision === "number" &&
+    Number.isSafeInteger(record.revision) &&
     record.revision > 0 &&
     (!expected.revision || record.revision === expected.revision)
   );

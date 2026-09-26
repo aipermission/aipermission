@@ -102,7 +102,13 @@ describe("useConnectorPermissions", () => {
 
     await act(async () => first.resolve({ items: [{ name: "old" }] }));
     expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);
-    for (const invalid of [{ description: "missing name" }, { name: "" }, { name: "read", risk: true }, { name: "read", category: [] }, { name: "read", description: {} }]) {
+    for (const invalid of [
+      { description: "missing name" },
+      { name: "" },
+      { name: "read", risk: true },
+      { name: "read", category: [] },
+      { name: "read", description: {} },
+    ]) {
       vi.mocked(apiGet).mockResolvedValueOnce({ items: [invalid] });
       await act(async () => result.current.loadConnectorActions(target));
       expect(result.current.connectorPermissionState.actionsByTargetRef[cacheKey]).toEqual([{ name: "new" }]);
@@ -141,7 +147,11 @@ describe("useConnectorPermissions", () => {
     const { result } = renderHook(() => useConnectorPermissions());
 
     await act(async () => result.current.loadAllConnectorPermissions([{ id: 1 }]));
-    await act(async () => result.current.replaceTokenConnectorPermissions(1, [{ target_id: 7, profile_id: 9, action_name: "read", execution_rule: "approval_required" }]));
+    await act(async () =>
+      result.current.replaceTokenConnectorPermissions(1, [
+        { target_id: 7, profile_id: 9, action_name: "read", execution_rule: "approval_required" },
+      ]),
+    );
 
     expect(apiPut).toHaveBeenCalledWith(
       "/api/tokens/1/connector-permissions",

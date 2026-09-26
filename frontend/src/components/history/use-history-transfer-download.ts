@@ -3,7 +3,10 @@ import { apiDownload } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { components } from "../../../types/generated-openapi";
 
-export function useHistoryTransferDownload(item: Pick<components["schemas"]["HistoryEntry"], "id" | "source_ref_id"> | null, fileName: string) {
+export function useHistoryTransferDownload(
+  item: Pick<components["schemas"]["HistoryEntry"], "id" | "source_ref_id"> | null,
+  fileName: string,
+) {
   const [downloadState, setDownloadState] = useState<{ state: string; error: string | null }>({ state: "idle", error: null });
   const downloadRef = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null });
 

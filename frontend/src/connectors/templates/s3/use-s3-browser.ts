@@ -176,7 +176,10 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
       if (!item || !preparation.isCurrent() || scopeKeyRef.current !== operationScope || selectedKeyRef.current !== key) return;
       const output = s3OutputRecord(item.output);
       if (typeof output.content_base64 !== "string") throw new Error("Invalid S3 download content.");
-      const blob = base64Blob(output.content_base64, typeof output.content_type === "string" ? output.content_type : "application/octet-stream");
+      const blob = base64Blob(
+        output.content_base64,
+        typeof output.content_type === "string" ? output.content_type : "application/octet-stream",
+      );
       const savedFilename = typeof output.filename === "string" && output.filename ? output.filename : filename;
       if (saveHandle) {
         await writeNativeDownload(saveHandle, blob);

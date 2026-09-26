@@ -26,7 +26,9 @@ type FieldChange = (_field: keyof RestoreForm, _value: string) => void;
 type Submit = (_event: FormEvent<HTMLFormElement>) => Promise<void>;
 type LoadVersions = (_streamID: string, _credentials?: RestoreForm, _databaseName?: string, _generation?: number) => Promise<void>;
 
-export function RemoteRestorePanel({ runLifecycleMutation }: {
+export function RemoteRestorePanel({
+  runLifecycleMutation,
+}: {
   runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"];
 }) {
   const [form, setForm] = useState({ base_url: "", token: "", database_name: "", database_password: "" });
@@ -67,7 +69,12 @@ export function RemoteRestorePanel({ runLifecycleMutation }: {
     }
   }
 
-  async function loadVersions(streamID: string, credentials = formRef.current, databaseName = "", generation = ++requestGeneration.current) {
+  async function loadVersions(
+    streamID: string,
+    credentials = formRef.current,
+    databaseName = "",
+    generation = ++requestGeneration.current,
+  ) {
     const fingerprint = remoteCredentialFingerprint(credentials);
     const request = listRequestGuard.begin("versions");
     setState({ state: "loading_versions", error: null });
@@ -236,10 +243,21 @@ function RemoteBackupSelectionForm({
   versionGroups,
   versions,
 }: {
-  form: RestoreForm; loadVersions: LoadVersions; onChange: FieldChange; onSubmit: Submit; restoring: boolean;
-  selectedBackupID: string; selectedStream?: RemoteBackupStream; selectedStreamID: string; selectedVersion?: RemoteBackupVersion;
-  setSelectedBackupID: Dispatch<SetStateAction<string>>; state: RestoreStatus; streams: RemoteBackupStream[];
-  versionCredentialFingerprint: string; versionGroups: ReturnType<typeof groupBackupVersions<RemoteBackupVersion>>; versions: RemoteBackupVersion[];
+  form: RestoreForm;
+  loadVersions: LoadVersions;
+  onChange: FieldChange;
+  onSubmit: Submit;
+  restoring: boolean;
+  selectedBackupID: string;
+  selectedStream?: RemoteBackupStream;
+  selectedStreamID: string;
+  selectedVersion?: RemoteBackupVersion;
+  setSelectedBackupID: Dispatch<SetStateAction<string>>;
+  state: RestoreStatus;
+  streams: RemoteBackupStream[];
+  versionCredentialFingerprint: string;
+  versionGroups: ReturnType<typeof groupBackupVersions<RemoteBackupVersion>>;
+  versions: RemoteBackupVersion[];
 }) {
   return (
     <form className="grid gap-4 border-t border-stone-200 pt-4" onSubmit={onSubmit}>
@@ -333,8 +351,18 @@ function RemoteBackupSelectionForm({
   );
 }
 
-function RemoteServiceForm({ form, state, hasStreams, onChange, onSubmit }: {
-  form: RestoreForm; state: RestoreStatus; hasStreams: boolean; onChange: FieldChange; onSubmit: Submit;
+function RemoteServiceForm({
+  form,
+  state,
+  hasStreams,
+  onChange,
+  onSubmit,
+}: {
+  form: RestoreForm;
+  state: RestoreStatus;
+  hasStreams: boolean;
+  onChange: FieldChange;
+  onSubmit: Submit;
 }) {
   const restoring = state === "restoring";
   return (

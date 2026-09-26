@@ -73,7 +73,15 @@ export function SQLSchemaBrowser({
   );
 }
 
-function SchemaGroup({ group, expandedTables, setExpandedTables, theme, mutedClass, hoverClass, onPrepareQuery }: TablePresentation & {
+function SchemaGroup({
+  group,
+  expandedTables,
+  setExpandedTables,
+  theme,
+  mutedClass,
+  hoverClass,
+  onPrepareQuery,
+}: TablePresentation & {
   group: SchemaGroupData;
   expandedTables: ExpandedTables;
   setExpandedTables: Dispatch<SetStateAction<ExpandedTables>>;
@@ -99,7 +107,15 @@ function SchemaGroup({ group, expandedTables, setExpandedTables, theme, mutedCla
   );
 }
 
-function TableRow({ table, expanded, onToggle, theme, mutedClass, hoverClass, onPrepareQuery }: TablePresentation & {
+function TableRow({
+  table,
+  expanded,
+  onToggle,
+  theme,
+  mutedClass,
+  hoverClass,
+  onPrepareQuery,
+}: TablePresentation & {
   table: BrowserTable;
   expanded: boolean;
   onToggle: () => void;

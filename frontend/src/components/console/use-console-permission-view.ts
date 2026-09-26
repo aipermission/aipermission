@@ -8,7 +8,10 @@ import { effectiveRule, permissionLifetimeLabel } from "../../lib/permissions";
 import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts.ts";
 
 type Token = { id: number; name: string; revoked_at?: string };
-type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled">;
+type Permission = Pick<
+  TokenActionPermission,
+  "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled"
+>;
 type Props<Item extends Token> = {
   connectorPermissions: Record<string, Permission[]>;
   mcpEnabled: boolean;
@@ -18,14 +21,28 @@ type Props<Item extends Token> = {
   tokens: Item[];
 };
 
-export function useConsolePermissionView<Item extends Token>({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }: Props<Item>) {
+export function useConsolePermissionView<Item extends Token>({
+  connectorPermissions,
+  mcpEnabled,
+  now,
+  profiles,
+  target,
+  tokens,
+}: Props<Item>) {
   return useMemo(
     () => deriveConsolePermissionView({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }),
     [connectorPermissions, mcpEnabled, now, profiles, target, tokens],
   );
 }
 
-export function deriveConsolePermissionView<Item extends Token>({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }: Props<Item>) {
+export function deriveConsolePermissionView<Item extends Token>({
+  connectorPermissions,
+  mcpEnabled,
+  now,
+  profiles,
+  target,
+  tokens,
+}: Props<Item>) {
   if (!target) return emptyPermissionView;
 
   const selectedTokenOptions = tokens.filter((token) => {

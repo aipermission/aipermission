@@ -7,7 +7,13 @@ import { remoteBrowserResponse, type RemoteBrowserState, type RemoteBrowserOptio
 
 const emptyBrowserState: RemoteBrowserState = { open: false, purpose: "upload", path: "/", state: "idle", data: null, error: null };
 
-export function useTransferBrowser({ runtimeTarget, defaultRemoteDir, remoteDir, normalizeRemoteDirectoryInput, onUseDirectory }: {
+export function useTransferBrowser({
+  runtimeTarget,
+  defaultRemoteDir,
+  remoteDir,
+  normalizeRemoteDirectoryInput,
+  onUseDirectory,
+}: {
   runtimeTarget: { id: string | number } | null;
   defaultRemoteDir: string;
   remoteDir: string;
@@ -36,7 +42,11 @@ export function useTransferBrowser({ runtimeTarget, defaultRemoteDir, remoteDir,
   async function loadBrowser(pathValue = browser.path, purpose = browser.purpose, options: RemoteBrowserOptions = {}) {
     if (!runtimeTarget) return;
     const nextPath = normalizeRemoteDirectoryInput(pathValue || "/");
-    if (options.append && (browserRef.current.state !== "ready" || browserRef.current.data?.path !== nextPath || browserRef.current.purpose !== purpose)) return;
+    if (
+      options.append &&
+      (browserRef.current.state !== "ready" || browserRef.current.data?.path !== nextPath || browserRef.current.purpose !== purpose)
+    )
+      return;
     const request = requestGuard.begin("browse");
     setBrowser((current) => ({ ...current, purpose, path: nextPath, state: options.append ? "loading-more" : "loading", error: null }));
     try {
@@ -69,7 +79,13 @@ export function useTransferBrowser({ runtimeTarget, defaultRemoteDir, remoteDir,
         void loadBrowser(defaultRemoteDir, purpose, { fallbackToDefault: false });
         return;
       }
-      setBrowser((current) => ({ ...current, purpose, path: nextPath, state: options.append ? "ready" : "error", error: errorMessage(error, "Could not browse remote files.") }));
+      setBrowser((current) => ({
+        ...current,
+        purpose,
+        path: nextPath,
+        state: options.append ? "ready" : "error",
+        error: errorMessage(error, "Could not browse remote files."),
+      }));
     } finally {
       request.complete();
     }

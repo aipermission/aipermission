@@ -1,5 +1,14 @@
 import { normalizeConnectorOutput } from "../_shared/sql-console-data.ts";
-import type { MetadataSchema, ProvisionForm, ProvisionSchema, ProvisionScope, ProvisionTable, SchemaSelection, ScopeSelection, TableSelection } from "./provisioning-types";
+import type {
+  MetadataSchema,
+  ProvisionForm,
+  ProvisionSchema,
+  ProvisionScope,
+  ProvisionTable,
+  SchemaSelection,
+  ScopeSelection,
+  TableSelection,
+} from "./provisioning-types";
 
 export const defaultProvisionForm: ProvisionForm = { role_name: "", profile_label: "", preset: "read_only" };
 
@@ -85,7 +94,13 @@ export function updateTable(scope: ScopeSelection, schemaName: string, tableName
   return updateScopeTable(scope, schemaName, tableName, (current) => ({ ...current, ...patch }));
 }
 
-export function toggleColumn(scope: ScopeSelection, schemaName: string, tableName: string, columnName: string, selected: boolean): ScopeSelection {
+export function toggleColumn(
+  scope: ScopeSelection,
+  schemaName: string,
+  tableName: string,
+  columnName: string,
+  selected: boolean,
+): ScopeSelection {
   return updateScopeTable(scope, schemaName, tableName, (current) => ({
     ...current,
     columns: { ...(current.columns || {}), [columnName]: selected },
@@ -107,7 +122,17 @@ export function readableScopeSummary(scope: ProvisionScope | null, preset: strin
   return `The generated role can ${privilege} on ${tableCount} selected table${tableCount === 1 ? "" : "s"} across ${schemaCount} schema${schemaCount === 1 ? "" : "s"}.`;
 }
 
-export function buildProvisionSQLPreview({ roleName, preset, database, scope }: { roleName: string; preset: string; database: string; scope: ProvisionScope | null }): string {
+export function buildProvisionSQLPreview({
+  roleName,
+  preset,
+  database,
+  scope,
+}: {
+  roleName: string;
+  preset: string;
+  database: string;
+  scope: ProvisionScope | null;
+}): string {
   const role = quotePreviewIdentifier(cleanPreviewIdentifier(roleName) || "role_name");
   const cleanDatabase = cleanPreviewIdentifier(database) || "database";
   const privileges = preset === "read_write" ? "SELECT, INSERT, UPDATE, DELETE" : "SELECT";
@@ -180,12 +205,21 @@ function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.filter(Boolean))];
 }
 
-function updateScopeSchema(scope: ScopeSelection, schemaName: string, updater: (_schema: SchemaSelection) => SchemaSelection): ScopeSelection {
+function updateScopeSchema(
+  scope: ScopeSelection,
+  schemaName: string,
+  updater: (_schema: SchemaSelection) => SchemaSelection,
+): ScopeSelection {
   const current = scope.schemas?.[schemaName] || { selected: false, all_tables: true, tables: {} };
   return { ...scope, schemas: { ...(scope.schemas || {}), [schemaName]: updater(current) } };
 }
 
-function updateScopeTable(scope: ScopeSelection, schemaName: string, tableName: string, updater: (_table: TableSelection) => TableSelection): ScopeSelection {
+function updateScopeTable(
+  scope: ScopeSelection,
+  schemaName: string,
+  tableName: string,
+  updater: (_table: TableSelection) => TableSelection,
+): ScopeSelection {
   return updateScopeSchema(scope, schemaName, (schema) => {
     const current = schema.tables?.[tableName] || { selected: false, all_columns: true, columns: {} };
     return { ...schema, tables: { ...(schema.tables || {}), [tableName]: updater(current) } };

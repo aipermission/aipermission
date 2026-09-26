@@ -148,7 +148,10 @@ test("message and action projections tolerate missing and malformed external dat
 });
 
 test("compose byte limits and quoting remain deterministic for unicode and escaped display names", () => {
-  assert.deepEqual(recipientList('"Doe, \\"John\\"" <one@example.test>; two@example.test'), ['"Doe, \\"John\\"" <one@example.test>', "two@example.test"]);
+  assert.deepEqual(recipientList('"Doe, \\"John\\"" <one@example.test>; two@example.test'), [
+    '"Doe, \\"John\\"" <one@example.test>',
+    "two@example.test",
+  ]);
   const valid = { to: "one@example.test", subject: "Status", text_body: "Ready" };
   assert.match(validateComposeFields({ ...valid, cc: Array.from({ length: 20 }, () => "two@example.test") }), /20 recipients/);
   assert.match(validateComposeFields({ ...valid, to: ["x".repeat(321)] }), /320 bytes/);

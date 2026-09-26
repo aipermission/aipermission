@@ -6,7 +6,17 @@ import { InstallCommandPanel } from "../common";
 import { HostPingButton } from "../host-ping-button";
 import type { SSHForm, SSHKey } from "./form-types";
 
-export function SSHConnectorFormTemplate({ form, credentials, activeCredential, onChange }: { form: SSHForm; credentials: readonly SSHKey[]; activeCredential: SSHKey | null; onChange: (_field: string, _value: string | boolean) => void }) {
+export function SSHConnectorFormTemplate({
+  form,
+  credentials,
+  activeCredential,
+  onChange,
+}: {
+  form: SSHForm;
+  credentials: readonly SSHKey[];
+  activeCredential: SSHKey | null;
+  onChange: (_field: string, _value: string | boolean) => void;
+}) {
   const hostID = useId();
   return (
     <>
@@ -33,7 +43,13 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
             <span>Host</span>
             <HostPingButton host={form.host} port={form.port} />
           </span>
-          <Input id={hostID} value={form.host} onChange={(event) => onChange("host", event.target.value)} placeholder="203.0.113.10" required />
+          <Input
+            id={hostID}
+            value={form.host}
+            onChange={(event) => onChange("host", event.target.value)}
+            placeholder="203.0.113.10"
+            required
+          />
         </Field>
         <Field>
           Port

@@ -8,7 +8,16 @@ it("selects filtered queue names with keyboard navigation and supports custom ro
   const user = userEvent.setup();
   const onQueue = vi.fn();
   const onCustom = vi.fn();
-  render(<RoutingKeyPicker queues={[{ name: "jobs.ready" }, { name: "other" }]} value="" custom={false} onQueue={onQueue} onCustom={onCustom} styles={connectorConsoleTheme("dark")} />);
+  render(
+    <RoutingKeyPicker
+      queues={[{ name: "jobs.ready" }, { name: "other" }]}
+      value=""
+      custom={false}
+      onQueue={onQueue}
+      onCustom={onCustom}
+      styles={connectorConsoleTheme("dark")}
+    />,
+  );
   const input = screen.getByRole("combobox");
   await user.click(input);
   await user.type(input, "ready");

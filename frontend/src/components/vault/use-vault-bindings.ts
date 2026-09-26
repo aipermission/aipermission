@@ -5,12 +5,24 @@ import { selectedBinding } from "./vault-binding-utils";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { errorMessage } from "../../lib/errors.ts";
 import type { VaultManagedItem, VaultActionState } from "../../lib/gateway-contracts/vault-management-contract.ts";
-import { vaultBindingsResponse, vaultBindingTargetsResponse, type VaultManagedBinding, type VaultBindingTarget } from "../../lib/gateway-contracts/vault-binding-contract.ts";
+import {
+  vaultBindingsResponse,
+  vaultBindingTargetsResponse,
+  type VaultManagedBinding,
+  type VaultBindingTarget,
+} from "../../lib/gateway-contracts/vault-binding-contract.ts";
 
 export type VaultBindingsState = {
-  open: boolean; item: Pick<VaultManagedItem, "id" | "owner_project_id" | "name" | "project_ids"> | null;
-  state: string; data: VaultManagedBinding[]; targets: VaultBindingTarget[];
-  source_project_id: string; target_id: string; profile_id: string; replace_existing: boolean; error: string | null;
+  open: boolean;
+  item: Pick<VaultManagedItem, "id" | "owner_project_id" | "name" | "project_ids"> | null;
+  state: string;
+  data: VaultManagedBinding[];
+  targets: VaultBindingTarget[];
+  source_project_id: string;
+  target_id: string;
+  profile_id: string;
+  replace_existing: boolean;
+  error: string | null;
 };
 
 const emptyBindings: VaultBindingsState = {

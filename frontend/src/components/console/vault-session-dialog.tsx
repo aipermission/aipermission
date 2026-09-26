@@ -98,13 +98,14 @@ export function VaultSessionDialog({ state, onClose, onStart }: Props) {
         (binding) => Number(binding.vault_item_id) === Number(item.id),
       );
       const selectedFromDefaultProject = Number(defaultBinding?.source_project_id) === Number(projectID);
-      next[item.id] = defaultBinding && selectedFromDefaultProject
-        ? selectionFromDefaultBinding(defaultBinding)
-        : {
-            item_id: Number(item.id),
-            source_project_id: Number(projectID),
-            replace_existing: Boolean(defaultBinding?.replace_existing),
-          };
+      next[item.id] =
+        defaultBinding && selectedFromDefaultProject
+          ? selectionFromDefaultBinding(defaultBinding)
+          : {
+              item_id: Number(item.id),
+              source_project_id: Number(projectID),
+              replace_existing: Boolean(defaultBinding?.replace_existing),
+            };
       return next;
     });
   }

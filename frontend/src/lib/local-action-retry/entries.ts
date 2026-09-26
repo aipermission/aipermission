@@ -394,7 +394,9 @@ export async function allEntries(scope: RetryScope) {
     return entries.filter((entry) => entry.state !== "retired");
   }
   const database = await openRetryDatabase();
-  const entries = await requestPromise<unknown[]>(database.transaction(entriesStore).objectStore(entriesStore).index("scope").getAll(scope.key));
+  const entries = await requestPromise<unknown[]>(
+    database.transaction(entriesStore).objectStore(entriesStore).index("scope").getAll(scope.key),
+  );
   if (!entries.every((entry): entry is RetryEntry => validRetryEntry(entry, scope.key))) throw storageError();
   return entries.filter((entry) => entry.state !== "retired");
 }

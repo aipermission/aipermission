@@ -21,7 +21,14 @@ export interface MailRetryDialog {
   messageID?: string;
 }
 
-export function MoveMessageDialog({ dialog, folders, busy, onClose, onConfirm, onDestination }: ConfirmationProps & { dialog: MailMoveDialog; folders: MailFolder[]; onDestination: (_folder: string) => void }) {
+export function MoveMessageDialog({
+  dialog,
+  folders,
+  busy,
+  onClose,
+  onConfirm,
+  onDestination,
+}: ConfirmationProps & { dialog: MailMoveDialog; folders: MailFolder[]; onDestination: (_folder: string) => void }) {
   return (
     <Dialog
       open={dialog.open}
@@ -61,7 +68,13 @@ export function MoveMessageDialog({ dialog, folders, busy, onClose, onConfirm, o
   );
 }
 
-export function DeleteMessageDialog({ open, trashFolder, busy, onClose, onConfirm }: ConfirmationProps & { open: boolean; trashFolder: string }) {
+export function DeleteMessageDialog({
+  open,
+  trashFolder,
+  busy,
+  onClose,
+  onConfirm,
+}: ConfirmationProps & { open: boolean; trashFolder: string }) {
   return (
     <Dialog
       open={open}

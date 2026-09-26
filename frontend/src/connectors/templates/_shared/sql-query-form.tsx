@@ -5,8 +5,19 @@ import { metadataStatusText } from "./sql-console-config";
 import { SQLEditor } from "./sql-editor";
 import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
-type QueryController = Pick<SQLConsoleViewProps["controller"],
-  "runState" | "sql" | "recentQueries" | "loadSQL" | "maxRows" | "setMaxRows" | "setSQL" | "runQuery" | "editorFocusTick" | "metadata" | "connector"
+type QueryController = Pick<
+  SQLConsoleViewProps["controller"],
+  | "runState"
+  | "sql"
+  | "recentQueries"
+  | "loadSQL"
+  | "maxRows"
+  | "setMaxRows"
+  | "setSQL"
+  | "runQuery"
+  | "editorFocusTick"
+  | "metadata"
+  | "connector"
 >;
 export type SQLQueryFormProps = Omit<SQLConsoleViewProps, "controller"> & { controller: QueryController };
 
@@ -77,7 +88,11 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
   );
 }
 
-function RecentQueries({ controller, mutedClass, theme }: {
+function RecentQueries({
+  controller,
+  mutedClass,
+  theme,
+}: {
   controller: Pick<QueryController, "recentQueries" | "loadSQL">;
   mutedClass: string;
   theme: SQLConsoleViewProps["theme"];

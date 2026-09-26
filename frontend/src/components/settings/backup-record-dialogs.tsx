@@ -27,7 +27,11 @@ export function BackupRecordDialogs({ state }: StateProps) {
   );
 }
 
-function BackupRecordsBrowserDialog({ state, retentionBusy, setRetentionBusy }: StateProps & { retentionBusy: boolean; setRetentionBusy: (_busy: boolean) => void }) {
+function BackupRecordsBrowserDialog({
+  state,
+  retentionBusy,
+  setRetentionBusy,
+}: StateProps & { retentionBusy: boolean; setRetentionBusy: (_busy: boolean) => void }) {
   const {
     backupProviderState,
     backupRecordsProvider,
@@ -149,10 +153,26 @@ function BackupRecordsToolbar({ state, retentionBusy }: StateProps & { retention
   );
 }
 
-function BackupRecordRow({ record, total, selectedIDs, state, retentionBusy, onToggle, onDownload, onRestore, onDelete }: {
-  record: BackupRecord; total: number; selectedIDs: number[]; state: string; retentionBusy: boolean;
-  onToggle: ProviderState["toggleBackupRecordSelection"]; onDownload: ProviderState["downloadBackupRecord"];
-  onRestore: ProviderState["requestRestoreBackupRecord"]; onDelete: ProviderState["requestDeleteBackupRecords"];
+function BackupRecordRow({
+  record,
+  total,
+  selectedIDs,
+  state,
+  retentionBusy,
+  onToggle,
+  onDownload,
+  onRestore,
+  onDelete,
+}: {
+  record: BackupRecord;
+  total: number;
+  selectedIDs: number[];
+  state: string;
+  retentionBusy: boolean;
+  onToggle: ProviderState["toggleBackupRecordSelection"];
+  onDownload: ProviderState["downloadBackupRecord"];
+  onRestore: ProviderState["requestRestoreBackupRecord"];
+  onDelete: ProviderState["requestDeleteBackupRecords"];
 }) {
   const selected = selectedIDs.includes(record.id);
   const lastRecord = total <= 1;
@@ -383,7 +403,17 @@ function RestoreBackupRecordDialog({ state }: StateProps) {
   );
 }
 
-function ConfirmActions({ pending, onCancel, disabled, label }: { pending: boolean; onCancel: () => void; disabled: boolean; label: string }) {
+function ConfirmActions({
+  pending,
+  onCancel,
+  disabled,
+  label,
+}: {
+  pending: boolean;
+  onCancel: () => void;
+  disabled: boolean;
+  label: string;
+}) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>

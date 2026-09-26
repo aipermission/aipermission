@@ -34,8 +34,25 @@ type DockerResourcePaneProps = Pick<ConsoleProps, "target" | "selectedRuntimeTar
   onEndConsole: ConsoleProps["onEnd"];
   onLifecycle: (_action: "start_container" | "stop_container" | "restart_container") => unknown;
 };
-type HeaderProps = Pick<DockerResourcePaneProps, "resourceView" | "selectedResource" | "selectedContainer" | "viewMode" | "tail" | "state" | "classes" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { showingInspect: boolean };
-type ContentProps = Omit<DockerResourcePaneProps, "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { showingInspect: boolean };
+type HeaderProps = Pick<
+  DockerResourcePaneProps,
+  | "resourceView"
+  | "selectedResource"
+  | "selectedContainer"
+  | "viewMode"
+  | "tail"
+  | "state"
+  | "classes"
+  | "onTailChange"
+  | "onReadLogs"
+  | "onInspect"
+  | "onOpenConsole"
+  | "onLifecycle"
+> & { showingInspect: boolean };
+type ContentProps = Omit<
+  DockerResourcePaneProps,
+  "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"
+> & { showingInspect: boolean };
 
 export function DockerResourcePane({
   children,
@@ -182,7 +199,10 @@ function DockerContainerToolbar({
   onInspect,
   onOpenConsole,
   onLifecycle,
-}: Pick<HeaderProps, "viewMode" | "showingInspect" | "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"> & { disabled: boolean; inputClass: string }) {
+}: Pick<
+  HeaderProps,
+  "viewMode" | "showingInspect" | "tail" | "onTailChange" | "onReadLogs" | "onInspect" | "onOpenConsole" | "onLifecycle"
+> & { disabled: boolean; inputClass: string }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <Button
@@ -220,7 +240,17 @@ function DockerContainerToolbar({
   );
 }
 
-function IconButton({ label, disabled, onClick, icon: Icon }: { label: string; disabled: boolean; onClick: ComponentProps<typeof Button>["onClick"]; icon: LucideIcon }) {
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  icon: Icon,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: ComponentProps<typeof Button>["onClick"];
+  icon: LucideIcon;
+}) {
   return (
     <Button type="button" variant="outline" className="h-8 w-8 px-0" onClick={onClick} disabled={disabled} title={label}>
       <Icon className="h-3.5 w-3.5" />
@@ -300,7 +330,15 @@ function DockerResourcePaneContent({
   return <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">{content}</div>;
 }
 
-function EmptyPane({ children, classes, fill = false }: { children: ReactNode; classes: Pick<DockerPaneClasses, "border" | "muted">; fill?: boolean }) {
+function EmptyPane({
+  children,
+  classes,
+  fill = false,
+}: {
+  children: ReactNode;
+  classes: Pick<DockerPaneClasses, "border" | "muted">;
+  fill?: boolean;
+}) {
   return (
     <div
       className={`grid place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${fill ? "h-full min-h-0" : ""} ${classes.border} ${classes.muted}`}

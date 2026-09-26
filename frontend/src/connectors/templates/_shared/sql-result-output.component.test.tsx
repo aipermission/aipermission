@@ -23,7 +23,11 @@ it("renders ordered columns and exports escaped CSV with the connector filename"
   render(<SQLOutputBlock title="Rows" value={value} theme="dark" filenamePrefix="query-result" />);
 
   const table = screen.getByRole("table");
-  expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["name", "count", "extra"]);
+  expect(
+    within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent),
+  ).toEqual(["name", "count", "extra"]);
   expect(within(table).getByText("NULL")).toBeVisible();
   expect(within(table).getByText('{"enabled":true}')).toBeVisible();
 
@@ -46,9 +50,7 @@ it("copies rows as TSV without allowing embedded tabs to add columns", async () 
 });
 
 it("shows empty results and tolerates malformed row values", () => {
-  const { rerender } = render(
-    <SQLOutputBlock title="Rows" value={{ columns: ["id"], rows: [] }} theme="light" filenamePrefix="rows" />,
-  );
+  const { rerender } = render(<SQLOutputBlock title="Rows" value={{ columns: ["id"], rows: [] }} theme="light" filenamePrefix="rows" />);
   expect(screen.getByText("No rows returned.")).toBeVisible();
 
   rerender(<SQLOutputBlock title="Rows" value={{ columns: ["id"], rows: [null, 9] }} theme="dark" filenamePrefix="rows" />);

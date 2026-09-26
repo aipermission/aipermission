@@ -280,7 +280,8 @@ function maintenanceConsoleAttachUrl() {
 
 function maintenanceMessage(value: unknown) {
   const message = parseConsoleSocketMessage(value);
-  if (!message || ["data", "status", "shell"].some((field) => message[field] !== undefined && typeof message[field] !== "string")) return null;
+  if (!message || ["data", "status", "shell"].some((field) => message[field] !== undefined && typeof message[field] !== "string"))
+    return null;
   return {
     type: message.type,
     data: typeof message.data === "string" ? message.data : "",

@@ -9,12 +9,25 @@ import type { useGatewayActivityResources } from "./use-gateway-activity-resourc
 type Freshness = ReturnType<typeof useGatewayActivityResources>["backupFreshness"];
 function Harness({ initial }: { initial: Freshness }) {
   const [value, setValue] = useState(initial);
-  return <MemoryRouter><BackupFreshnessNotices value={value} onChange={setValue} /></MemoryRouter>;
+  return (
+    <MemoryRouter>
+      <BackupFreshnessNotices value={value} onChange={setValue} />
+    </MemoryRouter>
+  );
 }
 
 it("dismisses newer-backup warnings separately from provider check failures", async () => {
   const user = userEvent.setup();
-  render(<Harness initial={{ state: "ready", data: [{ provider_id: 1, latest_remote_at: "2026-09-26T00:00:00Z" }], checkErrors: [{ provider_id: 2 }], error: null }} />);
+  render(
+    <Harness
+      initial={{
+        state: "ready",
+        data: [{ provider_id: 1, latest_remote_at: "2026-09-26T00:00:00Z" }],
+        checkErrors: [{ provider_id: 2 }],
+        error: null,
+      }}
+    />,
+  );
   expect(screen.getByText(/newer encrypted backup is available/)).toBeVisible();
   expect(screen.getByText(/freshness could not be checked/)).toBeVisible();
   expect(screen.getAllByRole("link", { name: "Review backups" })[0]).toHaveAttribute("href", "/settings");

@@ -3,7 +3,12 @@ import { Notice } from "../../../components/ui/notice";
 import { NetworkTransportFields } from "../_shared/network-transport-fields";
 import type { DatabaseConnectionForm, DatabaseConnectionFormProps } from "../_shared/database-form-types";
 
-export function PostgresConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: DatabaseConnectionFormProps<DatabaseConnectionForm & { ssl_mode: string }>) {
+export function PostgresConnectorFormTemplate({
+  form,
+  mode = "create",
+  targets = [],
+  onChange,
+}: DatabaseConnectionFormProps<DatabaseConnectionForm & { ssl_mode: string }>) {
   const editing = mode === "edit";
   return (
     <>

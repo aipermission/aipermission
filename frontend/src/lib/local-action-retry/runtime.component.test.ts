@@ -21,7 +21,9 @@ describe("retry browser boundary", () => {
   });
 
   it("fails closed when legacy storage cannot be read", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
     expect(() => readLegacyLedger(currentRetryScope("one"))).toThrow("Secure retry storage is unavailable");
   });
 
@@ -46,6 +48,8 @@ describe("retry browser boundary", () => {
       detail.resolve(false);
     };
     window.addEventListener(localActionReconciliationEvent, handler, { once: true });
-    await expect(requestReconciliation({ created_at: "2026-09-26", request_id: NaN, operation_ref: [], assistant_hint: {} })).resolves.toBe(true);
+    await expect(requestReconciliation({ created_at: "2026-09-26", request_id: NaN, operation_ref: [], assistant_hint: {} })).resolves.toBe(
+      true,
+    );
   });
 });

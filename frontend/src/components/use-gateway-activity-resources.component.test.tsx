@@ -63,7 +63,9 @@ it("rejects malformed pending approvals without exposing them as ready data", as
 });
 
 it("retains the last validated message snapshot after a malformed response", async () => {
-  vi.mocked(apiGet).mockResolvedValueOnce([message]).mockResolvedValueOnce([{ ...message, token_id: {} }]);
+  vi.mocked(apiGet)
+    .mockResolvedValueOnce([message])
+    .mockResolvedValueOnce([{ ...message, token_id: {} }]);
   const { result } = renderHook(() => useGatewayActivityResources({ pollIsCurrent: () => true }));
   await act(async () => result.current.loadMessages());
   await act(async () => result.current.loadMessages());
@@ -76,9 +78,15 @@ it("ignores stale message responses and aborts an active freshness read on unmou
   await act(async () => result.current.loadMessages(2));
   expect(result.current.messages).toEqual({ state: "loading", data: [], error: null });
   let finish: ((_value: unknown) => void) | undefined;
-  vi.mocked(apiGet).mockReturnValue(new Promise<unknown>((resolve) => { finish = resolve; }));
+  vi.mocked(apiGet).mockReturnValue(
+    new Promise<unknown>((resolve) => {
+      finish = resolve;
+    }),
+  );
   let load: Promise<void> | undefined;
-  act(() => { load = result.current.loadBackupFreshness(); });
+  act(() => {
+    load = result.current.loadBackupFreshness();
+  });
   const options = vi.mocked(apiGet).mock.calls.at(-1)?.[1];
   const signal = options && "signal" in options ? options.signal : undefined;
   if (!(signal instanceof AbortSignal)) throw new Error("Freshness request is missing an abort signal");

@@ -8,7 +8,15 @@ describe("retention response contracts", () => {
     expect(retentionSettingsResponse(settings)).toBe(settings);
   });
 
-  it.each([null, [], {}, { ...settings, history_days: "2" }, { ...settings, audit_days: -1 }, { ...settings, console_days: 1.5 }, { ...settings, message_days: Infinity }])("rejects invalid settings %j", (value) => {
+  it.each([
+    null,
+    [],
+    {},
+    { ...settings, history_days: "2" },
+    { ...settings, audit_days: -1 },
+    { ...settings, console_days: 1.5 },
+    { ...settings, message_days: Infinity },
+  ])("rejects invalid settings %j", (value) => {
     expect(() => retentionSettingsResponse(value)).toThrow("Retention settings response is invalid.");
   });
 
@@ -17,7 +25,10 @@ describe("retention response contracts", () => {
     expect(retentionPurgeResponse({ deleted: 12 })).toEqual({ deleted: 12 });
   });
 
-  it.each([null, [], {}, { deleted: "4" }, { deleted: -1 }, { deleted: 0.5 }, { deleted: Number.MAX_SAFE_INTEGER + 1 }])("rejects invalid purge response %j", (value) => {
-    expect(() => retentionPurgeResponse(value)).toThrow("Retention purge response is invalid.");
-  });
+  it.each([null, [], {}, { deleted: "4" }, { deleted: -1 }, { deleted: 0.5 }, { deleted: Number.MAX_SAFE_INTEGER + 1 }])(
+    "rejects invalid purge response %j",
+    (value) => {
+      expect(() => retentionPurgeResponse(value)).toThrow("Retention purge response is invalid.");
+    },
+  );
 });

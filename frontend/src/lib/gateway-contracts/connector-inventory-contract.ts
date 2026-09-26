@@ -43,7 +43,9 @@ export function permissionInventoryResponse(value: unknown) {
     profiles: (target.profiles || []).map((profile) => ({
       ...profile,
       actions: (profile.actions || []).map((action) => ({
-        name: action.name, description: action.description || "", risk: action.risk || "",
+        name: action.name,
+        description: action.description || "",
+        risk: action.risk || "",
       })),
     })),
   }));
