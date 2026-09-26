@@ -5,7 +5,18 @@ import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { downloadBlob, downloadJSON } from "../../../lib/api";
 import { normalizeConnectorOutput } from "./sql-console-data";
 
-export function ActivityBlock({ title, value }) {
+type ActivityBlockProps = { title: string; value: unknown };
+type SQLRow = Record<string, unknown>;
+type ResultExportProps = ActivityBlockProps & { filenamePrefix: string };
+type ResultActionsProps = {
+  title: string;
+  columns: string[];
+  rows: SQLRow[];
+  jsonValue: unknown;
+  filenamePrefix: string;
+};
+
+export function ActivityBlock({ title, value }: ActivityBlockProps) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
       <p className="text-xs font-semibold uppercase text-stone-500">{title}</p>
@@ -14,10 +25,10 @@ export function ActivityBlock({ title, value }) {
   );
 }
 
-export function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
+export function SQLOutputBlock({ title, value, theme, filenamePrefix }: ResultExportProps & { theme: "dark" | "light" }) {
   const normalized = normalizeConnectorOutput(value);
   const columns = Array.isArray(normalized?.columns) ? normalized.columns.map(String) : [];
-  const rows = Array.isArray(normalized?.rows) ? normalized.rows : [];
+  const rows = Array.isArray(normalized?.rows) ? normalized.rows.map(normalizeConnectorOutput) : [];
   if (columns.length === 0) return <JSONResult title={title} value={value} filenamePrefix={filenamePrefix} />;
   const jsonValue = normalized || value || {};
   return (
@@ -66,7 +77,7 @@ export function SQLOutputBlock({ title, value, theme, filenamePrefix }) {
   );
 }
 
-function ResultActions({ title, columns, rows, jsonValue, filenamePrefix }) {
+function ResultActions({ title, columns, rows, jsonValue, filenamePrefix }: ResultActionsProps) {
   const tableText = rowsToClipboardText(columns, rows);
   const csvText = rowsToCSVText(columns, rows);
   return (
@@ -110,7 +121,7 @@ function ResultActions({ title, columns, rows, jsonValue, filenamePrefix }) {
   );
 }
 
-function JSONResult({ title, value, filenamePrefix }) {
+function JSONResult({ title, value, filenamePrefix }: ResultExportProps) {
   const jsonText = formatJSON(value);
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
@@ -137,38 +148,38 @@ function JSONResult({ title, value, filenamePrefix }) {
   );
 }
 
-function formatJSON(value) {
+function formatJSON(value: unknown, space = 2): string {
   if (typeof value === "string") return value;
   try {
-    return JSON.stringify(value ?? {}, null, 2);
+    return JSON.stringify(value ?? {}, null, space) ?? String(value);
   } catch {
     return String(value);
   }
 }
 
-function formatCell(value) {
+function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
-  return typeof value === "object" ? JSON.stringify(value) : String(value);
+  return typeof value === "object" ? formatJSON(value, 0) : String(value);
 }
 
-function rowsToClipboardText(columns, rows) {
+function rowsToClipboardText(columns: string[], rows: SQLRow[]): string {
   return [
     columns.join("\t"),
     ...rows.map((row) => columns.map((column) => formatCell(row?.[column]).replaceAll("\t", " ")).join("\t")),
   ].join("\n");
 }
 
-function rowsToCSVText(columns, rows) {
+function rowsToCSVText(columns: string[], rows: SQLRow[]): string {
   return [columns.map(csvCell).join(","), ...rows.map((row) => columns.map((column) => csvCell(formatCell(row?.[column]))).join(","))].join(
     "\n",
   );
 }
 
-function csvCell(value) {
+function csvCell(value: unknown): string {
   const text = String(value ?? "");
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function downloadText(text, filename, type) {
+function downloadText(text: string, filename: string, type: string): void {
   downloadBlob(new Blob([text], { type }), filename);
 }

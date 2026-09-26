@@ -1,4 +1,6 @@
 import { SQLConnectorConsole, SQLConnectorToolbarActions } from "../_shared/sql-console";
+import type { ComponentProps } from "react";
+import type { SQLConsoleConfigInput } from "../_shared/sql-console-config";
 
 const consoleMetadataSQL = `
 SELECT
@@ -32,7 +34,7 @@ GROUP BY n.nspname, c.relname, c.relkind
 ORDER BY n.nspname, c.relname
 `;
 
-const config = {
+const config: SQLConsoleConfigInput = {
   label: "Postgres",
   queryAction: "query_readonly",
   describeAction: "describe_table",
@@ -45,10 +47,10 @@ const config = {
   defaultDatabase: "database",
 };
 
-export function PostgresConnectorConsoleTemplate(props) {
+export function PostgresConnectorConsoleTemplate(props: Omit<ComponentProps<typeof SQLConnectorConsole>, "config">) {
   return <SQLConnectorConsole {...props} config={config} />;
 }
 
-export function PostgresConnectorToolbarActionsTemplate(props) {
+export function PostgresConnectorToolbarActionsTemplate(props: Omit<ComponentProps<typeof SQLConnectorToolbarActions>, "label">) {
   return <SQLConnectorToolbarActions {...props} label="Postgres" />;
 }

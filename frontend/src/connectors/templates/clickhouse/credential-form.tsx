@@ -3,8 +3,9 @@ import { Button } from "../../../components/ui/button";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
+import type { DatabaseCredentialFormProps } from "../_shared/database-form-types";
 
-export function ClickHouseCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function ClickHouseCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }: DatabaseCredentialFormProps) {
   const clickHouseTargets = targets.filter((target) => target.connector_kind === "clickhouse");
   const editing = formMode === "edit";
   return (

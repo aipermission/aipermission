@@ -3,8 +3,11 @@ import { Button } from "../../../components/ui/button";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
+import type { DatabaseCredentialForm, DatabaseCredentialFormProps } from "../_shared/database-form-types";
 
-export function PostgresCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+type PostgresCredentialForm = DatabaseCredentialForm & { managed_by_aipermission?: boolean };
+
+export function PostgresCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }: DatabaseCredentialFormProps<PostgresCredentialForm>) {
   const postgresTargets = targets.filter((target) => target.connector_kind === "postgres");
   const editing = formMode === "edit";
   const managed = Boolean(form.managed_by_aipermission);

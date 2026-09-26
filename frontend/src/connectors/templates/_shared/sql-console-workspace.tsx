@@ -1,7 +1,8 @@
 import { SQLLeftPanel } from "./sql-left-panel";
 import { SQLRequestDetail } from "./sql-request-detail";
+import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
-export function SQLConsoleWorkspace({ controller, styles, theme }) {
+export function SQLConsoleWorkspace({ controller, styles, theme }: SQLConsoleViewProps) {
   return (
     <div
       className={`grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden p-4 ${controller.resultView ? "grid-cols-1" : "lg:grid-cols-[320px_minmax(0,1fr)]"}`}

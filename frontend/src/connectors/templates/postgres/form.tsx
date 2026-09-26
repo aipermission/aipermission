@@ -1,14 +1,14 @@
 import { Field, Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { NetworkTransportFields } from "../_shared/network-transport-fields";
+import type { DatabaseConnectionForm, DatabaseConnectionFormProps } from "../_shared/database-form-types";
 
-export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets = [], onChange }) {
+export function PostgresConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: DatabaseConnectionFormProps<DatabaseConnectionForm & { ssl_mode: string }>) {
   const editing = mode === "edit";
   return (
     <>
       <Notice tone="good">
-        Use a dedicated read-only ClickHouse user. Query validation and execution limits are defense in depth, not a replacement for
-        database permissions.
+        The first Postgres credential profile is stored encrypted. Use a dedicated read-only database role for AI access.
       </Notice>
       <Field>
         Connector name
@@ -18,22 +18,22 @@ export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets
         form={form}
         targets={targets}
         onChange={onChange}
-        hostLabel="ClickHouse host"
-        portLabel="Native port"
-        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:9000 when ClickHouse only listens on the remote machine."
-        directNotice="For ClickHouse running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
+        transportNotice="Host and port are resolved from the SSH server. Use 127.0.0.1:5432 when Postgres only listens on the remote machine."
+        directNotice="For Postgres running on the same Linux host as AIPermission Docker, use host.docker.internal instead of localhost."
       />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
         <Field>
-          Default database
+          Database
           <Input value={form.database} onChange={(event) => onChange("database", event.target.value)} required />
         </Field>
         <Field>
-          TLS mode
-          <Select value={form.tls_mode} onChange={(event) => onChange("tls_mode", event.target.value)}>
-            <option value="auto">Auto</option>
-            <option value="disable">Disable</option>
+          SSL mode
+          <Select value={form.ssl_mode} onChange={(event) => onChange("ssl_mode", event.target.value)}>
+            <option value="auto">Auto (recommended)</option>
             <option value="verify_full">Verify full</option>
+            <option value="require">Require (no identity verification)</option>
+            <option value="prefer">Prefer</option>
+            <option value="disable">Disable</option>
           </Select>
         </Field>
       </div>
@@ -58,7 +58,8 @@ export function ClickHouseConnectorFormTemplate({ form, mode = "create", targets
           value={form.password}
           onChange={(event) => onChange("password", event.target.value)}
           autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep the current encrypted password" : "optional ClickHouse password"}
+          placeholder={editing ? "Leave blank to keep the current encrypted password" : ""}
+          required={!editing}
         />
       </Field>
     </>

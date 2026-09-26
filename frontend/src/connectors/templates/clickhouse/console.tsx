@@ -1,4 +1,6 @@
 import { SQLConnectorConsole, SQLConnectorToolbarActions } from "../_shared/sql-console";
+import type { ComponentProps } from "react";
+import type { SQLConsoleConfigInput } from "../_shared/sql-console-config";
 
 const consoleMetadataSQL = `
 SELECT
@@ -28,16 +30,16 @@ export const clickHouseConsoleConfig = {
   describeInput: (reference) => ({ database: reference.schema || "", table: reference.table }),
   tableQuery: (table, maxRows) =>
     `SELECT *\nFROM ${quoteClickHouseIdentifier(table.schema)}.${quoteClickHouseIdentifier(table.table)}\nLIMIT ${maxRows};`,
-};
+} satisfies SQLConsoleConfigInput;
 
-export function ClickHouseConnectorConsoleTemplate(props) {
+export function ClickHouseConnectorConsoleTemplate(props: Omit<ComponentProps<typeof SQLConnectorConsole>, "config">) {
   return <SQLConnectorConsole {...props} config={clickHouseConsoleConfig} />;
 }
 
-export function ClickHouseConnectorToolbarActionsTemplate(props) {
+export function ClickHouseConnectorToolbarActionsTemplate(props: Omit<ComponentProps<typeof SQLConnectorToolbarActions>, "label">) {
   return <SQLConnectorToolbarActions {...props} label="ClickHouse" />;
 }
 
-function quoteClickHouseIdentifier(value) {
+function quoteClickHouseIdentifier(value: string): string {
   return `\`${String(value || "").replaceAll("`", "``")}\``;
 }
