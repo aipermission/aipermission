@@ -3,7 +3,16 @@ import { EmptySessionState } from "../../../components/console/empty-session-sta
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 
-export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }) {
+type Theme = "dark" | "light";
+type SQLTarget = { name: string; config?: { host?: string; port?: number; database?: string } };
+type SQLChromeConfig = { label: string; targetEndpoint: (_target: SQLTarget) => string };
+
+export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession }: {
+  config: Pick<SQLChromeConfig, "label">;
+  target: SQLTarget;
+  theme: Theme;
+  onNewSession?: () => void;
+}) {
   return (
     <EmptySessionState
       title={`No active ${config.label} session`}
@@ -14,7 +23,12 @@ export function SQLNoSessionPlaceholder({ config, target, theme, onNewSession })
   );
 }
 
-export function SQLEndpointFooter({ config, target, borderClass, mutedClass }) {
+export function SQLEndpointFooter({ config, target, borderClass, mutedClass }: {
+  config: SQLChromeConfig;
+  target: SQLTarget;
+  borderClass: string;
+  mutedClass: string;
+}) {
   return (
     <div className={`border-t px-4 py-2 text-xs ${borderClass} ${mutedClass}`}>
       <span className="inline-flex min-w-0 items-center gap-2">
@@ -25,7 +39,13 @@ export function SQLEndpointFooter({ config, target, borderClass, mutedClass }) {
   );
 }
 
-export function SQLConnectorToolbarActions({ label, theme, structuredSession, onNewStructuredSession, onEndStructuredSession }) {
+export function SQLConnectorToolbarActions({ label, theme, structuredSession, onNewStructuredSession, onEndStructuredSession }: {
+  label: string;
+  theme: Theme;
+  structuredSession?: { active: boolean } | null;
+  onNewStructuredSession?: () => void;
+  onEndStructuredSession?: () => void;
+}) {
   const buttonClass = `h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`;
   const active = Boolean(structuredSession?.active);
   return (
@@ -56,7 +76,7 @@ export function SQLConnectorToolbarActions({ label, theme, structuredSession, on
   );
 }
 
-export function ResultViewToggle({ checked, onChange, theme }) {
+export function ResultViewToggle({ checked, onChange, theme }: { checked: boolean; onChange: (_checked: boolean) => void; theme: Theme }) {
   const light = theme === "light";
   return (
     <button
@@ -74,7 +94,7 @@ export function ResultViewToggle({ checked, onChange, theme }) {
   );
 }
 
-export function ActivityStatusBadge({ status }) {
+export function ActivityStatusBadge({ status }: { status: string }) {
   const tone =
     status === "completed"
       ? "good"
@@ -86,7 +106,7 @@ export function ActivityStatusBadge({ status }) {
   return <Badge tone={tone}>{status}</Badge>;
 }
 
-export function formatConnectorTime(value) {
+export function formatConnectorTime(value?: string): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
 }

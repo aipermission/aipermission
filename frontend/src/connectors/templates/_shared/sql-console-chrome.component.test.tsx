@@ -10,7 +10,7 @@ import {
   SQLNoSessionPlaceholder,
 } from "./sql-console-chrome";
 
-const config = { label: "SQL", targetEndpoint: (target) => `db://${target.name}` };
+const config = { label: "SQL", targetEndpoint: (target: { name: string }) => `db://${target.name}` };
 
 it("renders and operates the SQL session chrome", async () => {
   const user = userEvent.setup();

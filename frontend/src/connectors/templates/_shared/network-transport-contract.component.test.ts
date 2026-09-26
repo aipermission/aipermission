@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { assertNetworkTransportMetadata, publicEndpointValue, uniqueNetworkTransportDescriptors } from "./network-transport-contract.js";
+import { assertNetworkTransportMetadata, publicEndpointValue, uniqueNetworkTransportDescriptors } from "./network-transport-contract.ts";
 
 const transport = {
   mode: "over_example",
