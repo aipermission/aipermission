@@ -13,8 +13,33 @@ import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
 import { targetEndpoint } from "./model";
 import { useMailWorkspace } from "./use-mail-workspace";
+import type { MailWorkspaceProps, MailWorkspaceTarget } from "./use-mail-workspace";
+import type { MailTarget } from "./form-types";
+import type { MailActionItem, MailRunnerState } from "./action-types";
 
-export function MailConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
+type MailConsoleTarget = MailTarget & MailWorkspaceTarget;
+interface MailConsoleProps extends Omit<MailWorkspaceProps, "target"> {
+  target: MailConsoleTarget;
+  theme: string;
+  onNewStructuredSession: () => void;
+}
+interface MailToolbarProps {
+  target: MailConsoleTarget;
+  latestAction: MailActionItem | null;
+  state: MailRunnerState;
+  resultClass: string;
+  imapEnabled: boolean;
+  smtpEnabled: boolean;
+  busy: boolean;
+  outboundPending: boolean;
+  onResult: () => void;
+  onRefresh: () => unknown;
+  onCompose: () => void;
+  borderClass: string;
+}
+type SMTPPanelProps = Pick<MailToolbarProps, "busy" | "outboundPending" | "smtpEnabled" | "onCompose" | "borderClass"> & { mutedClass: string; subtlePanelClass: string };
+
+export function MailConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }: MailConsoleProps) {
   const workspace = useMailWorkspace({ target, approvals, session, onRefreshActivity });
   const { runner, mailbox, compose } = workspace;
   const styles = connectorConsoleTheme(theme);
@@ -38,7 +63,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
     );
   }
 
-  const composeError = ["send_message", "reply_message"].includes(runner.state.result?.actionName) ? runner.state.error : "";
+  const composeError = ["send_message", "reply_message"].includes(runner.state.result?.actionName || "") ? runner.state.error : "";
   return (
     <div className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] ${styles.panel}`}>
       <MailToolbar
@@ -138,7 +163,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
       />
       <DeleteMessageDialog
         open={mailbox.deleteOpen}
-        trashFolder={target.public?.trash_folder}
+        trashFolder={target.public?.trash_folder || ""}
         busy={runner.state.state === "updating"}
         onClose={mailbox.closeDelete}
         onConfirm={() => mailbox.moveSelected("delete_message")}
@@ -153,7 +178,7 @@ export function MailConnectorConsoleTemplate({ target, approvals, theme, session
   );
 }
 
-function MailToolbar(props) {
+function MailToolbar(props: MailToolbarProps) {
   const { target, latestAction, state, resultClass, imapEnabled, smtpEnabled, busy, outboundPending } = props;
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 border-b px-3 py-2 ${props.borderClass}`}>
@@ -200,7 +225,7 @@ function MailToolbar(props) {
   );
 }
 
-function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderClass, mutedClass, subtlePanelClass }) {
+function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderClass, mutedClass, subtlePanelClass }: SMTPPanelProps) {
   return (
     <div className="grid min-h-0 place-items-center p-8 text-center">
       <div className={`grid max-w-lg gap-3 rounded-md border p-6 ${borderClass} ${subtlePanelClass}`}>
@@ -218,7 +243,7 @@ function SMTPOnlyPanel({ busy, outboundPending, smtpEnabled, onCompose, borderCl
   );
 }
 
-function MailEndpointFooter({ target, borderClass = "", mutedClass }) {
+function MailEndpointFooter({ target, borderClass = "", mutedClass }: { target: MailConsoleTarget; borderClass?: string; mutedClass: string }) {
   return (
     <ConnectorEndpointFooter leading={target.ref} trailing={targetEndpoint({ target })} borderClass={borderClass} mutedClass={mutedClass} />
   );

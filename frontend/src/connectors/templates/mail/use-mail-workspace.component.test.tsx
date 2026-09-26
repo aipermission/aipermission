@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api";
 import { useMailWorkspace } from "./use-mail-workspace";
 import { connectorActionFixture } from "../../../test/connector-action-fixtures";
+import type { MailWorkspaceProps } from "./use-mail-workspace";
 
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
 
@@ -23,13 +24,14 @@ const message = {
   read: false,
 };
 
+const post = vi.mocked(apiPost);
 beforeEach(() => {
-  apiPost.mockReset();
-  apiPost.mockImplementation(async (_path, payload) => actionResponse(payload.action_name, payload.input));
+  post.mockReset();
+  post.mockImplementation(async (_path, payload) => actionResponse(payload.action_name));
 });
 
-function renderWorkspace(overrides = {}) {
-  const props = {
+function renderWorkspace(overrides: Partial<MailWorkspaceProps> = {}) {
+  const props: MailWorkspaceProps = {
     target,
     approvals: { data: [] },
     session: { active: true, startedAt: "now" },
@@ -54,9 +56,9 @@ it("loads the Mail workspace and keeps read state coherent", async () => {
 });
 
 it("reconciles an approved outbound action without losing its draft early", async () => {
-  apiPost.mockImplementation(async (_path, payload) => {
+  post.mockImplementation(async (_path, payload) => {
     if (payload.action_name === "send_message") return connectorActionFixture({ request_id: 41, target_ref: payload.target_ref, action_name: payload.action_name, status: "approval_pending", display_text: "Awaiting approval" });
-    return actionResponse(payload.action_name, payload.input);
+    return actionResponse(payload.action_name);
   });
   const { result, rerender, props } = renderWorkspace();
   await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
@@ -74,13 +76,13 @@ it("reconciles an approved outbound action without losing its draft early", asyn
 });
 
 it("fails closed when a pending action omits its request identity", async () => {
-  apiPost.mockImplementation(async (_path, payload) => {
+  post.mockImplementation(async (_path, payload) => {
     if (payload.action_name === "send_message") {
       const response = connectorActionFixture({ target_ref: payload.target_ref, action_name: payload.action_name, status: "approval_pending" });
-      delete response.request_id;
+      Reflect.deleteProperty(response, "request_id");
       return response;
     }
-    return actionResponse(payload.action_name, payload.input);
+    return actionResponse(payload.action_name);
   });
   const { result } = renderWorkspace();
   await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
@@ -101,32 +103,32 @@ it("fails closed when a pending action omits its request identity", async () => 
 });
 
 it("ignores a Mail response that completes after the target scope changes", async () => {
-  let resolveFolders;
-  apiPost.mockImplementation((_path, payload) =>
+  let resolveFolders: ((_value: ReturnType<typeof actionResponse>) => void) | undefined;
+  post.mockImplementation((_path, payload) =>
     payload.action_name === "list_folders"
-      ? new Promise((resolve) => {
+      ? new Promise<ReturnType<typeof actionResponse>>((resolve) => {
           resolveFolders = resolve;
         })
-      : Promise.resolve(actionResponse(payload.action_name, payload.input)),
+      : Promise.resolve(actionResponse(payload.action_name)),
   );
   const { result, rerender, props } = renderWorkspace();
   await waitFor(() => expect(resolveFolders).toBeTypeOf("function"));
   rerender({ ...props, target: { ...target, ref: "mail:2:2" }, session: { active: false, startedAt: "" } });
 
-  await act(async () => resolveFolders(actionResponse("list_folders", {})));
+  await act(async () => { if (!resolveFolders) throw new Error("Folder request was not started."); resolveFolders(actionResponse("list_folders")); });
   expect(result.current.mailbox.folders).toEqual([]);
-  expect(apiPost.mock.calls.filter(([, payload]) => payload.action_name === "search_messages")).toHaveLength(0);
+  expect(post.mock.calls.filter(([, payload]) => payload.action_name === "search_messages")).toHaveLength(0);
 });
 
 it("allows a newer folder selection to supersede an in-flight message read", async () => {
-  let resolveMessage;
-  apiPost.mockImplementation(async (_path, payload) => {
+  let resolveMessage: ((_value: ReturnType<typeof actionResponse>) => void) | undefined;
+  post.mockImplementation(async (_path, payload) => {
     if (payload.action_name === "get_message") {
-      return new Promise((resolve) => {
+      return new Promise<ReturnType<typeof actionResponse>>((resolve) => {
         resolveMessage = resolve;
       });
     }
-    return actionResponse(payload.action_name, payload.input);
+    return actionResponse(payload.action_name);
   });
   const { result } = renderWorkspace();
   await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
@@ -135,7 +137,7 @@ it("allows a newer folder selection to supersede an in-flight message read", asy
   });
   await waitFor(() => expect(resolveMessage).toBeTypeOf("function"));
   await act(async () => result.current.mailbox.selectFolder("Archive"));
-  await act(async () => resolveMessage(actionResponse("get_message")));
+  await act(async () => { if (!resolveMessage) throw new Error("Message request was not started."); resolveMessage(actionResponse("get_message")); });
 
   expect(result.current.mailbox.selectedFolder).toBe("Archive");
   expect(result.current.mailbox.selectedMessage).toBeNull();
@@ -156,7 +158,7 @@ it("derives inactive capabilities and outbound ownership from the current approv
 });
 
 it("retains an unknown SMTP draft and requires explicit confirmation before retry", async () => {
-  apiPost.mockImplementation(async (_path, payload) => payload.action_name === "send_message"
+  post.mockImplementation(async (_path, payload) => payload.action_name === "send_message"
     ? connectorActionFixture({ target_ref: target.ref, action_name: "send_message", status: "outcome_unknown", error: "SMTP result unknown", output: { submission_status: "submission_unknown", message_id: "test-message" } })
     : actionResponse(payload.action_name));
   const { result } = renderWorkspace();
@@ -165,17 +167,17 @@ it("retains an unknown SMTP draft and requires explicit confirmation before retr
   const fields = { to: ["one@example.test"], cc: [], bcc: [], subject: "Status", text_body: "Ready", html_body: "" };
   await act(async () => result.current.compose.submitMessage(fields));
   expect(result.current.compose.compose).toMatchObject({ open: true, submissionUnknown: { messageID: "test-message" } });
-  const count = apiPost.mock.calls.length;
+  const count = post.mock.calls.length;
   await act(async () => result.current.compose.submitMessage({ ...fields, subject: "Changed" }));
-  expect(apiPost.mock.calls).toHaveLength(count);
+  expect(post.mock.calls).toHaveLength(count);
   expect(result.current.compose.retryDialog).toMatchObject({ open: true, draftChanged: true, messageID: "test-message" });
-  apiPost.mockResolvedValue(connectorActionFixture({ target_ref: target.ref, action_name: "send_message" }));
+  post.mockResolvedValue(connectorActionFixture({ target_ref: target.ref, action_name: "send_message" }));
   await act(async () => result.current.compose.confirmRetry());
   expect(result.current.compose.compose.open).toBe(false);
 });
 
 it("retains an approval-resolved unknown submission without silently resending", async () => {
-  apiPost.mockImplementation(async (_path, payload) => payload.action_name === "send_message"
+  post.mockImplementation(async (_path, payload) => payload.action_name === "send_message"
     ? connectorActionFixture({ request_id: 41, target_ref: target.ref, action_name: "send_message", status: "approval_pending" })
     : actionResponse(payload.action_name));
   const { result, rerender, props } = renderWorkspace();
@@ -186,14 +188,14 @@ it("retains an approval-resolved unknown submission without silently resending",
   rerender({ ...props, approvals: { data: [{ id: 41, target_ref: target.ref, action_name: "send_message", status: "outcome_unknown", output: { submission_status: "submission_unknown", message_id: "approved-message" } }] } });
   await waitFor(() => expect(result.current.compose.compose.submissionUnknown?.messageID).toBe("approved-message"));
   expect(result.current.compose.compose.form).toEqual(fields);
-  const count = apiPost.mock.calls.length;
+  const count = post.mock.calls.length;
   await act(async () => result.current.compose.submitMessage(fields));
-  expect(apiPost.mock.calls).toHaveLength(count);
+  expect(post.mock.calls).toHaveLength(count);
   expect(result.current.compose.retryDialog).toMatchObject({ open: true, draftChanged: false });
 });
 
-function actionResponse(actionName) {
-  const outputs = {
+function actionResponse(actionName: string) {
+  const outputs: Record<string, unknown> = {
     list_folders: { folders: [{ name: "INBOX" }, { name: "Archive" }], count: 2 },
     search_messages: { folder: "INBOX", messages: [message], count: 1, total: 1, unread: 1 },
     get_message: message,

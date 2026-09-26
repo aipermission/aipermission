@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import { connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
 import { addressValues, replySubject, replyText, submissionDraftFingerprint, unknownSubmissionRetryDecision } from "./helpers";
+import { MailActionFailure } from "./use-mail-action-runner";
+import { readMailSubmissionUnknown } from "./message-output";
+import type { MailComposeDraft, MailMessage, MailSubmittedFields } from "./message-types";
+import type { MailRetryDialog } from "./message-dialogs";
+import type { MailActionResolution, MailPendingAction, RunMailAction } from "./action-types";
 
-const emptyCompose = { open: false, reply: false, form: {} };
-const emptyRetry = { open: false, fields: null, messageID: "" };
+interface MailComposeProps {
+  scopeKey: string;
+  selectedMessage: MailMessage | null;
+  outboundPending: boolean;
+  runMailAction: RunMailAction;
+}
+type RetryState = MailRetryDialog & { fields: MailSubmittedFields | null };
 
-export function useMailCompose({ scopeKey, selectedMessage, outboundPending, runMailAction }) {
+const emptyCompose: MailComposeDraft = { open: false, reply: false, form: {} };
+const emptyRetry: RetryState = { open: false, fields: null, messageID: "" };
+
+export function useMailCompose({ scopeKey, selectedMessage, outboundPending, runMailAction }: MailComposeProps) {
   const [compose, setCompose] = useState(emptyCompose);
   const [retryDialog, setRetryDialog] = useState(emptyRetry);
 
@@ -34,15 +47,15 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
     });
   }
 
-  async function submitMessage(fields, retryConfirmed = false) {
+  async function submitMessage(fields: MailSubmittedFields, retryConfirmed = false) {
     const actionName = compose.reply ? "reply_message" : "send_message";
     const draftFingerprint = submissionDraftFingerprint(fields);
     const retryDecision = unknownSubmissionRetryDecision(compose.submissionUnknown, fields);
     if (retryDecision.required && !retryConfirmed) {
-      setRetryDialog({ open: true, fields, messageID: compose.submissionUnknown.messageID || "", draftChanged: retryDecision.changed });
+      setRetryDialog({ open: true, fields, messageID: compose.submissionUnknown?.messageID || "", draftChanged: retryDecision.changed });
       return;
     }
-    const input = { ...fields };
+    const input: Record<string, unknown> = { ...fields };
     if (compose.reply && compose.messageRef) input.message_ref = compose.messageRef;
     try {
       const context = { fields, reply: compose.reply, messageRef: compose.messageRef, draftFingerprint };
@@ -60,27 +73,25 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       }
       closeAfterSuccess();
     } catch (error) {
-      if (error.actionItem?.output?.submission_status === "submission_unknown") {
+      const submissionUnknown = error instanceof MailActionFailure ? readMailSubmissionUnknown(error.actionItem.output, draftFingerprint) : null;
+      if (submissionUnknown) {
         setCompose((current) => ({
           ...current,
-          submissionUnknown: { messageID: error.actionItem.output.message_id || "", fingerprint: draftFingerprint },
+          submissionUnknown,
         }));
       }
     }
   }
 
-  function resolvePending(pending, resolution) {
+  function resolvePending(pending: MailPendingAction, resolution: MailActionResolution) {
     const { actionName, context } = pending;
     if (actionName !== "send_message" && actionName !== "reply_message") return;
     if (resolution.state === "completed") {
       closeAfterSuccess();
       return;
     }
-    const submissionUnknown =
-      resolution.item.output?.submission_status === "submission_unknown"
-        ? { messageID: resolution.item.output.message_id || "", fingerprint: context.draftFingerprint }
-        : null;
-    setCompose({ open: true, reply: context.reply, messageRef: context.messageRef, form: context.fields || {}, submissionUnknown });
+    const submissionUnknown = readMailSubmissionUnknown(resolution.item.output, context.draftFingerprint || "");
+    setCompose({ open: true, reply: Boolean(context.reply), messageRef: context.messageRef, form: context.fields || {}, submissionUnknown });
   }
 
   function closeAfterSuccess() {
