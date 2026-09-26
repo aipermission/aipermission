@@ -1,15 +1,20 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { Upload } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiPostForm } from "../lib/api";
+import { errorMessage } from "../lib/errors.ts";
+import type { useUnlockLifecycleMutation } from "./use-unlock-lifecycle-mutation.ts";
 
-export function UnlockImportPanel({ runLifecycleMutation }) {
-  const [form, setForm] = useState({ database_name: "", file: null, database_password: "" });
-  const [state, setState] = useState({ state: "idle", error: null });
+type Props = { runLifecycleMutation: ReturnType<typeof useUnlockLifecycleMutation>["runMutation"] };
 
-  async function importDatabase(event) {
+export function UnlockImportPanel({ runLifecycleMutation }: Props) {
+  const [form, setForm] = useState<{ database_name: string; file: File | null; database_password: string }>({ database_name: "", file: null, database_password: "" });
+  const [state, setState] = useState<{ state: "idle" | "importing" | "error"; error: string | null }>({ state: "idle", error: null });
+
+  async function importDatabase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.file) {
       setState({ state: "error", error: "Database file is required" });
@@ -23,7 +28,7 @@ export function UnlockImportPanel({ runLifecycleMutation }) {
       formData.set("database_name", form.database_name);
       await runLifecycleMutation("import", (signal) => apiPostForm("/api/backup/import", formData, { signal }));
     } catch (error) {
-      setState({ state: "error", error: error.message });
+      setState({ state: "error", error: errorMessage(error, "Could not import the database.") });
     }
   }
 

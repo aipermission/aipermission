@@ -1,5 +1,6 @@
 import { Edit3, FolderKanban, Plus, RefreshCcw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -8,14 +9,20 @@ import { Field, Input } from "../components/ui/form";
 import { Notice } from "../components/ui/notice";
 import { apiDelete, apiGet, apiPost, apiPut } from "../lib/api";
 import { useRequestGuard } from "../lib/request-guard";
+import { projectListResponse } from "../lib/gateway-contracts/project-list-contract.ts";
+import type { ProjectSummary } from "../lib/gateway-contracts/project-list-contract.ts";
+import { errorMessage } from "../lib/errors.ts";
 
-const emptyEditor = { open: false, mode: "create", project: null, name: "" };
+type Editor = { open: boolean; name: string } & ({ mode: "create"; project: null } | { mode: "edit"; project: ProjectSummary });
+type ProjectState = { state: "loading" | "ready" | "error"; data: ProjectSummary[]; error: string | null };
+type Action = { state: "idle" | "saving" | "ready" | "error" | "deleting"; message: string; error: string | null };
+const emptyEditor: Editor = { open: false, mode: "create", project: null, name: "" };
 
 export function ProjectsPage() {
-  const [projects, setProjects] = useState({ state: "loading", data: [], error: null });
+  const [projects, setProjects] = useState<ProjectState>({ state: "loading", data: [], error: null });
   const [editor, setEditor] = useState(emptyEditor);
-  const [remove, setRemove] = useState({ open: false, project: null });
-  const [action, setAction] = useState({ state: "idle", message: "", error: null });
+  const [remove, setRemove] = useState<{ open: boolean; project: ProjectSummary | null }>({ open: false, project: null });
+  const [action, setAction] = useState<Action>({ state: "idle", message: "", error: null });
   const requests = useRequestGuard("projects");
 
   const totalTargets = useMemo(
@@ -29,9 +36,9 @@ export function ProjectsPage() {
     try {
       const data = await apiGet("/api/projects", { signal: request.signal });
       if (!request.isCurrent()) return;
-      setProjects({ state: "ready", data: data.items || [], error: null });
+      setProjects({ state: "ready", data: projectListResponse(data), error: null });
     } catch (error) {
-      if (request.isCurrent()) setProjects({ state: "error", data: [], error: error.message });
+      if (request.isCurrent()) setProjects({ state: "error", data: [], error: errorMessage(error, "Could not load projects.") });
     } finally {
       request.complete();
     }
@@ -47,7 +54,7 @@ export function ProjectsPage() {
     setEditor({ open: true, mode: "create", project: null, name: "" });
   }
 
-  function openEdit(project) {
+  function openEdit(project: ProjectSummary) {
     requests.invalidate("editor");
     setAction({ state: "idle", message: "", error: null });
     setEditor({ open: true, mode: "edit", project, name: project.name });
@@ -65,7 +72,7 @@ export function ProjectsPage() {
     setAction({ state: "idle", message: "", error: null });
   }
 
-  async function saveProject(event) {
+  async function saveProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const draft = editor;
     const request = requests.begin("editor");
@@ -82,7 +89,7 @@ export function ProjectsPage() {
       }
       await loadProjects();
     } catch (error) {
-      if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
+      if (request.isCurrent()) setAction({ state: "error", message: "", error: errorMessage(error, "Could not save the project.") });
     } finally {
       request.complete();
     }
@@ -101,7 +108,7 @@ export function ProjectsPage() {
       }
       await loadProjects();
     } catch (error) {
-      if (request.isCurrent()) setAction({ state: "error", message: "", error: error.message });
+      if (request.isCurrent()) setAction({ state: "error", message: "", error: errorMessage(error, "Could not archive the project.") });
     } finally {
       request.complete();
     }
@@ -255,7 +262,7 @@ export function ProjectsPage() {
   );
 }
 
-function ProjectStat({ label, value }) {
+function ProjectStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-4">
       <span className="text-sm font-medium text-stone-500">{label}</span>

@@ -83,11 +83,11 @@ export const asyncStateOwnerTests = {
   "src/lib/load-project-options.ts": ["src/connectors/editor/use-connector-inventory.component.test.jsx"],
   "src/lib/use-connector-permissions.ts": ["src/lib/use-connector-permissions.component.test.jsx"],
   "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
-  "src/pages/projects.jsx": ["src/pages/projects.component.test.jsx"],
+  "src/pages/projects.tsx": ["src/pages/projects.component.test.tsx"],
   "src/pages/tokens.jsx": ["src/pages/tokens.component.test.jsx"],
   "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
   "src/pages/audit-logs.jsx": ["src/pages/audit-logs.component.test.jsx"],
-  "src/pages/use-unlock-lifecycle-mutation.js": ["src/pages/unlock.component.test.jsx"],
+  "src/pages/use-unlock-lifecycle-mutation.ts": ["src/pages/unlock.component.test.jsx", "src/pages/use-unlock-lifecycle-mutation.component.test.ts"],
   "src/pages/use-history-page-state.js": ["src/pages/history.component.test.jsx"],
 };
 
